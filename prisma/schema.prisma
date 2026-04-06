@@ -1,0 +1,174 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Business {
+  id               String             @id @default(cuid())
+  ownerId          String             @unique
+  name             String
+  businessType     String
+  plan             BusinessPlan       @default(TRIAL)
+  planStatus       BusinessPlanStatus @default(TRIALING)
+  whatsappNumber   String?
+  whatsappEnabled  Boolean            @default(false)
+  trialEndsAt      DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  staffMembers     StaffMember[]
+  clients          Client[]
+  appointments     Appointment[]
+  businessHours    BusinessHours[]
+  conversations    Conversation[]
+  reminderSettings ReminderSettings?
+}
+
+model BusinessHours {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  weekday    Int
+  isOpen     Boolean  @default(true)
+  startTime  String
+  endTime    String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([businessId, weekday])
+  @@index([businessId])
+}
+
+model StaffMember {
+  id          String        @id @default(cuid())
+  businessId  String
+  business    Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name        String
+  role        String
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  appointments Appointment[]
+
+  @@index([businessId])
+}
+
+model Client {
+  id           String        @id @default(cuid())
+  businessId   String
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name         String
+  email        String?
+  phone        String
+  notes        String?
+  status       ClientEngagementStatus @default(ACTIVE)
+  preferredChannel String?
+  assignedStaffName String?
+  tags         String[]      @default([])
+  isArchived   Boolean       @default(false)
+  lastVisitAt  DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  appointments Appointment[]
+  messages     Message[]
+
+  @@index([businessId, isArchived])
+  @@index([businessId, phone])
+  @@unique([businessId, phone])
+}
+
+model Appointment {
+  id           String            @id @default(cuid())
+  businessId   String
+  business     Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  clientId     String
+  client       Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  staffMemberId String?
+  staffMember  StaffMember?      @relation(fields: [staffMemberId], references: [id], onDelete: SetNull)
+  title        String
+  startAt      DateTime
+  endAt        DateTime
+  status       AppointmentStatus @default(PENDING)
+  notes        String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([businessId, startAt])
+  @@index([clientId, startAt])
+}
+
+model Conversation {
+  id          String    @id @default(cuid())
+  businessId  String
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  phoneNumber String
+  contactName String
+  unreadCount Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  messages    Message[]
+
+  @@index([businessId, phoneNumber])
+  @@unique([businessId, phoneNumber])
+}
+
+model Message {
+  id             String           @id @default(cuid())
+  conversationId String?
+  conversation   Conversation?    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  clientId       String?
+  client         Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  direction      MessageDirection
+  body           String
+  sentAt         DateTime         @default(now())
+
+  @@index([conversationId, sentAt])
+}
+
+model ReminderSettings {
+  id                 String   @id @default(cuid())
+  businessId         String   @unique
+  business           Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  send24HourReminder Boolean  @default(true)
+  send2HourReminder  Boolean  @default(true)
+  reminderWindow     String?
+  template           String?
+  updatedAt          DateTime @updatedAt
+}
+
+enum AppointmentStatus {
+  CONFIRMED
+  PENDING
+  CANCELLED
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+  SYSTEM
+}
+
+enum ClientEngagementStatus {
+  ACTIVE
+  AT_RISK
+  INACTIVE
+  ARCHIVED
+}
+
+enum BusinessPlan {
+  TRIAL
+  BASIC
+  PRO
+  ADVANCED
+}
+
+enum BusinessPlanStatus {
+  TRIALING
+  ACTIVE
+  INACTIVE
+  CANCELED
+}
