@@ -1,6 +1,7 @@
 import { subHours, subMinutes } from "date-fns";
 import type { Prisma } from "@prisma/client";
 
+import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import { prisma } from "@/lib/prisma";
 
 type SeedClient = {
@@ -23,8 +24,10 @@ async function seedConversationForClient(
   businessId: string,
   client: SeedClient,
   unreadCount: number,
-  now: Date
+  now: Date,
+  seedMessages: boolean
 ) {
+  const normalizedClientPhone = normalizePhone(client.phone);
   const latestAppointment = client.appointments[0];
   const staffName =
     latestAppointment?.staffMember?.name ??
@@ -35,7 +38,7 @@ async function seedConversationForClient(
     where: {
       businessId_phoneNumber: {
         businessId,
-        phoneNumber: client.phone,
+        phoneNumber: normalizedClientPhone,
       },
     },
     update: {
@@ -44,11 +47,15 @@ async function seedConversationForClient(
     },
     create: {
       businessId,
-      phoneNumber: client.phone,
+      phoneNumber: normalizedClientPhone,
       contactName: client.name,
       unreadCount,
     },
   });
+
+  if (!seedMessages) {
+    return;
+  }
 
   const messageCount = await tx.message.count({
     where: {
@@ -191,6 +198,7 @@ export async function ensureInboxSeedData(businessId: string) {
   }
 
   const now = new Date();
+  const shouldSeedMessages = true;
 
   await prisma.$transaction(async (tx) => {
     for (const [index, client] of clients.entries()) {
@@ -198,11 +206,167 @@ export async function ensureInboxSeedData(businessId: string) {
         tx,
         businessId,
         client,
-        index === 0 ? 3 : index === 1 ? 1 : 0,
-        now
+        shouldSeedMessages ? (index === 0 ? 3 : index === 1 ? 1 : 0) : 0,
+        now,
+        shouldSeedMessages
       );
     }
 
-    await seedUnlinkedConversation(tx, businessId, now);
+    if (shouldSeedMessages) {
+      await seedUnlinkedConversation(tx, businessId, now);
+    }
   });
+}
+
+export async function ensureConversationForClient(
+  businessId: string,
+  clientId: string
+) {
+  const client = await prisma.client.findFirst({
+    where: {
+      id: clientId,
+      businessId,
+    },
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+    },
+  });
+
+  if (!client) {
+    return null;
+  }
+
+  const normalizedClientPhone = normalizePhone(client.phone);
+
+  return prisma.conversation.upsert({
+    where: {
+      businessId_phoneNumber: {
+        businessId,
+        phoneNumber: normalizedClientPhone,
+      },
+    },
+    update: {
+      phoneNumber: normalizedClientPhone,
+      contactName: client.name,
+    },
+    create: {
+      businessId,
+      phoneNumber: normalizedClientPhone,
+      contactName: client.name,
+      unreadCount: 0,
+    },
+    select: {
+      id: true,
+    },
+  });
+}
+
+export async function normalizeConversationsForBusiness(businessId: string) {
+  const [clients, conversations] = await Promise.all([
+    prisma.client.findMany({
+      where: {
+        businessId,
+      },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+      },
+    }),
+    prisma.conversation.findMany({
+      where: {
+        businessId,
+      },
+      select: {
+        id: true,
+        phoneNumber: true,
+        contactName: true,
+        unreadCount: true,
+        updatedAt: true,
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+    }),
+  ]);
+
+  const grouped = new Map<string, typeof conversations>();
+
+  for (const conversation of conversations) {
+    const normalizedPhone = normalizePhone(conversation.phoneNumber);
+    const lookupKey = phoneLookupKey(conversation.phoneNumber);
+
+    if (!normalizedPhone || !lookupKey) {
+      continue;
+    }
+
+    const group = grouped.get(lookupKey) ?? [];
+    group.push(conversation);
+    grouped.set(lookupKey, group);
+  }
+
+  for (const [lookupKey, group] of grouped) {
+    const matchingClient = clients.find(
+      (client) => phoneLookupKey(client.phone) === lookupKey
+    );
+    const canonicalPhone =
+      normalizePhone(matchingClient?.phone ?? "") ||
+      normalizePhone(group[0]?.phoneNumber ?? "");
+
+    const preferredConversation =
+      group.find(
+        (conversation) =>
+          matchingClient && conversation.phoneNumber === canonicalPhone
+      ) ??
+      group.find((conversation) => conversation.phoneNumber.startsWith("+")) ??
+      group[0];
+
+    const duplicateIds = group
+      .filter((conversation) => conversation.id !== preferredConversation.id)
+      .map((conversation) => conversation.id);
+
+    await prisma.$transaction(async (tx) => {
+      if (duplicateIds.length > 0) {
+        await tx.message.updateMany({
+          where: {
+            conversationId: {
+              in: duplicateIds,
+            },
+          },
+          data: {
+            conversationId: preferredConversation.id,
+          },
+        });
+      }
+
+      await tx.conversation.update({
+        where: {
+          id: preferredConversation.id,
+        },
+        data: {
+          phoneNumber: canonicalPhone,
+          contactName:
+            matchingClient?.name ??
+            preferredConversation.contactName ??
+            canonicalPhone,
+          unreadCount: group.reduce(
+            (total, conversation) => total + conversation.unreadCount,
+            0
+          ),
+        },
+      });
+
+      if (duplicateIds.length > 0) {
+        await tx.conversation.deleteMany({
+          where: {
+            id: {
+              in: duplicateIds,
+            },
+          },
+        });
+      }
+    });
+  }
 }

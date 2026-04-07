@@ -48,7 +48,7 @@ export function ResetPasswordForm() {
           defaultValue={state.values?.password}
           aria-invalid={Boolean(state.fieldErrors?.password)}
           className={cn(
-            "h-12 rounded-[0.95rem] border-border bg-card px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70",
+            "h-12 rounded-[1rem] border-border/80 bg-white/84 px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70",
             state.fieldErrors?.password && "border-destructive"
           )}
         />
@@ -64,7 +64,7 @@ export function ResetPasswordForm() {
           defaultValue={state.values?.confirmPassword}
           aria-invalid={Boolean(state.fieldErrors?.confirmPassword)}
           className={cn(
-            "h-12 rounded-[0.95rem] border-border bg-card px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70",
+            "h-12 rounded-[1rem] border-border/80 bg-white/84 px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70",
             state.fieldErrors?.confirmPassword && "border-destructive"
           )}
         />
@@ -73,7 +73,7 @@ export function ResetPasswordForm() {
 
       <SubmitButton
         pendingLabel="Resetting password..."
-        className="h-12 w-full rounded-[0.95rem] text-[15px] font-medium"
+        className="h-12 w-full rounded-[1rem] text-[15px] font-medium"
       >
         Set new password
       </SubmitButton>

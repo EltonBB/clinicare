@@ -75,7 +75,7 @@ const plans: Plan[] = [
       "Multi-location support with shared records, shared conversations, and unlimited seats.",
     ],
     benchmark:
-      "These capabilities usually live in systems costing $300–500/month. Vela delivers them at a fraction of that.",
+      "These capabilities usually live in systems costing $300-500/month. Vela delivers them at a fraction of that.",
   },
 ];
 
@@ -109,8 +109,8 @@ export function PricingPlans() {
         </div>
 
         <div className="flex flex-1 flex-col py-10 sm:py-14">
-          <section className="mx-auto w-full max-w-3xl text-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
+          <section className="section-reveal mx-auto w-full max-w-3xl text-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/80 bg-white/76 px-3 py-1 text-xs font-medium text-muted-foreground shadow-[0_14px_28px_rgba(20,32,51,0.04)] backdrop-blur-sm">
               <CircleDollarSign className="size-3.5 text-primary" />
               Pricing
             </div>
@@ -123,14 +123,14 @@ export function PricingPlans() {
               ready to scale.
             </p>
 
-            <div className="mt-8 inline-flex items-center gap-2 rounded-full border border-border bg-card p-1">
+            <div className="mt-8 inline-flex items-center gap-2 rounded-full border border-border/80 bg-white/76 p-1 shadow-[0_16px_32px_rgba(20,32,51,0.05)] backdrop-blur-sm">
               <button
                 type="button"
                 onClick={() => setBillingCycle("monthly")}
                 className={cn(
                   "rounded-full px-4 py-2 text-sm font-medium transition-colors",
                   billingCycle === "monthly"
-                    ? "bg-primary text-primary-foreground"
+                    ? "bg-primary text-primary-foreground shadow-[0_12px_28px_rgba(20,32,51,0.08)]"
                     : "text-muted-foreground"
                 )}
               >
@@ -142,7 +142,7 @@ export function PricingPlans() {
                 className={cn(
                   "rounded-full px-4 py-2 text-sm font-medium transition-colors",
                   billingCycle === "annual"
-                    ? "bg-primary text-primary-foreground"
+                    ? "bg-primary text-primary-foreground shadow-[0_12px_28px_rgba(20,32,51,0.08)]"
                     : "text-muted-foreground"
                 )}
               >
@@ -152,13 +152,13 @@ export function PricingPlans() {
             <p className="mt-3 text-sm text-muted-foreground">{pricingLabel}</p>
           </section>
 
-          <section className="mt-12 grid gap-5 lg:grid-cols-3">
+          <section className="section-reveal-delayed mt-12 grid gap-5 lg:grid-cols-3">
             {plans.map((plan) => (
               <article
                 key={plan.name}
                 className={cn(
-                  "flex h-full flex-col rounded-[1rem] border border-border bg-card px-5 py-5 transition-transform duration-150",
-                  plan.highlighted && "border-primary/35"
+                  "flex h-full flex-col rounded-[1.2rem] border border-border/80 bg-white/78 px-5 py-5 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-1 hover:shadow-[0_30px_64px_rgba(20,32,51,0.08)]",
+                  plan.highlighted && "border-primary/35 ring-1 ring-primary/15"
                 )}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -171,13 +171,13 @@ export function PricingPlans() {
                     </p>
                   </div>
                   {plan.highlighted ? (
-                    <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+                    <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]">
                       Most popular
                     </span>
                   ) : null}
                 </div>
 
-                <div className="mt-8 border-t border-border pt-6">
+                <div className="mt-8 border-t border-border/75 pt-6">
                   <div className="flex items-end gap-2">
                     <span className="text-4xl font-semibold tracking-tight text-foreground">
                       ${priceFor(plan, billingCycle)}
@@ -201,13 +201,13 @@ export function PricingPlans() {
                       variant: plan.highlighted ? "default" : "outline",
                       size: "lg",
                     }),
-                    "mt-6 h-11 w-full justify-center rounded-[0.75rem]"
+                    "mt-6 h-11 w-full justify-center rounded-[0.9rem]"
                   )}
                 >
                   Select plan
                 </Link>
 
-                <div className="mt-6 flex-1 border-t border-border pt-6">
+                <div className="mt-6 flex-1 border-t border-border/75 pt-6">
                   <p className="text-sm font-medium text-foreground">
                     {plan.featureIntro}
                   </p>
@@ -225,7 +225,7 @@ export function PricingPlans() {
                   </div>
                 </div>
 
-                <div className="mt-6 border-t border-border pt-5">
+                <div className="mt-6 border-t border-border/75 pt-5">
                   <p className="text-sm leading-7 text-muted-foreground">
                     {plan.benchmark}
                   </p>

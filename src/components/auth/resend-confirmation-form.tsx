@@ -34,7 +34,7 @@ export function ResendConfirmationForm({ email }: { email: string }) {
 
       <SubmitButton
         pendingLabel="Sending..."
-        className="h-12 w-full rounded-[0.95rem] text-[15px] font-medium"
+        className="h-12 w-full rounded-[1rem] text-[15px] font-medium"
       >
         Resend email
       </SubmitButton>

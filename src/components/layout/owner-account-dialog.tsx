@@ -76,17 +76,17 @@ export function OwnerAccountDialog({
       <DialogTrigger
         className={cn(
           variant === "header" &&
-            "flex items-center gap-3 rounded-[0.85rem] px-2 py-2 transition-colors hover:bg-secondary/70",
+            "interactive-lift flex items-center gap-3 rounded-[1rem] border border-transparent px-2.5 py-2 transition-[background-color,border-color,box-shadow,transform] duration-200 hover:border-border/70 hover:bg-white/80 hover:shadow-[0_14px_28px_rgba(20,32,51,0.06)]",
           variant === "sidebar" &&
-            "flex items-center gap-3 rounded-[0.85rem] px-2 py-2 transition-colors hover:bg-sidebar-accent"
+            "interactive-lift flex w-full items-center gap-3 rounded-[1rem] px-2 py-2 transition-[background-color,color,transform] duration-200 hover:bg-white/62"
         )}
       >
         <div
           className={cn(
             "flex items-center justify-center rounded-full text-sm font-semibold",
             variant === "header"
-              ? "size-8 bg-primary/12 text-primary"
-              : "size-10 bg-secondary text-foreground"
+              ? "size-9 bg-primary/12 text-primary shadow-[0_10px_24px_rgba(38,137,135,0.12)]"
+              : "size-10 bg-white/84 text-foreground shadow-[0_12px_28px_rgba(20,32,51,0.06)]"
           )}
         >
           {ownerName
@@ -103,10 +103,10 @@ export function OwnerAccountDialog({
         </div>
       </DialogTrigger>
 
-      <DialogContent className="max-w-lg rounded-[1rem] border border-border bg-card p-0">
+      <DialogContent className="max-w-xl p-0">
         <div className="space-y-6 px-6 py-6">
           <DialogHeader className="space-y-3">
-            <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/12 text-primary">
+            <div className="flex size-[3.25rem] items-center justify-center rounded-[1.1rem] bg-primary/12 text-primary shadow-[0_14px_28px_rgba(38,137,135,0.14)]">
               <UserRound className="size-5" />
             </div>
             <div className="space-y-2">
@@ -122,17 +122,17 @@ export function OwnerAccountDialog({
 
           <form action={formAction} className="space-y-5">
             {state.error ? (
-              <div className="rounded-[0.9rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
                 {state.error}
               </div>
             ) : null}
             {!state.error && state.success ? (
-              <div className="rounded-[0.9rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
+              <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
                 {state.success}
               </div>
             ) : null}
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="surface-soft grid gap-4 rounded-[1.1rem] p-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <FieldLabel>Name</FieldLabel>
                 <Input
@@ -140,7 +140,7 @@ export function OwnerAccountDialog({
                   defaultValue={values.fullName}
                   aria-invalid={Boolean(state.fieldErrors?.fullName)}
                   className={cn(
-                    "h-11 rounded-[0.75rem] bg-card",
+                    "h-11 rounded-[0.9rem] bg-white/84",
                     state.fieldErrors?.fullName && "border-destructive"
                   )}
                 />
@@ -153,7 +153,7 @@ export function OwnerAccountDialog({
                   defaultValue={values.phone}
                   aria-invalid={Boolean(state.fieldErrors?.phone)}
                   className={cn(
-                    "h-11 rounded-[0.75rem] bg-card",
+                    "h-11 rounded-[0.9rem] bg-white/84",
                     state.fieldErrors?.phone && "border-destructive"
                   )}
                 />
@@ -161,63 +161,87 @@ export function OwnerAccountDialog({
               </div>
             </div>
 
-            <div className="space-y-2">
-              <FieldLabel>Email</FieldLabel>
-              <Input
-                name="email"
-                type="email"
-                defaultValue={values.email}
-                aria-invalid={Boolean(state.fieldErrors?.email)}
-                className={cn(
-                  "h-11 rounded-[0.75rem] bg-card",
-                  state.fieldErrors?.email && "border-destructive"
-                )}
-              />
-              <FieldError message={state.fieldErrors?.email} />
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <div className="surface-soft space-y-3 rounded-[1.1rem] p-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-foreground">
+                    Contact details
+                  </p>
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    Update the email and phone tied to the clinic owner account.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <FieldLabel>Email</FieldLabel>
+                  <Input
+                    name="email"
+                    type="email"
+                    defaultValue={values.email}
+                    aria-invalid={Boolean(state.fieldErrors?.email)}
+                    className={cn(
+                      "h-11 rounded-[0.9rem] bg-white/84",
+                      state.fieldErrors?.email && "border-destructive"
+                    )}
+                  />
+                  <FieldError message={state.fieldErrors?.email} />
+                </div>
+              </div>
+
+              <div className="surface-soft space-y-3 rounded-[1.1rem] p-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-foreground">
+                    Security
+                  </p>
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    Set a fresh password when you need to rotate account access.
+                  </p>
+                </div>
+
+                <div className="grid gap-4">
+                  <div className="space-y-2">
+                    <FieldLabel>New password</FieldLabel>
+                    <Input
+                      name="newPassword"
+                      type="password"
+                      defaultValue={values.newPassword}
+                      aria-invalid={Boolean(state.fieldErrors?.newPassword)}
+                      className={cn(
+                        "h-11 rounded-[0.9rem] bg-white/84",
+                        state.fieldErrors?.newPassword && "border-destructive"
+                      )}
+                    />
+                    <FieldError message={state.fieldErrors?.newPassword} />
+                  </div>
+                  <div className="space-y-2">
+                    <FieldLabel>Confirm password</FieldLabel>
+                    <Input
+                      name="confirmPassword"
+                      type="password"
+                      defaultValue={values.confirmPassword}
+                      aria-invalid={Boolean(state.fieldErrors?.confirmPassword)}
+                      className={cn(
+                        "h-11 rounded-[0.9rem] bg-white/84",
+                        state.fieldErrors?.confirmPassword && "border-destructive"
+                      )}
+                    />
+                    <FieldError message={state.fieldErrors?.confirmPassword} />
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <FieldLabel>New password</FieldLabel>
-                <Input
-                  name="newPassword"
-                  type="password"
-                  defaultValue={values.newPassword}
-                  aria-invalid={Boolean(state.fieldErrors?.newPassword)}
-                  className={cn(
-                    "h-11 rounded-[0.75rem] bg-card",
-                    state.fieldErrors?.newPassword && "border-destructive"
-                  )}
-                />
-                <FieldError message={state.fieldErrors?.newPassword} />
-              </div>
-              <div className="space-y-2">
-                <FieldLabel>Confirm password</FieldLabel>
-                <Input
-                  name="confirmPassword"
-                  type="password"
-                  defaultValue={values.confirmPassword}
-                  aria-invalid={Boolean(state.fieldErrors?.confirmPassword)}
-                  className={cn(
-                    "h-11 rounded-[0.75rem] bg-card",
-                    state.fieldErrors?.confirmPassword && "border-destructive"
-                  )}
-                />
-                <FieldError message={state.fieldErrors?.confirmPassword} />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
+            <div className="glass-divider flex items-center justify-end gap-3 rounded-[1.05rem] px-4 py-4">
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="inline-flex h-10 items-center justify-center rounded-[0.75rem] border border-border px-4 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
+                className="inline-flex h-10 items-center justify-center rounded-[0.9rem] border border-border bg-white/70 px-4 text-sm font-medium text-foreground transition-[background-color,border-color] duration-200 hover:bg-white"
               >
                 Close
               </button>
               <SubmitButton
                 pendingLabel="Saving..."
-                className="h-10 rounded-[0.75rem] px-4 text-sm font-medium"
+                className="h-10 rounded-[0.9rem] px-4 text-sm font-medium"
               >
                 Save account
               </SubmitButton>

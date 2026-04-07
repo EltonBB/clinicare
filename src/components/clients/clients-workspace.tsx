@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useDeferredValue, useMemo, useState, useTransition } from "react";
 import { Archive, MoreHorizontal, Plus, Search, UserRoundPen } from "lucide-react";
 
@@ -104,7 +105,7 @@ function NativeSelect({
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="h-11 w-full rounded-[0.75rem] border border-border bg-card px-3 text-sm outline-none transition-colors focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="h-11 w-full rounded-[0.9rem] border border-border/80 bg-white/84 px-3 text-sm outline-none transition-[border-color,background-color,box-shadow] duration-200 focus:border-ring focus:bg-white focus-visible:ring-3 focus-visible:ring-ring/40"
     >
       {placeholder ? (
         <option value="" disabled>
@@ -256,7 +257,7 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="space-y-2">
+        <div className="section-reveal space-y-2">
           <p className="text-[13px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
             Client directory
           </p>
@@ -272,7 +273,7 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
         </div>
         <Button
           size="lg"
-          className="h-11 rounded-[0.75rem] px-4"
+          className="section-reveal-delayed h-11 rounded-[0.9rem] px-4"
           onClick={openNewClient}
         >
           <Plus className="size-4" />
@@ -280,14 +281,14 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
         </Button>
       </div>
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="section-reveal flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="relative w-full max-w-xl">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search clients..."
-            className="h-11 rounded-[0.75rem] bg-card pl-9"
+            className="h-11 rounded-[0.9rem] bg-white/78 pl-9"
           />
         </div>
         <div className="flex flex-wrap gap-2">
@@ -297,8 +298,9 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
               type="button"
               onClick={() => setFilter(item.value)}
               className={cn(
-                "rounded-[0.75rem] px-3 py-2 text-sm font-medium text-muted-foreground transition-colors",
-                filter === item.value && "bg-card text-foreground ring-1 ring-border"
+                "rounded-[0.9rem] border border-transparent bg-white/36 px-3 py-2 text-sm font-medium text-muted-foreground transition-[background-color,color,border-color,box-shadow] duration-200 hover:border-border/70 hover:bg-white/70 hover:text-foreground",
+                filter === item.value &&
+                  "border-border/80 bg-white text-foreground shadow-[0_14px_28px_rgba(20,32,51,0.05)]"
               )}
             >
               {item.label}
@@ -319,8 +321,8 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
       ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_420px]">
-        <section className="rounded-[0.9rem] border border-border bg-card">
-          <div className="hidden grid-cols-[minmax(0,1.5fr)_160px_120px_120px_40px] border-b border-border px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground md:grid">
+        <section className="section-reveal overflow-hidden rounded-[1.2rem] border border-border/80 bg-white/74 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm">
+          <div className="hidden grid-cols-[minmax(0,1.5fr)_160px_120px_120px_40px] border-b border-border/80 px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground md:grid">
             <span>Name</span>
             <span>Last visit</span>
             <span>Total visits</span>
@@ -328,15 +330,17 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
             <span />
           </div>
 
-          <div className="divide-y divide-border">
+          <div className="divide-y divide-border/75">
             {filteredClients.map((client) => (
               <button
                 key={client.id}
                 type="button"
                 onClick={() => setSelectedClientId(client.id)}
                 className={cn(
-                  "grid w-full gap-4 px-5 py-4 text-left transition-colors md:grid-cols-[minmax(0,1.5fr)_160px_120px_120px_40px] md:items-center",
-                  selectedClient?.id === client.id && "bg-secondary/45"
+                  "interactive-lift grid w-full gap-4 px-5 py-4 text-left transition-[background-color,transform] duration-200 md:grid-cols-[minmax(0,1.5fr)_160px_120px_120px_40px] md:items-center",
+                  selectedClient?.id === client.id
+                    ? "bg-secondary/38"
+                    : "hover:bg-white/58"
                 )}
               >
                 <div className="flex items-center gap-3">
@@ -366,10 +370,10 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
           </div>
         </section>
 
-        <aside className="rounded-[0.9rem] border border-border bg-card">
+        <aside className="section-reveal-delayed overflow-hidden rounded-[1.2rem] border border-border/80 bg-white/74 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm">
           {selectedClient ? (
             <>
-              <div className="border-b border-border px-5 py-5">
+              <div className="glass-divider px-5 py-5">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-center gap-4">
                     <Avatar size="lg" className="size-12">
@@ -398,7 +402,7 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="rounded-[0.7rem]"
+                      className="rounded-[0.85rem] bg-white/72"
                       onClick={() => openEditClient(selectedClient)}
                     >
                       <UserRoundPen className="size-4" />
@@ -407,7 +411,7 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="rounded-[0.7rem]"
+                      className="rounded-[0.85rem] bg-white/72"
                       onClick={() => archiveClient(selectedClient.id)}
                     >
                       <Archive className="size-4" />
@@ -418,7 +422,7 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
               </div>
 
               <Tabs defaultValue="history" className="gap-0">
-                <div className="border-b border-border px-5 pt-4">
+                <div className="border-b border-border/80 px-5 pt-4">
                   <TabsList variant="line" className="rounded-none p-0">
                     <TabsTrigger value="history">History</TabsTrigger>
                     <TabsTrigger value="notes">Notes</TabsTrigger>
@@ -430,7 +434,7 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
                 <div className="px-5 py-5">
                   <TabsContent value="history" className="space-y-4">
                     {selectedClient.history.length > 0 ? selectedClient.history.map((entry) => (
-                      <div key={entry.id} className="rounded-[0.8rem] border border-border px-4 py-4">
+                      <div key={entry.id} className="rounded-[0.95rem] border border-border/80 bg-white/68 px-4 py-4">
                         <div className="flex items-center justify-between gap-3">
                           <p className="font-semibold text-foreground">{entry.title}</p>
                           <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
@@ -442,14 +446,14 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
                         </p>
                       </div>
                     )) : (
-                      <div className="rounded-[0.8rem] border border-border px-4 py-4 text-sm text-muted-foreground">
+                      <div className="rounded-[0.95rem] border border-dashed border-border/90 bg-white/54 px-4 py-4 text-sm text-muted-foreground">
                         No history yet.
                       </div>
                     )}
                   </TabsContent>
 
                   <TabsContent value="notes" className="space-y-4">
-                    <div className="rounded-[0.8rem] border border-border px-4 py-4">
+                    <div className="rounded-[0.95rem] border border-border/80 bg-white/68 px-4 py-4">
                       <p className="text-sm leading-7 text-muted-foreground">
                         {selectedClient.notes}
                       </p>
@@ -457,15 +461,32 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
                   </TabsContent>
 
                   <TabsContent value="messages" className="space-y-3">
+                    <div className="flex items-center justify-between gap-3 rounded-[0.95rem] border border-border/80 bg-white/68 px-4 py-3">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          Inbox thread
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Open or restart this client conversation in the inbox. Live delivery
+                          status and WhatsApp replies continue there.
+                        </p>
+                      </div>
+                      <Link
+                        href={`/inbox?client=${selectedClient.id}`}
+                        className="inline-flex h-9 shrink-0 items-center justify-center rounded-[0.85rem] border border-border/80 bg-white px-3 text-sm font-medium text-foreground transition-[background-color,border-color] duration-200 hover:bg-secondary/50"
+                      >
+                        Open conversation
+                      </Link>
+                    </div>
                     {selectedClient.messages.length > 0 ? selectedClient.messages.map((message) => (
                       <div
                         key={message.id}
                         className={cn(
-                          "max-w-[88%] rounded-[0.8rem] px-4 py-3 text-sm leading-6",
-                          message.sender === "business"
-                            ? "ml-auto bg-primary text-primary-foreground"
-                            : "bg-secondary text-foreground"
-                        )}
+                            "max-w-[88%] rounded-[0.95rem] px-4 py-3 text-sm leading-6 shadow-[0_14px_28px_rgba(20,32,51,0.04)]",
+                            message.sender === "business"
+                              ? "ml-auto bg-primary text-primary-foreground"
+                              : "bg-white/86 text-foreground ring-1 ring-border/75"
+                          )}
                       >
                         <p>{message.body}</p>
                         <p
@@ -480,7 +501,7 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
                         </p>
                       </div>
                     )) : (
-                      <div className="rounded-[0.8rem] border border-border px-4 py-4 text-sm text-muted-foreground">
+                      <div className="rounded-[0.95rem] border border-dashed border-border/90 bg-white/54 px-4 py-4 text-sm text-muted-foreground">
                         No messages linked to this client yet.
                       </div>
                     )}
@@ -488,7 +509,7 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
 
                   <TabsContent value="details" className="space-y-4">
                     <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="rounded-[0.8rem] border border-border px-4 py-4">
+                      <div className="rounded-[0.95rem] border border-border/80 bg-white/68 px-4 py-4">
                         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                           Preferred channel
                         </p>
@@ -496,7 +517,7 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
                           {selectedClient.details.preferredChannel}
                         </p>
                       </div>
-                      <div className="rounded-[0.8rem] border border-border px-4 py-4">
+                      <div className="rounded-[0.95rem] border border-border/80 bg-white/68 px-4 py-4">
                         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                           Assigned staff
                         </p>
@@ -505,7 +526,7 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
                         </p>
                       </div>
                     </div>
-                    <div className="rounded-[0.8rem] border border-border px-4 py-4">
+                    <div className="rounded-[0.95rem] border border-border/80 bg-white/68 px-4 py-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                         Tags
                       </p>
@@ -513,7 +534,7 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
                         {selectedClient.details.tags.map((tag) => (
                           <span
                             key={tag}
-                            className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-foreground"
+                            className="rounded-full bg-secondary/88 px-3 py-1 text-xs font-medium text-foreground"
                           >
                             {tag}
                           </span>
@@ -533,16 +554,16 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
       </div>
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" className="w-full max-w-[460px] bg-card p-0 sm:max-w-[460px]">
-          <SheetHeader className="border-b border-border px-5 py-5">
+        <SheetContent side="right" className="w-full max-w-[460px] p-0 sm:max-w-[460px]">
+          <SheetHeader className="glass-divider rounded-t-[1.2rem] px-5 py-5">
             <SheetTitle>{draft.id ? "Edit client" : "Add client"}</SheetTitle>
             <SheetDescription>
               Keep the client record clean and MVP-focused.
             </SheetDescription>
           </SheetHeader>
 
-          <div className="space-y-4 px-5 py-5">
-            <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-5 px-5 py-5">
+            <div className="surface-soft grid gap-4 rounded-[1.05rem] p-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Name
@@ -552,7 +573,7 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
                   onChange={(event) =>
                     setDraft((current) => ({ ...current, name: event.target.value }))
                   }
-                  className="h-11 rounded-[0.75rem] bg-card"
+                  className="h-11 rounded-[0.9rem] bg-white/84"
                 />
               </div>
               <div className="space-y-2">
@@ -564,12 +585,12 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
                   onChange={(event) =>
                     setDraft((current) => ({ ...current, email: event.target.value }))
                   }
-                  className="h-11 rounded-[0.75rem] bg-card"
+                  className="h-11 rounded-[0.9rem] bg-white/84"
                 />
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="surface-soft grid gap-4 rounded-[1.05rem] p-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Phone
@@ -579,7 +600,7 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
                   onChange={(event) =>
                     setDraft((current) => ({ ...current, phone: event.target.value }))
                   }
-                  className="h-11 rounded-[0.75rem] bg-card"
+                  className="h-11 rounded-[0.9rem] bg-white/84"
                 />
               </div>
               <div className="space-y-2">
@@ -596,7 +617,7 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="surface-soft grid gap-4 rounded-[1.05rem] p-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Preferred channel
@@ -621,12 +642,12 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
                       assignedStaff: event.target.value,
                     }))
                   }
-                  className="h-11 rounded-[0.75rem] bg-card"
+                  className="h-11 rounded-[0.9rem] bg-white/84"
                 />
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="surface-soft space-y-2 rounded-[1.05rem] p-4">
               <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                 Tags
               </label>
@@ -636,11 +657,11 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
                   setDraft((current) => ({ ...current, tags: event.target.value }))
                 }
                 placeholder="priority, whatsapp"
-                className="h-11 rounded-[0.75rem] bg-card"
+                className="h-11 rounded-[0.9rem] bg-white/84"
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="surface-soft space-y-2 rounded-[1.05rem] p-4">
               <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                 Notes
               </label>
@@ -649,16 +670,16 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
                 onChange={(event) =>
                   setDraft((current) => ({ ...current, notes: event.target.value }))
                 }
-                className="min-h-28 rounded-[0.75rem] bg-card px-3 py-3"
+                className="min-h-28 rounded-[0.9rem] bg-white/84 px-3 py-3"
               />
             </div>
           </div>
 
-          <SheetFooter className="border-t border-border bg-muted/30 px-5 py-4">
+          <SheetFooter className="glass-divider rounded-b-[1.2rem] px-5 py-4">
             {draft.id ? (
               <Button
                 variant="outline"
-                className="rounded-[0.75rem] border-destructive/25 text-destructive hover:bg-destructive/5 hover:text-destructive"
+                className="rounded-[0.9rem] border-destructive/25 bg-white/70 text-destructive hover:bg-destructive/5 hover:text-destructive"
                 onClick={() => deleteClient(draft.id!)}
                 disabled={isPending}
               >
@@ -667,13 +688,13 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
             ) : null}
             <Button
               variant="outline"
-              className="rounded-[0.75rem]"
+              className="rounded-[0.9rem] bg-white/70"
               onClick={() => setDrawerOpen(false)}
               disabled={isPending}
             >
               Close
             </Button>
-            <Button className="rounded-[0.75rem]" onClick={saveClient} disabled={isPending}>
+            <Button className="rounded-[0.9rem]" onClick={saveClient} disabled={isPending}>
               {isPending ? "Saving..." : draft.id ? "Save changes" : "Create client"}
             </Button>
           </SheetFooter>

@@ -46,7 +46,7 @@ export function SignUpForm() {
           defaultValue={state.values?.businessName}
           aria-invalid={Boolean(state.fieldErrors?.businessName)}
           className={cn(
-            "h-12 rounded-[0.95rem] border-border bg-card px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70",
+            "h-12 rounded-[1rem] border-border/80 bg-white/84 px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70",
             state.fieldErrors?.businessName && "border-destructive"
           )}
         />
@@ -61,7 +61,7 @@ export function SignUpForm() {
           defaultValue={state.values?.fullName}
           aria-invalid={Boolean(state.fieldErrors?.fullName)}
           className={cn(
-            "h-12 rounded-[0.95rem] border-border bg-card px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70",
+            "h-12 rounded-[1rem] border-border/80 bg-white/84 px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70",
             state.fieldErrors?.fullName && "border-destructive"
           )}
         />
@@ -77,7 +77,7 @@ export function SignUpForm() {
           defaultValue={state.values?.email}
           aria-invalid={Boolean(state.fieldErrors?.email)}
           className={cn(
-            "h-12 rounded-[0.95rem] border-border bg-card px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70",
+            "h-12 rounded-[1rem] border-border/80 bg-white/84 px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70",
             state.fieldErrors?.email && "border-destructive"
           )}
         />
@@ -93,7 +93,7 @@ export function SignUpForm() {
           defaultValue={state.values?.password}
           aria-invalid={Boolean(state.fieldErrors?.password)}
           className={cn(
-            "h-12 rounded-[0.95rem] border-border bg-card px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70",
+            "h-12 rounded-[1rem] border-border/80 bg-white/84 px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70",
             state.fieldErrors?.password && "border-destructive"
           )}
         />
@@ -107,7 +107,7 @@ export function SignUpForm() {
             name="businessType"
             defaultValue={state.values?.businessType ?? ""}
             className={cn(
-              "h-12 w-full appearance-none rounded-[0.95rem] border border-border bg-card px-4 pr-11 text-[15px] text-foreground shadow-none outline-none transition-colors focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+              "h-12 w-full appearance-none rounded-[1rem] border border-border/80 bg-white/84 px-4 pr-11 text-[15px] text-foreground shadow-none outline-none transition-colors focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
               state.fieldErrors?.businessType && "border-destructive"
             )}
             aria-invalid={Boolean(state.fieldErrors?.businessType)}
@@ -129,7 +129,7 @@ export function SignUpForm() {
       <div className="space-y-3 pt-3">
         <SubmitButton
           pendingLabel="Creating account..."
-          className="h-12 w-full rounded-[0.95rem] text-[15px] font-medium"
+          className="h-12 w-full rounded-[1rem] text-[15px] font-medium"
         >
           Create account
         </SubmitButton>

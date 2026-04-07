@@ -4,6 +4,7 @@ import { addDays, addHours } from "date-fns";
 
 import { prisma } from "@/lib/prisma";
 import { ensureInboxSeedData } from "@/lib/inbox-server";
+import { resolveWhatsAppConnectionStatus } from "@/lib/settings";
 import {
   weekdayOrder,
   normalizeOnboardingState,
@@ -74,6 +75,39 @@ async function bootstrapWorkspaceFromOnboarding(user: {
         whatsappNumber: nextState.whatsapp.phoneNumber || null,
         whatsappEnabled: nextState.whatsapp.sendReminders,
         trialEndsAt: addDays(new Date(), 14),
+      },
+    });
+
+    const requestedPhoneNumber = nextState.whatsapp.phoneNumber.trim() || null;
+    const sandboxSender = process.env.TWILIO_WHATSAPP_FROM?.trim() ?? null;
+    const nextConnectionStatus = resolveWhatsAppConnectionStatus({
+      hasSender: Boolean(sandboxSender),
+    });
+
+    await tx.whatsAppConnection.upsert({
+      where: {
+        businessId: business.id,
+      },
+      update: {
+        provider: "TWILIO",
+        mode: "SANDBOX",
+        status: nextConnectionStatus,
+        requestedPhoneNumber,
+        senderPhoneNumber: sandboxSender,
+        externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
+        connectedAt: nextConnectionStatus === "CONNECTED" ? new Date() : null,
+        lastSyncedAt: new Date(),
+      },
+      create: {
+        businessId: business.id,
+        provider: "TWILIO",
+        mode: "SANDBOX",
+        status: nextConnectionStatus,
+        requestedPhoneNumber,
+        senderPhoneNumber: sandboxSender,
+        externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
+        connectedAt: nextConnectionStatus === "CONNECTED" ? new Date() : null,
+        lastSyncedAt: new Date(),
       },
     });
 

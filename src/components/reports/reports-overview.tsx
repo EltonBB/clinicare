@@ -45,11 +45,11 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
 
   return (
     <div className="space-y-8">
-      <div className="space-y-2">
+      <div className="section-reveal space-y-3">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
           Reports
         </p>
-        <h1 className="text-4xl font-semibold tracking-tight text-foreground">
+        <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-[2.8rem]">
           {view.heading}
         </h1>
         <p className="max-w-3xl text-base leading-7 text-muted-foreground">
@@ -57,11 +57,11 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
         </p>
       </div>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="section-reveal grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {view.metrics.map((metric) => (
           <div
             key={metric.label}
-            className="rounded-[0.95rem] border border-border bg-card px-5 py-5"
+            className="surface-soft rounded-[1.1rem] px-5 py-5 shadow-[0_18px_38px_rgba(20,32,51,0.04)]"
           >
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               {metric.label}
@@ -85,7 +85,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_320px]">
-        <div className="rounded-[0.95rem] border border-border bg-card px-6 py-6">
+        <div className="section-reveal rounded-[1.2rem] border border-border/80 bg-white/76 px-6 py-6 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm">
           <div className="flex items-center justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold text-foreground">
@@ -111,20 +111,20 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                   x2="520"
                   y1={25 + line * 48}
                   y2={25 + line * 48}
-                  stroke="rgba(26,26,26,0.08)"
+                  stroke="rgba(20,32,51,0.08)"
                   strokeWidth="1"
                 />
               ))}
 
               <path
                 d={`${linePath} L 520 180 L 0 180 Z`}
-                fill="rgba(29,158,117,0.08)"
+                fill="rgba(92,143,212,0.12)"
                 transform="translate(0 20)"
               />
               <path
                 d={linePath}
                 fill="none"
-                stroke="#1D9E75"
+                stroke="#3A71B5"
                 strokeWidth="3"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -140,8 +140,8 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
 
                 return (
                   <g key={point.label}>
-                    <circle cx={x} cy={y} r="5" fill="#1D9E75" />
-                    <circle cx={x} cy={y} r="10" fill="rgba(29,158,117,0.12)" />
+                    <circle cx={x} cy={y} r="5" fill="#3A71B5" />
+                    <circle cx={x} cy={y} r="10" fill="rgba(92,143,212,0.18)" />
                     <text
                       x={x}
                       y="218"
@@ -157,7 +157,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
           </div>
         </div>
 
-        <div className="space-y-4 rounded-[0.95rem] border border-border bg-card px-6 py-6">
+        <div className="section-reveal-delayed space-y-4 rounded-[1.2rem] border border-border/80 bg-white/76 px-6 py-6 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Snapshot

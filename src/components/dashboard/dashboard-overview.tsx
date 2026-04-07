@@ -16,16 +16,16 @@ import type {
 } from "@/lib/dashboard";
 
 const statusStyles: Record<DashboardAppointmentStatus, string> = {
-  confirmed: "bg-primary/12 text-primary",
-  pending: "bg-secondary text-muted-foreground",
-  cancelled: "bg-destructive/10 text-destructive",
+  confirmed: "bg-primary/12 text-primary ring-1 ring-primary/10",
+  pending: "bg-secondary/92 text-muted-foreground ring-1 ring-border/70",
+  cancelled: "bg-destructive/10 text-destructive ring-1 ring-destructive/10",
 };
 
 function AppointmentStatus({ status }: { status: DashboardAppointmentStatus }) {
   return (
     <span
       className={cn(
-        "inline-flex rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]",
+        "inline-flex rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]",
         statusStyles[status]
       )}
     >
@@ -36,8 +36,8 @@ function AppointmentStatus({ status }: { status: DashboardAppointmentStatus }) {
 
 function AppointmentRow({ appointment }: { appointment: DashboardAppointment }) {
   return (
-    <div className="grid gap-4 rounded-[0.95rem] border border-border/85 bg-card px-5 py-5 sm:grid-cols-[112px_1fr_auto] sm:items-center">
-      <div className="border-border/80 sm:border-r sm:pr-5">
+    <div className="interactive-lift grid gap-4 rounded-[1.05rem] border border-border/80 bg-white/94 px-5 py-5 shadow-[0_10px_24px_rgba(20,32,51,0.032)] transition-[box-shadow,transform,border-color] duration-200 hover:border-border hover:shadow-[0_14px_28px_rgba(20,32,51,0.04)] sm:grid-cols-[124px_1fr_auto] sm:items-center">
+      <div className="border-border/75 sm:border-r sm:pr-5">
         <p className="text-lg font-semibold tracking-tight text-primary">
           {appointment.time}
         </p>
@@ -62,13 +62,18 @@ function AppointmentRow({ appointment }: { appointment: DashboardAppointment }) 
 
 export function DashboardOverview({ view }: { view: DashboardViewModel }) {
   return (
-    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_326px] xl:gap-0">
-      <section className="space-y-6 xl:pr-10">
-        <div className="space-y-2">
-          <h1 className="text-4xl font-semibold tracking-tight text-foreground">
+    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-0">
+      <section className="section-reveal space-y-6 xl:pr-10">
+        <div className="space-y-3">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+            Today overview
+          </p>
+          <h1 className="max-w-xl text-4xl font-semibold tracking-tight text-foreground sm:text-[2.8rem]">
             {view.heading}
           </h1>
-          <p className="text-lg text-muted-foreground">{view.dateLabel}</p>
+          <p className="max-w-lg text-lg leading-8 text-muted-foreground">
+            {view.dateLabel}
+          </p>
         </div>
 
         <div className="space-y-3">
@@ -78,38 +83,39 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
         </div>
       </section>
 
-      <aside className="xl:pl-8">
-        <div className="space-y-8 border-border/80 xl:border-l xl:pl-8">
+      <aside className="section-reveal-delayed xl:pl-8">
+        <div className="space-y-5 rounded-[1.2rem] border border-border/75 bg-white/92 p-5 shadow-[0_10px_24px_rgba(20,32,51,0.032)] xl:min-h-[calc(100vh-11rem)] xl:p-6">
+
           <section className="space-y-4">
             <p className="text-[13px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
               Quick actions
             </p>
             <div className="grid gap-3">
-            {view.quickActions.map((action) => (
-              <Link
-                key={action.label}
-                href={action.href}
-                className={cn(
-                  buttonVariants({
-                    variant: action.tone === "primary" ? "default" : "outline",
-                    size: "lg",
-                  }),
-                  "h-11 w-full justify-between rounded-[0.75rem] px-4 shadow-none",
-                  action.tone === "secondary" && "bg-white"
-                )}
-              >
-                <span>{action.label}</span>
-                {action.tone === "primary" ? (
-                  <CalendarPlus2 className="size-4" />
-                ) : (
-                  <CirclePlus className="size-4" />
-                )}
-              </Link>
-            ))}
+              {view.quickActions.map((action) => (
+                <Link
+                  key={action.label}
+                  href={action.href}
+                  className={cn(
+                    buttonVariants({
+                      variant: action.tone === "primary" ? "default" : "outline",
+                      size: "lg",
+                    }),
+                    "h-11 w-full justify-between rounded-[0.9rem] px-4",
+                    action.tone === "secondary" && "bg-white/78"
+                  )}
+                >
+                  <span>{action.label}</span>
+                  {action.tone === "primary" ? (
+                    <CalendarPlus2 className="size-4" />
+                  ) : (
+                    <CirclePlus className="size-4" />
+                  )}
+                </Link>
+              ))}
             </div>
           </section>
 
-          <section className="border-t border-border/80 pt-6">
+          <section className="surface-soft space-y-4 rounded-[1.1rem] px-4 py-4">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2">
                 <MessageSquareMore className="size-4 text-primary" />
@@ -117,7 +123,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                   {view.unreadSummary.title}
                 </p>
               </div>
-              <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-primary">
+                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-primary shadow-[0_8px_18px_rgba(20,32,51,0.04)]">
                 {view.unreadSummary.unreadCount} new
               </span>
             </div>
@@ -127,7 +133,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
               </p>
               <a
                 href="/inbox"
-                className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-primary"
+                className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-primary transition-transform duration-200 hover:translate-x-0.5"
               >
                 Go to inbox
                 <ArrowRight className="size-4" />
@@ -135,7 +141,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
             </div>
           </section>
 
-          <section className="border-t border-border/80 pt-6">
+          <section className="surface-soft space-y-4 rounded-[1.1rem] px-4 py-4">
             <div className="flex items-center gap-2">
               <Sparkles className="size-4 text-primary" />
               <p className="text-base font-semibold text-foreground">
@@ -157,7 +163,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
 
               <Link
                 href="/pricing"
-                className="inline-flex items-center gap-2 text-sm font-medium text-foreground"
+                className="inline-flex items-center gap-2 text-sm font-medium text-foreground transition-transform duration-200 hover:translate-x-0.5"
               >
                 View plans
                 <ArrowRight className="size-4" />
@@ -165,16 +171,16 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
             </div>
           </section>
 
-          <section className="border-t border-border/80 pt-6">
+          <section className="surface-soft space-y-4 rounded-[1.1rem] px-4 py-4">
             <div className="flex items-center justify-between gap-4">
               <p className="text-sm font-medium text-foreground">Daily capacity</p>
               <p className="text-sm font-semibold text-primary">
                 {view.planSummary.capacityUsedPercent}%
               </p>
             </div>
-            <div className="mt-3 h-1.5 rounded-full bg-white/70">
+            <div className="mt-3 h-2 rounded-full bg-white/80 shadow-[inset_0_1px_2px_rgba(20,32,51,0.08)]">
               <div
-                className="h-1.5 rounded-full bg-primary"
+                className="h-2 rounded-full bg-[linear-gradient(90deg,rgba(92,143,212,0.9),rgba(38,137,135,0.92))]"
                 style={{ width: `${view.planSummary.capacityUsedPercent}%` }}
               />
             </div>

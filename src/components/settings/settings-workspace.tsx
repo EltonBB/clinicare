@@ -4,7 +4,10 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { ArrowUpRight, Plus, Trash2 } from "lucide-react";
 
-import { saveSettingsAction } from "@/app/(workspace)/settings/actions";
+import {
+  saveSettingsAction,
+  sendWhatsAppTestAction,
+} from "@/app/(workspace)/settings/actions";
 import { businessTypes } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import {
@@ -25,6 +28,7 @@ import { UpgradeModalTrigger } from "@/components/upgrade/upgrade-modal-trigger"
 type SettingsWorkspaceProps = {
   initialState: SettingsState;
   flashMessage?: string;
+  testRecipientDefault?: string;
 };
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
@@ -48,7 +52,7 @@ function Toggle({
       aria-pressed={checked}
       onClick={() => onPressedChange(!checked)}
       className={cn(
-        "relative inline-flex h-7 w-12 rounded-full transition-colors",
+        "relative inline-flex h-7 w-12 rounded-full shadow-[inset_0_1px_3px_rgba(20,32,51,0.12)] transition-colors",
         checked ? "bg-primary" : "bg-border"
       )}
     >
@@ -75,7 +79,7 @@ function NativeSelect({
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="h-11 w-full rounded-[0.75rem] border border-border bg-card px-3 text-sm outline-none transition-colors focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="h-11 w-full rounded-[0.9rem] border border-border/80 bg-white/84 px-3 text-sm outline-none transition-[border-color,background-color,box-shadow] duration-200 focus:border-ring focus:bg-white focus-visible:ring-3 focus-visible:ring-ring/40"
     >
       {options.map((option) => (
         <option key={option} value={option}>
@@ -96,7 +100,7 @@ function SettingsSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-[0.95rem] border border-border bg-card px-5 py-5">
+    <section className="rounded-[1.05rem] border border-border/80 bg-white/94 px-5 py-5 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
       <div className="space-y-1">
         <h2 className="text-xl font-semibold text-foreground">{title}</h2>
         <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
@@ -108,14 +112,31 @@ function SettingsSection({
   );
 }
 
+function connectionStatusTone(status: SettingsState["whatsapp"]["connection"]["status"]) {
+  if (status === "CONNECTED") {
+    return "bg-primary/10 text-primary";
+  }
+
+  if (status === "ERRORED") {
+    return "bg-destructive/10 text-destructive";
+  }
+
+  return "bg-white text-muted-foreground ring-1 ring-border/70";
+}
+
 export function SettingsWorkspace({
   initialState,
   flashMessage = "",
+  testRecipientDefault = "",
 }: SettingsWorkspaceProps) {
   const [state, setState] = useState(initialState);
   const [message, setMessage] = useState(flashMessage);
   const [errorMessage, setErrorMessage] = useState("");
   const [isPending, startSaving] = useTransition();
+  const [testRecipient, setTestRecipient] = useState(testRecipientDefault);
+  const [testStatus, setTestStatus] = useState("");
+  const [testError, setTestError] = useState("");
+  const [isSendingTest, startSendingTest] = useTransition();
 
   function updateDay(day: WeekdayKey, patch: Partial<(typeof state.workingHours)[WeekdayKey]>) {
     setState((current) => ({
@@ -184,10 +205,35 @@ export function SettingsWorkspace({
     });
   }
 
+  function handleSendWhatsAppTest() {
+    startSendingTest(async () => {
+      const result = await sendWhatsAppTestAction(testRecipient);
+
+      if (result.connection) {
+        setState((current) => ({
+          ...current,
+          whatsapp: {
+            ...current.whatsapp,
+            connection: result.connection!,
+          },
+        }));
+      }
+
+      if (!result.ok) {
+        setTestError(result.error ?? "We couldn't send the WhatsApp test.");
+        setTestStatus("");
+        return;
+      }
+
+      setTestError("");
+      setTestStatus(result.message ?? "Sandbox test sent.");
+    });
+  }
+
   return (
     <div className="grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)]">
       <aside className="hidden xl:block">
-        <div className="sticky top-24 space-y-2 rounded-[0.95rem] border border-border bg-card p-4">
+        <div className="sticky top-24 space-y-2 rounded-[1.05rem] border border-border/80 bg-white/94 p-4 shadow-[0_10px_22px_rgba(20,32,51,0.03)]">
           {[
             "Business details",
             "Working hours",
@@ -205,7 +251,7 @@ export function SettingsWorkspace({
 
       <div className="space-y-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="space-y-2">
+          <div className="section-reveal space-y-2">
             <p className="text-[13px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
               Settings
             </p>
@@ -222,7 +268,7 @@ export function SettingsWorkspace({
 
           <Button
             size="lg"
-            className="h-11 rounded-[0.75rem] px-5"
+            className="section-reveal-delayed h-11 rounded-[0.9rem] px-5"
             disabled={isPending}
             onClick={handleSave}
           >
@@ -259,7 +305,7 @@ export function SettingsWorkspace({
                     },
                   }))
                 }
-                className="h-11 rounded-[0.75rem] bg-card"
+                className="h-11 rounded-[0.9rem] bg-white/84"
               />
             </div>
             <div className="space-y-2">
@@ -291,7 +337,7 @@ export function SettingsWorkspace({
                     },
                   }))
                 }
-                className="h-11 rounded-[0.75rem] bg-card"
+                className="h-11 rounded-[0.9rem] bg-white/84"
               />
             </div>
             <div className="space-y-2">
@@ -299,7 +345,7 @@ export function SettingsWorkspace({
               <Input
                 value={state.business.supportEmail}
                 disabled
-                className="h-11 rounded-[0.75rem] bg-card"
+                className="h-11 rounded-[0.75rem] bg-white/92"
               />
             </div>
           </div>
@@ -316,7 +362,7 @@ export function SettingsWorkspace({
               return (
                 <div
                   key={day}
-                  className="grid gap-4 rounded-[0.8rem] border border-border bg-background px-4 py-4 md:grid-cols-[1.5fr_1fr]"
+                  className="grid gap-4 rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4 md:grid-cols-[1.5fr_1fr]"
                 >
                   <div className="flex items-center gap-4">
                     <Toggle
@@ -364,7 +410,7 @@ export function SettingsWorkspace({
             {state.staff.map((member) => (
               <div
                 key={member.id}
-                className="grid gap-3 rounded-[0.8rem] border border-border bg-background px-4 py-4 md:grid-cols-[minmax(0,1fr)_220px_44px]"
+                className="grid gap-3 rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4 md:grid-cols-[minmax(0,1fr)_220px_44px]"
               >
                 <Input
                   value={member.name}
@@ -372,7 +418,7 @@ export function SettingsWorkspace({
                     updateStaffMember(member.id, { name: event.target.value })
                   }
                   placeholder="Staff name"
-                  className="h-11 rounded-[0.75rem] bg-card"
+                  className="h-11 rounded-[0.9rem] bg-white/84"
                 />
                 <NativeSelect
                   value={member.role}
@@ -384,7 +430,7 @@ export function SettingsWorkspace({
                 <button
                   type="button"
                   onClick={() => removeStaffMember(member.id)}
-                  className="inline-flex h-11 items-center justify-center rounded-[0.75rem] border border-border bg-card text-muted-foreground transition-colors hover:bg-secondary"
+                  className="inline-flex h-11 items-center justify-center rounded-[0.9rem] border border-border/80 bg-white/84 text-muted-foreground transition-colors hover:bg-white"
                   aria-label="Remove staff member"
                 >
                   <Trash2 className="size-4" />
@@ -394,7 +440,7 @@ export function SettingsWorkspace({
           </div>
           <Button
             variant="outline"
-            className="mt-4 rounded-[0.75rem]"
+            className="mt-4 rounded-[0.9rem] bg-white/76"
             onClick={addStaffMember}
           >
             <Plus className="size-4" />
@@ -421,7 +467,7 @@ export function SettingsWorkspace({
                   }))
                 }
                 placeholder="+1 555 000 0000"
-                className="h-11 rounded-[0.75rem] bg-card"
+                className="h-11 rounded-[0.9rem] bg-white/84"
               />
             </div>
             <div className="space-y-2">
@@ -441,7 +487,7 @@ export function SettingsWorkspace({
               />
             </div>
           </div>
-          <div className="mt-4 flex items-center justify-between rounded-[0.8rem] border border-border bg-background px-4 py-4">
+          <div className="mt-4 flex items-center justify-between rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
             <div>
               <p className="text-sm font-medium text-foreground">Send reminders</p>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -461,6 +507,102 @@ export function SettingsWorkspace({
               }
             />
           </div>
+          <div className="mt-4 grid gap-4 rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="space-y-2">
+              <FieldLabel>Connection status</FieldLabel>
+              <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+                    {state.whatsapp.connection.provider}
+                  </span>
+                  <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
+                    {state.whatsapp.connection.modeLabel}
+                  </span>
+                  <span
+                    className={cn(
+                      "rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em]",
+                      connectionStatusTone(state.whatsapp.connection.status)
+                    )}
+                  >
+                    {state.whatsapp.connection.statusLabel}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm font-medium text-foreground">
+                  {state.whatsapp.connection.readinessLabel}
+                </p>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  {state.whatsapp.connection.detail}
+                </p>
+                {(state.whatsapp.connection.connectedAtLabel ||
+                  state.whatsapp.connection.lastSyncedLabel) ? (
+                  <div className="mt-3 space-y-1 text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                    {state.whatsapp.connection.connectedAtLabel ? (
+                      <p>Connected {state.whatsapp.connection.connectedAtLabel}</p>
+                    ) : null}
+                    {state.whatsapp.connection.lastSyncedLabel ? (
+                      <p>Last sync {state.whatsapp.connection.lastSyncedLabel}</p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <FieldLabel>Active sender</FieldLabel>
+              <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  {state.whatsapp.connection.senderLabel}
+                </p>
+                <p className="text-sm font-medium text-foreground">
+                  {state.whatsapp.connection.senderPhoneNumber || "No provider sender connected yet"}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Requested clinic number:{" "}
+                  {state.whatsapp.connection.requestedPhoneNumber || "Not set"}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 rounded-[0.95rem] border border-primary/15 bg-primary/5 px-4 py-4">
+            <p className="text-sm font-medium text-foreground">Sandbox workflow</p>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              In test mode, messages send from the Twilio sandbox sender and replies flow back into
+              the Vela inbox while your ngrok tunnel and Twilio webhook stay active.
+            </p>
+          </div>
+          <div className="mt-4 rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
+            <div className="space-y-2">
+              <FieldLabel>Sandbox test recipient</FieldLabel>
+              <Input
+                value={testRecipient}
+                onChange={(event) => setTestRecipient(event.target.value)}
+                placeholder="+383 44 000 000"
+                className="h-11 rounded-[0.9rem] bg-white/84"
+              />
+              <p className="text-sm leading-6 text-muted-foreground">
+                Use a phone number that has already joined the Twilio WhatsApp sandbox. Tests send
+                from {state.whatsapp.connection.senderPhoneNumber || "the configured sandbox sender"}.
+              </p>
+            </div>
+            {testError ? (
+              <div className="mt-4 rounded-[0.9rem] border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                {testError}
+              </div>
+            ) : null}
+            {!testError && testStatus ? (
+              <div className="mt-4 rounded-[0.9rem] border border-primary/20 bg-primary/8 px-3 py-2 text-sm text-primary">
+                {testStatus}
+              </div>
+            ) : null}
+            <Button
+              variant="outline"
+              className="mt-4 rounded-[0.9rem] bg-white/84"
+              onClick={handleSendWhatsAppTest}
+              disabled={isSendingTest}
+            >
+              {isSendingTest ? "Sending test..." : "Send sandbox test"}
+            </Button>
+          </div>
         </SettingsSection>
 
         <SettingsSection
@@ -469,7 +611,7 @@ export function SettingsWorkspace({
         >
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="flex items-center justify-between rounded-[0.8rem] border border-border bg-background px-4 py-4">
+              <div className="flex items-center justify-between rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
                 <div>
                   <p className="text-sm font-medium text-foreground">24-hour reminder</p>
                   <p className="mt-1 text-sm text-muted-foreground">
@@ -490,7 +632,7 @@ export function SettingsWorkspace({
                 />
               </div>
 
-              <div className="flex items-center justify-between rounded-[0.8rem] border border-border bg-background px-4 py-4">
+              <div className="flex items-center justify-between rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
                 <div>
                   <p className="text-sm font-medium text-foreground">2-hour reminder</p>
                   <p className="mt-1 text-sm text-muted-foreground">
@@ -529,7 +671,7 @@ export function SettingsWorkspace({
                     },
                   }))
                 }
-                className="min-h-32 rounded-[0.8rem] bg-card px-4 py-3"
+                className="min-h-32 rounded-[0.95rem] bg-white/84 px-4 py-3"
               />
             </div>
           </div>
@@ -541,7 +683,7 @@ export function SettingsWorkspace({
         >
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center">
             <div className="space-y-3">
-              <div className="flex items-center justify-between gap-4 rounded-[0.8rem] border border-border bg-background px-4 py-4">
+              <div className="flex items-center justify-between gap-4 rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
                 <div>
                   <p className="text-sm font-medium text-foreground">
                     {state.billing.planName}
@@ -559,14 +701,14 @@ export function SettingsWorkspace({
               label="Unlock Pro"
               triggerClassName={cn(
                 buttonVariants({ variant: "outline", size: "lg" }),
-                "h-11 rounded-[0.75rem] px-4 text-foreground"
+                "h-11 rounded-[0.9rem] bg-white/76 px-4 text-foreground"
               )}
             />
             <Link
               href="/pricing"
               className={cn(
                 buttonVariants({ variant: "outline", size: "lg" }),
-                "h-11 rounded-[0.75rem] px-4"
+                "h-11 rounded-[0.9rem] bg-white/76 px-4"
               )}
             >
               View pricing

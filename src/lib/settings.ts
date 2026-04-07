@@ -1,9 +1,13 @@
-import { differenceInCalendarDays } from "date-fns";
+import { differenceInCalendarDays, format } from "date-fns";
 import type {
   Business,
   BusinessHours,
   ReminderSettings,
   StaffMember,
+  WhatsAppConnection,
+  WhatsAppConnectionMode,
+  WhatsAppConnectionStatus,
+  WhatsAppProvider,
 } from "@prisma/client";
 
 import { businessTypes, type BusinessType } from "@/lib/constants";
@@ -41,6 +45,20 @@ export type SettingsState = {
     sendReminders: boolean;
     reminderWindow: string;
     template: string;
+    connection: {
+      provider: WhatsAppProvider;
+      mode: WhatsAppConnectionMode;
+      status: WhatsAppConnectionStatus;
+      requestedPhoneNumber: string;
+      senderPhoneNumber: string;
+      senderLabel: string;
+      statusLabel: string;
+      modeLabel: string;
+      readinessLabel: string;
+      detail: string;
+      connectedAtLabel: string;
+      lastSyncedLabel: string;
+    };
   };
   reminders: SettingsReminders;
   billing: {
@@ -57,6 +75,7 @@ type SettingsWorkspaceData = {
   businessHours: BusinessHours[];
   staffMembers: StaffMember[];
   reminderSettings: ReminderSettings | null;
+  whatsappConnection: WhatsAppConnection | null;
 };
 
 function normalizeStaffRole(value: unknown): StaffRole {
@@ -127,6 +146,98 @@ function buildBillingSummary(business: Business): SettingsState["billing"] {
   };
 }
 
+export function resolveWhatsAppConnectionStatus(args: {
+  hasSender: boolean;
+  previousStatus?: WhatsAppConnectionStatus | null;
+}) {
+  if (!args.hasSender) {
+    return "PENDING_SETUP" as const;
+  }
+
+  if (args.previousStatus === "CONNECTED") {
+    return "CONNECTED" as const;
+  }
+
+  if (args.previousStatus === "ERRORED") {
+    return "ERRORED" as const;
+  }
+
+  return "PENDING_VERIFICATION" as const;
+}
+
+function formatConnectionTimestamp(value: Date | null | undefined) {
+  return value ? format(value, "MMM d, yyyy 'at' h:mm a") : "";
+}
+
+export function buildWhatsAppConnectionSummary(
+  connection: WhatsAppConnection | null,
+  fallbackRequestedPhoneNumber: string
+): SettingsState["whatsapp"]["connection"] {
+  const provider = connection?.provider ?? "TWILIO";
+  const mode = connection?.mode ?? "SANDBOX";
+  const status = connection?.status ?? "PENDING_SETUP";
+  const requestedPhoneNumber =
+    connection?.requestedPhoneNumber ?? fallbackRequestedPhoneNumber;
+  const senderPhoneNumber = connection?.senderPhoneNumber ?? "";
+  const senderLabel = mode === "LIVE" ? "Live sender" : "Sandbox sender";
+
+  const statusLabelMap: Record<WhatsAppConnectionStatus, string> = {
+    DISCONNECTED: "Disconnected",
+    PENDING_SETUP: "Pending setup",
+    PENDING_VERIFICATION: "Pending verification",
+    CONNECTED: "Connected",
+    ERRORED: "Needs attention",
+  };
+
+  const modeLabelMap: Record<WhatsAppConnectionMode, string> = {
+    SANDBOX: "Sandbox",
+    LIVE: "Live",
+  };
+
+  const readinessLabelMap: Record<WhatsAppConnectionStatus, string> = {
+    DISCONNECTED: "Connection disconnected",
+    PENDING_SETUP: "Provider setup needed",
+    PENDING_VERIFICATION: "Waiting for sandbox verification",
+    CONNECTED: mode === "SANDBOX" ? "Ready for WhatsApp sandbox testing" : "Ready for live client messaging",
+    ERRORED: "Connection needs attention",
+  };
+
+  let detail =
+    "Save a clinic number here first. Vela will treat it as the requested WhatsApp number for this workspace.";
+
+  if (mode === "SANDBOX" && status === "CONNECTED") {
+    detail =
+      "Twilio sandbox is connected. Messages send from the sandbox sender for testing, while your clinic number stays saved as the requested live sender.";
+  } else if (mode === "SANDBOX" && status === "PENDING_VERIFICATION") {
+    detail =
+      "The sandbox sender is configured, but Vela still needs one successful sandbox test before this clinic is treated as message-ready.";
+  } else if (status === "PENDING_VERIFICATION") {
+    detail =
+      "The clinic number is saved, but the provider still needs verification before it can send live client messages.";
+  } else if (mode === "LIVE" && status === "CONNECTED") {
+    detail =
+      "This workspace has an approved live WhatsApp sender. Client messages can use the connected clinic sender.";
+  } else if (status === "ERRORED") {
+    detail =
+      "The provider connection needs attention before Vela can send messages for this clinic.";
+  }
+
+  return {
+    provider,
+    mode,
+    status,
+    requestedPhoneNumber,
+    senderPhoneNumber,
+    senderLabel,
+    statusLabel: statusLabelMap[status],
+    modeLabel: modeLabelMap[mode],
+    readinessLabel: readinessLabelMap[status],
+    detail,
+    connectedAtLabel: formatConnectionTimestamp(connection?.connectedAt),
+    lastSyncedLabel: formatConnectionTimestamp(connection?.lastSyncedAt),
+  };
+}
+
 export function buildSettingsStateFromWorkspace({
   business,
   supportEmail,
@@ -134,6 +245,7 @@ export function buildSettingsStateFromWorkspace({
   businessHours,
   staffMembers,
   reminderSettings,
+  whatsappConnection,
 }: SettingsWorkspaceData): SettingsState {
   return {
     business: {
@@ -153,6 +265,10 @@ export function buildSettingsStateFromWorkspace({
       template:
         reminderSettings?.template ??
         "Hi {client_name}, this is a reminder for your appointment at {time}. Reply here if you need to reschedule.",
+      connection: buildWhatsAppConnectionSummary(
+        whatsappConnection,
+        business.whatsappNumber ?? ""
+      ),
     },
     reminders: {
       twentyFourHour: reminderSettings?.send24HourReminder ?? true,

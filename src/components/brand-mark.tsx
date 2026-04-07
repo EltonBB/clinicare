@@ -23,14 +23,14 @@ export function BrandMark({
         className
       )}
     >
-      <span className="flex size-10 items-center justify-center rounded-[0.9rem] bg-primary text-sm font-semibold text-primary-foreground">
+      <span className="flex size-10 items-center justify-center rounded-[0.95rem] bg-[linear-gradient(135deg,rgba(92,143,212,0.95),rgba(38,137,135,0.96))] text-sm font-semibold text-primary-foreground shadow-[0_12px_24px_rgba(38,137,135,0.22)]">
         V
       </span>
       {!compact ? (
         <span className="flex flex-col">
           <span className="text-xl font-semibold tracking-tight">Vela</span>
           {includeSubtitle ? (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
               Service management
             </span>
           ) : null}

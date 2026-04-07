@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bell } from "lucide-react";
+import { ArrowRight, Bell } from "lucide-react";
 
 import {
   DropdownMenu,
@@ -31,19 +31,19 @@ export function NotificationsMenu({
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label="Open notifications"
-        className="relative inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        className="interactive-lift relative inline-flex size-10 items-center justify-center rounded-[1rem] border border-transparent bg-white/40 text-muted-foreground transition-[background-color,color,border-color,box-shadow,transform] duration-200 hover:border-border/70 hover:bg-white/78 hover:text-foreground hover:shadow-[0_14px_28px_rgba(20,32,51,0.07)]"
       >
         <Bell className="size-5" />
         {unreadCount > 0 ? (
-          <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-primary" />
+          <span className="absolute right-2 top-2 size-2.5 rounded-full border border-white bg-primary shadow-[0_0_0_4px_rgba(255,255,255,0.45)]" />
         ) : null}
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
         sideOffset={10}
-        className="w-[320px] rounded-[0.95rem] border border-border bg-card p-0 shadow-[0_18px_50px_rgba(15,23,42,0.08)]"
+        className="w-[340px] rounded-[1.1rem] border border-border/80 bg-white/92 p-0 shadow-[0_26px_60px_rgba(15,23,42,0.12)] backdrop-blur-xl"
       >
-        <div className="border-b border-border px-4 py-4">
+        <div className="glass-divider rounded-t-[1.1rem] px-5 py-4">
           <p className="text-sm font-semibold text-foreground">Notifications</p>
           <p className="mt-1 text-sm text-muted-foreground">
             {hasUpdates
@@ -52,13 +52,13 @@ export function NotificationsMenu({
           </p>
         </div>
 
-        <div className="space-y-2 px-3 py-3">
+        <div className="space-y-2 px-4 py-4">
           {hasUpdates ? (
             items.map((item) => (
               <Link
                 key={item.id}
                 href="/inbox"
-                className="block rounded-[0.8rem] border border-border px-3 py-3 transition-colors hover:bg-secondary/55"
+                className="interactive-lift block rounded-[0.95rem] border border-border/75 bg-white/74 px-4 py-3 transition-[background-color,border-color,box-shadow,transform] duration-200 hover:border-border hover:bg-secondary/55 hover:shadow-[0_18px_32px_rgba(20,32,51,0.06)]"
               >
                 <p className="text-sm font-medium text-foreground">{item.title}</p>
                 <p className="mt-1 text-sm leading-6 text-muted-foreground">
@@ -67,21 +67,22 @@ export function NotificationsMenu({
               </Link>
             ))
           ) : (
-            <div className="rounded-[0.8rem] border border-dashed border-border px-3 py-4 text-sm leading-6 text-muted-foreground">
+            <div className="rounded-[0.95rem] border border-dashed border-border/90 bg-white/52 px-4 py-4 text-sm leading-6 text-muted-foreground">
               No new notifications yet. Check back later or open the inbox to
               review recent conversations.
             </div>
           )}
         </div>
 
-        <div className="border-t border-border px-4 py-3">
+        <div className="glass-divider rounded-b-[1.1rem] px-5 py-3">
           <Link
             href="/inbox"
             className={cn(
-              "inline-flex text-sm font-medium text-primary transition-opacity hover:opacity-80"
+              "inline-flex items-center gap-2 text-sm font-medium text-primary transition-opacity hover:opacity-80"
             )}
           >
             Open inbox
+            <ArrowRight className="size-4" />
           </Link>
         </div>
       </DropdownMenuContent>

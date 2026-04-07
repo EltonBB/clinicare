@@ -1,11 +1,18 @@
 import { differenceInCalendarDays, format, isToday, isYesterday } from "date-fns";
-import type { Client, Conversation, Message } from "@prisma/client";
+import type {
+  Client,
+  Conversation,
+  Message,
+  MessageDeliveryStatus,
+} from "@prisma/client";
 
 export type InboxMessage = {
   id: string;
   sender: "client" | "business" | "system";
   body: string;
   timestamp: string;
+  deliveryStatus?: "queued" | "sent" | "delivered" | "read" | "failed";
+  deliveryLabel?: string;
 };
 
 export type InboxConversation = {
@@ -29,13 +36,21 @@ type InboxConversationRecord = Pick<
   Conversation,
   "id" | "phoneNumber" | "contactName" | "unreadCount" | "updatedAt"
 > & {
-  messages: Array<Pick<Message, "id" | "direction" | "body" | "sentAt">>;
+  messages: Array<
+    Pick<
+      Message,
+      "id" | "direction" | "body" | "sentAt" | "deliveryStatus"
+    >
+  >;
 };
 
 type InboxClientLink = Pick<Client, "id" | "name" | "phone">;
 
 export function normalizePhone(value: string) {
-  const trimmed = value.trim();
+  const trimmed = value
+    .trim()
+    .replace(/^whatsapp:/i, "")
+    .replace(/^tel:/i, "");
 
   if (!trimmed) {
     return "";
@@ -48,6 +63,10 @@ export function normalizePhone(value: string) {
   }
 
   return normalized.replace(/[^\d]/g, "");
+}
+
+export function phoneLookupKey(value: string) {
+  return normalizePhone(value).replace(/^\+/, "");
 }
 
 function formatConversationTimestamp(date: Date) {
@@ -82,13 +101,47 @@ function toMessageSender(direction: Message["direction"]): InboxMessage["sender"
   return "client";
 }
 
+function toInboxDeliveryStatus(
+  status: MessageDeliveryStatus | null
+): InboxMessage["deliveryStatus"] {
+  if (!status) {
+    return undefined;
+  }
+
+  return status.toLowerCase() as InboxMessage["deliveryStatus"];
+}
+
+function deliveryLabel(status: MessageDeliveryStatus | null) {
+  if (!status) {
+    return undefined;
+  }
+
+  if (status === "FAILED") {
+    return "Failed";
+  }
+
+  if (status === "READ") {
+    return "Read";
+  }
+
+  if (status === "DELIVERED") {
+    return "Delivered";
+  }
+
+  if (status === "SENT") {
+    return "Sent";
+  }
+
+  return "Queued";
+}
+
 function linkedClientForConversation(
   conversation: Pick<Conversation, "phoneNumber">,
   clients: InboxClientLink[]
 ) {
   const normalizedPhone = normalizePhone(conversation.phoneNumber);
 
-  return clients.find((client) => normalizePhone(client.phone) === normalizedPhone);
+  return clients.find((client) => phoneLookupKey(client.phone) === phoneLookupKey(normalizedPhone));
 }
 
 export function buildInboxConversation(
@@ -101,6 +154,8 @@ export function buildInboxConversation(
     sender: toMessageSender(message.direction),
     body: message.body,
     timestamp: formatMessageTimestamp(message.sentAt),
+    deliveryStatus: toInboxDeliveryStatus(message.deliveryStatus),
+    deliveryLabel: deliveryLabel(message.deliveryStatus),
   }));
   const lastMessage = conversation.messages[conversation.messages.length - 1];
   const lastActivityAt = lastMessage?.sentAt ?? conversation.updatedAt;

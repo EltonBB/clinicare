@@ -26,6 +26,7 @@ model Business {
   businessHours    BusinessHours[]
   conversations    Conversation[]
   reminderSettings ReminderSettings?
+  whatsappConnection WhatsAppConnection?
 }
 
 model BusinessHours {
@@ -96,9 +97,22 @@ model Appointment {
   notes        String?
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
+  reminders    AppointmentReminder[]
 
   @@index([businessId, startAt])
   @@index([clientId, startAt])
+}
+
+model AppointmentReminder {
+  id            String                @id @default(cuid())
+  appointmentId String
+  appointment   Appointment           @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  type          AppointmentReminderType
+  sentAt        DateTime              @default(now())
+  createdAt     DateTime              @default(now())
+
+  @@unique([appointmentId, type])
+  @@index([appointmentId, type])
 }
 
 model Conversation {
@@ -124,9 +138,14 @@ model Message {
   client         Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
   direction      MessageDirection
   body           String
+  providerMessageSid String?
+  deliveryStatus MessageDeliveryStatus?
+  deliveryErrorCode String?
+  deliveryUpdatedAt DateTime?
   sentAt         DateTime         @default(now())
 
   @@index([conversationId, sentAt])
+  @@index([providerMessageSid])
 }
 
 model ReminderSettings {
@@ -140,6 +159,24 @@ model ReminderSettings {
   updatedAt          DateTime @updatedAt
 }
 
+model WhatsAppConnection {
+  id                   String                 @id @default(cuid())
+  businessId           String                 @unique
+  business             Business               @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  provider             WhatsAppProvider
+  mode                 WhatsAppConnectionMode @default(SANDBOX)
+  status               WhatsAppConnectionStatus @default(PENDING_SETUP)
+  requestedPhoneNumber String?
+  senderPhoneNumber    String?
+  externalAccountId    String?
+  connectedAt          DateTime?
+  lastSyncedAt         DateTime?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  @@index([provider, status])
+}
+
 enum AppointmentStatus {
   CONFIRMED
   PENDING
@@ -150,6 +187,14 @@ enum MessageDirection {
   INBOUND
   OUTBOUND
   SYSTEM
+}
+
+enum MessageDeliveryStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
 }
 
 enum ClientEngagementStatus {
@@ -171,4 +216,26 @@ enum BusinessPlanStatus {
   ACTIVE
   INACTIVE
   CANCELED
+}
+
+enum WhatsAppProvider {
+  TWILIO
+}
+
+enum WhatsAppConnectionMode {
+  SANDBOX
+  LIVE
+}
+
+enum WhatsAppConnectionStatus {
+  DISCONNECTED
+  PENDING_SETUP
+  PENDING_VERIFICATION
+  CONNECTED
+  ERRORED
+}
+
+enum AppointmentReminderType {
+  TWENTY_FOUR_HOUR
+  TWO_HOUR
 }

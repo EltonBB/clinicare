@@ -13,7 +13,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     missingBusinessRedirect: "/onboarding",
   });
 
-  const [businessHours, staffMembers, reminderSettings] = await Promise.all([
+  const [businessHours, staffMembers, reminderSettings, whatsappConnection] = await Promise.all([
     prisma.businessHours.findMany({
       where: {
         businessId: business.id,
@@ -35,6 +35,11 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         businessId: business.id,
       },
     }),
+    prisma.whatsAppConnection.findUnique({
+      where: {
+        businessId: business.id,
+      },
+    }),
   ]);
 
   const initialState = buildSettingsStateFromWorkspace({
@@ -48,6 +53,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     businessHours,
     staffMembers,
     reminderSettings,
+    whatsappConnection,
   });
 
   return (
@@ -56,6 +62,11 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       flashMessage={
         params.email_updated === "1"
           ? "Your email address was confirmed and updated."
+          : ""
+      }
+      testRecipientDefault={
+        typeof user.user_metadata?.owner_phone === "string"
+          ? user.user_metadata.owner_phone
           : ""
       }
     />

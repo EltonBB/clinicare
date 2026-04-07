@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useDeferredValue, useMemo, useState, useTransition } from "react";
+import {
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 import {
   ExternalLink,
   Search,
@@ -11,6 +17,7 @@ import {
 import {
   deleteConversationAction,
   markConversationReadAction,
+  refreshInboxAction,
   sendInboxMessageAction,
 } from "@/app/(workspace)/inbox/actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -18,15 +25,39 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { InboxViewModel } from "@/lib/inbox";
+import type { SettingsState } from "@/lib/settings";
 
 type InboxWorkspaceProps = {
   initialView: InboxViewModel;
   ownerName: string;
+  connection: SettingsState["whatsapp"]["connection"];
 };
+
+function isReminderMessage(body: string) {
+  const normalized = body.toLowerCase();
+  return (
+    normalized.includes("this is a reminder for your appointment") ||
+    normalized.includes("appointment is coming up") ||
+    normalized.startsWith("reminder:")
+  );
+}
+
+function deliveryTone(status?: SettingsState["whatsapp"]["connection"]["status"] | InboxViewModel["conversations"][number]["messages"][number]["deliveryStatus"]) {
+  if (status === "read" || status === "delivered" || status === "CONNECTED") {
+    return "bg-white/18 text-primary-foreground";
+  }
+
+  if (status === "failed" || status === "ERRORED") {
+    return "bg-destructive/14 text-destructive";
+  }
+
+  return "bg-white/14 text-primary-foreground/85";
+}
 
 export function InboxWorkspace({
   initialView,
   ownerName,
+  connection,
 }: InboxWorkspaceProps) {
   const [conversations, setConversations] = useState(initialView.conversations);
   const [selectedConversationId, setSelectedConversationId] = useState(
@@ -58,6 +89,43 @@ export function InboxWorkspace({
     ) ??
     filteredConversations[0] ??
     conversations.find((conversation) => conversation.id === selectedConversationId);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshInbox() {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+
+      const result = await refreshInboxAction();
+
+      if (!result.ok || !result.view || cancelled) {
+        return;
+      }
+
+      setConversations(result.view.conversations);
+      setSelectedConversationId((current) => {
+        if (
+          current &&
+          result.view!.conversations.some((conversation) => conversation.id === current)
+        ) {
+          return current;
+        }
+
+        return result.view!.initialConversationId;
+      });
+    }
+
+    const interval = window.setInterval(() => {
+      void refreshInbox();
+    }, 3500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   function openConversation(conversationId: string) {
     setSelectedConversationId(conversationId);
@@ -132,23 +200,29 @@ export function InboxWorkspace({
   }
 
   return (
-    <div className="overflow-hidden rounded-[0.95rem] border border-border bg-card">
+    <div className="overflow-hidden rounded-[1.2rem] border border-border/80 bg-white/94 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
       <div className="grid min-h-[780px] grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="border-b border-border lg:border-b-0 lg:border-r">
-          <div className="border-b border-border px-5 py-4">
+        <aside className="border-b border-border/80 lg:border-b-0 lg:border-r">
+          <div className="glass-divider px-5 py-4">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search messages or clients..."
-                className="h-10 rounded-[0.75rem] bg-card pl-9"
+                className="h-10 rounded-[0.9rem] bg-white/78 pl-9"
               />
             </div>
           </div>
 
           <div className="flex items-center justify-between px-5 py-4">
-            <p className="text-lg font-semibold text-foreground">Messages</p>
+            <div>
+              <p className="text-lg font-semibold text-foreground">Messages</p>
+              <p className="text-sm text-muted-foreground">
+                {connection.modeLabel} {connection.statusLabel.toLowerCase()} via{" "}
+                {connection.senderPhoneNumber || "provider setup"}
+              </p>
+            </div>
           </div>
 
           <div className="max-h-[640px] overflow-y-auto">
@@ -165,9 +239,9 @@ export function InboxWorkspace({
                 type="button"
                 onClick={() => openConversation(conversation.id)}
                 className={cn(
-                  "flex w-full items-start gap-3 border-l-2 border-transparent px-5 py-4 text-left transition-colors hover:bg-secondary/45",
+                  "flex w-full items-start gap-3 border-l-2 border-transparent px-5 py-4 text-left transition-[background-color,transform] duration-200 hover:bg-white/54",
                   activeConversation?.id === conversation.id &&
-                    "border-primary bg-secondary/45"
+                    "border-primary bg-secondary/40"
                 )}
               >
                 <Avatar size="lg">
@@ -204,10 +278,10 @@ export function InboxWorkspace({
           </div>
         </aside>
 
-        <section className="flex min-w-0 flex-col bg-[#fdfdfb]">
+        <section className="flex min-w-0 flex-col bg-white/92">
           {activeConversation ? (
             <>
-              <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-4">
+              <div className="glass-divider flex items-center justify-between gap-4 px-5 py-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <Avatar size="lg">
                     <AvatarFallback>
@@ -255,7 +329,7 @@ export function InboxWorkspace({
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.025)_1px,transparent_1px)] [background-size:24px_24px] px-5 py-5">
+              <div className="flex-1 overflow-y-auto bg-muted/22 px-5 py-5">
                 <div className="mx-auto max-w-3xl space-y-4">
                   {activeConversation.messages.map((message) => (
                     <div key={message.id}>
@@ -266,23 +340,38 @@ export function InboxWorkspace({
                       ) : (
                         <div
                           className={cn(
-                            "max-w-[75%] rounded-[0.9rem] px-4 py-3 text-sm leading-7",
+                            "max-w-[75%] rounded-[1rem] px-4 py-3 text-sm leading-7 shadow-[0_14px_28px_rgba(20,32,51,0.04)]",
                             message.sender === "business"
                               ? "ml-auto bg-primary text-primary-foreground"
-                              : "bg-card text-foreground ring-1 ring-border"
+                              : "bg-white/86 text-foreground ring-1 ring-border/75"
                           )}
                         >
+                          {message.sender === "business" && isReminderMessage(message.body) ? (
+                            <span className="mb-2 inline-flex rounded-full bg-white/16 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-primary-foreground/90">
+                              Reminder
+                            </span>
+                          ) : null}
                           <p>{message.body}</p>
-                          <p
+                          <div
                             className={cn(
-                              "mt-2 text-xs",
+                              "mt-2 flex items-center gap-2 text-xs",
                               message.sender === "business"
                                 ? "text-primary-foreground/75"
                                 : "text-muted-foreground"
                             )}
                           >
-                            {message.timestamp}
-                          </p>
+                            <span>{message.timestamp}</span>
+                            {message.sender === "business" && message.deliveryLabel ? (
+                              <span
+                                className={cn(
+                                  "rounded-full px-2 py-0.5 font-medium",
+                                  deliveryTone(message.deliveryStatus)
+                                )}
+                              >
+                                {message.deliveryLabel}
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -290,8 +379,8 @@ export function InboxWorkspace({
                 </div>
               </div>
 
-              <div className="border-t border-border bg-card px-5 py-4">
-                <div className="mx-auto flex max-w-3xl items-end gap-3 rounded-[0.95rem] border border-border bg-background px-3 py-3">
+              <div className="glass-divider px-5 py-4">
+                <div className="mx-auto flex max-w-3xl items-end gap-3 rounded-[1rem] border border-border/80 bg-white/84 px-3 py-3 shadow-[0_18px_36px_rgba(20,32,51,0.05)]">
                   <Input
                     value={draftMessage}
                     onChange={(event) => setDraftMessage(event.target.value)}
@@ -306,7 +395,7 @@ export function InboxWorkspace({
                   />
                   <Button
                     onClick={sendMessage}
-                    className="size-10 rounded-[0.75rem] px-0"
+                    className="size-10 rounded-[0.9rem] px-0"
                     aria-label="Send message"
                     disabled={isPending || draftMessage.trim().length === 0}
                   >
@@ -316,8 +405,27 @@ export function InboxWorkspace({
               </div>
             </>
           ) : (
-            <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-              No conversations match your search.
+            <div className="flex flex-1 items-center justify-center px-6">
+              <div className="max-w-sm space-y-3 text-center">
+                <p className="text-base font-medium text-foreground">
+                  {query.trim().length > 0
+                    ? "No conversations match your search."
+                    : "No conversations yet."}
+                </p>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  {query.trim().length > 0
+                    ? "Try a different client name or phone number."
+                    : "Open a client from the clients workspace or reply from WhatsApp to create a thread here automatically."}
+                </p>
+                {query.trim().length === 0 ? (
+                  <Link
+                    href="/clients"
+                    className="inline-flex items-center justify-center rounded-[0.9rem] border border-border/80 bg-white px-4 py-2 text-sm font-medium text-foreground transition-[background-color,border-color] duration-200 hover:bg-secondary/50"
+                  >
+                    Open clients
+                  </Link>
+                ) : null}
+              </div>
             </div>
           )}
         </section>

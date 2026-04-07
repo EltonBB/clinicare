@@ -70,9 +70,12 @@ const views: CalendarView[] = ["day", "week", "month"];
 const slotHours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
 
 const toneClasses: Record<CalendarAppointment["tone"], string> = {
-  primary: "border-primary/20 bg-primary text-primary-foreground",
-  secondary: "border-[#cfc9ff] bg-[#e9e5ff] text-[#5046c7]",
-  muted: "border-[#d28b83] bg-[#c86d62] text-white",
+  primary:
+    "border-primary/20 bg-[linear-gradient(135deg,rgba(92,143,212,0.95),rgba(38,137,135,0.92))] text-primary-foreground shadow-[0_18px_32px_rgba(38,137,135,0.18)]",
+  secondary:
+    "border-[#cfddf4] bg-[linear-gradient(135deg,rgba(240,245,255,0.95),rgba(224,238,255,0.98))] text-[#36588f]",
+  muted:
+    "border-[#efcfc8] bg-[linear-gradient(135deg,rgba(255,244,241,0.96),rgba(253,236,232,0.98))] text-[#b15f56]",
 };
 
 const statusOptions: CalendarAppointment["status"][] = [
@@ -141,7 +144,7 @@ function AppointmentCard({
       type="button"
       onClick={() => onSelect(appointment)}
       className={cn(
-        "absolute inset-x-2 overflow-hidden rounded-[0.85rem] border px-3 py-2 text-left shadow-none",
+        "interactive-lift absolute inset-x-2 overflow-hidden rounded-[0.95rem] border px-3 py-2 text-left transition-[box-shadow,transform] duration-200",
         toneClasses[appointment.tone]
       )}
       style={{
@@ -175,7 +178,7 @@ function NativeSelect({
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="h-11 w-full rounded-[0.75rem] border border-border bg-card px-3 text-sm outline-none transition-colors focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="h-11 w-full rounded-[0.9rem] border border-border/80 bg-white/84 px-3 text-sm outline-none transition-[border-color,background-color,box-shadow] duration-200 focus:border-ring focus:bg-white focus-visible:ring-3 focus-visible:ring-ring/40"
     >
       {options.map((option) => (
         <option key={option.value} value={option.value}>
@@ -371,47 +374,53 @@ export function CalendarWorkspace({
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-            {dayLabel}
-          </h1>
-          <div className="inline-flex rounded-[0.75rem] border border-border bg-card p-1">
+        <div className="section-reveal space-y-3">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+            Booking timeline
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-[2.4rem]">
+              {dayLabel}
+            </h1>
+            <div className="inline-flex rounded-[1rem] border border-border/80 bg-white/70 p-1 shadow-[0_16px_32px_rgba(20,32,51,0.05)]">
             {views.map((option) => (
               <button
                 key={option}
                 type="button"
                 onClick={() => startTransition(() => setView(option))}
                 className={cn(
-                  "rounded-[0.6rem] px-3 py-1.5 text-sm font-medium capitalize text-muted-foreground transition-colors",
-                  view === option && "bg-secondary text-foreground"
+                  "rounded-[0.8rem] px-3 py-1.5 text-sm font-medium capitalize text-muted-foreground transition-[background-color,color,transform] duration-200 hover:text-foreground",
+                  view === option &&
+                    "bg-white text-foreground shadow-[0_12px_28px_rgba(20,32,51,0.06)]"
                 )}
               >
                 {option}
               </button>
             ))}
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="inline-flex items-center rounded-[0.75rem] border border-border bg-card">
+        <div className="section-reveal-delayed flex items-center gap-3">
+          <div className="inline-flex items-center rounded-[1rem] border border-border/80 bg-white/72 shadow-[0_16px_32px_rgba(20,32,51,0.05)]">
             <button
               type="button"
               onClick={() => shiftRange("prev")}
-              className="px-3 py-2 text-muted-foreground"
+              className="px-3 py-2 text-muted-foreground transition-colors duration-200 hover:text-foreground"
             >
               <ChevronLeft className="size-4" />
             </button>
             <button
               type="button"
               onClick={() => setActiveDate(parseISO(initialView.initialDate))}
-              className="border-x border-border px-4 py-2 text-sm font-medium text-foreground"
+              className="border-x border-border/80 px-4 py-2 text-sm font-medium text-foreground"
             >
               Today
             </button>
             <button
               type="button"
               onClick={() => shiftRange("next")}
-              className="px-3 py-2 text-muted-foreground"
+              className="px-3 py-2 text-muted-foreground transition-colors duration-200 hover:text-foreground"
             >
               <ChevronRight className="size-4" />
             </button>
@@ -419,7 +428,7 @@ export function CalendarWorkspace({
 
           <Button
             size="lg"
-            className="h-11 rounded-[0.75rem] px-4"
+            className="h-11 rounded-[0.9rem] px-4"
             onClick={() => openNewBooking()}
           >
             <Plus className="size-4" />
@@ -440,8 +449,8 @@ export function CalendarWorkspace({
       ) : null}
 
       {view === "month" ? (
-        <div className="rounded-[0.9rem] border border-border bg-card">
-          <div className="grid grid-cols-7 border-b border-border text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        <div className="section-reveal overflow-hidden rounded-[1.15rem] border border-border/80 bg-white/94 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
+          <div className="grid grid-cols-7 border-b border-border/80 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
               <div key={label} className="px-4 py-3">
                 {label}
@@ -462,8 +471,9 @@ export function CalendarWorkspace({
                     startTransition(() => setView("day"));
                   }}
                   className={cn(
-                    "min-h-32 border-b border-r border-border px-3 py-3 text-left transition-colors",
-                    !isSameMonth(day, activeDate) && "bg-muted/35 text-muted-foreground"
+                    "min-h-32 border-b border-r border-border/80 px-3 py-3 text-left transition-[background-color,color] duration-200",
+                    !isSameMonth(day, activeDate) && "bg-muted/35 text-muted-foreground",
+                    isSameDay(day, activeDate) && "bg-secondary/38"
                   )}
                 >
                   <p className="text-sm font-medium">{format(day, "d")}</p>
@@ -474,7 +484,7 @@ export function CalendarWorkspace({
                         className={cn(
                           "truncate rounded-[0.55rem] px-2 py-1 text-xs font-medium",
                           appointment.tone === "primary" && "bg-primary/12 text-primary",
-                          appointment.tone === "secondary" && "bg-[#ece8ff] text-[#5146c7]",
+                          appointment.tone === "secondary" && "bg-[#e8eefc] text-[#36588f]",
                           appointment.tone === "muted" && "bg-destructive/10 text-destructive"
                         )}
                       >
@@ -488,10 +498,10 @@ export function CalendarWorkspace({
           </div>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-[0.9rem] border border-border bg-card">
+        <div className="section-reveal overflow-hidden rounded-[1.15rem] border border-border/80 bg-white/94 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
           <div className="overflow-x-auto">
             <div className="min-w-[940px]">
-              <div className={cn("grid border-b border-border", view === "day" ? "grid-cols-[76px_1fr]" : "grid-cols-[76px_repeat(7,minmax(0,1fr))]")}>
+              <div className={cn("grid border-b border-border/80", view === "day" ? "grid-cols-[76px_1fr]" : "grid-cols-[76px_repeat(7,minmax(0,1fr))]")}>
                 <div className="px-3 py-4 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   GMT+2
                 </div>
@@ -501,8 +511,8 @@ export function CalendarWorkspace({
                     type="button"
                     onClick={() => setActiveDate(day)}
                     className={cn(
-                      "border-l border-border px-4 py-3 text-left",
-                      isSameDay(day, activeDate) && "bg-secondary/70"
+                      "border-l border-border/80 px-4 py-4 text-left transition-colors duration-200",
+                      isSameDay(day, activeDate) && "bg-secondary/65"
                     )}
                   >
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
@@ -535,14 +545,14 @@ export function CalendarWorkspace({
                     <div
                       key={key}
                       className={cn(
-                        "relative border-l border-border",
-                        isSameDay(day, activeDate) && "bg-secondary/35"
+                        "relative border-l border-border/80",
+                        isSameDay(day, activeDate) && "bg-secondary/28"
                       )}
                     >
                       {slotHours.map((hour) => (
                         <div
                           key={hour}
-                          className="h-[72px] border-b border-border/80"
+                          className="h-[72px] border-b border-border/75"
                         />
                       ))}
                       {items.map((appointment) => (
@@ -561,8 +571,8 @@ export function CalendarWorkspace({
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_240px]">
-        <div className="rounded-[0.9rem] border border-border bg-card px-4 py-4">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_250px]">
+        <div className="section-reveal rounded-[1.05rem] border border-border/80 bg-white/94 px-4 py-4 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-foreground">Selected day</p>
@@ -573,7 +583,7 @@ export function CalendarWorkspace({
             <Button
               variant="outline"
               size="sm"
-              className="rounded-[0.7rem]"
+              className="rounded-[0.85rem] bg-white/72"
               onClick={() => openNewBooking(selectedDateKey)}
             >
               <Plus className="size-4" />
@@ -589,7 +599,7 @@ export function CalendarWorkspace({
                   key={appointment.id}
                   type="button"
                   onClick={() => openExistingBooking(appointment)}
-                  className="flex w-full items-start justify-between rounded-[0.8rem] border border-border px-4 py-3 text-left"
+                  className="interactive-lift flex w-full items-start justify-between rounded-[0.95rem] border border-border/80 bg-white px-4 py-3 text-left transition-[background-color,border-color,box-shadow,transform] duration-200 hover:border-border hover:bg-white hover:shadow-[0_16px_30px_rgba(20,32,51,0.05)]"
                 >
                   <div>
                     <p className="text-sm font-semibold text-foreground">
@@ -603,14 +613,14 @@ export function CalendarWorkspace({
                 </button>
               ))}
             {appointments.filter((appointment) => appointment.date === selectedDateKey).length === 0 ? (
-              <div className="rounded-[0.8rem] border border-border px-4 py-4 text-sm text-muted-foreground">
+              <div className="rounded-[0.95rem] border border-dashed border-border/90 bg-white/54 px-4 py-4 text-sm text-muted-foreground">
                 No bookings for the selected day yet.
               </div>
             ) : null}
           </div>
         </div>
 
-        <div className="rounded-[0.9rem] border border-border bg-card px-4 py-4">
+        <div className="section-reveal-delayed rounded-[1.05rem] border border-border/80 bg-white/94 px-4 py-4 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
           <p className="text-sm font-semibold text-foreground">Team assignment</p>
           <div className="mt-4 space-y-3">
             {(initialView.staffMembers.length > 0
@@ -634,8 +644,11 @@ export function CalendarWorkspace({
       </div>
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" className="w-full max-w-[460px] bg-card p-0 sm:max-w-[460px]">
-          <SheetHeader className="border-b border-border px-5 py-5">
+        <SheetContent
+          side="right"
+          className="flex h-full w-full max-w-[460px] flex-col p-0 sm:max-w-[460px]"
+        >
+          <SheetHeader className="glass-divider rounded-t-[1.2rem] px-5 py-5">
             <SheetTitle>
               {draft.id ? "Edit booking" : "New booking"}
             </SheetTitle>
@@ -644,142 +657,144 @@ export function CalendarWorkspace({
             </SheetDescription>
           </SheetHeader>
 
-          <div className="space-y-4 px-5 py-5">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Client
-                </label>
-                <NativeSelect
-                  value={draft.clientId}
-                  options={initialView.clients.map((client) => ({
-                    value: client.id,
-                    label: client.name,
-                  }))}
-                  onChange={(value) =>
-                    setDraft((current) => ({ ...current, clientId: value }))
-                  }
-                />
-                <p className="text-xs text-muted-foreground">
-                  {clientLookup.get(draft.clientId) ?? "Select a client"}
-                </p>
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+            <div className="space-y-5 pb-2">
+              <div className="surface-soft grid gap-4 rounded-[1.05rem] p-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Client
+                  </label>
+                  <NativeSelect
+                    value={draft.clientId}
+                    options={initialView.clients.map((client) => ({
+                      value: client.id,
+                      label: client.name,
+                    }))}
+                    onChange={(value) =>
+                      setDraft((current) => ({ ...current, clientId: value }))
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {clientLookup.get(draft.clientId) ?? "Select a client"}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Staff
+                  </label>
+                  <NativeSelect
+                    value={draft.staffMemberId}
+                    options={initialView.staffMembers.map((member) => ({
+                      value: member.id,
+                      label: member.name,
+                    }))}
+                    onChange={(value) =>
+                      setDraft((current) => ({ ...current, staffMemberId: value }))
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {staffLookup.get(draft.staffMemberId) ?? ownerName}
+                  </p>
+                </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Staff
-                </label>
-                <NativeSelect
-                  value={draft.staffMemberId}
-                  options={initialView.staffMembers.map((member) => ({
-                    value: member.id,
-                    label: member.name,
-                  }))}
-                  onChange={(value) =>
-                    setDraft((current) => ({ ...current, staffMemberId: value }))
-                  }
-                />
-                <p className="text-xs text-muted-foreground">
-                  {staffLookup.get(draft.staffMemberId) ?? ownerName}
-                </p>
-              </div>
-            </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Service
-              </label>
-              <Input
-                value={draft.service}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, service: event.target.value }))
-                }
-                className="h-11 rounded-[0.75rem] bg-card"
-              />
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="space-y-2 sm:col-span-1">
+              <div className="surface-soft space-y-2 rounded-[1.05rem] p-4">
                 <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Date
+                  Service
                 </label>
                 <Input
-                  type="date"
-                  value={draft.date}
+                  value={draft.service}
                   onChange={(event) =>
-                    setDraft((current) => ({ ...current, date: event.target.value }))
+                    setDraft((current) => ({ ...current, service: event.target.value }))
                   }
-                  className="h-11 rounded-[0.75rem] bg-card"
+                  className="h-11 rounded-[0.9rem] bg-white/84"
                 />
               </div>
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Start
-                </label>
-                <Input
-                  type="time"
-                  value={draft.startTime}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, startTime: event.target.value }))
-                  }
-                  className="h-11 rounded-[0.75rem] bg-card"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  End
-                </label>
-                <Input
-                  type="time"
-                  value={draft.endTime}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, endTime: event.target.value }))
-                  }
-                  className="h-11 rounded-[0.75rem] bg-card"
-                />
-              </div>
-            </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
+              <div className="surface-soft grid gap-4 rounded-[1.05rem] p-4 sm:grid-cols-3">
+                <div className="space-y-2 sm:col-span-1">
+                  <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Date
+                  </label>
+                  <Input
+                    type="date"
+                    value={draft.date}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, date: event.target.value }))
+                    }
+                    className="h-11 rounded-[0.9rem] bg-white/84"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Start
+                  </label>
+                  <Input
+                    type="time"
+                    value={draft.startTime}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, startTime: event.target.value }))
+                    }
+                    className="h-11 rounded-[0.9rem] bg-white/84"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    End
+                  </label>
+                  <Input
+                    type="time"
+                    value={draft.endTime}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, endTime: event.target.value }))
+                    }
+                    className="h-11 rounded-[0.9rem] bg-white/84"
+                  />
+                </div>
+              </div>
+
+              <div className="surface-soft grid gap-4 rounded-[1.05rem] p-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Status
+                  </label>
+                  <NativeSelect
+                    value={draft.status}
+                    options={statusOptions.map((status) => ({
+                      value: status,
+                      label: status,
+                    }))}
+                    onChange={(value) =>
+                      setDraft((current) => ({
+                        ...current,
+                        status: value as CalendarAppointment["status"],
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="surface-soft space-y-2 rounded-[1.05rem] p-4">
                 <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Status
+                  Notes
                 </label>
-                <NativeSelect
-                  value={draft.status}
-                  options={statusOptions.map((status) => ({
-                    value: status,
-                    label: status,
-                  }))}
-                  onChange={(value) =>
-                    setDraft((current) => ({
-                      ...current,
-                      status: value as CalendarAppointment["status"],
-                    }))
+                <Textarea
+                  value={draft.notes}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, notes: event.target.value }))
                   }
+                  className="min-h-28 rounded-[0.9rem] bg-white/84 px-3 py-3"
                 />
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Notes
-              </label>
-              <Textarea
-                value={draft.notes}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, notes: event.target.value }))
-                }
-                className="min-h-28 rounded-[0.75rem] bg-card px-3 py-3"
-              />
             </div>
           </div>
 
-          <SheetFooter className="border-t border-border bg-muted/30 px-5 py-4">
+          <SheetFooter className="glass-divider mt-0 shrink-0 rounded-b-[1.2rem] px-5 py-4">
             {draft.id ? (
               <>
                 <Button
                   variant="destructive"
-                  className="rounded-[0.75rem]"
+                  className="rounded-[0.9rem]"
                   onClick={cancelAppointment}
                   disabled={isPending}
                 >
@@ -787,7 +802,7 @@ export function CalendarWorkspace({
                 </Button>
                 <Button
                   variant="outline"
-                  className="rounded-[0.75rem] border-destructive/25 text-destructive hover:bg-destructive/5 hover:text-destructive"
+                  className="rounded-[0.9rem] border-destructive/25 bg-white/70 text-destructive hover:bg-destructive/5 hover:text-destructive"
                   onClick={deleteAppointment}
                   disabled={isPending}
                 >
@@ -797,13 +812,13 @@ export function CalendarWorkspace({
             ) : null}
             <Button
               variant="outline"
-              className="rounded-[0.75rem]"
+              className="rounded-[0.9rem] bg-white/70"
               onClick={() => setDrawerOpen(false)}
               disabled={isPending}
             >
               Close
             </Button>
-            <Button className="rounded-[0.75rem]" onClick={saveDraft} disabled={isPending}>
+            <Button className="rounded-[0.9rem]" onClick={saveDraft} disabled={isPending}>
               {isPending ? "Saving..." : draft.id ? "Save changes" : "Create booking"}
             </Button>
           </SheetFooter>

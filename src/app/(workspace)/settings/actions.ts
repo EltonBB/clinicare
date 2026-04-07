@@ -1,10 +1,15 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+
 import { prisma } from "@/lib/prisma";
 import { requireCurrentBusiness } from "@/lib/business";
 import { createClient } from "@/utils/supabase/server";
+import { sendTwilioWhatsAppMessage } from "@/lib/whatsapp";
 import {
+  buildWhatsAppConnectionSummary,
   buildSettingsStateFromWorkspace,
+  resolveWhatsAppConnectionStatus,
   type SaveSettingsPayload,
   type SettingsState,
 } from "@/lib/settings";
@@ -14,6 +19,13 @@ export type SaveSettingsResult = {
   ok: boolean;
   error?: string;
   state?: SettingsState;
+};
+
+export type SendWhatsAppTestResult = {
+  ok: boolean;
+  error?: string;
+  message?: string;
+  connection?: SettingsState["whatsapp"]["connection"];
 };
 
 export async function saveSettingsAction(
@@ -46,6 +58,15 @@ export async function saveSettingsAction(
             role: "Owner" as const,
           },
         ];
+  const existingConnection = await prisma.whatsAppConnection.findUnique({
+    where: {
+      businessId: business.id,
+    },
+    select: {
+      status: true,
+      connectedAt: true,
+    },
+  });
 
   await prisma.$transaction(async (tx) => {
     await tx.business.update({
@@ -57,6 +78,43 @@ export async function saveSettingsAction(
         businessType: payload.business.businessType,
         whatsappNumber: payload.whatsapp.phoneNumber.trim() || null,
         whatsappEnabled: payload.whatsapp.sendReminders,
+      },
+    });
+
+    const requestedPhoneNumber = payload.whatsapp.phoneNumber.trim() || null;
+    const sandboxSender = process.env.TWILIO_WHATSAPP_FROM?.trim() ?? null;
+    const nextConnectionStatus = resolveWhatsAppConnectionStatus({
+      hasSender: Boolean(sandboxSender),
+      previousStatus: existingConnection?.status,
+    });
+
+    await tx.whatsAppConnection.upsert({
+      where: {
+        businessId: business.id,
+      },
+      update: {
+        provider: "TWILIO",
+        mode: "SANDBOX",
+        status: nextConnectionStatus,
+        requestedPhoneNumber,
+        senderPhoneNumber: sandboxSender,
+        externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
+        connectedAt:
+          nextConnectionStatus === "CONNECTED"
+            ? existingConnection?.connectedAt ?? new Date()
+            : null,
+        lastSyncedAt: new Date(),
+      },
+      create: {
+        businessId: business.id,
+        provider: "TWILIO",
+        mode: "SANDBOX",
+        status: nextConnectionStatus,
+        requestedPhoneNumber,
+        senderPhoneNumber: sandboxSender,
+        externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
+        connectedAt: nextConnectionStatus === "CONNECTED" ? new Date() : null,
+        lastSyncedAt: new Date(),
       },
     });
 
@@ -174,7 +232,7 @@ export async function saveSettingsAction(
     };
   }
 
-  const [updatedBusiness, businessHours, staffMembers, reminderSettings] = await Promise.all([
+  const [updatedBusiness, businessHours, staffMembers, reminderSettings, whatsappConnection] = await Promise.all([
     prisma.business.findUniqueOrThrow({
       where: {
         id: business.id,
@@ -201,6 +259,11 @@ export async function saveSettingsAction(
         businessId: business.id,
       },
     }),
+    prisma.whatsAppConnection.findUnique({
+      where: {
+        businessId: business.id,
+      },
+    }),
   ]);
 
   const nextState: SettingsState = buildSettingsStateFromWorkspace({
@@ -210,10 +273,119 @@ export async function saveSettingsAction(
     businessHours,
     staffMembers,
     reminderSettings,
+    whatsappConnection,
   });
 
   return {
     ok: true,
     state: nextState,
   };
+}
+
+export async function sendWhatsAppTestAction(
+  rawRecipient: string
+): Promise<SendWhatsAppTestResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      error: "Your session expired. Log in again to send a test message.",
+    };
+  }
+
+  const business = await requireCurrentBusiness(user, {
+    missingBusinessRedirect: "/onboarding",
+  });
+  const recipient = rawRecipient.trim();
+
+  if (!recipient) {
+    return {
+      ok: false,
+      error: "Enter the recipient number that joined the Twilio sandbox.",
+    };
+  }
+
+  try {
+    await sendTwilioWhatsAppMessage({
+      to: recipient,
+      body: `Vela sandbox test: ${business.name} is connected. If you received this, outbound WhatsApp sending is working.`,
+    });
+
+    const connection = await prisma.whatsAppConnection.upsert({
+      where: {
+        businessId: business.id,
+      },
+      update: {
+        provider: "TWILIO",
+        mode: "SANDBOX",
+        status: "CONNECTED",
+        senderPhoneNumber: process.env.TWILIO_WHATSAPP_FROM?.trim() ?? null,
+        externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
+        connectedAt: new Date(),
+        lastSyncedAt: new Date(),
+      },
+      create: {
+        businessId: business.id,
+        provider: "TWILIO",
+        mode: "SANDBOX",
+        status: "CONNECTED",
+        requestedPhoneNumber: business.whatsappNumber,
+        senderPhoneNumber: process.env.TWILIO_WHATSAPP_FROM?.trim() ?? null,
+        externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
+        connectedAt: new Date(),
+        lastSyncedAt: new Date(),
+      },
+    });
+
+    revalidatePath("/settings");
+
+    return {
+      ok: true,
+      message: "Sandbox test sent. Check the joined WhatsApp number.",
+      connection: buildWhatsAppConnectionSummary(
+        connection,
+        business.whatsappNumber ?? ""
+      ),
+    };
+  } catch (error) {
+    const connection = await prisma.whatsAppConnection.upsert({
+      where: {
+        businessId: business.id,
+      },
+      update: {
+        provider: "TWILIO",
+        mode: "SANDBOX",
+        status: "ERRORED",
+        senderPhoneNumber: process.env.TWILIO_WHATSAPP_FROM?.trim() ?? null,
+        externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
+        lastSyncedAt: new Date(),
+      },
+      create: {
+        businessId: business.id,
+        provider: "TWILIO",
+        mode: "SANDBOX",
+        status: "ERRORED",
+        requestedPhoneNumber: business.whatsappNumber,
+        senderPhoneNumber: process.env.TWILIO_WHATSAPP_FROM?.trim() ?? null,
+        externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
+        lastSyncedAt: new Date(),
+      },
+    });
+
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "We couldn't send the WhatsApp sandbox test.",
+      connection: buildWhatsAppConnectionSummary(
+        connection,
+        business.whatsappNumber ?? ""
+      ),
+    };
+  }
 }

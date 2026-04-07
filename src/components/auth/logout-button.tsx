@@ -25,7 +25,7 @@ export function LogoutButton({
         type="submit"
         variant={variant}
         className={cn(
-          "h-10 rounded-[0.75rem] px-3 text-sm",
+          "h-10 rounded-[0.85rem] px-3 text-sm shadow-none",
           fullWidth && "w-full justify-start",
           className
         )}

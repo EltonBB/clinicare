@@ -9,6 +9,7 @@ import {
   type CalendarAppointment,
   type CalendarAppointmentStatus,
 } from "@/lib/calendar";
+import { syncAppointmentRemindersForBusiness } from "@/lib/reminders";
 import { createClient } from "@/utils/supabase/server";
 
 export type SaveAppointmentPayload = {
@@ -173,6 +174,7 @@ export async function saveAppointmentAction(
 
   try {
     let appointmentId = payload.id;
+    let shouldResetReminders = false;
 
     if (payload.id) {
       const existing = await prisma.appointment.findFirst({
@@ -182,6 +184,12 @@ export async function saveAppointmentAction(
         },
         select: {
           id: true,
+          clientId: true,
+          staffMemberId: true,
+          title: true,
+          startAt: true,
+          endAt: true,
+          status: true,
         },
       });
 
@@ -191,6 +199,14 @@ export async function saveAppointmentAction(
           error: "Appointment not found in this clinic workspace.",
         };
       }
+
+      shouldResetReminders =
+        existing.clientId !== payload.clientId ||
+        existing.staffMemberId !== staffMemberId ||
+        existing.title !== payload.service.trim() ||
+        existing.startAt.getTime() !== startAt.getTime() ||
+        existing.endAt.getTime() !== endAt.getTime() ||
+        existing.status !== toPrismaAppointmentStatus(payload.status);
 
       await prisma.appointment.update({
         where: {
@@ -206,6 +222,14 @@ export async function saveAppointmentAction(
           status: toPrismaAppointmentStatus(payload.status),
         },
       });
+
+      if (shouldResetReminders) {
+        await prisma.appointmentReminder.deleteMany({
+          where: {
+            appointmentId: payload.id,
+          },
+        });
+      }
     } else {
       const created = await prisma.appointment.create({
         data: {
@@ -231,6 +255,8 @@ export async function saveAppointmentAction(
 
       appointmentId = created.id;
     }
+
+    await syncAppointmentRemindersForBusiness(business.id);
 
     return {
       ok: true,

@@ -5,7 +5,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: "Inter", "Segoe UI", sans-serif;
+  --font-sans: var(--font-plus-jakarta), "Aptos", "Segoe UI Variable", "Segoe UI", sans-serif;
   --font-mono: "SFMono-Regular", "Consolas", monospace;
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -47,38 +47,38 @@
 }
 
 :root {
-  --background: #f9f9f9;
-  --foreground: #1a1a1a;
-  --card: #ffffff;
-  --card-foreground: #1a1a1a;
-  --popover: #ffffff;
-  --popover-foreground: #1a1a1a;
-  --primary: #1d9e75;
+  --background: #f5f8fc;
+  --foreground: #142033;
+  --card: rgba(255, 255, 255, 0.92);
+  --card-foreground: #142033;
+  --popover: rgba(255, 255, 255, 0.96);
+  --popover-foreground: #142033;
+  --primary: #268987;
   --primary-foreground: #ffffff;
-  --secondary: #f2f5f4;
-  --secondary-foreground: #1a1a1a;
-  --muted: #f4f5f4;
-  --muted-foreground: #6b6b6b;
-  --accent: #eef8f4;
-  --accent-foreground: #1d9e75;
+  --secondary: #edf3fb;
+  --secondary-foreground: #142033;
+  --muted: #eef3f9;
+  --muted-foreground: #627289;
+  --accent: #eef6fb;
+  --accent-foreground: #268987;
   --destructive: #d95f5f;
-  --border: #e5e5e5;
-  --input: #e5e5e5;
-  --ring: #1d9e75;
-  --chart-1: #1d9e75;
-  --chart-2: #63b29a;
-  --chart-3: #adcabd;
-  --chart-4: #d6e5df;
-  --chart-5: #eff5f2;
-  --radius: 0.72rem;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #1a1a1a;
-  --sidebar-primary: #1d9e75;
+  --border: rgba(120, 142, 173, 0.18);
+  --input: rgba(120, 142, 173, 0.22);
+  --ring: rgba(38, 137, 135, 0.48);
+  --chart-1: #268987;
+  --chart-2: #5c8fd4;
+  --chart-3: #9cc5cf;
+  --chart-4: #d8e8f0;
+  --chart-5: #f1f7fb;
+  --radius: 0.68rem;
+  --sidebar: rgba(255, 255, 255, 0.92);
+  --sidebar-foreground: #142033;
+  --sidebar-primary: #268987;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f2f5f4;
-  --sidebar-accent-foreground: #1a1a1a;
-  --sidebar-border: #e5e5e5;
-  --sidebar-ring: #1d9e75;
+  --sidebar-accent: rgba(237, 243, 251, 0.88);
+  --sidebar-accent-foreground: #142033;
+  --sidebar-border: rgba(120, 142, 173, 0.18);
+  --sidebar-ring: rgba(38, 137, 135, 0.48);
 }
 
 @layer base {
@@ -87,30 +87,112 @@
   }
   html {
     @apply font-sans;
+    color-scheme: light;
   }
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    min-height: 100vh;
+    background-color: var(--background);
+    background-image: none;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+    letter-spacing: -0.03em;
+  }
+
+  p {
+    text-wrap: pretty;
   }
 }
 
 @layer base {
-  a {
-    @apply transition-colors;
+  a,
+  button,
+  input,
+  textarea,
+  select {
+    transition-property: background-color, border-color, color, box-shadow, opacity, transform;
+    transition-duration: 180ms;
+    transition-timing-function: ease-out;
+  }
+
+  ::selection {
+    background: rgba(92, 143, 212, 0.2);
   }
 }
 
 @layer utilities {
   .surface-card {
-    @apply rounded-[1.7rem] border border-border/90 bg-card;
-    box-shadow: 0 18px 44px rgba(26, 26, 26, 0.045);
+    @apply rounded-[1.35rem] border border-border/90 bg-card;
+    box-shadow:
+      0 12px 28px rgba(20, 32, 51, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.72);
   }
 
   .surface-panel {
-    @apply rounded-[1.1rem] border border-border bg-card;
+    @apply rounded-[0.95rem] border border-border bg-card;
+    box-shadow:
+      0 10px 22px rgba(20, 32, 51, 0.035),
+      inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  }
+
+  .surface-soft {
+    @apply rounded-[1rem] border border-border/80 bg-white/86;
+    box-shadow: 0 10px 24px rgba(20, 32, 51, 0.032);
   }
 
   .page-gutter {
     @apply px-4 sm:px-6 lg:px-8;
+  }
+
+  .section-reveal {
+    animation: vela-fade-up 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .section-reveal-delayed {
+    animation: vela-fade-up 680ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .interactive-lift {
+    will-change: transform;
+  }
+
+  .interactive-lift:hover {
+    transform: translateY(-2px);
+  }
+
+  .glass-divider {
+    border-color: rgba(120, 142, 173, 0.12);
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@keyframes vela-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .section-reveal,
+  .section-reveal-delayed {
+    animation: none;
+  }
+
+  .interactive-lift:hover {
+    transform: none;
   }
 }
