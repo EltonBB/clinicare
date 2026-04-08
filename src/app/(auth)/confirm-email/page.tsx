@@ -3,6 +3,7 @@ import { Mail } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
 import { AuthConfirmationBridge } from "@/components/auth/auth-confirmation-bridge";
+import { EmailVerificationWatcher } from "@/components/auth/email-verification-watcher";
 import { ResendConfirmationForm } from "@/components/auth/resend-confirmation-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/utils/supabase/server";
@@ -24,6 +25,8 @@ export default async function ConfirmEmailPage({
   const error = typeof params.error === "string" ? params.error : "";
   const already = params.already === "1";
   const pending = params.pending === "1";
+  const sent = params.sent === "1";
+  const ticket = typeof params.ticket === "string" ? params.ticket : "";
   const verified = params.verified === "1";
 
   if (verified) {
@@ -62,6 +65,7 @@ export default async function ConfirmEmailPage({
   return (
     <div className="space-y-6">
       <AuthConfirmationBridge />
+      {sent && ticket ? <EmailVerificationWatcher ticket={ticket} /> : null}
       <Card className="surface-card overflow-hidden">
         <CardHeader className="space-y-6 px-8 pt-9 text-center sm:px-10 sm:pt-10">
           <BrandMark
@@ -102,6 +106,12 @@ export default async function ConfirmEmailPage({
             </div>
           ) : null}
 
+          {sent && !already ? (
+            <div className="rounded-[1rem] border border-border bg-card px-4 py-4 text-sm text-muted-foreground">
+              Once the email is confirmed, this page will redirect you to login automatically.
+            </div>
+          ) : null}
+
           <div className="rounded-[1rem] border border-border bg-card px-4 py-4 text-sm text-muted-foreground">
             Open the verification link on this same device for an instant redirect. If you verified the email somewhere else, use the login button below.
           </div>
@@ -113,7 +123,7 @@ export default async function ConfirmEmailPage({
             Continue to login
           </Link>
 
-          <ResendConfirmationForm email={email} />
+          <ResendConfirmationForm email={email} ticket={ticket} />
 
           <div className="space-y-3 border-t border-border pt-5 text-center text-sm">
             <Link href="/sign-up" className="font-medium text-foreground">

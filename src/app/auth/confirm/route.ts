@@ -1,6 +1,7 @@
 import { type EmailOtpType } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 
+import { markEmailVerificationReceiptVerified } from "@/lib/email-verification-receipts";
 import { createClient } from "@/utils/supabase/server";
 
 function isMobileVerification(request: NextRequest) {
@@ -21,6 +22,8 @@ export async function GET(request: NextRequest) {
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type") as EmailOtpType | null;
   const next = sanitizeNextPath(searchParams.get("next"));
+  const nextUrl = new URL(next, request.nextUrl.origin);
+  const ticket = nextUrl.searchParams.get("ticket");
 
   const redirectTo = request.nextUrl.clone();
   redirectTo.pathname = next;
@@ -40,6 +43,7 @@ export async function GET(request: NextRequest) {
         redirectTo.pathname = "/reset-password";
         redirectTo.searchParams.set("recovery", "1");
       } else if (type === "signup" || type === "email") {
+        await markEmailVerificationReceiptVerified(ticket);
         await supabase.auth.signOut();
         if (isMobileVerification(request)) {
           redirectTo.pathname = "/confirm-email";

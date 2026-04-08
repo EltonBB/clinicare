@@ -32,6 +32,7 @@ export function AuthConfirmationBridge() {
     const queryType = url.searchParams.get("type");
     const hashType = hashParams.get("type");
     const callbackType = queryType || hashType;
+    const ticket = url.searchParams.get("ticket");
     const accessToken = hashParams.get("access_token");
     const refreshToken = hashParams.get("refresh_token");
     const errorDescription =
@@ -86,6 +87,16 @@ export function AuthConfirmationBridge() {
       }
 
       if (callbackType === "signup" || callbackType === "email" || pathname === "/confirm-email") {
+        if (ticket) {
+          await fetch("/api/auth/email-verification-status", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ ticket }),
+          });
+        }
+
         await supabase.auth.signOut();
 
         if (isMobileDevice()) {

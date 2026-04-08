@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { businessTypes } from "@/lib/constants";
 import { buildAuthRedirectUrl } from "@/lib/app-url";
+import { createEmailVerificationReceipt } from "@/lib/email-verification-receipts";
 import { createClient } from "@/utils/supabase/server";
 
 type FormValues = {
@@ -167,7 +168,10 @@ export async function signUpAction(
   }
 
   const supabase = await createClient();
-  const emailRedirectTo = await buildAuthRedirectUrl("/login");
+  const verificationTicket = crypto.randomUUID();
+  const emailRedirectTo = await buildAuthRedirectUrl(
+    `/login?ticket=${verificationTicket}`
+  );
 
   const { error } = await supabase.auth.signUp({
     email: parsed.data.email,
@@ -189,8 +193,10 @@ export async function signUpAction(
     };
   }
 
+  await createEmailVerificationReceipt(verificationTicket, parsed.data.email);
+
   redirect(
-    `/confirm-email?email=${encodeURIComponent(parsed.data.email)}&sent=1`
+    `/confirm-email?email=${encodeURIComponent(parsed.data.email)}&sent=1&ticket=${verificationTicket}`
   );
 }
 
@@ -251,6 +257,7 @@ export async function resendConfirmationAction(
 ): Promise<AuthActionState> {
   const values = {
     email: String(formData.get("email") ?? "").trim(),
+    ticket: String(formData.get("ticket") ?? "").trim(),
   };
 
   const parsed = resendSchema.safeParse(values);
@@ -263,7 +270,12 @@ export async function resendConfirmationAction(
   }
 
   const supabase = await createClient();
-  const emailRedirectTo = await buildAuthRedirectUrl("/login");
+  const verificationTicket = values.ticket || crypto.randomUUID();
+  const emailRedirectTo = await buildAuthRedirectUrl(
+    `/login?ticket=${verificationTicket}`
+  );
+
+  await createEmailVerificationReceipt(verificationTicket, parsed.data.email);
 
   const { error } = await supabase.auth.resend({
     type: "signup",

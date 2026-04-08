@@ -10,7 +10,13 @@ import { SubmitButton } from "@/components/auth/submit-button";
 
 const initialState: AuthActionState = {};
 
-export function ResendConfirmationForm({ email }: { email: string }) {
+export function ResendConfirmationForm({
+  email,
+  ticket,
+}: {
+  email: string;
+  ticket: string;
+}) {
   const [state, formAction] = useActionState(
     resendConfirmationAction,
     initialState
@@ -19,6 +25,7 @@ export function ResendConfirmationForm({ email }: { email: string }) {
   return (
     <form action={formAction} className="space-y-4">
       <input type="hidden" name="email" defaultValue={email} />
+      <input type="hidden" name="ticket" defaultValue={ticket} />
 
       {state.error ? (
         <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">

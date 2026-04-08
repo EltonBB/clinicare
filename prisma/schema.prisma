@@ -177,6 +177,17 @@ model WhatsAppConnection {
   @@index([provider, status])
 }
 
+model EmailVerificationReceipt {
+  ticket     String   @id
+  email      String?
+  verifiedAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([email])
+  @@index([verifiedAt])
+}
+
 enum AppointmentStatus {
   CONFIRMED
   PENDING
