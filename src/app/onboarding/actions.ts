@@ -54,6 +54,14 @@ async function bootstrapWorkspaceFromOnboarding(user: {
     "Hi {client_name}, this is a reminder for your appointment at {time}. Reply here if you need to reschedule.";
   const bookingStartAt = parseBookingStart(nextState.booking.date, nextState.booking.time);
   const bookingEndAt = addHours(bookingStartAt, 1);
+  const clientName = nextState.client.name.trim() || nextState.booking.clientName.trim();
+  const clientPhone = nextState.client.phone.trim();
+  const shouldCreateClient = clientName.length > 0 && clientPhone.length > 0;
+  const shouldCreateAppointment =
+    shouldCreateClient &&
+    nextState.booking.service.trim().length > 0 &&
+    nextState.booking.date.trim().length > 0 &&
+    nextState.booking.time.trim().length > 0;
 
   return prisma.$transaction(async (tx) => {
     const business = await tx.business.upsert({
@@ -159,62 +167,63 @@ async function bootstrapWorkspaceFromOnboarding(user: {
         },
       }));
 
-    const clientName = nextState.client.name.trim() || nextState.booking.clientName.trim();
-    const clientPhone = nextState.client.phone.trim();
-
-    const client = await tx.client.upsert({
-      where: {
-        businessId_phone: {
-          businessId: business.id,
-          phone: clientPhone,
+    if (shouldCreateClient) {
+      const client = await tx.client.upsert({
+        where: {
+          businessId_phone: {
+            businessId: business.id,
+            phone: clientPhone,
+          },
         },
-      },
-      update: {
-        name: clientName || "First Client",
-        email: nextState.client.email.trim() || null,
-        notes: nextState.client.notes.trim() || null,
-        status: "ACTIVE",
-        preferredChannel: "WhatsApp",
-        assignedStaffName: staffName,
-        tags: ["priority", "whatsapp"],
-        lastVisitAt: bookingStartAt,
-      },
-      create: {
-        businessId: business.id,
-        name: clientName || "First Client",
-        email: nextState.client.email.trim() || null,
-        phone: clientPhone,
-        notes: nextState.client.notes.trim() || null,
-        status: "ACTIVE",
-        preferredChannel: "WhatsApp",
-        assignedStaffName: staffName,
-        tags: ["priority", "whatsapp"],
-        lastVisitAt: bookingStartAt,
-      },
-    });
-
-    const existingAppointment = await tx.appointment.findFirst({
-      where: {
-        businessId: business.id,
-        clientId: client.id,
-        title: nextState.booking.service.trim() || "Initial consultation",
-        startAt: bookingStartAt,
-      },
-    });
-
-    if (!existingAppointment) {
-      await tx.appointment.create({
-        data: {
-          businessId: business.id,
-          clientId: client.id,
-          staffMemberId: staffMember.id,
-          title: nextState.booking.service.trim() || "Initial consultation",
-          startAt: bookingStartAt,
-          endAt: bookingEndAt,
-          status: "CONFIRMED",
+        update: {
+          name: clientName,
+          email: nextState.client.email.trim() || null,
           notes: nextState.client.notes.trim() || null,
+          status: "ACTIVE",
+          preferredChannel: "WhatsApp",
+          assignedStaffName: staffName,
+          tags: ["priority", "whatsapp"],
+          lastVisitAt: shouldCreateAppointment ? bookingStartAt : null,
+        },
+        create: {
+          businessId: business.id,
+          name: clientName,
+          email: nextState.client.email.trim() || null,
+          phone: clientPhone,
+          notes: nextState.client.notes.trim() || null,
+          status: "ACTIVE",
+          preferredChannel: "WhatsApp",
+          assignedStaffName: staffName,
+          tags: ["priority", "whatsapp"],
+          lastVisitAt: shouldCreateAppointment ? bookingStartAt : null,
         },
       });
+
+      if (shouldCreateAppointment) {
+        const existingAppointment = await tx.appointment.findFirst({
+          where: {
+            businessId: business.id,
+            clientId: client.id,
+            title: nextState.booking.service.trim() || "Initial consultation",
+            startAt: bookingStartAt,
+          },
+        });
+
+        if (!existingAppointment) {
+          await tx.appointment.create({
+            data: {
+              businessId: business.id,
+              clientId: client.id,
+              staffMemberId: staffMember.id,
+              title: nextState.booking.service.trim() || "Initial consultation",
+              startAt: bookingStartAt,
+              endAt: bookingEndAt,
+              status: "CONFIRMED",
+              notes: nextState.client.notes.trim() || null,
+            },
+          });
+        }
+      }
     }
 
     await tx.reminderSettings.upsert({

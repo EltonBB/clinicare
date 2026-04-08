@@ -22,6 +22,39 @@ export default async function ConfirmEmailPage({
   const email = emailFromSearch || user?.email || "";
   const error = typeof params.error === "string" ? params.error : "";
   const pending = params.pending === "1";
+  const verified = params.verified === "1";
+
+  if (verified) {
+    return (
+      <div className="space-y-6">
+        <Card className="surface-card overflow-hidden">
+          <CardHeader className="space-y-6 px-8 pt-9 text-center sm:px-10 sm:pt-10">
+            <BrandMark
+              href="/login"
+              includeSubtitle={false}
+              className="justify-center"
+            />
+            <div className="mx-auto flex size-[4.75rem] items-center justify-center rounded-full bg-primary/10">
+              <Mail className="size-7 text-primary" />
+            </div>
+            <div className="space-y-3">
+              <CardTitle className="text-[2rem] font-semibold tracking-tight">
+                Congratulations.
+              </CardTitle>
+              <p className="mx-auto max-w-sm text-[15px] leading-7 text-muted-foreground">
+                Your email is confirmed and your Vela account is ready.
+              </p>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4 px-8 pb-9 text-center sm:px-10 sm:pb-10">
+            <Link href="/login" className="font-medium text-primary">
+              Continue to login
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

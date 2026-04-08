@@ -3,6 +3,11 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { createClient } from "@/utils/supabase/server";
 
+function isMobileVerification(request: NextRequest) {
+  const userAgent = request.headers.get("user-agent") ?? "";
+  return /Android|iPhone|iPad|iPod|Mobile|Opera Mini|IEMobile/i.test(userAgent);
+}
+
 function sanitizeNextPath(next?: string | null) {
   if (!next || !next.startsWith("/") || next.startsWith("//")) {
     return "/dashboard";
@@ -35,8 +40,13 @@ export async function GET(request: NextRequest) {
         redirectTo.pathname = "/reset-password";
         redirectTo.searchParams.set("recovery", "1");
       } else if (type === "signup" || type === "email") {
-        redirectTo.pathname = "/onboarding";
-        redirectTo.searchParams.set("verified", "1");
+        if (isMobileVerification(request)) {
+          redirectTo.pathname = "/confirm-email";
+          redirectTo.searchParams.set("verified", "1");
+        } else {
+          redirectTo.pathname = "/login";
+          redirectTo.searchParams.set("verified", "1");
+        }
       } else if (type === "email_change") {
         redirectTo.pathname = next === "/settings" ? "/settings" : "/dashboard";
         redirectTo.searchParams.set("email_updated", "1");

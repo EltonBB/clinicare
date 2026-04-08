@@ -212,6 +212,18 @@ function getStepError(state: OnboardingState) {
   }
 }
 
+function getStepSkipStatus(stepId: string) {
+  if (stepId === "client") {
+    return "Skipped first client for now.";
+  }
+
+  if (stepId === "booking") {
+    return "Skipped first booking for now.";
+  }
+
+  return "Skipped for now.";
+}
+
 export function OnboardingFlow({
   initialState,
   businessName,
@@ -360,6 +372,53 @@ export function OnboardingFlow({
     persistState(state, {
       status: "Progress saved. You can continue onboarding anytime.",
     });
+  }
+
+  function handleSkipForNow() {
+    if (step.id !== "client" && step.id !== "booking") {
+      return;
+    }
+
+    if (step.id === "client") {
+      persistState(
+        {
+          ...state,
+          currentStep: state.currentStep + 1,
+          client: {
+            name: "",
+            phone: "",
+            email: "",
+            notes: "",
+          },
+          booking: {
+            ...state.booking,
+            clientName: "",
+          },
+        },
+        {
+          status: getStepSkipStatus(step.id),
+        }
+      );
+      return;
+    }
+
+    persistState(
+      {
+        ...state,
+        completed: true,
+        booking: {
+          ...state.booking,
+          service: "",
+          date: "",
+          time: "",
+          clientName: state.client.name,
+        },
+      },
+      {
+        complete: true,
+        status: getStepSkipStatus(step.id),
+      }
+    );
   }
 
   function updateDay(day: WeekdayKey, patch: Partial<(typeof state.workingHours)[WeekdayKey]>) {
@@ -840,16 +899,29 @@ export function OnboardingFlow({
             ) : null}
 
             <div className="flex items-center justify-between gap-4">
-              <Button
-                type="button"
-                variant="ghost"
-                className="rounded-[0.95rem] px-0 text-muted-foreground hover:bg-transparent"
-                onClick={handleBack}
-                disabled={state.currentStep === 1 || isPending}
-              >
-                <ArrowLeft data-icon="inline-start" />
-                Go back
-              </Button>
+              <div className="flex items-center gap-4">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="rounded-[0.95rem] px-0 text-muted-foreground hover:bg-transparent"
+                  onClick={handleBack}
+                  disabled={state.currentStep === 1 || isPending}
+                >
+                  <ArrowLeft data-icon="inline-start" />
+                  Go back
+                </Button>
+                {step.id === "client" || step.id === "booking" ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="rounded-[0.95rem] px-0 text-muted-foreground hover:bg-transparent"
+                    onClick={handleSkipForNow}
+                    disabled={isPending}
+                  >
+                    Skip for now
+                  </Button>
+                ) : null}
+              </div>
               <Button
                 type="button"
                 size="lg"
