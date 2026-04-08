@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle2, LoaderCircle, Mail } from "lucide-react";
@@ -142,22 +141,6 @@ export function AuthConfirmScreen() {
             </h1>
             <p className="text-[15px] leading-7 text-muted-foreground">{message}</p>
           </div>
-          {state === "verified" || state === "already" ? (
-            <Link
-              href="/login?verified=1"
-              className="flex h-12 items-center justify-center rounded-[0.95rem] bg-primary px-5 text-sm font-medium text-primary-foreground transition-transform hover:-translate-y-0.5"
-            >
-              Continue to login
-            </Link>
-          ) : null}
-          {state === "error" ? (
-            <Link
-              href="/confirm-email"
-              className="flex h-12 items-center justify-center rounded-[0.95rem] border border-border px-5 text-sm font-medium text-foreground transition-colors hover:bg-muted/70"
-            >
-              Back to confirmation
-            </Link>
-          ) : null}
         </div>
       </div>
     </div>
