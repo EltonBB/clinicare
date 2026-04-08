@@ -51,11 +51,7 @@ export function AuthConfirmationBridge() {
 
     async function handleCallback() {
       if (errorDescription) {
-        router.replace(
-          `/confirm-email?error=${encodeURIComponent(
-            "That verification link is no longer valid. Request a new one below."
-          )}`
-        );
+        router.replace("/confirm-email?already=1");
         return;
       }
 
@@ -73,11 +69,7 @@ export function AuthConfirmationBridge() {
       }
 
       if (authError) {
-        router.replace(
-          `/confirm-email?error=${encodeURIComponent(
-            "That verification link is no longer valid. Request a new one below."
-          )}`
-        );
+        router.replace("/confirm-email?already=1");
         return;
       }
 

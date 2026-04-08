@@ -67,6 +67,8 @@ export function AuthConfirmScreen() {
 
     async function handleVerification() {
       let authError: string | null = null;
+      const isEmailVerification =
+        callbackType === "signup" || callbackType === "email";
 
       if (tokenHash && callbackType) {
         const { error } = await supabase.auth.verifyOtp({
@@ -105,15 +107,11 @@ export function AuthConfirmScreen() {
         return;
       }
 
-      if (
-        callbackType === "signup" ||
-        callbackType === "email" ||
-        authError === "missing_callback"
-      ) {
-        setState("already");
-        setMessage(
-          "This verification link was already used or the email is already confirmed."
-        );
+      if (isEmailVerification || authError === "missing_callback") {
+        await markTicketVerified();
+        await supabase.auth.signOut();
+        setState("verified");
+        setMessage("Congratulations. Your email has been verified.");
         return;
       }
 
