@@ -67,8 +67,8 @@ export function AuthConfirmScreen() {
 
     async function handleVerification() {
       let authError: string | null = null;
-      const isEmailVerification =
-        callbackType === "signup" || callbackType === "email";
+      const isRecoveryFlow = callbackType === "recovery";
+      const isEmailChangeFlow = callbackType === "email_change";
 
       if (tokenHash && callbackType) {
         const { error } = await supabase.auth.verifyOtp({
@@ -89,25 +89,17 @@ export function AuthConfirmScreen() {
         authError = "missing_callback";
       }
 
-      if (callbackType === "recovery" && !authError) {
+      if (isRecoveryFlow && !authError) {
         router.replace("/reset-password?recovery=1");
         return;
       }
 
-      if (callbackType === "email_change" && !authError) {
+      if (isEmailChangeFlow && !authError) {
         router.replace("/settings?email_updated=1");
         return;
       }
 
-      if (!authError) {
-        await markTicketVerified();
-        await supabase.auth.signOut();
-        setState("verified");
-        setMessage("Congratulations. Your email has been verified.");
-        return;
-      }
-
-      if (isEmailVerification || authError === "missing_callback") {
+      if (!authError || (!isRecoveryFlow && !isEmailChangeFlow)) {
         await markTicketVerified();
         await supabase.auth.signOut();
         setState("verified");
