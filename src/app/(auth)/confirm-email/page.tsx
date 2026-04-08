@@ -22,6 +22,7 @@ export default async function ConfirmEmailPage({
   const emailFromSearch = typeof params.email === "string" ? params.email : "";
   const email = emailFromSearch || user?.email || "";
   const error = typeof params.error === "string" ? params.error : "";
+  const already = params.already === "1";
   const pending = params.pending === "1";
   const verified = params.verified === "1";
 
@@ -83,6 +84,12 @@ export default async function ConfirmEmailPage({
           </div>
         </CardHeader>
         <CardContent className="space-y-6 px-8 pb-9 sm:px-10 sm:pb-10">
+          {already ? (
+            <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
+              That link was already used or the email was already confirmed. If you already verified on another device, continue to login.
+            </div>
+          ) : null}
+
           {pending ? (
             <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
               Your account exists, but the email still needs verification.
@@ -94,6 +101,17 @@ export default async function ConfirmEmailPage({
               {error}
             </div>
           ) : null}
+
+          <div className="rounded-[1rem] border border-border bg-card px-4 py-4 text-sm text-muted-foreground">
+            Open the verification link on this same device for an instant redirect. If you verified the email somewhere else, use the login button below.
+          </div>
+
+          <Link
+            href="/login"
+            className="flex h-12 items-center justify-center rounded-[0.95rem] bg-primary px-5 text-sm font-medium text-primary-foreground transition-transform hover:-translate-y-0.5"
+          >
+            Continue to login
+          </Link>
 
           <ResendConfirmationForm email={email} />
 

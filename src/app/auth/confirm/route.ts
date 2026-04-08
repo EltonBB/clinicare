@@ -68,10 +68,14 @@ export async function GET(request: NextRequest) {
     );
   } else {
     fallback.pathname = "/confirm-email";
-    fallback.searchParams.set(
-      "error",
-      "That verification link is no longer valid. Request a new one below."
-    );
+    if (type === "signup" || type === "email") {
+      fallback.searchParams.set("already", "1");
+    } else {
+      fallback.searchParams.set(
+        "error",
+        "That verification link is no longer valid. Request a new one below."
+      );
+    }
   }
 
   return NextResponse.redirect(fallback);
