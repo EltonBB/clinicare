@@ -112,17 +112,6 @@ export default async function ConfirmEmailPage({
             </div>
           ) : null}
 
-          <div className="rounded-[1rem] border border-border bg-card px-4 py-4 text-sm text-muted-foreground">
-            Open the verification link on this same device for an instant redirect. If you verified the email somewhere else, use the login button below.
-          </div>
-
-          <Link
-            href="/login"
-            className="flex h-12 items-center justify-center rounded-[0.95rem] bg-primary px-5 text-sm font-medium text-primary-foreground transition-transform hover:-translate-y-0.5"
-          >
-            Continue to login
-          </Link>
-
           <ResendConfirmationForm email={email} ticket={ticket} />
 
           <div className="space-y-3 border-t border-border pt-5 text-center text-sm">
