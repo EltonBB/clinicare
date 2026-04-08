@@ -1,6 +1,5 @@
+import Image from "next/image";
 import Link from "next/link";
-
-import { cn } from "@/lib/utils";
 
 type BrandMarkProps = {
   compact?: boolean;
@@ -15,27 +14,22 @@ export function BrandMark({
   className,
   includeSubtitle = true,
 }: BrandMarkProps) {
+  const imageWidth = compact ? 40 : includeSubtitle ? 168 : 132;
+  const imageHeight = compact ? 40 : includeSubtitle ? 72 : 56;
+
   return (
     <Link
       href={href}
-      className={cn(
-        "inline-flex items-center gap-3 rounded-xl text-foreground",
-        className
-      )}
+      className={`inline-flex items-center rounded-xl text-foreground ${className ?? ""}`}
     >
-      <span className="flex size-10 items-center justify-center rounded-[0.95rem] bg-[linear-gradient(135deg,rgba(92,143,212,0.95),rgba(38,137,135,0.96))] text-sm font-semibold text-primary-foreground shadow-[0_12px_24px_rgba(38,137,135,0.22)]">
-        V
-      </span>
-      {!compact ? (
-        <span className="flex flex-col">
-          <span className="text-xl font-semibold tracking-tight">Vela</span>
-          {includeSubtitle ? (
-            <span className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-              Service management
-            </span>
-          ) : null}
-        </span>
-      ) : null}
+      <Image
+        src="/vela-logo.png"
+        alt="Vela Clinic Management"
+        width={imageWidth}
+        height={imageHeight}
+        priority
+        className={compact ? "h-10 w-10 object-contain" : "h-auto w-auto object-contain"}
+      />
     </Link>
   );
 }
