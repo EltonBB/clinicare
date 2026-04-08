@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
         redirectTo.pathname = "/reset-password";
         redirectTo.searchParams.set("recovery", "1");
       } else if (type === "signup" || type === "email") {
+        await supabase.auth.signOut();
         if (isMobileVerification(request)) {
           redirectTo.pathname = "/confirm-email";
           redirectTo.searchParams.set("verified", "1");

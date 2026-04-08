@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Mail } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
+import { AuthConfirmationBridge } from "@/components/auth/auth-confirmation-bridge";
 import { ResendConfirmationForm } from "@/components/auth/resend-confirmation-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/utils/supabase/server";
@@ -27,6 +28,7 @@ export default async function ConfirmEmailPage({
   if (verified) {
     return (
       <div className="space-y-6">
+        <AuthConfirmationBridge />
         <Card className="surface-card overflow-hidden">
           <CardHeader className="space-y-6 px-8 pt-9 text-center sm:px-10 sm:pt-10">
             <BrandMark
@@ -58,6 +60,7 @@ export default async function ConfirmEmailPage({
 
   return (
     <div className="space-y-6">
+      <AuthConfirmationBridge />
       <Card className="surface-card overflow-hidden">
         <CardHeader className="space-y-6 px-8 pt-9 text-center sm:px-10 sm:pt-10">
           <BrandMark
