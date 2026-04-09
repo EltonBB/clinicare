@@ -9,6 +9,10 @@ type ReminderSyncResult = {
   failed: number;
 };
 
+export type ReminderCronResult = ReminderSyncResult & {
+  processedBusinesses: number;
+};
+
 function renderReminderTemplate(template: string, values: Record<string, string>) {
   return template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? "");
 }
@@ -250,4 +254,35 @@ export async function syncAppointmentRemindersForBusiness(
   }
 
   return { sent, failed };
+}
+
+export async function syncAppointmentRemindersJob(): Promise<ReminderCronResult> {
+  const businesses = await prisma.business.findMany({
+    where: {
+      whatsappEnabled: true,
+      whatsappConnection: {
+        is: {
+          status: "CONNECTED",
+        },
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  let sent = 0;
+  let failed = 0;
+
+  for (const business of businesses) {
+    const result = await syncAppointmentRemindersForBusiness(business.id);
+    sent += result.sent;
+    failed += result.failed;
+  }
+
+  return {
+    processedBusinesses: businesses.length,
+    sent,
+    failed,
+  };
 }

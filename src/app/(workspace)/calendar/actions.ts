@@ -9,7 +9,6 @@ import {
   type CalendarAppointment,
   type CalendarAppointmentStatus,
 } from "@/lib/calendar";
-import { syncAppointmentRemindersForBusiness } from "@/lib/reminders";
 import { createClient } from "@/utils/supabase/server";
 
 export type SaveAppointmentPayload = {
@@ -255,9 +254,6 @@ export async function saveAppointmentAction(
 
       appointmentId = created.id;
     }
-
-    await syncAppointmentRemindersForBusiness(business.id);
-
     return {
       ok: true,
       appointment: await hydrateAppointment(appointmentId!),

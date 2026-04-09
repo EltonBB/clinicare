@@ -2,15 +2,12 @@ import { CalendarWorkspace } from "@/components/calendar/calendar-workspace";
 import { prisma } from "@/lib/prisma";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { buildCalendarViewFromRecords } from "@/lib/calendar";
-import { syncAppointmentRemindersForBusiness } from "@/lib/reminders";
 
 export default async function CalendarPage() {
   const { user, business } = await requireCurrentWorkspace("/calendar", {
     missingBusinessRedirect: "/onboarding",
   });
   const { ownerName } = toBusinessIdentity(business, user);
-
-  await syncAppointmentRemindersForBusiness(business.id);
 
   const [appointments, clients, staffMembers] = await Promise.all([
     prisma.appointment.findMany({

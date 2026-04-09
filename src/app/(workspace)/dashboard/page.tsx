@@ -3,13 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { buildDashboardViewFromWorkspace } from "@/lib/dashboard";
 import { startOfDay, endOfDay } from "date-fns";
-import { syncAppointmentRemindersForBusiness } from "@/lib/reminders";
 
 export default async function DashboardPage() {
   const { business } = await requireCurrentWorkspace("/dashboard", {
     missingBusinessRedirect: "/onboarding",
   });
-  await syncAppointmentRemindersForBusiness(business.id);
   const todayStart = startOfDay(new Date());
   const todayEnd = endOfDay(new Date());
   const weekdayMap = [6, 0, 1, 2, 3, 4, 5];
