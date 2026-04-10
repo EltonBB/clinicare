@@ -1,6 +1,6 @@
 "use server";
 
-import { addDays, addHours } from "date-fns";
+import { addHours } from "date-fns";
 
 import { prisma } from "@/lib/prisma";
 import { ensureInboxSeedData } from "@/lib/inbox-server";
@@ -78,11 +78,11 @@ async function bootstrapWorkspaceFromOnboarding(user: {
         ownerId: user.id,
         name: businessName,
         businessType,
-        plan: "TRIAL",
-        planStatus: "TRIALING",
+        plan: "BASIC",
+        planStatus: "ACTIVE",
         whatsappNumber: nextState.whatsapp.phoneNumber || null,
         whatsappEnabled: nextState.whatsapp.sendReminders,
-        trialEndsAt: addDays(new Date(), 14),
+        trialEndsAt: null,
       },
     });
 

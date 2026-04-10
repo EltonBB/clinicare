@@ -13,8 +13,8 @@ model Business {
   ownerId          String             @unique
   name             String
   businessType     String
-  plan             BusinessPlan       @default(TRIAL)
-  planStatus       BusinessPlanStatus @default(TRIALING)
+  plan             BusinessPlan       @default(BASIC)
+  planStatus       BusinessPlanStatus @default(ACTIVE)
   whatsappNumber   String?
   whatsappEnabled  Boolean            @default(false)
   trialEndsAt      DateTime?

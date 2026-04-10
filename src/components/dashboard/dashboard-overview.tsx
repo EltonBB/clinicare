@@ -151,9 +151,9 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
             <div className="mt-4 space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-4">
-                  <p className="text-sm font-medium text-foreground">Trial status</p>
+                  <p className="text-sm font-medium text-foreground">Plan status</p>
                   <p className="text-sm font-semibold text-primary">
-                    {view.planSummary.trialLabel}
+                    {view.planSummary.statusLabel}
                   </p>
                 </div>
                 <p className="text-sm leading-7 text-muted-foreground">

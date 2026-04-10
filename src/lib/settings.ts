@@ -1,4 +1,4 @@
-import { differenceInCalendarDays, format } from "date-fns";
+import { format } from "date-fns";
 import type {
   Business,
   BusinessHours,
@@ -16,6 +16,7 @@ import {
   type WorkingHoursState,
   weekdayOrder,
 } from "@/lib/onboarding";
+import { planDisplayName, planStatusLabel } from "@/lib/billing";
 
 export type StaffRole = "Owner" | "Manager" | "Specialist" | "Reception";
 
@@ -63,7 +64,7 @@ export type SettingsState = {
   reminders: SettingsReminders;
   billing: {
     planName: string;
-    trialLabel: string;
+    statusLabel: string;
     note: string;
   };
 };
@@ -126,23 +127,15 @@ function normalizeSettingsStaff(staffMembers: StaffMember[], fallbackName: strin
 }
 
 function buildBillingSummary(business: Business): SettingsState["billing"] {
-  const planName =
-    business.plan === "TRIAL"
-      ? "Trial"
-      : business.plan.charAt(0) + business.plan.slice(1).toLowerCase();
-  const daysLeft =
-    business.trialEndsAt != null
-      ? Math.max(differenceInCalendarDays(business.trialEndsAt, new Date()), 0)
-      : 0;
+  const planName = planDisplayName(business.plan);
 
   return {
     planName,
-    trialLabel:
-      business.plan === "TRIAL" ? `${daysLeft} days left` : business.planStatus.toLowerCase(),
+    statusLabel: planStatusLabel(business.planStatus),
     note:
-      business.plan === "TRIAL"
-        ? "Your workspace is on the Vela trial with bookings, clients, reminders, and inbox tools enabled for MVP testing."
-        : `Your workspace is on the ${planName} plan with clinic-scoped appointments, clients, reminders, and inbox access.`,
+      planName === "Pro"
+        ? "Your workspace is on the Pro plan with reports and premium workflow surfaces enabled."
+        : "Your workspace is on the Basic plan with core clinic operations enabled for daily use.",
   };
 }
 

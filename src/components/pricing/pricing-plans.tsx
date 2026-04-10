@@ -59,24 +59,6 @@ const plans: Plan[] = [
       "SimplePractice's group plan starts at $158/month. Jane App charges per practitioner on top of a base fee. Vela Pro is $79 flat.",
     highlighted: true,
   },
-  {
-    name: "Advanced",
-    monthlyPrice: 119,
-    annualMonthlyPrice: 99,
-    yearlySavings: "Save $240/year",
-    description:
-      "For operations that need the intelligence layer: revenue protection, retention signals, and multi-location scale.",
-    featureIntro:
-      "Everything in Pro, plus the tools that usually live in enterprise platforms:",
-    features: [
-      "No-show intelligence that flags high-risk bookings and recommends extra follow-up.",
-      "Retention alerts with one-tap re-engagement messaging for clients who have not returned.",
-      "Advanced analytics across revenue, lifetime value, staff performance, and messaging channels.",
-      "Multi-location support with shared records, shared conversations, and unlimited seats.",
-    ],
-    benchmark:
-      "These capabilities usually live in systems costing $300-500/month. Vela delivers them at a fraction of that.",
-  },
 ];
 
 function priceFor(plan: Plan, cycle: BillingCycle) {
@@ -119,8 +101,8 @@ export function PricingPlans() {
             </h1>
             <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base">
               Start with the core operating system, add team structure when you
-              need it, and unlock the intelligence layer when the business is
-              ready to scale.
+              need it, and unlock reporting plus premium workflow tools when
+              the business is ready to scale.
             </p>
 
             <div className="mt-8 inline-flex items-center gap-2 rounded-full border border-border/80 bg-white/76 p-1 shadow-[0_16px_32px_rgba(20,32,51,0.05)] backdrop-blur-sm">
@@ -152,7 +134,7 @@ export function PricingPlans() {
             <p className="mt-3 text-sm text-muted-foreground">{pricingLabel}</p>
           </section>
 
-          <section className="section-reveal-delayed mt-12 grid gap-5 lg:grid-cols-3">
+          <section className="section-reveal-delayed mt-12 grid gap-5 lg:grid-cols-2">
             {plans.map((plan) => (
               <article
                 key={plan.name}

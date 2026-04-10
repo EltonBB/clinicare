@@ -1,5 +1,6 @@
-import { differenceInCalendarDays, differenceInMinutes, format } from "date-fns";
+import { differenceInMinutes, format } from "date-fns";
 import type { Appointment, Business, Conversation } from "@prisma/client";
+import { planDisplayName, planStatusLabel } from "@/lib/billing";
 
 export type DashboardAppointmentStatus = "confirmed" | "pending" | "cancelled";
 
@@ -27,7 +28,7 @@ export type DashboardMessageSummary = {
 
 export type DashboardPlanSummary = {
   planName: string;
-  trialLabel: string;
+  statusLabel: string;
   detail: string;
   capacityUsedPercent: number;
   remainingSlotsLabel: string;
@@ -68,14 +69,7 @@ function buildPlanSummary(
   todaysAppointmentsCount: number,
   todaysHours: number
 ): DashboardPlanSummary {
-  const planName =
-    business.plan === "TRIAL"
-      ? "Trial"
-      : business.plan.charAt(0) + business.plan.slice(1).toLowerCase();
-  const daysLeft =
-    business.trialEndsAt != null
-      ? Math.max(differenceInCalendarDays(business.trialEndsAt, new Date()), 0)
-      : 0;
+  const planName = planDisplayName(business.plan);
   const estimatedCapacity = Math.max(todaysHours, 1);
   const capacityUsedPercent = Math.min(
     Math.round((todaysAppointmentsCount / estimatedCapacity) * 100),
@@ -85,12 +79,11 @@ function buildPlanSummary(
 
   return {
     planName,
-    trialLabel:
-      business.plan === "TRIAL" ? `${daysLeft} days left` : business.planStatus.toLowerCase(),
+    statusLabel: planStatusLabel(business.planStatus),
     detail:
-      business.plan === "TRIAL"
-        ? "Your workspace is on the Vela trial with bookings, clients, reminders, and inbox tools available for MVP testing."
-        : `Your workspace is on the ${planName} plan with clinic-scoped bookings, reminders, and inbox access.`,
+      planName === "Pro"
+        ? "Your workspace is on the Pro plan with reports and premium workflow tools enabled."
+        : "Your workspace is on the Basic plan with scheduling, clients, inbox, and settings available.",
     capacityUsedPercent,
     remainingSlotsLabel: `${remainingSlots} slots remaining for today`,
   };

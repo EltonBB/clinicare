@@ -679,7 +679,7 @@ export function SettingsWorkspace({
 
         <SettingsSection
           title="Billing"
-          description="Keep billing MVP-light: surface the current plan and provide a clear entry point to upgrade."
+          description="See the current plan, understand what is locked, and move cleanly toward Pro when needed."
         >
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center">
             <div className="space-y-3">
@@ -693,7 +693,7 @@ export function SettingsWorkspace({
                   </p>
                 </div>
                 <p className="text-sm font-semibold text-primary">
-                  {state.billing.trialLabel}
+                  {state.billing.statusLabel}
                 </p>
               </div>
             </div>
