@@ -679,41 +679,69 @@ export function SettingsWorkspace({
 
         <SettingsSection
           title="Billing"
-          description="See the current plan, understand what is locked, and move cleanly toward Pro when needed."
+          description="Review the current plan, see what is locked, and use the prepared upgrade path while live payments are still pending."
         >
-          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-4 rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    {state.billing.planName}
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {state.billing.note}
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,0.9fr)]">
+            <div className="space-y-4">
+              <div className="rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      {state.billing.planName}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {state.billing.note}
+                    </p>
+                  </div>
+                  <p className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+                    {state.billing.statusLabel}
                   </p>
                 </div>
-                <p className="text-sm font-semibold text-primary">
-                  {state.billing.statusLabel}
+                <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                  {state.billing.nextStep}
                 </p>
               </div>
+
+              <div className="rounded-[0.95rem] border border-border/80 bg-white/88 px-4 py-4">
+                <FieldLabel>Locked on Basic</FieldLabel>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {state.billing.lockedFeatures.map((feature) => (
+                    <span
+                      key={feature}
+                      className="rounded-full border border-border/80 bg-muted/35 px-3 py-1 text-xs font-medium text-muted-foreground"
+                    >
+                      {feature}
+                    </span>
+                  ))}
+                </div>
+              </div>
             </div>
-            <UpgradeModalTrigger
-              label="Unlock Pro"
-              triggerClassName={cn(
-                buttonVariants({ variant: "outline", size: "lg" }),
-                "h-11 rounded-[0.9rem] bg-white/76 px-4 text-foreground"
-              )}
-            />
-            <Link
-              href="/pricing"
-              className={cn(
-                buttonVariants({ variant: "outline", size: "lg" }),
-                "h-11 rounded-[0.9rem] bg-white/76 px-4"
-              )}
-            >
-              View pricing
-              <ArrowUpRight className="size-4" />
-            </Link>
+
+            <div className="rounded-[0.95rem] border border-border/80 bg-white/88 px-4 py-4">
+              <FieldLabel>Billing actions</FieldLabel>
+              <div className="mt-3 space-y-3">
+                <UpgradeModalTrigger
+                  label={state.billing.ctaLabel}
+                  triggerClassName={cn(
+                    buttonVariants({ variant: "default", size: "lg" }),
+                    "h-11 w-full rounded-[0.9rem] justify-center"
+                  )}
+                />
+                <Link
+                  href="/pricing"
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "lg" }),
+                    "h-11 w-full rounded-[0.9rem] justify-center bg-white/76 px-4"
+                  )}
+                >
+                  View pricing
+                  <ArrowUpRight className="size-4" />
+                </Link>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                Payment method collection, invoices, and self-serve subscription management will be added when the live billing provider is connected.
+              </p>
+            </div>
           </div>
         </SettingsSection>
       </div>

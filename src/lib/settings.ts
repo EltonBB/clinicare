@@ -66,6 +66,9 @@ export type SettingsState = {
     planName: string;
     statusLabel: string;
     note: string;
+    nextStep: string;
+    ctaLabel: string;
+    lockedFeatures: string[];
   };
 };
 
@@ -136,6 +139,15 @@ function buildBillingSummary(business: Business): SettingsState["billing"] {
       planName === "Pro"
         ? "Your workspace is on the Pro plan with reports and premium workflow surfaces enabled."
         : "Your workspace is on the Basic plan with core clinic operations enabled for daily use.",
+    nextStep:
+      planName === "Pro"
+        ? "Live billing is not connected yet. When payments are enabled, this workspace will manage plan changes here."
+        : "Upgrade flow is prepared, but payment collection goes live later. For now, Pro can be unlocked manually during testing.",
+    ctaLabel: planName === "Pro" ? "Manage plan" : "Unlock Pro",
+    lockedFeatures:
+      planName === "Pro"
+        ? ["Reports", "Premium workflow surfaces", "Future automation tools"]
+        : ["Reports", "Premium workflow surfaces", "Future automation tools"],
   };
 }
 

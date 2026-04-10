@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Check, CircleDollarSign } from "lucide-react";
+import { Check, CircleDollarSign, Lock, Sparkles } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
 import { buttonVariants } from "@/components/ui/button-variants";
@@ -177,7 +177,7 @@ export function PricingPlans() {
                 </div>
 
                 <Link
-                  href="/dashboard"
+                  href={plan.highlighted ? "/settings" : "/dashboard"}
                   className={cn(
                     buttonVariants({
                       variant: plan.highlighted ? "default" : "outline",
@@ -186,7 +186,7 @@ export function PricingPlans() {
                     "mt-6 h-11 w-full justify-center rounded-[0.9rem]"
                   )}
                 >
-                  Select plan
+                  {plan.highlighted ? "Prepare Pro upgrade" : "Current core plan"}
                 </Link>
 
                 <div className="mt-6 flex-1 border-t border-border/75 pt-6">
@@ -214,6 +214,38 @@ export function PricingPlans() {
                 </div>
               </article>
             ))}
+          </section>
+
+          <section className="section-reveal mt-8 grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+            <div className="rounded-[1.15rem] border border-border/80 bg-white/80 px-6 py-6 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Sparkles className="size-5" />
+                </div>
+                <div className="space-y-2">
+                  <h2 className="text-xl font-semibold text-foreground">
+                    Billing rollout status
+                  </h2>
+                  <p className="text-sm leading-7 text-muted-foreground">
+                    The billing structure is now in place across Vela. Plans, locked
+                    features, and upgrade flows are ready, while live payment
+                    collection will be connected later.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[1.15rem] border border-border/80 bg-muted/30 px-6 py-6 shadow-[0_18px_40px_rgba(20,32,51,0.04)]">
+              <div className="flex items-center gap-2 text-foreground">
+                <Lock className="size-4 text-primary" />
+                <h2 className="text-base font-semibold">What happens next</h2>
+              </div>
+              <div className="mt-4 space-y-3 text-sm leading-7 text-muted-foreground">
+                <p>Pick the plan that matches the clinic.</p>
+                <p>Keep using Basic or prepare Pro access in settings.</p>
+                <p>Connect live checkout later without rebuilding the billing UI.</p>
+              </div>
+            </div>
           </section>
         </div>
       </div>

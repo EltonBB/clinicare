@@ -20,12 +20,16 @@ type UpgradeModalTriggerProps = {
   label?: string;
   className?: string;
   triggerClassName?: string;
+  title?: string;
+  description?: string;
 };
 
 export function UpgradeModalTrigger({
   label = "Upgrade now",
   className,
   triggerClassName,
+  title = "Unlock Pro features",
+  description = "Upgrade to Vela Pro to access reports, premium workflow tools, and the next layer of operational visibility.",
 }: UpgradeModalTriggerProps) {
   return (
     <Dialog>
@@ -49,11 +53,10 @@ export function UpgradeModalTrigger({
               <Lock className="size-6" />
             </div>
             <DialogTitle className="mt-4 text-2xl font-semibold text-foreground">
-              Unlock Pro features
+              {title}
             </DialogTitle>
             <DialogDescription className="max-w-sm text-sm leading-7">
-              Upgrade to Vela Pro to access advanced insights, automation, and
-              premium workflow tools beyond the MVP workspace.
+              {description}
             </DialogDescription>
           </DialogHeader>
 
@@ -65,8 +68,9 @@ export function UpgradeModalTrigger({
               <div className="space-y-1">
                 <p className="text-sm font-medium text-foreground">Pro access</p>
                 <p className="text-sm leading-6 text-muted-foreground">
-                  One plan. More automation, deeper reporting, and a cleaner path
-                  to scale your service business.
+                  Payments are not connected yet, but the upgrade path is ready. Use
+                  this flow to review what Pro unlocks and prepare the account for
+                  live billing later.
                 </p>
               </div>
             </div>
