@@ -20,6 +20,9 @@ export type InboxConversation = {
   phone: string;
   clientId?: string;
   clientName: string;
+  displayName: string;
+  isLinkedClient: boolean;
+  contactStatusLabel: string;
   preview: string;
   unreadCount: number;
   lastMessageAt: string;
@@ -159,12 +162,21 @@ export function buildInboxConversation(
   }));
   const lastMessage = conversation.messages[conversation.messages.length - 1];
   const lastActivityAt = lastMessage?.sentAt ?? conversation.updatedAt;
+  const isLinkedClient = Boolean(linkedClient);
+  const fallbackDisplayName =
+    conversation.contactName.trim().length > 0 &&
+    phoneLookupKey(conversation.contactName) !== phoneLookupKey(conversation.phoneNumber)
+      ? conversation.contactName
+      : "Unregistered contact";
 
   return {
     id: conversation.id,
     phone: conversation.phoneNumber,
     clientId: linkedClient?.id,
-    clientName: linkedClient?.name ?? conversation.contactName,
+    clientName: linkedClient?.name ?? fallbackDisplayName,
+    displayName: linkedClient?.name ?? fallbackDisplayName,
+    isLinkedClient,
+    contactStatusLabel: linkedClient ? "Client linked" : "Unregistered contact",
     preview: lastMessage?.body ?? "No messages yet.",
     unreadCount: conversation.unreadCount,
     lastMessageAt: formatConversationTimestamp(lastActivityAt),
@@ -172,7 +184,7 @@ export function buildInboxConversation(
       ? conversation.unreadCount > 0
         ? "Active now"
         : "Last reply recently"
-      : "Needs client link",
+      : "Reply first, then convert to client",
     messages,
   };
 }

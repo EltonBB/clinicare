@@ -256,9 +256,16 @@ export function InboxWorkspace({
 
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="truncate text-base font-semibold text-foreground">
-                      {conversation.clientName}
-                    </p>
+                    <div className="min-w-0">
+                      <p className="truncate text-base font-semibold text-foreground">
+                        {conversation.displayName}
+                      </p>
+                      {!conversation.isLinkedClient ? (
+                        <p className="mt-0.5 text-xs font-medium uppercase tracking-[0.12em] text-primary">
+                          {conversation.contactStatusLabel}
+                        </p>
+                      ) : null}
+                    </div>
                     <p className="text-xs text-muted-foreground">
                       {conversation.lastMessageAt}
                     </p>
@@ -294,7 +301,7 @@ export function InboxWorkspace({
                   </Avatar>
                   <div className="min-w-0">
                     <p className="truncate text-lg font-semibold text-foreground">
-                      {activeConversation.clientName}
+                      {activeConversation.displayName}
                     </p>
                     <p className="truncate text-sm text-muted-foreground">
                       {activeConversation.activeLabel}
@@ -312,9 +319,14 @@ export function InboxWorkspace({
                       <ExternalLink className="size-4" />
                     </Link>
                   ) : (
-                    <span className="text-sm text-muted-foreground">
-                      No client linked
-                    </span>
+                    <div className="text-right">
+                      <p className="text-sm font-medium text-foreground">
+                        Unregistered contact
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Reply here, then convert to a client later.
+                      </p>
+                    </div>
                   )}
                   <Button
                     type="button"
@@ -384,7 +396,7 @@ export function InboxWorkspace({
                   <Input
                     value={draftMessage}
                     onChange={(event) => setDraftMessage(event.target.value)}
-                    placeholder={`Type a message to ${activeConversation.clientName || ownerName}...`}
+                    placeholder={`Type a message to ${activeConversation.displayName || ownerName}...`}
                     className="h-10 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && !event.shiftKey) {
