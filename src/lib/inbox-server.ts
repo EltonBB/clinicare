@@ -308,65 +308,72 @@ export async function normalizeConversationsForBusiness(businessId: string) {
   }
 
   for (const [lookupKey, group] of grouped) {
-    const matchingClient = clients.find(
-      (client) => phoneLookupKey(client.phone) === lookupKey
-    );
-    const canonicalPhone =
-      normalizePhone(matchingClient?.phone ?? "") ||
-      normalizePhone(group[0]?.phoneNumber ?? "");
+    try {
+      const matchingClient = clients.find(
+        (client) => phoneLookupKey(client.phone) === lookupKey
+      );
+      const canonicalPhone =
+        normalizePhone(matchingClient?.phone ?? "") ||
+        normalizePhone(group[0]?.phoneNumber ?? "");
 
-    const preferredConversation =
-      group.find(
-        (conversation) =>
-          matchingClient && conversation.phoneNumber === canonicalPhone
-      ) ??
-      group.find((conversation) => conversation.phoneNumber.startsWith("+")) ??
-      group[0];
+      const preferredConversation =
+        group.find(
+          (conversation) =>
+            matchingClient && conversation.phoneNumber === canonicalPhone
+        ) ??
+        group.find((conversation) => conversation.phoneNumber.startsWith("+")) ??
+        group[0];
 
-    const duplicateIds = group
-      .filter((conversation) => conversation.id !== preferredConversation.id)
-      .map((conversation) => conversation.id);
+      const duplicateIds = group
+        .filter((conversation) => conversation.id !== preferredConversation.id)
+        .map((conversation) => conversation.id);
 
-    await prisma.$transaction(async (tx) => {
-      if (duplicateIds.length > 0) {
-        await tx.message.updateMany({
-          where: {
-            conversationId: {
-              in: duplicateIds,
+      await prisma.$transaction(async (tx) => {
+        if (duplicateIds.length > 0) {
+          await tx.message.updateMany({
+            where: {
+              conversationId: {
+                in: duplicateIds,
+              },
             },
+            data: {
+              conversationId: preferredConversation.id,
+            },
+          });
+
+          await tx.conversation.deleteMany({
+            where: {
+              id: {
+                in: duplicateIds,
+              },
+            },
+          });
+        }
+
+        await tx.conversation.update({
+          where: {
+            id: preferredConversation.id,
           },
           data: {
-            conversationId: preferredConversation.id,
+            phoneNumber: canonicalPhone,
+            contactName:
+              matchingClient?.name ??
+              preferredConversation.contactName ??
+              canonicalPhone,
+            unreadCount: group.reduce(
+              (total, conversation) => total + conversation.unreadCount,
+              0
+            ),
           },
         });
-      }
-
-      await tx.conversation.update({
-        where: {
-          id: preferredConversation.id,
-        },
-        data: {
-          phoneNumber: canonicalPhone,
-          contactName:
-            matchingClient?.name ??
-            preferredConversation.contactName ??
-            canonicalPhone,
-          unreadCount: group.reduce(
-            (total, conversation) => total + conversation.unreadCount,
-            0
-          ),
-        },
       });
-
-      if (duplicateIds.length > 0) {
-        await tx.conversation.deleteMany({
-          where: {
-            id: {
-              in: duplicateIds,
-            },
-          },
-        });
-      }
-    });
+    } catch (error) {
+      console.error("Failed to normalize inbox conversations for business", {
+        businessId,
+        lookupKey,
+        conversationIds: group.map((conversation) => conversation.id),
+        error,
+      });
+    }
   }
 }
