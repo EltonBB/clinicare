@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 
-import { normalizeConversationsForBusiness } from "@/lib/inbox-server";
 import { prisma } from "@/lib/prisma";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import {
@@ -246,8 +245,6 @@ export async function POST(request: Request) {
   }
 
   const normalizedPhone = resolved.normalizedPhone;
-
-  await normalizeConversationsForBusiness(resolved.businessId);
 
   await prisma.$transaction(async (tx) => {
     const conversation = await tx.conversation.upsert({

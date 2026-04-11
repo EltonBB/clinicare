@@ -9,7 +9,6 @@ import {
   type InboxConversation,
   type InboxViewModel,
 } from "@/lib/inbox";
-import { normalizeConversationsForBusiness } from "@/lib/inbox-server";
 import { sendTwilioWhatsAppMessage } from "@/lib/whatsapp";
 import { createClient } from "@/utils/supabase/server";
 
@@ -99,8 +98,6 @@ async function hydrateConversation(conversationId: string, businessId: string) {
 }
 
 async function loadInboxView(businessId: string) {
-  await normalizeConversationsForBusiness(businessId);
-
   const [clients, conversations] = await Promise.all([
     prisma.client.findMany({
       where: {

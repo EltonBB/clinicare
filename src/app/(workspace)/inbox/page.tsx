@@ -2,10 +2,7 @@ import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { InboxWorkspace } from "@/components/inbox/inbox-workspace";
 import { buildInboxViewFromWorkspace } from "@/lib/inbox";
 import { buildWhatsAppConnectionSummary } from "@/lib/settings";
-import {
-  ensureConversationForClient,
-  normalizeConversationsForBusiness,
-} from "@/lib/inbox-server";
+import { ensureConversationForClient } from "@/lib/inbox-server";
 import { prisma } from "@/lib/prisma";
 
 export default async function InboxPage({
@@ -18,8 +15,6 @@ export default async function InboxPage({
   });
   const { ownerName } = toBusinessIdentity(business, user);
   const { client } = await searchParams;
-
-  await normalizeConversationsForBusiness(business.id);
 
   const ensuredConversation =
     typeof client === "string" && client.length > 0
