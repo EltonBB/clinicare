@@ -166,10 +166,10 @@ export function PricingPlans() {
                   ) : null}
                 </div>
 
-                  <div className="mt-8 rounded-[1rem] border border-border/70 bg-white px-4 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
-                  <div className="flex items-end gap-2">
-                    <span className="text-[2.6rem] font-semibold tracking-tight text-foreground">
-                      ${priceFor(plan, billingCycle)}
+                  <div className="mt-8 rounded-[1rem] border border-border/70 bg-[linear-gradient(180deg,rgba(38,137,135,0.04),rgba(244,248,252,0.96)_42%)] px-4 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+                    <div className="flex items-end gap-2">
+                      <span className="text-[2.6rem] font-semibold tracking-tight text-foreground">
+                        ${priceFor(plan, billingCycle)}
                     </span>
                     <span className="pb-1 text-sm text-muted-foreground">
                       /month
@@ -212,12 +212,6 @@ export function PricingPlans() {
                     ))}
                   </div>
                 </div>
-
-                <div className="mt-6 rounded-[1rem] border border-border/70 bg-white px-4 py-4">
-                  <p className="text-sm leading-7 text-muted-foreground">
-                    {plan.benchmark}
-                  </p>
-                </div>
               </article>
             ))}
           </section>
@@ -249,7 +243,7 @@ export function PricingPlans() {
                         <Check className="size-4" />
                       </span>
                     ) : (
-                      <span className="flex size-7 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                      <span className="flex size-7 items-center justify-center rounded-full bg-destructive/10 text-destructive">
                         <X className="size-4" />
                       </span>
                     )}
@@ -260,7 +254,7 @@ export function PricingPlans() {
                         <Check className="size-4" />
                       </span>
                     ) : (
-                      <span className="flex size-7 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                      <span className="flex size-7 items-center justify-center rounded-full bg-destructive/10 text-destructive">
                         <X className="size-4" />
                       </span>
                     )}
