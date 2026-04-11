@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { ArrowUpRight, Plus, Trash2 } from "lucide-react";
 
 import {
+  prepareWhatsAppLiveConnectionAction,
   saveSettingsAction,
   sendWhatsAppTestAction,
 } from "@/app/(workspace)/settings/actions";
@@ -151,6 +152,9 @@ export function SettingsWorkspace({
   const [testStatus, setTestStatus] = useState("");
   const [testError, setTestError] = useState("");
   const [isSendingTest, startSendingTest] = useTransition();
+  const [connectionStatus, setConnectionStatus] = useState("");
+  const [connectionError, setConnectionError] = useState("");
+  const [isPreparingConnection, startPreparingConnection] = useTransition();
 
   function updateDay(day: WeekdayKey, patch: Partial<(typeof state.workingHours)[WeekdayKey]>) {
     setState((current) => ({
@@ -241,6 +245,35 @@ export function SettingsWorkspace({
 
       setTestError("");
       setTestStatus(result.message ?? "Sandbox test sent.");
+    });
+  }
+
+  function handlePrepareLiveConnection() {
+    startPreparingConnection(async () => {
+      const result = await prepareWhatsAppLiveConnectionAction();
+
+      if (result.connection) {
+        setState((current) => ({
+          ...current,
+          whatsapp: {
+            ...current.whatsapp,
+            connection: result.connection!,
+          },
+        }));
+      }
+
+      if (!result.ok) {
+        setConnectionError(
+          result.error ?? "We couldn't prepare the live WhatsApp connection."
+        );
+        setConnectionStatus("");
+        return;
+      }
+
+      setConnectionError("");
+      setConnectionStatus(
+        result.message ?? "Live clinic connection prepared."
+      );
     });
   }
 
@@ -465,7 +498,7 @@ export function SettingsWorkspace({
         <SettingsSection
           id="whatsapp-configuration"
           title="WhatsApp configuration"
-          description="Set the number and messaging behavior that the inbox and reminders surfaces use throughout the workspace."
+          description="Connect the clinic's real WhatsApp business number, control test mode separately, and keep reminders tied to the right sender."
         >
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
@@ -522,10 +555,9 @@ export function SettingsWorkspace({
               }
             />
           </div>
-          <div className="mt-4 grid gap-4 rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <div className="space-y-2">
-              <FieldLabel>Connection status</FieldLabel>
-              <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
+          <div className="mt-4 rounded-[1rem] border border-primary/12 bg-[linear-gradient(135deg,rgba(38,137,135,0.08),rgba(92,143,212,0.03)_48%,rgba(255,255,255,0.92))] px-5 py-5 shadow-[0_18px_40px_rgba(20,32,51,0.04)]">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
                     {state.whatsapp.connection.provider}
@@ -542,50 +574,119 @@ export function SettingsWorkspace({
                     {state.whatsapp.connection.statusLabel}
                   </span>
                 </div>
-                <p className="mt-3 text-sm font-medium text-foreground">
-                  {state.whatsapp.connection.readinessLabel}
-                </p>
-                <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                  {state.whatsapp.connection.detail}
-                </p>
-                {(state.whatsapp.connection.connectedAtLabel ||
-                  state.whatsapp.connection.lastSyncedLabel) ? (
-                  <div className="mt-3 space-y-1 text-xs uppercase tracking-[0.12em] text-muted-foreground">
-                    {state.whatsapp.connection.connectedAtLabel ? (
-                      <p>Connected {state.whatsapp.connection.connectedAtLabel}</p>
-                    ) : null}
-                    {state.whatsapp.connection.lastSyncedLabel ? (
-                      <p>Last sync {state.whatsapp.connection.lastSyncedLabel}</p>
-                    ) : null}
-                  </div>
-                ) : null}
+                <div className="space-y-1">
+                  <FieldLabel>Clinic sender readiness</FieldLabel>
+                  <p className="text-lg font-semibold text-foreground">
+                    {state.whatsapp.connection.readinessLabel}
+                  </p>
+                  <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
+                    {state.whatsapp.connection.detail}
+                  </p>
+                </div>
               </div>
+              <Button
+                variant="default"
+                className="h-11 rounded-[0.95rem] px-5"
+                onClick={handlePrepareLiveConnection}
+                disabled={isPreparingConnection}
+              >
+                {isPreparingConnection
+                  ? "Preparing connection..."
+                  : "Prepare live connection"}
+              </Button>
             </div>
 
-            <div className="space-y-2">
-              <FieldLabel>Active sender</FieldLabel>
+            {connectionError ? (
+              <div className="mt-4 rounded-[0.9rem] border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                {connectionError}
+              </div>
+            ) : null}
+            {!connectionError && connectionStatus ? (
+              <div className="mt-4 rounded-[0.9rem] border border-primary/20 bg-primary/8 px-3 py-2 text-sm text-primary">
+                {connectionStatus}
+              </div>
+            ) : null}
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  {state.whatsapp.connection.senderLabel}
+                  Requested clinic number
                 </p>
-                <p className="text-sm font-medium text-foreground">
-                  {state.whatsapp.connection.senderPhoneNumber || "No provider sender connected yet"}
-                </p>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  Requested clinic number:{" "}
+                <p className="mt-2 text-sm font-medium text-foreground">
                   {state.whatsapp.connection.requestedPhoneNumber || "Not set"}
                 </p>
               </div>
+              <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Active sender
+                </p>
+                <p className="mt-2 text-sm font-medium text-foreground">
+                  {state.whatsapp.connection.senderPhoneNumber || "Awaiting live sender assignment"}
+                </p>
+              </div>
+              <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Verification
+                </p>
+                <p className="mt-2 text-sm font-medium text-foreground">
+                  {state.whatsapp.connection.verificationLabel}
+                </p>
+                <p className="mt-2 text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                  Display name {state.whatsapp.connection.displayNameLabel}
+                </p>
+              </div>
+              <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Provider sender id
+                </p>
+                <p className="mt-2 break-all text-sm font-medium text-foreground">
+                  {state.whatsapp.connection.externalSenderId || "Pending provider registration"}
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="mt-4 rounded-[0.95rem] border border-primary/15 bg-primary/5 px-4 py-4">
-            <p className="text-sm font-medium text-foreground">Sandbox workflow</p>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              In test mode, messages send from the Twilio sandbox sender and replies flow back into
-              the Vela inbox while your ngrok tunnel and Twilio webhook stay active.
-            </p>
+
+            {(state.whatsapp.connection.onboardingStartedAtLabel ||
+              state.whatsapp.connection.connectedAtLabel ||
+              state.whatsapp.connection.lastSyncedLabel ||
+              state.whatsapp.connection.lastError) ? (
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                {state.whatsapp.connection.onboardingStartedAtLabel ? (
+                  <div className="rounded-[0.9rem] border border-border/80 bg-white/76 px-4 py-3 text-sm text-muted-foreground">
+                    Onboarding started{" "}
+                    <span className="font-medium text-foreground">
+                      {state.whatsapp.connection.onboardingStartedAtLabel}
+                    </span>
+                  </div>
+                ) : null}
+                {state.whatsapp.connection.connectedAtLabel ? (
+                  <div className="rounded-[0.9rem] border border-border/80 bg-white/76 px-4 py-3 text-sm text-muted-foreground">
+                    Connected{" "}
+                    <span className="font-medium text-foreground">
+                      {state.whatsapp.connection.connectedAtLabel}
+                    </span>
+                  </div>
+                ) : null}
+                {state.whatsapp.connection.lastSyncedLabel ? (
+                  <div className="rounded-[0.9rem] border border-border/80 bg-white/76 px-4 py-3 text-sm text-muted-foreground">
+                    Last sync{" "}
+                    <span className="font-medium text-foreground">
+                      {state.whatsapp.connection.lastSyncedLabel}
+                    </span>
+                  </div>
+                ) : null}
+                {state.whatsapp.connection.lastError ? (
+                  <div className="rounded-[0.9rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                    {state.whatsapp.connection.lastError}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           <div className="mt-4 rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
+            <p className="text-sm font-medium text-foreground">Sandbox test mode</p>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Keep sandbox isolated for internal testing. It sends from the Twilio sandbox sender and should not be confused with the clinic&apos;s live number.
+            </p>
             <div className="space-y-2">
               <FieldLabel>Sandbox test recipient</FieldLabel>
               <Input

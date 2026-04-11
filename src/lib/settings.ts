@@ -5,9 +5,11 @@ import type {
   ReminderSettings,
   StaffMember,
   WhatsAppConnection,
+  WhatsAppDisplayNameStatus,
   WhatsAppConnectionMode,
   WhatsAppConnectionStatus,
   WhatsAppProvider,
+  WhatsAppVerificationStatus,
 } from "@prisma/client";
 
 import { businessTypes, type BusinessType } from "@/lib/constants";
@@ -52,12 +54,17 @@ export type SettingsState = {
       status: WhatsAppConnectionStatus;
       requestedPhoneNumber: string;
       senderPhoneNumber: string;
+      externalSenderId: string;
       senderLabel: string;
       statusLabel: string;
       modeLabel: string;
       readinessLabel: string;
       detail: string;
+      verificationLabel: string;
+      displayNameLabel: string;
+      lastError: string;
       connectedAtLabel: string;
+      onboardingStartedAtLabel: string;
       lastSyncedLabel: string;
     };
   };
@@ -174,6 +181,28 @@ function formatConnectionTimestamp(value: Date | null | undefined) {
   return value ? format(value, "MMM d, yyyy 'at' h:mm a") : "";
 }
 
+function formatVerificationLabel(status: WhatsAppVerificationStatus) {
+  const labels: Record<WhatsAppVerificationStatus, string> = {
+    NOT_STARTED: "Not started",
+    PENDING: "Pending verification",
+    VERIFIED: "Verified",
+    FAILED: "Verification failed",
+  };
+
+  return labels[status];
+}
+
+function formatDisplayNameLabel(status: WhatsAppDisplayNameStatus) {
+  const labels: Record<WhatsAppDisplayNameStatus, string> = {
+    UNKNOWN: "Not submitted",
+    PENDING: "Pending review",
+    APPROVED: "Approved",
+    REJECTED: "Rejected",
+  };
+
+  return labels[status];
+}
+
 export function buildWhatsAppConnectionSummary(
   connection: WhatsAppConnection | null,
   fallbackRequestedPhoneNumber: string
@@ -184,7 +213,10 @@ export function buildWhatsAppConnectionSummary(
   const requestedPhoneNumber =
     connection?.requestedPhoneNumber ?? fallbackRequestedPhoneNumber;
   const senderPhoneNumber = connection?.senderPhoneNumber ?? "";
+  const externalSenderId = connection?.externalSenderId ?? "";
   const senderLabel = mode === "LIVE" ? "Live sender" : "Sandbox sender";
+  const verificationStatus = connection?.verificationStatus ?? "NOT_STARTED";
+  const displayNameStatus = connection?.displayNameStatus ?? "UNKNOWN";
 
   const statusLabelMap: Record<WhatsAppConnectionStatus, string> = {
     DISCONNECTED: "Disconnected",
@@ -213,6 +245,9 @@ export function buildWhatsAppConnectionSummary(
   if (mode === "SANDBOX" && status === "CONNECTED") {
     detail =
       "Twilio sandbox is connected. Messages send from the sandbox sender for testing, while your clinic number stays saved as the requested live sender.";
+  } else if (mode === "LIVE" && status === "PENDING_VERIFICATION") {
+    detail =
+      "The clinic number is saved for live onboarding. The next step is provider verification and sender approval before client messaging can go live.";
   } else if (mode === "SANDBOX" && status === "PENDING_VERIFICATION") {
     detail =
       "The sandbox sender is configured, but Vela still needs one successful sandbox test before this clinic is treated as message-ready.";
@@ -233,12 +268,17 @@ export function buildWhatsAppConnectionSummary(
     status,
     requestedPhoneNumber,
     senderPhoneNumber,
+    externalSenderId,
     senderLabel,
     statusLabel: statusLabelMap[status],
     modeLabel: modeLabelMap[mode],
     readinessLabel: readinessLabelMap[status],
     detail,
+    verificationLabel: formatVerificationLabel(verificationStatus),
+    displayNameLabel: formatDisplayNameLabel(displayNameStatus),
+    lastError: connection?.lastError ?? "",
     connectedAtLabel: formatConnectionTimestamp(connection?.connectedAt),
+    onboardingStartedAtLabel: formatConnectionTimestamp(connection?.onboardingStartedAt),
     lastSyncedLabel: formatConnectionTimestamp(connection?.lastSyncedAt),
   };
 }

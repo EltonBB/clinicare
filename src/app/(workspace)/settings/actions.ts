@@ -28,6 +28,13 @@ export type SendWhatsAppTestResult = {
   connection?: SettingsState["whatsapp"]["connection"];
 };
 
+export type PrepareWhatsAppLiveConnectionResult = {
+  ok: boolean;
+  error?: string;
+  message?: string;
+  connection?: SettingsState["whatsapp"]["connection"];
+};
+
 export async function saveSettingsAction(
   payload: SaveSettingsPayload
 ): Promise<SaveSettingsResult> {
@@ -65,6 +72,14 @@ export async function saveSettingsAction(
     select: {
       status: true,
       connectedAt: true,
+      mode: true,
+      senderPhoneNumber: true,
+      externalAccountId: true,
+      externalSenderId: true,
+      verificationStatus: true,
+      displayNameStatus: true,
+      onboardingStartedAt: true,
+      lastError: true,
     },
   });
 
@@ -83,10 +98,18 @@ export async function saveSettingsAction(
 
     const requestedPhoneNumber = payload.whatsapp.phoneNumber.trim() || null;
     const sandboxSender = process.env.TWILIO_WHATSAPP_FROM?.trim() ?? null;
-    const nextConnectionStatus = resolveWhatsAppConnectionStatus({
-      hasSender: Boolean(sandboxSender),
-      previousStatus: existingConnection?.status,
-    });
+    const nextMode = existingConnection?.mode ?? "SANDBOX";
+    const nextConnectionStatus =
+      nextMode === "LIVE"
+        ? requestedPhoneNumber
+          ? existingConnection?.status === "CONNECTED"
+            ? "CONNECTED"
+            : "PENDING_VERIFICATION"
+          : "DISCONNECTED"
+        : resolveWhatsAppConnectionStatus({
+            hasSender: Boolean(sandboxSender),
+            previousStatus: existingConnection?.status,
+          });
 
     await tx.whatsAppConnection.upsert({
       where: {
@@ -94,11 +117,40 @@ export async function saveSettingsAction(
       },
       update: {
         provider: "TWILIO",
-        mode: "SANDBOX",
+        mode: nextMode,
         status: nextConnectionStatus,
         requestedPhoneNumber,
-        senderPhoneNumber: sandboxSender,
-        externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
+        senderPhoneNumber:
+          nextMode === "LIVE"
+            ? existingConnection?.senderPhoneNumber ?? null
+            : sandboxSender,
+        externalAccountId:
+          nextMode === "LIVE"
+            ? existingConnection?.externalAccountId ?? null
+            : process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
+        externalSenderId:
+          nextMode === "LIVE" ? existingConnection?.externalSenderId ?? null : null,
+        verificationStatus:
+          nextMode === "LIVE"
+            ? requestedPhoneNumber
+              ? existingConnection?.verificationStatus ?? "PENDING"
+              : "NOT_STARTED"
+            : nextConnectionStatus === "CONNECTED"
+              ? "VERIFIED"
+              : "NOT_STARTED",
+        displayNameStatus:
+          nextMode === "LIVE"
+            ? requestedPhoneNumber
+              ? existingConnection?.displayNameStatus ?? "PENDING"
+              : "UNKNOWN"
+            : "UNKNOWN",
+        onboardingStartedAt:
+          nextMode === "LIVE"
+            ? requestedPhoneNumber
+              ? existingConnection?.onboardingStartedAt ?? new Date()
+              : null
+            : null,
+        lastError: nextConnectionStatus === "ERRORED" ? existingConnection?.lastError ?? null : null,
         connectedAt:
           nextConnectionStatus === "CONNECTED"
             ? existingConnection?.connectedAt ?? new Date()
@@ -108,11 +160,26 @@ export async function saveSettingsAction(
       create: {
         businessId: business.id,
         provider: "TWILIO",
-        mode: "SANDBOX",
+        mode: nextMode,
         status: nextConnectionStatus,
         requestedPhoneNumber,
-        senderPhoneNumber: sandboxSender,
-        externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
+        senderPhoneNumber: nextMode === "LIVE" ? null : sandboxSender,
+        externalAccountId:
+          nextMode === "LIVE" ? null : process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
+        externalSenderId: null,
+        verificationStatus:
+          nextMode === "LIVE"
+            ? requestedPhoneNumber
+              ? "PENDING"
+              : "NOT_STARTED"
+            : nextConnectionStatus === "CONNECTED"
+              ? "VERIFIED"
+              : "NOT_STARTED",
+        displayNameStatus:
+          nextMode === "LIVE" && requestedPhoneNumber ? "PENDING" : "UNKNOWN",
+        onboardingStartedAt:
+          nextMode === "LIVE" && requestedPhoneNumber ? new Date() : null,
+        lastError: null,
         connectedAt: nextConnectionStatus === "CONNECTED" ? new Date() : null,
         lastSyncedAt: new Date(),
       },
@@ -325,6 +392,11 @@ export async function sendWhatsAppTestAction(
         status: "CONNECTED",
         senderPhoneNumber: process.env.TWILIO_WHATSAPP_FROM?.trim() ?? null,
         externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
+        externalSenderId: null,
+        verificationStatus: "VERIFIED",
+        displayNameStatus: "UNKNOWN",
+        onboardingStartedAt: null,
+        lastError: null,
         connectedAt: new Date(),
         lastSyncedAt: new Date(),
       },
@@ -336,6 +408,11 @@ export async function sendWhatsAppTestAction(
         requestedPhoneNumber: business.whatsappNumber,
         senderPhoneNumber: process.env.TWILIO_WHATSAPP_FROM?.trim() ?? null,
         externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
+        externalSenderId: null,
+        verificationStatus: "VERIFIED",
+        displayNameStatus: "UNKNOWN",
+        onboardingStartedAt: null,
+        lastError: null,
         connectedAt: new Date(),
         lastSyncedAt: new Date(),
       },
@@ -362,6 +439,14 @@ export async function sendWhatsAppTestAction(
         status: "ERRORED",
         senderPhoneNumber: process.env.TWILIO_WHATSAPP_FROM?.trim() ?? null,
         externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
+        externalSenderId: null,
+        verificationStatus: "FAILED",
+        displayNameStatus: "UNKNOWN",
+        onboardingStartedAt: null,
+        lastError:
+          error instanceof Error
+            ? error.message
+            : "We couldn't send the WhatsApp sandbox test.",
         lastSyncedAt: new Date(),
       },
       create: {
@@ -372,6 +457,14 @@ export async function sendWhatsAppTestAction(
         requestedPhoneNumber: business.whatsappNumber,
         senderPhoneNumber: process.env.TWILIO_WHATSAPP_FROM?.trim() ?? null,
         externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
+        externalSenderId: null,
+        verificationStatus: "FAILED",
+        displayNameStatus: "UNKNOWN",
+        onboardingStartedAt: null,
+        lastError:
+          error instanceof Error
+            ? error.message
+            : "We couldn't send the WhatsApp sandbox test.",
         lastSyncedAt: new Date(),
       },
     });
@@ -388,4 +481,80 @@ export async function sendWhatsAppTestAction(
       ),
     };
   }
+}
+
+export async function prepareWhatsAppLiveConnectionAction(): Promise<PrepareWhatsAppLiveConnectionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      error: "Your session expired. Log in again to update the WhatsApp connection.",
+    };
+  }
+
+  const business = await requireCurrentBusiness(user, {
+    missingBusinessRedirect: "/onboarding",
+  });
+
+  const requestedPhoneNumber = business.whatsappNumber?.trim() ?? "";
+
+  if (!requestedPhoneNumber) {
+    return {
+      ok: false,
+      error: "Save the clinic WhatsApp number first before preparing a live connection.",
+    };
+  }
+
+  const connection = await prisma.whatsAppConnection.upsert({
+    where: {
+      businessId: business.id,
+    },
+    update: {
+      provider: "TWILIO",
+      mode: "LIVE",
+      status: "PENDING_VERIFICATION",
+      requestedPhoneNumber,
+      senderPhoneNumber: null,
+      externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
+      externalSenderId: null,
+      verificationStatus: "PENDING",
+      displayNameStatus: "PENDING",
+      onboardingStartedAt: new Date(),
+      lastError: null,
+      connectedAt: null,
+      lastSyncedAt: new Date(),
+    },
+    create: {
+      businessId: business.id,
+      provider: "TWILIO",
+      mode: "LIVE",
+      status: "PENDING_VERIFICATION",
+      requestedPhoneNumber,
+      senderPhoneNumber: null,
+      externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
+      externalSenderId: null,
+      verificationStatus: "PENDING",
+      displayNameStatus: "PENDING",
+      onboardingStartedAt: new Date(),
+      lastError: null,
+      connectedAt: null,
+      lastSyncedAt: new Date(),
+    },
+  });
+
+  revalidatePath("/settings");
+
+  return {
+    ok: true,
+    message:
+      "Live clinic WhatsApp connection prepared. The next step is provider verification and sender approval.",
+    connection: buildWhatsAppConnectionSummary(
+      connection,
+      business.whatsappNumber ?? ""
+    ),
+  };
 }

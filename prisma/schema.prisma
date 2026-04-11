@@ -169,6 +169,11 @@ model WhatsAppConnection {
   requestedPhoneNumber String?
   senderPhoneNumber    String?
   externalAccountId    String?
+  externalSenderId     String?
+  verificationStatus   WhatsAppVerificationStatus @default(NOT_STARTED)
+  displayNameStatus    WhatsAppDisplayNameStatus  @default(UNKNOWN)
+  onboardingStartedAt  DateTime?
+  lastError            String?
   connectedAt          DateTime?
   lastSyncedAt         DateTime?
   createdAt            DateTime               @default(now())
@@ -244,6 +249,20 @@ enum WhatsAppConnectionStatus {
   PENDING_VERIFICATION
   CONNECTED
   ERRORED
+}
+
+enum WhatsAppVerificationStatus {
+  NOT_STARTED
+  PENDING
+  VERIFIED
+  FAILED
+}
+
+enum WhatsAppDisplayNameStatus {
+  UNKNOWN
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum AppointmentReminderType {
