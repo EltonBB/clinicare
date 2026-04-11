@@ -717,14 +717,6 @@ export function SettingsWorkspace({
                 <p className="max-w-3xl text-sm leading-7 text-muted-foreground">
                   {state.billing.note}
                 </p>
-                <div className="rounded-[0.95rem] border border-white/70 bg-white/84 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Next step
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-foreground/84">
-                    {state.billing.nextStep}
-                  </p>
-                </div>
               </div>
             </div>
 
@@ -762,14 +754,6 @@ export function SettingsWorkspace({
                   View pricing
                   <ArrowUpRight className="size-4" />
                 </Link>
-              </div>
-              <div className="mt-5 rounded-[0.95rem] border border-border/80 bg-muted/30 px-4 py-4">
-                <p className="text-sm font-medium text-foreground">Before live payments</p>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  Payment method collection, invoices, and self-serve subscription
-                  management will be added when the live billing provider is
-                  connected.
-                </p>
               </div>
             </div>
           </div>
