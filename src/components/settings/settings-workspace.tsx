@@ -698,68 +698,52 @@ export function SettingsWorkspace({
           title="Billing"
           description="Review the current plan, see what is locked, and use the prepared upgrade path while live payments are still pending."
         >
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-            <div className="space-y-4">
-              <div className="overflow-hidden rounded-[1rem] border border-primary/12 bg-[linear-gradient(135deg,rgba(38,137,135,0.08),rgba(92,143,212,0.03)_48%,rgba(255,255,255,0.92))] shadow-[0_18px_40px_rgba(20,32,51,0.04)]">
-                <div className="flex flex-col gap-5 px-5 py-5 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                        Current plan
-                      </p>
-                      <div className="flex items-center gap-3">
-                        <p className="text-2xl font-semibold text-foreground">
-                          {state.billing.planName}
-                        </p>
-                        <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
-                          {state.billing.statusLabel}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
-                      {state.billing.note}
+          <div className="space-y-4">
+            <div className="overflow-hidden rounded-[1rem] border border-primary/12 bg-[linear-gradient(135deg,rgba(38,137,135,0.08),rgba(92,143,212,0.03)_48%,rgba(255,255,255,0.92))] shadow-[0_18px_40px_rgba(20,32,51,0.04)]">
+              <div className="space-y-5 px-5 py-5">
+                <div className="space-y-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Billing plan
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <p className="text-2xl font-semibold text-foreground">
+                      {state.billing.planName}
                     </p>
-                  </div>
-
-                  <div className="min-w-[220px] rounded-[0.95rem] border border-white/70 bg-white/84 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                      Next step
-                    </p>
-                    <p className="mt-2 text-sm leading-6 text-foreground/84">
-                      {state.billing.nextStep}
-                    </p>
+                    <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+                      {state.billing.statusLabel}
+                    </span>
                   </div>
                 </div>
-              </div>
-
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
-                <div className="rounded-[0.95rem] border border-border/80 bg-white/88 px-4 py-4">
-                  <FieldLabel>Locked on Basic</FieldLabel>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {state.billing.lockedFeatures.map((feature) => (
-                      <span
-                        key={feature}
-                        className="rounded-full border border-border/80 bg-muted/35 px-3 py-1 text-xs font-medium text-muted-foreground"
-                      >
-                        {feature}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-[0.95rem] border border-border/80 bg-muted/35 px-4 py-4">
-                  <FieldLabel>Billing rollout</FieldLabel>
-                  <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                    Payment method collection, invoices, and self-serve subscription
-                    management will be added when the live billing provider is
-                    connected.
+                <p className="max-w-3xl text-sm leading-7 text-muted-foreground">
+                  {state.billing.note}
+                </p>
+                <div className="rounded-[0.95rem] border border-white/70 bg-white/84 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Next step
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-foreground/84">
+                    {state.billing.nextStep}
                   </p>
                 </div>
               </div>
             </div>
 
+            <div className="rounded-[0.95rem] border border-border/80 bg-white/88 px-4 py-4">
+              <FieldLabel>Locked on Basic</FieldLabel>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {state.billing.lockedFeatures.map((feature) => (
+                  <span
+                    key={feature}
+                    className="rounded-full border border-border/80 bg-muted/35 px-3 py-1 text-xs font-medium text-muted-foreground"
+                  >
+                    {feature}
+                  </span>
+                ))}
+              </div>
+            </div>
+
             <div className="rounded-[1rem] border border-border/80 bg-white/88 px-5 py-5 shadow-[0_16px_34px_rgba(20,32,51,0.04)]">
-              <FieldLabel>Billing actions</FieldLabel>
+              <FieldLabel>Plan upgrade</FieldLabel>
               <div className="mt-4 space-y-3">
                 <UpgradeModalTrigger
                   label={state.billing.ctaLabel}
@@ -782,8 +766,9 @@ export function SettingsWorkspace({
               <div className="mt-5 rounded-[0.95rem] border border-border/80 bg-muted/30 px-4 py-4">
                 <p className="text-sm font-medium text-foreground">Before live payments</p>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  Use this path to prepare the workspace for Pro access, review what
-                  unlocks, and keep the billing structure ready for checkout later.
+                  Payment method collection, invoices, and self-serve subscription
+                  management will be added when the live billing provider is
+                  connected.
                 </p>
               </div>
             </div>

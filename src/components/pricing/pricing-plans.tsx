@@ -100,17 +100,17 @@ export function PricingPlans() {
               Clear pricing for every stage of growth
             </h1>
             <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base">
-              Start with the core operating system, add team structure when you
-              need it, and unlock reporting plus premium workflow tools when
-              the business is ready to scale.
+              Start with the core operating system, then move into Pro when the
+              clinic needs reporting, premium workflow controls, and stronger team
+              structure.
             </p>
 
-            <div className="mt-8 inline-flex items-center gap-2 rounded-full border border-border/80 bg-white/76 p-1 shadow-[0_16px_32px_rgba(20,32,51,0.05)] backdrop-blur-sm">
+            <div className="mt-8 inline-flex items-center gap-2 rounded-[0.9rem] border border-border/80 bg-white/76 p-1 shadow-[0_16px_32px_rgba(20,32,51,0.05)] backdrop-blur-sm">
               <button
                 type="button"
                 onClick={() => setBillingCycle("monthly")}
                 className={cn(
-                  "rounded-full px-4 py-2 text-sm font-medium transition-colors",
+                  "rounded-[0.75rem] px-4 py-2 text-sm font-medium transition-colors",
                   billingCycle === "monthly"
                     ? "bg-primary text-primary-foreground shadow-[0_12px_28px_rgba(20,32,51,0.08)]"
                     : "text-muted-foreground"
@@ -122,7 +122,7 @@ export function PricingPlans() {
                 type="button"
                 onClick={() => setBillingCycle("annual")}
                 className={cn(
-                  "rounded-full px-4 py-2 text-sm font-medium transition-colors",
+                  "rounded-[0.75rem] px-4 py-2 text-sm font-medium transition-colors",
                   billingCycle === "annual"
                     ? "bg-primary text-primary-foreground shadow-[0_12px_28px_rgba(20,32,51,0.08)]"
                     : "text-muted-foreground"
@@ -139,9 +139,9 @@ export function PricingPlans() {
               <article
                 key={plan.name}
                 className={cn(
-                  "relative flex h-full flex-col overflow-hidden rounded-[1.35rem] border border-border/80 bg-white/82 px-6 py-6 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-1 hover:shadow-[0_30px_64px_rgba(20,32,51,0.08)]",
+                  "relative flex h-full flex-col overflow-hidden rounded-[1.2rem] border border-border/80 bg-[#f7f9fc] px-6 py-6 shadow-[0_16px_38px_rgba(20,32,51,0.04)] transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-1 hover:shadow-[0_24px_54px_rgba(20,32,51,0.07)]",
                   plan.highlighted &&
-                    "border-primary/35 bg-[linear-gradient(180deg,rgba(38,137,135,0.06),rgba(255,255,255,0.92)_34%)] ring-1 ring-primary/15"
+                    "border-primary/35 bg-[linear-gradient(180deg,rgba(38,137,135,0.05),rgba(247,249,252,0.98)_34%)] ring-1 ring-primary/15"
                 )}
               >
                 {plan.highlighted ? (
@@ -166,7 +166,7 @@ export function PricingPlans() {
                   ) : null}
                 </div>
 
-                <div className="mt-8 rounded-[1rem] border border-border/70 bg-white/74 px-4 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+                  <div className="mt-8 rounded-[1rem] border border-border/70 bg-white px-4 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
                   <div className="flex items-end gap-2">
                     <span className="text-[2.6rem] font-semibold tracking-tight text-foreground">
                       ${priceFor(plan, billingCycle)}
@@ -213,7 +213,7 @@ export function PricingPlans() {
                   </div>
                 </div>
 
-                <div className="mt-6 rounded-[1rem] border border-border/70 bg-muted/20 px-4 py-4">
+                <div className="mt-6 rounded-[1rem] border border-border/70 bg-white px-4 py-4">
                   <p className="text-sm leading-7 text-muted-foreground">
                     {plan.benchmark}
                   </p>
@@ -222,7 +222,35 @@ export function PricingPlans() {
             ))}
           </section>
 
-          <section className="section-reveal mt-8 grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+          <section className="section-reveal mt-10 overflow-hidden rounded-[1.2rem] border border-border/80 bg-white shadow-[0_20px_46px_rgba(20,32,51,0.05)]">
+            <div className="grid grid-cols-[minmax(0,1.2fr)_180px_180px] border-b border-border/75 bg-[#f8fafc] px-6 py-4 text-sm font-semibold text-foreground">
+              <p>Features</p>
+              <p className="text-center">Basic</p>
+              <p className="text-center">Pro</p>
+            </div>
+            <div className="divide-y divide-border/70">
+              {[
+                ["Appointment scheduling", "Included", "Included"],
+                ["Unified client profiles", "Included", "Included"],
+                ["Messaging inbox", "Included", "Included"],
+                ["Automated reminders", "Included", "Included"],
+                ["Staff management", "Limited", "Expanded"],
+                ["Reporting", "Locked", "Included"],
+                ["Premium workflow surfaces", "Locked", "Included"],
+              ].map(([feature, basic, pro]) => (
+                <div
+                  key={feature}
+                  className="grid grid-cols-[minmax(0,1.2fr)_180px_180px] items-center px-6 py-4 text-sm"
+                >
+                  <p className="font-medium text-foreground">{feature}</p>
+                  <p className="text-center text-muted-foreground">{basic}</p>
+                  <p className="text-center text-muted-foreground">{pro}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="section-reveal mt-8 grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
             <div className="rounded-[1.15rem] border border-border/80 bg-white/80 px-6 py-6 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -233,7 +261,7 @@ export function PricingPlans() {
                     Billing rollout status
                   </h2>
                   <p className="text-sm leading-7 text-muted-foreground">
-                    The billing structure is now in place across Vela. Plans, locked
+                    The billing structure is in place across Vela. Plans, locked
                     features, and upgrade flows are ready, while live payment
                     collection will be connected later.
                   </p>
