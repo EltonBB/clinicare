@@ -61,6 +61,8 @@ async function resolveInboundConversation(fromPhone: string, toPhone: string) {
     },
     select: {
       businessId: true,
+      mode: true,
+      requestedPhoneNumber: true,
       senderPhoneNumber: true,
     },
   });
@@ -128,6 +130,24 @@ async function resolveInboundConversation(fromPhone: string, toPhone: string) {
   );
 
   if (!matchingClient) {
+    const requestedClinicConnection = connectedConnections.find(
+      (connection) =>
+        connection.businessId &&
+        connection.mode === "SANDBOX" &&
+        phoneLookupKey(connection.requestedPhoneNumber ?? "") ===
+          phoneLookupKey(normalizedPhone)
+    );
+
+    if (requestedClinicConnection) {
+      return {
+        businessId: requestedClinicConnection.businessId,
+        conversationId: null,
+        normalizedPhone,
+        clientId: null,
+        contactName: normalizedPhone,
+      };
+    }
+
     if (candidateBusinessIds.length === 1) {
       return {
         businessId: candidateBusinessIds[0],
