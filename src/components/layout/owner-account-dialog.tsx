@@ -132,43 +132,54 @@ export function OwnerAccountDialog({
               </div>
             ) : null}
 
-            <div className="surface-soft grid gap-4 rounded-[1.1rem] p-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <FieldLabel>Name</FieldLabel>
-                <Input
-                  name="fullName"
-                  defaultValue={values.fullName}
-                  aria-invalid={Boolean(state.fieldErrors?.fullName)}
-                  className={cn(
-                    "h-11 rounded-[0.9rem] bg-white/84",
-                    state.fieldErrors?.fullName && "border-destructive"
-                  )}
-                />
-                <FieldError message={state.fieldErrors?.fullName} />
+            <div className="surface-soft space-y-4 rounded-[1.1rem] p-5">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-foreground">Profile</p>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  Keep the account owner details current so messages, confirmations,
+                  and ownership settings stay aligned.
+                </p>
               </div>
-              <div className="space-y-2">
-                <FieldLabel>Phone</FieldLabel>
-                <Input
-                  name="phone"
-                  defaultValue={values.phone}
-                  aria-invalid={Boolean(state.fieldErrors?.phone)}
-                  className={cn(
-                    "h-11 rounded-[0.9rem] bg-white/84",
-                    state.fieldErrors?.phone && "border-destructive"
-                  )}
-                />
-                <FieldError message={state.fieldErrors?.phone} />
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <FieldLabel>Name</FieldLabel>
+                  <Input
+                    name="fullName"
+                    defaultValue={values.fullName}
+                    aria-invalid={Boolean(state.fieldErrors?.fullName)}
+                    className={cn(
+                      "h-11 rounded-[0.9rem] bg-white/84",
+                      state.fieldErrors?.fullName && "border-destructive"
+                    )}
+                  />
+                  <FieldError message={state.fieldErrors?.fullName} />
+                </div>
+                <div className="space-y-2">
+                  <FieldLabel>Phone</FieldLabel>
+                  <Input
+                    name="phone"
+                    defaultValue={values.phone}
+                    aria-invalid={Boolean(state.fieldErrors?.phone)}
+                    className={cn(
+                      "h-11 rounded-[0.9rem] bg-white/84",
+                      state.fieldErrors?.phone && "border-destructive"
+                    )}
+                  />
+                  <FieldError message={state.fieldErrors?.phone} />
+                </div>
               </div>
             </div>
 
-            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-              <div className="surface-soft space-y-3 rounded-[1.1rem] p-4">
+            <div className="space-y-5">
+              <div className="surface-soft space-y-4 rounded-[1.1rem] p-5">
                 <div className="space-y-1">
                   <p className="text-sm font-semibold text-foreground">
                     Contact details
                   </p>
                   <p className="text-sm leading-6 text-muted-foreground">
-                    Update the email and phone tied to the clinic owner account.
+                    Update the email tied to the clinic owner account in a dedicated
+                    section so it stays separate from security changes.
                   </p>
                 </div>
 
@@ -188,13 +199,11 @@ export function OwnerAccountDialog({
                 </div>
               </div>
 
-              <div className="surface-soft space-y-3 rounded-[1.1rem] p-4">
+              <div className="surface-soft space-y-4 rounded-[1.1rem] p-5">
                 <div className="space-y-1">
-                  <p className="text-sm font-semibold text-foreground">
-                    Security
-                  </p>
+                  <p className="text-sm font-semibold text-foreground">Security</p>
                   <p className="text-sm leading-6 text-muted-foreground">
-                    Set a fresh password when you need to rotate account access.
+                    Rotate account access separately when you need a fresh password.
                   </p>
                 </div>
 

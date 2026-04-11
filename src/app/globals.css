@@ -88,6 +88,7 @@
   html {
     @apply font-sans;
     color-scheme: light;
+    scroll-behavior: smooth;
   }
   body {
     @apply bg-background text-foreground;
@@ -187,6 +188,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
   .section-reveal,
   .section-reveal-delayed {
     animation: none;

@@ -139,12 +139,19 @@ export function PricingPlans() {
               <article
                 key={plan.name}
                 className={cn(
-                  "flex h-full flex-col rounded-[1.2rem] border border-border/80 bg-white/78 px-5 py-5 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-1 hover:shadow-[0_30px_64px_rgba(20,32,51,0.08)]",
-                  plan.highlighted && "border-primary/35 ring-1 ring-primary/15"
+                  "relative flex h-full flex-col overflow-hidden rounded-[1.35rem] border border-border/80 bg-white/82 px-6 py-6 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-1 hover:shadow-[0_30px_64px_rgba(20,32,51,0.08)]",
+                  plan.highlighted &&
+                    "border-primary/35 bg-[linear-gradient(180deg,rgba(38,137,135,0.06),rgba(255,255,255,0.92)_34%)] ring-1 ring-primary/15"
                 )}
               >
+                {plan.highlighted ? (
+                  <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(38,137,135,0.55),transparent)]" />
+                ) : null}
                 <div className="flex items-start justify-between gap-3">
                   <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      {plan.highlighted ? "Growth plan" : "Core plan"}
+                    </p>
                     <h2 className="text-2xl font-semibold text-foreground">
                       {plan.name}
                     </h2>
@@ -159,9 +166,9 @@ export function PricingPlans() {
                   ) : null}
                 </div>
 
-                <div className="mt-8 border-t border-border/75 pt-6">
+                <div className="mt-8 rounded-[1rem] border border-border/70 bg-white/74 px-4 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
                   <div className="flex items-end gap-2">
-                    <span className="text-4xl font-semibold tracking-tight text-foreground">
+                    <span className="text-[2.6rem] font-semibold tracking-tight text-foreground">
                       ${priceFor(plan, billingCycle)}
                     </span>
                     <span className="pb-1 text-sm text-muted-foreground">
@@ -174,20 +181,19 @@ export function PricingPlans() {
                   <p className="mt-1 text-sm font-medium text-primary">
                     {plan.yearlySavings}
                   </p>
+                  <Link
+                    href={plan.highlighted ? "/settings" : "/dashboard"}
+                    className={cn(
+                      buttonVariants({
+                        variant: plan.highlighted ? "default" : "outline",
+                        size: "lg",
+                      }),
+                      "mt-5 h-11 w-full justify-center rounded-[0.95rem]"
+                    )}
+                  >
+                    {plan.highlighted ? "Prepare Pro upgrade" : "Current core plan"}
+                  </Link>
                 </div>
-
-                <Link
-                  href={plan.highlighted ? "/settings" : "/dashboard"}
-                  className={cn(
-                    buttonVariants({
-                      variant: plan.highlighted ? "default" : "outline",
-                      size: "lg",
-                    }),
-                    "mt-6 h-11 w-full justify-center rounded-[0.9rem]"
-                  )}
-                >
-                  {plan.highlighted ? "Prepare Pro upgrade" : "Current core plan"}
-                </Link>
 
                 <div className="mt-6 flex-1 border-t border-border/75 pt-6">
                   <p className="text-sm font-medium text-foreground">
@@ -207,7 +213,7 @@ export function PricingPlans() {
                   </div>
                 </div>
 
-                <div className="mt-6 border-t border-border/75 pt-5">
+                <div className="mt-6 rounded-[1rem] border border-border/70 bg-muted/20 px-4 py-4">
                   <p className="text-sm leading-7 text-muted-foreground">
                     {plan.benchmark}
                   </p>

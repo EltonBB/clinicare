@@ -43,14 +43,15 @@ export function UpgradeModalTrigger({
       </DialogTrigger>
       <DialogContent
         className={cn(
-          "max-w-md overflow-hidden rounded-[1rem] border border-border bg-card p-0 shadow-[0_24px_80px_rgba(15,23,42,0.12)]",
+          "max-w-md overflow-hidden rounded-[1.15rem] border border-border bg-card p-0 shadow-[0_24px_80px_rgba(15,23,42,0.12)]",
           className
         )}
       >
-        <div className="space-y-6 px-6 py-6">
+        <div className="space-y-7 bg-[linear-gradient(180deg,rgba(92,143,212,0.05),transparent_38%)] px-6 py-6">
           <DialogHeader className="items-center text-center">
-            <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/12 text-primary">
-              <Lock className="size-6" />
+            <div className="relative flex size-16 items-center justify-center rounded-[1.35rem] bg-primary/12 text-primary">
+              <div className="absolute inset-0 rounded-[1.35rem] bg-primary/8 blur-[18px] motion-safe:animate-pulse" />
+              <Lock className="relative z-10 size-6" />
             </div>
             <DialogTitle className="mt-4 text-2xl font-semibold text-foreground">
               {title}
@@ -60,7 +61,7 @@ export function UpgradeModalTrigger({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="rounded-[0.9rem] border border-border bg-muted/40 px-4 py-4">
+          <div className="rounded-[1rem] border border-border/80 bg-white/82 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
             <div className="flex items-start gap-3">
               <div className="mt-0.5 flex size-8 items-center justify-center rounded-full bg-primary/10 text-primary">
                 <Sparkles className="size-4" />
@@ -76,11 +77,11 @@ export function UpgradeModalTrigger({
             </div>
           </div>
         </div>
-        <DialogFooter className="border-t border-border bg-muted/20 px-6 py-4">
+        <DialogFooter className="border-t border-border bg-muted/15 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
           <DialogClose
             className={cn(
               buttonVariants({ variant: "outline", size: "default" }),
-              "rounded-[0.75rem]"
+              "h-11 min-w-[132px] rounded-[0.85rem] bg-white/84 px-5"
             )}
           >
             Maybe later
@@ -89,7 +90,7 @@ export function UpgradeModalTrigger({
             href="/pricing"
             className={cn(
               buttonVariants({ variant: "default", size: "default" }),
-              "rounded-[0.75rem] transition-transform duration-200 ease-out motion-safe:hover:-translate-y-0.5 motion-safe:hover:brightness-[1.02] motion-safe:active:translate-y-0 motion-safe:active:scale-[0.98]"
+              "h-11 min-w-[160px] rounded-[0.85rem] px-5 transition-transform duration-200 ease-out motion-safe:hover:-translate-y-0.5 motion-safe:hover:brightness-[1.02] motion-safe:active:translate-y-0 motion-safe:active:scale-[0.98]"
             )}
           >
             Upgrade now

@@ -91,16 +91,21 @@ function NativeSelect({
 }
 
 function SettingsSection({
+  id,
   title,
   description,
   children,
 }: {
+  id: string;
   title: string;
   description: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-[1.05rem] border border-border/80 bg-white/94 px-5 py-5 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
+    <section
+      id={id}
+      className="scroll-mt-24 rounded-[1.05rem] border border-border/80 bg-white/94 px-5 py-5 shadow-[0_10px_24px_rgba(20,32,51,0.032)]"
+    >
       <div className="space-y-1">
         <h2 className="text-xl font-semibold text-foreground">{title}</h2>
         <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
@@ -129,6 +134,15 @@ export function SettingsWorkspace({
   flashMessage = "",
   testRecipientDefault = "",
 }: SettingsWorkspaceProps) {
+  const sectionLinks = [
+    { href: "#business-details", label: "Business details" },
+    { href: "#working-hours", label: "Working hours" },
+    { href: "#staff-management", label: "Staff management" },
+    { href: "#whatsapp-configuration", label: "WhatsApp" },
+    { href: "#reminders", label: "Reminders" },
+    { href: "#billing", label: "Billing" },
+  ] as const;
+
   const [state, setState] = useState(initialState);
   const [message, setMessage] = useState(flashMessage);
   const [errorMessage, setErrorMessage] = useState("");
@@ -234,17 +248,14 @@ export function SettingsWorkspace({
     <div className="grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)]">
       <aside className="hidden xl:block">
         <div className="sticky top-24 space-y-2 rounded-[1.05rem] border border-border/80 bg-white/94 p-4 shadow-[0_10px_22px_rgba(20,32,51,0.03)]">
-          {[
-            "Business details",
-            "Working hours",
-            "Staff management",
-            "WhatsApp",
-            "Reminders",
-            "Billing",
-          ].map((label) => (
-            <div key={label} className="text-sm text-muted-foreground">
-              {label}
-            </div>
+          {sectionLinks.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="block rounded-[0.85rem] px-3 py-2.5 text-sm text-muted-foreground transition-[background-color,color,transform] duration-200 hover:bg-muted/55 hover:text-foreground motion-safe:hover:translate-x-0.5"
+            >
+              {item.label}
+            </Link>
           ))}
         </div>
       </aside>
@@ -288,6 +299,7 @@ export function SettingsWorkspace({
         ) : null}
 
         <SettingsSection
+          id="business-details"
           title="Business details"
           description="Keep your workspace identity current so appointments, messages, and reminders reflect the right business context."
         >
@@ -352,6 +364,7 @@ export function SettingsWorkspace({
         </SettingsSection>
 
         <SettingsSection
+          id="working-hours"
           title="Working hours"
           description="These hours drive booking availability and shape the default calendar behavior across the workspace."
         >
@@ -403,6 +416,7 @@ export function SettingsWorkspace({
         </SettingsSection>
 
         <SettingsSection
+          id="staff-management"
           title="Staff management"
           description="Keep staff management simple for MVP: add or remove people so bookings and messages have an owner."
         >
@@ -449,6 +463,7 @@ export function SettingsWorkspace({
         </SettingsSection>
 
         <SettingsSection
+          id="whatsapp-configuration"
           title="WhatsApp configuration"
           description="Set the number and messaging behavior that the inbox and reminders surfaces use throughout the workspace."
         >
@@ -606,6 +621,7 @@ export function SettingsWorkspace({
         </SettingsSection>
 
         <SettingsSection
+          id="reminders"
           title="Reminders"
           description="Define the reminder cadence and shared template that appointments can reuse across the MVP workflow."
         >
@@ -678,69 +694,98 @@ export function SettingsWorkspace({
         </SettingsSection>
 
         <SettingsSection
+          id="billing"
           title="Billing"
           description="Review the current plan, see what is locked, and use the prepared upgrade path while live payments are still pending."
         >
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,0.9fr)]">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
             <div className="space-y-4">
-              <div className="rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">
-                      {state.billing.planName}
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
+              <div className="overflow-hidden rounded-[1rem] border border-primary/12 bg-[linear-gradient(135deg,rgba(38,137,135,0.08),rgba(92,143,212,0.03)_48%,rgba(255,255,255,0.92))] shadow-[0_18px_40px_rgba(20,32,51,0.04)]">
+                <div className="flex flex-col gap-5 px-5 py-5 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        Current plan
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <p className="text-2xl font-semibold text-foreground">
+                          {state.billing.planName}
+                        </p>
+                        <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+                          {state.billing.statusLabel}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
                       {state.billing.note}
                     </p>
                   </div>
-                  <p className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
-                    {state.billing.statusLabel}
-                  </p>
+
+                  <div className="min-w-[220px] rounded-[0.95rem] border border-white/70 bg-white/84 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      Next step
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-foreground/84">
+                      {state.billing.nextStep}
+                    </p>
+                  </div>
                 </div>
-                <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                  {state.billing.nextStep}
-                </p>
               </div>
 
-              <div className="rounded-[0.95rem] border border-border/80 bg-white/88 px-4 py-4">
-                <FieldLabel>Locked on Basic</FieldLabel>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {state.billing.lockedFeatures.map((feature) => (
-                    <span
-                      key={feature}
-                      className="rounded-full border border-border/80 bg-muted/35 px-3 py-1 text-xs font-medium text-muted-foreground"
-                    >
-                      {feature}
-                    </span>
-                  ))}
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
+                <div className="rounded-[0.95rem] border border-border/80 bg-white/88 px-4 py-4">
+                  <FieldLabel>Locked on Basic</FieldLabel>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {state.billing.lockedFeatures.map((feature) => (
+                      <span
+                        key={feature}
+                        className="rounded-full border border-border/80 bg-muted/35 px-3 py-1 text-xs font-medium text-muted-foreground"
+                      >
+                        {feature}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-[0.95rem] border border-border/80 bg-muted/35 px-4 py-4">
+                  <FieldLabel>Billing rollout</FieldLabel>
+                  <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                    Payment method collection, invoices, and self-serve subscription
+                    management will be added when the live billing provider is
+                    connected.
+                  </p>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-[0.95rem] border border-border/80 bg-white/88 px-4 py-4">
+            <div className="rounded-[1rem] border border-border/80 bg-white/88 px-5 py-5 shadow-[0_16px_34px_rgba(20,32,51,0.04)]">
               <FieldLabel>Billing actions</FieldLabel>
-              <div className="mt-3 space-y-3">
+              <div className="mt-4 space-y-3">
                 <UpgradeModalTrigger
                   label={state.billing.ctaLabel}
                   triggerClassName={cn(
                     buttonVariants({ variant: "default", size: "lg" }),
-                    "h-11 w-full rounded-[0.9rem] justify-center"
+                    "h-12 w-full rounded-[0.95rem] justify-center"
                   )}
                 />
                 <Link
                   href="/pricing"
                   className={cn(
                     buttonVariants({ variant: "outline", size: "lg" }),
-                    "h-11 w-full rounded-[0.9rem] justify-center bg-white/76 px-4"
+                    "h-12 w-full rounded-[0.95rem] justify-center bg-white/76 px-4"
                   )}
                 >
                   View pricing
                   <ArrowUpRight className="size-4" />
                 </Link>
               </div>
-              <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                Payment method collection, invoices, and self-serve subscription management will be added when the live billing provider is connected.
-              </p>
+              <div className="mt-5 rounded-[0.95rem] border border-border/80 bg-muted/30 px-4 py-4">
+                <p className="text-sm font-medium text-foreground">Before live payments</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Use this path to prepare the workspace for Pro access, review what
+                  unlocks, and keep the billing structure ready for checkout later.
+                </p>
+              </div>
             </div>
           </div>
         </SettingsSection>
