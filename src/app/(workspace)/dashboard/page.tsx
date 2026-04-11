@@ -13,48 +13,69 @@ export default async function DashboardPage() {
   const weekdayMap = [6, 0, 1, 2, 3, 4, 5];
   const todayWeekday = weekdayMap[new Date().getDay()] ?? 0;
 
-  const [appointments, conversations, todaysHoursRecord] = await Promise.all([
-    prisma.appointment.findMany({
-      where: {
-        businessId: business.id,
-        startAt: {
-          gte: todayStart,
-          lte: todayEnd,
-        },
-      },
-      include: {
-        client: {
-          select: {
-            name: true,
+  const [appointmentsResult, conversationsResult, todaysHoursResult] =
+    await Promise.allSettled([
+      prisma.appointment.findMany({
+        where: {
+          businessId: business.id,
+          startAt: {
+            gte: todayStart,
+            lte: todayEnd,
           },
         },
-        staffMember: {
-          select: {
-            name: true,
+        include: {
+          client: {
+            select: {
+              name: true,
+            },
+          },
+          staffMember: {
+            select: {
+              name: true,
+            },
           },
         },
-      },
-      orderBy: {
-        startAt: "asc",
-      },
-    }),
-    prisma.conversation.findMany({
-      where: {
-        businessId: business.id,
-      },
-      select: {
-        unreadCount: true,
-      },
-    }),
-    prisma.businessHours.findUnique({
-      where: {
-        businessId_weekday: {
+        orderBy: {
+          startAt: "asc",
+        },
+      }),
+      prisma.conversation.findMany({
+        where: {
+          businessId: business.id,
+        },
+        select: {
+          unreadCount: true,
+        },
+      }),
+      prisma.businessHours.findFirst({
+        where: {
           businessId: business.id,
           weekday: todayWeekday,
         },
-      },
-    }),
-  ]);
+      }),
+    ]);
+
+  const appointments =
+    appointmentsResult.status === "fulfilled" ? appointmentsResult.value : [];
+  const conversations =
+    conversationsResult.status === "fulfilled" ? conversationsResult.value : [];
+  const todaysHoursRecord =
+    todaysHoursResult.status === "fulfilled" ? todaysHoursResult.value : null;
+
+  if (appointmentsResult.status === "rejected") {
+    console.error("Dashboard appointments query failed", appointmentsResult.reason);
+  }
+
+  if (conversationsResult.status === "rejected") {
+    console.error(
+      "Dashboard conversations query failed",
+      conversationsResult.reason
+    );
+  }
+
+  if (todaysHoursResult.status === "rejected") {
+    console.error("Dashboard hours query failed", todaysHoursResult.reason);
+  }
 
   const todaysHours =
     todaysHoursRecord && todaysHoursRecord.isOpen
