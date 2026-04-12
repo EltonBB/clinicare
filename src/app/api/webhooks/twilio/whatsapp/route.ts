@@ -132,7 +132,6 @@ async function resolveInboundConversation(fromPhone: string, toPhone: string) {
     const requestedClinicConnection = connectedConnections.find(
       (connection) =>
         connection.businessId &&
-        connection.mode === "SANDBOX" &&
         phoneLookupKey(connection.requestedPhoneNumber ?? "") ===
           phoneLookupKey(normalizedPhone)
     );
