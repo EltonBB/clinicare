@@ -62,6 +62,7 @@ async function resolveInboundConversation(fromPhone: string, toPhone: string) {
       businessId: true,
       mode: true,
       requestedPhoneNumber: true,
+      sandboxRecipientPhoneNumber: true,
       senderPhoneNumber: true,
     },
   });
@@ -76,14 +77,23 @@ async function resolveInboundConversation(fromPhone: string, toPhone: string) {
     return null;
   }
 
+  const sandboxRecipientConnection = connectedConnections.find(
+    (connection) =>
+      connection.mode === "SANDBOX" &&
+      phoneLookupKey(connection.sandboxRecipientPhoneNumber ?? "") ===
+        phoneLookupKey(normalizedPhone)
+  );
+
   const requestedClinicConnection = connectedConnections.find(
     (connection) =>
       phoneLookupKey(connection.requestedPhoneNumber ?? "") ===
       phoneLookupKey(normalizedPhone)
   );
 
-  const scopedBusinessIds = requestedClinicConnection
-    ? [requestedClinicConnection.businessId]
+  const scopedBusinessIds = sandboxRecipientConnection
+    ? [sandboxRecipientConnection.businessId]
+    : requestedClinicConnection
+      ? [requestedClinicConnection.businessId]
     : candidateBusinessIds;
 
   const [existingConversations, matchingClients] = await Promise.all([
@@ -139,6 +149,16 @@ async function resolveInboundConversation(fromPhone: string, toPhone: string) {
   );
 
   if (!matchingClient) {
+    if (sandboxRecipientConnection) {
+      return {
+        businessId: sandboxRecipientConnection.businessId,
+        conversationId: null,
+        normalizedPhone,
+        clientId: null,
+        contactName: normalizedPhone,
+      };
+    }
+
     if (requestedClinicConnection) {
       return {
         businessId: requestedClinicConnection.businessId,

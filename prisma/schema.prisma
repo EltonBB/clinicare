@@ -167,6 +167,7 @@ model WhatsAppConnection {
   mode                 WhatsAppConnectionMode @default(SANDBOX)
   status               WhatsAppConnectionStatus @default(PENDING_SETUP)
   requestedPhoneNumber String?
+  sandboxRecipientPhoneNumber String?
   senderPhoneNumber    String?
   externalAccountId    String?
   externalSenderId     String?

@@ -73,6 +73,7 @@ export async function saveSettingsAction(
       status: true,
       connectedAt: true,
       mode: true,
+      sandboxRecipientPhoneNumber: true,
       senderPhoneNumber: true,
       externalAccountId: true,
       externalSenderId: true,
@@ -120,6 +121,8 @@ export async function saveSettingsAction(
         mode: nextMode,
         status: nextConnectionStatus,
         requestedPhoneNumber,
+        sandboxRecipientPhoneNumber:
+          existingConnection?.sandboxRecipientPhoneNumber ?? null,
         senderPhoneNumber:
           nextMode === "LIVE"
             ? existingConnection?.senderPhoneNumber ?? null
@@ -163,6 +166,7 @@ export async function saveSettingsAction(
         mode: nextMode,
         status: nextConnectionStatus,
         requestedPhoneNumber,
+        sandboxRecipientPhoneNumber: null,
         senderPhoneNumber: nextMode === "LIVE" ? null : sandboxSender,
         externalAccountId:
           nextMode === "LIVE" ? null : process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
@@ -390,6 +394,7 @@ export async function sendWhatsAppTestAction(
         provider: "TWILIO",
         mode: "SANDBOX",
         status: "CONNECTED",
+        sandboxRecipientPhoneNumber: recipient,
         senderPhoneNumber: process.env.TWILIO_WHATSAPP_FROM?.trim() ?? null,
         externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
         externalSenderId: null,
@@ -406,6 +411,7 @@ export async function sendWhatsAppTestAction(
         mode: "SANDBOX",
         status: "CONNECTED",
         requestedPhoneNumber: business.whatsappNumber,
+        sandboxRecipientPhoneNumber: recipient,
         senderPhoneNumber: process.env.TWILIO_WHATSAPP_FROM?.trim() ?? null,
         externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
         externalSenderId: null,
@@ -437,6 +443,7 @@ export async function sendWhatsAppTestAction(
         provider: "TWILIO",
         mode: "SANDBOX",
         status: "ERRORED",
+        sandboxRecipientPhoneNumber: recipient,
         senderPhoneNumber: process.env.TWILIO_WHATSAPP_FROM?.trim() ?? null,
         externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
         externalSenderId: null,
@@ -455,6 +462,7 @@ export async function sendWhatsAppTestAction(
         mode: "SANDBOX",
         status: "ERRORED",
         requestedPhoneNumber: business.whatsappNumber,
+        sandboxRecipientPhoneNumber: recipient,
         senderPhoneNumber: process.env.TWILIO_WHATSAPP_FROM?.trim() ?? null,
         externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
         externalSenderId: null,
@@ -509,6 +517,15 @@ export async function prepareWhatsAppLiveConnectionAction(): Promise<PrepareWhat
     };
   }
 
+  const existingConnection = await prisma.whatsAppConnection.findUnique({
+    where: {
+      businessId: business.id,
+    },
+    select: {
+      sandboxRecipientPhoneNumber: true,
+    },
+  });
+
   const connection = await prisma.whatsAppConnection.upsert({
     where: {
       businessId: business.id,
@@ -518,6 +535,8 @@ export async function prepareWhatsAppLiveConnectionAction(): Promise<PrepareWhat
       mode: "LIVE",
       status: "PENDING_VERIFICATION",
       requestedPhoneNumber,
+      sandboxRecipientPhoneNumber:
+        existingConnection?.sandboxRecipientPhoneNumber ?? null,
       senderPhoneNumber: null,
       externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
       externalSenderId: null,
@@ -534,6 +553,7 @@ export async function prepareWhatsAppLiveConnectionAction(): Promise<PrepareWhat
       mode: "LIVE",
       status: "PENDING_VERIFICATION",
       requestedPhoneNumber,
+      sandboxRecipientPhoneNumber: null,
       senderPhoneNumber: null,
       externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
       externalSenderId: null,
