@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
+import { refreshWorkspaceNotificationsAction } from "@/app/(workspace)/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { NotificationsMenu } from "@/components/layout/notifications-menu";
@@ -37,6 +39,38 @@ export function AppShell({
   notifications = [],
 }: AppShellProps) {
   const pathname = usePathname();
+  const [liveUnreadCount, setLiveUnreadCount] = useState(unreadCount);
+  const [liveNotifications, setLiveNotifications] = useState(notifications);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshNotifications() {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+
+      const result = await refreshWorkspaceNotificationsAction();
+
+      if (!result.ok || !result.view || cancelled) {
+        return;
+      }
+
+      setLiveUnreadCount(result.view.unreadCount);
+      setLiveNotifications(result.view.notifications);
+    }
+
+    void refreshNotifications();
+
+    const interval = window.setInterval(() => {
+      void refreshNotifications();
+    }, 3500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [pathname]);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-background">
@@ -124,7 +158,7 @@ export function AppShell({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <NotificationsMenu unreadCount={unreadCount} items={notifications} />
+                <NotificationsMenu unreadCount={liveUnreadCount} items={liveNotifications} />
                 <div className="hidden items-center gap-3 sm:flex">
                   <OwnerAccountDialog
                     ownerName={ownerName}
