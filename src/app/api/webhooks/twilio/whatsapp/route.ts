@@ -76,11 +76,21 @@ async function resolveInboundConversation(fromPhone: string, toPhone: string) {
     return null;
   }
 
+  const requestedClinicConnection = connectedConnections.find(
+    (connection) =>
+      phoneLookupKey(connection.requestedPhoneNumber ?? "") ===
+      phoneLookupKey(normalizedPhone)
+  );
+
+  const scopedBusinessIds = requestedClinicConnection
+    ? [requestedClinicConnection.businessId]
+    : candidateBusinessIds;
+
   const [existingConversations, matchingClients] = await Promise.all([
     prisma.conversation.findMany({
       where: {
         businessId: {
-          in: candidateBusinessIds,
+          in: scopedBusinessIds,
         },
       },
       orderBy: {
@@ -96,7 +106,7 @@ async function resolveInboundConversation(fromPhone: string, toPhone: string) {
     prisma.client.findMany({
       where: {
         businessId: {
-          in: candidateBusinessIds,
+          in: scopedBusinessIds,
         },
       },
       orderBy: {
@@ -129,13 +139,6 @@ async function resolveInboundConversation(fromPhone: string, toPhone: string) {
   );
 
   if (!matchingClient) {
-    const requestedClinicConnection = connectedConnections.find(
-      (connection) =>
-        connection.businessId &&
-        phoneLookupKey(connection.requestedPhoneNumber ?? "") ===
-          phoneLookupKey(normalizedPhone)
-    );
-
     if (requestedClinicConnection) {
       return {
         businessId: requestedClinicConnection.businessId,
