@@ -35,6 +35,7 @@ export type DashboardPlanSummary = {
 };
 
 export type DashboardViewModel = {
+  businessName: string;
   heading: string;
   dateLabel: string;
   appointments: DashboardAppointment[];
@@ -99,6 +100,7 @@ export function buildDashboardViewFromWorkspace(args: {
   const unreadCount = conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0);
 
   return {
+    businessName: business.name,
     heading: "Today",
     dateLabel: format(new Date(), "EEEE, MMMM d, yyyy"),
     appointments: appointments.map((appointment) => ({

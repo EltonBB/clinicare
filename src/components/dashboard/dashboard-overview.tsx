@@ -3,10 +3,10 @@ import {
   ArrowRight,
   CalendarPlus2,
   CirclePlus,
-  MessageSquareMore,
   Sparkles,
 } from "lucide-react";
 
+import { DashboardUnreadCard } from "@/components/dashboard/dashboard-unread-card";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { cn } from "@/lib/utils";
 import type {
@@ -115,31 +115,10 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
             </div>
           </section>
 
-          <section className="surface-soft space-y-4 rounded-[1.1rem] px-4 py-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <MessageSquareMore className="size-4 text-primary" />
-                <p className="text-base font-semibold text-foreground">
-                  {view.unreadSummary.title}
-                </p>
-              </div>
-                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-primary shadow-[0_8px_18px_rgba(20,32,51,0.04)]">
-                {view.unreadSummary.unreadCount} new
-              </span>
-            </div>
-            <div className="mt-4 border-l-2 border-primary/70 pl-4">
-              <p className="text-sm leading-7 text-muted-foreground">
-                {view.unreadSummary.description}
-              </p>
-              <a
-                href="/inbox"
-                className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-primary transition-transform duration-200 hover:translate-x-0.5"
-              >
-                Go to inbox
-                <ArrowRight className="size-4" />
-              </a>
-            </div>
-          </section>
+          <DashboardUnreadCard
+            businessName={view.businessName}
+            initialSummary={view.unreadSummary}
+          />
 
           <section className="surface-soft space-y-4 rounded-[1.1rem] px-4 py-4">
             <div className="flex items-center gap-2">
