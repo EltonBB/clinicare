@@ -9,17 +9,27 @@ import {
   useTransition,
 } from "react";
 import {
+  ArrowRightLeft,
   ExternalLink,
   Search,
   SendHorizontal,
 } from "lucide-react";
 
 import {
+  convertConversationToClientAction,
   deleteConversationAction,
   markConversationReadAction,
   refreshInboxAction,
   sendInboxMessageAction,
 } from "@/app/(workspace)/inbox/actions";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,6 +76,9 @@ export function InboxWorkspace({
   const [query, setQuery] = useState("");
   const [draftMessage, setDraftMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [convertDialogOpen, setConvertDialogOpen] = useState(false);
+  const [convertName, setConvertName] = useState("");
+  const [convertEmail, setConvertEmail] = useState("");
   const [isPending, startTransition] = useTransition();
   const deferredQuery = useDeferredValue(query);
 
@@ -148,6 +161,20 @@ export function InboxWorkspace({
     });
   }
 
+  function openConvertDialog() {
+    if (!activeConversation) {
+      return;
+    }
+
+    setConvertName(
+      activeConversation.displayName === "Unregistered contact"
+        ? ""
+        : activeConversation.displayName
+    );
+    setConvertEmail("");
+    setConvertDialogOpen(true);
+  }
+
   function sendMessage() {
     const body = draftMessage.trim();
 
@@ -199,9 +226,102 @@ export function InboxWorkspace({
     });
   }
 
+  function convertConversationToClient() {
+    if (!activeConversation) {
+      return;
+    }
+
+    startTransition(async () => {
+      const result = await convertConversationToClientAction(activeConversation.id, {
+        name: convertName,
+        email: convertEmail,
+      });
+
+      if (!result.ok || !result.conversation) {
+        setErrorMessage(result.error ?? "We couldn't convert this conversation.");
+        return;
+      }
+
+      setConversations((current) => [
+        result.conversation!,
+        ...current.filter((conversation) => conversation.id !== result.conversation!.id),
+      ]);
+      setSelectedConversationId(result.conversation.id);
+      setConvertDialogOpen(false);
+      setConvertName("");
+      setConvertEmail("");
+      setErrorMessage("");
+    });
+  }
+
   return (
-    <div className="overflow-hidden rounded-[1.2rem] border border-border/80 bg-white/94 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
-      <div className="grid min-h-[780px] grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
+    <>
+      <Dialog open={convertDialogOpen} onOpenChange={setConvertDialogOpen}>
+        <DialogContent className="max-w-[460px] p-0">
+          <DialogHeader className="glass-divider rounded-t-[1.2rem] px-5 py-5">
+            <DialogTitle>Convert to client</DialogTitle>
+            <DialogDescription>
+              Create or link a client profile for this WhatsApp thread without losing the conversation history.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 px-5 py-5">
+            <div className="surface-soft rounded-[1.05rem] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Phone
+              </p>
+              <p className="mt-2 text-sm font-medium text-foreground">
+                {activeConversation?.phone}
+              </p>
+            </div>
+
+            <div className="surface-soft space-y-2 rounded-[1.05rem] p-4">
+              <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Client name
+              </label>
+              <Input
+                value={convertName}
+                onChange={(event) => setConvertName(event.target.value)}
+                placeholder="Add the client name"
+                className="h-11 rounded-[0.9rem] bg-white/84"
+              />
+            </div>
+
+            <div className="surface-soft space-y-2 rounded-[1.05rem] p-4">
+              <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Email
+              </label>
+              <Input
+                value={convertEmail}
+                onChange={(event) => setConvertEmail(event.target.value)}
+                placeholder="Optional email"
+                className="h-11 rounded-[0.9rem] bg-white/84"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-3">
+            <Button
+              variant="outline"
+              className="rounded-[0.9rem] bg-white/70"
+              onClick={() => setConvertDialogOpen(false)}
+              disabled={isPending}
+            >
+              Close
+            </Button>
+            <Button
+              className="rounded-[0.9rem]"
+              onClick={convertConversationToClient}
+              disabled={isPending}
+            >
+              {isPending ? "Converting..." : "Convert to client"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <div className="overflow-hidden rounded-[1.2rem] border border-border/80 bg-white/94 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
+        <div className="grid min-h-[780px] grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="border-b border-border/80 lg:border-b-0 lg:border-r">
           <div className="glass-divider px-5 py-4">
             <div className="relative">
@@ -319,13 +439,26 @@ export function InboxWorkspace({
                       <ExternalLink className="size-4" />
                     </Link>
                   ) : (
-                    <div className="text-right">
-                      <p className="text-sm font-medium text-foreground">
-                        Unregistered contact
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Reply here, then convert to a client later.
-                      </p>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-foreground">
+                          Unregistered contact
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Reply here, then convert this thread into a client.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="rounded-[0.7rem] bg-white/70"
+                        onClick={openConvertDialog}
+                        disabled={isPending}
+                      >
+                        <ArrowRightLeft className="size-4" />
+                        Convert to client
+                      </Button>
                     </div>
                   )}
                   <Button
@@ -442,6 +575,7 @@ export function InboxWorkspace({
           )}
         </section>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

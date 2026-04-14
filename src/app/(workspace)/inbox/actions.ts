@@ -5,6 +5,7 @@ import { requireCurrentBusiness } from "@/lib/business";
 import {
   buildInboxConversation,
   buildInboxViewFromWorkspace,
+  normalizePhone,
   phoneLookupKey,
   type InboxConversation,
   type InboxViewModel,
@@ -34,6 +35,13 @@ export type RefreshInboxResult = {
   ok: boolean;
   error?: string;
   view?: InboxViewModel;
+};
+
+export type ConvertConversationToClientResult = {
+  ok: boolean;
+  error?: string;
+  conversation?: InboxConversation;
+  clientId?: string;
 };
 
 async function getAuthedBusiness() {
@@ -410,5 +418,120 @@ export async function deleteConversationAction(
   return {
     ok: true,
     conversationId,
+  };
+}
+
+export async function convertConversationToClientAction(
+  conversationId: string,
+  payload: {
+    name: string;
+    email?: string;
+  }
+): Promise<ConvertConversationToClientResult> {
+  const context = await getAuthedBusiness();
+
+  if ("error" in context) {
+    return {
+      ok: false,
+      error: context.error,
+    };
+  }
+
+  const businessId = context.business.id;
+  const cleanedName = payload.name.trim();
+  const cleanedEmail = payload.email?.trim() || null;
+
+  const conversation = await prisma.conversation.findFirst({
+    where: {
+      id: conversationId,
+      businessId,
+    },
+    select: {
+      id: true,
+      phoneNumber: true,
+      contactName: true,
+    },
+  });
+
+  if (!conversation) {
+    return {
+      ok: false,
+      error: "Conversation not found in this clinic workspace.",
+    };
+  }
+
+  const existingClients = await prisma.client.findMany({
+    where: {
+      businessId,
+    },
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+      email: true,
+    },
+  });
+
+  const matchedClient = existingClients.find(
+    (client) => phoneLookupKey(client.phone) === phoneLookupKey(conversation.phoneNumber)
+  );
+
+  if (!matchedClient && !cleanedName) {
+    return {
+      ok: false,
+      error: "Client name is required to convert this thread.",
+    };
+  }
+
+  const normalizedPhone = normalizePhone(conversation.phoneNumber) || conversation.phoneNumber.trim();
+
+  const clientId = await prisma.$transaction(async (tx) => {
+    let resolvedClientId = matchedClient?.id;
+    let resolvedClientName = matchedClient?.name ?? cleanedName;
+
+    if (!resolvedClientId) {
+      const created = await tx.client.create({
+        data: {
+          businessId,
+          name: cleanedName,
+          email: cleanedEmail,
+          phone: normalizedPhone,
+          preferredChannel: "WhatsApp",
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+      });
+
+      resolvedClientId = created.id;
+      resolvedClientName = created.name;
+    }
+
+    await tx.conversation.update({
+      where: {
+        id: conversation.id,
+      },
+      data: {
+        contactName: resolvedClientName,
+      },
+    });
+
+    await tx.message.updateMany({
+      where: {
+        conversationId: conversation.id,
+      },
+      data: {
+        clientId: resolvedClientId,
+      },
+    });
+
+    return resolvedClientId;
+  });
+
+  return {
+    ok: true,
+    clientId,
+    conversation: await hydrateConversation(conversation.id, businessId),
   };
 }
