@@ -11,13 +11,8 @@ if (!connectionString) {
   throw new Error("DATABASE_URL is not configured.");
 }
 
-const databaseUrl = new URL(connectionString);
 const adapter = new PrismaPg({
-  user: decodeURIComponent(databaseUrl.username),
-  password: decodeURIComponent(databaseUrl.password),
-  host: databaseUrl.hostname,
-  port: Number(databaseUrl.port || 5432),
-  database: databaseUrl.pathname.replace(/^\//, ""),
+  connectionString,
   ssl: {
     rejectUnauthorized: false,
   },
