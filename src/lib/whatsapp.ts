@@ -41,6 +41,49 @@ type TwilioSendStatus =
   | "undelivered"
   | "failed";
 
+function isPrivateIpv4Hostname(hostname: string) {
+  const octets = hostname.split(".").map((part) => Number(part));
+
+  if (octets.length !== 4 || octets.some((part) => Number.isNaN(part))) {
+    return false;
+  }
+
+  const [first, second] = octets;
+
+  return (
+    first === 10 ||
+    first === 127 ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168)
+  );
+}
+
+function resolveTwilioStatusCallback() {
+  const configuredBase = process.env.APP_URL?.trim();
+
+  if (!configuredBase) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(configuredBase);
+    const hostname = url.hostname.toLowerCase();
+
+    if (
+      hostname === "localhost" ||
+      hostname === "::1" ||
+      hostname.endsWith(".local") ||
+      isPrivateIpv4Hostname(hostname)
+    ) {
+      return undefined;
+    }
+
+    return new URL("/api/webhooks/twilio/whatsapp", url).toString();
+  } catch {
+    return undefined;
+  }
+}
+
 export function getConfiguredTwilioWhatsAppSender() {
   return normalizeWhatsAppAddress(readRequiredEnv("TWILIO_WHATSAPP_FROM"));
 }
@@ -73,9 +116,7 @@ export async function sendTwilioWhatsAppMessage({
   const authToken = readRequiredEnv("TWILIO_AUTH_TOKEN");
   const from = getConfiguredTwilioWhatsAppSender();
   const toAddress = normalizeWhatsAppAddress(to);
-  const statusCallback = process.env.APP_URL?.trim()
-    ? `${process.env.APP_URL.trim().replace(/\/$/, "")}/api/webhooks/twilio/whatsapp`
-    : undefined;
+  const statusCallback = resolveTwilioStatusCallback();
 
   const response = await fetch(
     `${TWILIO_API_BASE}/Accounts/${accountSid}/Messages.json`,
