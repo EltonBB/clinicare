@@ -5,7 +5,9 @@ declare global {
   var prisma: PrismaClient | undefined;
 }
 
-const connectionString = process.env.DATABASE_URL;
+const connectionString =
+  process.env.DATABASE_URL?.trim() ||
+  "postgresql://postgres.yyrthpiuraydtryanpyw:Brunoair123!@aws-1-eu-central-1.pooler.supabase.com:5432/postgres";
 
 if (!connectionString) {
   throw new Error("DATABASE_URL is not configured.");
