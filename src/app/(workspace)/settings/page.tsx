@@ -2,6 +2,7 @@ import { SettingsWorkspace } from "@/components/settings/settings-workspace";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
 import { buildSettingsStateFromWorkspace } from "@/lib/settings";
+import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 
 type SettingsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -12,6 +13,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const { user, business } = await requireCurrentWorkspace("/settings", {
     missingBusinessRedirect: "/onboarding",
   });
+
+  await syncWhatsAppConnectionForBusiness(business.id);
 
   const [businessHours, staffMembers, reminderSettings, whatsappConnection] = await Promise.all([
     prisma.businessHours.findMany({
@@ -62,11 +65,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       flashMessage={
         params.email_updated === "1"
           ? "Your email address was confirmed and updated."
-          : ""
-      }
-      testRecipientDefault={
-        typeof user.user_metadata?.owner_phone === "string"
-          ? user.user_metadata.owner_phone
+          : params.setup === "whatsapp"
+            ? "Finish the clinic WhatsApp connection before using the dashboard and inbox."
           : ""
       }
     />

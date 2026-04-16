@@ -4,7 +4,7 @@ import { addHours } from "date-fns";
 
 import { prisma } from "@/lib/prisma";
 import { ensureInboxSeedData } from "@/lib/inbox-server";
-import { resolveWhatsAppConnectionStatus } from "@/lib/settings";
+import { beginWhatsAppLiveConnection } from "@/lib/whatsapp-connection";
 import {
   weekdayOrder,
   normalizeOnboardingState,
@@ -87,10 +87,6 @@ async function bootstrapWorkspaceFromOnboarding(user: {
     });
 
     const requestedPhoneNumber = nextState.whatsapp.phoneNumber.trim() || null;
-    const sandboxSender = process.env.TWILIO_WHATSAPP_FROM?.trim() ?? null;
-    const nextConnectionStatus = resolveWhatsAppConnectionStatus({
-      hasSender: Boolean(sandboxSender),
-    });
 
     await tx.whatsAppConnection.upsert({
       where: {
@@ -98,23 +94,35 @@ async function bootstrapWorkspaceFromOnboarding(user: {
       },
       update: {
         provider: "TWILIO",
-        mode: "SANDBOX",
-        status: nextConnectionStatus,
+        mode: requestedPhoneNumber ? "LIVE" : "SANDBOX",
+        status: requestedPhoneNumber ? "PENDING_SETUP" : "DISCONNECTED",
         requestedPhoneNumber,
-        senderPhoneNumber: sandboxSender,
+        sandboxRecipientPhoneNumber: null,
+        senderPhoneNumber: null,
         externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
-        connectedAt: nextConnectionStatus === "CONNECTED" ? new Date() : null,
+        externalSenderId: null,
+        verificationStatus: requestedPhoneNumber ? "NOT_STARTED" : "NOT_STARTED",
+        displayNameStatus: "UNKNOWN",
+        onboardingStartedAt: requestedPhoneNumber ? new Date() : null,
+        connectedAt: null,
+        lastError: null,
         lastSyncedAt: new Date(),
       },
       create: {
         businessId: business.id,
         provider: "TWILIO",
-        mode: "SANDBOX",
-        status: nextConnectionStatus,
+        mode: requestedPhoneNumber ? "LIVE" : "SANDBOX",
+        status: requestedPhoneNumber ? "PENDING_SETUP" : "DISCONNECTED",
         requestedPhoneNumber,
-        senderPhoneNumber: sandboxSender,
+        sandboxRecipientPhoneNumber: null,
+        senderPhoneNumber: null,
         externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
-        connectedAt: nextConnectionStatus === "CONNECTED" ? new Date() : null,
+        externalSenderId: null,
+        verificationStatus: "NOT_STARTED",
+        displayNameStatus: "UNKNOWN",
+        onboardingStartedAt: requestedPhoneNumber ? new Date() : null,
+        connectedAt: null,
+        lastError: null,
         lastSyncedAt: new Date(),
       },
     });
@@ -269,6 +277,20 @@ export async function saveOnboardingStateAction(
   if (normalizedState.completed) {
     try {
       const business = await bootstrapWorkspaceFromOnboarding(user, normalizedState);
+      if (business.whatsappNumber?.trim()) {
+        try {
+          await beginWhatsAppLiveConnection({
+            businessId: business.id,
+            businessName: business.name,
+            requestedPhoneNumber: business.whatsappNumber,
+          });
+        } catch (error) {
+          console.error("Failed to auto-start live WhatsApp connection during onboarding.", {
+            businessId: business.id,
+            error,
+          });
+        }
+      }
       await ensureInboxSeedData(business.id);
     } catch (error) {
       return {

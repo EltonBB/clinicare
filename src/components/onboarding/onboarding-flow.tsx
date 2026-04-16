@@ -276,7 +276,7 @@ export function OnboardingFlow({
         return {
           title: "Reminder behavior",
           icon: <MessageCircleMore className="size-4" />,
-          body: "This is UI and state structure only for now, but capturing the preferred sending number and cadence now keeps later setup straightforward.",
+          body: "This number becomes the clinic's requested live WhatsApp number so the later connection step can activate the right inbox sender.",
         };
       case "client":
         return {

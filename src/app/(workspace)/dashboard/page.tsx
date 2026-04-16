@@ -1,13 +1,25 @@
+import { redirect } from "next/navigation";
+
 import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
 import { prisma } from "@/lib/prisma";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { buildDashboardViewFromWorkspace } from "@/lib/dashboard";
 import { startOfDay, endOfDay } from "date-fns";
+import {
+  isLiveWhatsAppConnectionReady,
+  syncWhatsAppConnectionForBusiness,
+} from "@/lib/whatsapp-connection";
 
 export default async function DashboardPage() {
   const { business } = await requireCurrentWorkspace("/dashboard", {
     missingBusinessRedirect: "/onboarding",
   });
+  const whatsappConnection = await syncWhatsAppConnectionForBusiness(business.id);
+
+  if (!isLiveWhatsAppConnectionReady(whatsappConnection)) {
+    redirect("/settings?setup=whatsapp");
+  }
+
   const todayStart = startOfDay(new Date());
   const todayEnd = endOfDay(new Date());
   const weekdayMap = [6, 0, 1, 2, 3, 4, 5];

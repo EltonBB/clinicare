@@ -1,9 +1,15 @@
+import { redirect } from "next/navigation";
+
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { InboxWorkspace } from "@/components/inbox/inbox-workspace";
 import { buildInboxViewFromWorkspace } from "@/lib/inbox";
 import { buildWhatsAppConnectionSummary } from "@/lib/settings";
 import { ensureConversationForClient } from "@/lib/inbox-server";
 import { prisma } from "@/lib/prisma";
+import {
+  isLiveWhatsAppConnectionReady,
+  syncWhatsAppConnectionForBusiness,
+} from "@/lib/whatsapp-connection";
 
 export default async function InboxPage({
   searchParams,
@@ -20,6 +26,12 @@ export default async function InboxPage({
     typeof client === "string" && client.length > 0
       ? await ensureConversationForClient(business.id, client)
       : null;
+
+  const syncedConnection = await syncWhatsAppConnectionForBusiness(business.id);
+
+  if (!isLiveWhatsAppConnectionReady(syncedConnection)) {
+    redirect("/settings?setup=whatsapp");
+  }
 
   const [clients, conversations, whatsappConnection] = await Promise.all([
     prisma.client.findMany({
@@ -72,11 +84,7 @@ export default async function InboxPage({
         },
       ],
     }),
-    prisma.whatsAppConnection.findUnique({
-      where: {
-        businessId: business.id,
-      },
-    }),
+    Promise.resolve(syncedConnection),
   ]);
   const inboxView = buildInboxViewFromWorkspace({
     conversations,

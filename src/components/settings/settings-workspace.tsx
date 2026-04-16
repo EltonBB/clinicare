@@ -6,8 +6,9 @@ import { ArrowUpRight, Plus, Trash2 } from "lucide-react";
 
 import {
   prepareWhatsAppLiveConnectionAction,
+  refreshWhatsAppLiveConnectionAction,
   saveSettingsAction,
-  sendWhatsAppTestAction,
+  submitWhatsAppVerificationCodeAction,
 } from "@/app/(workspace)/settings/actions";
 import { businessTypes } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -29,7 +30,6 @@ import { UpgradeModalTrigger } from "@/components/upgrade/upgrade-modal-trigger"
 type SettingsWorkspaceProps = {
   initialState: SettingsState;
   flashMessage?: string;
-  testRecipientDefault?: string;
 };
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
@@ -133,7 +133,6 @@ function connectionStatusTone(status: SettingsState["whatsapp"]["connection"]["s
 export function SettingsWorkspace({
   initialState,
   flashMessage = "",
-  testRecipientDefault = "",
 }: SettingsWorkspaceProps) {
   const sectionLinks = [
     { href: "#business-details", label: "Business details" },
@@ -148,13 +147,13 @@ export function SettingsWorkspace({
   const [message, setMessage] = useState(flashMessage);
   const [errorMessage, setErrorMessage] = useState("");
   const [isPending, startSaving] = useTransition();
-  const [testRecipient, setTestRecipient] = useState(testRecipientDefault);
-  const [testStatus, setTestStatus] = useState("");
-  const [testError, setTestError] = useState("");
-  const [isSendingTest, startSendingTest] = useTransition();
   const [connectionStatus, setConnectionStatus] = useState("");
   const [connectionError, setConnectionError] = useState("");
   const [isPreparingConnection, startPreparingConnection] = useTransition();
+  const [verificationCode, setVerificationCode] = useState("");
+  const [isRefreshingConnection, startRefreshingConnection] = useTransition();
+  const [isSubmittingVerificationCode, startSubmittingVerificationCode] =
+    useTransition();
 
   function updateDay(day: WeekdayKey, patch: Partial<(typeof state.workingHours)[WeekdayKey]>) {
     setState((current) => ({
@@ -223,31 +222,6 @@ export function SettingsWorkspace({
     });
   }
 
-  function handleSendWhatsAppTest() {
-    startSendingTest(async () => {
-      const result = await sendWhatsAppTestAction(testRecipient);
-
-      if (result.connection) {
-        setState((current) => ({
-          ...current,
-          whatsapp: {
-            ...current.whatsapp,
-            connection: result.connection!,
-          },
-        }));
-      }
-
-      if (!result.ok) {
-        setTestError(result.error ?? "We couldn't send the WhatsApp test.");
-        setTestStatus("");
-        return;
-      }
-
-      setTestError("");
-      setTestStatus(result.message ?? "Sandbox test sent.");
-    });
-  }
-
   function handlePrepareLiveConnection() {
     startPreparingConnection(async () => {
       const result = await prepareWhatsAppLiveConnectionAction();
@@ -273,6 +247,63 @@ export function SettingsWorkspace({
       setConnectionError("");
       setConnectionStatus(
         result.message ?? "Live clinic connection prepared."
+      );
+    });
+  }
+
+  function handleRefreshLiveConnection() {
+    startRefreshingConnection(async () => {
+      const result = await refreshWhatsAppLiveConnectionAction();
+
+      if (result.connection) {
+        setState((current) => ({
+          ...current,
+          whatsapp: {
+            ...current.whatsapp,
+            connection: result.connection!,
+          },
+        }));
+      }
+
+      if (!result.ok) {
+        setConnectionError(
+          result.error ?? "We couldn't refresh the live WhatsApp connection."
+        );
+        setConnectionStatus("");
+        return;
+      }
+
+      setConnectionError("");
+      setConnectionStatus(result.message ?? "Live status refreshed.");
+    });
+  }
+
+  function handleSubmitVerificationCode() {
+    startSubmittingVerificationCode(async () => {
+      const result = await submitWhatsAppVerificationCodeAction(verificationCode);
+
+      if (result.connection) {
+        setState((current) => ({
+          ...current,
+          whatsapp: {
+            ...current.whatsapp,
+            connection: result.connection!,
+          },
+        }));
+      }
+
+      if (!result.ok) {
+        setConnectionError(
+          result.error ?? "We couldn't submit the verification code."
+        );
+        setConnectionStatus("");
+        return;
+      }
+
+      setVerificationCode("");
+      setConnectionError("");
+      setConnectionStatus(
+        result.message ?? "Verification code submitted."
       );
     });
   }
@@ -584,16 +615,28 @@ export function SettingsWorkspace({
                   </p>
                 </div>
               </div>
-              <Button
-                variant="default"
-                className="h-11 rounded-[0.95rem] px-5"
-                onClick={handlePrepareLiveConnection}
-                disabled={isPreparingConnection}
-              >
-                {isPreparingConnection
-                  ? "Preparing connection..."
-                  : "Prepare live connection"}
-              </Button>
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  variant="default"
+                  className="h-11 rounded-[0.95rem] px-5"
+                  onClick={handlePrepareLiveConnection}
+                  disabled={isPreparingConnection}
+                >
+                  {isPreparingConnection
+                    ? "Starting..."
+                    : state.whatsapp.connection.externalSenderId
+                      ? "Reconnect clinic number"
+                      : "Start live connection"}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-11 rounded-[0.95rem] bg-white/84 px-5"
+                  onClick={handleRefreshLiveConnection}
+                  disabled={isRefreshingConnection}
+                >
+                  {isRefreshingConnection ? "Refreshing..." : "Refresh status"}
+                </Button>
+              </div>
             </div>
 
             {connectionError ? (
@@ -682,43 +725,6 @@ export function SettingsWorkspace({
               </div>
             ) : null}
           </div>
-          <div className="mt-4 rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
-            <p className="text-sm font-medium text-foreground">Sandbox test mode</p>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Keep sandbox isolated for internal testing. It sends from the Twilio sandbox sender and should not be confused with the clinic&apos;s live number.
-            </p>
-            <div className="space-y-2">
-              <FieldLabel>Sandbox test recipient</FieldLabel>
-              <Input
-                value={testRecipient}
-                onChange={(event) => setTestRecipient(event.target.value)}
-                placeholder="+383 44 000 000"
-                className="h-11 rounded-[0.9rem] bg-white/84"
-              />
-              <p className="text-sm leading-6 text-muted-foreground">
-                Use a phone number that has already joined the Twilio WhatsApp sandbox. Tests send
-                from {state.whatsapp.connection.senderPhoneNumber || "the configured sandbox sender"}.
-              </p>
-            </div>
-            {testError ? (
-              <div className="mt-4 rounded-[0.9rem] border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                {testError}
-              </div>
-            ) : null}
-            {!testError && testStatus ? (
-              <div className="mt-4 rounded-[0.9rem] border border-primary/20 bg-primary/8 px-3 py-2 text-sm text-primary">
-                {testStatus}
-              </div>
-            ) : null}
-            <Button
-              variant="outline"
-              className="mt-4 rounded-[0.9rem] bg-white/84"
-              onClick={handleSendWhatsAppTest}
-              disabled={isSendingTest}
-            >
-              {isSendingTest ? "Sending test..." : "Send sandbox test"}
-            </Button>
-          </div>
         </SettingsSection>
 
         <SettingsSection
@@ -791,6 +797,38 @@ export function SettingsWorkspace({
                 className="min-h-32 rounded-[0.95rem] bg-white/84 px-4 py-3"
               />
             </div>
+
+            {state.whatsapp.connection.mode === "LIVE" &&
+            (state.whatsapp.connection.status === "PENDING_VERIFICATION" ||
+              state.whatsapp.connection.status === "CONNECTING") ? (
+              <div className="mt-5 rounded-[0.95rem] border border-border/80 bg-white/84 px-4 py-4">
+                <p className="text-sm font-medium text-foreground">
+                  Verification code
+                </p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  If Twilio asks for an SMS or WhatsApp verification code for the clinic number,
+                  paste it here and submit it.
+                </p>
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                  <Input
+                    value={verificationCode}
+                    onChange={(event) => setVerificationCode(event.target.value)}
+                    placeholder="Enter code"
+                    className="h-11 rounded-[0.9rem] bg-white/84"
+                  />
+                  <Button
+                    variant="outline"
+                    className="h-11 rounded-[0.9rem] bg-white/84 px-5"
+                    onClick={handleSubmitVerificationCode}
+                    disabled={isSubmittingVerificationCode}
+                  >
+                    {isSubmittingVerificationCode
+                      ? "Submitting..."
+                      : "Submit code"}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </SettingsSection>
 

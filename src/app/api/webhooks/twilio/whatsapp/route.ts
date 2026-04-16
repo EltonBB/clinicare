@@ -70,6 +70,7 @@ async function resolveInboundConnection(toPhone: string, fromPhone: string) {
       senderPhoneNumber: true,
     },
   });
+
   const connectedMatch = connections.filter(
     (connection) =>
       phoneLookupKey(connection.senderPhoneNumber ?? "") === phoneLookupKey(normalizedTo)

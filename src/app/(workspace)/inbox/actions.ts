@@ -10,7 +10,12 @@ import {
   type InboxConversation,
   type InboxViewModel,
 } from "@/lib/inbox";
-import { sendTwilioWhatsAppMessage } from "@/lib/whatsapp";
+import {
+  getConfiguredTwilioFirstMessageTemplateSid,
+  sendTwilioWhatsAppMessage,
+  sendTwilioWhatsAppTemplateMessage,
+} from "@/lib/whatsapp";
+import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 import { createClient } from "@/utils/supabase/server";
 
 export type SendInboxMessageResult = {
@@ -60,7 +65,7 @@ async function getAuthedBusiness() {
     missingBusinessRedirect: "/onboarding",
   });
 
-  return { business } as const;
+  return { business, user } as const;
 }
 
 async function hydrateConversation(conversationId: string, businessId: string) {
@@ -256,6 +261,18 @@ export async function sendInboxMessageAction(
       id: true,
       phoneNumber: true,
       contactName: true,
+      messages: {
+        where: {
+          direction: "INBOUND",
+        },
+        orderBy: {
+          sentAt: "desc",
+        },
+        take: 1,
+        select: {
+          sentAt: true,
+        },
+      },
     },
   });
 
@@ -266,7 +283,7 @@ export async function sendInboxMessageAction(
     };
   }
 
-  const [clients, whatsAppConnection] = await Promise.all([
+  const [clients] = await Promise.all([
     prisma.client.findMany({
       where: {
         businessId: context.business.id,
@@ -277,19 +294,10 @@ export async function sendInboxMessageAction(
         phone: true,
       },
     }),
-    prisma.whatsAppConnection.findUnique({
-      where: {
-        businessId: context.business.id,
-      },
-      select: {
-        id: true,
-        mode: true,
-        status: true,
-        requestedPhoneNumber: true,
-        senderPhoneNumber: true,
-      },
-    }),
   ]);
+  const whatsAppConnection = await syncWhatsAppConnectionForBusiness(
+    context.business.id
+  );
   const matchedClient = clients.find(
     (client) => phoneLookupKey(client.phone) === phoneLookupKey(conversation.phoneNumber)
   );
@@ -319,12 +327,41 @@ export async function sendInboxMessageAction(
       }
     | undefined;
 
+  const latestInboundAt = conversation.messages[0]?.sentAt ?? null;
+  const hasOpenFreeformWindow =
+    latestInboundAt !== null &&
+    Date.now() - latestInboundAt.getTime() <= 24 * 60 * 60 * 1000;
+  const firstMessageTemplateSid = getConfiguredTwilioFirstMessageTemplateSid();
+  const senderDisplayName =
+    typeof context.user.user_metadata?.full_name === "string" &&
+    context.user.user_metadata.full_name.trim().length > 0
+      ? context.user.user_metadata.full_name.trim()
+      : `${context.business.name} team`;
+  const renderedTemplateBody = `Hello ${matchedClient?.name ?? conversation.contactName ?? "there"}, this is ${senderDisplayName} from ${context.business.name}. You can reply here on WhatsApp to continue the conversation.`;
+  const outboundBody =
+    !hasOpenFreeformWindow && firstMessageTemplateSid
+      ? renderedTemplateBody
+      : cleanedBody;
+
   try {
-    delivery = await sendTwilioWhatsAppMessage({
-      to: conversation.phoneNumber,
-      body: cleanedBody,
-      from: senderPhoneNumber,
-    });
+    if (!hasOpenFreeformWindow && firstMessageTemplateSid) {
+      delivery = await sendTwilioWhatsAppTemplateMessage({
+        to: conversation.phoneNumber,
+        from: senderPhoneNumber,
+        contentSid: firstMessageTemplateSid,
+        contentVariables: {
+          "1": matchedClient?.name ?? conversation.contactName ?? "there",
+          "2": senderDisplayName,
+          "3": context.business.name,
+        },
+      });
+    } else {
+      delivery = await sendTwilioWhatsAppMessage({
+        to: conversation.phoneNumber,
+        body: cleanedBody,
+        from: senderPhoneNumber,
+      });
+    }
   } catch (error) {
     await prisma.whatsAppConnection.update({
       where: {
@@ -351,7 +388,7 @@ export async function sendInboxMessageAction(
         conversationId: conversation.id,
         clientId: matchedClient?.id ?? null,
         direction: "OUTBOUND",
-        body: cleanedBody,
+        body: outboundBody,
         providerMessageSid: delivery?.sid || null,
         deliveryStatus:
           delivery?.status === "sent"

@@ -170,6 +170,10 @@ export function resolveWhatsAppConnectionStatus(args: {
     return "CONNECTED" as const;
   }
 
+  if (args.previousStatus === "CONNECTING") {
+    return "CONNECTING" as const;
+  }
+
   if (args.previousStatus === "ERRORED") {
     return "ERRORED" as const;
   }
@@ -221,6 +225,7 @@ export function buildWhatsAppConnectionSummary(
   const statusLabelMap: Record<WhatsAppConnectionStatus, string> = {
     DISCONNECTED: "Disconnected",
     PENDING_SETUP: "Pending setup",
+    CONNECTING: "Connecting",
     PENDING_VERIFICATION: "Pending verification",
     CONNECTED: "Connected",
     ERRORED: "Needs attention",
@@ -234,6 +239,10 @@ export function buildWhatsAppConnectionSummary(
   const readinessLabelMap: Record<WhatsAppConnectionStatus, string> = {
     DISCONNECTED: "Connection disconnected",
     PENDING_SETUP: "Provider setup needed",
+    CONNECTING:
+      mode === "LIVE"
+        ? "Creating clinic sender"
+        : "Connecting sandbox sender",
     PENDING_VERIFICATION:
       mode === "LIVE"
         ? "Waiting for clinic number verification"
@@ -245,9 +254,14 @@ export function buildWhatsAppConnectionSummary(
   let detail =
     "Save a clinic number here first. Vela will treat it as the requested WhatsApp number for this workspace.";
 
-  if (mode === "SANDBOX" && status === "CONNECTED") {
+  if (status === "PENDING_SETUP" && connection?.lastError?.trim()) {
+    detail = connection.lastError.trim();
+  } else if (mode === "SANDBOX" && status === "CONNECTED") {
     detail =
       "Twilio sandbox is connected. Messages send from the sandbox sender for testing, while your clinic number stays saved as the requested live sender.";
+  } else if (mode === "LIVE" && status === "CONNECTING") {
+    detail =
+      "Vela has started the clinic sender registration with Twilio. The next step is provider-side verification and approval.";
   } else if (mode === "LIVE" && status === "PENDING_VERIFICATION") {
     detail =
       "The clinic number is saved for live onboarding. As soon as provider verification finishes and Twilio starts delivering traffic for that sender, this workspace will switch to live clinic routing.";

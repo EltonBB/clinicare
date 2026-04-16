@@ -247,6 +247,7 @@ enum WhatsAppConnectionMode {
 enum WhatsAppConnectionStatus {
   DISCONNECTED
   PENDING_SETUP
+  CONNECTING
   PENDING_VERIFICATION
   CONNECTED
   ERRORED

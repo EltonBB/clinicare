@@ -7,6 +7,11 @@ import { requireCurrentBusiness } from "@/lib/business";
 import { createClient } from "@/utils/supabase/server";
 import { sendTwilioWhatsAppMessage } from "@/lib/whatsapp";
 import {
+  beginWhatsAppLiveConnection,
+  submitWhatsAppVerificationCode,
+  syncWhatsAppConnectionForBusiness,
+} from "@/lib/whatsapp-connection";
+import {
   buildWhatsAppConnectionSummary,
   buildSettingsStateFromWorkspace,
   resolveWhatsAppConnectionStatus,
@@ -34,6 +39,10 @@ export type PrepareWhatsAppLiveConnectionResult = {
   message?: string;
   connection?: SettingsState["whatsapp"]["connection"];
 };
+
+export type RefreshWhatsAppLiveConnectionResult = PrepareWhatsAppLiveConnectionResult;
+
+export type SubmitWhatsAppVerificationCodeResult = PrepareWhatsAppLiveConnectionResult;
 
 export async function saveSettingsAction(
   payload: SaveSettingsPayload
@@ -73,6 +82,7 @@ export async function saveSettingsAction(
       status: true,
       connectedAt: true,
       mode: true,
+      requestedPhoneNumber: true,
       sandboxRecipientPhoneNumber: true,
       senderPhoneNumber: true,
       externalAccountId: true,
@@ -98,14 +108,23 @@ export async function saveSettingsAction(
     });
 
     const requestedPhoneNumber = payload.whatsapp.phoneNumber.trim() || null;
+    const requestedPhoneChanged =
+      (existingConnection?.requestedPhoneNumber ?? null) !== requestedPhoneNumber;
     const sandboxSender = process.env.TWILIO_WHATSAPP_FROM?.trim() ?? null;
-    const nextMode = existingConnection?.mode ?? "SANDBOX";
+    const nextMode =
+      requestedPhoneNumber || existingConnection?.mode === "LIVE"
+        ? "LIVE"
+        : "SANDBOX";
     const nextConnectionStatus =
       nextMode === "LIVE"
         ? requestedPhoneNumber
-          ? existingConnection?.status === "CONNECTED"
-            ? "CONNECTED"
-            : "PENDING_VERIFICATION"
+          ? requestedPhoneChanged
+            ? "PENDING_SETUP"
+            : existingConnection?.status === "CONNECTED"
+              ? "CONNECTED"
+              : existingConnection?.status === "CONNECTING"
+                ? "CONNECTING"
+                : "PENDING_VERIFICATION"
           : "DISCONNECTED"
         : resolveWhatsAppConnectionStatus({
             hasSender: Boolean(sandboxSender),
@@ -122,21 +141,31 @@ export async function saveSettingsAction(
         status: nextConnectionStatus,
         requestedPhoneNumber,
         sandboxRecipientPhoneNumber:
-          existingConnection?.sandboxRecipientPhoneNumber ?? null,
+          nextMode === "LIVE"
+            ? null
+            : existingConnection?.sandboxRecipientPhoneNumber ?? null,
         senderPhoneNumber:
           nextMode === "LIVE"
-            ? existingConnection?.senderPhoneNumber ?? null
+            ? requestedPhoneChanged
+              ? null
+              : existingConnection?.senderPhoneNumber ?? null
             : sandboxSender,
         externalAccountId:
           nextMode === "LIVE"
             ? existingConnection?.externalAccountId ?? null
             : process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
         externalSenderId:
-          nextMode === "LIVE" ? existingConnection?.externalSenderId ?? null : null,
+          nextMode === "LIVE"
+            ? requestedPhoneChanged
+              ? null
+              : existingConnection?.externalSenderId ?? null
+            : null,
         verificationStatus:
           nextMode === "LIVE"
             ? requestedPhoneNumber
-              ? existingConnection?.verificationStatus ?? "PENDING"
+              ? requestedPhoneChanged
+                ? "NOT_STARTED"
+                : existingConnection?.verificationStatus ?? "PENDING"
               : "NOT_STARTED"
             : nextConnectionStatus === "CONNECTED"
               ? "VERIFIED"
@@ -144,19 +173,28 @@ export async function saveSettingsAction(
         displayNameStatus:
           nextMode === "LIVE"
             ? requestedPhoneNumber
-              ? existingConnection?.displayNameStatus ?? "PENDING"
+              ? requestedPhoneChanged
+                ? "UNKNOWN"
+                : existingConnection?.displayNameStatus ?? "PENDING"
               : "UNKNOWN"
             : "UNKNOWN",
         onboardingStartedAt:
           nextMode === "LIVE"
             ? requestedPhoneNumber
-              ? existingConnection?.onboardingStartedAt ?? new Date()
+              ? requestedPhoneChanged
+                ? null
+                : existingConnection?.onboardingStartedAt ?? new Date()
               : null
             : null,
-        lastError: nextConnectionStatus === "ERRORED" ? existingConnection?.lastError ?? null : null,
+        lastError:
+          nextConnectionStatus === "ERRORED" && !requestedPhoneChanged
+            ? existingConnection?.lastError ?? null
+            : null,
         connectedAt:
           nextConnectionStatus === "CONNECTED"
-            ? existingConnection?.connectedAt ?? new Date()
+            ? requestedPhoneChanged
+              ? null
+              : existingConnection?.connectedAt ?? new Date()
             : null,
         lastSyncedAt: new Date(),
       },
@@ -337,6 +375,23 @@ export async function saveSettingsAction(
     }),
   ]);
 
+  let resolvedConnection = whatsappConnection;
+
+  if (updatedBusiness.whatsappNumber?.trim()) {
+    try {
+      resolvedConnection = await beginWhatsAppLiveConnection({
+        businessId: updatedBusiness.id,
+        businessName: updatedBusiness.name,
+        requestedPhoneNumber: updatedBusiness.whatsappNumber,
+      });
+    } catch (error) {
+      console.error("Failed to auto-start live WhatsApp connection after settings save.", {
+        businessId: updatedBusiness.id,
+        error,
+      });
+    }
+  }
+
   const nextState: SettingsState = buildSettingsStateFromWorkspace({
     business: updatedBusiness,
     supportEmail: user.email ?? "",
@@ -344,7 +399,7 @@ export async function saveSettingsAction(
     businessHours,
     staffMembers,
     reminderSettings,
-    whatsappConnection,
+    whatsappConnection: resolvedConnection,
   });
 
   return {
@@ -517,64 +572,143 @@ export async function prepareWhatsAppLiveConnectionAction(): Promise<PrepareWhat
     };
   }
 
-  const existingConnection = await prisma.whatsAppConnection.findUnique({
-    where: {
-      businessId: business.id,
-    },
-    select: {
-      sandboxRecipientPhoneNumber: true,
-    },
-  });
-
-  const connection = await prisma.whatsAppConnection.upsert({
-    where: {
-      businessId: business.id,
-    },
-    update: {
-      provider: "TWILIO",
-      mode: "LIVE",
-      status: "PENDING_VERIFICATION",
-      requestedPhoneNumber,
-      sandboxRecipientPhoneNumber:
-        existingConnection?.sandboxRecipientPhoneNumber ?? null,
-      senderPhoneNumber: null,
-      externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
-      externalSenderId: null,
-      verificationStatus: "PENDING",
-      displayNameStatus: "PENDING",
-      onboardingStartedAt: new Date(),
-      lastError: null,
-      connectedAt: null,
-      lastSyncedAt: new Date(),
-    },
-    create: {
-      businessId: business.id,
-      provider: "TWILIO",
-      mode: "LIVE",
-      status: "PENDING_VERIFICATION",
-      requestedPhoneNumber,
-      sandboxRecipientPhoneNumber: null,
-      senderPhoneNumber: null,
-      externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
-      externalSenderId: null,
-      verificationStatus: "PENDING",
-      displayNameStatus: "PENDING",
-      onboardingStartedAt: new Date(),
-      lastError: null,
-      connectedAt: null,
-      lastSyncedAt: new Date(),
-    },
+  const connection = await beginWhatsAppLiveConnection({
+    businessId: business.id,
+    businessName: business.name,
+    requestedPhoneNumber,
   });
 
   revalidatePath("/settings");
+  revalidatePath("/inbox");
 
   return {
-    ok: true,
+    ok:
+      connection.status !== "ERRORED" &&
+      connection.status !== "PENDING_SETUP",
+    error:
+      connection.status === "ERRORED" || connection.status === "PENDING_SETUP"
+        ? connection.lastError ?? undefined
+        : undefined,
     message:
-      "Live clinic WhatsApp connection prepared. The next step is provider verification and sender approval.",
+      connection.status === "CONNECTED"
+        ? "Clinic number connected."
+        : connection.status === "CONNECTING"
+          ? "Clinic number registration started."
+          : "Clinic number saved and waiting for provider verification.",
     connection: buildWhatsAppConnectionSummary(
       connection,
       business.whatsappNumber ?? ""
     ),
   };
+}
+
+export async function refreshWhatsAppLiveConnectionAction(): Promise<RefreshWhatsAppLiveConnectionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      error: "Your session expired. Log in again to refresh the WhatsApp connection.",
+    };
+  }
+
+  const business = await requireCurrentBusiness(user, {
+    missingBusinessRedirect: "/onboarding",
+  });
+
+  const connection = await syncWhatsAppConnectionForBusiness(business.id);
+
+  if (!connection) {
+    return {
+      ok: false,
+      error: "No WhatsApp connection exists for this clinic yet.",
+    };
+  }
+
+  const resolvedConnection = connection;
+
+  revalidatePath("/settings");
+  revalidatePath("/inbox");
+
+  return {
+    ok:
+      resolvedConnection.status !== "ERRORED" &&
+      resolvedConnection.status !== "PENDING_SETUP",
+    error:
+      resolvedConnection.status === "ERRORED" ||
+      resolvedConnection.status === "PENDING_SETUP"
+        ? resolvedConnection.lastError ?? undefined
+        : undefined,
+    message:
+      resolvedConnection.status === "CONNECTED"
+        ? "Clinic number is live."
+        : "Latest provider status loaded.",
+    connection: buildWhatsAppConnectionSummary(
+      resolvedConnection,
+      business.whatsappNumber ?? ""
+    ),
+  };
+}
+
+export async function submitWhatsAppVerificationCodeAction(
+  rawVerificationCode: string
+): Promise<SubmitWhatsAppVerificationCodeResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      error: "Your session expired. Log in again to verify the clinic number.",
+    };
+  }
+
+  const business = await requireCurrentBusiness(user, {
+    missingBusinessRedirect: "/onboarding",
+  });
+  const verificationCode = rawVerificationCode.trim();
+
+  if (!verificationCode) {
+    return {
+      ok: false,
+      error: "Enter the verification code first.",
+    };
+  }
+
+  try {
+    const connection = await submitWhatsAppVerificationCode({
+      businessId: business.id,
+      verificationCode,
+    });
+
+    revalidatePath("/settings");
+    revalidatePath("/inbox");
+
+    return {
+      ok: connection.status !== "ERRORED",
+      error:
+        connection.status === "ERRORED" ? connection.lastError ?? undefined : undefined,
+      message:
+        connection.status === "CONNECTED"
+          ? "Clinic number verified and connected."
+          : "Verification code submitted. Refresh the status in a moment.",
+      connection: buildWhatsAppConnectionSummary(
+        connection,
+        business.whatsappNumber ?? ""
+      ),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "We couldn't submit the verification code.",
+    };
+  }
 }

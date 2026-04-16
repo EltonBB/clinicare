@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-
 import { getCurrentBusiness } from "@/lib/business";
 import { isOnboardingCompleted } from "@/lib/onboarding";
 import { createClient } from "@/utils/supabase/server";

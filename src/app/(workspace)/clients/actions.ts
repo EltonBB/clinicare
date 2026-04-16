@@ -2,6 +2,8 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireCurrentBusiness } from "@/lib/business";
+import { ensureConversationForClient, normalizeConversationsForBusiness } from "@/lib/inbox-server";
+import { normalizePhone } from "@/lib/inbox";
 import {
   buildClientRecord,
   toPrismaClientStatus,
@@ -81,6 +83,25 @@ async function fetchClientRecord(clientId: string) {
   return buildClientRecord(client);
 }
 
+async function syncClientInboxThread(businessId: string, clientId: string) {
+  await normalizeConversationsForBusiness(businessId);
+
+  const conversation = await ensureConversationForClient(businessId, clientId);
+
+  if (!conversation) {
+    return;
+  }
+
+  await prisma.message.updateMany({
+    where: {
+      conversationId: conversation.id,
+    },
+    data: {
+      clientId,
+    },
+  });
+}
+
 export async function saveClientAction(
   payload: SaveClientPayload
 ): Promise<SaveClientResult> {
@@ -95,7 +116,7 @@ export async function saveClientAction(
 
   const business = context.business;
   const cleanedName = payload.name.trim();
-  const cleanedPhone = payload.phone.trim();
+  const cleanedPhone = normalizePhone(payload.phone);
 
   if (!cleanedName || !cleanedPhone) {
     return {
@@ -132,6 +153,7 @@ export async function saveClientAction(
         },
         select: {
           id: true,
+          phone: true,
         },
       });
 
@@ -148,6 +170,10 @@ export async function saveClientAction(
         },
         data,
       });
+
+      if (normalizePhone(existing.phone) !== cleanedPhone) {
+        await normalizeConversationsForBusiness(business.id);
+      }
     } else {
       const created = await prisma.client.create({
         data: {
@@ -157,6 +183,8 @@ export async function saveClientAction(
       });
       clientId = created.id;
     }
+
+    await syncClientInboxThread(business.id, clientId!);
 
     return {
       ok: true,
