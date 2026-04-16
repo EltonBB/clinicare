@@ -2,7 +2,9 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01";
 
-function readRequiredEnv(name: "TWILIO_ACCOUNT_SID" | "TWILIO_AUTH_TOKEN" | "TWILIO_WHATSAPP_FROM") {
+function readRequiredEnv(
+  name: "TWILIO_ACCOUNT_SID" | "TWILIO_AUTH_TOKEN" | "TWILIO_WHATSAPP_FROM"
+) {
   const value = process.env[name];
 
   if (!value || value.trim().length === 0) {
@@ -28,6 +30,9 @@ function normalizeWhatsAppAddress(value: string) {
 type SendWhatsAppMessageInput = {
   to: string;
   body: string;
+  from?: string | null;
+  accountSid?: string | null;
+  authToken?: string | null;
 };
 
 type TwilioSendStatus =
@@ -58,8 +63,7 @@ function isPrivateIpv4Hostname(hostname: string) {
   );
 }
 
-function resolveTwilioStatusCallback() {
-  const configuredBase = process.env.APP_URL?.trim();
+function resolveTwilioStatusCallback(configuredBase = process.env.APP_URL?.trim()) {
 
   if (!configuredBase) {
     return undefined;
@@ -92,8 +96,9 @@ export function validateTwilioSignature(args: {
   url: string;
   params: Record<string, string>;
   signature: string;
+  authToken?: string | null;
 }) {
-  const authToken = readRequiredEnv("TWILIO_AUTH_TOKEN");
+  const authToken = args.authToken?.trim() || readRequiredEnv("TWILIO_AUTH_TOKEN");
   const payload = Object.keys(args.params)
     .sort()
     .reduce((result, key) => result + key + args.params[key], args.url);
@@ -111,10 +116,15 @@ export function validateTwilioSignature(args: {
 export async function sendTwilioWhatsAppMessage({
   to,
   body,
+  from: rawFrom,
+  accountSid: rawAccountSid,
+  authToken: rawAuthToken,
 }: SendWhatsAppMessageInput) {
-  const accountSid = readRequiredEnv("TWILIO_ACCOUNT_SID");
-  const authToken = readRequiredEnv("TWILIO_AUTH_TOKEN");
-  const from = getConfiguredTwilioWhatsAppSender();
+  const accountSid = rawAccountSid?.trim() || readRequiredEnv("TWILIO_ACCOUNT_SID");
+  const authToken = rawAuthToken?.trim() || readRequiredEnv("TWILIO_AUTH_TOKEN");
+  const from = rawFrom?.trim()
+    ? normalizeWhatsAppAddress(rawFrom)
+    : getConfiguredTwilioWhatsAppSender();
   const toAddress = normalizeWhatsAppAddress(to);
   const statusCallback = resolveTwilioStatusCallback();
 

@@ -234,7 +234,10 @@ export function buildWhatsAppConnectionSummary(
   const readinessLabelMap: Record<WhatsAppConnectionStatus, string> = {
     DISCONNECTED: "Connection disconnected",
     PENDING_SETUP: "Provider setup needed",
-    PENDING_VERIFICATION: "Waiting for sandbox verification",
+    PENDING_VERIFICATION:
+      mode === "LIVE"
+        ? "Waiting for clinic number verification"
+        : "Waiting for sandbox verification",
     CONNECTED: mode === "SANDBOX" ? "Ready for WhatsApp sandbox testing" : "Ready for live client messaging",
     ERRORED: "Connection needs attention",
   };
@@ -247,13 +250,13 @@ export function buildWhatsAppConnectionSummary(
       "Twilio sandbox is connected. Messages send from the sandbox sender for testing, while your clinic number stays saved as the requested live sender.";
   } else if (mode === "LIVE" && status === "PENDING_VERIFICATION") {
     detail =
-      "The clinic number is saved for live onboarding. The next step is provider verification and sender approval before client messaging can go live.";
+      "The clinic number is saved for live onboarding. As soon as provider verification finishes and Twilio starts delivering traffic for that sender, this workspace will switch to live clinic routing.";
   } else if (mode === "SANDBOX" && status === "PENDING_VERIFICATION") {
     detail =
       "The sandbox sender is configured, but Vela still needs one successful sandbox test before this clinic is treated as message-ready.";
   } else if (status === "PENDING_VERIFICATION") {
     detail =
-      "The clinic number is saved, but the provider still needs verification before it can send live client messages.";
+      "The clinic number is saved, but the provider still needs verification before it can send and receive live client messages in this inbox.";
   } else if (mode === "LIVE" && status === "CONNECTED") {
     detail =
       "This workspace has an approved live WhatsApp sender. Client messages can use the connected clinic sender.";

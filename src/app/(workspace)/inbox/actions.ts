@@ -283,7 +283,10 @@ export async function sendInboxMessageAction(
       },
       select: {
         id: true,
+        mode: true,
         status: true,
+        requestedPhoneNumber: true,
+        senderPhoneNumber: true,
       },
     }),
   ]);
@@ -295,7 +298,17 @@ export async function sendInboxMessageAction(
     return {
       ok: false,
       error:
-        "WhatsApp is not connected for this clinic yet. Use Settings to connect the Twilio sandbox first.",
+        "WhatsApp is not connected for this clinic yet. Complete the clinic connection in Settings first.",
+    };
+  }
+
+  const senderPhoneNumber = whatsAppConnection.senderPhoneNumber?.trim() || "";
+
+  if (!senderPhoneNumber) {
+    return {
+      ok: false,
+      error:
+        "This clinic does not have an active WhatsApp sender yet. Finish the clinic connection in Settings first.",
     };
   }
 
@@ -310,6 +323,7 @@ export async function sendInboxMessageAction(
     delivery = await sendTwilioWhatsAppMessage({
       to: conversation.phoneNumber,
       body: cleanedBody,
+      from: senderPhoneNumber,
     });
   } catch (error) {
     await prisma.whatsAppConnection.update({

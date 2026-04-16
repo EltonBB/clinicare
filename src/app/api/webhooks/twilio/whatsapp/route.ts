@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import {
-  getConfiguredTwilioWhatsAppSender,
   validateTwilioSignature,
 } from "@/lib/whatsapp";
 
@@ -51,50 +50,83 @@ function toDeliveryStatus(status: string) {
   return "QUEUED" as const;
 }
 
-async function resolveInboundConversation(fromPhone: string, toPhone: string) {
-  const normalizedPhone = normalizePhone(fromPhone);
-  const connectedConnections = await prisma.whatsAppConnection.findMany({
+async function resolveInboundConnection(toPhone: string, fromPhone: string) {
+  const normalizedTo = normalizePhone(toPhone);
+  const normalizedFrom = normalizePhone(fromPhone);
+  const connections = await prisma.whatsAppConnection.findMany({
     where: {
       provider: "TWILIO",
-      status: "CONNECTED",
+      status: {
+        in: ["CONNECTED", "PENDING_VERIFICATION"],
+      },
     },
     select: {
+      id: true,
       businessId: true,
+      status: true,
       mode: true,
       requestedPhoneNumber: true,
       sandboxRecipientPhoneNumber: true,
       senderPhoneNumber: true,
     },
   });
-  const candidateBusinessIds = connectedConnections
-    .filter(
-      (connection) =>
-        phoneLookupKey(connection.senderPhoneNumber ?? "") === phoneLookupKey(toPhone)
-    )
-    .map((connection) => connection.businessId);
+  const connectedMatch = connections.filter(
+    (connection) =>
+      phoneLookupKey(connection.senderPhoneNumber ?? "") === phoneLookupKey(normalizedTo)
+  );
 
-  if (candidateBusinessIds.length === 0) {
+  if (connectedMatch.length === 1) {
+    return connectedMatch[0];
+  }
+
+  if (connectedMatch.length > 1) {
+    const sandboxMatch = connectedMatch.find(
+      (connection) =>
+        connection.mode === "SANDBOX" &&
+        phoneLookupKey(connection.sandboxRecipientPhoneNumber ?? "") ===
+          phoneLookupKey(normalizedFrom)
+    );
+
+    if (sandboxMatch) {
+      return sandboxMatch;
+    }
+
+    console.error("Twilio webhook matched multiple connected clinic senders.", {
+      toPhone: normalizedTo,
+      fromPhone: normalizedFrom,
+    });
     return null;
   }
 
-  const sandboxRecipientConnection = connectedConnections.find(
+  const requestedMatch = connections.filter(
     (connection) =>
-      connection.mode === "SANDBOX" &&
-      phoneLookupKey(connection.sandboxRecipientPhoneNumber ?? "") ===
-        phoneLookupKey(normalizedPhone)
+      connection.mode === "LIVE" &&
+      phoneLookupKey(connection.requestedPhoneNumber ?? "") === phoneLookupKey(normalizedTo)
   );
 
-  const requestedClinicConnection = connectedConnections.find(
-    (connection) =>
-      phoneLookupKey(connection.requestedPhoneNumber ?? "") ===
-      phoneLookupKey(normalizedPhone)
-  );
+  if (requestedMatch.length === 1) {
+    return requestedMatch[0];
+  }
 
-  const scopedBusinessIds = sandboxRecipientConnection
-    ? [sandboxRecipientConnection.businessId]
-    : requestedClinicConnection
-      ? [requestedClinicConnection.businessId]
-    : candidateBusinessIds;
+  if (requestedMatch.length > 1) {
+    console.error("Twilio webhook matched multiple requested clinic numbers.", {
+      toPhone: normalizedTo,
+    });
+  }
+
+  return null;
+}
+
+async function resolveInboundConversation(
+  connection: Awaited<ReturnType<typeof resolveInboundConnection>>,
+  fromPhone: string
+) {
+  if (!connection) {
+    return null;
+  }
+
+  const normalizedPhone = normalizePhone(fromPhone);
+  const scopedBusinessIds = [connection.businessId];
 
   const [existingConversations, matchingClients] = await Promise.all([
     prisma.conversation.findMany({
@@ -149,9 +181,9 @@ async function resolveInboundConversation(fromPhone: string, toPhone: string) {
   );
 
   if (!matchingClient) {
-    if (sandboxRecipientConnection) {
+    if (connection.mode === "SANDBOX") {
       return {
-        businessId: sandboxRecipientConnection.businessId,
+        businessId: connection.businessId,
         conversationId: null,
         normalizedPhone,
         clientId: null,
@@ -159,19 +191,9 @@ async function resolveInboundConversation(fromPhone: string, toPhone: string) {
       };
     }
 
-    if (requestedClinicConnection) {
+    if (connection.mode === "LIVE") {
       return {
-        businessId: requestedClinicConnection.businessId,
-        conversationId: null,
-        normalizedPhone,
-        clientId: null,
-        contactName: normalizedPhone,
-      };
-    }
-
-    if (candidateBusinessIds.length === 1) {
-      return {
-        businessId: candidateBusinessIds[0],
+        businessId: connection.businessId,
         conversationId: null,
         normalizedPhone,
         clientId: null,
@@ -247,28 +269,43 @@ export async function POST(request: Request) {
     return xmlResponse();
   }
 
-  const expectedSender = getConfiguredTwilioWhatsAppSender();
-
-  if (phoneLookupKey(to) !== phoneLookupKey(expectedSender)) {
-    console.error("Rejected Twilio webhook due to unexpected sender target.", {
-      to,
-      expectedSender,
-    });
-    return xmlResponse();
-  }
-
-  const resolved = await resolveInboundConversation(from, to);
+  const inboundConnection = await resolveInboundConnection(to, from);
+  const resolved = await resolveInboundConversation(inboundConnection, from);
 
   if (!resolved) {
     console.error("Twilio webhook did not match any clinic conversation or client.", {
       from,
+      to,
     });
     return xmlResponse();
   }
 
   const normalizedPhone = resolved.normalizedPhone;
+  const normalizedTo = normalizePhone(to);
 
   await prisma.$transaction(async (tx) => {
+    if (
+      inboundConnection &&
+      inboundConnection.mode === "LIVE" &&
+      (inboundConnection.status !== "CONNECTED" ||
+        phoneLookupKey(inboundConnection.senderPhoneNumber ?? "") !==
+          phoneLookupKey(normalizedTo))
+    ) {
+      await tx.whatsAppConnection.update({
+        where: {
+          id: inboundConnection.id,
+        },
+        data: {
+          status: "CONNECTED",
+          verificationStatus: "VERIFIED",
+          senderPhoneNumber: normalizedTo,
+          connectedAt: new Date(),
+          lastError: null,
+          lastSyncedAt: new Date(),
+        },
+      });
+    }
+
     const conversation = await tx.conversation.upsert({
       where: {
         businessId_phoneNumber: {
