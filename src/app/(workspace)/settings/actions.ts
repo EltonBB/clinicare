@@ -580,6 +580,7 @@ export async function prepareWhatsAppLiveConnectionAction(): Promise<PrepareWhat
 
   revalidatePath("/settings");
   revalidatePath("/inbox");
+  revalidatePath("/onboarding/complete");
 
   return {
     ok:
@@ -632,6 +633,7 @@ export async function refreshWhatsAppLiveConnectionAction(): Promise<RefreshWhat
 
   revalidatePath("/settings");
   revalidatePath("/inbox");
+  revalidatePath("/onboarding/complete");
 
   return {
     ok:
@@ -688,6 +690,7 @@ export async function submitWhatsAppVerificationCodeAction(
 
     revalidatePath("/settings");
     revalidatePath("/inbox");
+    revalidatePath("/onboarding/complete");
 
     return {
       ok: connection.status !== "ERRORED",

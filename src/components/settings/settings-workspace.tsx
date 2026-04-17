@@ -529,7 +529,7 @@ export function SettingsWorkspace({
         <SettingsSection
           id="whatsapp-configuration"
           title="WhatsApp configuration"
-          description="Connect the clinic's real WhatsApp business number, control test mode separately, and keep reminders tied to the right sender."
+          description="Connect the clinic's real WhatsApp business number, keep reminders tied to the right sender, and track the live connection status."
         >
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">

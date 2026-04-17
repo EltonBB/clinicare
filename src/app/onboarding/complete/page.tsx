@@ -3,10 +3,12 @@ import { redirect } from "next/navigation";
 import { ArrowRight, CalendarDays, CheckCircle2, ShieldCheck } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
+import { OnboardingWhatsAppSetup } from "@/components/onboarding/onboarding-whatsapp-setup";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Card, CardContent } from "@/components/ui/card";
 import { getCurrentBusiness } from "@/lib/business";
 import { isOnboardingCompleted } from "@/lib/onboarding";
+import { buildWhatsAppConnectionSummary } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import {
   isLiveWhatsAppConnectionReady,
@@ -41,6 +43,28 @@ export default async function OnboardingCompletePage() {
 
   const whatsappConnection = await syncWhatsAppConnectionForBusiness(business.id);
   const isWhatsAppReady = isLiveWhatsAppConnectionReady(whatsappConnection);
+  const connectionSummary = buildWhatsAppConnectionSummary(
+    whatsappConnection,
+    business.whatsappNumber ?? ""
+  );
+
+  if (!isWhatsAppReady) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 sm:px-6 lg:px-8">
+          <div className="border-b border-border pb-6">
+            <BrandMark href="/dashboard" includeSubtitle={false} />
+          </div>
+          <div className="mx-auto flex w-full flex-1 flex-col items-center justify-center py-12">
+            <OnboardingWhatsAppSetup
+              clinicName={business.name}
+              connection={connectionSummary}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -50,20 +74,16 @@ export default async function OnboardingCompletePage() {
         </div>
         <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col items-center justify-center py-12 text-center">
           <div className="flex size-24 items-center justify-center rounded-[1.75rem] bg-primary/14 text-primary">
-            {isWhatsAppReady ? (
-              <CheckCircle2 className="size-12" />
-            ) : (
-              <ShieldCheck className="size-12" />
-            )}
+            <CheckCircle2 className="size-12" />
           </div>
           <div className="mt-8 space-y-4">
             <h1 className="text-5xl font-semibold tracking-tight text-foreground">
-              {isWhatsAppReady ? "You are ready." : "Finish WhatsApp setup."}
+              You are ready.
             </h1>
             <p className="mx-auto max-w-2xl text-lg leading-8 text-muted-foreground">
-              {isWhatsAppReady
-                ? "Your workspace is configured for the MVP. Step into the dashboard and start managing appointments, clients, reminders, and staff in one place."
-                : "Your clinic details are saved, but WhatsApp still needs to finish connecting before this workspace should open the dashboard and inbox."}
+              Your workspace is configured for the MVP. Step into the dashboard and
+              start managing appointments, clients, reminders, and staff in one
+              place.
             </p>
           </div>
 
@@ -90,9 +110,8 @@ export default async function OnboardingCompletePage() {
                 <div className="space-y-2 text-left">
                   <p className="text-sm font-semibold text-foreground">Status</p>
                   <p className="text-sm leading-6 text-muted-foreground">
-                    {isWhatsAppReady
-                      ? "Onboarding is complete. The workspace can now open directly to the dashboard on future visits."
-                      : "Onboarding is saved. The remaining step is completing the clinic WhatsApp connection."}
+                    Onboarding is complete. The workspace can now open directly to
+                    the dashboard on future visits.
                   </p>
                 </div>
               </CardContent>
@@ -100,13 +119,13 @@ export default async function OnboardingCompletePage() {
           </div>
 
           <Link
-            href={isWhatsAppReady ? "/dashboard" : "/settings?setup=whatsapp"}
+            href="/dashboard"
             className={cn(
               buttonVariants({ size: "lg" }),
               "mt-10 h-12 rounded-[0.95rem] px-5"
             )}
           >
-            {isWhatsAppReady ? "Go to dashboard" : "Finish WhatsApp setup"}
+            Go to dashboard
             <ArrowRight data-icon="inline-end" />
           </Link>
         </div>
