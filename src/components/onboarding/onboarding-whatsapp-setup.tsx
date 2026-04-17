@@ -287,13 +287,24 @@ export function OnboardingWhatsAppSetup({
                 href="/dashboard"
                 className={cn(
                   buttonVariants({ variant: "outline" }),
+                "h-11 rounded-[0.95rem] bg-white/84 px-5"
+              )}
+            >
+              Open dashboard
+              <ArrowRight data-icon="inline-end" />
+            </Link>
+            ) : (
+              <Link
+                href="/dashboard"
+                className={cn(
+                  buttonVariants({ variant: "outline" }),
                   "h-11 rounded-[0.95rem] bg-white/84 px-5"
                 )}
               >
-                Open dashboard
+                Continue to dashboard anyway
                 <ArrowRight data-icon="inline-end" />
               </Link>
-            ) : null}
+            )}
           </div>
         </CardContent>
       </Card>
