@@ -572,35 +572,45 @@ export async function prepareWhatsAppLiveConnectionAction(): Promise<PrepareWhat
     };
   }
 
-  const connection = await beginWhatsAppLiveConnection({
-    businessId: business.id,
-    businessName: business.name,
-    requestedPhoneNumber,
-  });
+  try {
+    const connection = await beginWhatsAppLiveConnection({
+      businessId: business.id,
+      businessName: business.name,
+      requestedPhoneNumber,
+    });
 
-  revalidatePath("/settings");
-  revalidatePath("/inbox");
-  revalidatePath("/onboarding/complete");
+    revalidatePath("/settings");
+    revalidatePath("/inbox");
+    revalidatePath("/onboarding/complete");
 
-  return {
-    ok:
-      connection.status !== "ERRORED" &&
-      connection.status !== "PENDING_SETUP",
-    error:
-      connection.status === "ERRORED" || connection.status === "PENDING_SETUP"
-        ? connection.lastError ?? undefined
-        : undefined,
-    message:
-      connection.status === "CONNECTED"
-        ? "Clinic number connected."
-        : connection.status === "CONNECTING"
-          ? "Clinic number registration started."
-          : "Clinic number saved and waiting for provider verification.",
-    connection: buildWhatsAppConnectionSummary(
-      connection,
-      business.whatsappNumber ?? ""
-    ),
-  };
+    return {
+      ok:
+        connection.status !== "ERRORED" &&
+        connection.status !== "PENDING_SETUP",
+      error:
+        connection.status === "ERRORED" || connection.status === "PENDING_SETUP"
+          ? connection.lastError ?? undefined
+          : undefined,
+      message:
+        connection.status === "CONNECTED"
+          ? "Clinic number connected."
+          : connection.status === "CONNECTING"
+            ? "Clinic number registration started."
+            : "Clinic number saved and waiting for provider verification.",
+      connection: buildWhatsAppConnectionSummary(
+        connection,
+        business.whatsappNumber ?? ""
+      ),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "We couldn't start the clinic WhatsApp connection.",
+    };
+  }
 }
 
 export async function refreshWhatsAppLiveConnectionAction(): Promise<RefreshWhatsAppLiveConnectionResult> {
@@ -620,7 +630,19 @@ export async function refreshWhatsAppLiveConnectionAction(): Promise<RefreshWhat
     missingBusinessRedirect: "/onboarding",
   });
 
-  const connection = await syncWhatsAppConnectionForBusiness(business.id);
+  let connection;
+
+  try {
+    connection = await syncWhatsAppConnectionForBusiness(business.id);
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "We couldn't refresh the clinic WhatsApp connection.",
+    };
+  }
 
   if (!connection) {
     return {
