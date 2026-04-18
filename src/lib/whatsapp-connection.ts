@@ -13,6 +13,7 @@ import {
   fetchTwilioWhatsAppSender,
   getConfiguredTwilioWabaId,
   getPublicTwilioWebhookUrl,
+  listTwilioWhatsAppSenders,
   updateTwilioWhatsAppSenderWebhook,
   verifyTwilioWhatsAppSender,
   type TwilioWhatsAppSender,
@@ -33,6 +34,53 @@ export function isLiveWhatsAppConnectionReady(connection: {
 
 function normalizeLiveNumber(value: string) {
   return normalizePhone(value).replace(/^whatsapp:/i, "");
+}
+
+async function buildLiveConnectionErrorMessage(args: {
+  requestedPhoneNumber: string;
+  rawMessage: string;
+}) {
+  const rawMessage = args.rawMessage.trim();
+
+  if (!rawMessage) {
+    return "We couldn't start the clinic WhatsApp connection.";
+  }
+
+  if (!/another WABA ID|more than 1 sender/i.test(rawMessage)) {
+    return rawMessage;
+  }
+
+  try {
+    const senders = (await listTwilioWhatsAppSenders())
+      .map(normalizeTwilioSenderForComparison)
+      .filter((sender) => sender.phoneNumber);
+    const requestedPhoneNumber = normalizeLiveNumber(args.requestedPhoneNumber);
+    const matchingSender = senders.find(
+      (sender) => sender.phoneNumber === requestedPhoneNumber
+    );
+
+    if (matchingSender) {
+      return `This clinic number already exists in the WhatsApp provider. Refresh the connection status to attach the existing sender for ${matchingSender.phoneNumber}.`;
+    }
+
+    const activeSender =
+      senders.find((sender) => sender.status === "ONLINE") ?? senders[0];
+
+    if (activeSender) {
+      return `A different WhatsApp sender is already active for this provider account (${activeSender.phoneNumber}). If you want to test now, save that number as the clinic WhatsApp number. If you want to use ${requestedPhoneNumber} instead, move that number into the current WhatsApp Business account first.`;
+    }
+  } catch {
+    // Fall back to a customer-facing message below if provider discovery fails.
+  }
+
+  return `This clinic number is not the active WhatsApp sender on the current provider account. Use the provider's active sender for testing, or finish moving ${normalizeLiveNumber(args.requestedPhoneNumber)} into the current WhatsApp Business account first.`;
+}
+
+function normalizeTwilioSenderForComparison(sender: TwilioWhatsAppSender) {
+  return {
+    ...sender,
+    phoneNumber: sender.senderId ? normalizeLiveNumber(sender.senderId) : "",
+  };
 }
 
 async function refreshSenderWebhookIfNeeded(sender: TwilioWhatsAppSender) {
@@ -354,11 +402,17 @@ export async function beginWhatsAppLiveConnection(args: {
       },
     });
   } catch (error) {
+    const message = await buildLiveConnectionErrorMessage({
+      requestedPhoneNumber,
+      rawMessage:
+        error instanceof Error
+          ? error.message
+          : "We couldn't start the clinic WhatsApp connection.",
+    });
+
     return await updateConnectionError(
       existingConnection,
-      error instanceof Error
-        ? error.message
-        : "We couldn't start the clinic WhatsApp connection."
+      message
     );
   }
 }

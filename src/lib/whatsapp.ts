@@ -472,6 +472,18 @@ export async function findTwilioWhatsAppSenderByPhoneNumber(
   options: TwilioRequestOptions = {}
 ) {
   const senderId = normalizeWhatsAppAddress(phoneNumber);
+  const senders = await listTwilioWhatsAppSenders(options);
+
+  const sender = senders.find((candidate) => {
+    return candidate.senderId.toLowerCase() === senderId.toLowerCase();
+  });
+
+  return sender ?? null;
+}
+
+export async function listTwilioWhatsAppSenders(
+  options: TwilioRequestOptions = {}
+) {
   const payload = await twilioJsonRequest<TwilioSendersListPayload>(
     `${TWILIO_MESSAGING_API_BASE}/Channels/Senders?Channel=whatsapp&PageSize=1000`,
     {
@@ -480,12 +492,7 @@ export async function findTwilioWhatsAppSenderByPhoneNumber(
     options
   );
 
-  const sender = (payload.senders ?? []).find((candidate) => {
-    const candidateSenderId = candidate.sender_id ?? candidate.senderId ?? "";
-    return candidateSenderId.toLowerCase() === senderId.toLowerCase();
-  });
-
-  return sender ? normalizeTwilioSenderPayload(sender) : null;
+  return (payload.senders ?? []).map(normalizeTwilioSenderPayload);
 }
 
 export async function updateTwilioWhatsAppSenderWebhook(args: {
