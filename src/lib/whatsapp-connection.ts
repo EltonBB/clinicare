@@ -167,29 +167,56 @@ async function updateConnectionFromSender(
     connection.displayNameStatus
   );
 
-  return prisma.whatsAppConnection.update({
-    where: {
-      id: connection.id,
-    },
-    data: {
-      mode: "LIVE",
-      status: mapped.connectionStatus,
-      requestedPhoneNumber: connection.requestedPhoneNumber,
-      senderPhoneNumber:
-        mapped.connectionStatus === "CONNECTED"
-          ? normalizeLiveNumber(sender.senderId || connection.requestedPhoneNumber || "")
-          : null,
-      externalAccountId: connection.externalAccountId,
-      externalSenderId: sender.sid || connection.externalSenderId,
-      verificationStatus: mapped.verificationStatus,
-      displayNameStatus: mapped.displayNameStatus,
-      lastError: lastError?.trim() || sender.offlineReason || null,
-      connectedAt:
-        mapped.connectionStatus === "CONNECTED"
-          ? connection.connectedAt ?? new Date()
-          : null,
-      lastSyncedAt: new Date(),
-    },
+  const normalizedSenderPhone =
+    mapped.connectionStatus === "CONNECTED"
+      ? normalizeLiveNumber(sender.senderId || connection.requestedPhoneNumber || "")
+      : null;
+
+  return prisma.$transaction(async (tx) => {
+    if (normalizedSenderPhone) {
+      await tx.whatsAppConnection.updateMany({
+        where: {
+          id: {
+            not: connection.id,
+          },
+          mode: "LIVE",
+          OR: [
+            { externalSenderId: sender.sid || connection.externalSenderId },
+            { senderPhoneNumber: normalizedSenderPhone },
+          ],
+        },
+        data: {
+          status: "DISCONNECTED",
+          senderPhoneNumber: null,
+          connectedAt: null,
+          lastError:
+            `This sender is now attached to another clinic workspace (${normalizedSenderPhone}). Refresh and reconnect with the correct clinic number if needed.`,
+          lastSyncedAt: new Date(),
+        },
+      });
+    }
+
+    return tx.whatsAppConnection.update({
+      where: {
+        id: connection.id,
+      },
+      data: {
+        mode: "LIVE",
+        status: mapped.connectionStatus,
+        requestedPhoneNumber: connection.requestedPhoneNumber,
+        senderPhoneNumber: normalizedSenderPhone,
+        externalAccountId: connection.externalAccountId,
+        externalSenderId: sender.sid || connection.externalSenderId,
+        verificationStatus: mapped.verificationStatus,
+        displayNameStatus: mapped.displayNameStatus,
+        lastError: lastError?.trim() || sender.offlineReason || null,
+        connectedAt:
+          mapped.connectionStatus === "CONNECTED"
+            ? connection.connectedAt ?? new Date()
+            : null,
+        lastSyncedAt: new Date(),
+      },
+    });
   });
 }
 
