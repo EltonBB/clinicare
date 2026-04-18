@@ -364,6 +364,10 @@ type TwilioSenderPayload = {
       message?: string;
     }>;
   };
+  webhook?: {
+    callback_url?: string | null;
+    status_callback_url?: string | null;
+  } | null;
 };
 
 type TwilioSendersListPayload = {
@@ -376,6 +380,8 @@ export type TwilioWhatsAppSender = {
   senderId: string;
   profileName: string;
   offlineReason: string;
+  callbackUrl: string;
+  statusCallbackUrl: string;
 };
 
 function normalizeTwilioSenderPayload(payload: TwilioSenderPayload): TwilioWhatsAppSender {
@@ -393,6 +399,8 @@ function normalizeTwilioSenderPayload(payload: TwilioSenderPayload): TwilioWhats
     profileName: payload.profile?.name ?? "",
     offlineReason:
       offlineReasons.find((item) => item.message?.trim())?.message?.trim() ?? "",
+    callbackUrl: payload.webhook?.callback_url?.trim() ?? "",
+    statusCallbackUrl: payload.webhook?.status_callback_url?.trim() ?? "",
   };
 }
 

@@ -86,7 +86,15 @@ function normalizeTwilioSenderForComparison(sender: TwilioWhatsAppSender) {
 async function refreshSenderWebhookIfNeeded(sender: TwilioWhatsAppSender) {
   const webhookUrl = getPublicTwilioWebhookUrl();
 
-  if (!webhookUrl || sender.status.toUpperCase() !== "OFFLINE") {
+  if (!webhookUrl) {
+    return sender;
+  }
+
+  const hasMatchingCallback =
+    sender.callbackUrl.trim() === webhookUrl &&
+    sender.statusCallbackUrl.trim() === webhookUrl;
+
+  if (hasMatchingCallback) {
     return sender;
   }
 
