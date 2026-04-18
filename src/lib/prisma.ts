@@ -5,6 +5,9 @@ import { Pool } from "pg";
 import { getDatabaseUrl } from "@/lib/env";
 
 declare global {
+  // Reuse a single pg pool + Prisma client across hot reloads and serverless reuse.
+  // This keeps Supabase session-mode client counts from exploding under polling load.
+  var prismaPool: Pool | undefined;
   var prisma: PrismaClient | undefined;
 }
 
@@ -25,12 +28,20 @@ function normalizeConnectionString(connectionString: string) {
 
 const connectionString = normalizeConnectionString(getDatabaseUrl());
 
-const pool = new Pool({
-  connectionString,
-  ssl: {
-    rejectUnauthorized: false,
-  },
-});
+const pool =
+  global.prismaPool ??
+  new Pool({
+    connectionString,
+    max: 1,
+    idleTimeoutMillis: 10_000,
+    ssl: {
+      rejectUnauthorized: false,
+    },
+  });
+
+if (!global.prismaPool) {
+  global.prismaPool = pool;
+}
 
 const adapter = new PrismaPg(pool, {
   disposeExternalPool: true,
@@ -43,6 +54,4 @@ export const prisma =
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 
-if (process.env.NODE_ENV !== "production") {
-  global.prisma = prisma;
-}
+global.prisma = prisma;
