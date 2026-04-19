@@ -391,14 +391,25 @@ function normalizeTwilioSenderPayload(payload: TwilioSenderPayload): TwilioWhats
     payload.properties?.offline_reasons ??
     payload.properties?.offlineReasons ??
     [];
+  const normalizedOfflineMessages = offlineReasons
+    .map((item) => item.message?.trim() ?? "")
+    .filter(Boolean);
+  const prioritizedOfflineMessage =
+    normalizedOfflineMessages.find((message) =>
+      /disabled by meta|account is locked|not found|verification|review/i.test(message)
+    ) ??
+    normalizedOfflineMessages.find(
+      (message) => !/something went wrong\.? please create a support ticket/i.test(message)
+    ) ??
+    normalizedOfflineMessages[0] ??
+    "";
 
   return {
     sid: payload.sid ?? "",
     status: payload.status ?? "DRAFT",
     senderId: payload.sender_id ?? payload.senderId ?? "",
     profileName: payload.profile?.name ?? "",
-    offlineReason:
-      offlineReasons.find((item) => item.message?.trim())?.message?.trim() ?? "",
+    offlineReason: prioritizedOfflineMessage,
     callbackUrl: payload.webhook?.callback_url?.trim() ?? "",
     statusCallbackUrl: payload.webhook?.status_callback_url?.trim() ?? "",
   };
@@ -423,39 +434,60 @@ export async function createTwilioWhatsAppSender({
 }: CreateTwilioWhatsAppSenderInput) {
   const webhookUrl = callbackUrl?.trim() || getPublicTwilioWebhookUrl();
   const senderId = normalizeWhatsAppAddress(phoneNumber);
-  const payload = await twilioJsonRequest<TwilioSenderPayload>(
-    `${TWILIO_MESSAGING_API_BASE}/Channels/Senders`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        sender_id: senderId,
-        ...(wabaId?.trim()
-          ? {
-              configuration: {
-                waba_id: wabaId.trim(),
-              },
-            }
-          : {}),
-        profile: {
-          name: businessName.trim() || "Clinicare",
+  const makeRequest = async (useWabaId: boolean) =>
+    twilioJsonRequest<TwilioSenderPayload>(
+      `${TWILIO_MESSAGING_API_BASE}/Channels/Senders`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-        ...(webhookUrl
-          ? {
-              webhook: {
-                callback_url: webhookUrl,
-                callback_method: "POST",
-                status_callback_url: webhookUrl,
-                status_callback_method: "POST",
-              },
-            }
-          : {}),
-      }),
-    },
-    { accountSid, authToken }
-  );
+        body: JSON.stringify({
+          sender_id: senderId,
+          ...(useWabaId && wabaId?.trim()
+            ? {
+                configuration: {
+                  waba_id: wabaId.trim(),
+                },
+              }
+            : {}),
+          profile: {
+            name: businessName.trim() || "Clinicare",
+          },
+          ...(webhookUrl
+            ? {
+                webhook: {
+                  callback_url: webhookUrl,
+                  callback_method: "POST",
+                  status_callback_url: webhookUrl,
+                  status_callback_method: "POST",
+                },
+              }
+            : {}),
+        }),
+      },
+      { accountSid, authToken }
+    );
+
+  let payload: TwilioSenderPayload;
+
+  try {
+    payload = await makeRequest(Boolean(wabaId?.trim()));
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Twilio rejected the request.";
+
+    if (
+      wabaId?.trim() &&
+      /another waba id|already linked|linked elsewhere|already registered|more than 1 sender/i.test(
+        message
+      )
+    ) {
+      payload = await makeRequest(false);
+    } else {
+      throw error;
+    }
+  }
 
   return normalizeTwilioSenderPayload(payload);
 }

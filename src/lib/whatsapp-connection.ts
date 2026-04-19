@@ -62,6 +62,14 @@ async function buildLiveConnectionErrorMessage(args: {
     return `This clinic number is still linked to another WhatsApp setup. Finish moving or disconnecting ${normalizeLiveNumber(args.requestedPhoneNumber)} there first, then retry setup here.`;
   }
 
+  if (/disabled by meta|account is locked|business accounts connected to this sender were disabled/i.test(rawMessage)) {
+    return "This clinic number was submitted, but the connected WhatsApp business account is currently disabled by the provider. Re-enable the business account, then retry setup.";
+  }
+
+  if (/sender'?s phone number or waba returned \"not found\"|returned \"not found\"|not found/i.test(rawMessage)) {
+    return `This clinic number was submitted, but the provider could not find a usable WhatsApp business account for it yet. Finish provider verification for ${normalizeLiveNumber(args.requestedPhoneNumber)}, then retry setup here.`;
+  }
+
   return rawMessage;
 }
 
