@@ -3,6 +3,9 @@ import type {
   Business,
   BusinessHours,
   ReminderSettings,
+  SmsConnection,
+  SmsConnectionStatus,
+  SmsProvider,
   StaffMember,
   WhatsAppConnection,
   WhatsAppDisplayNameStatus,
@@ -81,6 +84,27 @@ export type SettingsState = {
       lastSyncedLabel: string;
     };
   };
+  sms: {
+    phoneNumber: string;
+    enabled: boolean;
+    connection: {
+      phase: "NOT_STARTED" | "PENDING_SETUP" | "CONNECTED" | "NEEDS_SUPPORT";
+      provider: SmsProvider;
+      status: SmsConnectionStatus;
+      requestedPhoneNumber: string;
+      senderPhoneNumber: string;
+      externalPhoneSid: string;
+      phaseLabel: string;
+      statusLabel: string;
+      headline: string;
+      detail: string;
+      nextStep: string;
+      primaryActionLabel: string;
+      lastError: string;
+      connectedAtLabel: string;
+      lastSyncedLabel: string;
+    };
+  };
   reminders: SettingsReminders;
   billing: {
     planName: string;
@@ -100,6 +124,7 @@ type SettingsWorkspaceData = {
   staffMembers: StaffMember[];
   reminderSettings: ReminderSettings | null;
   whatsappConnection: WhatsAppConnection | null;
+  smsConnection: SmsConnection | null;
 };
 
 function normalizeStaffRole(value: unknown): StaffRole {
@@ -431,6 +456,121 @@ export function buildWhatsAppConnectionSummary(
   };
 }
 
+function resolveSmsPhase(connection: SmsConnection | null, requestedPhoneNumber: string) {
+  if (!requestedPhoneNumber.trim()) {
+    return "NOT_STARTED" as const;
+  }
+
+  if (!connection) {
+    return "PENDING_SETUP" as const;
+  }
+
+  if (connection.status === "CONNECTED") {
+    return "CONNECTED" as const;
+  }
+
+  if (connection.status === "PENDING_SETUP") {
+    return "PENDING_SETUP" as const;
+  }
+
+  return "NEEDS_SUPPORT" as const;
+}
+
+function buildSmsConnectionCopy(args: {
+  phase: SettingsState["sms"]["connection"]["phase"];
+  requestedPhoneNumber: string;
+  senderPhoneNumber: string;
+  lastError: string;
+}) {
+  switch (args.phase) {
+    case "NOT_STARTED":
+      return {
+        phaseLabel: "Not started",
+        headline: "SMS setup not started",
+        detail:
+          "Add the clinic SMS number when you're ready. Once the provider-backed number is connected, incoming texts can land in the inbox.",
+        nextStep:
+          "Save the clinic SMS number and start setup when the number is available in the messaging account.",
+        primaryActionLabel: "Start setup",
+      };
+    case "PENDING_SETUP":
+      return {
+        phaseLabel: "Pending setup",
+        headline: "SMS number saved",
+        detail:
+          args.lastError.trim() ||
+          `${args.requestedPhoneNumber} is saved, but it is not connected in the messaging provider yet.`,
+        nextStep:
+          "Add or port that number into the messaging provider account, then refresh status here.",
+        primaryActionLabel: "Retry setup",
+      };
+    case "CONNECTED":
+      return {
+        phaseLabel: "Connected",
+        headline: "Ready for text messaging",
+        detail: `SMS is connected and the inbox can now send and receive text messages using ${args.senderPhoneNumber || args.requestedPhoneNumber}.`,
+        nextStep:
+          "Open the inbox to test a real client text message, or keep configuring the workspace.",
+        primaryActionLabel: "Reconnect number",
+      };
+    case "NEEDS_SUPPORT":
+      return {
+        phaseLabel: "Needs support",
+        headline: "SMS connection needs attention",
+        detail:
+          args.lastError.trim() ||
+          "We couldn't finish connecting this SMS number yet. The number is saved and ready to retry once the provider issue is resolved.",
+        nextStep:
+          "Retry the setup. If the same message appears again, fix the provider-side number issue first and then refresh status here.",
+        primaryActionLabel: "Retry setup",
+      };
+  }
+}
+
+export function buildSmsConnectionSummary(
+  connection: SmsConnection | null,
+  fallbackRequestedPhoneNumber: string
+): SettingsState["sms"]["connection"] {
+  const provider = connection?.provider ?? "TWILIO";
+  const status = connection?.status ?? "DISCONNECTED";
+  const requestedPhoneNumber = normalizePhone(
+    connection?.requestedPhoneNumber ?? fallbackRequestedPhoneNumber
+  );
+  const senderPhoneNumber = normalizePhone(connection?.senderPhoneNumber ?? "");
+  const phase = resolveSmsPhase(connection, requestedPhoneNumber);
+  const copy = buildSmsConnectionCopy({
+    phase,
+    requestedPhoneNumber,
+    senderPhoneNumber,
+    lastError: connection?.lastError ?? "",
+  });
+
+  const statusLabelMap: Record<SmsConnectionStatus, string> = {
+    DISCONNECTED: "Disconnected",
+    PENDING_SETUP: "Pending setup",
+    CONNECTED: "Connected",
+    ERRORED: "Needs attention",
+  };
+
+  return {
+    phase,
+    provider,
+    status,
+    requestedPhoneNumber,
+    senderPhoneNumber,
+    externalPhoneSid: connection?.externalPhoneSid ?? "",
+    phaseLabel: copy.phaseLabel,
+    statusLabel: statusLabelMap[status],
+    headline: copy.headline,
+    detail: copy.detail,
+    nextStep: copy.nextStep,
+    primaryActionLabel: copy.primaryActionLabel,
+    lastError: connection?.lastError ?? "",
+    connectedAtLabel: formatConnectionTimestamp(connection?.connectedAt),
+    lastSyncedLabel: formatConnectionTimestamp(connection?.lastSyncedAt),
+  };
+}
+
 export function buildSettingsStateFromWorkspace({
   business,
   supportEmail,
@@ -439,6 +579,7 @@ export function buildSettingsStateFromWorkspace({
   staffMembers,
   reminderSettings,
   whatsappConnection,
+  smsConnection,
 }: SettingsWorkspaceData): SettingsState {
   return {
     business: {
@@ -461,6 +602,14 @@ export function buildSettingsStateFromWorkspace({
       connection: buildWhatsAppConnectionSummary(
         whatsappConnection,
         business.whatsappNumber ?? ""
+      ),
+    },
+    sms: {
+      phoneNumber: business.smsNumber ?? "",
+      enabled: business.smsEnabled,
+      connection: buildSmsConnectionSummary(
+        smsConnection,
+        business.smsNumber ?? ""
       ),
     },
     reminders: {

@@ -2,6 +2,7 @@ import { differenceInCalendarDays, format, isToday, isYesterday } from "date-fns
 import type {
   Client,
   Conversation,
+  MessageChannel,
   Message,
   MessageDeliveryStatus,
 } from "@prisma/client";
@@ -17,6 +18,8 @@ export type InboxMessage = {
 
 export type InboxConversation = {
   id: string;
+  channel: MessageChannel;
+  channelLabel: string;
   phone: string;
   clientId?: string;
   clientName: string;
@@ -37,7 +40,7 @@ export type InboxViewModel = {
 
 type InboxConversationRecord = Pick<
   Conversation,
-  "id" | "phoneNumber" | "contactName" | "unreadCount" | "updatedAt"
+  "id" | "channel" | "phoneNumber" | "contactName" | "unreadCount" | "updatedAt"
 > & {
   messages: Array<
     Pick<
@@ -171,6 +174,8 @@ export function buildInboxConversation(
 
   return {
     id: conversation.id,
+    channel: conversation.channel,
+    channelLabel: conversation.channel === "SMS" ? "SMS" : "WhatsApp",
     phone: conversation.phoneNumber,
     clientId: linkedClient?.id,
     clientName: linkedClient?.name ?? fallbackDisplayName,

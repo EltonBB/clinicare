@@ -40,7 +40,10 @@ import type { SettingsState } from "@/lib/settings";
 type InboxWorkspaceProps = {
   initialView: InboxViewModel;
   ownerName: string;
-  connection: SettingsState["whatsapp"]["connection"];
+  connections: {
+    whatsapp: SettingsState["whatsapp"]["connection"];
+    sms: SettingsState["sms"]["connection"];
+  };
 };
 
 function isReminderMessage(body: string) {
@@ -67,7 +70,7 @@ function deliveryTone(status?: SettingsState["whatsapp"]["connection"]["status"]
 export function InboxWorkspace({
   initialView,
   ownerName,
-  connection,
+  connections,
 }: InboxWorkspaceProps) {
   const [conversations, setConversations] = useState(initialView.conversations);
   const [selectedConversationId, setSelectedConversationId] = useState(
@@ -339,8 +342,16 @@ export function InboxWorkspace({
             <div>
               <p className="text-lg font-semibold text-foreground">Messages</p>
               <p className="text-sm text-muted-foreground">
-                {connection.modeLabel} {connection.statusLabel.toLowerCase()} via{" "}
-                {connection.senderPhoneNumber || "provider setup"}
+                {[
+                  connections.whatsapp.senderPhoneNumber
+                    ? `WhatsApp via ${connections.whatsapp.senderPhoneNumber}`
+                    : null,
+                  connections.sms.senderPhoneNumber
+                    ? `SMS via ${connections.sms.senderPhoneNumber}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" • ") || "No connected messaging channels yet"}
               </p>
             </div>
           </div>
@@ -380,11 +391,16 @@ export function InboxWorkspace({
                       <p className="truncate text-base font-semibold text-foreground">
                         {conversation.displayName}
                       </p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                          {conversation.channelLabel}
+                        </span>
                       {!conversation.isLinkedClient ? (
                         <p className="mt-0.5 text-xs font-medium uppercase tracking-[0.12em] text-primary">
                           {conversation.contactStatusLabel}
                         </p>
                       ) : null}
+                      </div>
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {conversation.lastMessageAt}
@@ -423,9 +439,14 @@ export function InboxWorkspace({
                     <p className="truncate text-lg font-semibold text-foreground">
                       {activeConversation.displayName}
                     </p>
-                    <p className="truncate text-sm text-muted-foreground">
-                      {activeConversation.activeLabel}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                        {activeConversation.channelLabel}
+                      </span>
+                      <p className="truncate text-sm text-muted-foreground">
+                        {activeConversation.activeLabel}
+                      </p>
+                    </div>
                   </div>
                 </div>
 

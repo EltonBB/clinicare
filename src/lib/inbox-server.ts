@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { MessageChannel, Prisma } from "@prisma/client";
 
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import { prisma } from "@/lib/prisma";
@@ -12,7 +12,8 @@ type SeedClient = {
 async function ensureConversationForSeedClient(
   tx: Prisma.TransactionClient,
   businessId: string,
-  client: SeedClient
+  client: SeedClient,
+  channel: MessageChannel = "WHATSAPP"
 ) {
   const normalizedClientPhone = normalizePhone(client.phone);
 
@@ -22,16 +23,19 @@ async function ensureConversationForSeedClient(
 
   await tx.conversation.upsert({
     where: {
-      businessId_phoneNumber: {
+      businessId_channel_phoneNumber: {
         businessId,
+        channel,
         phoneNumber: normalizedClientPhone,
       },
     },
     update: {
+      channel,
       contactName: client.name,
     },
     create: {
       businessId,
+      channel,
       phoneNumber: normalizedClientPhone,
       contactName: client.name,
       unreadCount: 0,
@@ -80,7 +84,8 @@ export async function ensureInboxSeedData(businessId: string) {
 
 export async function ensureConversationForClient(
   businessId: string,
-  clientId: string
+  clientId: string,
+  channel?: MessageChannel
 ) {
   const client = await prisma.client.findFirst({
     where: {
@@ -91,6 +96,7 @@ export async function ensureConversationForClient(
       id: true,
       name: true,
       phone: true,
+      preferredChannel: true,
     },
   });
 
@@ -99,20 +105,25 @@ export async function ensureConversationForClient(
   }
 
   const normalizedClientPhone = normalizePhone(client.phone);
+  const resolvedChannel =
+    channel ?? (client.preferredChannel?.toUpperCase() === "SMS" ? "SMS" : "WHATSAPP");
 
   return prisma.conversation.upsert({
     where: {
-      businessId_phoneNumber: {
+      businessId_channel_phoneNumber: {
         businessId,
+        channel: resolvedChannel,
         phoneNumber: normalizedClientPhone,
       },
     },
     update: {
+      channel: resolvedChannel,
       phoneNumber: normalizedClientPhone,
       contactName: client.name,
     },
     create: {
       businessId,
+      channel: resolvedChannel,
       phoneNumber: normalizedClientPhone,
       contactName: client.name,
       unreadCount: 0,
@@ -141,6 +152,7 @@ export async function normalizeConversationsForBusiness(businessId: string) {
       },
       select: {
         id: true,
+        channel: true,
         phoneNumber: true,
         contactName: true,
         unreadCount: true,
@@ -156,7 +168,7 @@ export async function normalizeConversationsForBusiness(businessId: string) {
 
   for (const conversation of conversations) {
     const normalizedPhone = normalizePhone(conversation.phoneNumber);
-    const lookupKey = phoneLookupKey(conversation.phoneNumber);
+    const lookupKey = `${conversation.channel}:${phoneLookupKey(conversation.phoneNumber)}`;
 
     if (!normalizedPhone || !lookupKey) {
       continue;
@@ -169,8 +181,9 @@ export async function normalizeConversationsForBusiness(businessId: string) {
 
   for (const [lookupKey, group] of grouped) {
     try {
+      const channel = group[0]?.channel ?? "WHATSAPP";
       const matchingClient = clients.find(
-        (client) => phoneLookupKey(client.phone) === lookupKey
+        (client) => `${channel}:${phoneLookupKey(client.phone)}` === lookupKey
       );
       const canonicalPhone =
         normalizePhone(matchingClient?.phone ?? "") ||
@@ -215,6 +228,7 @@ export async function normalizeConversationsForBusiness(businessId: string) {
             id: preferredConversation.id,
           },
           data: {
+            channel,
             phoneNumber: canonicalPhone,
             contactName:
               matchingClient?.name ??

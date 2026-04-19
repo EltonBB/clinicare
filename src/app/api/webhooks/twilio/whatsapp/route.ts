@@ -135,6 +135,7 @@ async function resolveInboundConversation(
         businessId: {
           in: scopedBusinessIds,
         },
+        channel: "WHATSAPP",
       },
       orderBy: {
         updatedAt: "desc",
@@ -309,12 +310,14 @@ export async function POST(request: Request) {
 
     const conversation = await tx.conversation.upsert({
       where: {
-        businessId_phoneNumber: {
+        businessId_channel_phoneNumber: {
           businessId: resolved.businessId,
+          channel: "WHATSAPP",
           phoneNumber: normalizedPhone,
         },
       },
       update: {
+        channel: "WHATSAPP",
         contactName: profileName || resolved.contactName || normalizedPhone,
         unreadCount: {
           increment: 1,
@@ -322,6 +325,7 @@ export async function POST(request: Request) {
       },
       create: {
         businessId: resolved.businessId,
+        channel: "WHATSAPP",
         phoneNumber: normalizedPhone,
         contactName: profileName || resolved.contactName || normalizedPhone,
         unreadCount: 1,
@@ -348,6 +352,7 @@ export async function POST(request: Request) {
       data: {
         conversationId: conversation.id,
         clientId: matchedClient?.id ?? null,
+        channel: "WHATSAPP",
         direction: "INBOUND",
         body,
       },

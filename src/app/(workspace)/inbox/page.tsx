@@ -1,9 +1,10 @@
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { InboxWorkspace } from "@/components/inbox/inbox-workspace";
 import { buildInboxViewFromWorkspace } from "@/lib/inbox";
-import { buildWhatsAppConnectionSummary } from "@/lib/settings";
+import { buildSmsConnectionSummary, buildWhatsAppConnectionSummary } from "@/lib/settings";
 import { ensureConversationForClient } from "@/lib/inbox-server";
 import { prisma } from "@/lib/prisma";
+import { syncSmsConnectionForBusiness } from "@/lib/sms-connection";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 
 export default async function InboxPage({
@@ -22,9 +23,12 @@ export default async function InboxPage({
       ? await ensureConversationForClient(business.id, client)
       : null;
 
-  const syncedConnection = await syncWhatsAppConnectionForBusiness(business.id);
+  const [syncedWhatsAppConnection, syncedSmsConnection] = await Promise.all([
+    syncWhatsAppConnectionForBusiness(business.id),
+    syncSmsConnectionForBusiness(business.id),
+  ]);
 
-  const [clients, conversations, whatsappConnection] = await Promise.all([
+  const [clients, conversations, whatsappConnection, smsConnection] = await Promise.all([
     prisma.client.findMany({
       where: {
         businessId: business.id,
@@ -49,6 +53,7 @@ export default async function InboxPage({
       },
       select: {
         id: true,
+        channel: true,
         phoneNumber: true,
         contactName: true,
         unreadCount: true,
@@ -56,6 +61,7 @@ export default async function InboxPage({
         messages: {
           select: {
             id: true,
+            channel: true,
             direction: true,
             body: true,
             deliveryStatus: true,
@@ -75,7 +81,8 @@ export default async function InboxPage({
         },
       ],
     }),
-    Promise.resolve(syncedConnection),
+    Promise.resolve(syncedWhatsAppConnection),
+    Promise.resolve(syncedSmsConnection),
   ]);
   const inboxView = buildInboxViewFromWorkspace({
     conversations,
@@ -90,10 +97,13 @@ export default async function InboxPage({
           ensuredConversation?.id ?? inboxView.initialConversationId,
       }}
       ownerName={ownerName}
-      connection={buildWhatsAppConnectionSummary(
-        whatsappConnection,
-        business.whatsappNumber ?? ""
-      )}
+      connections={{
+        whatsapp: buildWhatsAppConnectionSummary(
+          whatsappConnection,
+          business.whatsappNumber ?? ""
+        ),
+        sms: buildSmsConnectionSummary(smsConnection, business.smsNumber ?? ""),
+      }}
     />
   );
 }
