@@ -1,8 +1,9 @@
-import type {
-  WhatsAppConnection,
-  WhatsAppConnectionStatus,
-  WhatsAppDisplayNameStatus,
-  WhatsAppVerificationStatus,
+import {
+  Prisma,
+  type WhatsAppConnection,
+  type WhatsAppConnectionStatus,
+  type WhatsAppDisplayNameStatus,
+  type WhatsAppVerificationStatus,
 } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
@@ -163,45 +164,60 @@ async function findWorkspaceNumberConflict(args: {
 }) {
   const requestedPhoneNumber = normalizeLiveNumber(args.requestedPhoneNumber);
   const externalSenderId = args.externalSenderId?.trim() || null;
+  const externalSenderClause = externalSenderId
+    ? Prisma.sql`or wc."externalSenderId" = ${externalSenderId}`
+    : Prisma.empty;
 
-  return prisma.whatsAppConnection.findFirst({
-    where: {
-      businessId: {
-        not: args.businessId,
-      },
-      mode: "LIVE",
-      status: {
-        in: ["CONNECTED", "CONNECTING", "PENDING_VERIFICATION"],
-      },
-      OR: [
-        {
-          requestedPhoneNumber,
-        },
-        {
-          senderPhoneNumber: requestedPhoneNumber,
-        },
-        ...(externalSenderId
-          ? [
-              {
-                externalSenderId,
-              },
-            ]
-          : []),
-      ],
+  const rows = await prisma.$queryRaw<
+    Array<{
+      id: string;
+      status: WhatsAppConnectionStatus;
+      requestedPhoneNumber: string | null;
+      senderPhoneNumber: string | null;
+      businessId: string;
+      businessName: string;
+    }>
+  >(Prisma.sql`
+    select
+      wc.id,
+      wc.status,
+      wc."requestedPhoneNumber",
+      wc."senderPhoneNumber",
+      b.id as "businessId",
+      b.name as "businessName"
+    from "WhatsAppConnection" wc
+    join "Business" b
+      on b.id = wc."businessId"
+    join auth.users u
+      on u.id::text = b."ownerId"
+    where wc."businessId" <> ${args.businessId}
+      and wc.mode = 'LIVE'
+      and wc.status in ('CONNECTED', 'CONNECTING', 'PENDING_VERIFICATION')
+      and (
+        wc."requestedPhoneNumber" = ${requestedPhoneNumber}
+        or wc."senderPhoneNumber" = ${requestedPhoneNumber}
+        ${externalSenderClause}
+      )
+    order by wc."updatedAt" desc
+    limit 1
+  `);
+
+  const conflict = rows[0];
+
+  if (!conflict) {
+    return null;
+  }
+
+  return {
+    id: conflict.id,
+    status: conflict.status,
+    requestedPhoneNumber: conflict.requestedPhoneNumber,
+    senderPhoneNumber: conflict.senderPhoneNumber,
+    business: {
+      id: conflict.businessId,
+      name: conflict.businessName,
     },
-    select: {
-      id: true,
-      status: true,
-      requestedPhoneNumber: true,
-      senderPhoneNumber: true,
-      business: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-    },
-  });
+  };
 }
 
 function buildWorkspaceConflictMessage(args: {
