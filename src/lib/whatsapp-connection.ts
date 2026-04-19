@@ -8,7 +8,6 @@ import type {
 import { prisma } from "@/lib/prisma";
 import {
   createTwilioWhatsAppSender,
-  findTwilioWhatsAppSenderByPhoneNumber,
   fetchTwilioAccountSummary,
   fetchTwilioWhatsAppSender,
   getConfiguredTwilioWabaId,
@@ -81,6 +80,67 @@ function normalizeTwilioSenderForComparison(sender: TwilioWhatsAppSender) {
     ...sender,
     phoneNumber: sender.senderId ? normalizeLiveNumber(sender.senderId) : "",
   };
+}
+
+type NormalizedTwilioSender = ReturnType<typeof normalizeTwilioSenderForComparison>;
+
+function buildActiveNumberMismatchMessage(args: {
+  requestedPhoneNumber: string;
+  activePhoneNumber: string;
+}) {
+  return `A different clinic number is already active (${args.activePhoneNumber}). Use that number for testing now, or finish moving ${args.requestedPhoneNumber} into the current WhatsApp setup first.`;
+}
+
+async function inspectTwilioProviderState(args: {
+  requestedPhoneNumber: string;
+  externalSenderId?: string | null;
+}) {
+  const requestedPhoneNumber = normalizeLiveNumber(args.requestedPhoneNumber);
+  let existingSender: NormalizedTwilioSender | null = null;
+
+  if (args.externalSenderId?.trim()) {
+    try {
+      existingSender = normalizeTwilioSenderForComparison(
+        await fetchTwilioWhatsAppSender(args.externalSenderId.trim())
+      );
+    } catch {
+      existingSender = null;
+    }
+  }
+
+  try {
+    const senders = (await listTwilioWhatsAppSenders()).map(
+      normalizeTwilioSenderForComparison
+    );
+    const requestedSender =
+      senders.find((sender) => sender.phoneNumber === requestedPhoneNumber) ??
+      (existingSender?.phoneNumber === requestedPhoneNumber ? existingSender : null);
+    const activeSender =
+      senders.find(
+        (sender) =>
+          sender.phoneNumber &&
+          sender.phoneNumber !== requestedPhoneNumber &&
+          sender.status.toUpperCase() === "ONLINE"
+      ) ??
+      senders.find(
+        (sender) =>
+          sender.phoneNumber && sender.phoneNumber !== requestedPhoneNumber
+      ) ??
+      null;
+
+    return {
+      requestedSender,
+      existingSender,
+      activeSender,
+    };
+  } catch {
+    return {
+      requestedSender:
+        existingSender?.phoneNumber === requestedPhoneNumber ? existingSender : null,
+      existingSender,
+      activeSender: null,
+    };
+  }
 }
 
 async function findWorkspaceNumberConflict(args: {
@@ -325,14 +385,52 @@ export async function syncWhatsAppConnectionForBusiness(businessId: string) {
   }
 
   try {
-    const sender = connection.externalSenderId
-      ? await fetchTwilioWhatsAppSender(connection.externalSenderId)
-      : connection.requestedPhoneNumber
-        ? await findTwilioWhatsAppSenderByPhoneNumber(connection.requestedPhoneNumber)
-        : null;
+    const providerState = connection.requestedPhoneNumber?.trim()
+      ? await inspectTwilioProviderState({
+          requestedPhoneNumber: connection.requestedPhoneNumber,
+          externalSenderId: connection.externalSenderId,
+        })
+      : {
+          requestedSender: null,
+          existingSender: connection.externalSenderId
+            ? normalizeTwilioSenderForComparison(
+                await fetchTwilioWhatsAppSender(connection.externalSenderId)
+              )
+            : null,
+          activeSender: null,
+        };
+
+    const sender = providerState.requestedSender ?? providerState.existingSender;
 
     if (!sender) {
+      if (
+        connection.requestedPhoneNumber?.trim() &&
+        providerState.activeSender?.phoneNumber
+      ) {
+        return await updateConnectionError(
+          connection,
+          buildActiveNumberMismatchMessage({
+            requestedPhoneNumber: normalizeLiveNumber(connection.requestedPhoneNumber),
+            activePhoneNumber: providerState.activeSender.phoneNumber,
+          })
+        );
+      }
+
       return connection;
+    }
+
+    if (
+      connection.requestedPhoneNumber?.trim() &&
+      sender.phoneNumber &&
+      sender.phoneNumber !== normalizeLiveNumber(connection.requestedPhoneNumber)
+    ) {
+      return await updateConnectionError(
+        connection,
+        buildActiveNumberMismatchMessage({
+          requestedPhoneNumber: normalizeLiveNumber(connection.requestedPhoneNumber),
+          activePhoneNumber: sender.phoneNumber,
+        })
+      );
     }
 
     const repairedSender = await refreshSenderWebhookIfNeeded(sender);
@@ -435,19 +533,11 @@ export async function beginWhatsAppLiveConnection(args: {
       });
     }
 
-    if (
-      existingConnection.externalSenderId &&
-      existingConnection.requestedPhoneNumber === requestedPhoneNumber
-    ) {
-      return (
-        (await syncWhatsAppConnectionForBusiness(args.businessId)) ??
-        existingConnection
-      );
-    }
-
-    const existingSender = await findTwilioWhatsAppSenderByPhoneNumber(
-      requestedPhoneNumber
-    );
+    const providerState = await inspectTwilioProviderState({
+      requestedPhoneNumber,
+      externalSenderId: existingConnection.externalSenderId,
+    });
+    const existingSender = providerState.requestedSender;
 
     if (existingSender) {
       const repairedSender = await refreshSenderWebhookIfNeeded(existingSender);
@@ -471,6 +561,26 @@ export async function beginWhatsAppLiveConnection(args: {
           lastError: repairedSender.offlineReason || null,
         },
       });
+    }
+
+    if (providerState.existingSender?.phoneNumber) {
+      return await updateConnectionError(
+        existingConnection,
+        buildActiveNumberMismatchMessage({
+          requestedPhoneNumber,
+          activePhoneNumber: providerState.existingSender.phoneNumber,
+        })
+      );
+    }
+
+    if (providerState.activeSender?.phoneNumber) {
+      return await updateConnectionError(
+        existingConnection,
+        buildActiveNumberMismatchMessage({
+          requestedPhoneNumber,
+          activePhoneNumber: providerState.activeSender.phoneNumber,
+        })
+      );
     }
 
     if (!wabaId) {
