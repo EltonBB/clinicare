@@ -31,9 +31,23 @@ function resolveWebhookUrl(request: Request) {
 function resolveWebhookValidationUrls(request: Request) {
   const incoming = new URL(request.url);
   const candidates = new Set<string>();
+  const forwardedProto =
+    request.headers.get("x-forwarded-proto")?.trim() ||
+    incoming.protocol.replace(/:$/, "") ||
+    "https";
+  const forwardedHost =
+    request.headers.get("x-forwarded-host")?.trim() ||
+    request.headers.get("host")?.trim() ||
+    "";
 
   candidates.add(incoming.toString());
   candidates.add(resolveWebhookUrl(request));
+
+  if (forwardedHost) {
+    candidates.add(
+      `${forwardedProto}://${forwardedHost}${incoming.pathname}${incoming.search}`
+    );
+  }
 
   return Array.from(candidates);
 }
