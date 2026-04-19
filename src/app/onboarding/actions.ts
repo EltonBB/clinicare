@@ -5,6 +5,7 @@ import { addHours } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { ensureInboxSeedData } from "@/lib/inbox-server";
 import { beginWhatsAppLiveConnection } from "@/lib/whatsapp-connection";
+import { normalizePhone } from "@/lib/inbox";
 import {
   weekdayOrder,
   normalizeOnboardingState,
@@ -55,7 +56,8 @@ async function bootstrapWorkspaceFromOnboarding(user: {
   const bookingStartAt = parseBookingStart(nextState.booking.date, nextState.booking.time);
   const bookingEndAt = addHours(bookingStartAt, 1);
   const clientName = nextState.client.name.trim() || nextState.booking.clientName.trim();
-  const clientPhone = nextState.client.phone.trim();
+  const normalizedWhatsAppNumber = normalizePhone(nextState.whatsapp.phoneNumber);
+  const clientPhone = normalizePhone(nextState.client.phone);
   const shouldCreateClient = clientName.length > 0 && clientPhone.length > 0;
   const shouldCreateAppointment =
     shouldCreateClient &&
@@ -71,7 +73,7 @@ async function bootstrapWorkspaceFromOnboarding(user: {
       update: {
         name: businessName,
         businessType,
-        whatsappNumber: nextState.whatsapp.phoneNumber || null,
+        whatsappNumber: normalizedWhatsAppNumber || null,
         whatsappEnabled: nextState.whatsapp.sendReminders,
       },
       create: {
@@ -80,13 +82,13 @@ async function bootstrapWorkspaceFromOnboarding(user: {
         businessType,
         plan: "BASIC",
         planStatus: "ACTIVE",
-        whatsappNumber: nextState.whatsapp.phoneNumber || null,
+        whatsappNumber: normalizedWhatsAppNumber || null,
         whatsappEnabled: nextState.whatsapp.sendReminders,
         trialEndsAt: null,
       },
     });
 
-    const requestedPhoneNumber = nextState.whatsapp.phoneNumber.trim() || null;
+    const requestedPhoneNumber = normalizedWhatsAppNumber || null;
 
     await tx.whatsAppConnection.upsert({
       where: {

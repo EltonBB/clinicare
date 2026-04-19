@@ -1,3 +1,5 @@
+import { normalizePhone } from "@/lib/inbox";
+
 export const onboardingSteps = [
   {
     id: "hours",
@@ -149,6 +151,11 @@ function readCurrentStep(value: unknown) {
   return Math.min(Math.max(Math.round(value), 1), onboardingSteps.length);
 }
 
+function normalizeOptionalPhone(value: unknown, fallback: string) {
+  const normalized = normalizePhone(readString(value, fallback));
+  return normalized || "";
+}
+
 export function normalizeOnboardingState(value: unknown): OnboardingState {
   const defaults = createDefaultOnboardingState();
 
@@ -181,7 +188,10 @@ export function normalizeOnboardingState(value: unknown): OnboardingState {
       role: readString(staffMember.role, defaults.staffMember.role),
     },
     whatsapp: {
-      phoneNumber: readString(whatsapp.phoneNumber, defaults.whatsapp.phoneNumber),
+      phoneNumber: normalizeOptionalPhone(
+        whatsapp.phoneNumber,
+        defaults.whatsapp.phoneNumber
+      ),
       sendReminders: readBoolean(
         whatsapp.sendReminders,
         defaults.whatsapp.sendReminders
@@ -195,7 +205,7 @@ export function normalizeOnboardingState(value: unknown): OnboardingState {
     client: {
       name: readString(client.name, defaults.client.name),
       email: readString(client.email, defaults.client.email),
-      phone: readString(client.phone, defaults.client.phone),
+      phone: normalizeOptionalPhone(client.phone, defaults.client.phone),
       notes: readString(client.notes, defaults.client.notes),
     },
     booking: {

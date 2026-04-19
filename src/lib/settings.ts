@@ -19,6 +19,7 @@ import {
   weekdayOrder,
 } from "@/lib/onboarding";
 import { planDisplayName, planStatusLabel } from "@/lib/billing";
+import { normalizePhone } from "@/lib/inbox";
 
 export type StaffRole = "Owner" | "Manager" | "Specialist" | "Reception";
 
@@ -362,16 +363,18 @@ export function buildWhatsAppConnectionSummary(
   const provider = connection?.provider ?? "TWILIO";
   const mode = connection?.mode ?? "SANDBOX";
   const status = connection?.status ?? "PENDING_SETUP";
-  const requestedPhoneNumber =
-    connection?.requestedPhoneNumber ?? fallbackRequestedPhoneNumber;
-  const senderPhoneNumber = connection?.senderPhoneNumber ?? "";
+  const requestedPhoneNumber = normalizePhone(
+    connection?.requestedPhoneNumber ?? fallbackRequestedPhoneNumber
+  );
+  const senderPhoneNumber = normalizePhone(connection?.senderPhoneNumber ?? "");
   const externalSenderId = connection?.externalSenderId ?? "";
   const senderLabel = mode === "LIVE" ? "Live sender" : "Sandbox sender";
   const verificationStatus = connection?.verificationStatus ?? "NOT_STARTED";
   const displayNameStatus = connection?.displayNameStatus ?? "UNKNOWN";
-  const alternatePhoneNumber =
+  const alternatePhoneNumber = normalizePhone(
     connection?.senderPhoneNumber?.trim() ||
-    extractPhoneNumber(connection?.lastError ?? "");
+      extractPhoneNumber(connection?.lastError ?? "")
+  );
   const phase = resolveCustomerFacingPhase(connection, requestedPhoneNumber);
   const customerCopy = buildCustomerFacingConnectionCopy({
     phase,

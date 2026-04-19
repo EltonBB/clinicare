@@ -11,6 +11,7 @@ import {
   submitWhatsAppVerificationCode,
   syncWhatsAppConnectionForBusiness,
 } from "@/lib/whatsapp-connection";
+import { normalizePhone } from "@/lib/inbox";
 import {
   buildWhatsAppConnectionSummary,
   buildSettingsStateFromWorkspace,
@@ -62,6 +63,7 @@ export async function saveSettingsAction(
   const business = await requireCurrentBusiness(user, {
     missingBusinessRedirect: "/onboarding",
   });
+  const normalizedWhatsAppNumber = normalizePhone(payload.whatsapp.phoneNumber);
 
   const cleanedStaff = payload.staff.filter((member) => member.name.trim().length > 0);
   const persistedStaff =
@@ -102,12 +104,12 @@ export async function saveSettingsAction(
       data: {
         name: payload.business.businessName.trim() || business.name,
         businessType: payload.business.businessType,
-        whatsappNumber: payload.whatsapp.phoneNumber.trim() || null,
+        whatsappNumber: normalizedWhatsAppNumber || null,
         whatsappEnabled: payload.whatsapp.sendReminders,
       },
     });
 
-    const requestedPhoneNumber = payload.whatsapp.phoneNumber.trim() || null;
+    const requestedPhoneNumber = normalizedWhatsAppNumber || null;
     const requestedPhoneChanged =
       (existingConnection?.requestedPhoneNumber ?? null) !== requestedPhoneNumber;
     const sandboxSender = process.env.TWILIO_WHATSAPP_FROM?.trim() ?? null;
