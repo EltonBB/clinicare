@@ -133,7 +133,7 @@ async function findWorkspaceNumberConflict(args: {
       },
       mode: "LIVE",
       status: {
-        not: "DISCONNECTED",
+        in: ["CONNECTED", "CONNECTING", "PENDING_VERIFICATION"],
       },
       OR: [
         {
