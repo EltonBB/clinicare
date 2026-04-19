@@ -80,6 +80,10 @@ function buildClinicNumberMismatchMessage(args: {
   return `A different clinic number is already active (${args.activePhoneNumber}). Use that number for testing now, or finish moving ${args.requestedPhoneNumber} into the current WhatsApp setup first.`;
 }
 
+function buildPendingSetupMessage(requestedPhoneNumber: string) {
+  return `The clinic number ${requestedPhoneNumber} is saved, but it is not connected yet. Start setup again when you're ready to attach it.`;
+}
+
 async function inspectTwilioProviderState(args: {
   requestedPhoneNumber: string;
   externalSenderId?: string | null;
@@ -116,6 +120,40 @@ async function inspectTwilioProviderState(args: {
       existingSender,
     };
   }
+}
+
+async function resetConnectionToPendingSetup(
+  connection: WhatsAppConnection,
+  lastError: string,
+  options?: {
+    clearSenderBinding?: boolean;
+  }
+) {
+  const clearSenderBinding = options?.clearSenderBinding ?? true;
+
+  return prisma.whatsAppConnection.update({
+    where: {
+      id: connection.id,
+    },
+    data: {
+      mode: "LIVE",
+      status: "PENDING_SETUP",
+      verificationStatus: "NOT_STARTED",
+      displayNameStatus:
+        connection.displayNameStatus === "APPROVED"
+          ? "APPROVED"
+          : "UNKNOWN",
+      senderPhoneNumber: null,
+      ...(clearSenderBinding
+        ? {
+            externalSenderId: null,
+          }
+        : {}),
+      connectedAt: null,
+      lastError,
+      lastSyncedAt: new Date(),
+    },
+  });
 }
 
 async function findWorkspaceNumberConflict(args: {
@@ -374,6 +412,25 @@ export async function syncWhatsAppConnectionForBusiness(businessId: string) {
             : null,
         };
 
+    if (!providerState.requestedSender && !providerState.existingSender) {
+      if (
+        connection.externalSenderId?.trim() ||
+        connection.senderPhoneNumber?.trim() ||
+        connection.status === "CONNECTED" ||
+        connection.status === "PENDING_VERIFICATION" ||
+        connection.status === "CONNECTING"
+      ) {
+        return await resetConnectionToPendingSetup(
+          connection,
+          buildPendingSetupMessage(
+            normalizeLiveNumber(connection.requestedPhoneNumber ?? "")
+          )
+        );
+      }
+
+      return connection;
+    }
+
     const sender = providerState.requestedSender ?? providerState.existingSender;
 
     if (!sender) {
@@ -499,6 +556,17 @@ export async function beginWhatsAppLiveConnection(args: {
       externalSenderId: existingConnection.externalSenderId,
     });
     const existingSender = providerState.requestedSender;
+
+    if (
+      !providerState.requestedSender &&
+      !providerState.existingSender &&
+      existingConnection.externalSenderId?.trim()
+    ) {
+      await resetConnectionToPendingSetup(
+        existingConnection,
+        buildPendingSetupMessage(requestedPhoneNumber)
+      );
+    }
 
     if (existingSender) {
       const repairedSender = await refreshSenderWebhookIfNeeded(existingSender);
