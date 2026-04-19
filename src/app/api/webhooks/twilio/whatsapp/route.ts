@@ -28,6 +28,16 @@ function resolveWebhookUrl(request: Request) {
   return incoming.toString();
 }
 
+function resolveWebhookValidationUrls(request: Request) {
+  const incoming = new URL(request.url);
+  const candidates = new Set<string>();
+
+  candidates.add(incoming.toString());
+  candidates.add(resolveWebhookUrl(request));
+
+  return Array.from(candidates);
+}
+
 function toDeliveryStatus(status: string) {
   const normalized = status.trim().toLowerCase();
 
@@ -229,14 +239,18 @@ export async function POST(request: Request) {
     Array.from(formData.entries()).map(([key, value]) => [key, String(value)])
   );
 
-  const isValid = validateTwilioSignature({
-    url: resolveWebhookUrl(request),
-    params,
-    signature,
-  });
+  const isValid = resolveWebhookValidationUrls(request).some((url) =>
+    validateTwilioSignature({
+      url,
+      params,
+      signature,
+    })
+  );
 
   if (!isValid) {
-    console.error("Rejected Twilio webhook due to invalid signature.");
+    console.error("Rejected Twilio webhook due to invalid signature.", {
+      validationUrls: resolveWebhookValidationUrls(request),
+    });
     return NextResponse.json(
       { error: "Invalid Twilio signature." },
       { status: 403 }
