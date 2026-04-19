@@ -83,6 +83,75 @@ function normalizeTwilioSenderForComparison(sender: TwilioWhatsAppSender) {
   };
 }
 
+async function findWorkspaceNumberConflict(args: {
+  businessId: string;
+  requestedPhoneNumber: string;
+  externalSenderId?: string | null;
+}) {
+  const requestedPhoneNumber = normalizeLiveNumber(args.requestedPhoneNumber);
+  const externalSenderId = args.externalSenderId?.trim() || null;
+
+  return prisma.whatsAppConnection.findFirst({
+    where: {
+      businessId: {
+        not: args.businessId,
+      },
+      mode: "LIVE",
+      status: {
+        not: "DISCONNECTED",
+      },
+      OR: [
+        {
+          requestedPhoneNumber,
+        },
+        {
+          senderPhoneNumber: requestedPhoneNumber,
+        },
+        ...(externalSenderId
+          ? [
+              {
+                externalSenderId,
+              },
+            ]
+          : []),
+      ],
+    },
+    select: {
+      id: true,
+      status: true,
+      requestedPhoneNumber: true,
+      senderPhoneNumber: true,
+      business: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  });
+}
+
+function buildWorkspaceConflictMessage(args: {
+  requestedPhoneNumber: string;
+  conflict: Awaited<ReturnType<typeof findWorkspaceNumberConflict>>;
+}) {
+  if (!args.conflict) {
+    return null;
+  }
+
+  const activePhoneNumber =
+    args.conflict.senderPhoneNumber?.trim() || args.conflict.requestedPhoneNumber?.trim();
+
+  if (
+    activePhoneNumber &&
+    normalizeLiveNumber(activePhoneNumber) === normalizeLiveNumber(args.requestedPhoneNumber)
+  ) {
+    return `This clinic number is already connected to another Clinicare workspace. Disconnect it there first before using ${normalizeLiveNumber(args.requestedPhoneNumber)} here.`;
+  }
+
+  return `This clinic number is already being set up in another Clinicare workspace. Finish or remove ${normalizeLiveNumber(args.requestedPhoneNumber)} there before trying again here.`;
+}
+
 async function refreshSenderWebhookIfNeeded(sender: TwilioWhatsAppSender) {
   const webhookUrl = getPublicTwilioWebhookUrl();
 
@@ -309,6 +378,20 @@ export async function beginWhatsAppLiveConnection(args: {
   };
 
   try {
+    const workspaceConflict = await findWorkspaceNumberConflict({
+      businessId: args.businessId,
+      requestedPhoneNumber,
+      externalSenderId: existingConnection.externalSenderId,
+    });
+    const workspaceConflictMessage = buildWorkspaceConflictMessage({
+      requestedPhoneNumber,
+      conflict: workspaceConflict,
+    });
+
+    if (workspaceConflictMessage) {
+      return await updateConnectionError(existingConnection, workspaceConflictMessage);
+    }
+
     const account = await fetchTwilioAccountSummary();
     const webhookUrl = getPublicTwilioWebhookUrl();
     const wabaId = getConfiguredTwilioWabaId();
