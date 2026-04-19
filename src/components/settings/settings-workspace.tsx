@@ -118,12 +118,12 @@ function SettingsSection({
   );
 }
 
-function connectionStatusTone(status: SettingsState["whatsapp"]["connection"]["status"]) {
-  if (status === "CONNECTED") {
+function connectionStatusTone(phase: SettingsState["whatsapp"]["connection"]["phase"]) {
+  if (phase === "CONNECTED") {
     return "bg-primary/10 text-primary";
   }
 
-  if (status === "ERRORED") {
+  if (phase === "NEEDS_SUPPORT") {
     return "bg-destructive/10 text-destructive";
   }
 
@@ -529,7 +529,7 @@ export function SettingsWorkspace({
         <SettingsSection
           id="whatsapp-configuration"
           title="WhatsApp configuration"
-          description="Connect the clinic's real WhatsApp business number, keep reminders tied to the right sender, and track the live connection status."
+          description="Connect the clinic's WhatsApp number, keep reminders tied to the right inbox, and manage the setup from one place."
         >
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
@@ -591,27 +591,27 @@ export function SettingsWorkspace({
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
-                    {state.whatsapp.connection.provider}
-                  </span>
-                  <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
-                    {state.whatsapp.connection.modeLabel}
+                    WhatsApp
                   </span>
                   <span
                     className={cn(
                       "rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em]",
-                      connectionStatusTone(state.whatsapp.connection.status)
+                      connectionStatusTone(state.whatsapp.connection.phase)
                     )}
                   >
-                    {state.whatsapp.connection.statusLabel}
+                    {state.whatsapp.connection.phaseLabel}
                   </span>
                 </div>
                 <div className="space-y-1">
-                  <FieldLabel>Clinic sender readiness</FieldLabel>
+                  <FieldLabel>Connection status</FieldLabel>
                   <p className="text-lg font-semibold text-foreground">
-                    {state.whatsapp.connection.readinessLabel}
+                    {state.whatsapp.connection.headline}
                   </p>
                   <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
                     {state.whatsapp.connection.detail}
+                  </p>
+                  <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
+                    {state.whatsapp.connection.nextStep}
                   </p>
                 </div>
               </div>
@@ -624,9 +624,7 @@ export function SettingsWorkspace({
                 >
                   {isPreparingConnection
                     ? "Starting..."
-                    : state.whatsapp.connection.externalSenderId
-                      ? "Reconnect clinic number"
-                      : "Start live connection"}
+                    : state.whatsapp.connection.primaryActionLabel}
                 </Button>
                 <Button
                   variant="outline"
@@ -664,26 +662,26 @@ export function SettingsWorkspace({
                   Active sender
                 </p>
                 <p className="mt-2 text-sm font-medium text-foreground">
-                  {state.whatsapp.connection.senderPhoneNumber || "Awaiting live sender assignment"}
+                  {state.whatsapp.connection.senderPhoneNumber || "Not connected yet"}
                 </p>
               </div>
               <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Verification
+                  Setup step
                 </p>
                 <p className="mt-2 text-sm font-medium text-foreground">
-                  {state.whatsapp.connection.verificationLabel}
+                  {state.whatsapp.connection.phaseLabel}
                 </p>
                 <p className="mt-2 text-xs uppercase tracking-[0.12em] text-muted-foreground">
-                  Display name {state.whatsapp.connection.displayNameLabel}
+                  Verification {state.whatsapp.connection.verificationLabel}
                 </p>
               </div>
               <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Provider sender id
+                  Last update
                 </p>
-                <p className="mt-2 break-all text-sm font-medium text-foreground">
-                  {state.whatsapp.connection.externalSenderId || "Pending provider registration"}
+                <p className="mt-2 text-sm font-medium text-foreground">
+                  {state.whatsapp.connection.lastSyncedLabel || "Not synced yet"}
                 </p>
               </div>
             </div>
@@ -799,15 +797,14 @@ export function SettingsWorkspace({
             </div>
 
             {state.whatsapp.connection.mode === "LIVE" &&
-            (state.whatsapp.connection.status === "PENDING_VERIFICATION" ||
-              state.whatsapp.connection.status === "CONNECTING") ? (
+            state.whatsapp.connection.showVerificationInput ? (
               <div className="mt-5 rounded-[0.95rem] border border-border/80 bg-white/84 px-4 py-4">
                 <p className="text-sm font-medium text-foreground">
                   Verification code
                 </p>
                 <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  If Twilio asks for an SMS or WhatsApp verification code for the clinic number,
-                  paste it here and submit it.
+                  If the clinic number receives a verification code, paste it
+                  here and submit it.
                 </p>
                 <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                   <Input

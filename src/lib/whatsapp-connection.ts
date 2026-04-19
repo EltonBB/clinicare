@@ -43,7 +43,7 @@ async function buildLiveConnectionErrorMessage(args: {
   const rawMessage = args.rawMessage.trim();
 
   if (!rawMessage) {
-    return "We couldn't start the clinic WhatsApp connection.";
+    return "We couldn't start WhatsApp setup for this clinic number.";
   }
 
   if (!/another WABA ID|more than 1 sender/i.test(rawMessage)) {
@@ -60,20 +60,20 @@ async function buildLiveConnectionErrorMessage(args: {
     );
 
     if (matchingSender) {
-      return `This clinic number already exists in the WhatsApp provider. Refresh the connection status to attach the existing sender for ${matchingSender.phoneNumber}.`;
+      return `This clinic number is already set up. Refresh the status to attach ${matchingSender.phoneNumber} to this workspace.`;
     }
 
     const activeSender =
       senders.find((sender) => sender.status === "ONLINE") ?? senders[0];
 
     if (activeSender) {
-      return `A different WhatsApp sender is already active for this provider account (${activeSender.phoneNumber}). If you want to test now, save that number as the clinic WhatsApp number. If you want to use ${requestedPhoneNumber} instead, move that number into the current WhatsApp Business account first.`;
+      return `A different clinic number is already active (${activeSender.phoneNumber}). Use that number for testing now, or finish moving ${requestedPhoneNumber} into the current WhatsApp setup first.`;
     }
   } catch {
     // Fall back to a customer-facing message below if provider discovery fails.
   }
 
-  return `This clinic number is not the active WhatsApp sender on the current provider account. Use the provider's active sender for testing, or finish moving ${normalizeLiveNumber(args.requestedPhoneNumber)} into the current WhatsApp Business account first.`;
+  return `This clinic number is not the active WhatsApp sender yet. Use the active test number for now, or finish moving ${normalizeLiveNumber(args.requestedPhoneNumber)} into the current WhatsApp setup first.`;
 }
 
 function normalizeTwilioSenderForComparison(sender: TwilioWhatsAppSender) {
@@ -190,7 +190,7 @@ async function updateConnectionFromSender(
           senderPhoneNumber: null,
           connectedAt: null,
           lastError:
-            `This sender is now attached to another clinic workspace (${normalizedSenderPhone}). Refresh and reconnect with the correct clinic number if needed.`,
+            `This number is now attached to another clinic workspace (${normalizedSenderPhone}). Refresh and reconnect the correct number if needed.`,
           lastSyncedAt: new Date(),
         },
       });
@@ -273,7 +273,7 @@ export async function syncWhatsAppConnectionForBusiness(businessId: string) {
       connection,
       error instanceof Error
         ? error.message
-        : "We couldn't refresh the clinic WhatsApp status."
+        : "We couldn't refresh WhatsApp setup for this clinic number."
     );
   }
 }
@@ -327,7 +327,7 @@ export async function beginWhatsAppLiveConnection(args: {
           displayNameStatus: "UNKNOWN",
           connectedAt: null,
           lastError:
-            "Twilio trial accounts cannot onboard live WhatsApp numbers. Upgrade the Twilio account first.",
+            "Live WhatsApp is not available on this account yet. Upgrade the connected account before using a real clinic number.",
         },
       });
     }
@@ -347,7 +347,7 @@ export async function beginWhatsAppLiveConnection(args: {
           displayNameStatus: "UNKNOWN",
           connectedAt: null,
           lastError:
-            "A public APP_URL is required before live WhatsApp onboarding can start.",
+            "We couldn't finish setup for this clinic number. Contact support if this keeps happening.",
         },
       });
     }
@@ -405,7 +405,7 @@ export async function beginWhatsAppLiveConnection(args: {
           displayNameStatus: "UNKNOWN",
           connectedAt: null,
           lastError:
-            "Twilio WhatsApp onboarding is not fully configured yet. Add the platform WABA ID before starting live clinic numbers.",
+            "This workspace is not ready to connect a new clinic number yet. Contact support to finish the WhatsApp setup.",
         },
       });
     }
@@ -442,7 +442,7 @@ export async function beginWhatsAppLiveConnection(args: {
       rawMessage:
         error instanceof Error
           ? error.message
-          : "We couldn't start the clinic WhatsApp connection.",
+          : "We couldn't start WhatsApp setup for this clinic number.",
     });
 
     return await updateConnectionError(

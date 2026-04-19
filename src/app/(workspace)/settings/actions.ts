@@ -568,7 +568,7 @@ export async function prepareWhatsAppLiveConnectionAction(): Promise<PrepareWhat
   if (!requestedPhoneNumber) {
     return {
       ok: false,
-      error: "Save the clinic WhatsApp number first before preparing a live connection.",
+      error: "Save the clinic WhatsApp number first before starting setup.",
     };
   }
 
@@ -593,10 +593,10 @@ export async function prepareWhatsAppLiveConnectionAction(): Promise<PrepareWhat
           : undefined,
       message:
         connection.status === "CONNECTED"
-          ? "Clinic number connected."
+          ? "WhatsApp is connected."
           : connection.status === "CONNECTING"
-            ? "Clinic number registration started."
-            : "Clinic number saved and waiting for provider verification.",
+            ? "WhatsApp setup started."
+            : "Clinic number saved. Finish the next step when it appears.",
       connection: buildWhatsAppConnectionSummary(
         connection,
         business.whatsappNumber ?? ""
@@ -668,8 +668,8 @@ export async function refreshWhatsAppLiveConnectionAction(): Promise<RefreshWhat
         : undefined,
     message:
       resolvedConnection.status === "CONNECTED"
-        ? "Clinic number is live."
-        : "Latest provider status loaded.",
+        ? "WhatsApp is connected."
+        : "Latest WhatsApp status loaded.",
     connection: buildWhatsAppConnectionSummary(
       resolvedConnection,
       business.whatsappNumber ?? ""

@@ -49,6 +49,13 @@ export type SettingsState = {
     reminderWindow: string;
     template: string;
     connection: {
+      phase:
+        | "NOT_STARTED"
+        | "STARTING"
+        | "CODE_REQUIRED"
+        | "PENDING_APPROVAL"
+        | "CONNECTED"
+        | "NEEDS_SUPPORT";
       provider: WhatsAppProvider;
       mode: WhatsAppConnectionMode;
       status: WhatsAppConnectionStatus;
@@ -56,10 +63,14 @@ export type SettingsState = {
       senderPhoneNumber: string;
       externalSenderId: string;
       senderLabel: string;
+      phaseLabel: string;
       statusLabel: string;
       modeLabel: string;
-      readinessLabel: string;
+      headline: string;
       detail: string;
+      nextStep: string;
+      primaryActionLabel: string;
+      showVerificationInput: boolean;
       verificationLabel: string;
       displayNameLabel: string;
       lastError: string;
@@ -207,6 +218,122 @@ function formatDisplayNameLabel(status: WhatsAppDisplayNameStatus) {
   return labels[status];
 }
 
+function resolveCustomerFacingPhase(connection: WhatsAppConnection | null, requestedPhoneNumber: string) {
+  if (!requestedPhoneNumber.trim()) {
+    return "NOT_STARTED" as const;
+  }
+
+  const status = connection?.status ?? "PENDING_SETUP";
+  const lastError = connection?.lastError?.toLowerCase() ?? "";
+
+  if (status === "CONNECTED") {
+    return "CONNECTED" as const;
+  }
+
+  if (status === "ERRORED") {
+    return "NEEDS_SUPPORT" as const;
+  }
+
+  if (status === "CONNECTING") {
+    return "STARTING" as const;
+  }
+
+  if (status === "PENDING_VERIFICATION") {
+    if (/code|pin|sms|verification/i.test(lastError)) {
+      return "CODE_REQUIRED" as const;
+    }
+
+    return "PENDING_APPROVAL" as const;
+  }
+
+  return "NOT_STARTED" as const;
+}
+
+function buildCustomerFacingConnectionCopy(args: {
+  phase: SettingsState["whatsapp"]["connection"]["phase"];
+  requestedPhoneNumber: string;
+  senderPhoneNumber: string;
+  lastError: string;
+}) {
+  const requestedPhoneNumber = args.requestedPhoneNumber.trim();
+  const senderPhoneNumber = args.senderPhoneNumber.trim();
+  const activeNumberLabel = senderPhoneNumber || requestedPhoneNumber || "this clinic number";
+
+  switch (args.phase) {
+    case "NOT_STARTED":
+      return {
+        phaseLabel: "Not started",
+        headline: "WhatsApp setup not started",
+        detail:
+          requestedPhoneNumber.length > 0
+            ? `The clinic number ${requestedPhoneNumber} is saved. Start setup when you're ready, or skip this for now and connect it later from settings.`
+            : "Add the clinic WhatsApp number, then start setup when you're ready. You can skip this for now and connect it later from settings.",
+        nextStep:
+          "Start setup to connect the clinic number, or continue into the workspace and finish this later.",
+        primaryActionLabel: "Start setup",
+        showVerificationInput: false,
+      };
+    case "STARTING":
+      return {
+        phaseLabel: "Starting connection",
+        headline: "Starting clinic number setup",
+        detail:
+          "We're creating the connection for the clinic number now. This usually takes a moment before the next step appears.",
+        nextStep:
+          "If the status does not move forward shortly, refresh the status to check the latest setup step.",
+        primaryActionLabel: "Retry setup",
+        showVerificationInput: true,
+      };
+    case "CODE_REQUIRED":
+      return {
+        phaseLabel: "Verification code needed",
+        headline: "Verify the clinic number",
+        detail:
+          "Finish setup by entering the code sent to the clinic number. Once the code is accepted, the inbox can start using this number.",
+        nextStep:
+          "Enter the verification code below, then refresh the status if the connection does not update right away.",
+        primaryActionLabel: "Retry setup",
+        showVerificationInput: true,
+      };
+    case "PENDING_APPROVAL":
+      return {
+        phaseLabel: "Pending approval",
+        headline: "Waiting for number approval",
+        detail:
+          requestedPhoneNumber.length > 0
+            ? `${requestedPhoneNumber} is saved and the connection is in progress. The number may still be waiting for review or a final confirmation step.`
+            : "The clinic number is saved and the connection is in progress. The number may still be waiting for review or a final confirmation step.",
+        nextStep:
+          "Refresh the status in a moment. If a code is requested later, enter it here and continue.",
+        primaryActionLabel: "Retry setup",
+        showVerificationInput: true,
+      };
+    case "CONNECTED":
+      return {
+        phaseLabel: "Connected",
+        headline: "Ready for client messaging",
+        detail:
+          `WhatsApp is connected and the inbox can now send and receive messages using ${activeNumberLabel}.`,
+        nextStep:
+          "Open the inbox to test a real client message, or continue into the dashboard and finish the rest of the workspace setup.",
+        primaryActionLabel: "Reconnect number",
+        showVerificationInput: false,
+      };
+    case "NEEDS_SUPPORT":
+      return {
+        phaseLabel: "Needs support",
+        headline: "Connection needs attention",
+        detail:
+          args.lastError.trim() ||
+          "We couldn't finish connecting this clinic number yet. The app saved the number and is ready to try again when the issue is resolved.",
+        nextStep:
+          "Retry the setup. If the same message appears again, finish the number move or verification step and then reconnect.",
+        primaryActionLabel: "Retry setup",
+        showVerificationInput: false,
+      };
+  }
+}
+
 export function buildWhatsAppConnectionSummary(
   connection: WhatsAppConnection | null,
   fallbackRequestedPhoneNumber: string
@@ -221,6 +348,13 @@ export function buildWhatsAppConnectionSummary(
   const senderLabel = mode === "LIVE" ? "Live sender" : "Sandbox sender";
   const verificationStatus = connection?.verificationStatus ?? "NOT_STARTED";
   const displayNameStatus = connection?.displayNameStatus ?? "UNKNOWN";
+  const phase = resolveCustomerFacingPhase(connection, requestedPhoneNumber);
+  const customerCopy = buildCustomerFacingConnectionCopy({
+    phase,
+    requestedPhoneNumber,
+    senderPhoneNumber,
+    lastError: connection?.lastError ?? "",
+  });
 
   const statusLabelMap: Record<WhatsAppConnectionStatus, string> = {
     DISCONNECTED: "Disconnected",
@@ -236,50 +370,8 @@ export function buildWhatsAppConnectionSummary(
     LIVE: "Live",
   };
 
-  const readinessLabelMap: Record<WhatsAppConnectionStatus, string> = {
-    DISCONNECTED: "Connection disconnected",
-    PENDING_SETUP: "Provider setup needed",
-    CONNECTING:
-      mode === "LIVE"
-        ? "Creating clinic sender"
-        : "Connecting sandbox sender",
-    PENDING_VERIFICATION:
-      mode === "LIVE"
-        ? "Waiting for clinic number verification"
-        : "Waiting for sandbox verification",
-    CONNECTED: mode === "SANDBOX" ? "Ready for WhatsApp sandbox testing" : "Ready for live client messaging",
-    ERRORED: "Connection needs attention",
-  };
-
-  let detail =
-    "Save a clinic number here first. Vela will treat it as the requested WhatsApp number for this workspace.";
-
-  if (status === "PENDING_SETUP" && connection?.lastError?.trim()) {
-    detail = connection.lastError.trim();
-  } else if (mode === "SANDBOX" && status === "CONNECTED") {
-    detail =
-      "Twilio sandbox is connected. Messages send from the sandbox sender for testing, while your clinic number stays saved as the requested live sender.";
-  } else if (mode === "LIVE" && status === "CONNECTING") {
-    detail =
-      "Vela has started the clinic sender registration with Twilio. The next step is provider-side verification and approval.";
-  } else if (mode === "LIVE" && status === "PENDING_VERIFICATION") {
-    detail =
-      "The clinic number is saved for live onboarding. As soon as provider verification finishes and Twilio starts delivering traffic for that sender, this workspace will switch to live clinic routing.";
-  } else if (mode === "SANDBOX" && status === "PENDING_VERIFICATION") {
-    detail =
-      "The sandbox sender is configured, but Vela still needs one successful sandbox test before this clinic is treated as message-ready.";
-  } else if (status === "PENDING_VERIFICATION") {
-    detail =
-      "The clinic number is saved, but the provider still needs verification before it can send and receive live client messages in this inbox.";
-  } else if (mode === "LIVE" && status === "CONNECTED") {
-    detail =
-      "This workspace has an approved live WhatsApp sender. Client messages can use the connected clinic sender.";
-  } else if (status === "ERRORED") {
-    detail =
-      "The provider connection needs attention before Vela can send messages for this clinic.";
-  }
-
   return {
+    phase,
     provider,
     mode,
     status,
@@ -287,10 +379,14 @@ export function buildWhatsAppConnectionSummary(
     senderPhoneNumber,
     externalSenderId,
     senderLabel,
+    phaseLabel: customerCopy.phaseLabel,
     statusLabel: statusLabelMap[status],
     modeLabel: modeLabelMap[mode],
-    readinessLabel: readinessLabelMap[status],
-    detail,
+    headline: customerCopy.headline,
+    detail: customerCopy.detail,
+    nextStep: customerCopy.nextStep,
+    primaryActionLabel: customerCopy.primaryActionLabel,
+    showVerificationInput: customerCopy.showVerificationInput,
     verificationLabel: formatVerificationLabel(verificationStatus),
     displayNameLabel: formatDisplayNameLabel(displayNameStatus),
     lastError: connection?.lastError ?? "",

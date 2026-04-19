@@ -22,13 +22,13 @@ type OnboardingWhatsAppSetupProps = {
 };
 
 function connectionStatusTone(
-  status: SettingsState["whatsapp"]["connection"]["status"]
+  phase: SettingsState["whatsapp"]["connection"]["phase"]
 ) {
-  if (status === "CONNECTED") {
+  if (phase === "CONNECTED") {
     return "bg-primary/10 text-primary";
   }
 
-  if (status === "ERRORED") {
+  if (phase === "NEEDS_SUPPORT") {
     return "bg-destructive/10 text-destructive";
   }
 
@@ -48,10 +48,8 @@ export function OnboardingWhatsAppSetup({
   const [isSubmittingVerificationCode, startSubmittingVerificationCode] =
     useTransition();
 
-  const isConnected = connection.status === "CONNECTED";
-  const needsVerificationCode =
-    connection.status === "PENDING_VERIFICATION" ||
-    connection.status === "CONNECTING";
+  const isConnected = connection.phase === "CONNECTED";
+  const needsVerificationCode = connection.showVerificationInput;
 
   function applyConnectionUpdate(
     nextConnection: SettingsState["whatsapp"]["connection"] | undefined
@@ -133,29 +131,26 @@ export function OnboardingWhatsAppSetup({
 
       <div className="space-y-4 text-center">
         <h1 className="text-5xl font-semibold tracking-tight text-foreground">
-          {isConnected ? "WhatsApp is connected." : "Connect clinic WhatsApp."}
+          {isConnected ? "WhatsApp is connected." : "Set up clinic WhatsApp."}
         </h1>
         <p className="mx-auto max-w-2xl text-lg leading-8 text-muted-foreground">
           {isConnected
-            ? `${clinicName} is ready for live WhatsApp messaging. You can now open the dashboard and continue with the workspace setup.`
-            : "Your clinic details are saved. Stay on this screen until the number is verified, or complete the action requested below."}
+            ? `${clinicName} can now message clients from inside Clinicare. You can continue into the dashboard or test the inbox right away.`
+            : "Your clinic details are saved. Follow the steps below to connect WhatsApp now, or continue and finish this later from settings."}
         </p>
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-2">
         <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
-          {connection.provider}
-        </span>
-        <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
-          {connection.modeLabel}
+          WhatsApp
         </span>
         <span
           className={cn(
             "rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em]",
-            connectionStatusTone(connection.status)
+            connectionStatusTone(connection.phase)
           )}
         >
-          {connection.statusLabel}
+          {connection.phaseLabel}
         </span>
       </div>
 
@@ -163,13 +158,16 @@ export function OnboardingWhatsAppSetup({
         <CardContent className="space-y-5 p-6">
           <div className="space-y-2">
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              Clinic sender readiness
+              Connection status
             </p>
             <p className="text-2xl font-semibold text-foreground">
-              {connection.readinessLabel}
+              {connection.headline}
             </p>
             <p className="text-sm leading-7 text-muted-foreground">
               {connection.detail}
+            </p>
+            <p className="text-sm leading-7 text-muted-foreground">
+              {connection.nextStep}
             </p>
           </div>
 
@@ -184,29 +182,29 @@ export function OnboardingWhatsAppSetup({
             </div>
             <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Active sender
+                Connected number
               </p>
               <p className="mt-2 text-sm font-medium text-foreground">
-                {connection.senderPhoneNumber || "Awaiting live sender assignment"}
+                {connection.senderPhoneNumber || "Not connected yet"}
               </p>
             </div>
             <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Verification
+                Setup step
               </p>
               <p className="mt-2 text-sm font-medium text-foreground">
-                {connection.verificationLabel}
+                {connection.phaseLabel}
               </p>
               <p className="mt-2 text-xs uppercase tracking-[0.12em] text-muted-foreground">
-                Display name {connection.displayNameLabel}
+                Verification {connection.verificationLabel}
               </p>
             </div>
             <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Provider sender id
+                Last update
               </p>
-              <p className="mt-2 break-all text-sm font-medium text-foreground">
-                {connection.externalSenderId || "Pending provider registration"}
+              <p className="mt-2 text-sm font-medium text-foreground">
+                {connection.lastSyncedLabel || "Not synced yet"}
               </p>
             </div>
           </div>
@@ -232,8 +230,8 @@ export function OnboardingWhatsAppSetup({
                       Verification code
                     </p>
                     <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                      If Twilio sends a code to the clinic number, paste it here to
-                      finish the connection.
+                      If the clinic number receives a verification code, paste it
+                      here to finish setup.
                     </p>
                   </div>
                   <div className="flex flex-col gap-3 sm:flex-row">
@@ -268,10 +266,8 @@ export function OnboardingWhatsAppSetup({
                   <LoaderCircle className="size-4 animate-spin" />
                   Starting...
                 </>
-              ) : connection.externalSenderId ? (
-                "Reconnect clinic number"
               ) : (
-                "Start clinic connection"
+                connection.primaryActionLabel
               )}
             </Button>
             <Button
@@ -301,7 +297,7 @@ export function OnboardingWhatsAppSetup({
                   "h-11 rounded-[0.95rem] bg-white/84 px-5"
                 )}
               >
-                Continue to dashboard anyway
+                Continue to dashboard
                 <ArrowRight data-icon="inline-end" />
               </Link>
             )}
