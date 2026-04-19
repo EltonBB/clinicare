@@ -182,10 +182,14 @@ export function OnboardingWhatsAppSetup({
             </div>
             <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Connected number
+                {connection.alternatePhoneNumber && !connection.senderPhoneNumber
+                  ? "Current active number"
+                  : "Connected number"}
               </p>
               <p className="mt-2 text-sm font-medium text-foreground">
-                {connection.senderPhoneNumber || "Not connected yet"}
+                {connection.senderPhoneNumber ||
+                  connection.alternatePhoneNumber ||
+                  "Not connected yet"}
               </p>
             </div>
             <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">

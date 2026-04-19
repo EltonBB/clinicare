@@ -61,6 +61,7 @@ export type SettingsState = {
       status: WhatsAppConnectionStatus;
       requestedPhoneNumber: string;
       senderPhoneNumber: string;
+      alternatePhoneNumber: string;
       externalSenderId: string;
       senderLabel: string;
       phaseLabel: string;
@@ -218,6 +219,11 @@ function formatDisplayNameLabel(status: WhatsAppDisplayNameStatus) {
   return labels[status];
 }
 
+function extractPhoneNumber(value: string) {
+  const match = value.match(/\+\d[\d\s()-]{6,}\d/);
+  return match ? match[0].replace(/\s+/g, "") : "";
+}
+
 function resolveCustomerFacingPhase(connection: WhatsAppConnection | null, requestedPhoneNumber: string) {
   if (!requestedPhoneNumber.trim()) {
     return "NOT_STARTED" as const;
@@ -253,10 +259,12 @@ function buildCustomerFacingConnectionCopy(args: {
   phase: SettingsState["whatsapp"]["connection"]["phase"];
   requestedPhoneNumber: string;
   senderPhoneNumber: string;
+  alternatePhoneNumber: string;
   lastError: string;
 }) {
   const requestedPhoneNumber = args.requestedPhoneNumber.trim();
   const senderPhoneNumber = args.senderPhoneNumber.trim();
+  const alternatePhoneNumber = args.alternatePhoneNumber.trim();
   const activeNumberLabel = senderPhoneNumber || requestedPhoneNumber || "this clinic number";
 
   switch (args.phase) {
@@ -320,6 +328,19 @@ function buildCustomerFacingConnectionCopy(args: {
         showVerificationInput: false,
       };
     case "NEEDS_SUPPORT":
+      if (alternatePhoneNumber) {
+        return {
+          phaseLabel: "Needs support",
+          headline: "This number still needs to be moved",
+          detail:
+            `${alternatePhoneNumber} is the number currently active in the inbox. ${requestedPhoneNumber || "The clinic number you entered"} still needs to be moved into this WhatsApp setup before it can replace the active number.`,
+          nextStep:
+            "You can keep using the current active number for testing now, or finish moving the clinic's own number and reconnect when it is ready.",
+          primaryActionLabel: "Retry setup",
+          showVerificationInput: false,
+        };
+      }
+
       return {
         phaseLabel: "Needs support",
         headline: "Connection needs attention",
@@ -348,11 +369,15 @@ export function buildWhatsAppConnectionSummary(
   const senderLabel = mode === "LIVE" ? "Live sender" : "Sandbox sender";
   const verificationStatus = connection?.verificationStatus ?? "NOT_STARTED";
   const displayNameStatus = connection?.displayNameStatus ?? "UNKNOWN";
+  const alternatePhoneNumber =
+    connection?.senderPhoneNumber?.trim() ||
+    extractPhoneNumber(connection?.lastError ?? "");
   const phase = resolveCustomerFacingPhase(connection, requestedPhoneNumber);
   const customerCopy = buildCustomerFacingConnectionCopy({
     phase,
     requestedPhoneNumber,
     senderPhoneNumber,
+    alternatePhoneNumber,
     lastError: connection?.lastError ?? "",
   });
 
@@ -377,6 +402,7 @@ export function buildWhatsAppConnectionSummary(
     status,
     requestedPhoneNumber,
     senderPhoneNumber,
+    alternatePhoneNumber,
     externalSenderId,
     senderLabel,
     phaseLabel: customerCopy.phaseLabel,
