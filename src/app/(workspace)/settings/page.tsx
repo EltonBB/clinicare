@@ -66,7 +66,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         params.email_updated === "1"
           ? "Your email address was confirmed and updated."
           : params.setup === "whatsapp"
-            ? "Finish the clinic WhatsApp connection before using the dashboard and inbox."
+            ? "Finish WhatsApp setup now, or continue and return later from settings."
           : ""
       }
     />

@@ -238,16 +238,14 @@ export function SettingsWorkspace({
 
       if (!result.ok) {
         setConnectionError(
-          result.error ?? "We couldn't prepare the live WhatsApp connection."
+          result.error ?? "We couldn't start WhatsApp setup for this clinic number."
         );
         setConnectionStatus("");
         return;
       }
 
       setConnectionError("");
-      setConnectionStatus(
-        result.message ?? "Live clinic connection prepared."
-      );
+      setConnectionStatus(result.message ?? "WhatsApp setup started.");
     });
   }
 
@@ -267,14 +265,14 @@ export function SettingsWorkspace({
 
       if (!result.ok) {
         setConnectionError(
-          result.error ?? "We couldn't refresh the live WhatsApp connection."
+          result.error ?? "We couldn't refresh the clinic number status."
         );
         setConnectionStatus("");
         return;
       }
 
       setConnectionError("");
-      setConnectionStatus(result.message ?? "Live status refreshed.");
+      setConnectionStatus(result.message ?? "Latest WhatsApp status loaded.");
     });
   }
 

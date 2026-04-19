@@ -68,13 +68,13 @@ export function OnboardingWhatsAppSetup({
       if (!result.ok) {
         setStatusMessage("");
         setErrorMessage(
-          result.error ?? "We couldn't start the clinic WhatsApp connection."
+          result.error ?? "We couldn't start WhatsApp setup for this clinic number."
         );
         return;
       }
 
       setErrorMessage("");
-      setStatusMessage(result.message ?? "Clinic number connection started.");
+      setStatusMessage(result.message ?? "WhatsApp setup started.");
     });
   }
 
@@ -86,13 +86,13 @@ export function OnboardingWhatsAppSetup({
       if (!result.ok) {
         setStatusMessage("");
         setErrorMessage(
-          result.error ?? "We couldn't refresh the clinic WhatsApp status."
+          result.error ?? "We couldn't refresh the clinic number status."
         );
         return;
       }
 
       setErrorMessage("");
-      setStatusMessage(result.message ?? "Latest clinic WhatsApp status loaded.");
+      setStatusMessage(result.message ?? "Latest WhatsApp status loaded.");
     });
   }
 
@@ -111,9 +111,7 @@ export function OnboardingWhatsAppSetup({
 
       setVerificationCode("");
       setErrorMessage("");
-      setStatusMessage(
-        result.message ?? "Verification code submitted successfully."
-      );
+      setStatusMessage(result.message ?? "Verification code submitted.");
     });
   }
 
