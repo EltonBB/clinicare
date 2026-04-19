@@ -6,7 +6,6 @@ import { prisma } from "@/lib/prisma";
 import { requireCurrentBusiness } from "@/lib/business";
 import { createClient } from "@/utils/supabase/server";
 import { sendTwilioWhatsAppMessage } from "@/lib/whatsapp";
-import { syncSmsConnectionForBusiness } from "@/lib/sms-connection";
 import {
   beginWhatsAppLiveConnection,
   submitWhatsAppVerificationCode,
@@ -14,7 +13,6 @@ import {
 } from "@/lib/whatsapp-connection";
 import { normalizePhone } from "@/lib/inbox";
 import {
-  buildSmsConnectionSummary,
   buildWhatsAppConnectionSummary,
   buildSettingsStateFromWorkspace,
   resolveWhatsAppConnectionStatus,
@@ -47,15 +45,6 @@ export type RefreshWhatsAppLiveConnectionResult = PrepareWhatsAppLiveConnectionR
 
 export type SubmitWhatsAppVerificationCodeResult = PrepareWhatsAppLiveConnectionResult;
 
-export type PrepareSmsConnectionResult = {
-  ok: boolean;
-  error?: string;
-  message?: string;
-  connection?: SettingsState["sms"]["connection"];
-};
-
-export type RefreshSmsConnectionResult = PrepareSmsConnectionResult;
-
 export async function saveSettingsAction(
   payload: SaveSettingsPayload
 ): Promise<SaveSettingsResult> {
@@ -75,7 +64,6 @@ export async function saveSettingsAction(
     missingBusinessRedirect: "/onboarding",
   });
   const normalizedWhatsAppNumber = normalizePhone(payload.whatsapp.phoneNumber);
-  const normalizedSmsNumber = normalizePhone(payload.sms.phoneNumber);
 
   const cleanedStaff = payload.staff.filter((member) => member.name.trim().length > 0);
   const persistedStaff =
@@ -107,19 +95,6 @@ export async function saveSettingsAction(
       lastError: true,
     },
   });
-  const existingSmsConnection = await prisma.smsConnection.findUnique({
-    where: {
-      businessId: business.id,
-    },
-    select: {
-      status: true,
-      requestedPhoneNumber: true,
-      senderPhoneNumber: true,
-      externalPhoneSid: true,
-      lastError: true,
-      connectedAt: true,
-    },
-  });
 
   await prisma.$transaction(async (tx) => {
     await tx.business.update({
@@ -131,8 +106,6 @@ export async function saveSettingsAction(
         businessType: payload.business.businessType,
         whatsappNumber: normalizedWhatsAppNumber || null,
         whatsappEnabled: payload.whatsapp.sendReminders,
-        smsNumber: normalizedSmsNumber || null,
-        smsEnabled: payload.sms.enabled,
       },
     });
 
@@ -256,44 +229,6 @@ export async function saveSettingsAction(
       },
     });
 
-    const requestedSmsPhoneNumber = normalizedSmsNumber || null;
-    const requestedSmsPhoneChanged =
-      (existingSmsConnection?.requestedPhoneNumber ?? null) !== requestedSmsPhoneNumber;
-
-    await tx.smsConnection.upsert({
-      where: {
-        businessId: business.id,
-      },
-      update: {
-        provider: "TWILIO",
-        status: requestedSmsPhoneNumber ? "PENDING_SETUP" : "DISCONNECTED",
-        requestedPhoneNumber: requestedSmsPhoneNumber,
-        senderPhoneNumber: requestedSmsPhoneChanged
-          ? null
-          : existingSmsConnection?.senderPhoneNumber ?? null,
-        externalPhoneSid: requestedSmsPhoneChanged
-          ? null
-          : existingSmsConnection?.externalPhoneSid ?? null,
-        connectedAt:
-          requestedSmsPhoneChanged || !requestedSmsPhoneNumber
-            ? null
-            : existingSmsConnection?.connectedAt ?? null,
-        lastError: null,
-        lastSyncedAt: new Date(),
-      },
-      create: {
-        businessId: business.id,
-        provider: "TWILIO",
-        status: requestedSmsPhoneNumber ? "PENDING_SETUP" : "DISCONNECTED",
-        requestedPhoneNumber: requestedSmsPhoneNumber,
-        senderPhoneNumber: null,
-        externalPhoneSid: null,
-        connectedAt: null,
-        lastError: null,
-        lastSyncedAt: new Date(),
-      },
-    });
-
     for (const [index, day] of weekdayOrder.entries()) {
       const schedule = payload.workingHours[day];
 
@@ -408,14 +343,7 @@ export async function saveSettingsAction(
     };
   }
 
-  const [
-    updatedBusiness,
-    businessHours,
-    staffMembers,
-    reminderSettings,
-    whatsappConnection,
-    smsConnection,
-  ] = await Promise.all([
+  const [updatedBusiness, businessHours, staffMembers, reminderSettings, whatsappConnection] = await Promise.all([
     prisma.business.findUniqueOrThrow({
       where: {
         id: business.id,
@@ -447,15 +375,9 @@ export async function saveSettingsAction(
         businessId: business.id,
       },
     }),
-    prisma.smsConnection.findUnique({
-      where: {
-        businessId: business.id,
-      },
-    }),
   ]);
 
   let resolvedConnection = whatsappConnection;
-  let resolvedSmsConnection = smsConnection;
 
   if (updatedBusiness.whatsappNumber?.trim()) {
     try {
@@ -472,17 +394,6 @@ export async function saveSettingsAction(
     }
   }
 
-  if (updatedBusiness.smsNumber?.trim()) {
-    try {
-      resolvedSmsConnection = await syncSmsConnectionForBusiness(updatedBusiness.id);
-    } catch (error) {
-      console.error("Failed to auto-start SMS connection after settings save.", {
-        businessId: updatedBusiness.id,
-        error,
-      });
-    }
-  }
-
   const nextState: SettingsState = buildSettingsStateFromWorkspace({
     business: updatedBusiness,
     supportEmail: user.email ?? "",
@@ -491,7 +402,6 @@ export async function saveSettingsAction(
     staffMembers,
     reminderSettings,
     whatsappConnection: resolvedConnection,
-    smsConnection: resolvedSmsConnection,
   });
 
   return {
@@ -826,101 +736,6 @@ export async function submitWhatsAppVerificationCodeAction(
         error instanceof Error
           ? error.message
           : "We couldn't submit the verification code.",
-    };
-  }
-}
-
-export async function prepareSmsConnectionAction(): Promise<PrepareSmsConnectionResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return {
-      ok: false,
-      error: "Your session expired. Log in again to update the SMS connection.",
-    };
-  }
-
-  const business = await requireCurrentBusiness(user, {
-    missingBusinessRedirect: "/onboarding",
-  });
-
-  if (!business.smsNumber?.trim()) {
-    return {
-      ok: false,
-      error: "Save the clinic SMS number first before starting setup.",
-    };
-  }
-
-  try {
-    const connection = await syncSmsConnectionForBusiness(business.id);
-
-    revalidatePath("/settings");
-    revalidatePath("/inbox");
-
-    return {
-      ok: connection.status === "CONNECTED",
-      error:
-        connection.status !== "CONNECTED" ? connection.lastError ?? undefined : undefined,
-      message:
-        connection.status === "CONNECTED"
-          ? "SMS is connected."
-          : "Clinic SMS number saved. Finish the provider connection and refresh status here.",
-      connection: buildSmsConnectionSummary(connection, business.smsNumber ?? ""),
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "We couldn't start the clinic SMS connection.",
-    };
-  }
-}
-
-export async function refreshSmsConnectionAction(): Promise<RefreshSmsConnectionResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return {
-      ok: false,
-      error: "Your session expired. Log in again to refresh the SMS connection.",
-    };
-  }
-
-  const business = await requireCurrentBusiness(user, {
-    missingBusinessRedirect: "/onboarding",
-  });
-
-  try {
-    const connection = await syncSmsConnectionForBusiness(business.id);
-
-    revalidatePath("/settings");
-    revalidatePath("/inbox");
-
-    return {
-      ok: connection.status === "CONNECTED",
-      error:
-        connection.status !== "CONNECTED" ? connection.lastError ?? undefined : undefined,
-      message:
-        connection.status === "CONNECTED"
-          ? "SMS is connected."
-          : "Latest SMS status loaded.",
-      connection: buildSmsConnectionSummary(connection, business.smsNumber ?? ""),
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "We couldn't refresh the clinic SMS connection.",
     };
   }
 }

@@ -2,19 +2,10 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import {
-  ArrowRight,
-  CheckCircle2,
-  LoaderCircle,
-  MessageCircleMore,
-  ShieldCheck,
-  Smartphone,
-} from "lucide-react";
+import { ArrowRight, CheckCircle2, LoaderCircle, MessageCircleMore, ShieldCheck } from "lucide-react";
 
 import {
-  prepareSmsConnectionAction,
   prepareWhatsAppLiveConnectionAction,
-  refreshSmsConnectionAction,
   refreshWhatsAppLiveConnectionAction,
   submitWhatsAppVerificationCodeAction,
 } from "@/app/(workspace)/settings/actions";
@@ -27,14 +18,11 @@ import type { SettingsState } from "@/lib/settings";
 
 type OnboardingWhatsAppSetupProps = {
   clinicName: string;
-  connections: {
-    whatsapp: SettingsState["whatsapp"]["connection"];
-    sms: SettingsState["sms"]["connection"];
-  };
+  connection: SettingsState["whatsapp"]["connection"];
 };
 
 function connectionStatusTone(
-  phase: string
+  phase: SettingsState["whatsapp"]["connection"]["phase"]
 ) {
   if (phase === "CONNECTED") {
     return "bg-primary/10 text-primary";
@@ -49,99 +37,62 @@ function connectionStatusTone(
 
 export function OnboardingWhatsAppSetup({
   clinicName,
-  connections: initialConnections,
+  connection: initialConnection,
 }: OnboardingWhatsAppSetupProps) {
-  const [selectedChannel, setSelectedChannel] = useState<"whatsapp" | "sms">("whatsapp");
-  const [whatsAppConnection, setWhatsAppConnection] = useState(initialConnections.whatsapp);
-  const [smsConnection, setSmsConnection] = useState(initialConnections.sms);
+  const [connection, setConnection] = useState(initialConnection);
   const [verificationCode, setVerificationCode] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
-  const [errorMessage, setErrorMessage] = useState(
-    initialConnections.whatsapp.lastError || initialConnections.sms.lastError
-  );
+  const [errorMessage, setErrorMessage] = useState(initialConnection.lastError);
   const [isPreparingConnection, startPreparingConnection] = useTransition();
   const [isRefreshingConnection, startRefreshingConnection] = useTransition();
   const [isSubmittingVerificationCode, startSubmittingVerificationCode] =
     useTransition();
 
-  const isWhatsAppSelected = selectedChannel === "whatsapp";
-  const connection = isWhatsAppSelected ? whatsAppConnection : smsConnection;
   const isConnected = connection.phase === "CONNECTED";
-  const needsVerificationCode =
-    isWhatsAppSelected && whatsAppConnection.showVerificationInput;
-  const alternatePhoneNumber = isWhatsAppSelected
-    ? whatsAppConnection.alternatePhoneNumber
-    : "";
+  const needsVerificationCode = connection.showVerificationInput;
 
   function applyConnectionUpdate(
-    nextConnection:
-      | SettingsState["whatsapp"]["connection"]
-      | SettingsState["sms"]["connection"]
-      | undefined
+    nextConnection: SettingsState["whatsapp"]["connection"] | undefined
   ) {
     if (nextConnection) {
-      if (selectedChannel === "whatsapp") {
-        setWhatsAppConnection(nextConnection as SettingsState["whatsapp"]["connection"]);
-      } else {
-        setSmsConnection(nextConnection as SettingsState["sms"]["connection"]);
-      }
+      setConnection(nextConnection);
       setErrorMessage(nextConnection.lastError);
     }
   }
 
   function handlePrepareLiveConnection() {
     startPreparingConnection(async () => {
-      const result =
-        selectedChannel === "whatsapp"
-          ? await prepareWhatsAppLiveConnectionAction()
-          : await prepareSmsConnectionAction();
+      const result = await prepareWhatsAppLiveConnectionAction();
       applyConnectionUpdate(result.connection);
 
       if (!result.ok) {
         setStatusMessage("");
         setErrorMessage(
-          result.error ??
-            (selectedChannel === "whatsapp"
-              ? "We couldn't start WhatsApp setup for this clinic number."
-              : "We couldn't start SMS setup for this clinic number.")
+          result.error ?? "We couldn't start WhatsApp setup for this clinic number."
         );
         return;
       }
 
       setErrorMessage("");
-      setStatusMessage(
-        result.message ??
-          (selectedChannel === "whatsapp" ? "WhatsApp setup started." : "SMS setup started.")
-      );
+      setStatusMessage(result.message ?? "WhatsApp setup started.");
     });
   }
 
   function handleRefreshLiveConnection() {
     startRefreshingConnection(async () => {
-      const result =
-        selectedChannel === "whatsapp"
-          ? await refreshWhatsAppLiveConnectionAction()
-          : await refreshSmsConnectionAction();
+      const result = await refreshWhatsAppLiveConnectionAction();
       applyConnectionUpdate(result.connection);
 
       if (!result.ok) {
         setStatusMessage("");
         setErrorMessage(
-          result.error ??
-            (selectedChannel === "whatsapp"
-              ? "We couldn't refresh the clinic number status."
-              : "We couldn't refresh the clinic SMS status.")
+          result.error ?? "We couldn't refresh the clinic number status."
         );
         return;
       }
 
       setErrorMessage("");
-      setStatusMessage(
-        result.message ??
-          (selectedChannel === "whatsapp"
-            ? "Latest WhatsApp status loaded."
-            : "Latest SMS status loaded.")
-      );
+      setStatusMessage(result.message ?? "Latest WhatsApp status loaded.");
     });
   }
 
@@ -178,49 +129,19 @@ export function OnboardingWhatsAppSetup({
 
       <div className="space-y-4 text-center">
         <h1 className="text-5xl font-semibold tracking-tight text-foreground">
-          {isConnected ? "Messaging is connected." : "Set up clinic messaging."}
+          {isConnected ? "WhatsApp is connected." : "Set up clinic WhatsApp."}
         </h1>
         <p className="mx-auto max-w-2xl text-lg leading-8 text-muted-foreground">
           {isConnected
             ? `${clinicName} can now message clients from inside Clinicare. You can continue into the dashboard or test the inbox right away.`
-            : "Your clinic details are saved. Choose which channel to connect first, or continue now and finish this later from settings."}
+            : "Your clinic details are saved. Follow the steps below to connect WhatsApp now, or continue and finish this later from settings."}
         </p>
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            setSelectedChannel("whatsapp");
-            setErrorMessage(whatsAppConnection.lastError);
-            setStatusMessage("");
-          }}
-          className={cn(
-            "rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] transition-colors",
-            selectedChannel === "whatsapp"
-              ? "bg-primary/10 text-primary"
-              : "bg-white text-muted-foreground ring-1 ring-border/70"
-          )}
-        >
+        <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
           WhatsApp
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setSelectedChannel("sms");
-            setErrorMessage(smsConnection.lastError);
-            setStatusMessage("");
-          }}
-          className={cn(
-            "inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] transition-colors",
-            selectedChannel === "sms"
-              ? "bg-primary/10 text-primary"
-              : "bg-white text-muted-foreground ring-1 ring-border/70"
-          )}
-        >
-          <Smartphone className="size-3.5" />
-          Phone / SMS
-        </button>
+        </span>
         <span
           className={cn(
             "rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em]",
@@ -259,13 +180,13 @@ export function OnboardingWhatsAppSetup({
             </div>
             <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                {alternatePhoneNumber && !connection.senderPhoneNumber
+                {connection.alternatePhoneNumber && !connection.senderPhoneNumber
                   ? "Current active number"
                   : "Connected number"}
               </p>
               <p className="mt-2 text-sm font-medium text-foreground">
                 {connection.senderPhoneNumber ||
-                  alternatePhoneNumber ||
+                  connection.alternatePhoneNumber ||
                   "Not connected yet"}
               </p>
             </div>
@@ -276,11 +197,9 @@ export function OnboardingWhatsAppSetup({
               <p className="mt-2 text-sm font-medium text-foreground">
                 {connection.phaseLabel}
               </p>
-              {"verificationLabel" in connection ? (
-                <p className="mt-2 text-xs uppercase tracking-[0.12em] text-muted-foreground">
-                  Verification {connection.verificationLabel}
-                </p>
-              ) : null}
+              <p className="mt-2 text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                Verification {connection.verificationLabel}
+              </p>
             </div>
             <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -366,12 +285,12 @@ export function OnboardingWhatsAppSetup({
                 href="/dashboard"
                 className={cn(
                   buttonVariants({ variant: "outline" }),
-                  "h-11 rounded-[0.95rem] bg-white/84 px-5"
-                )}
-              >
-                Open dashboard
-                <ArrowRight data-icon="inline-end" />
-              </Link>
+                "h-11 rounded-[0.95rem] bg-white/84 px-5"
+              )}
+            >
+              Open dashboard
+              <ArrowRight data-icon="inline-end" />
+            </Link>
             ) : (
               <Link
                 href="/dashboard"

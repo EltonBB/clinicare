@@ -2,7 +2,6 @@ import { SettingsWorkspace } from "@/components/settings/settings-workspace";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
 import { buildSettingsStateFromWorkspace } from "@/lib/settings";
-import { syncSmsConnectionForBusiness } from "@/lib/sms-connection";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 
 type SettingsPageProps = {
@@ -15,12 +14,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     missingBusinessRedirect: "/onboarding",
   });
 
-  await Promise.all([
-    syncWhatsAppConnectionForBusiness(business.id),
-    syncSmsConnectionForBusiness(business.id),
-  ]);
+  await syncWhatsAppConnectionForBusiness(business.id);
 
-  const [businessHours, staffMembers, reminderSettings, whatsappConnection, smsConnection] = await Promise.all([
+  const [businessHours, staffMembers, reminderSettings, whatsappConnection] = await Promise.all([
     prisma.businessHours.findMany({
       where: {
         businessId: business.id,
@@ -47,11 +43,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         businessId: business.id,
       },
     }),
-    prisma.smsConnection.findUnique({
-      where: {
-        businessId: business.id,
-      },
-    }),
   ]);
 
   const initialState = buildSettingsStateFromWorkspace({
@@ -66,7 +57,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     staffMembers,
     reminderSettings,
     whatsappConnection,
-    smsConnection,
   });
 
   return (

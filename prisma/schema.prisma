@@ -17,8 +17,6 @@ model Business {
   planStatus       BusinessPlanStatus @default(ACTIVE)
   whatsappNumber   String?
   whatsappEnabled  Boolean            @default(false)
-  smsNumber        String?
-  smsEnabled       Boolean            @default(false)
   trialEndsAt      DateTime?
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
@@ -29,7 +27,6 @@ model Business {
   conversations    Conversation[]
   reminderSettings ReminderSettings?
   whatsappConnection WhatsAppConnection?
-  smsConnection    SmsConnection?
 }
 
 model BusinessHours {
@@ -122,7 +119,6 @@ model Conversation {
   id          String    @id @default(cuid())
   businessId  String
   business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  channel     MessageChannel @default(WHATSAPP)
   phoneNumber String
   contactName String
   unreadCount Int       @default(0)
@@ -130,8 +126,8 @@ model Conversation {
   updatedAt   DateTime  @updatedAt
   messages    Message[]
 
-  @@index([businessId, channel, phoneNumber])
-  @@unique([businessId, channel, phoneNumber])
+  @@index([businessId, phoneNumber])
+  @@unique([businessId, phoneNumber])
 }
 
 model Message {
@@ -140,7 +136,6 @@ model Message {
   conversation   Conversation?    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   clientId       String?
   client         Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  channel        MessageChannel   @default(WHATSAPP)
   direction      MessageDirection
   body           String
   providerMessageSid String?
@@ -184,24 +179,6 @@ model WhatsAppConnection {
   lastSyncedAt         DateTime?
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
-
-  @@index([provider, status])
-}
-
-model SmsConnection {
-  id                   String              @id @default(cuid())
-  businessId           String              @unique
-  business             Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  provider             SmsProvider
-  status               SmsConnectionStatus @default(PENDING_SETUP)
-  requestedPhoneNumber String?
-  senderPhoneNumber    String?
-  externalPhoneSid     String?
-  lastError            String?
-  connectedAt          DateTime?
-  lastSyncedAt         DateTime?
-  createdAt            DateTime            @default(now())
-  updatedAt            DateTime            @updatedAt
 
   @@index([provider, status])
 }
@@ -288,22 +265,6 @@ enum WhatsAppDisplayNameStatus {
   PENDING
   APPROVED
   REJECTED
-}
-
-enum MessageChannel {
-  WHATSAPP
-  SMS
-}
-
-enum SmsProvider {
-  TWILIO
-}
-
-enum SmsConnectionStatus {
-  DISCONNECTED
-  PENDING_SETUP
-  CONNECTED
-  ERRORED
 }
 
 enum AppointmentReminderType {

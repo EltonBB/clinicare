@@ -166,7 +166,6 @@ export async function syncAppointmentRemindersForBusiness(
         const businessConversations = await tx.conversation.findMany({
           where: {
             businessId,
-            channel: "WHATSAPP",
           },
           select: {
             id: true,
@@ -181,20 +180,17 @@ export async function syncAppointmentRemindersForBusiness(
           ? existingConversation
           : await tx.conversation.upsert({
               where: {
-                businessId_channel_phoneNumber: {
+                businessId_phoneNumber: {
                   businessId,
-                  channel: "WHATSAPP",
                   phoneNumber: clientPhone,
                 },
               },
               update: {
-                channel: "WHATSAPP",
                 contactName: appointment.client.name,
                 unreadCount: 0,
               },
               create: {
                 businessId,
-                channel: "WHATSAPP",
                 phoneNumber: clientPhone,
                 contactName: appointment.client.name,
                 unreadCount: 0,
@@ -210,7 +206,6 @@ export async function syncAppointmentRemindersForBusiness(
           data: {
             conversationId: clientConversation.id,
             clientId: appointment.client.id,
-            channel: "WHATSAPP",
             direction: "OUTBOUND",
             body,
             providerMessageSid: delivery.sid || null,

@@ -15,8 +15,6 @@ import {
   sendTwilioWhatsAppMessage,
   sendTwilioWhatsAppTemplateMessage,
 } from "@/lib/whatsapp";
-import { sendTwilioSmsMessage } from "@/lib/sms";
-import { syncSmsConnectionForBusiness } from "@/lib/sms-connection";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 import { createClient } from "@/utils/supabase/server";
 
@@ -79,7 +77,6 @@ async function hydrateConversation(conversationId: string, businessId: string) {
       },
       select: {
         id: true,
-        channel: true,
         phoneNumber: true,
         contactName: true,
         unreadCount: true,
@@ -87,7 +84,6 @@ async function hydrateConversation(conversationId: string, businessId: string) {
         messages: {
           select: {
             id: true,
-            channel: true,
             direction: true,
             body: true,
             deliveryStatus: true,
@@ -140,7 +136,6 @@ async function loadInboxView(businessId: string) {
       },
       select: {
         id: true,
-        channel: true,
         phoneNumber: true,
         contactName: true,
         unreadCount: true,
@@ -148,7 +143,6 @@ async function loadInboxView(businessId: string) {
         messages: {
           select: {
             id: true,
-            channel: true,
             direction: true,
             body: true,
             deliveryStatus: true,
@@ -265,7 +259,6 @@ export async function sendInboxMessageAction(
     },
     select: {
       id: true,
-      channel: true,
       phoneNumber: true,
       contactName: true,
       messages: {
@@ -302,9 +295,30 @@ export async function sendInboxMessageAction(
       },
     }),
   ]);
+  const whatsAppConnection = await syncWhatsAppConnectionForBusiness(
+    context.business.id
+  );
   const matchedClient = clients.find(
     (client) => phoneLookupKey(client.phone) === phoneLookupKey(conversation.phoneNumber)
   );
+
+  if (!whatsAppConnection || whatsAppConnection.status !== "CONNECTED") {
+    return {
+      ok: false,
+      error:
+        "WhatsApp is not connected for this clinic yet. Complete the clinic connection in Settings first.",
+    };
+  }
+
+  const senderPhoneNumber = whatsAppConnection.senderPhoneNumber?.trim() || "";
+
+  if (!senderPhoneNumber) {
+    return {
+      ok: false,
+      error:
+        "This clinic does not have an active WhatsApp sender yet. Finish the clinic connection in Settings first.",
+    };
+  }
 
   let delivery:
     | {
@@ -312,126 +326,59 @@ export async function sendInboxMessageAction(
         status: string;
       }
     | undefined;
-  let outboundBody = cleanedBody;
+
+  const latestInboundAt = conversation.messages[0]?.sentAt ?? null;
+  const hasOpenFreeformWindow =
+    latestInboundAt !== null &&
+    Date.now() - latestInboundAt.getTime() <= 24 * 60 * 60 * 1000;
+  const firstMessageTemplateSid = getConfiguredTwilioFirstMessageTemplateSid();
+  const senderDisplayName =
+    typeof context.user.user_metadata?.full_name === "string" &&
+    context.user.user_metadata.full_name.trim().length > 0
+      ? context.user.user_metadata.full_name.trim()
+      : `${context.business.name} team`;
+  const renderedTemplateBody = `Hello ${matchedClient?.name ?? conversation.contactName ?? "there"}, this is ${senderDisplayName} from ${context.business.name}. You can reply here on WhatsApp to continue the conversation.`;
+  const outboundBody =
+    !hasOpenFreeformWindow && firstMessageTemplateSid
+      ? renderedTemplateBody
+      : cleanedBody;
 
   try {
-    if (conversation.channel === "SMS") {
-      const smsConnection = await syncSmsConnectionForBusiness(context.business.id);
-
-      if (!smsConnection || smsConnection.status !== "CONNECTED") {
-        return {
-          ok: false,
-          error:
-            "SMS is not connected for this clinic yet. Finish the clinic SMS setup in Settings first.",
-        };
-      }
-
-      const senderPhoneNumber = smsConnection.senderPhoneNumber?.trim() || "";
-
-      if (!senderPhoneNumber) {
-        return {
-          ok: false,
-          error:
-            "This clinic does not have an active SMS sender yet. Finish the clinic SMS setup in Settings first.",
-        };
-      }
-
-      delivery = await sendTwilioSmsMessage({
+    if (!hasOpenFreeformWindow && firstMessageTemplateSid) {
+      delivery = await sendTwilioWhatsAppTemplateMessage({
+        to: conversation.phoneNumber,
+        from: senderPhoneNumber,
+        contentSid: firstMessageTemplateSid,
+        contentVariables: {
+          "1": matchedClient?.name ?? conversation.contactName ?? "there",
+          "2": senderDisplayName,
+          "3": context.business.name,
+        },
+      });
+    } else {
+      delivery = await sendTwilioWhatsAppMessage({
         to: conversation.phoneNumber,
         body: cleanedBody,
         from: senderPhoneNumber,
       });
-    } else {
-      const whatsAppConnection = await syncWhatsAppConnectionForBusiness(
-        context.business.id
-      );
-
-      if (!whatsAppConnection || whatsAppConnection.status !== "CONNECTED") {
-        return {
-          ok: false,
-          error:
-            "WhatsApp is not connected for this clinic yet. Complete the clinic connection in Settings first.",
-        };
-      }
-
-      const senderPhoneNumber = whatsAppConnection.senderPhoneNumber?.trim() || "";
-
-      if (!senderPhoneNumber) {
-        return {
-          ok: false,
-          error:
-            "This clinic does not have an active WhatsApp sender yet. Finish the clinic connection in Settings first.",
-        };
-      }
-
-      const latestInboundAt = conversation.messages[0]?.sentAt ?? null;
-      const hasOpenFreeformWindow =
-        latestInboundAt !== null &&
-        Date.now() - latestInboundAt.getTime() <= 24 * 60 * 60 * 1000;
-      const firstMessageTemplateSid = getConfiguredTwilioFirstMessageTemplateSid();
-      const senderDisplayName =
-        typeof context.user.user_metadata?.full_name === "string" &&
-        context.user.user_metadata.full_name.trim().length > 0
-          ? context.user.user_metadata.full_name.trim()
-          : `${context.business.name} team`;
-      const renderedTemplateBody = `Hello ${matchedClient?.name ?? conversation.contactName ?? "there"}, this is ${senderDisplayName} from ${context.business.name}. You can reply here on WhatsApp to continue the conversation.`;
-      outboundBody =
-        !hasOpenFreeformWindow && firstMessageTemplateSid
-          ? renderedTemplateBody
-          : cleanedBody;
-
-      if (!hasOpenFreeformWindow && firstMessageTemplateSid) {
-        delivery = await sendTwilioWhatsAppTemplateMessage({
-          to: conversation.phoneNumber,
-          from: senderPhoneNumber,
-          contentSid: firstMessageTemplateSid,
-          contentVariables: {
-            "1": matchedClient?.name ?? conversation.contactName ?? "there",
-            "2": senderDisplayName,
-            "3": context.business.name,
-          },
-        });
-      } else {
-        delivery = await sendTwilioWhatsAppMessage({
-          to: conversation.phoneNumber,
-          body: cleanedBody,
-          from: senderPhoneNumber,
-        });
-      }
     }
   } catch (error) {
-    if (conversation.channel === "SMS") {
-      await prisma.smsConnection.updateMany({
-        where: {
-          businessId: context.business.id,
-        },
-        data: {
-          status: "ERRORED",
-          lastError:
-            error instanceof Error ? error.message : "We couldn't send the SMS message.",
-          lastSyncedAt: new Date(),
-        },
-      });
-    } else {
-      await prisma.whatsAppConnection.update({
-        where: {
-          businessId: context.business.id,
-        },
-        data: {
-          status: "ERRORED",
-          lastSyncedAt: new Date(),
-        },
-      });
-    }
+    await prisma.whatsAppConnection.update({
+      where: {
+        businessId: context.business.id,
+      },
+      data: {
+        status: "ERRORED",
+        lastSyncedAt: new Date(),
+      },
+    });
 
     return {
       ok: false,
       error:
         error instanceof Error
           ? error.message
-          : conversation.channel === "SMS"
-            ? "We couldn't send the SMS message."
-            : "We couldn't send the WhatsApp message.",
+          : "We couldn't send the WhatsApp message.",
     };
   }
 
@@ -440,7 +387,6 @@ export async function sendInboxMessageAction(
       data: {
         conversationId: conversation.id,
         clientId: matchedClient?.id ?? null,
-        channel: conversation.channel,
         direction: "OUTBOUND",
         body: outboundBody,
         providerMessageSid: delivery?.sid || null,
@@ -463,34 +409,20 @@ export async function sendInboxMessageAction(
         id: conversation.id,
       },
       data: {
-        channel: conversation.channel,
         contactName: matchedClient?.name ?? conversation.contactName,
         unreadCount: 0,
       },
     });
 
-    if (conversation.channel === "SMS") {
-      await tx.smsConnection.updateMany({
-        where: {
-          businessId: context.business.id,
-        },
-        data: {
-          status: "CONNECTED",
-          lastError: null,
-          lastSyncedAt: new Date(),
-        },
-      });
-    } else {
-      await tx.whatsAppConnection.update({
-        where: {
-          businessId: context.business.id,
-        },
-        data: {
-          status: "CONNECTED",
-          lastSyncedAt: new Date(),
-        },
-      });
-    }
+    await tx.whatsAppConnection.update({
+      where: {
+        businessId: context.business.id,
+      },
+      data: {
+        status: "CONNECTED",
+        lastSyncedAt: new Date(),
+      },
+    });
   });
 
   return {
@@ -567,7 +499,6 @@ export async function convertConversationToClientAction(
     },
     select: {
       id: true,
-      channel: true,
       phoneNumber: true,
       contactName: true,
     },
@@ -616,7 +547,7 @@ export async function convertConversationToClientAction(
           name: cleanedName,
           email: cleanedEmail,
           phone: normalizedPhone,
-          preferredChannel: conversation.channel === "SMS" ? "SMS" : "WhatsApp",
+          preferredChannel: "WhatsApp",
         },
         select: {
           id: true,

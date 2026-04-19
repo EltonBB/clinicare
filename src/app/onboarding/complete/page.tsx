@@ -8,8 +8,7 @@ import { buttonVariants } from "@/components/ui/button-variants";
 import { Card, CardContent } from "@/components/ui/card";
 import { getCurrentBusiness } from "@/lib/business";
 import { isOnboardingCompleted } from "@/lib/onboarding";
-import { buildSmsConnectionSummary, buildWhatsAppConnectionSummary } from "@/lib/settings";
-import { syncSmsConnectionForBusiness } from "@/lib/sms-connection";
+import { buildWhatsAppConnectionSummary } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import {
   isLiveWhatsAppConnectionReady,
@@ -42,23 +41,14 @@ export default async function OnboardingCompletePage() {
     redirect("/onboarding");
   }
 
-  const [whatsappConnection, smsConnection] = await Promise.all([
-    syncWhatsAppConnectionForBusiness(business.id),
-    syncSmsConnectionForBusiness(business.id),
-  ]);
+  const whatsappConnection = await syncWhatsAppConnectionForBusiness(business.id);
   const isWhatsAppReady = isLiveWhatsAppConnectionReady(whatsappConnection);
   const connectionSummary = buildWhatsAppConnectionSummary(
     whatsappConnection,
     business.whatsappNumber ?? ""
   );
-  const smsConnectionSummary = buildSmsConnectionSummary(
-    smsConnection,
-    business.smsNumber ?? ""
-  );
-  const isMessagingReady =
-    isWhatsAppReady || smsConnectionSummary.phase === "CONNECTED";
 
-  if (!isMessagingReady) {
+  if (!isWhatsAppReady) {
     return (
       <div className="min-h-screen bg-background">
         <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 sm:px-6 lg:px-8">
@@ -68,10 +58,7 @@ export default async function OnboardingCompletePage() {
           <div className="mx-auto flex w-full flex-1 flex-col items-center justify-center py-12">
             <OnboardingWhatsAppSetup
               clinicName={business.name}
-              connections={{
-                whatsapp: connectionSummary,
-                sms: smsConnectionSummary,
-              }}
+              connection={connectionSummary}
             />
           </div>
         </div>

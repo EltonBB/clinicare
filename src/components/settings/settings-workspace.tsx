@@ -5,9 +5,7 @@ import { useState, useTransition } from "react";
 import { ArrowUpRight, Plus, Trash2 } from "lucide-react";
 
 import {
-  prepareSmsConnectionAction,
   prepareWhatsAppLiveConnectionAction,
-  refreshSmsConnectionAction,
   refreshWhatsAppLiveConnectionAction,
   saveSettingsAction,
   submitWhatsAppVerificationCodeAction,
@@ -120,7 +118,7 @@ function SettingsSection({
   );
 }
 
-function connectionStatusTone(phase: string) {
+function connectionStatusTone(phase: SettingsState["whatsapp"]["connection"]["phase"]) {
   if (phase === "CONNECTED") {
     return "bg-primary/10 text-primary";
   }
@@ -141,7 +139,6 @@ export function SettingsWorkspace({
     { href: "#working-hours", label: "Working hours" },
     { href: "#staff-management", label: "Staff management" },
     { href: "#whatsapp-configuration", label: "WhatsApp" },
-    { href: "#sms-configuration", label: "SMS" },
     { href: "#reminders", label: "Reminders" },
     { href: "#billing", label: "Billing" },
   ] as const;
@@ -156,12 +153,6 @@ export function SettingsWorkspace({
   const [verificationCode, setVerificationCode] = useState("");
   const [isRefreshingConnection, startRefreshingConnection] = useTransition();
   const [isSubmittingVerificationCode, startSubmittingVerificationCode] =
-    useTransition();
-  const [smsStatus, setSmsStatus] = useState("");
-  const [smsError, setSmsError] = useState("");
-  const [isPreparingSmsConnection, startPreparingSmsConnection] =
-    useTransition();
-  const [isRefreshingSmsConnection, startRefreshingSmsConnection] =
     useTransition();
 
   function updateDay(day: WeekdayKey, patch: Partial<(typeof state.workingHours)[WeekdayKey]>) {
@@ -312,56 +303,6 @@ export function SettingsWorkspace({
       setConnectionStatus(
         result.message ?? "Verification code submitted."
       );
-    });
-  }
-
-  function handlePrepareSmsConnection() {
-    startPreparingSmsConnection(async () => {
-      const result = await prepareSmsConnectionAction();
-
-      if (result.connection) {
-        setState((current) => ({
-          ...current,
-          sms: {
-            ...current.sms,
-            connection: result.connection!,
-          },
-        }));
-      }
-
-      if (!result.ok) {
-        setSmsError(result.error ?? "We couldn't start SMS setup for this clinic number.");
-        setSmsStatus("");
-        return;
-      }
-
-      setSmsError("");
-      setSmsStatus(result.message ?? "SMS setup started.");
-    });
-  }
-
-  function handleRefreshSmsConnection() {
-    startRefreshingSmsConnection(async () => {
-      const result = await refreshSmsConnectionAction();
-
-      if (result.connection) {
-        setState((current) => ({
-          ...current,
-          sms: {
-            ...current.sms,
-            connection: result.connection!,
-          },
-        }));
-      }
-
-      if (!result.ok) {
-        setSmsError(result.error ?? "We couldn't refresh the clinic SMS number status.");
-        setSmsStatus("");
-        return;
-      }
-
-      setSmsError("");
-      setSmsStatus(result.message ?? "Latest SMS status loaded.");
     });
   }
 
@@ -784,149 +725,6 @@ export function SettingsWorkspace({
                 ) : null}
               </div>
             ) : null}
-          </div>
-        </SettingsSection>
-
-        <SettingsSection
-          id="sms-configuration"
-          title="SMS configuration"
-          description="Connect a clinic SMS number so incoming texts land in the inbox and staff can reply from Clinicare."
-        >
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <FieldLabel>SMS number</FieldLabel>
-              <Input
-                value={state.sms.phoneNumber}
-                onChange={(event) =>
-                  setState((current) => ({
-                    ...current,
-                    sms: {
-                      ...current.sms,
-                      phoneNumber: event.target.value,
-                    },
-                  }))
-                }
-                placeholder="+1 555 000 0000"
-                className="h-11 rounded-[0.9rem] bg-white/84"
-              />
-            </div>
-          </div>
-          <div className="mt-4 flex items-center justify-between rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
-            <div>
-              <p className="text-sm font-medium text-foreground">Enable SMS inbox</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Turn on SMS syncing for this clinic once the number exists in the messaging provider account.
-              </p>
-            </div>
-            <Toggle
-              checked={state.sms.enabled}
-              onPressedChange={(checked) =>
-                setState((current) => ({
-                  ...current,
-                  sms: {
-                    ...current.sms,
-                    enabled: checked,
-                  },
-                }))
-              }
-            />
-          </div>
-          <div className="mt-4 rounded-[1rem] border border-primary/12 bg-[linear-gradient(135deg,rgba(38,137,135,0.08),rgba(92,143,212,0.03)_48%,rgba(255,255,255,0.92))] px-5 py-5 shadow-[0_18px_40px_rgba(20,32,51,0.04)]">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
-                    SMS
-                  </span>
-                  <span
-                    className={cn(
-                      "rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em]",
-                      connectionStatusTone(state.sms.connection.phase)
-                    )}
-                  >
-                    {state.sms.connection.phaseLabel}
-                  </span>
-                </div>
-                <div className="space-y-1">
-                  <FieldLabel>Connection status</FieldLabel>
-                  <p className="text-lg font-semibold text-foreground">
-                    {state.sms.connection.headline}
-                  </p>
-                  <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
-                    {state.sms.connection.detail}
-                  </p>
-                  <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
-                    {state.sms.connection.nextStep}
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  variant="default"
-                  className="h-11 rounded-[0.95rem] px-5"
-                  onClick={handlePrepareSmsConnection}
-                  disabled={isPreparingSmsConnection}
-                >
-                  {isPreparingSmsConnection
-                    ? "Starting..."
-                    : state.sms.connection.primaryActionLabel}
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-11 rounded-[0.95rem] bg-white/84 px-5"
-                  onClick={handleRefreshSmsConnection}
-                  disabled={isRefreshingSmsConnection}
-                >
-                  {isRefreshingSmsConnection ? "Refreshing..." : "Refresh status"}
-                </Button>
-              </div>
-            </div>
-
-            {smsError ? (
-              <div className="mt-4 rounded-[0.9rem] border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                {smsError}
-              </div>
-            ) : null}
-            {!smsError && smsStatus ? (
-              <div className="mt-4 rounded-[0.9rem] border border-primary/20 bg-primary/8 px-3 py-2 text-sm text-primary">
-                {smsStatus}
-              </div>
-            ) : null}
-
-            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Requested clinic number
-                </p>
-                <p className="mt-2 text-sm font-medium text-foreground">
-                  {state.sms.connection.requestedPhoneNumber || "Not set"}
-                </p>
-              </div>
-              <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Active sender
-                </p>
-                <p className="mt-2 text-sm font-medium text-foreground">
-                  {state.sms.connection.senderPhoneNumber || "Not connected yet"}
-                </p>
-              </div>
-              <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Setup step
-                </p>
-                <p className="mt-2 text-sm font-medium text-foreground">
-                  {state.sms.connection.phaseLabel}
-                </p>
-              </div>
-              <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Last update
-                </p>
-                <p className="mt-2 text-sm font-medium text-foreground">
-                  {state.sms.connection.lastSyncedLabel || "Not synced yet"}
-                </p>
-              </div>
-            </div>
           </div>
         </SettingsSection>
 
