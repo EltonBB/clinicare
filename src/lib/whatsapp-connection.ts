@@ -314,6 +314,28 @@ async function updateConnectionFromSender(
       ? normalizeLiveNumber(sender.senderId || connection.requestedPhoneNumber || "")
       : null;
 
+  const senderOwnershipConflict =
+    normalizedSenderPhone || sender.sid
+      ? await findWorkspaceNumberConflict({
+          businessId: connection.businessId,
+          requestedPhoneNumber:
+            normalizedSenderPhone ||
+            normalizeLiveNumber(connection.requestedPhoneNumber || ""),
+          externalSenderId: sender.sid || connection.externalSenderId,
+        })
+      : null;
+
+  const senderOwnershipConflictMessage = buildWorkspaceConflictMessage({
+    requestedPhoneNumber:
+      normalizedSenderPhone ||
+      normalizeLiveNumber(connection.requestedPhoneNumber || ""),
+    conflict: senderOwnershipConflict,
+  });
+
+  if (senderOwnershipConflictMessage) {
+    return updateConnectionError(connection, senderOwnershipConflictMessage);
+  }
+
   return prisma.$transaction(async (tx) => {
     if (normalizedSenderPhone) {
       await tx.whatsAppConnection.updateMany({
