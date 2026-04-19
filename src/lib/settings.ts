@@ -371,10 +371,16 @@ export function buildWhatsAppConnectionSummary(
   const senderLabel = mode === "LIVE" ? "Live sender" : "Sandbox sender";
   const verificationStatus = connection?.verificationStatus ?? "NOT_STARTED";
   const displayNameStatus = connection?.displayNameStatus ?? "UNKNOWN";
-  const alternatePhoneNumber = normalizePhone(
+  const extractedAlternatePhoneNumber = normalizePhone(
     connection?.senderPhoneNumber?.trim() ||
       extractPhoneNumber(connection?.lastError ?? "")
   );
+  const alternatePhoneNumber =
+    extractedAlternatePhoneNumber &&
+    extractedAlternatePhoneNumber !== requestedPhoneNumber &&
+    extractedAlternatePhoneNumber !== senderPhoneNumber
+      ? extractedAlternatePhoneNumber
+      : "";
   const phase = resolveCustomerFacingPhase(connection, requestedPhoneNumber);
   const customerCopy = buildCustomerFacingConnectionCopy({
     phase,
