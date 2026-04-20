@@ -7,7 +7,7 @@ import { ArrowLeft, ArrowRight, CheckCircle2, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const TOUR_STORAGE_KEY = "vela-workspace-tour-state-v6";
+const TOUR_STORAGE_KEY = "vela-workspace-tour-state-v7";
 const ACTIVE_TARGET_CLASSES = [
   "relative",
   "z-[81]",
@@ -19,7 +19,7 @@ const ACTIVE_TARGET_CLASSES = [
   "duration-300",
 ];
 
-type Placement = "sidebar" | "header-action" | "drawer" | "content";
+type Placement = "sidebar" | "header-action" | "content";
 
 type TourStep = {
   id: string;
@@ -55,56 +55,21 @@ const tourSteps: TourStep[] = [
     id: "dashboard-sidebar",
     path: "/dashboard",
     target: "sidebar-shell",
-    kicker: "Navigation",
-    title: "This sidebar is the clinic's main map",
+    kicker: "Dashboard",
+    title: "This is the clinic dashboard",
     description:
-      "Use this left sidebar to move between the clinic overview, clients, calendar, inbox, and settings. Everything important starts here.",
+      "Start here to understand the workspace. The left sidebar is the clinic's main map for moving between the dashboard, calendar, clients, inbox, and settings.",
     advanceMode: "button",
     placement: "sidebar",
-  },
-  {
-    id: "clients-nav",
-    path: "/dashboard",
-    target: "clients-nav",
-    kicker: "Clients",
-    title: "Open Clients next",
-    description:
-      "Clients is where the clinic stores profiles, notes, and contact details. Open it now from the sidebar.",
-    actionLabel: "Next: click Clients in the sidebar",
-    advanceMode: "click",
-    placement: "sidebar",
-  },
-  {
-    id: "clients-create",
-    path: "/clients",
-    target: "clients-create",
-    kicker: "Register client",
-    title: "This button adds a new client",
-    description:
-      "Whenever the clinic needs to register a patient or customer, this is where the workflow starts.",
-    actionLabel: "Next: click New client",
-    advanceMode: "click",
-    placement: "header-action",
-  },
-  {
-    id: "clients-form",
-    path: "/clients",
-    target: "clients-form",
-    kicker: "Client form",
-    title: "Register the client details here",
-    description:
-      "This panel is where the clinic fills in the client name, phone number, notes, and contact preferences before saving.",
-    advanceMode: "button",
-    placement: "drawer",
   },
   {
     id: "calendar-nav",
-    path: "/clients",
+    path: "/dashboard",
     target: "calendar-nav",
     kicker: "Calendar",
-    title: "Now move to Calendar",
+    title: "Open Calendar next",
     description:
-      "Calendar is the booking workspace. This is where the clinic creates appointments and manages the daily schedule.",
+      "Calendar is the booking workspace. This is where the clinic manages appointments and the daily schedule.",
     actionLabel: "Next: click Calendar in the sidebar",
     advanceMode: "click",
     placement: "sidebar",
@@ -113,47 +78,46 @@ const tourSteps: TourStep[] = [
     id: "calendar-create",
     path: "/calendar",
     target: "calendar-create",
-    kicker: "Book appointment",
-    title: "This button creates a new appointment",
+    kicker: "Appointments",
+    title: "This is where appointments are created",
     description:
-      "Use this action whenever the clinic needs to book a visit, consultation, or follow-up into the schedule.",
-    actionLabel: "Next: click New appointment",
-    advanceMode: "click",
+      "Use this button whenever the clinic needs to book a visit, consultation, or follow-up into the schedule.",
+    advanceMode: "button",
     placement: "header-action",
   },
   {
-    id: "calendar-form",
+    id: "clients-nav",
     path: "/calendar",
-    target: "calendar-form",
-    kicker: "Booking form",
-    title: "This panel is where bookings are created",
+    target: "clients-nav",
+    kicker: "Clients",
+    title: "Now move to Clients",
     description:
-      "Select the client, choose the staff member, set the date and time, then save the booking from this panel.",
-    advanceMode: "button",
-    placement: "drawer",
-  },
-  {
-    id: "settings-nav",
-    path: "/calendar",
-    target: "settings-nav",
-    kicker: "Settings",
-    title: "Open Settings next",
-    description:
-      "Settings is where clinic details, staff, reminders, and WhatsApp configuration are managed.",
-    actionLabel: "Next: click Settings in the sidebar",
+      "Clients is where the clinic stores profiles, notes, contact details, and message context for each person.",
+    actionLabel: "Next: click Clients in the sidebar",
     advanceMode: "click",
     placement: "sidebar",
   },
   {
-    id: "settings-whatsapp",
-    path: "/settings",
-    target: "settings-whatsapp",
-    kicker: "Configuration",
-    title: "This is where clinic settings are changed",
+    id: "clients-create",
+    path: "/clients",
+    target: "clients-create",
+    kicker: "Clients",
+    title: "This is where a client is registered",
     description:
-      "Use this section to manage the clinic's WhatsApp connection and return later whenever staff, reminder, or clinic settings need to be updated.",
+      "Use this button whenever the clinic needs to add a new client profile into the workspace.",
     advanceMode: "button",
-    placement: "content",
+    placement: "header-action",
+  },
+  {
+    id: "settings-nav",
+    path: "/clients",
+    target: "settings-nav",
+    kicker: "Settings",
+    title: "Settings is where the clinic changes configuration",
+    description:
+      "Use Settings to manage clinic details, staff, reminders, and WhatsApp configuration whenever something needs to be updated.",
+    advanceMode: "button",
+    placement: "sidebar",
   },
 ];
 
@@ -389,14 +353,6 @@ export function WorkspaceTour() {
         };
       }
 
-      if (currentStep.placement === "drawer") {
-        return {
-          top: 116,
-          left: Math.max(24, Math.min(viewportWidth - cardWidth - 500, viewportWidth - cardWidth - 24)),
-          width: cardWidth,
-        };
-      }
-
       return {
         top: 132,
         left: Math.max(24, viewportWidth - cardWidth - 40),
@@ -416,18 +372,6 @@ export function WorkspaceTour() {
       return {
         top: clampTop(targetRect.top + targetRect.height + 20),
         left: clampLeft(targetRect.left + targetRect.width - cardWidth),
-        width: cardWidth,
-      };
-    }
-
-    if (currentStep.placement === "drawer") {
-      const shouldPlaceLeft = targetRect.left > viewportWidth / 2;
-
-      return {
-        top: clampTop(targetRect.top + 12),
-        left: shouldPlaceLeft
-          ? clampLeft(targetRect.left - cardWidth - 22)
-          : clampLeft(targetRect.left + targetRect.width + 22),
         width: cardWidth,
       };
     }
