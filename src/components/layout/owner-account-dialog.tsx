@@ -103,9 +103,9 @@ export function OwnerAccountDialog({
         </div>
       </DialogTrigger>
 
-      <DialogContent className="max-w-xl p-0">
-        <div className="space-y-6 px-6 py-6">
-          <DialogHeader className="space-y-3">
+      <DialogContent className="max-w-xl p-0 sm:max-w-xl">
+        <div className="flex max-h-[calc(100vh-2rem)] min-h-0 flex-col overflow-hidden">
+          <DialogHeader className="glass-divider shrink-0 space-y-3 px-6 pb-5 pt-6">
             <div className="flex size-[3.25rem] items-center justify-center rounded-[1.1rem] bg-primary/12 text-primary shadow-[0_14px_28px_rgba(38,137,135,0.14)]">
               <UserRound className="size-5" />
             </div>
@@ -120,131 +120,145 @@ export function OwnerAccountDialog({
             </div>
           </DialogHeader>
 
-          <form action={formAction} className="space-y-5">
-            {state.error ? (
-              <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-                {state.error}
-              </div>
-            ) : null}
-            {!state.error && state.success ? (
-              <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
-                {state.success}
-              </div>
-            ) : null}
+          <form action={formAction} className="flex min-h-0 flex-1 flex-col">
+            <div className="dialog-scroll-body min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-5">
+              <div className="space-y-5">
+                {state.error ? (
+                  <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                    {state.error}
+                  </div>
+                ) : null}
+                {!state.error && state.success ? (
+                  <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
+                    {state.success}
+                  </div>
+                ) : null}
 
-            <div className="surface-soft space-y-4 rounded-[1.1rem] p-5">
-              <div className="space-y-1">
-                <p className="text-sm font-semibold text-foreground">Profile</p>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  Keep the account owner details current so messages, confirmations,
-                  and ownership settings stay aligned.
-                </p>
-              </div>
+                <div className="surface-soft section-reveal rounded-[1.1rem] p-5 transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_36px_rgba(20,32,51,0.06)]">
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-foreground">Profile</p>
+                      <p className="text-sm leading-6 text-muted-foreground">
+                        Keep the account owner details current so messages,
+                        confirmations, and ownership settings stay aligned.
+                      </p>
+                    </div>
 
-              <div className="grid gap-4">
-                <div className="space-y-2">
-                  <FieldLabel>Name</FieldLabel>
-                  <Input
-                    name="fullName"
-                    defaultValue={values.fullName}
-                    aria-invalid={Boolean(state.fieldErrors?.fullName)}
-                    className={cn(
-                      "h-11 rounded-[0.9rem] bg-white/84",
-                      state.fieldErrors?.fullName && "border-destructive"
-                    )}
-                  />
-                  <FieldError message={state.fieldErrors?.fullName} />
+                    <div className="grid gap-4">
+                      <div className="space-y-2">
+                        <FieldLabel>Name</FieldLabel>
+                        <Input
+                          name="fullName"
+                          defaultValue={values.fullName}
+                          aria-invalid={Boolean(state.fieldErrors?.fullName)}
+                          className={cn(
+                            "h-11 rounded-[0.9rem] bg-white/84",
+                            state.fieldErrors?.fullName && "border-destructive"
+                          )}
+                        />
+                        <FieldError message={state.fieldErrors?.fullName} />
+                      </div>
+                      <div className="space-y-2">
+                        <FieldLabel>Phone</FieldLabel>
+                        <Input
+                          name="phone"
+                          defaultValue={values.phone}
+                          aria-invalid={Boolean(state.fieldErrors?.phone)}
+                          className={cn(
+                            "h-11 rounded-[0.9rem] bg-white/84",
+                            state.fieldErrors?.phone && "border-destructive"
+                          )}
+                        />
+                        <FieldError message={state.fieldErrors?.phone} />
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <FieldLabel>Phone</FieldLabel>
-                  <Input
-                    name="phone"
-                    defaultValue={values.phone}
-                    aria-invalid={Boolean(state.fieldErrors?.phone)}
-                    className={cn(
-                      "h-11 rounded-[0.9rem] bg-white/84",
-                      state.fieldErrors?.phone && "border-destructive"
-                    )}
-                  />
-                  <FieldError message={state.fieldErrors?.phone} />
+
+                <div className="surface-soft section-reveal-delayed rounded-[1.1rem] p-5 transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_36px_rgba(20,32,51,0.06)]">
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-foreground">
+                        Contact details
+                      </p>
+                      <p className="text-sm leading-6 text-muted-foreground">
+                        Update the email tied to the clinic owner account in a
+                        dedicated section so it stays separate from security
+                        changes.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <FieldLabel>Email</FieldLabel>
+                      <Input
+                        name="email"
+                        type="email"
+                        defaultValue={values.email}
+                        aria-invalid={Boolean(state.fieldErrors?.email)}
+                        className={cn(
+                          "h-11 rounded-[0.9rem] bg-white/84",
+                          state.fieldErrors?.email && "border-destructive"
+                        )}
+                      />
+                      <FieldError message={state.fieldErrors?.email} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="surface-soft section-reveal-delayed rounded-[1.1rem] p-5 transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_36px_rgba(20,32,51,0.06)]">
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-foreground">
+                        Security
+                      </p>
+                      <p className="text-sm leading-6 text-muted-foreground">
+                        Rotate account access separately when you need a fresh
+                        password.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-4">
+                      <div className="space-y-2">
+                        <FieldLabel>New password</FieldLabel>
+                        <Input
+                          name="newPassword"
+                          type="password"
+                          defaultValue={values.newPassword}
+                          aria-invalid={Boolean(state.fieldErrors?.newPassword)}
+                          className={cn(
+                            "h-11 rounded-[0.9rem] bg-white/84",
+                            state.fieldErrors?.newPassword && "border-destructive"
+                          )}
+                        />
+                        <FieldError message={state.fieldErrors?.newPassword} />
+                      </div>
+                      <div className="space-y-2">
+                        <FieldLabel>Confirm password</FieldLabel>
+                        <Input
+                          name="confirmPassword"
+                          type="password"
+                          defaultValue={values.confirmPassword}
+                          aria-invalid={Boolean(
+                            state.fieldErrors?.confirmPassword
+                          )}
+                          className={cn(
+                            "h-11 rounded-[0.9rem] bg-white/84",
+                            state.fieldErrors?.confirmPassword && "border-destructive"
+                          )}
+                        />
+                        <FieldError message={state.fieldErrors?.confirmPassword} />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-5">
-              <div className="surface-soft space-y-4 rounded-[1.1rem] p-5">
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold text-foreground">
-                    Contact details
-                  </p>
-                  <p className="text-sm leading-6 text-muted-foreground">
-                    Update the email tied to the clinic owner account in a dedicated
-                    section so it stays separate from security changes.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <FieldLabel>Email</FieldLabel>
-                  <Input
-                    name="email"
-                    type="email"
-                    defaultValue={values.email}
-                    aria-invalid={Boolean(state.fieldErrors?.email)}
-                    className={cn(
-                      "h-11 rounded-[0.9rem] bg-white/84",
-                      state.fieldErrors?.email && "border-destructive"
-                    )}
-                  />
-                  <FieldError message={state.fieldErrors?.email} />
-                </div>
-              </div>
-
-              <div className="surface-soft space-y-4 rounded-[1.1rem] p-5">
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold text-foreground">Security</p>
-                  <p className="text-sm leading-6 text-muted-foreground">
-                    Rotate account access separately when you need a fresh password.
-                  </p>
-                </div>
-
-                <div className="grid gap-4">
-                  <div className="space-y-2">
-                    <FieldLabel>New password</FieldLabel>
-                    <Input
-                      name="newPassword"
-                      type="password"
-                      defaultValue={values.newPassword}
-                      aria-invalid={Boolean(state.fieldErrors?.newPassword)}
-                      className={cn(
-                        "h-11 rounded-[0.9rem] bg-white/84",
-                        state.fieldErrors?.newPassword && "border-destructive"
-                      )}
-                    />
-                    <FieldError message={state.fieldErrors?.newPassword} />
-                  </div>
-                  <div className="space-y-2">
-                    <FieldLabel>Confirm password</FieldLabel>
-                    <Input
-                      name="confirmPassword"
-                      type="password"
-                      defaultValue={values.confirmPassword}
-                      aria-invalid={Boolean(state.fieldErrors?.confirmPassword)}
-                      className={cn(
-                        "h-11 rounded-[0.9rem] bg-white/84",
-                        state.fieldErrors?.confirmPassword && "border-destructive"
-                      )}
-                    />
-                    <FieldError message={state.fieldErrors?.confirmPassword} />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="glass-divider flex items-center justify-end gap-3 rounded-[1.05rem] px-4 py-4">
+            <div className="glass-divider flex shrink-0 items-center justify-end gap-3 border-t border-white/60 bg-white/72 px-5 py-4 backdrop-blur-sm">
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="inline-flex h-10 items-center justify-center rounded-[0.9rem] border border-border bg-white/70 px-4 text-sm font-medium text-foreground transition-[background-color,border-color] duration-200 hover:bg-white"
+                className="inline-flex h-10 items-center justify-center rounded-[0.9rem] border border-border bg-white/70 px-4 text-sm font-medium text-foreground transition-[background-color,border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_14px_30px_rgba(20,32,51,0.08)]"
               >
                 Close
               </button>

@@ -257,66 +257,82 @@ export function InboxWorkspace({
   return (
     <>
       <Dialog open={convertDialogOpen} onOpenChange={setConvertDialogOpen}>
-        <DialogContent className="max-w-[460px] p-0">
-          <DialogHeader className="glass-divider rounded-t-[1.2rem] px-5 py-5">
-            <DialogTitle>Convert to client</DialogTitle>
-            <DialogDescription>
-              Create or link a client profile for this WhatsApp thread without losing the conversation history.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 px-5 py-5">
-            <div className="surface-soft rounded-[1.05rem] p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Phone
-              </p>
-              <p className="mt-2 text-sm font-medium text-foreground">
-                {activeConversation?.phone}
-              </p>
+        <DialogContent className="max-w-[480px] p-0">
+          <div className="relative overflow-hidden">
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-28 overflow-hidden">
+              <div className="dialog-accent-orb absolute -left-5 top-4 h-20 w-20 rounded-full bg-primary/10 blur-2xl" />
+              <div className="dialog-accent-orb absolute right-6 top-2 h-16 w-16 rounded-full bg-sky-200/28 blur-2xl [animation-delay:-2.1s]" />
             </div>
 
-            <div className="surface-soft space-y-2 rounded-[1.05rem] p-4">
-              <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Client name
-              </label>
-              <Input
-                value={convertName}
-                onChange={(event) => setConvertName(event.target.value)}
-                placeholder="Add the client name"
-                className="h-11 rounded-[0.9rem] bg-white/84"
-              />
+            <DialogHeader className="glass-divider relative rounded-t-[1.2rem] px-5 pb-4 pt-5">
+              <div className="mb-3 flex size-10 items-center justify-center rounded-[0.95rem] bg-primary/12 text-primary shadow-[0_14px_28px_rgba(38,137,135,0.12)]">
+                <ArrowRightLeft className="size-4" />
+              </div>
+              <DialogTitle className="text-[1.15rem] font-semibold">
+                Convert to client
+              </DialogTitle>
+              <DialogDescription className="max-w-[24rem] text-sm leading-7">
+                Create or link a client profile for this WhatsApp thread without
+                losing the conversation history.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 px-5 py-5">
+              <div className="surface-soft section-reveal rounded-[1.05rem] p-4 transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_32px_rgba(20,32,51,0.06)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Phone
+                </p>
+                <p className="mt-2 text-sm font-medium text-foreground">
+                  {activeConversation?.phone}
+                </p>
+              </div>
+
+              <div className="surface-soft section-reveal-delayed space-y-2 rounded-[1.05rem] p-4 transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_32px_rgba(20,32,51,0.06)]">
+                <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Client name
+                </label>
+                <Input
+                  value={convertName}
+                  onChange={(event) => setConvertName(event.target.value)}
+                  placeholder="Add the client name"
+                  className="h-11 rounded-[0.9rem] bg-white/84"
+                />
+              </div>
+
+              <div className="surface-soft section-reveal-delayed space-y-2 rounded-[1.05rem] p-4 transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_32px_rgba(20,32,51,0.06)]">
+                <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Email
+                </label>
+                <Input
+                  value={convertEmail}
+                  onChange={(event) => setConvertEmail(event.target.value)}
+                  placeholder="Optional email"
+                  className="h-11 rounded-[0.9rem] bg-white/84"
+                />
+              </div>
             </div>
 
-            <div className="surface-soft space-y-2 rounded-[1.05rem] p-4">
-              <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Email
-              </label>
-              <Input
-                value={convertEmail}
-                onChange={(event) => setConvertEmail(event.target.value)}
-                placeholder="Optional email"
-                className="h-11 rounded-[0.9rem] bg-white/84"
-              />
-            </div>
+            <DialogFooter className="gap-3">
+              <div className="mr-auto hidden text-xs font-medium text-muted-foreground sm:block">
+                This keeps the thread history attached to the new client profile.
+              </div>
+              <Button
+                variant="outline"
+                className="rounded-[0.9rem] bg-white/70"
+                onClick={() => setConvertDialogOpen(false)}
+                disabled={isPending}
+              >
+                Close
+              </Button>
+              <Button
+                className="rounded-[0.9rem]"
+                onClick={convertConversationToClient}
+                disabled={isPending}
+              >
+                {isPending ? "Converting..." : "Convert to client"}
+              </Button>
+            </DialogFooter>
           </div>
-
-          <DialogFooter className="gap-3">
-            <Button
-              variant="outline"
-              className="rounded-[0.9rem] bg-white/70"
-              onClick={() => setConvertDialogOpen(false)}
-              disabled={isPending}
-            >
-              Close
-            </Button>
-            <Button
-              className="rounded-[0.9rem]"
-              onClick={convertConversationToClient}
-              disabled={isPending}
-            >
-              {isPending ? "Converting..." : "Convert to client"}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 

@@ -184,6 +184,44 @@
     animation: vela-tour-orb 2.9s linear infinite;
     will-change: transform, opacity;
   }
+
+  .dialog-scroll-body {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(38, 137, 135, 0.34) transparent;
+  }
+
+  .dialog-scroll-body::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  .dialog-scroll-body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .dialog-scroll-body::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background: linear-gradient(
+      180deg,
+      rgba(38, 137, 135, 0.52),
+      rgba(92, 143, 212, 0.26)
+    );
+    background-clip: padding-box;
+  }
+
+  .dialog-scroll-body::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(
+      180deg,
+      rgba(38, 137, 135, 0.66),
+      rgba(92, 143, 212, 0.34)
+    );
+    background-clip: padding-box;
+  }
+
+  .dialog-accent-orb {
+    animation: vela-dialog-orb 5.2s linear infinite;
+    will-change: transform, opacity;
+  }
 }
 
 @keyframes vela-fade-up {
@@ -238,6 +276,29 @@
   }
 }
 
+@keyframes vela-dialog-orb {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.44;
+  }
+  25% {
+    transform: translate3d(10px, -8px, 0) scale(1.06);
+    opacity: 0.74;
+  }
+  50% {
+    transform: translate3d(0, -16px, 0) scale(1.12);
+    opacity: 0.86;
+  }
+  75% {
+    transform: translate3d(-10px, -8px, 0) scale(1.06);
+    opacity: 0.7;
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.44;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -253,7 +314,8 @@
   }
 
   .tour-coachmark,
-  .tour-orb {
+  .tour-orb,
+  .dialog-accent-orb {
     animation: none;
   }
 }
