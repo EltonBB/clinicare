@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, CheckCircle2, Sparkles, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Sparkles, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -189,6 +189,7 @@ export function WorkspaceTour() {
   const isOpen = tourState.active && Boolean(currentStep);
   const isOnExpectedPath = Boolean(currentStep && pathname === currentStep.path);
   const shouldRender = isOpen && Boolean(currentStep) && isOnExpectedPath;
+  const isLastStep = tourState.currentStepIndex === tourSteps.length - 1;
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -466,6 +467,14 @@ export function WorkspaceTour() {
             </div>
           ) : null}
 
+          {isLastStep ? (
+            <div className="mt-5 rounded-[1rem] border border-primary/15 bg-primary/5 px-4 py-3">
+              <p className="text-sm font-medium text-foreground">
+                Congratulations. You have completed the tour and can now explore the workspace features freely.
+              </p>
+            </div>
+          ) : null}
+
           <div className="mt-6 flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               {tourSteps.map((tourStep, index) => (
@@ -513,14 +522,8 @@ export function WorkspaceTour() {
                 className="h-11 rounded-[1rem] px-5"
                 onClick={handleNext}
               >
-                {tourState.currentStepIndex === tourSteps.length - 1
-                  ? "Finish tour"
-                  : "Next"}
-                {tourState.currentStepIndex === tourSteps.length - 1 ? (
-                  <CheckCircle2 data-icon="inline-end" />
-                ) : (
-                  <ArrowRight data-icon="inline-end" />
-                )}
+                Next
+                <ArrowRight data-icon="inline-end" />
               </Button>
             ) : (
               <p className="text-sm font-medium text-muted-foreground">Next</p>
