@@ -29,6 +29,7 @@ type TourStep = {
   title: string;
   description: string;
   actionLabel?: string;
+  buttonLabel?: string;
   advanceMode: "button" | "click";
   placement: Placement;
 };
@@ -71,6 +72,7 @@ const tourSteps: TourStep[] = [
     description:
       "Calendar is the booking workspace. This is where the clinic manages appointments and the daily schedule.",
     actionLabel: "Next: click Calendar in the sidebar",
+    buttonLabel: "Go to Calendar",
     advanceMode: "click",
     placement: "sidebar",
   },
@@ -94,6 +96,7 @@ const tourSteps: TourStep[] = [
     description:
       "Clients is where the clinic stores profiles, notes, contact details, and message context for each person.",
     actionLabel: "Next: click Clients in the sidebar",
+    buttonLabel: "Go to Clients",
     advanceMode: "click",
     placement: "sidebar",
   },
@@ -528,7 +531,14 @@ export function WorkspaceTour() {
                 <ArrowRight data-icon="inline-end" />
               </Button>
             ) : (
-              <p className="text-sm font-medium text-muted-foreground">Next</p>
+              <Button
+                type="button"
+                className="h-11 rounded-[1rem] px-5"
+                onClick={() => handleNext()}
+              >
+                {currentStep.buttonLabel ?? "Go to next step"}
+                <ArrowRight data-icon="inline-end" />
+              </Button>
             )}
           </div>
         </div>
