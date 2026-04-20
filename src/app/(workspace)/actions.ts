@@ -2,6 +2,7 @@
 
 import { requireCurrentWorkspace } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
+import { createClient } from "@/utils/supabase/server";
 
 export type WorkspaceNotificationsView = {
   unreadCount: number;
@@ -57,4 +58,40 @@ export async function refreshWorkspaceNotificationsAction(): Promise<{
       })),
     },
   };
+}
+
+export async function completeWorkspaceTourAction(): Promise<{
+  ok: boolean;
+  error?: string;
+}> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return {
+      ok: false,
+      error: "We couldn't verify the current user session.",
+    };
+  }
+
+  const metadata = {
+    ...(user.user_metadata ?? {}),
+    workspace_tour_completed_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase.auth.updateUser({
+    data: metadata,
+  });
+
+  if (error) {
+    return {
+      ok: false,
+      error: "We couldn't save the tour completion state.",
+    };
+  }
+
+  return { ok: true };
 }

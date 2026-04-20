@@ -23,6 +23,9 @@ export default async function WorkspaceLayout({
     typeof user.user_metadata?.owner_phone === "string"
       ? user.user_metadata.owner_phone
       : "";
+  const tourCompleted =
+    typeof user.user_metadata?.workspace_tour_completed_at === "string" &&
+    user.user_metadata.workspace_tour_completed_at.length > 0;
   const notificationRows = await prisma.conversation.findMany({
     where: {
       businessId: business.id,
@@ -58,6 +61,7 @@ export default async function WorkspaceLayout({
       ownerName={ownerName}
       ownerEmail={user.email ?? ""}
       ownerPhone={ownerPhone}
+      tourCompleted={tourCompleted}
       unreadCount={unreadCount}
       notifications={notifications}
     >

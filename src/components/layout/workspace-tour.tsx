@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Sparkles, X } from "lucide-react";
 
+import { completeWorkspaceTourAction } from "@/app/(workspace)/actions";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -37,6 +38,7 @@ type TourStep = {
 type TourState = {
   active: boolean;
   currentStepIndex: number;
+  completed: boolean;
 };
 
 type Rect = {
@@ -49,6 +51,7 @@ type Rect = {
 const initialTourState: TourState = {
   active: false,
   currentStepIndex: 0,
+  completed: false,
 };
 
 const tourSteps: TourStep[] = [
@@ -137,6 +140,7 @@ function readTourState(): TourState {
       active: parsed.active === true,
       currentStepIndex:
         typeof parsed.currentStepIndex === "number" ? parsed.currentStepIndex : 0,
+      completed: parsed.completed === true,
     };
   } catch {
     return initialTourState;
@@ -148,7 +152,11 @@ function writeTourState(state: TourState) {
 }
 
 function clearTourState() {
-  writeTourState(initialTourState);
+  writeTourState({
+    active: false,
+    currentStepIndex: 0,
+    completed: true,
+  });
 }
 
 function findVisibleTarget(target: string) {
@@ -182,7 +190,11 @@ function toRect(element: HTMLElement): Rect {
   };
 }
 
-export function WorkspaceTour() {
+export function WorkspaceTour({
+  initialCompleted = false,
+}: {
+  initialCompleted?: boolean;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const [tourState, setTourState] = useState<TourState>(initialTourState);
@@ -198,13 +210,30 @@ export function WorkspaceTour() {
     const frame = window.requestAnimationFrame(() => {
       const saved = readTourState();
 
+      if (initialCompleted) {
+        if (!saved.completed) {
+          clearTourState();
+        }
+        setTourState({
+          active: false,
+          currentStepIndex: 0,
+          completed: true,
+        });
+        return;
+      }
+
+      if (saved.completed) {
+        setTourState(saved);
+        return;
+      }
+
       if (saved.active) {
         setTourState(saved);
         return;
       }
 
       if (pathname === "/dashboard") {
-        const nextState = { active: true, currentStepIndex: 0 };
+        const nextState = { active: true, currentStepIndex: 0, completed: false };
         writeTourState(nextState);
         setTourState(nextState);
       }
@@ -213,7 +242,7 @@ export function WorkspaceTour() {
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [pathname]);
+  }, [initialCompleted, pathname]);
 
   useEffect(() => {
     if (!isOpen || !currentStep) {
@@ -251,6 +280,7 @@ export function WorkspaceTour() {
                 tourState.currentStepIndex + 1,
                 tourSteps.length - 1
               ),
+              completed: false,
             };
 
             writeTourState(nextState);
@@ -390,7 +420,12 @@ export function WorkspaceTour() {
   function finishTour() {
     clearTourState();
     setTargetRect(null);
-    setTourState(initialTourState);
+    setTourState({
+      active: false,
+      currentStepIndex: 0,
+      completed: true,
+    });
+    void completeWorkspaceTourAction();
   }
 
   function setStep(stepIndex: number) {
@@ -398,6 +433,7 @@ export function WorkspaceTour() {
     const nextState = {
       active: true,
       currentStepIndex: stepIndex,
+      completed: false,
     };
 
     writeTourState(nextState);

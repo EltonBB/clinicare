@@ -26,6 +26,7 @@ type AppShellProps = {
   ownerName?: string;
   ownerEmail?: string;
   ownerPhone?: string;
+  tourCompleted?: boolean;
   unreadCount?: number;
   notifications?: AppShellNotification[];
 };
@@ -36,6 +37,7 @@ export function AppShell({
   ownerName = "Alex Rivera",
   ownerEmail = "owner@vela.app",
   ownerPhone = "",
+  tourCompleted = false,
   unreadCount = 0,
   notifications = [],
 }: AppShellProps) {
@@ -250,7 +252,7 @@ export function AppShell({
         </div>
       </nav>
 
-      <WorkspaceTour />
+      <WorkspaceTour initialCompleted={tourCompleted} />
     </div>
   );
 }
