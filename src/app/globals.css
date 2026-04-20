@@ -176,12 +176,12 @@
   }
 
   .tour-coachmark {
-    animation: vela-tour-float 4.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+    animation: vela-tour-float 2.6s linear infinite;
     will-change: transform;
   }
 
   .tour-orb {
-    animation: vela-tour-orb 6.2s ease-in-out infinite;
+    animation: vela-tour-orb 2.9s linear infinite;
     will-change: transform, opacity;
   }
 }
@@ -198,24 +198,43 @@
 }
 
 @keyframes vela-tour-float {
-  0%,
-  100% {
-    transform: translateY(0px);
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  25% {
+    transform: translate3d(4px, -5px, 0);
   }
   50% {
-    transform: translateY(-6px);
+    transform: translate3d(0, -8px, 0);
+  }
+  75% {
+    transform: translate3d(-4px, -5px, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
   }
 }
 
 @keyframes vela-tour-orb {
-  0%,
-  100% {
+  0% {
     transform: translate3d(0, 0, 0) scale(1);
-    opacity: 0.5;
+    opacity: 0.52;
+  }
+  25% {
+    transform: translate3d(10px, -10px, 0) scale(1.08);
+    opacity: 0.82;
   }
   50% {
-    transform: translate3d(10px, -6px, 0) scale(1.08);
-    opacity: 0.85;
+    transform: translate3d(0, -18px, 0) scale(1.14);
+    opacity: 0.92;
+  }
+  75% {
+    transform: translate3d(-10px, -10px, 0) scale(1.08);
+    opacity: 0.78;
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.52;
   }
 }
 
