@@ -1,130 +1,119 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Sparkles, X } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { ArrowLeft, ArrowRight, CheckCircle2, Sparkles, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const TOUR_STORAGE_KEY = "vela-workspace-tour-complete-v2";
+const TOUR_STORAGE_KEY = "vela-workspace-tour-complete-v3";
 const ACTIVE_TARGET_CLASSES = [
   "relative",
   "z-[81]",
   "rounded-[1rem]",
   "ring-2",
-  "ring-white/90",
-  "shadow-[0_0_0_10px_rgba(255,255,255,0.08),0_24px_44px_rgba(15,23,42,0.22)]",
+  "ring-primary/85",
+  "shadow-[0_0_0_8px_rgba(38,137,135,0.10),0_16px_34px_rgba(15,23,42,0.14)]",
   "transition-[box-shadow,ring-color,transform]",
   "duration-300",
 ];
 
 type TourStep = {
   id: string;
-  target: string;
+  target?: string;
   title: string;
   description: string;
   kicker: string;
-  path?: string;
+  actionLabel?: string;
+  advanceOnPath?: string;
+  showNext?: boolean;
 };
 
 const tourSteps: TourStep[] = [
   {
     id: "dashboard",
     target: "dashboard-overview",
-    kicker: "Overview",
+    kicker: "Dashboard",
     title: "This is your clinic overview",
     description:
-      "Start here to check today’s schedule, unread client activity, and anything that still needs attention.",
-    path: "/dashboard",
-  },
-  {
-    id: "quick-actions",
-    target: "dashboard-quick-actions",
-    kicker: "Shortcuts",
-    title: "These are the fastest actions",
-    description:
-      "Use these shortcuts to add a first client, create an appointment, or move into the next task without hunting through the app.",
-    path: "/dashboard",
+      "Start here to check what is happening today, review unread activity, and get a fast picture of the clinic before you act.",
+    showNext: true,
   },
   {
     id: "clients",
     target: "clients-nav",
     kicker: "Clients",
-    title: "Clients live here",
+    title: "Click Clients to open your records",
     description:
-      "Open Clients to create profiles, track notes, and keep each phone number attached to the right person.",
+      "This is where you add new clients, review details, and keep each phone number attached to the right profile.",
+    actionLabel: "Click Clients in the sidebar",
+    advanceOnPath: "/clients",
   },
   {
     id: "calendar",
     target: "calendar-nav",
     kicker: "Calendar",
-    title: "Bookings happen in Calendar",
+    title: "Click Calendar to manage bookings",
     description:
-      "Use Calendar to create appointments, assign staff, and keep the day structured.",
+      "Use Calendar to create appointments, assign staff, and keep the clinic schedule organized.",
+    actionLabel: "Click Calendar in the sidebar",
+    advanceOnPath: "/calendar",
   },
   {
     id: "inbox",
     target: "inbox-nav",
     kicker: "Inbox",
-    title: "Messages appear in Inbox",
+    title: "Click Inbox to handle messages",
     description:
-      "This is where WhatsApp conversations arrive, where staff reply, and where new chats turn into real client records.",
+      "WhatsApp conversations arrive here. Staff reply here, and new chats can be turned into real client records.",
+    actionLabel: "Click Inbox in the sidebar",
+    advanceOnPath: "/inbox",
   },
   {
     id: "settings",
     target: "settings-nav",
     kicker: "Settings",
-    title: "Settings controls the clinic setup",
+    title: "Click Settings to update clinic setup",
     description:
-      "Return here anytime to update clinic details, staff, reminder behavior, and WhatsApp connection state.",
+      "This is where you change clinic details, staff, reminder behavior, and WhatsApp connection settings later.",
+    actionLabel: "Click Settings in the sidebar",
+    advanceOnPath: "/settings",
+  },
+  {
+    id: "finish",
+    kicker: "Ready",
+    title: "You know where the essentials are",
+    description:
+      "The fastest next move is usually adding the first real client, then creating the first appointment from Calendar.",
+    showNext: true,
   },
 ];
-
-type Rect = {
-  top: number;
-  left: number;
-  width: number;
-  height: number;
-};
-
-function isVisible(element: HTMLElement) {
-  const styles = window.getComputedStyle(element);
-  const rect = element.getBoundingClientRect();
-
-  return (
-    styles.display !== "none" &&
-    styles.visibility !== "hidden" &&
-    rect.width > 0 &&
-    rect.height > 0
-  );
-}
 
 function findVisibleTarget(target: string) {
   const nodes = Array.from(
     document.querySelectorAll<HTMLElement>(`[data-tour="${target}"]`)
   );
 
-  return nodes.find((node) => isVisible(node)) ?? null;
-}
+  return (
+    nodes.find((node) => {
+      const styles = window.getComputedStyle(node);
+      const rect = node.getBoundingClientRect();
 
-function toRect(element: HTMLElement): Rect {
-  const rect = element.getBoundingClientRect();
-
-  return {
-    top: rect.top,
-    left: rect.left,
-    width: rect.width,
-    height: rect.height,
-  };
+      return (
+        styles.display !== "none" &&
+        styles.visibility !== "hidden" &&
+        rect.width > 0 &&
+        rect.height > 0
+      );
+    }) ?? null
+  );
 }
 
 export function WorkspaceTour() {
   const pathname = usePathname();
-  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [targetRect, setTargetRect] = useState<Rect | null>(null);
 
   const currentStep = tourSteps[currentStepIndex] ?? null;
 
@@ -140,67 +129,47 @@ export function WorkspaceTour() {
   }, [pathname]);
 
   useEffect(() => {
-    if (!isOpen || !currentStep) {
+    if (!isOpen || !currentStep?.advanceOnPath) {
       return;
     }
 
-    if (currentStep.path && pathname !== currentStep.path) {
-      router.push(currentStep.path);
+    if (pathname !== currentStep.advanceOnPath) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      setCurrentStepIndex((index) =>
+        Math.min(index + 1, tourSteps.length - 1)
+      );
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [currentStep?.advanceOnPath, isOpen, pathname]);
+
+  useEffect(() => {
+    if (!isOpen || !currentStep?.target) {
       return;
     }
 
     const target = findVisibleTarget(currentStep.target);
 
     if (!target) {
-      const frame = window.requestAnimationFrame(() => {
-        setTargetRect(null);
-      });
-
-      return () => {
-        window.cancelAnimationFrame(frame);
-      };
+      return;
     }
 
     target.classList.add(...ACTIVE_TARGET_CLASSES);
-
-    const updateRect = () => {
-      if (!document.body.contains(target)) {
-        setTargetRect(null);
-        return;
-      }
-
-      setTargetRect(toRect(target));
-    };
-
-    updateRect();
     target.scrollIntoView({
       block: "center",
       inline: "nearest",
       behavior: "smooth",
     });
 
-    window.addEventListener("resize", updateRect);
-    window.addEventListener("scroll", updateRect, true);
-
     return () => {
       target.classList.remove(...ACTIVE_TARGET_CLASSES);
-      window.removeEventListener("resize", updateRect);
-      window.removeEventListener("scroll", updateRect, true);
     };
-  }, [currentStep, isOpen, pathname, router]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      document.body.style.removeProperty("overflow");
-      return;
-    }
-
-    document.body.style.setProperty("overflow", "hidden");
-
-    return () => {
-      document.body.style.removeProperty("overflow");
-    };
-  }, [isOpen]);
+  }, [currentStep?.target, isOpen, pathname]);
 
   function finishTour() {
     window.localStorage.setItem(TOUR_STORAGE_KEY, "1");
@@ -208,6 +177,10 @@ export function WorkspaceTour() {
   }
 
   function handleNext() {
+    if (!currentStep) {
+      return;
+    }
+
     if (currentStepIndex === tourSteps.length - 1) {
       finishTour();
       return;
@@ -224,35 +197,12 @@ export function WorkspaceTour() {
     return null;
   }
 
+  const isActionStep = Boolean(currentStep.advanceOnPath);
+
   return (
     <div className="pointer-events-none fixed inset-0 z-[80]">
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(12,18,31,0.54),rgba(12,18,31,0.68))]" />
-
-      {targetRect ? (
-        <>
-          <div
-            className="absolute rounded-[1.2rem] border border-white/85 bg-white/5 shadow-[0_0_0_9999px_rgba(12,18,31,0.55)] transition-all duration-300"
-            style={{
-              top: targetRect.top - 10,
-              left: targetRect.left - 10,
-              width: targetRect.width + 20,
-              height: targetRect.height + 20,
-            }}
-          />
-          <div
-            className="pointer-events-none absolute hidden rounded-full border border-white/20 bg-[rgba(255,255,255,0.12)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/92 shadow-[0_12px_24px_rgba(15,23,42,0.16)] md:block"
-            style={{
-              top: Math.max(18, targetRect.top - 46),
-              left: targetRect.left,
-            }}
-          >
-            {currentStep.kicker}
-          </div>
-        </>
-      ) : null}
-
-      <div className="pointer-events-auto absolute inset-x-4 bottom-4 flex justify-center md:inset-x-auto md:bottom-6 md:right-6 md:justify-end">
-        <div className="w-full max-w-[420px] rounded-[1.55rem] border border-white/18 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.95))] p-5 shadow-[0_30px_70px_rgba(15,23,42,0.3)] backdrop-blur-xl md:p-6">
+      <div className="pointer-events-auto absolute bottom-4 right-4 left-4 flex justify-center md:bottom-6 md:left-auto md:right-6 md:justify-end">
+        <div className="w-full max-w-[430px] rounded-[1.55rem] border border-border/80 bg-white/96 p-5 shadow-[0_24px_60px_rgba(15,23,42,0.16)] backdrop-blur-md md:p-6">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-3">
               <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
@@ -271,7 +221,7 @@ export function WorkspaceTour() {
             <button
               type="button"
               onClick={finishTour}
-              className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-border/80 bg-white/78 text-muted-foreground transition-colors hover:bg-white hover:text-foreground"
+              className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-border/80 bg-white text-muted-foreground transition-colors hover:text-foreground"
               aria-label="Close tour"
             >
               <X className="size-4" />
@@ -297,6 +247,14 @@ export function WorkspaceTour() {
             </p>
           </div>
 
+          <div className="mt-5 rounded-[1.05rem] border border-border/80 bg-slate-50/90 px-4 py-3">
+            <p className="text-sm font-medium text-foreground">
+              {isActionStep
+                ? currentStep.actionLabel
+                : "Continue when you are ready for the next part of the workspace."}
+            </p>
+          </div>
+
           <div className="mt-6 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <Button
@@ -318,14 +276,24 @@ export function WorkspaceTour() {
                 Skip
               </Button>
             </div>
-            <Button
-              type="button"
-              className="h-11 rounded-[1rem] px-5"
-              onClick={handleNext}
-            >
-              {currentStepIndex === tourSteps.length - 1 ? "Finish tour" : "Next"}
-              <ArrowRight data-icon="inline-end" />
-            </Button>
+            {currentStep.showNext ? (
+              <Button
+                type="button"
+                className="h-11 rounded-[1rem] px-5"
+                onClick={handleNext}
+              >
+                {currentStepIndex === tourSteps.length - 1 ? "Finish tour" : "Continue"}
+                {currentStepIndex === tourSteps.length - 1 ? (
+                  <CheckCircle2 data-icon="inline-end" />
+                ) : (
+                  <ArrowRight data-icon="inline-end" />
+                )}
+              </Button>
+            ) : (
+              <div className="rounded-full bg-primary/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+                Waiting for click
+              </div>
+            )}
           </div>
         </div>
       </div>
