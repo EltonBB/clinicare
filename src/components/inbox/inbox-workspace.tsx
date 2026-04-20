@@ -313,7 +313,7 @@ export function InboxWorkspace({
             </div>
 
             <DialogFooter className="items-stretch gap-3 sm:flex-col sm:items-stretch sm:justify-start">
-              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-start">
                 <Button
                   variant="outline"
                   className="rounded-[0.9rem] bg-white/70"
