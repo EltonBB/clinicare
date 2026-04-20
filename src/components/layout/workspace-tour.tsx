@@ -7,7 +7,7 @@ import { ArrowLeft, ArrowRight, CheckCircle2, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const TOUR_STORAGE_KEY = "vela-workspace-tour-state-v5";
+const TOUR_STORAGE_KEY = "vela-workspace-tour-state-v6";
 const ACTIVE_TARGET_CLASSES = [
   "relative",
   "z-[81]",
@@ -224,7 +224,7 @@ export function WorkspaceTour() {
   const currentStep = tourSteps[tourState.currentStepIndex] ?? null;
   const isOpen = tourState.active && Boolean(currentStep);
   const isOnExpectedPath = Boolean(currentStep && pathname === currentStep.path);
-  const shouldRender = isOpen && Boolean(currentStep) && isOnExpectedPath && Boolean(targetRect);
+  const shouldRender = isOpen && Boolean(currentStep) && isOnExpectedPath;
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -349,7 +349,7 @@ export function WorkspaceTour() {
   }, [currentStep, isOpen, pathname, tourState.currentStepIndex]);
 
   const coachmarkStyle = useMemo(() => {
-    if (!currentStep || !targetRect || typeof window === "undefined") {
+    if (!currentStep || typeof window === "undefined") {
       return null;
     }
 
@@ -372,6 +372,38 @@ export function WorkspaceTour() {
     const clampLeft = (value: number) =>
       Math.max(24, Math.min(value, viewportWidth - cardWidth - 24));
 
+    if (!targetRect) {
+      if (currentStep.placement === "sidebar") {
+        return {
+          top: 124,
+          left: Math.min(324, viewportWidth - cardWidth - 24),
+          width: cardWidth,
+        };
+      }
+
+      if (currentStep.placement === "header-action") {
+        return {
+          top: 132,
+          left: Math.max(24, viewportWidth - cardWidth - 36),
+          width: cardWidth,
+        };
+      }
+
+      if (currentStep.placement === "drawer") {
+        return {
+          top: 116,
+          left: Math.max(24, Math.min(viewportWidth - cardWidth - 500, viewportWidth - cardWidth - 24)),
+          width: cardWidth,
+        };
+      }
+
+      return {
+        top: 132,
+        left: Math.max(24, viewportWidth - cardWidth - 40),
+        width: cardWidth,
+      };
+    }
+
     if (currentStep.placement === "sidebar") {
       return {
         top: clampTop(targetRect.top + targetRect.height / 2 - 120),
@@ -389,9 +421,13 @@ export function WorkspaceTour() {
     }
 
     if (currentStep.placement === "drawer") {
+      const shouldPlaceLeft = targetRect.left > viewportWidth / 2;
+
       return {
         top: clampTop(targetRect.top + 12),
-        left: clampLeft(targetRect.left - cardWidth - 22),
+        left: shouldPlaceLeft
+          ? clampLeft(targetRect.left - cardWidth - 22)
+          : clampLeft(targetRect.left + targetRect.width + 22),
         width: cardWidth,
       };
     }
