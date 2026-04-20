@@ -20,21 +20,7 @@ export const onboardingSteps = [
     shortLabel: "WhatsApp",
     title: "Configure WhatsApp reminders",
     description:
-      "Set the sending number and decide how reminder messages should behave for your first bookings.",
-  },
-  {
-    id: "client",
-    shortLabel: "Client",
-    title: "Create your first client",
-    description:
-      "Add one client profile so you can connect bookings, reminders, and client history right away.",
-  },
-  {
-    id: "booking",
-    shortLabel: "Booking",
-    title: "Create your first booking",
-    description:
-      "Capture the first appointment details to finish setup and enter the main workspace with meaningful data.",
+      "Set the clinic number and decide how reminder messages should behave. You can also skip this for now and finish it later from settings.",
   },
 ] as const;
 

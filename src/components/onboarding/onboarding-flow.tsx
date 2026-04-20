@@ -5,11 +5,9 @@ import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
-  CalendarDays,
   CheckCircle2,
   Clock3,
   MessageCircleMore,
-  UserRoundPlus,
   Users,
 } from "lucide-react";
 
@@ -190,38 +188,12 @@ function getStepError(state: OnboardingState) {
       return null;
     case 3:
       if (!state.whatsapp.phoneNumber.trim()) {
-        return "Add a WhatsApp number to continue.";
-      }
-      return null;
-    case 4:
-      if (!state.client.name.trim() || !state.client.phone.trim()) {
-        return "Add your first client name and phone number before continuing.";
-      }
-      return null;
-    case 5:
-      if (
-        !state.booking.service.trim() ||
-        !state.booking.date.trim() ||
-        !state.booking.time.trim()
-      ) {
-        return "Complete the first booking details before finishing onboarding.";
+        return "Add a WhatsApp number to continue, or skip this step for now.";
       }
       return null;
     default:
       return null;
   }
-}
-
-function getStepSkipStatus(stepId: string) {
-  if (stepId === "client") {
-    return "Skipped first client for now.";
-  }
-
-  if (stepId === "booking") {
-    return "Skipped first booking for now.";
-  }
-
-  return "Skipped for now.";
 }
 
 export function OnboardingFlow({
@@ -241,8 +213,9 @@ export function OnboardingFlow({
   ) - 1;
   const step = onboardingSteps[stepIndex];
   const progressValue = ((stepIndex + 1) / onboardingSteps.length) * 100;
-  const nextStepLabel = onboardingSteps[Math.min(stepIndex + 1, onboardingSteps.length - 1)]
-    ?.shortLabel;
+  const nextStepLabel =
+    onboardingSteps[Math.min(stepIndex + 1, onboardingSteps.length - 1)]
+      ?.shortLabel;
 
   const estimatedHours = useMemo(() => {
     return weekdayOrder.reduce((total, day) => {
@@ -274,22 +247,12 @@ export function OnboardingFlow({
         };
       case "whatsapp":
         return {
-          title: "Reminder behavior",
+          title: "Optional for now",
           icon: <MessageCircleMore className="size-4" />,
-          body: "This number becomes the clinic's requested live WhatsApp number so the later connection step can activate the right inbox sender.",
-        };
-      case "client":
-        return {
-          title: "First profile",
-          icon: <UserRoundPlus className="size-4" />,
-          body: "The first client gives your inbox, notes, and booking flows something real to connect to as the workspace fills out.",
+          body: "Connect WhatsApp now if the clinic is ready, or skip this step and finish it later from settings. You do not need to create clients or bookings during setup.",
         };
       default:
-        return {
-          title: "Ready for the dashboard",
-          icon: <CalendarDays className="size-4" />,
-          body: "This first booking becomes the seed data for the calendar, dashboard summary, and client history views you’ll build next.",
-        };
+        return null;
     }
   }, [step.id]);
 
@@ -375,30 +338,7 @@ export function OnboardingFlow({
   }
 
   function handleSkipForNow() {
-    if (step.id !== "client" && step.id !== "booking") {
-      return;
-    }
-
-    if (step.id === "client") {
-      persistState(
-        {
-          ...state,
-          currentStep: state.currentStep + 1,
-          client: {
-            name: "",
-            phone: "",
-            email: "",
-            notes: "",
-          },
-          booking: {
-            ...state.booking,
-            clientName: "",
-          },
-        },
-        {
-          status: getStepSkipStatus(step.id),
-        }
-      );
+    if (step.id !== "whatsapp") {
       return;
     }
 
@@ -406,22 +346,23 @@ export function OnboardingFlow({
       {
         ...state,
         completed: true,
-        booking: {
-          ...state.booking,
-          service: "",
-          date: "",
-          time: "",
-          clientName: state.client.name,
+        whatsapp: {
+          ...state.whatsapp,
+          phoneNumber: "",
+          sendReminders: false,
         },
       },
       {
         complete: true,
-        status: getStepSkipStatus(step.id),
+        status: "Skipped WhatsApp setup for now.",
       }
     );
   }
 
-  function updateDay(day: WeekdayKey, patch: Partial<(typeof state.workingHours)[WeekdayKey]>) {
+  function updateDay(
+    day: WeekdayKey,
+    patch: Partial<(typeof state.workingHours)[WeekdayKey]>
+  ) {
     setState((current) => ({
       ...current,
       workingHours: {
@@ -498,10 +439,6 @@ export function OnboardingFlow({
                   staffMember: {
                     ...current.staffMember,
                     name: event.target.value,
-                  },
-                  booking: {
-                    ...current.booking,
-                    staffName: current.booking.staffName || event.target.value,
                   },
                 }))
               }
@@ -631,204 +568,7 @@ export function OnboardingFlow({
       );
     }
 
-    if (step.id === "client") {
-      return (
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-3">
-            <FieldLabel>Client name</FieldLabel>
-            <Input
-              value={state.client.name}
-              onChange={(event) =>
-                setState((current) => ({
-                  ...current,
-                  client: {
-                    ...current.client,
-                    name: event.target.value,
-                  },
-                  booking: {
-                    ...current.booking,
-                    clientName: current.booking.clientName || event.target.value,
-                  },
-                }))
-              }
-              placeholder="Sarah Jenkins"
-              className={fieldInputClass}
-            />
-          </div>
-          <div className="space-y-3">
-            <FieldLabel>Phone number</FieldLabel>
-            <Input
-              value={state.client.phone}
-              onChange={(event) =>
-                setState((current) => ({
-                  ...current,
-                  client: {
-                    ...current.client,
-                    phone: event.target.value,
-                  },
-                }))
-              }
-              placeholder="+1 555 321 1234"
-              className={fieldInputClass}
-            />
-          </div>
-          <div className="space-y-3">
-            <FieldLabel>Email</FieldLabel>
-            <Input
-              value={state.client.email}
-              onChange={(event) =>
-                setState((current) => ({
-                  ...current,
-                  client: {
-                    ...current.client,
-                    email: event.target.value,
-                  },
-                }))
-              }
-              placeholder="sarah@example.com"
-              className={fieldInputClass}
-            />
-          </div>
-          <div className="space-y-3 md:col-span-2">
-            <FieldLabel>Notes</FieldLabel>
-            <Textarea
-              value={state.client.notes}
-              onChange={(event) =>
-                setState((current) => ({
-                  ...current,
-                  client: {
-                    ...current.client,
-                    notes: event.target.value,
-                  },
-                }))
-              }
-              placeholder="First-time client. Prefers WhatsApp reminders."
-              className="min-h-28 rounded-[1rem] border-border bg-card px-4 py-3 text-[15px] leading-7 shadow-none placeholder:text-muted-foreground/70"
-            />
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-3">
-          <FieldLabel>Service</FieldLabel>
-          <Input
-            value={state.booking.service}
-            onChange={(event) =>
-              setState((current) => ({
-                ...current,
-                booking: {
-                  ...current.booking,
-                  service: event.target.value,
-                },
-              }))
-            }
-            placeholder="Initial consultation"
-            className={fieldInputClass}
-          />
-        </div>
-        <div className="space-y-3">
-          <FieldLabel>Assigned staff</FieldLabel>
-          <NativeSelect
-            value={state.booking.staffName || state.staffMember.name || ownerName}
-            onChange={(value) =>
-              setState((current) => ({
-                ...current,
-                booking: {
-                  ...current.booking,
-                  staffName: value,
-                },
-              }))
-            }
-            options={[state.staffMember.name || ownerName].filter(Boolean)}
-          />
-        </div>
-        <div className="space-y-3">
-          <FieldLabel>Date</FieldLabel>
-          <Input
-            type="date"
-            value={state.booking.date}
-            onChange={(event) =>
-              setState((current) => ({
-                ...current,
-                booking: {
-                  ...current.booking,
-                  date: event.target.value,
-                },
-              }))
-            }
-            className={fieldInputClass}
-          />
-        </div>
-        <div className="space-y-3">
-          <FieldLabel>Time</FieldLabel>
-          <NativeSelect
-            value={state.booking.time}
-            onChange={(value) =>
-              setState((current) => ({
-                ...current,
-                booking: {
-                  ...current.booking,
-                  time: value,
-                },
-              }))
-            }
-            options={timeOptions}
-            placeholder="Select time"
-          />
-        </div>
-        <div className="space-y-3 md:col-span-2">
-          <FieldLabel>Client</FieldLabel>
-          <Input
-            value={state.booking.clientName || state.client.name}
-            onChange={(event) =>
-              setState((current) => ({
-                ...current,
-                booking: {
-                  ...current.booking,
-                  clientName: event.target.value,
-                },
-              }))
-            }
-            placeholder="Sarah Jenkins"
-            className={fieldInputClass}
-          />
-        </div>
-        <div className="rounded-[1.35rem] border border-border bg-card p-5 md:col-span-2">
-          <p className="text-sm font-semibold text-foreground">Booking summary</p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-[1rem] bg-muted/55 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Client
-              </p>
-              <p className="mt-2 font-medium text-foreground">
-                {state.booking.clientName || state.client.name || "Your first client"}
-              </p>
-            </div>
-            <div className="rounded-[1rem] bg-muted/55 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Service
-              </p>
-              <p className="mt-2 font-medium text-foreground">
-                {state.booking.service || "Choose a service"}
-              </p>
-            </div>
-            <div className="rounded-[1rem] bg-muted/55 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Time
-              </p>
-              <p className="mt-2 font-medium text-foreground">
-                {state.booking.date && state.booking.time
-                  ? `${state.booking.date} at ${state.booking.time}`
-                  : "Pick a date and time"}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (
@@ -881,9 +621,11 @@ export function OnboardingFlow({
 
           <div className="mt-10 space-y-8">
             {renderStepContent()}
-            <SurfaceNote icon={hint.icon} title={hint.title}>
-              {hint.body}
-            </SurfaceNote>
+            {hint ? (
+              <SurfaceNote icon={hint.icon} title={hint.title}>
+                {hint.body}
+              </SurfaceNote>
+            ) : null}
           </div>
 
           <div className="mt-auto space-y-5 pt-10">
@@ -910,7 +652,7 @@ export function OnboardingFlow({
                   <ArrowLeft data-icon="inline-start" />
                   Go back
                 </Button>
-                {step.id === "client" || step.id === "booking" ? (
+                {step.id === "whatsapp" ? (
                   <Button
                     type="button"
                     variant="ghost"

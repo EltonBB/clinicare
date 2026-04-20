@@ -1,9 +1,6 @@
 "use server";
 
-import { addHours } from "date-fns";
-
 import { prisma } from "@/lib/prisma";
-import { ensureInboxSeedData } from "@/lib/inbox-server";
 import { beginWhatsAppLiveConnection } from "@/lib/whatsapp-connection";
 import { normalizePhone } from "@/lib/inbox";
 import {
@@ -18,23 +15,6 @@ export type SaveOnboardingStateResult = {
   error?: string;
   state?: OnboardingState;
 };
-
-function parseBookingStart(date: string, time: string) {
-  const fallback = new Date();
-  fallback.setHours(9, 0, 0, 0);
-
-  if (!date) {
-    return fallback;
-  }
-
-  const parsed = new Date(`${date}T${time || "09:00"}:00`);
-
-  if (Number.isNaN(parsed.getTime())) {
-    return fallback;
-  }
-
-  return parsed;
-}
 
 async function bootstrapWorkspaceFromOnboarding(user: {
   id: string;
@@ -53,17 +33,7 @@ async function bootstrapWorkspaceFromOnboarding(user: {
   const defaultTemplate =
     nextState.whatsapp.template ||
     "Hi {client_name}, this is a reminder for your appointment at {time}. Reply here if you need to reschedule.";
-  const bookingStartAt = parseBookingStart(nextState.booking.date, nextState.booking.time);
-  const bookingEndAt = addHours(bookingStartAt, 1);
-  const clientName = nextState.client.name.trim() || nextState.booking.clientName.trim();
   const normalizedWhatsAppNumber = normalizePhone(nextState.whatsapp.phoneNumber);
-  const clientPhone = normalizePhone(nextState.client.phone);
-  const shouldCreateClient = clientName.length > 0 && clientPhone.length > 0;
-  const shouldCreateAppointment =
-    shouldCreateClient &&
-    nextState.booking.service.trim().length > 0 &&
-    nextState.booking.date.trim().length > 0 &&
-    nextState.booking.time.trim().length > 0;
 
   return prisma.$transaction(async (tx) => {
     const business = await tx.business.upsert({
@@ -96,7 +66,7 @@ async function bootstrapWorkspaceFromOnboarding(user: {
       },
       update: {
         provider: "TWILIO",
-        mode: requestedPhoneNumber ? "LIVE" : "SANDBOX",
+        mode: "LIVE",
         status: requestedPhoneNumber ? "PENDING_SETUP" : "DISCONNECTED",
         requestedPhoneNumber,
         sandboxRecipientPhoneNumber: null,
@@ -113,7 +83,7 @@ async function bootstrapWorkspaceFromOnboarding(user: {
       create: {
         businessId: business.id,
         provider: "TWILIO",
-        mode: requestedPhoneNumber ? "LIVE" : "SANDBOX",
+        mode: "LIVE",
         status: requestedPhoneNumber ? "PENDING_SETUP" : "DISCONNECTED",
         requestedPhoneNumber,
         sandboxRecipientPhoneNumber: null,
@@ -167,73 +137,14 @@ async function bootstrapWorkspaceFromOnboarding(user: {
       },
     });
 
-    const staffMember =
-      existingStaffMember ??
-      (await tx.staffMember.create({
+    if (!existingStaffMember) {
+      await tx.staffMember.create({
         data: {
           businessId: business.id,
           name: staffName,
           role: nextState.staffMember.role || "Owner",
         },
-      }));
-
-    if (shouldCreateClient) {
-      const client = await tx.client.upsert({
-        where: {
-          businessId_phone: {
-            businessId: business.id,
-            phone: clientPhone,
-          },
-        },
-        update: {
-          name: clientName,
-          email: nextState.client.email.trim() || null,
-          notes: nextState.client.notes.trim() || null,
-          status: "ACTIVE",
-          preferredChannel: "WhatsApp",
-          assignedStaffName: staffName,
-          tags: ["priority", "whatsapp"],
-          lastVisitAt: shouldCreateAppointment ? bookingStartAt : null,
-        },
-        create: {
-          businessId: business.id,
-          name: clientName,
-          email: nextState.client.email.trim() || null,
-          phone: clientPhone,
-          notes: nextState.client.notes.trim() || null,
-          status: "ACTIVE",
-          preferredChannel: "WhatsApp",
-          assignedStaffName: staffName,
-          tags: ["priority", "whatsapp"],
-          lastVisitAt: shouldCreateAppointment ? bookingStartAt : null,
-        },
       });
-
-      if (shouldCreateAppointment) {
-        const existingAppointment = await tx.appointment.findFirst({
-          where: {
-            businessId: business.id,
-            clientId: client.id,
-            title: nextState.booking.service.trim() || "Initial consultation",
-            startAt: bookingStartAt,
-          },
-        });
-
-        if (!existingAppointment) {
-          await tx.appointment.create({
-            data: {
-              businessId: business.id,
-              clientId: client.id,
-              staffMemberId: staffMember.id,
-              title: nextState.booking.service.trim() || "Initial consultation",
-              startAt: bookingStartAt,
-              endAt: bookingEndAt,
-              status: "CONFIRMED",
-              notes: nextState.client.notes.trim() || null,
-            },
-          });
-        }
-      }
     }
 
     await tx.reminderSettings.upsert({
@@ -293,7 +204,6 @@ export async function saveOnboardingStateAction(
           });
         }
       }
-      await ensureInboxSeedData(business.id);
     } catch (error) {
       return {
         ok: false,

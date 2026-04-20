@@ -43,12 +43,13 @@ export default async function OnboardingCompletePage() {
 
   const whatsappConnection = await syncWhatsAppConnectionForBusiness(business.id);
   const isWhatsAppReady = isLiveWhatsAppConnectionReady(whatsappConnection);
+  const hasRequestedWhatsAppNumber = Boolean(business.whatsappNumber?.trim());
   const connectionSummary = buildWhatsAppConnectionSummary(
     whatsappConnection,
     business.whatsappNumber ?? ""
   );
 
-  if (!isWhatsAppReady) {
+  if (hasRequestedWhatsAppNumber && !isWhatsAppReady) {
     return (
       <div className="min-h-screen bg-background">
         <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 sm:px-6 lg:px-8">
@@ -96,8 +97,8 @@ export default async function OnboardingCompletePage() {
                 <div className="space-y-2 text-left">
                   <p className="text-sm font-semibold text-foreground">Workspace ready</p>
                   <p className="text-sm leading-6 text-muted-foreground">
-                    Your first schedule, client, and booking details are saved,
-                    so the next screens can render with meaningful state.
+                    Your clinic profile, hours, staff, and reminder settings are saved.
+                    Clients, bookings, and WhatsApp setup can all be completed later from the workspace.
                   </p>
                 </div>
               </CardContent>
