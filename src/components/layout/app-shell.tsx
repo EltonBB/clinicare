@@ -9,6 +9,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { NotificationsMenu } from "@/components/layout/notifications-menu";
 import { OwnerAccountDialog } from "@/components/layout/owner-account-dialog";
+import { WorkspaceTour } from "@/components/layout/workspace-tour";
 import { UpgradeModalTrigger } from "@/components/upgrade/upgrade-modal-trigger";
 import { navigationItems } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,23 @@ export function AppShell({
   const pathname = usePathname();
   const [liveUnreadCount, setLiveUnreadCount] = useState(unreadCount);
   const [liveNotifications, setLiveNotifications] = useState(notifications);
+
+  function getTourTarget(href: string) {
+    switch (href) {
+      case "/dashboard":
+        return "dashboard-nav";
+      case "/calendar":
+        return "calendar-nav";
+      case "/clients":
+        return "clients-nav";
+      case "/inbox":
+        return "inbox-nav";
+      case "/settings":
+        return "settings-nav";
+      default:
+        return undefined;
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -94,7 +112,12 @@ export function AppShell({
 
               if (item.href === "/inbox") {
                 return (
-                  <a key={item.href} href={item.href} className={navClasses}>
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    className={navClasses}
+                    data-tour={getTourTarget(item.href)}
+                  >
                     <Icon className="size-4" />
                     {item.label}
                   </a>
@@ -102,7 +125,12 @@ export function AppShell({
               }
 
               return (
-                <Link key={item.href} href={item.href} className={navClasses}>
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={navClasses}
+                  data-tour={getTourTarget(item.href)}
+                >
                   <Icon className="size-4" />
                   {item.label}
                 </Link>
@@ -192,7 +220,12 @@ export function AppShell({
 
             if (item.href === "/inbox") {
               return (
-                <a key={item.href} href={item.href} className={mobileNavClasses}>
+                <a
+                  key={item.href}
+                  href={item.href}
+                  className={mobileNavClasses}
+                  data-tour={getTourTarget(item.href)}
+                >
                   <Icon className="size-4" />
                   <span className="truncate">{item.label}</span>
                 </a>
@@ -200,7 +233,12 @@ export function AppShell({
             }
 
             return (
-              <Link key={item.href} href={item.href} className={mobileNavClasses}>
+              <Link
+                key={item.href}
+                href={item.href}
+                className={mobileNavClasses}
+                data-tour={getTourTarget(item.href)}
+              >
                 <Icon className="size-4" />
                 <span className="truncate">{item.label}</span>
               </Link>
@@ -208,6 +246,8 @@ export function AppShell({
           })}
         </div>
       </nav>
+
+      <WorkspaceTour />
     </div>
   );
 }

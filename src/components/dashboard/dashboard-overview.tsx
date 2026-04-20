@@ -63,7 +63,10 @@ function AppointmentRow({ appointment }: { appointment: DashboardAppointment }) 
 export function DashboardOverview({ view }: { view: DashboardViewModel }) {
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-0">
-      <section className="section-reveal space-y-6 xl:pr-10">
+      <section
+        className="section-reveal space-y-6 xl:pr-10"
+        data-tour="dashboard-overview"
+      >
         <div className="space-y-3">
           <p className="text-[12px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
             Today overview
@@ -86,7 +89,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
       <aside className="section-reveal-delayed xl:pl-8">
         <div className="space-y-5 rounded-[1.2rem] border border-border/75 bg-white/92 p-5 shadow-[0_10px_24px_rgba(20,32,51,0.032)] xl:min-h-[calc(100vh-11rem)] xl:p-6">
 
-          <section className="space-y-4">
+          <section className="space-y-4" data-tour="dashboard-quick-actions">
             <p className="text-[13px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
               Quick actions
             </p>
