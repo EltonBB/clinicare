@@ -312,25 +312,27 @@ export function InboxWorkspace({
               </div>
             </div>
 
-            <DialogFooter className="gap-3">
-              <div className="mr-auto hidden text-xs font-medium text-muted-foreground sm:block">
+            <DialogFooter className="items-stretch gap-3 sm:flex-col sm:items-stretch sm:justify-start">
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <Button
+                  variant="outline"
+                  className="rounded-[0.9rem] bg-white/70"
+                  onClick={() => setConvertDialogOpen(false)}
+                  disabled={isPending}
+                >
+                  Close
+                </Button>
+                <Button
+                  className="rounded-[0.9rem]"
+                  onClick={convertConversationToClient}
+                  disabled={isPending}
+                >
+                  {isPending ? "Converting..." : "Convert to client"}
+                </Button>
+              </div>
+              <div className="text-xs font-medium leading-5 text-muted-foreground">
                 This keeps the thread history attached to the new client profile.
               </div>
-              <Button
-                variant="outline"
-                className="rounded-[0.9rem] bg-white/70"
-                onClick={() => setConvertDialogOpen(false)}
-                disabled={isPending}
-              >
-                Close
-              </Button>
-              <Button
-                className="rounded-[0.9rem]"
-                onClick={convertConversationToClient}
-                disabled={isPending}
-              >
-                {isPending ? "Converting..." : "Convert to client"}
-              </Button>
             </DialogFooter>
           </div>
         </DialogContent>
