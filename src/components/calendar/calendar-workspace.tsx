@@ -430,6 +430,7 @@ export function CalendarWorkspace({
             size="lg"
             className="h-11 rounded-[0.9rem] px-4"
             onClick={() => openNewBooking()}
+            data-tour="calendar-create"
           >
             <Plus className="size-4" />
             New appointment
@@ -647,6 +648,7 @@ export function CalendarWorkspace({
         <SheetContent
           side="right"
           className="flex h-full w-full max-w-[460px] flex-col p-0 sm:max-w-[460px]"
+          data-tour="calendar-form"
         >
           <SheetHeader className="glass-divider rounded-t-[1.2rem] px-5 py-5">
             <SheetTitle>

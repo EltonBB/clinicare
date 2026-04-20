@@ -94,7 +94,10 @@ export function AppShell({
     <div className="relative min-h-screen overflow-hidden bg-background">
       <div className="relative flex min-h-screen">
         <aside className="hidden w-[284px] shrink-0 px-4 py-4 lg:flex">
-          <div className="sticky top-4 flex h-[calc(100vh-2rem)] w-full flex-col rounded-[1.45rem] border border-sidebar-border/80 bg-white/92 p-4 shadow-[0_12px_28px_rgba(20,32,51,0.04)]">
+          <div
+            className="sticky top-4 flex h-[calc(100vh-2rem)] w-full flex-col rounded-[1.45rem] border border-sidebar-border/80 bg-white/92 p-4 shadow-[0_12px_28px_rgba(20,32,51,0.04)]"
+            data-tour="sidebar-shell"
+          >
             <div className="px-2 pb-5 pt-2">
               <BrandMark />
             </div>

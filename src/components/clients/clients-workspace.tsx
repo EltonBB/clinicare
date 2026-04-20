@@ -275,6 +275,7 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
           size="lg"
           className="section-reveal-delayed h-11 rounded-[0.9rem] px-4"
           onClick={openNewClient}
+          data-tour="clients-create"
         >
           <Plus className="size-4" />
           New client
@@ -554,7 +555,11 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
       </div>
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" className="w-full max-w-[460px] p-0 sm:max-w-[460px]">
+        <SheetContent
+          side="right"
+          className="w-full max-w-[460px] p-0 sm:max-w-[460px]"
+          data-tour="clients-form"
+        >
           <SheetHeader className="glass-divider rounded-t-[1.2rem] px-5 py-5">
             <SheetTitle>{draft.id ? "Edit client" : "Add client"}</SheetTitle>
             <SheetDescription>

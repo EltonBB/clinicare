@@ -95,16 +95,19 @@ function SettingsSection({
   id,
   title,
   description,
+  tourTarget,
   children,
 }: {
   id: string;
   title: string;
   description: string;
+  tourTarget?: string;
   children: React.ReactNode;
 }) {
   return (
     <section
       id={id}
+      data-tour={tourTarget}
       className="scroll-mt-24 rounded-[1.05rem] border border-border/80 bg-white/94 px-5 py-5 shadow-[0_10px_24px_rgba(20,32,51,0.032)]"
     >
       <div className="space-y-1">
@@ -528,6 +531,7 @@ export function SettingsWorkspace({
           id="whatsapp-configuration"
           title="WhatsApp configuration"
           description="Connect the clinic's WhatsApp number, keep reminders tied to the right inbox, and manage the setup from one place."
+          tourTarget="settings-whatsapp"
         >
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">

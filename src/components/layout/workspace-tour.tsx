@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, CheckCircle2, Sparkles, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const TOUR_STORAGE_KEY = "vela-workspace-tour-complete-v3";
+const TOUR_STORAGE_KEY = "vela-workspace-tour-state-v5";
 const ACTIVE_TARGET_CLASSES = [
   "relative",
   "z-[81]",
@@ -15,80 +15,174 @@ const ACTIVE_TARGET_CLASSES = [
   "ring-2",
   "ring-primary/85",
   "shadow-[0_0_0_8px_rgba(38,137,135,0.10),0_16px_34px_rgba(15,23,42,0.14)]",
-  "transition-[box-shadow,ring-color,transform]",
+  "transition-[box-shadow,ring-color]",
   "duration-300",
 ];
 
+type Placement = "sidebar" | "header-action" | "drawer" | "content";
+
 type TourStep = {
   id: string;
-  target?: string;
+  path: string;
+  target: string;
+  kicker: string;
   title: string;
   description: string;
-  kicker: string;
   actionLabel?: string;
-  advanceOnPath?: string;
-  showNext?: boolean;
+  advanceMode: "button" | "click";
+  placement: Placement;
+};
+
+type TourState = {
+  active: boolean;
+  currentStepIndex: number;
+};
+
+type Rect = {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+};
+
+const initialTourState: TourState = {
+  active: false,
+  currentStepIndex: 0,
 };
 
 const tourSteps: TourStep[] = [
   {
-    id: "dashboard",
-    target: "dashboard-overview",
-    kicker: "Dashboard",
-    title: "This is your clinic overview",
+    id: "dashboard-sidebar",
+    path: "/dashboard",
+    target: "sidebar-shell",
+    kicker: "Navigation",
+    title: "This sidebar is the clinic's main map",
     description:
-      "Start here to check what is happening today, review unread activity, and get a fast picture of the clinic before you act.",
-    showNext: true,
+      "Use this left sidebar to move between the clinic overview, clients, calendar, inbox, and settings. Everything important starts here.",
+    advanceMode: "button",
+    placement: "sidebar",
   },
   {
-    id: "clients",
+    id: "clients-nav",
+    path: "/dashboard",
     target: "clients-nav",
     kicker: "Clients",
-    title: "Click Clients to open your records",
+    title: "Open Clients next",
     description:
-      "This is where you add new clients, review details, and keep each phone number attached to the right profile.",
-    actionLabel: "Click Clients in the sidebar",
-    advanceOnPath: "/clients",
+      "Clients is where the clinic stores profiles, notes, and contact details. Open it now from the sidebar.",
+    actionLabel: "Next: click Clients in the sidebar",
+    advanceMode: "click",
+    placement: "sidebar",
   },
   {
-    id: "calendar",
+    id: "clients-create",
+    path: "/clients",
+    target: "clients-create",
+    kicker: "Register client",
+    title: "This button adds a new client",
+    description:
+      "Whenever the clinic needs to register a patient or customer, this is where the workflow starts.",
+    actionLabel: "Next: click New client",
+    advanceMode: "click",
+    placement: "header-action",
+  },
+  {
+    id: "clients-form",
+    path: "/clients",
+    target: "clients-form",
+    kicker: "Client form",
+    title: "Register the client details here",
+    description:
+      "This panel is where the clinic fills in the client name, phone number, notes, and contact preferences before saving.",
+    advanceMode: "button",
+    placement: "drawer",
+  },
+  {
+    id: "calendar-nav",
+    path: "/clients",
     target: "calendar-nav",
     kicker: "Calendar",
-    title: "Click Calendar to manage bookings",
+    title: "Now move to Calendar",
     description:
-      "Use Calendar to create appointments, assign staff, and keep the clinic schedule organized.",
-    actionLabel: "Click Calendar in the sidebar",
-    advanceOnPath: "/calendar",
+      "Calendar is the booking workspace. This is where the clinic creates appointments and manages the daily schedule.",
+    actionLabel: "Next: click Calendar in the sidebar",
+    advanceMode: "click",
+    placement: "sidebar",
   },
   {
-    id: "inbox",
-    target: "inbox-nav",
-    kicker: "Inbox",
-    title: "Click Inbox to handle messages",
+    id: "calendar-create",
+    path: "/calendar",
+    target: "calendar-create",
+    kicker: "Book appointment",
+    title: "This button creates a new appointment",
     description:
-      "WhatsApp conversations arrive here. Staff reply here, and new chats can be turned into real client records.",
-    actionLabel: "Click Inbox in the sidebar",
-    advanceOnPath: "/inbox",
+      "Use this action whenever the clinic needs to book a visit, consultation, or follow-up into the schedule.",
+    actionLabel: "Next: click New appointment",
+    advanceMode: "click",
+    placement: "header-action",
   },
   {
-    id: "settings",
+    id: "calendar-form",
+    path: "/calendar",
+    target: "calendar-form",
+    kicker: "Booking form",
+    title: "This panel is where bookings are created",
+    description:
+      "Select the client, choose the staff member, set the date and time, then save the booking from this panel.",
+    advanceMode: "button",
+    placement: "drawer",
+  },
+  {
+    id: "settings-nav",
+    path: "/calendar",
     target: "settings-nav",
     kicker: "Settings",
-    title: "Click Settings to update clinic setup",
+    title: "Open Settings next",
     description:
-      "This is where you change clinic details, staff, reminder behavior, and WhatsApp connection settings later.",
-    actionLabel: "Click Settings in the sidebar",
-    advanceOnPath: "/settings",
+      "Settings is where clinic details, staff, reminders, and WhatsApp configuration are managed.",
+    actionLabel: "Next: click Settings in the sidebar",
+    advanceMode: "click",
+    placement: "sidebar",
   },
   {
-    id: "finish",
-    kicker: "Ready",
-    title: "You know where the essentials are",
+    id: "settings-whatsapp",
+    path: "/settings",
+    target: "settings-whatsapp",
+    kicker: "Configuration",
+    title: "This is where clinic settings are changed",
     description:
-      "The fastest next move is usually adding the first real client, then creating the first appointment from Calendar.",
-    showNext: true,
+      "Use this section to manage the clinic's WhatsApp connection and return later whenever staff, reminder, or clinic settings need to be updated.",
+    advanceMode: "button",
+    placement: "content",
   },
 ];
+
+function readTourState(): TourState {
+  try {
+    const raw = window.localStorage.getItem(TOUR_STORAGE_KEY);
+    if (!raw) {
+      return initialTourState;
+    }
+
+    const parsed = JSON.parse(raw) as Partial<TourState>;
+
+    return {
+      active: parsed.active === true,
+      currentStepIndex:
+        typeof parsed.currentStepIndex === "number" ? parsed.currentStepIndex : 0,
+    };
+  } catch {
+    return initialTourState;
+  }
+}
+
+function writeTourState(state: TourState) {
+  window.localStorage.setItem(TOUR_STORAGE_KEY, JSON.stringify(state));
+}
+
+function clearTourState() {
+  writeTourState(initialTourState);
+}
 
 function findVisibleTarget(target: string) {
   const nodes = Array.from(
@@ -110,17 +204,42 @@ function findVisibleTarget(target: string) {
   );
 }
 
+function toRect(element: HTMLElement): Rect {
+  const rect = element.getBoundingClientRect();
+
+  return {
+    top: rect.top,
+    left: rect.left,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
 export function WorkspaceTour() {
   const pathname = usePathname();
-  const [isOpen, setIsOpen] = useState(false);
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const router = useRouter();
+  const [tourState, setTourState] = useState<TourState>(initialTourState);
+  const [targetRect, setTargetRect] = useState<Rect | null>(null);
 
-  const currentStep = tourSteps[currentStepIndex] ?? null;
+  const currentStep = tourSteps[tourState.currentStepIndex] ?? null;
+  const isOpen = tourState.active && Boolean(currentStep);
+  const isOnExpectedPath = Boolean(currentStep && pathname === currentStep.path);
+  const shouldRender = isOpen && Boolean(currentStep) && isOnExpectedPath && Boolean(targetRect);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      const completed = window.localStorage.getItem(TOUR_STORAGE_KEY) === "1";
-      setIsOpen(!completed && pathname === "/dashboard");
+      const saved = readTourState();
+
+      if (saved.active) {
+        setTourState(saved);
+        return;
+      }
+
+      if (pathname === "/dashboard") {
+        const nextState = { active: true, currentStepIndex: 0 };
+        writeTourState(nextState);
+        setTourState(nextState);
+      }
     });
 
     return () => {
@@ -129,51 +248,180 @@ export function WorkspaceTour() {
   }, [pathname]);
 
   useEffect(() => {
-    if (!isOpen || !currentStep?.advanceOnPath) {
+    if (!isOpen || !currentStep) {
       return;
     }
 
-    if (pathname !== currentStep.advanceOnPath) {
-      return;
-    }
+    let activeTarget: HTMLElement | null = null;
+    let clickHandler: (() => void) | null = null;
 
-    const frame = window.requestAnimationFrame(() => {
-      setCurrentStepIndex((index) =>
-        Math.min(index + 1, tourSteps.length - 1)
-      );
+    const removeTargetEnhancements = () => {
+      if (!activeTarget) {
+        return;
+      }
+
+      activeTarget.classList.remove(...ACTIVE_TARGET_CLASSES);
+
+      if (clickHandler) {
+        activeTarget.removeEventListener("click", clickHandler);
+      }
+
+      clickHandler = null;
+      activeTarget = null;
+    };
+
+    const applyTargetEnhancements = (target: HTMLElement) => {
+      activeTarget = target;
+      activeTarget.classList.add(...ACTIVE_TARGET_CLASSES);
+
+      if (currentStep.advanceMode === "click") {
+        clickHandler = () => {
+          window.requestAnimationFrame(() => {
+            const nextState = {
+              active: true,
+              currentStepIndex: Math.min(
+                tourState.currentStepIndex + 1,
+                tourSteps.length - 1
+              ),
+            };
+
+            writeTourState(nextState);
+            setTourState(nextState);
+          });
+        };
+
+        activeTarget.addEventListener("click", clickHandler);
+      }
+    };
+
+    const syncTarget = () => {
+      if (pathname !== currentStep.path) {
+        removeTargetEnhancements();
+        setTargetRect(null);
+        return;
+      }
+
+      const nextTarget = findVisibleTarget(currentStep.target);
+
+      if (nextTarget !== activeTarget) {
+        removeTargetEnhancements();
+
+        if (nextTarget) {
+          applyTargetEnhancements(nextTarget);
+          nextTarget.scrollIntoView({
+            block: "center",
+            inline: "nearest",
+            behavior: "smooth",
+          });
+        }
+      }
+
+      setTargetRect(nextTarget ? toRect(nextTarget) : null);
+    };
+
+    const updateRect = () => {
+      if (!activeTarget) {
+        setTargetRect(null);
+        return;
+      }
+
+      setTargetRect(toRect(activeTarget));
+    };
+
+    const observer = new MutationObserver(syncTarget);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "style", "data-state"],
     });
 
-    return () => {
-      window.cancelAnimationFrame(frame);
-    };
-  }, [currentStep?.advanceOnPath, isOpen, pathname]);
-
-  useEffect(() => {
-    if (!isOpen || !currentStep?.target) {
-      return;
-    }
-
-    const target = findVisibleTarget(currentStep.target);
-
-    if (!target) {
-      return;
-    }
-
-    target.classList.add(...ACTIVE_TARGET_CLASSES);
-    target.scrollIntoView({
-      block: "center",
-      inline: "nearest",
-      behavior: "smooth",
-    });
+    syncTarget();
+    window.addEventListener("resize", updateRect);
+    window.addEventListener("scroll", updateRect, true);
 
     return () => {
-      target.classList.remove(...ACTIVE_TARGET_CLASSES);
+      observer.disconnect();
+      removeTargetEnhancements();
+      window.removeEventListener("resize", updateRect);
+      window.removeEventListener("scroll", updateRect, true);
     };
-  }, [currentStep?.target, isOpen, pathname]);
+  }, [currentStep, isOpen, pathname, tourState.currentStepIndex]);
+
+  const coachmarkStyle = useMemo(() => {
+    if (!currentStep || !targetRect || typeof window === "undefined") {
+      return null;
+    }
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const cardWidth = Math.min(420, viewportWidth - 32);
+    const cardHeightGuess = 290;
+
+    if (viewportWidth < 1024) {
+      return {
+        left: 16,
+        right: 16,
+        bottom: 16,
+        width: "auto",
+      };
+    }
+
+    const clampTop = (value: number) =>
+      Math.max(88, Math.min(value, viewportHeight - cardHeightGuess - 24));
+    const clampLeft = (value: number) =>
+      Math.max(24, Math.min(value, viewportWidth - cardWidth - 24));
+
+    if (currentStep.placement === "sidebar") {
+      return {
+        top: clampTop(targetRect.top + targetRect.height / 2 - 120),
+        left: clampLeft(targetRect.left + targetRect.width + 28),
+        width: cardWidth,
+      };
+    }
+
+    if (currentStep.placement === "header-action") {
+      return {
+        top: clampTop(targetRect.top + targetRect.height + 20),
+        left: clampLeft(targetRect.left + targetRect.width - cardWidth),
+        width: cardWidth,
+      };
+    }
+
+    if (currentStep.placement === "drawer") {
+      return {
+        top: clampTop(targetRect.top + 12),
+        left: clampLeft(targetRect.left - cardWidth - 22),
+        width: cardWidth,
+      };
+    }
+
+    return {
+      top: clampTop(targetRect.top + 18),
+      left: clampLeft(targetRect.left + Math.min(32, targetRect.width * 0.08)),
+      width: cardWidth,
+    };
+  }, [currentStep, targetRect]);
 
   function finishTour() {
-    window.localStorage.setItem(TOUR_STORAGE_KEY, "1");
-    setIsOpen(false);
+    clearTourState();
+    setTargetRect(null);
+    setTourState(initialTourState);
+  }
+
+  function setStep(stepIndex: number) {
+    const nextStep = tourSteps[stepIndex];
+    const nextState = {
+      active: true,
+      currentStepIndex: stepIndex,
+    };
+
+    writeTourState(nextState);
+    setTourState(nextState);
+
+    if (nextStep && pathname !== nextStep.path) {
+      router.push(nextStep.path);
+    }
   }
 
   function handleNext() {
@@ -181,31 +429,33 @@ export function WorkspaceTour() {
       return;
     }
 
-    if (currentStepIndex === tourSteps.length - 1) {
+    if (tourState.currentStepIndex === tourSteps.length - 1) {
       finishTour();
       return;
     }
 
-    setCurrentStepIndex((index) => index + 1);
+    setStep(tourState.currentStepIndex + 1);
   }
 
   function handleBack() {
-    setCurrentStepIndex((index) => Math.max(index - 1, 0));
+    if (tourState.currentStepIndex === 0) {
+      return;
+    }
+
+    setStep(tourState.currentStepIndex - 1);
   }
 
-  if (!isOpen || !currentStep) {
+  if (!shouldRender || !currentStep || !coachmarkStyle) {
     return null;
   }
 
-  const isActionStep = Boolean(currentStep.advanceOnPath);
-
   return (
     <div className="pointer-events-none fixed inset-0 z-[80]">
-      <div className="pointer-events-auto absolute bottom-4 right-4 left-4 flex justify-center md:bottom-6 md:left-auto md:right-6 md:justify-end">
-        <div className="w-full max-w-[430px] rounded-[1.55rem] border border-border/80 bg-white/96 p-5 shadow-[0_24px_60px_rgba(15,23,42,0.16)] backdrop-blur-md md:p-6">
+      <div className="pointer-events-auto absolute" style={coachmarkStyle}>
+        <div className="rounded-[1.45rem] border border-border/80 bg-white/98 p-5 shadow-[0_24px_60px_rgba(15,23,42,0.14)] backdrop-blur-sm md:p-6">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+              <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
                 <Sparkles className="size-3.5" />
                 {currentStep.kicker}
               </div>
@@ -228,6 +478,14 @@ export function WorkspaceTour() {
             </button>
           </div>
 
+          {currentStep.actionLabel ? (
+            <div className="mt-5 rounded-[1rem] border border-border/80 bg-slate-50 px-4 py-3">
+              <p className="text-sm font-medium text-foreground">
+                {currentStep.actionLabel}
+              </p>
+            </div>
+          ) : null}
+
           <div className="mt-6 flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               {tourSteps.map((tourStep, index) => (
@@ -235,7 +493,7 @@ export function WorkspaceTour() {
                   key={tourStep.id}
                   className={cn(
                     "h-2 rounded-full transition-all duration-300",
-                    index === currentStepIndex
+                    index === tourState.currentStepIndex
                       ? "w-9 bg-primary"
                       : "w-2 bg-slate-300"
                   )}
@@ -243,15 +501,7 @@ export function WorkspaceTour() {
               ))}
             </div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              {currentStepIndex + 1}/{tourSteps.length}
-            </p>
-          </div>
-
-          <div className="mt-5 rounded-[1.05rem] border border-border/80 bg-slate-50/90 px-4 py-3">
-            <p className="text-sm font-medium text-foreground">
-              {isActionStep
-                ? currentStep.actionLabel
-                : "Continue when you are ready for the next part of the workspace."}
+              {tourState.currentStepIndex + 1}/{tourSteps.length}
             </p>
           </div>
 
@@ -262,7 +512,7 @@ export function WorkspaceTour() {
                 variant="ghost"
                 className="rounded-[0.95rem] px-0 text-muted-foreground hover:bg-transparent"
                 onClick={handleBack}
-                disabled={currentStepIndex === 0}
+                disabled={tourState.currentStepIndex === 0}
               >
                 <ArrowLeft data-icon="inline-start" />
                 Back
@@ -276,23 +526,24 @@ export function WorkspaceTour() {
                 Skip
               </Button>
             </div>
-            {currentStep.showNext ? (
+
+            {currentStep.advanceMode === "button" ? (
               <Button
                 type="button"
                 className="h-11 rounded-[1rem] px-5"
                 onClick={handleNext}
               >
-                {currentStepIndex === tourSteps.length - 1 ? "Finish tour" : "Continue"}
-                {currentStepIndex === tourSteps.length - 1 ? (
+                {tourState.currentStepIndex === tourSteps.length - 1
+                  ? "Finish tour"
+                  : "Next"}
+                {tourState.currentStepIndex === tourSteps.length - 1 ? (
                   <CheckCircle2 data-icon="inline-end" />
                 ) : (
                   <ArrowRight data-icon="inline-end" />
                 )}
               </Button>
             ) : (
-              <div className="rounded-full bg-primary/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-primary">
-                Waiting for click
-              </div>
+              <p className="text-sm font-medium text-muted-foreground">Next</p>
             )}
           </div>
         </div>
