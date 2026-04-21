@@ -6,13 +6,13 @@ import { buildClientsViewFromRecords } from "@/lib/clients";
 export default async function ClientsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ client?: string }>;
+  searchParams: Promise<{ client?: string; new?: string; next?: string }>;
 }) {
   const { business } = await requireCurrentWorkspace("/clients", {
     missingBusinessRedirect: "/onboarding",
   });
 
-  const { client } = await searchParams;
+  const { client, new: openNew, next } = await searchParams;
   const records = await prisma.client.findMany({
     where: {
       businessId: business.id,
@@ -64,6 +64,8 @@ export default async function ClientsPage({
         ...initialView,
         initialSelectedClientId,
       }}
+      initialNewClientOpen={openNew === "1"}
+      nextAfterCreate={next === "calendar" ? "calendar" : undefined}
     />
   );
 }

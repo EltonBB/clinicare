@@ -10,9 +10,11 @@ import {
 } from "react";
 import {
   ArrowRightLeft,
+  CalendarPlus2,
   ExternalLink,
   Search,
   SendHorizontal,
+  UserPlus,
 } from "lucide-react";
 
 import {
@@ -41,6 +43,8 @@ type InboxWorkspaceProps = {
   initialView: InboxViewModel;
   ownerName: string;
   connection: SettingsState["whatsapp"]["connection"];
+  clientCount: number;
+  recommendedClientId?: string;
 };
 
 function isReminderMessage(body: string) {
@@ -68,6 +72,8 @@ export function InboxWorkspace({
   initialView,
   ownerName,
   connection,
+  clientCount,
+  recommendedClientId,
 }: InboxWorkspaceProps) {
   const [conversations, setConversations] = useState(initialView.conversations);
   const [selectedConversationId, setSelectedConversationId] = useState(
@@ -102,6 +108,10 @@ export function InboxWorkspace({
     ) ??
     filteredConversations[0] ??
     conversations.find((conversation) => conversation.id === selectedConversationId);
+  const hasClients = clientCount > 0;
+  const bookingHref = recommendedClientId
+    ? `/calendar?new=1&client=${recommendedClientId}`
+    : "/calendar?new=1";
 
   useEffect(() => {
     let cancelled = false;
@@ -561,24 +571,52 @@ export function InboxWorkspace({
             </>
           ) : (
             <div className="flex flex-1 items-center justify-center px-6">
-              <div className="max-w-sm space-y-3 text-center">
+              <div className="max-w-md space-y-5 text-center">
+                {query.trim().length === 0 ? (
+                  <div className="mx-auto flex size-12 items-center justify-center rounded-[1.05rem] bg-primary/12 text-primary">
+                    {hasClients ? (
+                      <CalendarPlus2 className="size-5" />
+                    ) : (
+                      <UserPlus className="size-5" />
+                    )}
+                  </div>
+                ) : null}
                 <p className="text-base font-medium text-foreground">
                   {query.trim().length > 0
                     ? "No conversations match your search."
-                    : "No conversations yet."}
+                    : hasClients
+                      ? "No inbox conversations yet."
+                      : "Add a client to start the workspace."}
                 </p>
                 <p className="text-sm leading-6 text-muted-foreground">
                   {query.trim().length > 0
                     ? "Try a different client name or phone number."
-                    : "Open a client from the clients workspace or reply from WhatsApp to create a thread here automatically."}
+                    : hasClients
+                      ? "WhatsApp replies will appear here. You can also book the first appointment and then open that client thread."
+                      : "Create the first client, then Clinicare can connect that person to bookings and inbox history."}
                 </p>
                 {query.trim().length === 0 ? (
-                  <Link
-                    href="/clients"
-                    className="inline-flex items-center justify-center rounded-[0.9rem] border border-border/80 bg-white px-4 py-2 text-sm font-medium text-foreground transition-[background-color,border-color] duration-200 hover:bg-secondary/50"
-                  >
-                    Open clients
-                  </Link>
+                  <div className="flex flex-col justify-center gap-2 sm:flex-row">
+                    <Link
+                      href={hasClients ? bookingHref : "/clients?new=1&next=calendar"}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.9rem] bg-primary px-4 text-sm font-medium text-primary-foreground transition-[background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_32px_rgba(38,137,135,0.18)]"
+                    >
+                      {hasClients ? (
+                        <CalendarPlus2 className="size-4" />
+                      ) : (
+                        <UserPlus className="size-4" />
+                      )}
+                      {hasClients ? "Book first appointment" : "Add first client"}
+                    </Link>
+                    {hasClients ? (
+                      <Link
+                        href="/clients"
+                        className="inline-flex h-10 items-center justify-center rounded-[0.9rem] border border-border/80 bg-white px-4 text-sm font-medium text-foreground transition-[background-color,border-color,transform] duration-200 hover:-translate-y-0.5 hover:bg-secondary/50"
+                      >
+                        Open clients
+                      </Link>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
             </div>

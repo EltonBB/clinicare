@@ -16,7 +16,14 @@ export default async function DashboardPage() {
   const weekdayMap = [6, 0, 1, 2, 3, 4, 5];
   const todayWeekday = weekdayMap[new Date().getDay()] ?? 0;
 
-  const [appointmentsResult, conversationsResult, todaysHoursResult] =
+  const [
+    appointmentsResult,
+    conversationsResult,
+    todaysHoursResult,
+    clientCountResult,
+    recentClientResult,
+    appointmentCountResult,
+  ] =
     await Promise.allSettled([
       prisma.appointment.findMany({
         where: {
@@ -56,6 +63,34 @@ export default async function DashboardPage() {
           weekday: todayWeekday,
         },
       }),
+      prisma.client.count({
+        where: {
+          businessId: business.id,
+          isArchived: false,
+        },
+      }),
+      prisma.client.findFirst({
+        where: {
+          businessId: business.id,
+          isArchived: false,
+        },
+        select: {
+          id: true,
+        },
+        orderBy: [
+          {
+            updatedAt: "desc",
+          },
+          {
+            createdAt: "desc",
+          },
+        ],
+      }),
+      prisma.appointment.count({
+        where: {
+          businessId: business.id,
+        },
+      }),
     ]);
 
   const appointments =
@@ -64,6 +99,12 @@ export default async function DashboardPage() {
     conversationsResult.status === "fulfilled" ? conversationsResult.value : [];
   const todaysHoursRecord =
     todaysHoursResult.status === "fulfilled" ? todaysHoursResult.value : null;
+  const clientCount =
+    clientCountResult.status === "fulfilled" ? clientCountResult.value : 0;
+  const recentClient =
+    recentClientResult.status === "fulfilled" ? recentClientResult.value : null;
+  const appointmentCount =
+    appointmentCountResult.status === "fulfilled" ? appointmentCountResult.value : 0;
 
   if (appointmentsResult.status === "rejected") {
     console.error("Dashboard appointments query failed", appointmentsResult.reason);
@@ -80,6 +121,21 @@ export default async function DashboardPage() {
     console.error("Dashboard hours query failed", todaysHoursResult.reason);
   }
 
+  if (clientCountResult.status === "rejected") {
+    console.error("Dashboard client count query failed", clientCountResult.reason);
+  }
+
+  if (recentClientResult.status === "rejected") {
+    console.error("Dashboard recent client query failed", recentClientResult.reason);
+  }
+
+  if (appointmentCountResult.status === "rejected") {
+    console.error(
+      "Dashboard appointment count query failed",
+      appointmentCountResult.reason
+    );
+  }
+
   const todaysHours =
     todaysHoursRecord && todaysHoursRecord.isOpen
       ? Math.max(
@@ -94,6 +150,9 @@ export default async function DashboardPage() {
     appointments,
     conversations,
     todaysHours,
+    clientCount,
+    appointmentCount,
+    recentClientId: recentClient?.id,
   });
 
   return <DashboardOverview view={view} />;

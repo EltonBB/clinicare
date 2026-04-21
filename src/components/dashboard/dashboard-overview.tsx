@@ -3,7 +3,9 @@ import {
   ArrowRight,
   CalendarPlus2,
   CirclePlus,
+  MessageSquareText,
   Sparkles,
+  UsersRound,
 } from "lucide-react";
 
 import { DashboardUnreadCard } from "@/components/dashboard/dashboard-unread-card";
@@ -60,6 +62,69 @@ function AppointmentRow({ appointment }: { appointment: DashboardAppointment }) 
   );
 }
 
+function DashboardEmptyState({ view }: { view: DashboardViewModel }) {
+  const { scheduleState, recentClientId } = view.workspaceState;
+  const isNoClients = scheduleState === "no-clients";
+  const isNoAppointments = scheduleState === "no-appointments";
+  const bookingHref = recentClientId
+    ? `/calendar?new=1&client=${recentClientId}`
+    : "/calendar?new=1";
+
+  const title = isNoClients
+    ? "Start by adding your first client"
+    : isNoAppointments
+      ? "Book the first appointment"
+      : "No appointments today";
+  const description = isNoClients
+    ? "Create a client once, then Clinicare can carry that person into booking, inbox, and future history."
+    : isNoAppointments
+      ? "Your client list is ready. Add the first appointment so the calendar and dashboard start showing real work."
+      : "Your schedule is clear for today. Book another visit or open the calendar to review upcoming days.";
+
+  return (
+    <div className="overflow-hidden rounded-[1.25rem] border border-dashed border-primary/25 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(232,244,242,0.72))] p-6 shadow-[0_18px_44px_rgba(20,32,51,0.055)]">
+      <div className="flex max-w-2xl flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-3">
+          <div className="flex size-11 items-center justify-center rounded-[1rem] bg-primary/12 text-primary">
+            {isNoClients ? <UsersRound className="size-5" /> : <CalendarPlus2 className="size-5" />}
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-semibold tracking-tight text-foreground">
+              {title}
+            </h2>
+            <p className="max-w-xl text-sm leading-7 text-muted-foreground">
+              {description}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 flex-col gap-2 sm:w-56">
+          <Link
+            href={isNoClients ? "/clients?new=1&next=calendar" : bookingHref}
+            className={cn(
+              buttonVariants({ variant: "default", size: "lg" }),
+              "w-full justify-between rounded-[0.95rem]"
+            )}
+          >
+            <span>{isNoClients ? "Add first client" : "Book appointment"}</span>
+            <ArrowRight className="size-4" />
+          </Link>
+          <Link
+            href="/inbox"
+            className={cn(
+              buttonVariants({ variant: "outline", size: "lg" }),
+              "w-full justify-between rounded-[0.95rem] bg-white/72"
+            )}
+          >
+            <span>Open inbox</span>
+            <MessageSquareText className="size-4" />
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function DashboardOverview({ view }: { view: DashboardViewModel }) {
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-0">
@@ -80,9 +145,13 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
         </div>
 
         <div className="space-y-3">
-          {view.appointments.map((appointment) => (
-            <AppointmentRow key={appointment.id} appointment={appointment} />
-          ))}
+          {view.appointments.length > 0 ? (
+            view.appointments.map((appointment) => (
+              <AppointmentRow key={appointment.id} appointment={appointment} />
+            ))
+          ) : (
+            <DashboardEmptyState view={view} />
+          )}
         </div>
       </section>
 

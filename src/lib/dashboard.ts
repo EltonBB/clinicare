@@ -34,6 +34,13 @@ export type DashboardPlanSummary = {
   remainingSlotsLabel: string;
 };
 
+export type DashboardWorkspaceState = {
+  clientCount: number;
+  appointmentCount: number;
+  recentClientId?: string;
+  scheduleState: "no-clients" | "no-appointments" | "no-today" | "active";
+};
+
 export type DashboardViewModel = {
   businessName: string;
   heading: string;
@@ -42,6 +49,7 @@ export type DashboardViewModel = {
   quickActions: DashboardQuickAction[];
   unreadSummary: DashboardMessageSummary;
   planSummary: DashboardPlanSummary;
+  workspaceState: DashboardWorkspaceState;
 };
 
 type TodayAppointmentWithRelations = Appointment & {
@@ -95,9 +103,47 @@ export function buildDashboardViewFromWorkspace(args: {
   appointments: TodayAppointmentWithRelations[];
   conversations: Pick<Conversation, "unreadCount">[];
   todaysHours: number;
+  clientCount: number;
+  appointmentCount: number;
+  recentClientId?: string;
 }): DashboardViewModel {
-  const { business, appointments, conversations, todaysHours } = args;
+  const {
+    business,
+    appointments,
+    conversations,
+    todaysHours,
+    clientCount,
+    appointmentCount,
+    recentClientId,
+  } = args;
   const unreadCount = conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0);
+  const todayKey = format(new Date(), "yyyy-MM-dd");
+  const bookingHref = recentClientId
+    ? `/calendar?new=1&client=${recentClientId}&date=${todayKey}`
+    : `/calendar?new=1&date=${todayKey}`;
+  const scheduleState =
+    clientCount === 0
+      ? "no-clients"
+      : appointmentCount === 0
+        ? "no-appointments"
+        : appointments.length === 0
+          ? "no-today"
+          : "active";
+  const quickActions: DashboardQuickAction[] =
+    clientCount === 0
+      ? [
+          { label: "Add first client", href: "/clients?new=1&next=calendar", tone: "primary" },
+          { label: "Open inbox", href: "/inbox", tone: "secondary" },
+        ]
+      : [
+          {
+            label: appointmentCount === 0 ? "Book first appointment" : "New appointment",
+            href: bookingHref,
+            tone: "primary",
+          },
+          { label: "New client", href: "/clients?new=1", tone: "secondary" },
+          { label: "Open inbox", href: "/inbox", tone: "secondary" },
+        ];
 
   return {
     businessName: business.name,
@@ -112,10 +158,7 @@ export function buildDashboardViewFromWorkspace(args: {
       staffName: appointment.staffMember?.name ?? "Workspace staff",
       status: toDashboardStatus(appointment.status),
     })),
-    quickActions: [
-      { label: "New appointment", href: "/calendar", tone: "primary" },
-      { label: "New client", href: "/clients", tone: "secondary" },
-    ],
+    quickActions,
     unreadSummary: {
       unreadCount,
       title: "Unread messages",
@@ -125,5 +168,11 @@ export function buildDashboardViewFromWorkspace(args: {
           : `No unread client messages for ${business.name} right now. Open inbox to review the latest conversation history.`,
     },
     planSummary: buildPlanSummary(business, appointments.length, todaysHours),
+    workspaceState: {
+      clientCount,
+      appointmentCount,
+      recentClientId,
+      scheduleState,
+    },
   };
 }

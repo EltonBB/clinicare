@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   addDays,
   addMonths,
@@ -18,10 +19,12 @@ import {
 } from "date-fns";
 import { startTransition, useMemo, useState, useTransition } from "react";
 import {
+  CalendarPlus2,
   ChevronLeft,
   ChevronRight,
   MoreHorizontal,
   Plus,
+  UsersRound,
 } from "lucide-react";
 
 import {
@@ -52,6 +55,8 @@ type CalendarView = "day" | "week" | "month";
 type CalendarWorkspaceProps = {
   initialView: CalendarViewModel;
   ownerName: string;
+  initialCreateOpen?: boolean;
+  initialClientId?: string;
 };
 
 type AppointmentDraft = {
@@ -87,10 +92,13 @@ const statusOptions: CalendarAppointment["status"][] = [
 function emptyDraft(
   date: string,
   clients: CalendarSelectOption[],
-  staffMembers: CalendarSelectOption[]
+  staffMembers: CalendarSelectOption[],
+  preferredClientId?: string
 ): AppointmentDraft {
+  const preferredClient = clients.find((client) => client.id === preferredClientId);
+
   return {
-    clientId: clients[0]?.id ?? "",
+    clientId: preferredClient?.id ?? clients[0]?.id ?? "",
     service: "",
     staffMemberId: staffMembers[0]?.id ?? "",
     date,
@@ -192,17 +200,27 @@ function NativeSelect({
 export function CalendarWorkspace({
   initialView,
   ownerName,
+  initialCreateOpen = false,
+  initialClientId,
 }: CalendarWorkspaceProps) {
+  const initialHasClients = initialView.clients.length > 0;
   const [view, setView] = useState<CalendarView>("week");
   const [activeDate, setActiveDate] = useState(() => parseISO(initialView.initialDate));
   const [appointments, setAppointments] = useState(initialView.appointments);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(initialCreateOpen && initialHasClients);
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
+  const [savedAppointmentClientId, setSavedAppointmentClientId] = useState("");
   const [isPending, startSaving] = useTransition();
   const [draft, setDraft] = useState<AppointmentDraft>(() =>
-    emptyDraft(initialView.initialDate, initialView.clients, initialView.staffMembers)
+    emptyDraft(
+      initialView.initialDate,
+      initialView.clients,
+      initialView.staffMembers,
+      initialClientId
+    )
   );
+  const hasClients = initialHasClients;
 
   const currentWeek = useMemo(() => weekDays(activeDate), [activeDate]);
   const currentMonth = useMemo(() => monthDays(activeDate), [activeDate]);
@@ -231,9 +249,20 @@ export function CalendarWorkspace({
     [initialView.staffMembers]
   );
 
-  function openNewBooking(date = selectedDateKey) {
-    setDraft(emptyDraft(date, initialView.clients, initialView.staffMembers));
+  function replaceCalendarUrl() {
+    window.history.replaceState(null, "", "/calendar");
+  }
+
+  function openNewBooking(date = selectedDateKey, preferredClientId = initialClientId) {
+    if (!hasClients) {
+      setErrorMessage("Add a client before booking an appointment.");
+      setStatusMessage("");
+      return;
+    }
+
+    setDraft(emptyDraft(date, initialView.clients, initialView.staffMembers, preferredClientId));
     setErrorMessage("");
+    setSavedAppointmentClientId("");
     setDrawerOpen(true);
   }
 
@@ -250,7 +279,16 @@ export function CalendarWorkspace({
       status: appointment.status,
     });
     setErrorMessage("");
+    setSavedAppointmentClientId("");
     setDrawerOpen(true);
+  }
+
+  function handleDrawerOpenChange(open: boolean) {
+    setDrawerOpen(open);
+
+    if (!open && initialCreateOpen) {
+      replaceCalendarUrl();
+    }
   }
 
   function shiftRange(direction: "prev" | "next") {
@@ -307,6 +345,9 @@ export function CalendarWorkspace({
 
       setDrawerOpen(false);
       setErrorMessage("");
+      setActiveDate(parseISO(result.appointment.date));
+      setSavedAppointmentClientId(result.appointment.clientId);
+      replaceCalendarUrl();
       setStatusMessage(draft.id ? "Appointment updated." : "Appointment created.");
     });
   }
@@ -426,15 +467,26 @@ export function CalendarWorkspace({
             </button>
           </div>
 
-          <Button
-            size="lg"
-            className="h-11 rounded-[0.9rem] px-4"
-            onClick={() => openNewBooking()}
-            data-tour="calendar-create"
-          >
-            <Plus className="size-4" />
-            New appointment
-          </Button>
+          {hasClients ? (
+            <Button
+              size="lg"
+              className="h-11 rounded-[0.9rem] px-4"
+              onClick={() => openNewBooking()}
+              data-tour="calendar-create"
+            >
+              <Plus className="size-4" />
+              New appointment
+            </Button>
+          ) : (
+            <Link
+              href="/clients?new=1&next=calendar"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-[0.9rem] bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_10px_30px_rgba(20,32,51,0.04)] transition-[transform,box-shadow,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(38,137,135,0.24)]"
+              data-tour="calendar-create"
+            >
+              <UsersRound className="size-4" />
+              Add first client
+            </Link>
+          )}
         </div>
       </div>
 
@@ -444,12 +496,45 @@ export function CalendarWorkspace({
         </div>
       ) : null}
       {!errorMessage && statusMessage ? (
-        <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
-          {statusMessage}
+        <div className="flex flex-col gap-3 rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary sm:flex-row sm:items-center sm:justify-between">
+          <span>{statusMessage}</span>
+          {savedAppointmentClientId ? (
+            <Link
+              href={`/inbox?client=${savedAppointmentClientId}`}
+              className="inline-flex items-center gap-2 font-semibold text-primary transition-transform duration-200 hover:translate-x-0.5"
+            >
+              Open inbox
+              <CalendarPlus2 className="size-4" />
+            </Link>
+          ) : null}
         </div>
       ) : null}
 
-      {view === "month" ? (
+      {!hasClients ? (
+        <section className="section-reveal overflow-hidden rounded-[1.25rem] border border-dashed border-primary/25 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(232,244,242,0.72))] p-8 shadow-[0_18px_44px_rgba(20,32,51,0.055)]">
+          <div className="mx-auto max-w-xl space-y-5 text-center">
+            <div className="mx-auto flex size-12 items-center justify-center rounded-[1.05rem] bg-primary/12 text-primary">
+              <UsersRound className="size-5" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-2xl font-semibold tracking-tight text-foreground">
+                Add a client before booking
+              </h2>
+              <p className="text-sm leading-7 text-muted-foreground">
+                Appointments need a client record so reminders, inbox threads,
+                and visit history stay attached to the right person.
+              </p>
+            </div>
+            <Link
+              href="/clients?new=1&next=calendar"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-[0.95rem] bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_10px_30px_rgba(20,32,51,0.04)] transition-[transform,box-shadow,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(38,137,135,0.24)]"
+            >
+              <Plus className="size-4" />
+              Add first client
+            </Link>
+          </div>
+        </section>
+      ) : view === "month" ? (
         <div className="section-reveal overflow-hidden rounded-[1.15rem] border border-border/80 bg-white/94 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
           <div className="grid grid-cols-7 border-b border-border/80 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
@@ -572,6 +657,7 @@ export function CalendarWorkspace({
         </div>
       )}
 
+      {hasClients ? (
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_250px]">
         <div className="section-reveal rounded-[1.05rem] border border-border/80 bg-white/94 px-4 py-4 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
           <div className="flex items-center justify-between gap-3">
@@ -643,8 +729,9 @@ export function CalendarWorkspace({
           </div>
         </div>
       </div>
+      ) : null}
 
-      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+      <Sheet open={drawerOpen} onOpenChange={handleDrawerOpenChange}>
         <SheetContent
           side="right"
           className="flex h-full w-full max-w-[460px] flex-col p-0 sm:max-w-[460px]"

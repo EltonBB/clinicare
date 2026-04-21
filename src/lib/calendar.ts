@@ -80,12 +80,13 @@ export function buildCalendarViewFromRecords(args: {
   clients: Pick<Client, "id" | "name">[];
   staffMembers: Pick<StaffMember, "id" | "name">[];
   ownerName: string;
+  initialDate?: string;
 }): CalendarViewModel {
-  const { appointments, clients, staffMembers, ownerName } = args;
-  const initialDate = appointments[0]?.startAt ?? new Date();
+  const { appointments, clients, staffMembers, ownerName, initialDate } = args;
+  const initialDateValue = initialDate ?? format(appointments[0]?.startAt ?? new Date(), "yyyy-MM-dd");
 
   return {
-    initialDate: format(initialDate, "yyyy-MM-dd"),
+    initialDate: initialDateValue,
     appointments: appointments.map((appointment) => ({
       id: appointment.id,
       clientId: appointment.clientId,

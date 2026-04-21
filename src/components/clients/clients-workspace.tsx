@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { useDeferredValue, useMemo, useState, useTransition } from "react";
-import { Archive, MoreHorizontal, Plus, Search, UserRoundPen } from "lucide-react";
+import {
+  Archive,
+  CalendarPlus2,
+  MoreHorizontal,
+  Plus,
+  Search,
+  UserRoundPen,
+  UsersRound,
+} from "lucide-react";
 
 import {
   archiveClientAction,
@@ -27,6 +35,8 @@ import type { ClientRecord, ClientStatus, ClientsViewModel } from "@/lib/clients
 
 type ClientsWorkspaceProps = {
   initialView: ClientsViewModel;
+  initialNewClientOpen?: boolean;
+  nextAfterCreate?: "calendar";
 };
 
 type ClientDraft = {
@@ -121,17 +131,23 @@ function NativeSelect({
   );
 }
 
-export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
+export function ClientsWorkspace({
+  initialView,
+  initialNewClientOpen = false,
+  nextAfterCreate,
+}: ClientsWorkspaceProps) {
   const [clients, setClients] = useState(initialView.clients);
   const [selectedClientId, setSelectedClientId] = useState(initialView.initialSelectedClientId);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | ClientStatus>("all");
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(initialNewClientOpen);
   const [draft, setDraft] = useState<ClientDraft>(createDraft());
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
+  const [nextStepClient, setNextStepClient] = useState<ClientRecord | null>(null);
   const [isPending, startSaving] = useTransition();
   const deferredQuery = useDeferredValue(query);
+  const hasClients = clients.length > 0;
 
   const filteredClients = useMemo(() => {
     const normalizedQuery = deferredQuery.trim().toLowerCase();
@@ -152,16 +168,31 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
   const selectedClient =
     clients.find((client) => client.id === selectedClientId) ?? filteredClients[0] ?? clients[0];
 
+  function replaceClientUrl(clientId?: string) {
+    const nextPath = clientId ? `/clients?client=${clientId}` : "/clients";
+    window.history.replaceState(null, "", nextPath);
+  }
+
   function openNewClient() {
     setDraft(createDraft());
     setErrorMessage("");
+    setNextStepClient(null);
     setDrawerOpen(true);
   }
 
   function openEditClient(client: ClientRecord) {
     setDraft(createDraft(client));
     setErrorMessage("");
+    setNextStepClient(null);
     setDrawerOpen(true);
+  }
+
+  function handleDrawerOpenChange(open: boolean) {
+    setDrawerOpen(open);
+
+    if (!open && initialNewClientOpen) {
+      replaceClientUrl(selectedClientId || undefined);
+    }
   }
 
   function saveClient() {
@@ -199,6 +230,15 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
       setSelectedClientId(result.client.id);
       setDrawerOpen(false);
       setErrorMessage("");
+      replaceClientUrl(result.client.id);
+
+      if (!draft.id && nextAfterCreate === "calendar") {
+        setNextStepClient(result.client);
+        setStatusMessage("Client created. Book their first appointment next.");
+        return;
+      }
+
+      setNextStepClient(null);
       setStatusMessage(draft.id ? "Client updated." : "Client created.");
     });
   }
@@ -316,8 +356,17 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
         </div>
       ) : null}
       {!errorMessage && statusMessage ? (
-        <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
-          {statusMessage}
+        <div className="flex flex-col gap-3 rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary sm:flex-row sm:items-center sm:justify-between">
+          <span>{statusMessage}</span>
+          {nextStepClient ? (
+            <Link
+              href={`/calendar?new=1&client=${nextStepClient.id}`}
+              className="inline-flex items-center gap-2 font-semibold text-primary transition-transform duration-200 hover:translate-x-0.5"
+            >
+              Book appointment
+              <CalendarPlus2 className="size-4" />
+            </Link>
+          ) : null}
         </div>
       ) : null}
 
@@ -332,7 +381,37 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
           </div>
 
           <div className="divide-y divide-border/75">
-            {filteredClients.map((client) => (
+            {!hasClients ? (
+              <div className="px-6 py-14">
+                <div className="mx-auto max-w-md space-y-5 text-center">
+                  <div className="mx-auto flex size-12 items-center justify-center rounded-[1.05rem] bg-primary/12 text-primary">
+                    <UsersRound className="size-5" />
+                  </div>
+                  <div className="space-y-2">
+                    <h2 className="text-xl font-semibold tracking-tight text-foreground">
+                      Add the first client
+                    </h2>
+                    <p className="text-sm leading-7 text-muted-foreground">
+                      Clients are the base record for bookings, inbox threads,
+                      visit history, and notes.
+                    </p>
+                  </div>
+                  <Button
+                    size="lg"
+                    className="rounded-[0.95rem]"
+                    onClick={openNewClient}
+                  >
+                    <Plus className="size-4" />
+                    Add first client
+                  </Button>
+                </div>
+              </div>
+            ) : filteredClients.length === 0 ? (
+              <div className="px-6 py-12 text-center text-sm text-muted-foreground">
+                No clients match this search or filter.
+              </div>
+            ) : (
+              filteredClients.map((client) => (
               <button
                 key={client.id}
                 type="button"
@@ -367,7 +446,8 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
                 </div>
                 <MoreHorizontal className="hidden size-4 text-muted-foreground md:block" />
               </button>
-            ))}
+              ))
+            )}
           </div>
         </section>
 
@@ -548,13 +628,14 @@ export function ClientsWorkspace({ initialView }: ClientsWorkspaceProps) {
             </>
           ) : (
             <div className="px-5 py-8 text-sm text-muted-foreground">
-              No clients match the current filter.
+              Add a client to see profile details, message history, and booking
+              context here.
             </div>
           )}
         </aside>
       </div>
 
-      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+      <Sheet open={drawerOpen} onOpenChange={handleDrawerOpenChange}>
         <SheetContent
           side="right"
           className="w-full max-w-[460px] p-0 sm:max-w-[460px]"

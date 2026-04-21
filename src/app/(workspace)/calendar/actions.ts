@@ -109,6 +109,34 @@ async function hydrateAppointment(appointmentId: string) {
   } satisfies CalendarAppointment;
 }
 
+async function refreshClientLastVisitAt(clientId: string, businessId: string) {
+  const latestAppointment = await prisma.appointment.findFirst({
+    where: {
+      businessId,
+      clientId,
+      status: {
+        not: "CANCELLED",
+      },
+    },
+    select: {
+      startAt: true,
+    },
+    orderBy: {
+      startAt: "desc",
+    },
+  });
+
+  await prisma.client.updateMany({
+    where: {
+      id: clientId,
+      businessId,
+    },
+    data: {
+      lastVisitAt: latestAppointment?.startAt ?? null,
+    },
+  });
+}
+
 export async function saveAppointmentAction(
   payload: SaveAppointmentPayload
 ): Promise<SaveAppointmentResult> {
@@ -229,6 +257,12 @@ export async function saveAppointmentAction(
           },
         });
       }
+
+      await Promise.all(
+        Array.from(new Set([existing.clientId, payload.clientId])).map((clientId) =>
+          refreshClientLastVisitAt(clientId, business.id)
+        )
+      );
     } else {
       const created = await prisma.appointment.create({
         data: {
@@ -243,14 +277,7 @@ export async function saveAppointmentAction(
         },
       });
 
-      await prisma.client.update({
-        where: {
-          id: payload.clientId,
-        },
-        data: {
-          lastVisitAt: startAt,
-        },
-      });
+      await refreshClientLastVisitAt(payload.clientId, business.id);
 
       appointmentId = created.id;
     }
@@ -289,6 +316,7 @@ export async function cancelAppointmentAction(
     },
     select: {
       id: true,
+      clientId: true,
     },
   });
 
@@ -307,6 +335,7 @@ export async function cancelAppointmentAction(
       status: "CANCELLED",
     },
   });
+  await refreshClientLastVisitAt(existing.clientId, business.id);
 
   return {
     ok: true,
@@ -334,6 +363,7 @@ export async function deleteAppointmentAction(
     },
     select: {
       id: true,
+      clientId: true,
     },
   });
 
@@ -349,6 +379,7 @@ export async function deleteAppointmentAction(
       id: appointmentId,
     },
   });
+  await refreshClientLastVisitAt(existing.clientId, business.id);
 
   return {
     ok: true,

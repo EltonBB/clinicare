@@ -3,11 +3,24 @@ import { prisma } from "@/lib/prisma";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { buildCalendarViewFromRecords } from "@/lib/calendar";
 
-export default async function CalendarPage() {
+function isValidDateParam(value?: string) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+export default async function CalendarPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ new?: string; client?: string; date?: string }>;
+}) {
   const { user, business } = await requireCurrentWorkspace("/calendar", {
     missingBusinessRedirect: "/onboarding",
   });
   const { ownerName } = toBusinessIdentity(business, user);
+  const {
+    new: openNew,
+    client: requestedClientId,
+    date: requestedDate,
+  } = await searchParams;
 
   const [appointments, clients, staffMembers] = await Promise.all([
     prisma.appointment.findMany({
@@ -65,7 +78,21 @@ export default async function CalendarPage() {
     clients,
     staffMembers,
     ownerName,
+    initialDate: isValidDateParam(requestedDate) ? requestedDate : undefined,
   });
 
-  return <CalendarWorkspace initialView={initialView} ownerName={ownerName} />;
+  const initialClientId =
+    typeof requestedClientId === "string" &&
+    clients.some((client) => client.id === requestedClientId)
+      ? requestedClientId
+      : undefined;
+
+  return (
+    <CalendarWorkspace
+      initialView={initialView}
+      ownerName={ownerName}
+      initialCreateOpen={openNew === "1"}
+      initialClientId={initialClientId}
+    />
+  );
 }

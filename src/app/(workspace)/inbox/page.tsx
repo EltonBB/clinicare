@@ -94,6 +94,8 @@ export default async function InboxPage({
         whatsappConnection,
         business.whatsappNumber ?? ""
       )}
+      clientCount={clients.length}
+      recommendedClientId={clients[0]?.id}
     />
   );
 }
