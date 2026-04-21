@@ -158,7 +158,7 @@ function AppointmentCard({
       type="button"
       onClick={() => onSelect(appointment)}
       className={cn(
-        "interactive-lift absolute inset-x-0 overflow-hidden rounded-none border px-4 py-2 text-left transition-[box-shadow,transform] duration-200",
+        "interactive-lift absolute inset-x-0 flex overflow-hidden rounded-none border px-4 py-2 text-left transition-[box-shadow,transform] duration-200",
         toneClasses[appointment.tone]
       )}
       style={{
@@ -166,15 +166,17 @@ function AppointmentCard({
         height: appointmentHeight(appointment.startTime, appointment.endTime),
       }}
     >
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] opacity-90">
-        {appointment.startTime} - {appointment.endTime}
-      </p>
-      <p className="mt-1 text-[15px] font-semibold leading-5">
-        {appointment.service}
-      </p>
-      <p className="mt-2 text-xs leading-5 opacity-90">
-        Client: {appointment.clientName}
-      </p>
+      <span className="flex min-w-0 flex-1 flex-col justify-center">
+        <span className="truncate text-[11px] font-semibold uppercase tracking-[0.14em] opacity-90">
+          {appointment.startTime} - {appointment.endTime}
+        </span>
+        <span className="mt-1 truncate text-[15px] font-semibold leading-5">
+          {appointment.service || "Appointment"}
+        </span>
+        <span className="mt-1 truncate text-xs leading-5 opacity-90">
+          {appointment.clientName}
+        </span>
+      </span>
     </button>
   );
 }

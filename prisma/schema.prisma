@@ -151,15 +151,17 @@ model Message {
 }
 
 model ReminderSettings {
-  id                 String   @id @default(cuid())
-  businessId         String   @unique
-  business           Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  send24HourReminder Boolean  @default(true)
-  send2HourReminder  Boolean  @default(true)
-  reminderWindow     String?
-  reminderPreset     String?
-  template           String?
-  updatedAt          DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  businessId          String   @unique
+  business            Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  send24HourReminder  Boolean  @default(true)
+  send2HourReminder   Boolean  @default(true)
+  reminderWindow      String?
+  reminderPreset      String?
+  firstReminderHours  Int      @default(24)
+  secondReminderHours Int      @default(2)
+  template            String?
+  updatedAt           DateTime @updatedAt
 }
 
 model WhatsAppConnection {

@@ -12,10 +12,8 @@ import {
 } from "@/app/(workspace)/settings/actions";
 import { businessTypes } from "@/lib/constants";
 import { brandAccentPresets } from "@/lib/branding";
-import { reminderPresetOptions } from "@/lib/reminder-presets";
 import { cn } from "@/lib/utils";
 import {
-  reminderWindows,
   staffRoles,
   timeOptions,
   weekdayLabels,
@@ -33,6 +31,10 @@ type SettingsWorkspaceProps = {
   initialState: SettingsState;
   flashMessage?: string;
 };
+
+const reminderHourOptions = Array.from({ length: 24 }, (_, index) =>
+  String(24 - index)
+);
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -633,22 +635,6 @@ export function SettingsWorkspace({
                 className="h-11 rounded-[0.9rem] bg-white/84"
               />
             </div>
-            <div className="space-y-2">
-              <FieldLabel>Reminder timing</FieldLabel>
-              <NativeSelect
-                value={state.whatsapp.reminderWindow}
-                options={reminderWindows}
-                onChange={(value) =>
-                  setState((current) => ({
-                    ...current,
-                    whatsapp: {
-                      ...current.whatsapp,
-                      reminderWindow: value,
-                    },
-                  }))
-                }
-              />
-            </div>
           </div>
           <div className="mt-4 flex items-center justify-between rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
             <div>
@@ -820,90 +806,93 @@ export function SettingsWorkspace({
           description="Define the reminder cadence and shared template that appointments can reuse across the MVP workflow."
         >
           <div className="space-y-4">
-            <div className="space-y-3">
-              <FieldLabel>Business preset</FieldLabel>
-              <div className="grid gap-3 md:grid-cols-3">
-                {reminderPresetOptions.map((preset) => {
-                  const selected = state.reminders.preset === preset.id;
-
-                  return (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() =>
-                        setState((current) => ({
-                          ...current,
-                          reminders: {
-                            ...current.reminders,
-                            preset: preset.id,
-                            template: preset.template,
-                          },
-                          whatsapp: {
-                            ...current.whatsapp,
-                            template: preset.template,
-                          },
-                        }))
-                      }
-                      className={cn(
-                        "rounded-[0.95rem] border px-4 py-3 text-left transition-[border-color,box-shadow,transform,background-color] duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_14px_30px_rgba(20,32,51,0.045)]",
-                        selected
-                          ? "border-primary/50 bg-primary/8 text-foreground"
-                          : "border-border/80 bg-muted/35 text-muted-foreground"
-                      )}
-                    >
-                      <span className="block text-sm font-semibold">
-                        {preset.label}
-                      </span>
-                      <span className="mt-1 block text-xs leading-5">
-                        Template tuned for {preset.businessType.toLowerCase()} workflows.
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="flex items-center justify-between rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
-                <div>
-                  <p className="text-sm font-medium text-foreground">24-hour reminder</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Sent the day before the appointment.
+              <div className="rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      First reminder
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Send before the appointment starts.
+                    </p>
+                  </div>
+                  <Toggle
+                    checked={state.reminders.twentyFourHour}
+                    onPressedChange={(checked) =>
+                      setState((current) => ({
+                        ...current,
+                        reminders: {
+                          ...current.reminders,
+                          twentyFourHour: checked,
+                        },
+                      }))
+                    }
+                  />
+                </div>
+                <div className="mt-4 space-y-2">
+                  <FieldLabel>Send time</FieldLabel>
+                  <NativeSelect
+                    value={String(state.reminders.firstReminderHours)}
+                    options={reminderHourOptions}
+                    onChange={(value) =>
+                      setState((current) => ({
+                        ...current,
+                        reminders: {
+                          ...current.reminders,
+                          firstReminderHours: Number(value),
+                        },
+                      }))
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {state.reminders.firstReminderHours} hours before the appointment.
                   </p>
                 </div>
-                <Toggle
-                  checked={state.reminders.twentyFourHour}
-                  onPressedChange={(checked) =>
-                    setState((current) => ({
-                      ...current,
-                      reminders: {
-                        ...current.reminders,
-                        twentyFourHour: checked,
-                      },
-                    }))
-                  }
-                />
               </div>
 
-              <div className="flex items-center justify-between rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
-                <div>
-                  <p className="text-sm font-medium text-foreground">2-hour reminder</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Final prompt before the visit starts.
+              <div className="rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      Second reminder
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Optional final prompt closer to the visit.
+                    </p>
+                  </div>
+                  <Toggle
+                    checked={state.reminders.twoHour}
+                    onPressedChange={(checked) =>
+                      setState((current) => ({
+                        ...current,
+                        reminders: {
+                          ...current.reminders,
+                          twoHour: checked,
+                        },
+                      }))
+                    }
+                  />
+                </div>
+                <div className="mt-4 space-y-2">
+                  <FieldLabel>Send time</FieldLabel>
+                  <NativeSelect
+                    value={String(state.reminders.secondReminderHours)}
+                    options={reminderHourOptions}
+                    onChange={(value) =>
+                      setState((current) => ({
+                        ...current,
+                        reminders: {
+                          ...current.reminders,
+                          secondReminderHours: Number(value),
+                        },
+                      }))
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {state.reminders.secondReminderHours} hours before the appointment.
                   </p>
                 </div>
-                <Toggle
-                  checked={state.reminders.twoHour}
-                  onPressedChange={(checked) =>
-                    setState((current) => ({
-                      ...current,
-                      reminders: {
-                        ...current.reminders,
-                        twoHour: checked,
-                      },
-                    }))
-                  }
-                />
               </div>
             </div>
 

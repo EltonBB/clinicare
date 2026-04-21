@@ -25,11 +25,9 @@ import {
   resolveBrandAccentPreset,
   type BrandAccentPresetId,
 } from "@/lib/branding";
-import {
-  reminderPresetForBusinessType,
-  resolveReminderPreset,
-  type ReminderPresetId,
-} from "@/lib/reminder-presets";
+
+export const defaultReminderTemplate =
+  "Hi {client_name}, this is a reminder for your appointment at {time} on {date}. Reply here if you need to reschedule.";
 
 export type StaffRole = "Owner" | "Manager" | "Specialist" | "Reception";
 
@@ -40,9 +38,10 @@ export type SettingsStaffMember = {
 };
 
 export type SettingsReminders = {
-  preset: ReminderPresetId;
   twentyFourHour: boolean;
   twoHour: boolean;
+  firstReminderHours: number;
+  secondReminderHours: number;
   template: string;
 };
 
@@ -459,11 +458,7 @@ export function buildSettingsStateFromWorkspace({
     ? (business.businessType as BusinessType)
     : "Clinic";
   const accentPreset = resolveBrandAccentPreset(business.brandAccentColor);
-  const reminderPreset = resolveReminderPreset(
-    reminderSettings?.reminderPreset ??
-      reminderPresetForBusinessType(businessType).id
-  );
-  const reminderTemplate = reminderSettings?.template ?? reminderPreset.template;
+  const reminderTemplate = reminderSettings?.template ?? defaultReminderTemplate;
 
   return {
     business: {
@@ -489,9 +484,10 @@ export function buildSettingsStateFromWorkspace({
       ),
     },
     reminders: {
-      preset: reminderPreset.id,
       twentyFourHour: reminderSettings?.send24HourReminder ?? true,
       twoHour: reminderSettings?.send2HourReminder ?? true,
+      firstReminderHours: reminderSettings?.firstReminderHours ?? 24,
+      secondReminderHours: reminderSettings?.secondReminderHours ?? 2,
       template: reminderTemplate,
     },
     billing: buildBillingSummary(business),
@@ -526,5 +522,4 @@ export const timeOptions = [
   "19:00",
 ];
 
-export const reminderWindows = ["2 hours before", "24 hours before", "48 hours before"];
 export const staffRoles: StaffRole[] = ["Owner", "Manager", "Specialist", "Reception"];

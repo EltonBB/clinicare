@@ -22,9 +22,19 @@ function reminderTypeForAppointment(args: {
   now: Date;
   send24HourReminder: boolean;
   send2HourReminder: boolean;
+  firstReminderHours: number;
+  secondReminderHours: number;
   sentTypes: Set<string>;
 }) {
-  const { startsAt, now, send24HourReminder, send2HourReminder, sentTypes } = args;
+  const {
+    startsAt,
+    now,
+    send24HourReminder,
+    send2HourReminder,
+    firstReminderHours,
+    secondReminderHours,
+    sentTypes,
+  } = args;
 
   if (!isAfter(startsAt, now)) {
     return null;
@@ -33,7 +43,7 @@ function reminderTypeForAppointment(args: {
   if (
     send2HourReminder &&
     !sentTypes.has("TWO_HOUR") &&
-    !isAfter(startsAt, addHours(now, 2))
+    !isAfter(startsAt, addHours(now, secondReminderHours))
   ) {
     return "TWO_HOUR" as const;
   }
@@ -41,7 +51,7 @@ function reminderTypeForAppointment(args: {
   if (
     send24HourReminder &&
     !sentTypes.has("TWENTY_FOUR_HOUR") &&
-    !isAfter(startsAt, addHours(now, 24))
+    !isAfter(startsAt, addHours(now, firstReminderHours))
   ) {
     return "TWENTY_FOUR_HOUR" as const;
   }
@@ -65,6 +75,8 @@ export async function syncAppointmentRemindersForBusiness(
         select: {
           send24HourReminder: true,
           send2HourReminder: true,
+          firstReminderHours: true,
+          secondReminderHours: true,
           template: true,
         },
       },
@@ -90,6 +102,16 @@ export async function syncAppointmentRemindersForBusiness(
     reminderSettings?.template?.trim() ||
     "Hi {client_name}, this is a reminder for your appointment at {time} on {date}. Reply here if you need to reschedule.";
 
+  const firstReminderHours = Math.min(
+    Math.max(reminderSettings?.firstReminderHours ?? 24, 1),
+    24
+  );
+  const secondReminderHours = Math.min(
+    Math.max(reminderSettings?.secondReminderHours ?? 2, 1),
+    24
+  );
+  const maxReminderHours = Math.max(firstReminderHours, secondReminderHours);
+
   const appointments = await prisma.appointment.findMany({
     where: {
       businessId,
@@ -98,7 +120,7 @@ export async function syncAppointmentRemindersForBusiness(
       },
       startAt: {
         gt: now,
-        lte: addHours(now, 24),
+        lte: addHours(now, maxReminderHours),
       },
     },
     include: {
@@ -134,6 +156,8 @@ export async function syncAppointmentRemindersForBusiness(
       now,
       send24HourReminder: reminderSettings?.send24HourReminder ?? true,
       send2HourReminder: reminderSettings?.send2HourReminder ?? true,
+      firstReminderHours,
+      secondReminderHours,
       sentTypes: new Set(appointment.reminders.map((reminder) => reminder.type)),
     });
 

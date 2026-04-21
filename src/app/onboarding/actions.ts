@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { reminderPresetForBusinessType } from "@/lib/reminder-presets";
+import { defaultReminderTemplate } from "@/lib/settings";
 import {
   weekdayOrder,
   normalizeOnboardingState,
@@ -29,9 +29,6 @@ async function bootstrapWorkspaceFromOnboarding(user: {
     typeof metadata.business_type === "string" && metadata.business_type.trim().length > 0
       ? metadata.business_type.trim()
       : "Clinic";
-  const defaultTemplate =
-    reminderPresetForBusinessType(businessType).template;
-  const reminderPreset = reminderPresetForBusinessType(businessType);
 
   return prisma.$transaction(async (tx) => {
     const business = await tx.business.upsert({
@@ -149,16 +146,18 @@ async function bootstrapWorkspaceFromOnboarding(user: {
         send24HourReminder: true,
         send2HourReminder: true,
         reminderWindow: "24 hours before",
-        reminderPreset: reminderPreset.id,
-        template: defaultTemplate,
+        firstReminderHours: 24,
+        secondReminderHours: 2,
+        template: defaultReminderTemplate,
       },
       create: {
         businessId: business.id,
         send24HourReminder: true,
         send2HourReminder: true,
         reminderWindow: "24 hours before",
-        reminderPreset: reminderPreset.id,
-        template: defaultTemplate,
+        firstReminderHours: 24,
+        secondReminderHours: 2,
+        template: defaultReminderTemplate,
       },
     });
 

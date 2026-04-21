@@ -13,7 +13,6 @@ import {
 } from "@/lib/whatsapp-connection";
 import { normalizePhone } from "@/lib/inbox";
 import { resolveBrandAccentPreset } from "@/lib/branding";
-import { resolveReminderPreset } from "@/lib/reminder-presets";
 import {
   buildWhatsAppConnectionSummary,
   buildSettingsStateFromWorkspace,
@@ -22,6 +21,14 @@ import {
   type SettingsState,
 } from "@/lib/settings";
 import { weekdayOrder } from "@/lib/onboarding";
+
+function clampReminderHours(value: number, fallback: number) {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(Math.round(value), 1), 24);
+}
 
 export type SaveSettingsResult = {
   ok: boolean;
@@ -67,7 +74,14 @@ export async function saveSettingsAction(
   });
   const normalizedWhatsAppNumber = normalizePhone(payload.whatsapp.phoneNumber);
   const accentPreset = resolveBrandAccentPreset(payload.appearance.accentColor);
-  const reminderPreset = resolveReminderPreset(payload.reminders.preset);
+  const firstReminderHours = clampReminderHours(
+    payload.reminders.firstReminderHours,
+    24
+  );
+  const secondReminderHours = clampReminderHours(
+    payload.reminders.secondReminderHours,
+    2
+  );
 
   const cleanedStaff = payload.staff.filter((member) => member.name.trim().length > 0);
   const persistedStaff =
@@ -320,16 +334,18 @@ export async function saveSettingsAction(
         send24HourReminder: payload.reminders.twentyFourHour,
         send2HourReminder: payload.reminders.twoHour,
         reminderWindow: payload.whatsapp.reminderWindow,
-        reminderPreset: reminderPreset.id,
-        template: payload.reminders.template.trim() || reminderPreset.template,
+        firstReminderHours,
+        secondReminderHours,
+        template: payload.reminders.template.trim(),
       },
       create: {
         businessId: business.id,
         send24HourReminder: payload.reminders.twentyFourHour,
         send2HourReminder: payload.reminders.twoHour,
         reminderWindow: payload.whatsapp.reminderWindow,
-        reminderPreset: reminderPreset.id,
-        template: payload.reminders.template.trim() || reminderPreset.template,
+        firstReminderHours,
+        secondReminderHours,
+        template: payload.reminders.template.trim(),
       },
     });
   });

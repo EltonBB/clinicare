@@ -561,37 +561,52 @@ export function OnboardingFlow({
         </div>
 
         <div className="py-6">
-          <div className="rounded-[1.25rem] border border-border bg-card px-4 py-4 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Step {state.currentStep} of {onboardingSteps.length}
-              </p>
-              <p className="text-sm font-medium text-foreground">
-                {Math.round(progressValue)}% complete
-              </p>
-            </div>
-            <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted shadow-[inset_0_1px_2px_rgba(20,32,51,0.08)]">
+          <div className="mx-auto max-w-3xl rounded-[1.5rem] border border-border bg-card px-8 py-7 shadow-[0_18px_42px_rgba(20,32,51,0.055)]">
+            <div className="relative grid grid-cols-3">
+              <div className="absolute left-[16.66%] right-[16.66%] top-4 h-0.5 bg-border" />
               <div
-                className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
-                style={{ width: `${progressValue}%` }}
+                className="absolute left-[16.66%] top-4 h-0.5 bg-primary transition-[width] duration-500 ease-out"
+                style={{
+                  width:
+                    onboardingSteps.length <= 1
+                      ? "0%"
+                      : `${(stepIndex / (onboardingSteps.length - 1)) * 66.66}%`,
+                }}
               />
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              {onboardingSteps.map((item, index) => (
-                <div
-                  key={item.id}
-                  className={cn(
-                    "rounded-[0.95rem] border px-3 py-3 transition-colors duration-200",
-                    stepIndex >= index
-                      ? "border-primary/25 bg-primary/8 text-foreground"
-                      : "border-border bg-white/58 text-muted-foreground"
-                  )}
-                >
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em]">
-                    {item.shortLabel}
-                  </p>
-                </div>
-              ))}
+              {onboardingSteps.map((item, index) => {
+                const completed = index < stepIndex;
+                const current = index === stepIndex;
+
+                return (
+                  <div
+                    key={item.id}
+                    className="relative flex flex-col items-center gap-3 text-center"
+                  >
+                    <span
+                      className={cn(
+                        "z-10 flex size-8 items-center justify-center rounded-full border bg-card text-xs font-semibold transition-colors duration-200",
+                        completed &&
+                          "border-primary bg-primary text-primary-foreground",
+                        current &&
+                          "border-primary bg-primary text-primary-foreground shadow-[0_8px_18px_rgba(38,137,135,0.18)]",
+                        !completed &&
+                          !current &&
+                          "border-border text-muted-foreground"
+                      )}
+                    >
+                      {completed ? <CheckCircle2 className="size-4" /> : index + 1}
+                    </span>
+                    <span
+                      className={cn(
+                        "text-xs font-semibold text-muted-foreground",
+                        (completed || current) && "text-foreground"
+                      )}
+                    >
+                      {item.shortLabel}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
