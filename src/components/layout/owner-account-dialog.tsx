@@ -85,7 +85,7 @@ export function OwnerAccountDialog({
           className={cn(
             "flex items-center justify-center rounded-full text-sm font-semibold",
             variant === "header"
-              ? "size-9 bg-primary/12 text-primary shadow-[0_10px_24px_rgba(38,137,135,0.12)]"
+              ? "size-9 bg-primary/12 text-primary shadow-[0_10px_24px_var(--primary-shadow)]"
               : "size-10 bg-white/84 text-foreground shadow-[0_12px_28px_rgba(20,32,51,0.06)]"
           )}
         >
@@ -106,7 +106,7 @@ export function OwnerAccountDialog({
       <DialogContent className="max-w-xl p-0 sm:max-w-xl">
         <div className="flex max-h-[calc(100vh-2rem)] min-h-0 flex-col overflow-hidden">
           <DialogHeader className="glass-divider shrink-0 space-y-3 px-6 pb-5 pt-6">
-            <div className="flex size-[3.25rem] items-center justify-center rounded-[1.1rem] bg-primary/12 text-primary shadow-[0_14px_28px_rgba(38,137,135,0.14)]">
+            <div className="flex size-[3.25rem] items-center justify-center rounded-[1.1rem] bg-primary/12 text-primary shadow-[0_14px_28px_var(--primary-shadow)]">
               <UserRound className="size-5" />
             </div>
             <div className="space-y-2">

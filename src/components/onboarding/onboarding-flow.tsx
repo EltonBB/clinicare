@@ -507,7 +507,7 @@ export function OnboardingFlow({
                 className={cn(
                   "group rounded-[1.35rem] border bg-card p-5 text-left transition-[border-color,box-shadow,transform,background-color] duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_18px_40px_rgba(20,32,51,0.06)]",
                   selected
-                    ? "border-primary/55 bg-primary/8 shadow-[0_18px_40px_rgba(38,137,135,0.12)]"
+                    ? "border-primary/55 bg-primary/8 shadow-[0_18px_40px_var(--primary-shadow)]"
                     : "border-border"
                 )}
               >
@@ -588,7 +588,7 @@ export function OnboardingFlow({
                         completed &&
                           "border-primary bg-primary text-primary-foreground",
                         current &&
-                          "border-primary bg-primary text-primary-foreground shadow-[0_8px_18px_rgba(38,137,135,0.18)]",
+                          "border-primary bg-primary text-primary-foreground shadow-[0_8px_18px_var(--primary-shadow)]",
                         !completed &&
                           !current &&
                           "border-border text-muted-foreground"

@@ -118,13 +118,13 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
 
               <path
                 d={`${linePath} L 520 180 L 0 180 Z`}
-                fill="rgba(92,143,212,0.12)"
+                fill="var(--primary-soft)"
                 transform="translate(0 20)"
               />
               <path
                 d={linePath}
                 fill="none"
-                stroke="#3A71B5"
+                stroke="var(--primary)"
                 strokeWidth="3"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -140,8 +140,8 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
 
                 return (
                   <g key={point.label}>
-                    <circle cx={x} cy={y} r="5" fill="#3A71B5" />
-                    <circle cx={x} cy={y} r="10" fill="rgba(92,143,212,0.18)" />
+                    <circle cx={x} cy={y} r="5" fill="var(--primary)" />
+                    <circle cx={x} cy={y} r="10" fill="var(--primary-shadow)" />
                     <text
                       x={x}
                       y="218"

@@ -141,11 +141,11 @@ export function PricingPlans() {
                 className={cn(
                   "relative flex h-full flex-col overflow-hidden rounded-[1.2rem] border border-border/80 bg-[#f7f9fc] px-6 py-6 shadow-[0_16px_38px_rgba(20,32,51,0.04)] transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-1 hover:shadow-[0_24px_54px_rgba(20,32,51,0.07)]",
                   plan.highlighted &&
-                    "border-primary/35 bg-[linear-gradient(180deg,rgba(38,137,135,0.05),rgba(247,249,252,0.98)_34%)] ring-1 ring-primary/15"
+                    "border-primary/35 bg-[linear-gradient(180deg,var(--primary-soft),rgba(247,249,252,0.98)_34%)] ring-1 ring-primary/15"
                 )}
               >
                 {plan.highlighted ? (
-                  <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(38,137,135,0.55),transparent)]" />
+                  <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,var(--primary),transparent)]" />
                 ) : null}
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -166,7 +166,7 @@ export function PricingPlans() {
                   ) : null}
                 </div>
 
-                  <div className="mt-8 rounded-[1rem] border border-border/70 bg-[linear-gradient(180deg,rgba(38,137,135,0.04),rgba(244,248,252,0.96)_42%)] px-4 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+                  <div className="mt-8 rounded-[1rem] border border-border/70 bg-[linear-gradient(180deg,var(--primary-soft),rgba(244,248,252,0.96)_42%)] px-4 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
                     <div className="flex items-end gap-2">
                       <span className="text-[2.6rem] font-semibold tracking-tight text-foreground">
                         ${priceFor(plan, billingCycle)}

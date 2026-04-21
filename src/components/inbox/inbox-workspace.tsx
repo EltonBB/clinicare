@@ -271,11 +271,11 @@ export function InboxWorkspace({
           <div className="relative overflow-hidden">
             <div className="pointer-events-none absolute inset-x-0 top-0 h-28 overflow-hidden">
               <div className="dialog-accent-orb absolute -left-5 top-4 h-20 w-20 rounded-full bg-primary/10 blur-2xl" />
-              <div className="dialog-accent-orb absolute right-6 top-2 h-16 w-16 rounded-full bg-sky-200/28 blur-2xl [animation-delay:-2.1s]" />
+              <div className="dialog-accent-orb absolute right-6 top-2 h-16 w-16 rounded-full bg-primary/8 blur-2xl [animation-delay:-2.1s]" />
             </div>
 
             <DialogHeader className="glass-divider relative rounded-t-[1.2rem] px-5 pb-4 pt-5">
-              <div className="mb-3 flex size-10 items-center justify-center rounded-[0.95rem] bg-primary/12 text-primary shadow-[0_14px_28px_rgba(38,137,135,0.12)]">
+              <div className="mb-3 flex size-10 items-center justify-center rounded-[0.95rem] bg-primary/12 text-primary shadow-[0_14px_28px_var(--primary-shadow)]">
                 <ArrowRightLeft className="size-4" />
               </div>
               <DialogTitle className="text-[1.15rem] font-semibold">
@@ -599,7 +599,7 @@ export function InboxWorkspace({
                   <div className="flex flex-col justify-center gap-2 sm:flex-row">
                     <Link
                       href={hasClients ? bookingHref : "/clients?new=1&next=calendar"}
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.9rem] bg-primary px-4 text-sm font-medium text-primary-foreground transition-[background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_32px_rgba(38,137,135,0.18)]"
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.9rem] bg-primary px-4 text-sm font-medium text-primary-foreground transition-[background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_32px_var(--primary-shadow)]"
                     >
                       {hasClients ? (
                         <CalendarPlus2 className="size-4" />

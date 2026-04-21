@@ -6,7 +6,7 @@ export const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground hover:-translate-y-0.5 hover:bg-[color-mix(in_oklab,var(--primary)_90%,white)] hover:shadow-[0_16px_36px_rgba(38,137,135,0.24)]",
+          "bg-primary text-primary-foreground hover:-translate-y-0.5 hover:bg-[color-mix(in_oklab,var(--primary)_90%,white)] hover:shadow-[0_16px_36px_var(--primary-shadow)]",
         outline:
           "border-border bg-white/72 text-foreground hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_14px_30px_rgba(20,32,51,0.08)] aria-expanded:bg-muted aria-expanded:text-foreground",
         secondary:

@@ -15,7 +15,7 @@ const ACTIVE_TARGET_CLASSES = [
   "rounded-[1rem]",
   "ring-2",
   "ring-primary/85",
-  "shadow-[0_0_0_8px_rgba(38,137,135,0.10),0_16px_34px_rgba(15,23,42,0.14)]",
+  "shadow-[0_0_0_8px_var(--primary-shadow),0_16px_34px_rgba(15,23,42,0.14)]",
   "transition-[box-shadow,ring-color]",
   "duration-300",
 ];
@@ -477,7 +477,7 @@ export function WorkspaceTour({
       <div className="pointer-events-auto absolute" style={coachmarkStyle}>
         <div className="tour-coachmark relative overflow-hidden rounded-[1.45rem] border border-border/80 bg-white/98 p-5 shadow-[0_24px_60px_rgba(15,23,42,0.14)] backdrop-blur-sm md:p-6">
           <div className="tour-orb pointer-events-none absolute -right-6 top-4 size-20 rounded-full bg-primary/10 blur-2xl" />
-          <div className="tour-orb pointer-events-none absolute right-16 top-10 size-8 rounded-full bg-[rgba(92,143,212,0.18)] blur-xl" />
+          <div className="tour-orb pointer-events-none absolute right-16 top-10 size-8 rounded-full bg-primary/10 blur-xl" />
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-3">
               <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">

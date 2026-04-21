@@ -65,6 +65,8 @@
   --border: rgba(120, 142, 173, 0.18);
   --input: rgba(120, 142, 173, 0.22);
   --ring: rgba(38, 137, 135, 0.48);
+  --primary-soft: #eef8f6;
+  --primary-shadow: rgba(38, 137, 135, 0.24);
   --chart-1: #268987;
   --chart-2: #5c8fd4;
   --chart-3: #9cc5cf;
@@ -187,7 +189,7 @@
 
   .dialog-scroll-body {
     scrollbar-width: thin;
-    scrollbar-color: rgba(38, 137, 135, 0.34) transparent;
+    scrollbar-color: var(--primary-shadow) transparent;
   }
 
   .dialog-scroll-body::-webkit-scrollbar {
@@ -203,8 +205,8 @@
     border-radius: 999px;
     background: linear-gradient(
       180deg,
-      rgba(38, 137, 135, 0.52),
-      rgba(92, 143, 212, 0.26)
+      color-mix(in oklab, var(--primary) 56%, transparent),
+      color-mix(in oklab, var(--primary) 24%, transparent)
     );
     background-clip: padding-box;
   }
@@ -212,8 +214,8 @@
   .dialog-scroll-body::-webkit-scrollbar-thumb:hover {
     background: linear-gradient(
       180deg,
-      rgba(38, 137, 135, 0.66),
-      rgba(92, 143, 212, 0.34)
+      color-mix(in oklab, var(--primary) 66%, transparent),
+      color-mix(in oklab, var(--primary) 32%, transparent)
     );
     background-clip: padding-box;
   }

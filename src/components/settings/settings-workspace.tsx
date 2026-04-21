@@ -656,7 +656,7 @@ export function SettingsWorkspace({
               }
             />
           </div>
-          <div className="mt-4 rounded-[1rem] border border-primary/12 bg-[linear-gradient(135deg,rgba(38,137,135,0.08),rgba(92,143,212,0.03)_48%,rgba(255,255,255,0.92))] px-5 py-5 shadow-[0_18px_40px_rgba(20,32,51,0.04)]">
+          <div className="mt-4 rounded-[1rem] border border-primary/12 bg-[linear-gradient(135deg,var(--primary-soft),rgba(255,255,255,0.92))] px-5 py-5 shadow-[0_18px_40px_rgba(20,32,51,0.04)]">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
@@ -956,7 +956,7 @@ export function SettingsWorkspace({
           description="Review the current plan, see what is locked, and use the prepared upgrade path while live payments are still pending."
         >
           <div className="space-y-4">
-            <div className="overflow-hidden rounded-[1rem] border border-primary/12 bg-[linear-gradient(135deg,rgba(38,137,135,0.08),rgba(92,143,212,0.03)_48%,rgba(255,255,255,0.92))] shadow-[0_18px_40px_rgba(20,32,51,0.04)]">
+            <div className="overflow-hidden rounded-[1rem] border border-primary/12 bg-[linear-gradient(135deg,var(--primary-soft),rgba(255,255,255,0.92))] shadow-[0_18px_40px_rgba(20,32,51,0.04)]">
               <div className="space-y-5 px-5 py-5">
                 <div className="space-y-1">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">

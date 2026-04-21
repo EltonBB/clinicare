@@ -583,7 +583,7 @@ export function CalendarWorkspace({
           ) : (
             <Link
               href="/clients?new=1&next=calendar"
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-[0.9rem] bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_10px_30px_rgba(20,32,51,0.04)] transition-[transform,box-shadow,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(38,137,135,0.24)]"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-[0.9rem] bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_10px_30px_rgba(20,32,51,0.04)] transition-[transform,box-shadow,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_36px_var(--primary-shadow)]"
               data-tour="calendar-create"
             >
               <UsersRound className="size-4" />
@@ -614,7 +614,7 @@ export function CalendarWorkspace({
       ) : null}
 
       {!hasClients ? (
-        <section className="section-reveal overflow-hidden rounded-[1.25rem] border border-dashed border-primary/25 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(232,244,242,0.72))] p-8 shadow-[0_18px_44px_rgba(20,32,51,0.055)]">
+        <section className="section-reveal overflow-hidden rounded-[1.25rem] border border-dashed border-primary/25 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),var(--primary-soft))] p-8 shadow-[0_18px_44px_rgba(20,32,51,0.055)]">
           <div className="mx-auto max-w-xl space-y-5 text-center">
             <div className="mx-auto flex size-12 items-center justify-center rounded-[1.05rem] bg-primary/12 text-primary">
               <UsersRound className="size-5" />
@@ -630,7 +630,7 @@ export function CalendarWorkspace({
             </div>
             <Link
               href="/clients?new=1&next=calendar"
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-[0.95rem] bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_10px_30px_rgba(20,32,51,0.04)] transition-[transform,box-shadow,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(38,137,135,0.24)]"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-[0.95rem] bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_10px_30px_rgba(20,32,51,0.04)] transition-[transform,box-shadow,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_36px_var(--primary-shadow)]"
             >
               <Plus className="size-4" />
               Add first client

@@ -82,7 +82,7 @@ function DashboardEmptyState({ view }: { view: DashboardViewModel }) {
       : "Your schedule is clear for today. Book another visit or open the calendar to review upcoming days.";
 
   return (
-    <div className="overflow-hidden rounded-[1.25rem] border border-dashed border-primary/25 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(232,244,242,0.72))] p-6 shadow-[0_18px_44px_rgba(20,32,51,0.055)]">
+    <div className="overflow-hidden rounded-[1.25rem] border border-dashed border-primary/25 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),var(--primary-soft))] p-6 shadow-[0_18px_44px_rgba(20,32,51,0.055)]">
       <div className="flex max-w-2xl flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-3">
           <div className="flex size-11 items-center justify-center rounded-[1rem] bg-primary/12 text-primary">
@@ -231,7 +231,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
             </div>
             <div className="mt-3 h-2 rounded-full bg-white/80 shadow-[inset_0_1px_2px_rgba(20,32,51,0.08)]">
               <div
-                className="h-2 rounded-full bg-[linear-gradient(90deg,rgba(92,143,212,0.9),rgba(38,137,135,0.92))]"
+                className="h-2 rounded-full bg-[linear-gradient(90deg,color-mix(in_oklab,var(--primary)_70%,white),var(--primary))]"
                 style={{ width: `${view.planSummary.capacityUsedPercent}%` }}
               />
             </div>

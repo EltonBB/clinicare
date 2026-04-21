@@ -51,6 +51,25 @@ export function AppShell({
   const [liveUnreadCount, setLiveUnreadCount] = useState(unreadCount);
   const [liveNotifications, setLiveNotifications] = useState(notifications);
 
+  useEffect(() => {
+    const root = document.documentElement;
+    const vars = {
+      "--primary": accent.value,
+      "--primary-soft": accent.soft,
+      "--primary-shadow": accent.shadow,
+      "--ring": accent.shadow,
+      "--accent": accent.soft,
+      "--accent-foreground": accent.value,
+      "--sidebar-primary": accent.value,
+      "--sidebar-ring": accent.shadow,
+      "--chart-1": accent.value,
+    };
+
+    for (const [key, value] of Object.entries(vars)) {
+      root.style.setProperty(key, value);
+    }
+  }, [accent]);
+
   function getTourTarget(href: string) {
     switch (href) {
       case "/dashboard":
@@ -104,7 +123,11 @@ export function AppShell({
       style={
         {
           "--primary": accent.value,
+          "--primary-soft": accent.soft,
+          "--primary-shadow": accent.shadow,
           "--ring": accent.shadow,
+          "--accent": accent.soft,
+          "--accent-foreground": accent.value,
           "--sidebar-primary": accent.value,
           "--sidebar-ring": accent.shadow,
           "--chart-1": accent.value,
