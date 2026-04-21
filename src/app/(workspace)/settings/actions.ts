@@ -12,7 +12,7 @@ import {
   syncWhatsAppConnectionForBusiness,
 } from "@/lib/whatsapp-connection";
 import { normalizePhone } from "@/lib/inbox";
-import { resolveBrandAccentPreset } from "@/lib/branding";
+import { normalizeBrandHexColor, resolveBrandAccentPreset } from "@/lib/branding";
 import {
   buildWhatsAppConnectionSummary,
   buildSettingsStateFromWorkspace,
@@ -73,7 +73,20 @@ export async function saveSettingsAction(
     missingBusinessRedirect: "/onboarding",
   });
   const normalizedWhatsAppNumber = normalizePhone(payload.whatsapp.phoneNumber);
+  const customAccentHex = normalizeBrandHexColor(payload.appearance.accentHex);
   const accentPreset = resolveBrandAccentPreset(payload.appearance.accentColor);
+
+  if (payload.appearance.accentColor === "custom" && !customAccentHex) {
+    return {
+      ok: false,
+      error: "Enter a valid HEX color, for example #268987.",
+    };
+  }
+
+  const brandAccentColor =
+    payload.appearance.accentColor === "custom" && customAccentHex
+      ? customAccentHex
+      : accentPreset.id;
   const firstReminderHours = clampReminderHours(
     payload.reminders.firstReminderHours,
     24
@@ -122,7 +135,7 @@ export async function saveSettingsAction(
       data: {
         name: payload.business.businessName.trim() || business.name,
         businessType: payload.business.businessType,
-        brandAccentColor: accentPreset.id,
+        brandAccentColor,
         whatsappNumber: normalizedWhatsAppNumber || null,
         whatsappEnabled: payload.whatsapp.sendReminders,
       },

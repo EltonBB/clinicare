@@ -22,8 +22,9 @@ import { planDisplayName, planStatusLabel } from "@/lib/billing";
 import { normalizePhone } from "@/lib/inbox";
 import {
   defaultBrandAccent,
+  normalizeBrandHexColor,
   resolveBrandAccentPreset,
-  type BrandAccentPresetId,
+  type BrandAccentChoice,
 } from "@/lib/branding";
 
 export const defaultReminderTemplate =
@@ -53,7 +54,7 @@ export type SettingsState = {
     supportEmail: string;
   };
   appearance: {
-    accentColor: BrandAccentPresetId;
+    accentColor: BrandAccentChoice;
     accentHex: string;
   };
   workingHours: WorkingHoursState;
@@ -458,6 +459,8 @@ export function buildSettingsStateFromWorkspace({
     ? (business.businessType as BusinessType)
     : "Clinic";
   const accentPreset = resolveBrandAccentPreset(business.brandAccentColor);
+  const savedCustomHex = normalizeBrandHexColor(business.brandAccentColor);
+  const isCustomAccent = Boolean(savedCustomHex && accentPreset.id === "custom");
   const reminderTemplate = reminderSettings?.template ?? defaultReminderTemplate;
 
   return {
@@ -468,7 +471,7 @@ export function buildSettingsStateFromWorkspace({
       supportEmail,
     },
     appearance: {
-      accentColor: accentPreset.id ?? defaultBrandAccent.id,
+      accentColor: isCustomAccent ? "custom" : accentPreset.id ?? defaultBrandAccent.id,
       accentHex: accentPreset.value ?? defaultBrandAccent.value,
     },
     workingHours: normalizeWorkingHoursFromDatabase(businessHours),

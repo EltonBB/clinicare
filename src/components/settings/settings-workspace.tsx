@@ -11,7 +11,7 @@ import {
   submitWhatsAppVerificationCodeAction,
 } from "@/app/(workspace)/settings/actions";
 import { businessTypes } from "@/lib/constants";
-import { brandAccentPresets } from "@/lib/branding";
+import { brandAccentPresets, normalizeBrandHexColor } from "@/lib/branding";
 import { cn } from "@/lib/utils";
 import {
   staffRoles,
@@ -162,6 +162,15 @@ export function SettingsWorkspace({
   const [isRefreshingConnection, startRefreshingConnection] = useTransition();
   const [isSubmittingVerificationCode, startSubmittingVerificationCode] =
     useTransition();
+  const visibleAccentPresets = brandAccentPresets.filter(
+    (preset) => preset.id !== "emerald"
+  );
+  const normalizedCustomAccent = normalizeBrandHexColor(
+    state.appearance.accentHex
+  );
+  const previewAccent = normalizedCustomAccent ?? "#268987";
+  const customAccentSelected = state.appearance.accentColor === "custom";
+  const customAccentInvalid = customAccentSelected && !normalizedCustomAccent;
 
   function updateDay(day: WeekdayKey, patch: Partial<(typeof state.workingHours)[WeekdayKey]>) {
     setState((current) => ({
@@ -210,6 +219,12 @@ export function SettingsWorkspace({
   }
 
   function handleSave() {
+    if (customAccentInvalid) {
+      setErrorMessage("Enter a valid HEX color, for example #268987.");
+      setMessage("");
+      return;
+    }
+
     startSaving(async () => {
       const cleanedState: SettingsState = {
         ...state,
@@ -440,7 +455,7 @@ export function SettingsWorkspace({
         >
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {brandAccentPresets.map((preset) => {
+              {visibleAccentPresets.map((preset) => {
                 const selected = state.appearance.accentColor === preset.id;
 
                 return (
@@ -481,13 +496,109 @@ export function SettingsWorkspace({
                   </button>
                 );
               })}
+
+              <div
+                className={cn(
+                  "group rounded-[1rem] border bg-white/84 p-3 text-left transition-[border-color,box-shadow,transform,background-color] duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_16px_34px_rgba(20,32,51,0.055)]",
+                  customAccentSelected
+                    ? "border-primary/55 shadow-[0_18px_38px_rgba(20,32,51,0.07)] ring-2 ring-primary/15"
+                    : "border-border/80",
+                  customAccentInvalid && "border-destructive/45 ring-destructive/10"
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    setState((current) => ({
+                      ...current,
+                      appearance: {
+                        ...current.appearance,
+                        accentColor: "custom",
+                      },
+                    }))
+                  }
+                  className="block w-full text-left"
+                >
+                  <span
+                    className="block h-14 rounded-[0.85rem] border border-border/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
+                    style={{ backgroundColor: previewAccent }}
+                  />
+                  <span className="mt-3 flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-foreground">
+                      Custom HEX
+                    </span>
+                    <span
+                      className={cn(
+                        "size-2.5 rounded-full transition-transform duration-200",
+                        customAccentSelected
+                          ? "scale-100 bg-primary"
+                          : "scale-75 bg-border"
+                      )}
+                    />
+                  </span>
+                </button>
+                <div className="mt-3 grid grid-cols-[44px_minmax(0,1fr)] gap-2">
+                  <input
+                    aria-label="Pick custom accent color"
+                    type="color"
+                    value={previewAccent}
+                    onChange={(event) =>
+                      setState((current) => ({
+                        ...current,
+                        appearance: {
+                          accentColor: "custom",
+                          accentHex: event.target.value,
+                        },
+                      }))
+                    }
+                    className="h-10 w-full cursor-pointer rounded-[0.75rem] border border-border/80 bg-white p-1"
+                  />
+                  <Input
+                    value={state.appearance.accentHex}
+                    onFocus={() =>
+                      setState((current) => ({
+                        ...current,
+                        appearance: {
+                          ...current.appearance,
+                          accentColor: "custom",
+                        },
+                      }))
+                    }
+                    onChange={(event) =>
+                      setState((current) => ({
+                        ...current,
+                        appearance: {
+                          accentColor: "custom",
+                          accentHex: event.target.value,
+                        },
+                      }))
+                    }
+                    placeholder="#268987"
+                    className={cn(
+                      "h-10 rounded-[0.75rem] bg-white/88 font-mono text-xs uppercase tracking-[0.08em]",
+                      customAccentInvalid &&
+                        "border-destructive/45 focus-visible:ring-destructive/20"
+                    )}
+                  />
+                </div>
+                <p
+                  className={cn(
+                    "mt-2 text-xs leading-5 text-muted-foreground",
+                    customAccentInvalid && "text-destructive"
+                  )}
+                >
+                  {customAccentInvalid
+                    ? "Use a valid HEX value like #2f6fbd."
+                    : "Use your own brand color if it is not listed."}
+                </p>
+              </div>
             </div>
 
             <div
               className="rounded-[1.05rem] border border-border/80 bg-white/88 p-4 shadow-[0_16px_34px_rgba(20,32,51,0.04)]"
               style={
                 {
-                  "--preview-accent": state.appearance.accentHex,
+                  "--preview-accent": previewAccent,
                 } as CSSProperties
               }
             >
@@ -498,7 +609,7 @@ export function SettingsWorkspace({
                 </div>
                 <div
                   className="rounded-[0.95rem] border bg-white px-4 py-3"
-                  style={{ borderColor: state.appearance.accentHex }}
+                  style={{ borderColor: previewAccent }}
                 >
                   <p className="text-sm font-semibold text-foreground">
                     Active navigation
