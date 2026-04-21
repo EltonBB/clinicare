@@ -64,6 +64,9 @@ export async function completeWorkspaceTourAction(): Promise<{
   ok: boolean;
   error?: string;
 }> {
+  const { business } = await requireCurrentWorkspace("/dashboard", {
+    missingBusinessRedirect: "/onboarding",
+  });
   const supabase = await createClient();
   const {
     data: { user },
@@ -80,6 +83,7 @@ export async function completeWorkspaceTourAction(): Promise<{
   const metadata = {
     ...(user.user_metadata ?? {}),
     workspace_tour_completed_at: new Date().toISOString(),
+    workspace_tour_completed_business_id: business.id,
   };
 
   const { error } = await supabase.auth.updateUser({

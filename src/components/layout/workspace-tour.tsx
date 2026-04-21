@@ -127,9 +127,9 @@ const tourSteps: TourStep[] = [
   },
 ];
 
-function readTourState(): TourState {
+function readTourState(storageKey: string): TourState {
   try {
-    const raw = window.localStorage.getItem(TOUR_STORAGE_KEY);
+    const raw = window.localStorage.getItem(storageKey);
     if (!raw) {
       return initialTourState;
     }
@@ -147,12 +147,12 @@ function readTourState(): TourState {
   }
 }
 
-function writeTourState(state: TourState) {
-  window.localStorage.setItem(TOUR_STORAGE_KEY, JSON.stringify(state));
+function writeTourState(storageKey: string, state: TourState) {
+  window.localStorage.setItem(storageKey, JSON.stringify(state));
 }
 
-function clearTourState() {
-  writeTourState({
+function clearTourState(storageKey: string) {
+  writeTourState(storageKey, {
     active: false,
     currentStepIndex: 0,
     completed: true,
@@ -192,11 +192,14 @@ function toRect(element: HTMLElement): Rect {
 
 export function WorkspaceTour({
   initialCompleted = false,
+  scopeId = "default",
 }: {
   initialCompleted?: boolean;
+  scopeId?: string;
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const storageKey = `${TOUR_STORAGE_KEY}:${scopeId}`;
   const [tourState, setTourState] = useState<TourState>(initialTourState);
   const [targetRect, setTargetRect] = useState<Rect | null>(null);
 
@@ -208,11 +211,11 @@ export function WorkspaceTour({
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      const saved = readTourState();
+      const saved = readTourState(storageKey);
 
       if (initialCompleted) {
         if (!saved.completed) {
-          clearTourState();
+          clearTourState(storageKey);
         }
         setTourState({
           active: false,
@@ -234,7 +237,7 @@ export function WorkspaceTour({
 
       if (pathname === "/dashboard") {
         const nextState = { active: true, currentStepIndex: 0, completed: false };
-        writeTourState(nextState);
+        writeTourState(storageKey, nextState);
         setTourState(nextState);
       }
     });
@@ -242,7 +245,7 @@ export function WorkspaceTour({
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [initialCompleted, pathname]);
+  }, [initialCompleted, pathname, storageKey]);
 
   useEffect(() => {
     if (!isOpen || !currentStep) {
@@ -283,7 +286,7 @@ export function WorkspaceTour({
               completed: false,
             };
 
-            writeTourState(nextState);
+            writeTourState(storageKey, nextState);
             setTourState(nextState);
           });
         };
@@ -344,7 +347,7 @@ export function WorkspaceTour({
       window.removeEventListener("resize", updateRect);
       window.removeEventListener("scroll", updateRect, true);
     };
-  }, [currentStep, isOpen, pathname, tourState.currentStepIndex]);
+  }, [currentStep, isOpen, pathname, storageKey, tourState.currentStepIndex]);
 
   const coachmarkStyle = useMemo(() => {
     if (!currentStep || typeof window === "undefined") {
@@ -418,7 +421,7 @@ export function WorkspaceTour({
   }, [currentStep, targetRect]);
 
   function finishTour() {
-    clearTourState();
+    clearTourState(storageKey);
     setTargetRect(null);
     setTourState({
       active: false,
@@ -436,7 +439,7 @@ export function WorkspaceTour({
       completed: false,
     };
 
-    writeTourState(nextState);
+    writeTourState(storageKey, nextState);
     setTourState(nextState);
 
     if (nextStep && pathname !== nextStep.path) {
