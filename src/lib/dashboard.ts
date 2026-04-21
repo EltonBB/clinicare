@@ -37,6 +37,7 @@ export type DashboardPlanSummary = {
 export type DashboardWorkspaceState = {
   clientCount: number;
   appointmentCount: number;
+  dashboardFocus: string;
   recentClientId?: string;
   scheduleState: "no-clients" | "no-appointments" | "no-today" | "active";
 };
@@ -121,6 +122,11 @@ export function buildDashboardViewFromWorkspace(args: {
   const bookingHref = recentClientId
     ? `/calendar?new=1&client=${recentClientId}&date=${todayKey}`
     : `/calendar?new=1&date=${todayKey}`;
+  const dashboardFocus = ["appointments", "clients", "inbox"].includes(
+    business.dashboardFocus
+  )
+    ? business.dashboardFocus
+    : "appointments";
   const scheduleState =
     clientCount === 0
       ? "no-clients"
@@ -129,21 +135,32 @@ export function buildDashboardViewFromWorkspace(args: {
         : appointments.length === 0
           ? "no-today"
           : "active";
+  const appointmentAction: DashboardQuickAction = {
+    label: appointmentCount === 0 ? "Book first appointment" : "New appointment",
+    href: bookingHref,
+    tone: "primary",
+  };
+  const clientAction: DashboardQuickAction = {
+    label: "New client",
+    href: "/clients?new=1",
+    tone: "secondary",
+  };
+  const inboxAction: DashboardQuickAction = {
+    label: "Open inbox",
+    href: "/inbox",
+    tone: "secondary",
+  };
   const quickActions: DashboardQuickAction[] =
     clientCount === 0
       ? [
           { label: "Add first client", href: "/clients?new=1&next=calendar", tone: "primary" },
-          { label: "Open inbox", href: "/inbox", tone: "secondary" },
+          inboxAction,
         ]
-      : [
-          {
-            label: appointmentCount === 0 ? "Book first appointment" : "New appointment",
-            href: bookingHref,
-            tone: "primary",
-          },
-          { label: "New client", href: "/clients?new=1", tone: "secondary" },
-          { label: "Open inbox", href: "/inbox", tone: "secondary" },
-        ];
+      : dashboardFocus === "clients"
+        ? [{ ...clientAction, tone: "primary" }, { ...appointmentAction, tone: "secondary" }, inboxAction]
+        : dashboardFocus === "inbox"
+          ? [{ ...inboxAction, tone: "primary" }, { ...appointmentAction, tone: "secondary" }, clientAction]
+          : [appointmentAction, clientAction, inboxAction];
 
   return {
     businessName: business.name,
@@ -171,6 +188,7 @@ export function buildDashboardViewFromWorkspace(args: {
     workspaceState: {
       clientCount,
       appointmentCount,
+      dashboardFocus,
       recentClientId,
       scheduleState,
     },

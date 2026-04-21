@@ -23,7 +23,7 @@ export function BrandMark({
         className
       )}
     >
-      <span className="flex size-10 items-center justify-center rounded-[0.95rem] bg-[linear-gradient(135deg,rgba(92,143,212,0.95),rgba(38,137,135,0.96))] text-sm font-semibold text-primary-foreground shadow-[0_12px_24px_rgba(38,137,135,0.22)]">
+      <span className="flex size-10 items-center justify-center rounded-[0.95rem] bg-primary text-sm font-semibold text-primary-foreground shadow-[0_12px_24px_rgba(38,137,135,0.18)]">
         V
       </span>
       {!compact ? (

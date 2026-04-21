@@ -20,6 +20,16 @@ import {
 } from "@/lib/onboarding";
 import { planDisplayName, planStatusLabel } from "@/lib/billing";
 import { normalizePhone } from "@/lib/inbox";
+import {
+  defaultBrandAccent,
+  resolveBrandAccentPreset,
+  type BrandAccentPresetId,
+} from "@/lib/branding";
+import {
+  reminderPresetForBusinessType,
+  resolveReminderPreset,
+  type ReminderPresetId,
+} from "@/lib/reminder-presets";
 
 export type StaffRole = "Owner" | "Manager" | "Specialist" | "Reception";
 
@@ -30,6 +40,7 @@ export type SettingsStaffMember = {
 };
 
 export type SettingsReminders = {
+  preset: ReminderPresetId;
   twentyFourHour: boolean;
   twoHour: boolean;
   template: string;
@@ -41,6 +52,10 @@ export type SettingsState = {
     businessType: BusinessType;
     ownerName: string;
     supportEmail: string;
+  };
+  appearance: {
+    accentColor: BrandAccentPresetId;
+    accentHex: string;
   };
   workingHours: WorkingHoursState;
   staff: SettingsStaffMember[];
@@ -440,14 +455,26 @@ export function buildSettingsStateFromWorkspace({
   reminderSettings,
   whatsappConnection,
 }: SettingsWorkspaceData): SettingsState {
+  const businessType = businessTypes.includes(business.businessType as BusinessType)
+    ? (business.businessType as BusinessType)
+    : "Clinic";
+  const accentPreset = resolveBrandAccentPreset(business.brandAccentColor);
+  const reminderPreset = resolveReminderPreset(
+    reminderSettings?.reminderPreset ??
+      reminderPresetForBusinessType(businessType).id
+  );
+  const reminderTemplate = reminderSettings?.template ?? reminderPreset.template;
+
   return {
     business: {
       businessName: business.name,
-      businessType: businessTypes.includes(business.businessType as BusinessType)
-        ? (business.businessType as BusinessType)
-        : "Clinic",
+      businessType,
       ownerName,
       supportEmail,
+    },
+    appearance: {
+      accentColor: accentPreset.id ?? defaultBrandAccent.id,
+      accentHex: accentPreset.value ?? defaultBrandAccent.value,
     },
     workingHours: normalizeWorkingHoursFromDatabase(businessHours),
     staff: normalizeSettingsStaff(staffMembers, ownerName),
@@ -455,20 +482,17 @@ export function buildSettingsStateFromWorkspace({
       phoneNumber: business.whatsappNumber ?? "",
       sendReminders: business.whatsappEnabled,
       reminderWindow: reminderSettings?.reminderWindow ?? "24 hours before",
-      template:
-        reminderSettings?.template ??
-        "Hi {client_name}, this is a reminder for your appointment at {time}. Reply here if you need to reschedule.",
+      template: reminderTemplate,
       connection: buildWhatsAppConnectionSummary(
         whatsappConnection,
         business.whatsappNumber ?? ""
       ),
     },
     reminders: {
+      preset: reminderPreset.id,
       twentyFourHour: reminderSettings?.send24HourReminder ?? true,
       twoHour: reminderSettings?.send2HourReminder ?? true,
-      template:
-        reminderSettings?.template ??
-        "Hi {client_name}, this is a reminder for your appointment at {time}. Reply here if you need to reschedule.",
+      template: reminderTemplate,
     },
     billing: buildBillingSummary(business),
   };

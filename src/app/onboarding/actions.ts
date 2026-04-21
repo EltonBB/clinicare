@@ -1,8 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { beginWhatsAppLiveConnection } from "@/lib/whatsapp-connection";
-import { normalizePhone } from "@/lib/inbox";
+import { reminderPresetForBusinessType } from "@/lib/reminder-presets";
 import {
   weekdayOrder,
   normalizeOnboardingState,
@@ -31,9 +30,8 @@ async function bootstrapWorkspaceFromOnboarding(user: {
       ? metadata.business_type.trim()
       : "Clinic";
   const defaultTemplate =
-    nextState.whatsapp.template ||
-    "Hi {client_name}, this is a reminder for your appointment at {time}. Reply here if you need to reschedule.";
-  const normalizedWhatsAppNumber = normalizePhone(nextState.whatsapp.phoneNumber);
+    reminderPresetForBusinessType(businessType).template;
+  const reminderPreset = reminderPresetForBusinessType(businessType);
 
   return prisma.$transaction(async (tx) => {
     const business = await tx.business.upsert({
@@ -43,22 +41,18 @@ async function bootstrapWorkspaceFromOnboarding(user: {
       update: {
         name: businessName,
         businessType,
-        whatsappNumber: normalizedWhatsAppNumber || null,
-        whatsappEnabled: nextState.whatsapp.sendReminders,
+        dashboardFocus: nextState.dashboard.focus,
       },
       create: {
         ownerId: user.id,
         name: businessName,
         businessType,
+        dashboardFocus: nextState.dashboard.focus,
         plan: "BASIC",
         planStatus: "ACTIVE",
-        whatsappNumber: normalizedWhatsAppNumber || null,
-        whatsappEnabled: nextState.whatsapp.sendReminders,
         trialEndsAt: null,
       },
     });
-
-    const requestedPhoneNumber = normalizedWhatsAppNumber || null;
 
     await tx.whatsAppConnection.upsert({
       where: {
@@ -67,15 +61,15 @@ async function bootstrapWorkspaceFromOnboarding(user: {
       update: {
         provider: "TWILIO",
         mode: "LIVE",
-        status: requestedPhoneNumber ? "PENDING_SETUP" : "DISCONNECTED",
-        requestedPhoneNumber,
+        status: "DISCONNECTED",
+        requestedPhoneNumber: null,
         sandboxRecipientPhoneNumber: null,
         senderPhoneNumber: null,
         externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
         externalSenderId: null,
-        verificationStatus: requestedPhoneNumber ? "NOT_STARTED" : "NOT_STARTED",
+        verificationStatus: "NOT_STARTED",
         displayNameStatus: "UNKNOWN",
-        onboardingStartedAt: requestedPhoneNumber ? new Date() : null,
+        onboardingStartedAt: null,
         connectedAt: null,
         lastError: null,
         lastSyncedAt: new Date(),
@@ -84,15 +78,15 @@ async function bootstrapWorkspaceFromOnboarding(user: {
         businessId: business.id,
         provider: "TWILIO",
         mode: "LIVE",
-        status: requestedPhoneNumber ? "PENDING_SETUP" : "DISCONNECTED",
-        requestedPhoneNumber,
+        status: "DISCONNECTED",
+        requestedPhoneNumber: null,
         sandboxRecipientPhoneNumber: null,
         senderPhoneNumber: null,
         externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
         externalSenderId: null,
         verificationStatus: "NOT_STARTED",
         displayNameStatus: "UNKNOWN",
-        onboardingStartedAt: requestedPhoneNumber ? new Date() : null,
+        onboardingStartedAt: null,
         connectedAt: null,
         lastError: null,
         lastSyncedAt: new Date(),
@@ -152,16 +146,18 @@ async function bootstrapWorkspaceFromOnboarding(user: {
         businessId: business.id,
       },
       update: {
-        send24HourReminder: nextState.whatsapp.sendReminders,
-        send2HourReminder: nextState.whatsapp.sendReminders,
-        reminderWindow: nextState.whatsapp.reminderWindow,
+        send24HourReminder: true,
+        send2HourReminder: true,
+        reminderWindow: "24 hours before",
+        reminderPreset: reminderPreset.id,
         template: defaultTemplate,
       },
       create: {
         businessId: business.id,
-        send24HourReminder: nextState.whatsapp.sendReminders,
-        send2HourReminder: nextState.whatsapp.sendReminders,
-        reminderWindow: nextState.whatsapp.reminderWindow,
+        send24HourReminder: true,
+        send2HourReminder: true,
+        reminderWindow: "24 hours before",
+        reminderPreset: reminderPreset.id,
         template: defaultTemplate,
       },
     });
@@ -189,21 +185,7 @@ export async function saveOnboardingStateAction(
 
   if (normalizedState.completed) {
     try {
-      const business = await bootstrapWorkspaceFromOnboarding(user, normalizedState);
-      if (business.whatsappNumber?.trim()) {
-        try {
-          await beginWhatsAppLiveConnection({
-            businessId: business.id,
-            businessName: business.name,
-            requestedPhoneNumber: business.whatsappNumber,
-          });
-        } catch (error) {
-          console.error("Failed to auto-start live WhatsApp connection during onboarding.", {
-            businessId: business.id,
-            error,
-          });
-        }
-      }
+      await bootstrapWorkspaceFromOnboarding(user, normalizedState);
     } catch (error) {
       return {
         ok: false,

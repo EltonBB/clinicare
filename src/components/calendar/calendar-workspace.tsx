@@ -17,7 +17,13 @@ import {
   subMonths,
   subWeeks,
 } from "date-fns";
-import { startTransition, useMemo, useState, useTransition } from "react";
+import {
+  startTransition,
+  useDeferredValue,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 import {
   CalendarPlus2,
   ChevronLeft,
@@ -76,7 +82,7 @@ const slotHours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
 
 const toneClasses: Record<CalendarAppointment["tone"], string> = {
   primary:
-    "border-primary/20 bg-[linear-gradient(135deg,rgba(92,143,212,0.95),rgba(38,137,135,0.92))] text-primary-foreground shadow-[0_18px_32px_rgba(38,137,135,0.18)]",
+    "border-primary/20 bg-primary text-primary-foreground shadow-[0_18px_32px_rgba(20,32,51,0.12)]",
   secondary:
     "border-[#cfddf4] bg-[linear-gradient(135deg,rgba(240,245,255,0.95),rgba(224,238,255,0.98))] text-[#36588f]",
   muted:
@@ -152,7 +158,7 @@ function AppointmentCard({
       type="button"
       onClick={() => onSelect(appointment)}
       className={cn(
-        "interactive-lift absolute inset-x-2 overflow-hidden rounded-[0.95rem] border px-3 py-2 text-left transition-[box-shadow,transform] duration-200",
+        "interactive-lift absolute inset-x-0 overflow-hidden rounded-none border px-4 py-2 text-left transition-[box-shadow,transform] duration-200",
         toneClasses[appointment.tone]
       )}
       style={{
@@ -194,6 +200,101 @@ function NativeSelect({
         </option>
       ))}
     </select>
+  );
+}
+
+function ClientSearchSelect({
+  clients,
+  value,
+  onChange,
+}: {
+  clients: CalendarSelectOption[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const selectedClient = clients.find((client) => client.id === value);
+  const [query, setQuery] = useState(selectedClient?.name ?? "");
+  const [isOpen, setIsOpen] = useState(false);
+  const deferredQuery = useDeferredValue(query.trim().toLowerCase());
+  const filteredClients = useMemo(() => {
+    if (!deferredQuery) {
+      return clients.slice(0, 6);
+    }
+
+    return clients
+      .filter((client) => {
+        const haystack = `${client.name} ${client.phone ?? ""}`.toLowerCase();
+        return haystack.includes(deferredQuery);
+      })
+      .slice(0, 6);
+  }, [clients, deferredQuery]);
+
+  function selectClient(client: CalendarSelectOption) {
+    onChange(client.id);
+    setQuery(client.name);
+    setIsOpen(false);
+  }
+
+  return (
+    <div className="relative">
+      <Input
+        value={isOpen ? query : selectedClient?.name ?? query}
+        onFocus={() => {
+          setIsOpen(true);
+          setQuery(selectedClient?.name ?? "");
+        }}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          setIsOpen(true);
+        }}
+        onBlur={() => {
+          window.setTimeout(() => setIsOpen(false), 120);
+        }}
+        placeholder="Search name or phone"
+        className="h-11 rounded-[0.9rem] bg-white/84"
+      />
+      {selectedClient ? (
+        <div className="mt-2 rounded-[0.8rem] border border-primary/15 bg-primary/8 px-3 py-2">
+          <p className="text-xs font-semibold text-primary">
+            Selected: {selectedClient.name}
+          </p>
+          {selectedClient.phone ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {selectedClient.phone}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {isOpen ? (
+        <div className="absolute z-20 mt-2 max-h-64 w-full overflow-y-auto rounded-[0.95rem] border border-border/80 bg-white/98 p-1.5 shadow-[0_18px_42px_rgba(20,32,51,0.12)]">
+          {filteredClients.length > 0 ? (
+            filteredClients.map((client) => (
+              <button
+                key={client.id}
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => selectClient(client)}
+                className={cn(
+                  "w-full rounded-[0.75rem] px-3 py-2 text-left transition-colors duration-150 hover:bg-muted/70",
+                  value === client.id && "bg-primary/8"
+                )}
+              >
+                <span className="block text-sm font-semibold text-foreground">
+                  {client.name}
+                </span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  {client.phone || "No phone saved"}
+                </span>
+              </button>
+            ))
+          ) : (
+            <div className="px-3 py-3 text-sm text-muted-foreground">
+              No clients match this search.
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -753,12 +854,9 @@ export function CalendarWorkspace({
                   <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     Client
                   </label>
-                  <NativeSelect
+                  <ClientSearchSelect
+                    clients={initialView.clients}
                     value={draft.clientId}
-                    options={initialView.clients.map((client) => ({
-                      value: client.id,
-                      label: client.name,
-                    }))}
                     onChange={(value) =>
                       setDraft((current) => ({ ...current, clientId: value }))
                     }

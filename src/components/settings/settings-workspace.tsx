@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useState, useTransition, type CSSProperties } from "react";
 import { ArrowUpRight, Plus, Trash2 } from "lucide-react";
 
 import {
@@ -11,6 +11,8 @@ import {
   submitWhatsAppVerificationCodeAction,
 } from "@/app/(workspace)/settings/actions";
 import { businessTypes } from "@/lib/constants";
+import { brandAccentPresets } from "@/lib/branding";
+import { reminderPresetOptions } from "@/lib/reminder-presets";
 import { cn } from "@/lib/utils";
 import {
   reminderWindows,
@@ -139,6 +141,7 @@ export function SettingsWorkspace({
 }: SettingsWorkspaceProps) {
   const sectionLinks = [
     { href: "#business-details", label: "Business details" },
+    { href: "#appearance", label: "Appearance" },
     { href: "#working-hours", label: "Working hours" },
     { href: "#staff-management", label: "Staff management" },
     { href: "#whatsapp-configuration", label: "WhatsApp" },
@@ -424,6 +427,85 @@ export function SettingsWorkspace({
                 disabled
                 className="h-11 rounded-[0.75rem] bg-white/92"
               />
+            </div>
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          id="appearance"
+          title="Appearance"
+          description="Choose the accent color used for primary actions, active states, highlights, and workspace feedback."
+        >
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {brandAccentPresets.map((preset) => {
+                const selected = state.appearance.accentColor === preset.id;
+
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() =>
+                      setState((current) => ({
+                        ...current,
+                        appearance: {
+                          accentColor: preset.id,
+                          accentHex: preset.value,
+                        },
+                      }))
+                    }
+                    className={cn(
+                      "group rounded-[1rem] border bg-white/84 p-3 text-left transition-[border-color,box-shadow,transform,background-color] duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_16px_34px_rgba(20,32,51,0.055)]",
+                      selected
+                        ? "border-primary/55 shadow-[0_18px_38px_rgba(20,32,51,0.07)] ring-2 ring-primary/15"
+                        : "border-border/80"
+                    )}
+                  >
+                    <span
+                      className="block h-14 rounded-[0.85rem] shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
+                      style={{ backgroundColor: preset.value }}
+                    />
+                    <span className="mt-3 flex items-center justify-between gap-2">
+                      <span className="text-sm font-semibold text-foreground">
+                        {preset.name}
+                      </span>
+                      <span
+                        className={cn(
+                          "size-2.5 rounded-full transition-transform duration-200",
+                          selected ? "scale-100 bg-primary" : "scale-75 bg-border"
+                        )}
+                      />
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div
+              className="rounded-[1.05rem] border border-border/80 bg-white/88 p-4 shadow-[0_16px_34px_rgba(20,32,51,0.04)]"
+              style={
+                {
+                  "--preview-accent": state.appearance.accentHex,
+                } as CSSProperties
+              }
+            >
+              <FieldLabel>Live preview</FieldLabel>
+              <div className="mt-4 space-y-3">
+                <div className="rounded-[0.95rem] bg-[var(--preview-accent)] px-4 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(20,32,51,0.08)]">
+                  Primary action
+                </div>
+                <div
+                  className="rounded-[0.95rem] border bg-white px-4 py-3"
+                  style={{ borderColor: state.appearance.accentHex }}
+                >
+                  <p className="text-sm font-semibold text-foreground">
+                    Active navigation
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    The selected accent is applied across the workspace after saving.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </SettingsSection>
@@ -738,6 +820,49 @@ export function SettingsWorkspace({
           description="Define the reminder cadence and shared template that appointments can reuse across the MVP workflow."
         >
           <div className="space-y-4">
+            <div className="space-y-3">
+              <FieldLabel>Business preset</FieldLabel>
+              <div className="grid gap-3 md:grid-cols-3">
+                {reminderPresetOptions.map((preset) => {
+                  const selected = state.reminders.preset === preset.id;
+
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() =>
+                        setState((current) => ({
+                          ...current,
+                          reminders: {
+                            ...current.reminders,
+                            preset: preset.id,
+                            template: preset.template,
+                          },
+                          whatsapp: {
+                            ...current.whatsapp,
+                            template: preset.template,
+                          },
+                        }))
+                      }
+                      className={cn(
+                        "rounded-[0.95rem] border px-4 py-3 text-left transition-[border-color,box-shadow,transform,background-color] duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_14px_30px_rgba(20,32,51,0.045)]",
+                        selected
+                          ? "border-primary/50 bg-primary/8 text-foreground"
+                          : "border-border/80 bg-muted/35 text-muted-foreground"
+                      )}
+                    >
+                      <span className="block text-sm font-semibold">
+                        {preset.label}
+                      </span>
+                      <span className="mt-1 block text-xs leading-5">
+                        Template tuned for {preset.businessType.toLowerCase()} workflows.
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="grid gap-4 md:grid-cols-2">
               <div className="flex items-center justify-between rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
                 <div>

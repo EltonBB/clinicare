@@ -9,23 +9,25 @@ datasource db {
 }
 
 model Business {
-  id               String             @id @default(cuid())
-  ownerId          String             @unique
-  name             String
-  businessType     String
-  plan             BusinessPlan       @default(BASIC)
-  planStatus       BusinessPlanStatus @default(ACTIVE)
-  whatsappNumber   String?
-  whatsappEnabled  Boolean            @default(false)
-  trialEndsAt      DateTime?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  staffMembers     StaffMember[]
-  clients          Client[]
-  appointments     Appointment[]
-  businessHours    BusinessHours[]
-  conversations    Conversation[]
-  reminderSettings ReminderSettings?
+  id                 String              @id @default(cuid())
+  ownerId            String              @unique
+  name               String
+  businessType       String
+  dashboardFocus     String              @default("appointments")
+  brandAccentColor   String?
+  plan               BusinessPlan        @default(BASIC)
+  planStatus         BusinessPlanStatus  @default(ACTIVE)
+  whatsappNumber     String?
+  whatsappEnabled    Boolean             @default(false)
+  trialEndsAt        DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  staffMembers       StaffMember[]
+  clients            Client[]
+  appointments       Appointment[]
+  businessHours      BusinessHours[]
+  conversations      Conversation[]
+  reminderSettings   ReminderSettings?
   whatsappConnection WhatsAppConnection?
 }
 
@@ -45,71 +47,71 @@ model BusinessHours {
 }
 
 model StaffMember {
-  id          String        @id @default(cuid())
-  businessId  String
-  business    Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  name        String
-  role        String
-  isActive    Boolean       @default(true)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id           String        @id @default(cuid())
+  businessId   String
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name         String
+  role         String
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
   appointments Appointment[]
 
   @@index([businessId])
 }
 
 model Client {
-  id           String        @id @default(cuid())
-  businessId   String
-  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  name         String
-  email        String?
-  phone        String
-  notes        String?
-  status       ClientEngagementStatus @default(ACTIVE)
-  preferredChannel String?
+  id                String                 @id @default(cuid())
+  businessId        String
+  business          Business               @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name              String
+  email             String?
+  phone             String
+  notes             String?
+  status            ClientEngagementStatus @default(ACTIVE)
+  preferredChannel  String?
   assignedStaffName String?
-  tags         String[]      @default([])
-  isArchived   Boolean       @default(false)
-  lastVisitAt  DateTime?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  appointments Appointment[]
-  messages     Message[]
+  tags              String[]               @default([])
+  isArchived        Boolean                @default(false)
+  lastVisitAt       DateTime?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  appointments      Appointment[]
+  messages          Message[]
 
+  @@unique([businessId, phone])
   @@index([businessId, isArchived])
   @@index([businessId, phone])
-  @@unique([businessId, phone])
 }
 
 model Appointment {
-  id           String            @id @default(cuid())
-  businessId   String
-  business     Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  clientId     String
-  client       Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id            String                @id @default(cuid())
+  businessId    String
+  business      Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  clientId      String
+  client        Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
   staffMemberId String?
-  staffMember  StaffMember?      @relation(fields: [staffMemberId], references: [id], onDelete: SetNull)
-  title        String
-  startAt      DateTime
-  endAt        DateTime
-  status       AppointmentStatus @default(PENDING)
-  notes        String?
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  reminders    AppointmentReminder[]
+  staffMember   StaffMember?          @relation(fields: [staffMemberId], references: [id], onDelete: SetNull)
+  title         String
+  startAt       DateTime
+  endAt         DateTime
+  status        AppointmentStatus     @default(PENDING)
+  notes         String?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  reminders     AppointmentReminder[]
 
   @@index([businessId, startAt])
   @@index([clientId, startAt])
 }
 
 model AppointmentReminder {
-  id            String                @id @default(cuid())
+  id            String                  @id @default(cuid())
   appointmentId String
-  appointment   Appointment           @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointment   Appointment             @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   type          AppointmentReminderType
-  sentAt        DateTime              @default(now())
-  createdAt     DateTime              @default(now())
+  sentAt        DateTime                @default(now())
+  createdAt     DateTime                @default(now())
 
   @@unique([appointmentId, type])
   @@index([appointmentId, type])
@@ -126,23 +128,23 @@ model Conversation {
   updatedAt   DateTime  @updatedAt
   messages    Message[]
 
-  @@index([businessId, phoneNumber])
   @@unique([businessId, phoneNumber])
+  @@index([businessId, phoneNumber])
 }
 
 model Message {
-  id             String           @id @default(cuid())
-  conversationId String?
-  conversation   Conversation?    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  clientId       String?
-  client         Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  direction      MessageDirection
-  body           String
+  id                 String                 @id @default(cuid())
+  conversationId     String?
+  conversation       Conversation?          @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  clientId           String?
+  client             Client?                @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  direction          MessageDirection
+  body               String
   providerMessageSid String?
-  deliveryStatus MessageDeliveryStatus?
-  deliveryErrorCode String?
-  deliveryUpdatedAt DateTime?
-  sentAt         DateTime         @default(now())
+  deliveryStatus     MessageDeliveryStatus?
+  deliveryErrorCode  String?
+  deliveryUpdatedAt  DateTime?
+  sentAt             DateTime               @default(now())
 
   @@index([conversationId, sentAt])
   @@index([providerMessageSid])
@@ -155,40 +157,41 @@ model ReminderSettings {
   send24HourReminder Boolean  @default(true)
   send2HourReminder  Boolean  @default(true)
   reminderWindow     String?
+  reminderPreset     String?
   template           String?
   updatedAt          DateTime @updatedAt
 }
 
 model WhatsAppConnection {
-  id                   String                 @id @default(cuid())
-  businessId           String                 @unique
-  business             Business               @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  provider             WhatsAppProvider
-  mode                 WhatsAppConnectionMode @default(SANDBOX)
-  status               WhatsAppConnectionStatus @default(PENDING_SETUP)
-  requestedPhoneNumber String?
+  id                          String                     @id @default(cuid())
+  businessId                  String                     @unique
+  business                    Business                   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  provider                    WhatsAppProvider
+  mode                        WhatsAppConnectionMode     @default(SANDBOX)
+  status                      WhatsAppConnectionStatus   @default(PENDING_SETUP)
+  requestedPhoneNumber        String?
   sandboxRecipientPhoneNumber String?
-  senderPhoneNumber    String?
-  externalAccountId    String?
-  externalSenderId     String?
-  verificationStatus   WhatsAppVerificationStatus @default(NOT_STARTED)
-  displayNameStatus    WhatsAppDisplayNameStatus  @default(UNKNOWN)
-  onboardingStartedAt  DateTime?
-  lastError            String?
-  connectedAt          DateTime?
-  lastSyncedAt         DateTime?
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
+  senderPhoneNumber           String?
+  externalAccountId           String?
+  externalSenderId            String?
+  verificationStatus          WhatsAppVerificationStatus @default(NOT_STARTED)
+  displayNameStatus           WhatsAppDisplayNameStatus  @default(UNKNOWN)
+  onboardingStartedAt         DateTime?
+  lastError                   String?
+  connectedAt                 DateTime?
+  lastSyncedAt                DateTime?
+  createdAt                   DateTime                   @default(now())
+  updatedAt                   DateTime                   @updatedAt
 
   @@index([provider, status])
 }
 
 model EmailVerificationReceipt {
-  ticket     String   @id
+  ticket     String    @id
   email      String?
   verifiedAt DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   @@index([email])
   @@index([verifiedAt])

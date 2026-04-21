@@ -3,17 +3,11 @@ import { redirect } from "next/navigation";
 import { ArrowRight, CalendarDays, CheckCircle2, ShieldCheck } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
-import { OnboardingWhatsAppSetup } from "@/components/onboarding/onboarding-whatsapp-setup";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Card, CardContent } from "@/components/ui/card";
 import { getCurrentBusiness } from "@/lib/business";
 import { isOnboardingCompleted } from "@/lib/onboarding";
-import { buildWhatsAppConnectionSummary } from "@/lib/settings";
 import { cn } from "@/lib/utils";
-import {
-  isLiveWhatsAppConnectionReady,
-  syncWhatsAppConnectionForBusiness,
-} from "@/lib/whatsapp-connection";
 import { createClient } from "@/utils/supabase/server";
 
 export default async function OnboardingCompletePage() {
@@ -39,32 +33,6 @@ export default async function OnboardingCompletePage() {
 
   if (!business) {
     redirect("/onboarding");
-  }
-
-  const whatsappConnection = await syncWhatsAppConnectionForBusiness(business.id);
-  const isWhatsAppReady = isLiveWhatsAppConnectionReady(whatsappConnection);
-  const hasRequestedWhatsAppNumber = Boolean(business.whatsappNumber?.trim());
-  const connectionSummary = buildWhatsAppConnectionSummary(
-    whatsappConnection,
-    business.whatsappNumber ?? ""
-  );
-
-  if (hasRequestedWhatsAppNumber && !isWhatsAppReady) {
-    return (
-      <div className="min-h-screen bg-background">
-        <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 sm:px-6 lg:px-8">
-          <div className="border-b border-border pb-6">
-            <BrandMark href="/dashboard" includeSubtitle={false} />
-          </div>
-          <div className="mx-auto flex w-full flex-1 flex-col items-center justify-center py-12">
-            <OnboardingWhatsAppSetup
-              clinicName={business.name}
-              connection={connectionSummary}
-            />
-          </div>
-        </div>
-      </div>
-    );
   }
 
   return (
@@ -111,24 +79,35 @@ export default async function OnboardingCompletePage() {
                 <div className="space-y-2 text-left">
                   <p className="text-sm font-semibold text-foreground">Status</p>
                   <p className="text-sm leading-6 text-muted-foreground">
-                    Onboarding is complete. The workspace can now open directly to
-                    the dashboard on future visits.
+                    Onboarding is complete. WhatsApp setup is available from
+                    Settings when you are ready to connect the clinic number.
                   </p>
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          <Link
-            href="/dashboard"
-            className={cn(
-              buttonVariants({ size: "lg" }),
-              "mt-10 h-12 rounded-[0.95rem] px-5"
-            )}
-          >
-            Go to dashboard
-            <ArrowRight data-icon="inline-end" />
-          </Link>
+          <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Link
+              href="/dashboard"
+              className={cn(
+                buttonVariants({ size: "lg" }),
+                "h-12 rounded-[0.95rem] px-5"
+              )}
+            >
+              Go to dashboard
+              <ArrowRight data-icon="inline-end" />
+            </Link>
+            <Link
+              href="/settings#whatsapp-configuration"
+              className={cn(
+                buttonVariants({ variant: "outline", size: "lg" }),
+                "h-12 rounded-[0.95rem] bg-white/78 px-5"
+              )}
+            >
+              Connect WhatsApp later
+            </Link>
+          </div>
         </div>
       </div>
     </div>

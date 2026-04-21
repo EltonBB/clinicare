@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 
 import { refreshWorkspaceNotificationsAction } from "@/app/(workspace)/actions";
 import { BrandMark } from "@/components/brand-mark";
@@ -11,6 +11,7 @@ import { NotificationsMenu } from "@/components/layout/notifications-menu";
 import { OwnerAccountDialog } from "@/components/layout/owner-account-dialog";
 import { WorkspaceTour } from "@/components/layout/workspace-tour";
 import { UpgradeModalTrigger } from "@/components/upgrade/upgrade-modal-trigger";
+import { resolveBrandAccentPreset } from "@/lib/branding";
 import { navigationItems } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +27,7 @@ type AppShellProps = {
   ownerName?: string;
   ownerEmail?: string;
   ownerPhone?: string;
+  brandAccentColor?: string | null;
   tourScopeId?: string;
   tourCompleted?: boolean;
   unreadCount?: number;
@@ -38,12 +40,14 @@ export function AppShell({
   ownerName = "Alex Rivera",
   ownerEmail = "owner@vela.app",
   ownerPhone = "",
+  brandAccentColor = null,
   tourScopeId = "default",
   tourCompleted = false,
   unreadCount = 0,
   notifications = [],
 }: AppShellProps) {
   const pathname = usePathname();
+  const accent = resolveBrandAccentPreset(brandAccentColor);
   const [liveUnreadCount, setLiveUnreadCount] = useState(unreadCount);
   const [liveNotifications, setLiveNotifications] = useState(notifications);
 
@@ -95,7 +99,18 @@ export function AppShell({
   }, [pathname]);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background">
+    <div
+      className="relative min-h-screen overflow-hidden bg-background"
+      style={
+        {
+          "--primary": accent.value,
+          "--ring": accent.shadow,
+          "--sidebar-primary": accent.value,
+          "--sidebar-ring": accent.shadow,
+          "--chart-1": accent.value,
+        } as CSSProperties
+      }
+    >
       <div className="relative flex min-h-screen">
         <aside className="hidden w-[284px] shrink-0 px-4 py-4 lg:flex">
           <div
@@ -114,7 +129,7 @@ export function AppShell({
               const navClasses = cn(
                 "interactive-lift flex items-center gap-3 rounded-[1rem] px-4 py-3 text-sm font-medium text-muted-foreground transition-[background-color,color,box-shadow,transform] duration-200 hover:bg-white hover:text-foreground hover:shadow-[0_8px_18px_rgba(20,32,51,0.035)]",
                 isActive &&
-                  "bg-white text-foreground shadow-[0_10px_22px_rgba(20,32,51,0.04)] ring-1 ring-border/70"
+                  "bg-primary/8 text-foreground shadow-[0_10px_22px_rgba(20,32,51,0.04)] ring-1 ring-primary/25"
               );
 
               if (item.href === "/inbox") {
@@ -222,7 +237,7 @@ export function AppShell({
               pathname === item.href || pathname.startsWith(`${item.href}/`);
             const mobileNavClasses = cn(
               "flex flex-col items-center gap-1 rounded-[1rem] px-2 py-2 text-[11px] font-medium text-muted-foreground transition-[background-color,color,transform] duration-200",
-              isActive && "bg-secondary/90 text-foreground shadow-[0_8px_18px_rgba(20,32,51,0.035)]"
+              isActive && "bg-primary/8 text-foreground shadow-[0_8px_18px_rgba(20,32,51,0.035)] ring-1 ring-primary/20"
             );
 
             if (item.href === "/inbox") {

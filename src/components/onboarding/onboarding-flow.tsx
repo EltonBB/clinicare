@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
+  CalendarDays,
   CheckCircle2,
   Clock3,
-  MessageCircleMore,
+  LayoutDashboard,
+  MessageSquareText,
   Users,
 } from "lucide-react";
 
@@ -20,7 +22,6 @@ import {
   ProgressLabel,
   ProgressValue,
 } from "@/components/ui/progress";
-import { Textarea } from "@/components/ui/textarea";
 import {
   onboardingSteps,
   weekdayOrder,
@@ -56,7 +57,6 @@ const timeOptions = [
 ];
 
 const staffRoles = ["Owner", "Manager", "Specialist", "Reception"];
-const reminderWindows = ["2 hours before", "24 hours before", "48 hours before"];
 
 const fieldInputClass =
   "h-12 rounded-[0.95rem] border-border bg-card px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70";
@@ -186,15 +186,36 @@ function getStepError(state: OnboardingState) {
         return "Add at least one staff member name before continuing.";
       }
       return null;
-    case 3:
-      if (!state.whatsapp.phoneNumber.trim()) {
-        return "Add a WhatsApp number to continue, or skip this step for now.";
-      }
-      return null;
     default:
       return null;
   }
 }
+
+const dashboardFocusOptions: Array<{
+  value: OnboardingState["dashboard"]["focus"];
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+}> = [
+  {
+    value: "appointments",
+    title: "Appointments first",
+    description: "Prioritize today's schedule, bookings, and quick appointment creation.",
+    icon: <CalendarDays className="size-5" />,
+  },
+  {
+    value: "clients",
+    title: "Clients first",
+    description: "Prioritize relationship management, profiles, and adding new clients.",
+    icon: <Users className="size-5" />,
+  },
+  {
+    value: "inbox",
+    title: "Inbox first",
+    description: "Prioritize WhatsApp replies, unread messages, and fast follow-up.",
+    icon: <MessageSquareText className="size-5" />,
+  },
+];
 
 export function OnboardingFlow({
   initialState,
@@ -245,11 +266,11 @@ export function OnboardingFlow({
           icon: <Users className="size-4" />,
           body: "For MVP, one staff profile is enough. You can add more people later in Settings without redoing onboarding.",
         };
-      case "whatsapp":
+      case "dashboard":
         return {
-          title: "Optional for now",
-          icon: <MessageCircleMore className="size-4" />,
-          body: "Connect WhatsApp now if the clinic is ready, or skip this step and finish it later from settings. You do not need to create clients or bookings during setup.",
+          title: "Dashboard behavior",
+          icon: <LayoutDashboard className="size-4" />,
+          body: "This changes the first shortcuts and empty states the clinic sees. The team can still use every feature from the sidebar.",
         };
       default:
         return null;
@@ -335,28 +356,6 @@ export function OnboardingFlow({
     persistState(state, {
       status: "Progress saved. You can continue onboarding anytime.",
     });
-  }
-
-  function handleSkipForNow() {
-    if (step.id !== "whatsapp") {
-      return;
-    }
-
-    persistState(
-      {
-        ...state,
-        completed: true,
-        whatsapp: {
-          ...state.whatsapp,
-          phoneNumber: "",
-          sendReminders: false,
-        },
-      },
-      {
-        complete: true,
-        status: "Skipped WhatsApp setup for now.",
-      }
-    );
   }
 
   function updateDay(
@@ -486,84 +485,49 @@ export function OnboardingFlow({
       );
     }
 
-    if (step.id === "whatsapp") {
+    if (step.id === "dashboard") {
       return (
-        <div className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-3">
-              <FieldLabel>WhatsApp number</FieldLabel>
-              <Input
-                value={state.whatsapp.phoneNumber}
-                onChange={(event) =>
+        <div className="grid gap-4 md:grid-cols-3">
+          {dashboardFocusOptions.map((option) => {
+            const selected = state.dashboard.focus === option.value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() =>
                   setState((current) => ({
                     ...current,
-                    whatsapp: {
-                      ...current.whatsapp,
-                      phoneNumber: event.target.value,
+                    dashboard: {
+                      ...current.dashboard,
+                      focus: option.value,
                     },
                   }))
                 }
-                placeholder="+1 555 000 0000"
-                className={fieldInputClass}
-              />
-            </div>
-            <div className="space-y-3">
-              <FieldLabel>Reminder timing</FieldLabel>
-              <NativeSelect
-                value={state.whatsapp.reminderWindow}
-                onChange={(value) =>
-                  setState((current) => ({
-                    ...current,
-                    whatsapp: {
-                      ...current.whatsapp,
-                      reminderWindow: value,
-                    },
-                  }))
-                }
-                options={reminderWindows}
-              />
-            </div>
-          </div>
-          <div className="rounded-[1.35rem] border border-border bg-card p-5">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-semibold text-foreground">
-                  Send appointment reminders
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Toggle reminder sending behavior for this initial setup.
-                </p>
-              </div>
-              <Toggle
-                checked={state.whatsapp.sendReminders}
-                onPressedChange={(checked) =>
-                  setState((current) => ({
-                    ...current,
-                    whatsapp: {
-                      ...current.whatsapp,
-                      sendReminders: checked,
-                    },
-                  }))
-                }
-              />
-            </div>
-          </div>
-          <div className="space-y-3">
-            <FieldLabel>Message template</FieldLabel>
-            <Textarea
-              value={state.whatsapp.template}
-              onChange={(event) =>
-                setState((current) => ({
-                  ...current,
-                  whatsapp: {
-                    ...current.whatsapp,
-                    template: event.target.value,
-                  },
-                }))
-              }
-              className="min-h-32 rounded-[1rem] border-border bg-card px-4 py-3 text-[15px] leading-7 shadow-none placeholder:text-muted-foreground/70"
-            />
-          </div>
+                className={cn(
+                  "group rounded-[1.35rem] border bg-card p-5 text-left transition-[border-color,box-shadow,transform,background-color] duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_18px_40px_rgba(20,32,51,0.06)]",
+                  selected
+                    ? "border-primary/55 bg-primary/8 shadow-[0_18px_40px_rgba(38,137,135,0.12)]"
+                    : "border-border"
+                )}
+              >
+                <span
+                  className={cn(
+                    "flex size-12 items-center justify-center rounded-[1rem] bg-muted text-muted-foreground transition-colors duration-200 group-hover:bg-primary/10 group-hover:text-primary",
+                    selected && "bg-primary/12 text-primary"
+                  )}
+                >
+                  {option.icon}
+                </span>
+                <span className="mt-5 block text-base font-semibold text-foreground">
+                  {option.title}
+                </span>
+                <span className="mt-2 block text-sm leading-6 text-muted-foreground">
+                  {option.description}
+                </span>
+              </button>
+            );
+          })}
         </div>
       );
     }
@@ -596,23 +560,39 @@ export function OnboardingFlow({
           </Button>
         </div>
 
-        <div className="flex justify-center overflow-x-auto py-6">
-          <div className="flex min-w-max items-center gap-3 text-xs font-semibold uppercase tracking-[0.16em]">
-            {onboardingSteps.map((item, index) => (
-              <div key={item.id} className="flex items-center gap-3">
-                <span
+        <div className="py-6">
+          <div className="rounded-[1.25rem] border border-border bg-card px-4 py-4 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Step {state.currentStep} of {onboardingSteps.length}
+              </p>
+              <p className="text-sm font-medium text-foreground">
+                {Math.round(progressValue)}% complete
+              </p>
+            </div>
+            <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted shadow-[inset_0_1px_2px_rgba(20,32,51,0.08)]">
+              <div
+                className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
+                style={{ width: `${progressValue}%` }}
+              />
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {onboardingSteps.map((item, index) => (
+                <div
+                  key={item.id}
                   className={cn(
-                    "text-muted-foreground",
-                    stepIndex >= index && "text-foreground"
+                    "rounded-[0.95rem] border px-3 py-3 transition-colors duration-200",
+                    stepIndex >= index
+                      ? "border-primary/25 bg-primary/8 text-foreground"
+                      : "border-border bg-white/58 text-muted-foreground"
                   )}
                 >
-                  {item.shortLabel}
-                </span>
-                {index < onboardingSteps.length - 1 ? (
-                  <span className="text-border">/</span>
-                ) : null}
-              </div>
-            ))}
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em]">
+                    {item.shortLabel}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -641,29 +621,16 @@ export function OnboardingFlow({
             ) : null}
 
             <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="rounded-[0.95rem] px-0 text-muted-foreground hover:bg-transparent"
-                  onClick={handleBack}
-                  disabled={state.currentStep === 1 || isPending}
-                >
-                  <ArrowLeft data-icon="inline-start" />
-                  Go back
-                </Button>
-                {step.id === "whatsapp" ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="rounded-[0.95rem] px-0 text-muted-foreground hover:bg-transparent"
-                    onClick={handleSkipForNow}
-                    disabled={isPending}
-                  >
-                    Skip for now
-                  </Button>
-                ) : null}
-              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                className="rounded-[0.95rem] px-0 text-muted-foreground hover:bg-transparent"
+                onClick={handleBack}
+                disabled={state.currentStep === 1 || isPending}
+              >
+                <ArrowLeft data-icon="inline-start" />
+                Go back
+              </Button>
               <Button
                 type="button"
                 size="lg"
@@ -694,7 +661,7 @@ export function OnboardingFlow({
                   {estimatedHours} hours/week
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Step {state.currentStep} of {onboardingSteps.length}
+                  Dashboard focus: {state.dashboard.focus}
                 </p>
               </div>
               <div className="w-full sm:w-[220px]">

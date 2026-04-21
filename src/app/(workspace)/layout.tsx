@@ -62,6 +62,7 @@ export default async function WorkspaceLayout({
       ownerName={ownerName}
       ownerEmail={user.email ?? ""}
       ownerPhone={ownerPhone}
+      brandAccentColor={business.brandAccentColor}
       tourScopeId={business.id}
       tourCompleted={tourCompleted}
       unreadCount={unreadCount}

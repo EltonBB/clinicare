@@ -25,6 +25,7 @@ export type CalendarAppointment = {
 export type CalendarSelectOption = {
   id: string;
   name: string;
+  phone?: string;
 };
 
 export type CalendarViewModel = {
@@ -77,7 +78,7 @@ export function toPrismaAppointmentStatus(status: CalendarAppointmentStatus) {
 
 export function buildCalendarViewFromRecords(args: {
   appointments: AppointmentWithRelations[];
-  clients: Pick<Client, "id" | "name">[];
+  clients: Pick<Client, "id" | "name" | "phone">[];
   staffMembers: Pick<StaffMember, "id" | "name">[];
   ownerName: string;
   initialDate?: string;
@@ -104,6 +105,7 @@ export function buildCalendarViewFromRecords(args: {
     clients: clients.map((client) => ({
       id: client.id,
       name: client.name,
+      phone: client.phone ?? undefined,
     })),
     staffMembers: staffMembers.map((member) => ({
       id: member.id,

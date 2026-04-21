@@ -1,5 +1,3 @@
-import { normalizePhone } from "@/lib/inbox";
-
 export const onboardingSteps = [
   {
     id: "hours",
@@ -16,11 +14,11 @@ export const onboardingSteps = [
       "Start with one person so bookings and availability have an owner from day one.",
   },
   {
-    id: "whatsapp",
-    shortLabel: "WhatsApp",
-    title: "Configure WhatsApp reminders",
+    id: "dashboard",
+    shortLabel: "Dashboard",
+    title: "Customize your dashboard",
     description:
-      "Set the clinic number and decide how reminder messages should behave. You can also skip this for now and finish it later from settings.",
+      "Choose what your workspace should prioritize first so the dashboard feels useful from day one.",
   },
 ] as const;
 
@@ -54,24 +52,8 @@ export type OnboardingState = {
     name: string;
     role: string;
   };
-  whatsapp: {
-    phoneNumber: string;
-    sendReminders: boolean;
-    reminderWindow: string;
-    template: string;
-  };
-  client: {
-    name: string;
-    email: string;
-    phone: string;
-    notes: string;
-  };
-  booking: {
-    service: string;
-    date: string;
-    time: string;
-    staffName: string;
-    clientName: string;
+  dashboard: {
+    focus: "appointments" | "clients" | "inbox";
   };
 };
 
@@ -94,25 +76,8 @@ export function createDefaultOnboardingState(): OnboardingState {
       name: "",
       role: "Owner",
     },
-    whatsapp: {
-      phoneNumber: "",
-      sendReminders: true,
-      reminderWindow: "24 hours before",
-      template:
-        "Hi {client_name}, this is a reminder for your appointment at {time}. Reply here if you need to reschedule.",
-    },
-    client: {
-      name: "",
-      email: "",
-      phone: "",
-      notes: "",
-    },
-    booking: {
-      service: "",
-      date: "",
-      time: "",
-      staffName: "",
-      clientName: "",
+    dashboard: {
+      focus: "appointments",
     },
   };
 }
@@ -129,17 +94,21 @@ function readBoolean(value: unknown, fallback: boolean) {
   return typeof value === "boolean" ? value : fallback;
 }
 
+function readDashboardFocus(
+  value: unknown,
+  fallback: OnboardingState["dashboard"]["focus"]
+) {
+  return value === "appointments" || value === "clients" || value === "inbox"
+    ? value
+    : fallback;
+}
+
 function readCurrentStep(value: unknown) {
   if (typeof value !== "number" || Number.isNaN(value)) {
     return 1;
   }
 
   return Math.min(Math.max(Math.round(value), 1), onboardingSteps.length);
-}
-
-function normalizeOptionalPhone(value: unknown, fallback: string) {
-  const normalized = normalizePhone(readString(value, fallback));
-  return normalized || "";
 }
 
 export function normalizeOnboardingState(value: unknown): OnboardingState {
@@ -161,9 +130,7 @@ export function normalizeOnboardingState(value: unknown): OnboardingState {
   }, {} as WorkingHoursState);
 
   const staffMember = isRecord(value.staffMember) ? value.staffMember : {};
-  const whatsapp = isRecord(value.whatsapp) ? value.whatsapp : {};
-  const client = isRecord(value.client) ? value.client : {};
-  const booking = isRecord(value.booking) ? value.booking : {};
+  const dashboard = isRecord(value.dashboard) ? value.dashboard : {};
 
   return {
     currentStep: readCurrentStep(value.currentStep),
@@ -173,33 +140,8 @@ export function normalizeOnboardingState(value: unknown): OnboardingState {
       name: readString(staffMember.name, defaults.staffMember.name),
       role: readString(staffMember.role, defaults.staffMember.role),
     },
-    whatsapp: {
-      phoneNumber: normalizeOptionalPhone(
-        whatsapp.phoneNumber,
-        defaults.whatsapp.phoneNumber
-      ),
-      sendReminders: readBoolean(
-        whatsapp.sendReminders,
-        defaults.whatsapp.sendReminders
-      ),
-      reminderWindow: readString(
-        whatsapp.reminderWindow,
-        defaults.whatsapp.reminderWindow
-      ),
-      template: readString(whatsapp.template, defaults.whatsapp.template),
-    },
-    client: {
-      name: readString(client.name, defaults.client.name),
-      email: readString(client.email, defaults.client.email),
-      phone: normalizeOptionalPhone(client.phone, defaults.client.phone),
-      notes: readString(client.notes, defaults.client.notes),
-    },
-    booking: {
-      service: readString(booking.service, defaults.booking.service),
-      date: readString(booking.date, defaults.booking.date),
-      time: readString(booking.time, defaults.booking.time),
-      staffName: readString(booking.staffName, defaults.booking.staffName),
-      clientName: readString(booking.clientName, defaults.booking.clientName),
+    dashboard: {
+      focus: readDashboardFocus(dashboard.focus, defaults.dashboard.focus),
     },
   };
 }

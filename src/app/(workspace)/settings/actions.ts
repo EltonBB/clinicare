@@ -12,6 +12,8 @@ import {
   syncWhatsAppConnectionForBusiness,
 } from "@/lib/whatsapp-connection";
 import { normalizePhone } from "@/lib/inbox";
+import { resolveBrandAccentPreset } from "@/lib/branding";
+import { resolveReminderPreset } from "@/lib/reminder-presets";
 import {
   buildWhatsAppConnectionSummary,
   buildSettingsStateFromWorkspace,
@@ -64,6 +66,8 @@ export async function saveSettingsAction(
     missingBusinessRedirect: "/onboarding",
   });
   const normalizedWhatsAppNumber = normalizePhone(payload.whatsapp.phoneNumber);
+  const accentPreset = resolveBrandAccentPreset(payload.appearance.accentColor);
+  const reminderPreset = resolveReminderPreset(payload.reminders.preset);
 
   const cleanedStaff = payload.staff.filter((member) => member.name.trim().length > 0);
   const persistedStaff =
@@ -104,6 +108,7 @@ export async function saveSettingsAction(
       data: {
         name: payload.business.businessName.trim() || business.name,
         businessType: payload.business.businessType,
+        brandAccentColor: accentPreset.id,
         whatsappNumber: normalizedWhatsAppNumber || null,
         whatsappEnabled: payload.whatsapp.sendReminders,
       },
@@ -315,14 +320,16 @@ export async function saveSettingsAction(
         send24HourReminder: payload.reminders.twentyFourHour,
         send2HourReminder: payload.reminders.twoHour,
         reminderWindow: payload.whatsapp.reminderWindow,
-        template: payload.reminders.template,
+        reminderPreset: reminderPreset.id,
+        template: payload.reminders.template.trim() || reminderPreset.template,
       },
       create: {
         businessId: business.id,
         send24HourReminder: payload.reminders.twentyFourHour,
         send2HourReminder: payload.reminders.twoHour,
         reminderWindow: payload.whatsapp.reminderWindow,
-        template: payload.reminders.template,
+        reminderPreset: reminderPreset.id,
+        template: payload.reminders.template.trim() || reminderPreset.template,
       },
     });
   });
@@ -377,23 +384,6 @@ export async function saveSettingsAction(
     }),
   ]);
 
-  let resolvedConnection = whatsappConnection;
-
-  if (updatedBusiness.whatsappNumber?.trim()) {
-    try {
-      resolvedConnection = await beginWhatsAppLiveConnection({
-        businessId: updatedBusiness.id,
-        businessName: updatedBusiness.name,
-        requestedPhoneNumber: updatedBusiness.whatsappNumber,
-      });
-    } catch (error) {
-      console.error("Failed to auto-start live WhatsApp connection after settings save.", {
-        businessId: updatedBusiness.id,
-        error,
-      });
-    }
-  }
-
   const nextState: SettingsState = buildSettingsStateFromWorkspace({
     business: updatedBusiness,
     supportEmail: user.email ?? "",
@@ -401,8 +391,12 @@ export async function saveSettingsAction(
     businessHours,
     staffMembers,
     reminderSettings,
-    whatsappConnection: resolvedConnection,
+    whatsappConnection,
   });
+
+  revalidatePath("/settings");
+  revalidatePath("/dashboard");
+  revalidatePath("/calendar");
 
   return {
     ok: true,

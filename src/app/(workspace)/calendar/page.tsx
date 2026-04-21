@@ -53,6 +53,7 @@ export default async function CalendarPage({
       select: {
         id: true,
         name: true,
+        phone: true,
       },
       orderBy: {
         name: "asc",
