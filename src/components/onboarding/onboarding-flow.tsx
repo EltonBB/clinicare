@@ -7,6 +7,7 @@ import {
   ArrowRight,
   CalendarDays,
   CheckCircle2,
+  Clock3,
   MessageSquareText,
   Users,
 } from "lucide-react";
@@ -179,23 +180,59 @@ const dashboardFocusOptions: Array<{
 }> = [
   {
     value: "appointments",
-    title: "Appointments first",
-    description: "Prioritize today's schedule, bookings, and quick appointment creation.",
+    title: "Book appointments",
+    description: "Adds one dashboard card with a button to create appointments.",
     icon: <CalendarDays className="size-5" />,
   },
   {
     value: "clients",
-    title: "Clients first",
-    description: "Prioritize relationship management, profiles, and adding new clients.",
+    title: "Add clients",
+    description: "Adds one dashboard card with a button to register clients.",
     icon: <Users className="size-5" />,
   },
   {
     value: "inbox",
-    title: "Inbox first",
-    description: "Prioritize WhatsApp replies, unread messages, and fast follow-up.",
+    title: "Open inbox",
+    description: "Adds one dashboard card with a button to handle messages.",
     icon: <MessageSquareText className="size-5" />,
   },
+  {
+    value: "todayAppointments",
+    title: "Today's appointments",
+    description: "Shows today's appointment list directly on the dashboard.",
+    icon: <CalendarDays className="size-5" />,
+  },
+  {
+    value: "lastClients",
+    title: "Last 5 clients",
+    description: "Shows recently updated client records for fast access.",
+    icon: <Users className="size-5" />,
+  },
+  {
+    value: "nextStaffAppointment",
+    title: "Next staff appointment",
+    description: "Shows the next upcoming appointment with assigned staff.",
+    icon: <Clock3 className="size-5" />,
+  },
 ];
+
+const dashboardWidgetCopy: Record<
+  OnboardingState["dashboard"]["widgets"][number],
+  string
+> = {
+  appointments:
+    "You selected appointments. This will show an appointment action on the dashboard.",
+  clients:
+    "You selected clients. This will show a client action on the dashboard.",
+  inbox:
+    "You selected inbox. This will show a message action on the dashboard.",
+  todayAppointments:
+    "You selected today's appointments. This will show the daily schedule on the dashboard.",
+  lastClients:
+    "You selected last 5 clients. This will show recent client records on the dashboard.",
+  nextStaffAppointment:
+    "You selected next staff appointment. This will show the next assigned visit on the dashboard.",
+};
 
 export function OnboardingFlow({
   initialState,
@@ -366,6 +403,18 @@ export function OnboardingFlow({
     if (step.id === "owner") {
       return (
         <div className="mx-auto grid w-full max-w-xl gap-5">
+          <div className="space-y-3 text-center">
+            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-primary">
+              Welcome to Vela
+            </p>
+            <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+              We will personalize your workspace.
+            </h1>
+            <p className="mx-auto max-w-md text-sm leading-7 text-muted-foreground">
+              First, tell us the clinic owner name so the account and workspace
+              stay aligned.
+            </p>
+          </div>
           <div className="rounded-[1.35rem] border border-border bg-card p-5 shadow-[0_14px_32px_rgba(20,32,51,0.035)]">
             <div className="space-y-3">
               <FieldLabel>Owner name</FieldLabel>
@@ -428,7 +477,7 @@ export function OnboardingFlow({
             </div>
             <div className="space-y-3 md:col-span-2">
               <FieldLabel>Logo optional</FieldLabel>
-              <div className="grid gap-3 rounded-[1.1rem] border border-border bg-card p-4 sm:grid-cols-[72px_minmax(0,1fr)] sm:items-center">
+              <div className="grid gap-3 rounded-[1.1rem] border border-border bg-card p-4 sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center">
                 <div className="flex size-[72px] items-center justify-center overflow-hidden rounded-[1.15rem] bg-primary/10 text-xl font-semibold text-primary">
                   {state.clinic.logoUrl ? (
                     <span
@@ -440,19 +489,40 @@ export function OnboardingFlow({
                     (state.clinic.name || "V").charAt(0)
                   )}
                 </div>
-                <div className="space-y-2">
-                  <Input
+                <Input
+                  value={state.clinic.logoUrl.startsWith("data:") ? "" : state.clinic.logoUrl}
+                  onChange={(event) =>
+                    setState((current) => ({
+                      ...current,
+                      clinic: {
+                        ...current.clinic,
+                        logoUrl: event.target.value,
+                      },
+                    }))
+                  }
+                  placeholder="Paste logo URL"
+                  className={fieldInputClass}
+                />
+                <div className="flex items-center gap-2 sm:justify-end">
+                  <input
+                    id="clinic-logo-upload"
                     type="file"
                     accept="image/*"
                     onChange={(event) =>
                       handleLogoUpload(event.currentTarget.files?.[0] ?? null)
                     }
-                    className="h-12 rounded-[0.95rem] border-border bg-white/84 px-4 text-[15px] file:mr-4 file:rounded-full file:border-0 file:bg-primary/10 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-primary"
+                    className="sr-only"
                   />
+                  <label
+                    htmlFor="clinic-logo-upload"
+                    className="inline-flex h-12 cursor-pointer items-center justify-center rounded-[0.95rem] bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-[0_14px_28px_var(--primary-shadow)] hover:-translate-y-0.5"
+                  >
+                    Upload logo
+                  </label>
                   {state.clinic.logoUrl ? (
                     <button
                       type="button"
-                      className="text-sm font-medium text-muted-foreground hover:text-foreground"
+                      className="h-12 rounded-[0.95rem] border border-border bg-white/80 px-4 text-sm font-medium text-muted-foreground hover:text-foreground"
                       onClick={() =>
                         setState((current) => ({
                           ...current,
@@ -717,51 +787,79 @@ export function OnboardingFlow({
 
     if (step.id === "dashboard") {
       return (
-        <div className="grid gap-4 md:grid-cols-3">
-          {dashboardFocusOptions.map((option) => {
-            const selected = state.dashboard.widgets.includes(option.value);
+        <div className="space-y-5">
+          <div className="grid gap-4 md:grid-cols-3">
+            {dashboardFocusOptions.map((option) => {
+              const selected = state.dashboard.widgets.includes(option.value);
 
-            return (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() =>
-                  setState((current) => ({
-                    ...current,
-                    dashboard: {
-                      ...current.dashboard,
-                      widgets: selected
-                        ? current.dashboard.widgets.filter(
-                            (widget) => widget !== option.value
-                          )
-                        : [...current.dashboard.widgets, option.value],
-                    },
-                  }))
-                }
-                className={cn(
-                  "group rounded-[1.35rem] border bg-card p-5 text-left transition-[border-color,box-shadow,transform,background-color] duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_18px_40px_rgba(20,32,51,0.06)]",
-                  selected
-                    ? "border-primary/55 bg-primary/8 shadow-[0_18px_40px_var(--primary-shadow)]"
-                    : "border-border"
-                )}
-              >
-                <span
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() =>
+                    setState((current) => ({
+                      ...current,
+                      dashboard: {
+                        ...current.dashboard,
+                        widgets: selected
+                          ? current.dashboard.widgets.filter(
+                              (widget) => widget !== option.value
+                            )
+                          : [...current.dashboard.widgets, option.value],
+                      },
+                    }))
+                  }
                   className={cn(
-                    "flex size-12 items-center justify-center rounded-[1rem] bg-muted text-muted-foreground transition-colors duration-200 group-hover:bg-primary/10 group-hover:text-primary",
-                    selected && "bg-primary/12 text-primary"
+                    "group rounded-[1.35rem] border bg-card p-5 text-left transition-[border-color,box-shadow,transform,background-color] duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_18px_40px_rgba(20,32,51,0.06)]",
+                    selected
+                      ? "border-primary/55 bg-primary/8 shadow-[0_18px_40px_var(--primary-shadow)]"
+                      : "border-border"
                   )}
                 >
-                  {option.icon}
-                </span>
-                <span className="mt-5 block text-base font-semibold text-foreground">
-                  {option.title}
-                </span>
-                <span className="mt-2 block text-sm leading-6 text-muted-foreground">
-                  {option.description}
-                </span>
-              </button>
-            );
-          })}
+                  <span className="flex items-start justify-between gap-3">
+                    <span
+                      className={cn(
+                        "flex size-12 items-center justify-center rounded-[1rem] bg-muted text-muted-foreground transition-colors duration-200 group-hover:bg-primary/10 group-hover:text-primary",
+                        selected && "bg-primary/12 text-primary"
+                      )}
+                    >
+                      {option.icon}
+                    </span>
+                    <span
+                      className={cn(
+                        "inline-flex h-7 items-center rounded-full border px-3 text-xs font-semibold",
+                        selected
+                          ? "border-primary/25 bg-primary text-primary-foreground"
+                          : "border-border bg-white/80 text-muted-foreground"
+                      )}
+                    >
+                      {selected ? "Selected" : "Select"}
+                    </span>
+                  </span>
+                  <span className="mt-5 block text-base font-semibold text-foreground">
+                    {option.title}
+                  </span>
+                  <span className="mt-2 block text-sm leading-6 text-muted-foreground">
+                    {option.description}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {state.dashboard.widgets.length > 0 ? (
+            <div className="space-y-2 rounded-[1.2rem] border border-border bg-card p-4">
+              {state.dashboard.widgets.map((widget) => (
+                <div
+                  key={widget}
+                  className="flex items-start gap-3 rounded-[0.9rem] bg-muted/45 px-4 py-3 text-sm text-muted-foreground"
+                >
+                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
+                  <span>{dashboardWidgetCopy[widget]}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       );
     }

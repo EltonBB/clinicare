@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { CSSProperties } from "react";
 import { ArrowRight, CalendarDays, CheckCircle2, ShieldCheck } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Card, CardContent } from "@/components/ui/card";
 import { getCurrentBusiness } from "@/lib/business";
+import { resolveBrandAccentPreset } from "@/lib/branding";
 import { isOnboardingCompleted } from "@/lib/onboarding";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/utils/supabase/server";
@@ -35,8 +37,22 @@ export default async function OnboardingCompletePage() {
     redirect("/onboarding");
   }
 
+  const accent = resolveBrandAccentPreset(business.brandAccentColor);
+
   return (
-    <div className="min-h-screen bg-background">
+    <div
+      className="min-h-screen bg-background"
+      style={
+        {
+          "--primary": accent.value,
+          "--primary-soft": accent.soft,
+          "--primary-shadow": accent.shadow,
+          "--ring": accent.shadow,
+          "--accent": accent.soft,
+          "--accent-foreground": accent.value,
+        } as CSSProperties
+      }
+    >
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 sm:px-6 lg:px-8">
         <div className="border-b border-border pb-6">
           <BrandMark href="/dashboard" includeSubtitle={false} />

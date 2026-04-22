@@ -1,6 +1,17 @@
 import { differenceInMinutes, format } from "date-fns";
-import type { Appointment, Business, Conversation } from "@prisma/client";
+import type { Appointment, Business, Client, Conversation } from "@prisma/client";
 import { planDisplayName, planStatusLabel } from "@/lib/billing";
+
+export const dashboardWidgetOptions = [
+  "appointments",
+  "clients",
+  "inbox",
+  "todayAppointments",
+  "lastClients",
+  "nextStaffAppointment",
+] as const;
+
+export type DashboardWidget = (typeof dashboardWidgetOptions)[number];
 
 export type DashboardAppointmentStatus = "confirmed" | "pending" | "cancelled";
 
@@ -37,14 +48,18 @@ export type DashboardWorkspaceState = {
   dashboardFocus: string;
   recentClientId?: string;
   scheduleState: "no-clients" | "no-appointments" | "no-today" | "active";
-  selectedWidgets: string[];
+  selectedWidgets: DashboardWidget[];
 };
+
+export type DashboardClientSummary = Pick<Client, "id" | "name" | "phone">;
 
 export type DashboardViewModel = {
   businessName: string;
   heading: string;
   dateLabel: string;
   appointments: DashboardAppointment[];
+  lastClients: DashboardClientSummary[];
+  nextAppointment: DashboardAppointment | null;
   quickActions: DashboardQuickAction[];
   unreadSummary: DashboardMessageSummary;
   planSummary: DashboardPlanSummary;
@@ -59,6 +74,8 @@ type TodayAppointmentWithRelations = Appointment & {
     name: string;
   } | null;
 };
+
+type ClientSummaryRow = Pick<Client, "id" | "name" | "phone">;
 
 function toDashboardStatus(status: Appointment["status"]): DashboardAppointmentStatus {
   if (status === "CANCELLED") {
@@ -86,6 +103,8 @@ function buildPlanSummary(
 export function buildDashboardViewFromWorkspace(args: {
   business: Business;
   appointments: TodayAppointmentWithRelations[];
+  lastClients: ClientSummaryRow[];
+  nextAppointment: TodayAppointmentWithRelations | null;
   conversations: Pick<Conversation, "unreadCount">[];
   todaysHours: number;
   clientCount: number;
@@ -95,6 +114,8 @@ export function buildDashboardViewFromWorkspace(args: {
   const {
     business,
     appointments,
+    lastClients,
+    nextAppointment,
     conversations,
     clientCount,
     appointmentCount,
@@ -105,16 +126,14 @@ export function buildDashboardViewFromWorkspace(args: {
   const bookingHref = recentClientId
     ? `/calendar?new=1&client=${recentClientId}&date=${todayKey}`
     : `/calendar?new=1&date=${todayKey}`;
-  const allowedWidgets = ["appointments", "clients", "inbox"] as const;
-  type DashboardWidget = (typeof allowedWidgets)[number];
   const selectedWidgets = business.dashboardFocus
     .split(",")
     .map((item) => item.trim())
     .filter((item): item is DashboardWidget =>
-      allowedWidgets.includes(item as DashboardWidget)
+      dashboardWidgetOptions.includes(item as DashboardWidget)
     );
   const dashboardWidgets: DashboardWidget[] =
-    selectedWidgets.length > 0 ? selectedWidgets : [...allowedWidgets];
+    selectedWidgets.length > 0 ? selectedWidgets : ["appointments", "clients", "inbox"];
   const scheduleState =
     clientCount === 0
       ? "no-clients"
@@ -138,7 +157,7 @@ export function buildDashboardViewFromWorkspace(args: {
     href: "/inbox",
     tone: "secondary",
   };
-  const actionsByWidget: Record<DashboardWidget, DashboardQuickAction> = {
+  const actionsByWidget: Partial<Record<DashboardWidget, DashboardQuickAction>> = {
     appointments: appointmentAction,
     clients:
       clientCount === 0
@@ -150,10 +169,26 @@ export function buildDashboardViewFromWorkspace(args: {
         : clientAction,
     inbox: inboxAction,
   };
-  const quickActions = dashboardWidgets.map((widget, index) => ({
-    ...actionsByWidget[widget],
-    tone: index === 0 ? "primary" as const : "secondary" as const,
-  }));
+  const quickActions = dashboardWidgets
+    .filter((widget) => widget in actionsByWidget)
+    .map((widget, index) => ({
+      ...actionsByWidget[widget]!,
+      tone: index === 0 ? "primary" as const : "secondary" as const,
+    }));
+  const nextDashboardAppointment = nextAppointment
+    ? {
+        id: nextAppointment.id,
+        time: format(nextAppointment.startAt, "MMM d, hh:mm a"),
+        durationMinutes: Math.max(
+          differenceInMinutes(nextAppointment.endAt, nextAppointment.startAt),
+          0
+        ),
+        clientName: nextAppointment.client.name,
+        service: nextAppointment.title,
+        staffName: nextAppointment.staffMember?.name ?? "Workspace staff",
+        status: toDashboardStatus(nextAppointment.status),
+      }
+    : null;
 
   return {
     businessName: business.name,
@@ -168,6 +203,8 @@ export function buildDashboardViewFromWorkspace(args: {
       staffName: appointment.staffMember?.name ?? "Workspace staff",
       status: toDashboardStatus(appointment.status),
     })),
+    lastClients,
+    nextAppointment: nextDashboardAppointment,
     quickActions,
     unreadSummary: {
       unreadCount,

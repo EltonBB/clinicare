@@ -77,7 +77,14 @@ export type OnboardingState = {
     role: string;
   };
   dashboard: {
-    widgets: Array<"appointments" | "clients" | "inbox">;
+    widgets: Array<
+      | "appointments"
+      | "clients"
+      | "inbox"
+      | "todayAppointments"
+      | "lastClients"
+      | "nextStaffAppointment"
+    >;
   };
 };
 
@@ -132,7 +139,14 @@ function readDashboardWidgets(
   value: unknown,
   fallback: OnboardingState["dashboard"]["widgets"]
 ) {
-  const allowed = new Set(["appointments", "clients", "inbox"]);
+  const allowed = new Set([
+    "appointments",
+    "clients",
+    "inbox",
+    "todayAppointments",
+    "lastClients",
+    "nextStaffAppointment",
+  ]);
 
   if (Array.isArray(value)) {
     const widgets = value.filter(

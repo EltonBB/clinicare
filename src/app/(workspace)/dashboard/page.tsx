@@ -23,6 +23,8 @@ export default async function DashboardPage() {
     clientCountResult,
     recentClientResult,
     appointmentCountResult,
+    lastClientsResult,
+    nextAppointmentResult,
   ] =
     await Promise.allSettled([
       prisma.appointment.findMany({
@@ -91,6 +93,49 @@ export default async function DashboardPage() {
           businessId: business.id,
         },
       }),
+      prisma.client.findMany({
+        where: {
+          businessId: business.id,
+          isArchived: false,
+        },
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+        },
+        orderBy: [
+          {
+            updatedAt: "desc",
+          },
+          {
+            createdAt: "desc",
+          },
+        ],
+        take: 5,
+      }),
+      prisma.appointment.findFirst({
+        where: {
+          businessId: business.id,
+          startAt: {
+            gte: new Date(),
+          },
+        },
+        include: {
+          client: {
+            select: {
+              name: true,
+            },
+          },
+          staffMember: {
+            select: {
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          startAt: "asc",
+        },
+      }),
     ]);
 
   const appointments =
@@ -105,6 +150,10 @@ export default async function DashboardPage() {
     recentClientResult.status === "fulfilled" ? recentClientResult.value : null;
   const appointmentCount =
     appointmentCountResult.status === "fulfilled" ? appointmentCountResult.value : 0;
+  const lastClients =
+    lastClientsResult.status === "fulfilled" ? lastClientsResult.value : [];
+  const nextAppointment =
+    nextAppointmentResult.status === "fulfilled" ? nextAppointmentResult.value : null;
 
   if (appointmentsResult.status === "rejected") {
     console.error("Dashboard appointments query failed", appointmentsResult.reason);
@@ -136,6 +185,17 @@ export default async function DashboardPage() {
     );
   }
 
+  if (lastClientsResult.status === "rejected") {
+    console.error("Dashboard recent clients query failed", lastClientsResult.reason);
+  }
+
+  if (nextAppointmentResult.status === "rejected") {
+    console.error(
+      "Dashboard next appointment query failed",
+      nextAppointmentResult.reason
+    );
+  }
+
   const todaysHours =
     todaysHoursRecord && todaysHoursRecord.isOpen
       ? Math.max(
@@ -148,6 +208,8 @@ export default async function DashboardPage() {
   const view = buildDashboardViewFromWorkspace({
     business,
     appointments,
+    lastClients,
+    nextAppointment,
     conversations,
     todaysHours,
     clientCount,
