@@ -4,7 +4,6 @@ import {
   CalendarPlus2,
   CirclePlus,
   MessageSquareText,
-  BadgeCheck,
   UsersRound,
 } from "lucide-react";
 
@@ -200,39 +199,23 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           </section>
 
           <DashboardUnreadCard
-            businessName={view.businessName}
             initialSummary={view.unreadSummary}
           />
 
-          <section className="surface-soft space-y-3 rounded-[1.1rem] px-4 py-4">
-            <div className="flex items-center gap-2">
-              <BadgeCheck className="size-4 text-primary" />
-              <p className="text-base font-semibold text-foreground">
-                Vela {view.planSummary.planName} plan
-              </p>
-            </div>
-            <div className="flex items-center justify-between gap-4 border-t border-border/70 pt-3">
-              <p className="text-sm text-muted-foreground">Plan status</p>
-              <p className="text-sm font-semibold text-primary">
-                {view.planSummary.statusLabel}
-              </p>
-            </div>
-          </section>
-
-          <section className="surface-soft space-y-4 rounded-[1.1rem] px-4 py-4">
+          <section className="overflow-hidden rounded-[1.1rem] border border-border/80 bg-white/88 shadow-[0_14px_30px_rgba(20,32,51,0.04)]">
             <div className="flex items-center justify-between gap-4">
-              <p className="text-sm font-medium text-foreground">
-                Appointments for today
-              </p>
-              <p className="text-3xl font-semibold tracking-tight text-primary">
+              <div className="flex items-center gap-3 px-4 py-4">
+                <span className="flex size-10 items-center justify-center rounded-[0.9rem] bg-primary/10 text-primary">
+                  <CalendarPlus2 className="size-4" />
+                </span>
+                <p className="text-sm font-semibold text-foreground">
+                  Appointments today
+                </p>
+              </div>
+              <p className="px-4 text-4xl font-semibold tracking-tight text-primary">
                 {view.appointments.length}
               </p>
             </div>
-            <p className="text-sm text-muted-foreground">
-              {view.appointments.length === 1
-                ? "1 appointment scheduled today."
-                : `${view.appointments.length} appointments scheduled today.`}
-            </p>
           </section>
         </div>
       </aside>

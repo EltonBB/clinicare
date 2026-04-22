@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type CSSProperties } from "react";
+import { BadgeCheck } from "lucide-react";
 
 import { refreshWorkspaceNotificationsAction } from "@/app/(workspace)/actions";
 import { BrandMark } from "@/components/brand-mark";
@@ -27,6 +28,7 @@ type AppShellProps = {
   ownerEmail?: string;
   ownerPhone?: string;
   planName?: string;
+  planStatus?: string;
   brandAccentColor?: string | null;
   tourScopeId?: string;
   tourCompleted?: boolean;
@@ -41,6 +43,7 @@ export function AppShell({
   ownerEmail = "owner@vela.app",
   ownerPhone = "",
   planName = "Basic",
+  planStatus = "active",
   brandAccentColor = null,
   tourScopeId = "default",
   tourCompleted = false,
@@ -142,7 +145,22 @@ export function AppShell({
             data-tour="sidebar-shell"
           >
             <div className="px-2 pb-5 pt-2">
-              <BrandMark />
+              <Link
+                href="/dashboard"
+                className="group flex items-center gap-3 rounded-[1.1rem] px-1 py-1"
+              >
+                <span className="flex size-11 shrink-0 items-center justify-center rounded-[1rem] bg-primary text-sm font-semibold uppercase text-primary-foreground shadow-[0_12px_24px_var(--primary-shadow)]">
+                  {businessName.charAt(0)}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-lg font-semibold tracking-tight text-foreground">
+                    {businessName}
+                  </span>
+                  <span className="block truncate text-xs font-medium text-muted-foreground">
+                    {ownerName}
+                  </span>
+                </span>
+              </Link>
             </div>
 
             <nav className="flex-1 space-y-1.5 px-1 py-2">
@@ -186,12 +204,18 @@ export function AppShell({
 
             <div className="mt-4 space-y-4 border-t border-sidebar-border/70 px-1 pt-5">
               <div className="surface-soft rounded-[1.05rem] px-4 py-4 text-sm">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  Current plan
-                </p>
-                <p className="mt-2 text-base font-semibold text-foreground">
-                  Vela {planName} plan
-                </p>
+                <div className="flex items-center gap-2">
+                  <BadgeCheck className="size-4 text-primary" />
+                  <p className="font-semibold text-foreground">
+                    Vela {planName} plan
+                  </p>
+                </div>
+                <div className="mt-3 flex items-center justify-between border-t border-border/70 pt-3">
+                  <span className="text-xs text-muted-foreground">Status</span>
+                  <span className="text-xs font-semibold text-primary">
+                    {planStatus}
+                  </span>
+                </div>
               </div>
 
               <div className="glass-divider rounded-[1.05rem] px-3 py-3">
@@ -213,22 +237,14 @@ export function AppShell({
         </aside>
 
         <div className="relative flex min-h-screen min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-20 px-4 pt-4 sm:px-6 lg:px-8">
+          <div className="sticky top-0 z-30 border-b border-border/70 bg-white/82 px-4 py-2 text-center text-sm font-semibold tracking-[0.2em] text-foreground/80 backdrop-blur-xl sm:px-6 lg:px-8">
+            VELA
+          </div>
+          <header className="sticky top-[2.35rem] z-20 px-4 pt-4 sm:px-6 lg:px-8">
             <div className="mx-auto flex h-[4.5rem] w-full max-w-[1600px] items-center justify-between gap-4 rounded-[1.2rem] border border-border/80 bg-white/92 px-5 shadow-[0_10px_24px_rgba(20,32,51,0.035)]">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="lg:hidden">
                   <BrandMark compact href="/dashboard" />
-                </div>
-                <div className="hidden min-w-0 lg:block">
-                  <div className="flex items-center gap-3">
-                    <p className="truncate text-lg font-semibold text-foreground">
-                      Vela
-                    </p>
-                    <span className="text-sm text-border">|</span>
-                    <p className="truncate text-sm font-medium text-muted-foreground">
-                      {businessName}
-                    </p>
-                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
