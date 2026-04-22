@@ -1,5 +1,19 @@
 export const onboardingSteps = [
   {
+    id: "owner",
+    shortLabel: "Owner",
+    title: "Tell us who owns this workspace",
+    description:
+      "Start with the clinic owner name. This keeps the workspace and account profile aligned.",
+  },
+  {
+    id: "clinic",
+    shortLabel: "Clinic",
+    title: "Set up your clinic identity",
+    description:
+      "Add the clinic name, type, optional logo, and accent color before configuring operations.",
+  },
+  {
     id: "hours",
     shortLabel: "Hours",
     title: "Set your working hours",
@@ -47,6 +61,16 @@ export type WorkingHoursState = Record<WeekdayKey, DaySchedule>;
 export type OnboardingState = {
   currentStep: number;
   completed: boolean;
+  owner: {
+    name: string;
+  };
+  clinic: {
+    name: string;
+    type: string;
+    logoUrl: string;
+    accentColor: string;
+    accentHex: string;
+  };
   workingHours: WorkingHoursState;
   staffMember: {
     name: string;
@@ -71,6 +95,16 @@ export function createDefaultOnboardingState(): OnboardingState {
   return {
     currentStep: 1,
     completed: false,
+    owner: {
+      name: "",
+    },
+    clinic: {
+      name: "",
+      type: "Clinic",
+      logoUrl: "",
+      accentColor: "teal",
+      accentHex: "#268987",
+    },
     workingHours: defaultWorkingHours,
     staffMember: {
       name: "",
@@ -131,10 +165,22 @@ export function normalizeOnboardingState(value: unknown): OnboardingState {
 
   const staffMember = isRecord(value.staffMember) ? value.staffMember : {};
   const dashboard = isRecord(value.dashboard) ? value.dashboard : {};
+  const owner = isRecord(value.owner) ? value.owner : {};
+  const clinic = isRecord(value.clinic) ? value.clinic : {};
 
   return {
     currentStep: readCurrentStep(value.currentStep),
     completed: readBoolean(value.completed, defaults.completed),
+    owner: {
+      name: readString(owner.name, defaults.owner.name),
+    },
+    clinic: {
+      name: readString(clinic.name, defaults.clinic.name),
+      type: readString(clinic.type, defaults.clinic.type),
+      logoUrl: readString(clinic.logoUrl, defaults.clinic.logoUrl),
+      accentColor: readString(clinic.accentColor, defaults.clinic.accentColor),
+      accentHex: readString(clinic.accentHex, defaults.clinic.accentHex),
+    },
     workingHours,
     staffMember: {
       name: readString(staffMember.name, defaults.staffMember.name),

@@ -5,16 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { createClient } from "@/utils/supabase/client";
 
-function isMobileDevice() {
-  if (typeof navigator === "undefined") {
-    return false;
-  }
-
-  return /Android|iPhone|iPad|iPod|Mobile|Opera Mini|IEMobile/i.test(
-    navigator.userAgent
-  );
-}
-
 export function AuthConfirmationBridge() {
   const router = useRouter();
   const pathname = usePathname();
@@ -89,13 +79,7 @@ export function AuthConfirmationBridge() {
           });
         }
 
-        await supabase.auth.signOut();
-
-        if (isMobileDevice()) {
-          router.replace("/confirm-email?verified=1");
-        } else {
-          router.replace("/login?verified=1");
-        }
+        router.replace("/onboarding");
       }
     }
 

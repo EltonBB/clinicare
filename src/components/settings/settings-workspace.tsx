@@ -136,9 +136,11 @@ function SettingsSection({
     >
       <div className="space-y-1">
         <h2 className="text-xl font-semibold text-foreground">{title}</h2>
-        <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
-          {description}
-        </p>
+        {description ? (
+          <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
+            {description}
+          </p>
+        ) : null}
       </div>
       <div className="mt-6">{children}</div>
     </section>
@@ -704,27 +706,8 @@ export function SettingsWorkspace({
           tourTarget="settings-whatsapp"
         >
           <div className="rounded-[1rem] border border-border/80 bg-muted/35 p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-              <Button
-                variant="default"
-                className="h-11 rounded-[0.95rem] px-5"
-                onClick={handlePrepareLiveConnection}
-                disabled={isPreparingConnection}
-              >
-                {isPreparingConnection ? "Connecting..." : "Connect"}
-              </Button>
-              <Button
-                variant="outline"
-                className="h-11 rounded-[0.95rem] bg-white/84 px-5"
-                onClick={handleRefreshLiveConnection}
-                disabled={isRefreshingConnection}
-              >
-                {isRefreshingConnection ? "Refreshing..." : "Refresh status"}
-              </Button>
-            </div>
-
-            <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_240px] lg:items-end">
-              <div className="space-y-2">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-end">
+              <div className="space-y-2 lg:pb-0">
                 <FieldLabel>WhatsApp number</FieldLabel>
                 <Input
                   value={state.whatsapp.phoneNumber}
@@ -741,30 +724,50 @@ export function SettingsWorkspace({
                   className="h-11 rounded-[0.9rem] bg-white/84"
                 />
               </div>
-              <div className="rounded-[0.95rem] border border-border/80 bg-white/88 px-4 py-3 shadow-[0_10px_24px_rgba(20,32,51,0.035)]">
-                <div className="flex items-center justify-between gap-3">
-                  <FieldLabel>Status</FieldLabel>
-                  <span
-                    className={cn(
-                      "size-2.5 rounded-full",
-                      state.whatsapp.connection.phase === "CONNECTED"
-                        ? "bg-primary"
-                        : "bg-muted-foreground/35"
-                    )}
-                  />
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Button
+                    variant="default"
+                    className="h-11 rounded-[0.95rem] px-5"
+                    onClick={handlePrepareLiveConnection}
+                    disabled={isPreparingConnection}
+                  >
+                    {isPreparingConnection ? "Connecting..." : "Connect"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-11 rounded-[0.95rem] bg-white/84 px-5"
+                    onClick={handleRefreshLiveConnection}
+                    disabled={isRefreshingConnection}
+                  >
+                    {isRefreshingConnection ? "Refreshing..." : "Refresh status"}
+                  </Button>
                 </div>
-                <p
-                  className={cn(
-                    "mt-2 text-base font-semibold",
-                    state.whatsapp.connection.phase === "CONNECTED"
-                      ? "text-primary"
-                      : "text-foreground"
-                  )}
-                >
-                  {state.whatsapp.connection.phase === "CONNECTED"
-                    ? "Connected"
-                    : "Not connected"}
-                </p>
+                <div className="rounded-[0.95rem] border border-border/80 bg-white/88 px-4 py-3 shadow-[0_10px_24px_rgba(20,32,51,0.035)]">
+                  <div className="flex items-center justify-between gap-3">
+                    <FieldLabel>Status</FieldLabel>
+                    <span
+                      className={cn(
+                        "size-2.5 rounded-full",
+                        state.whatsapp.connection.phase === "CONNECTED"
+                          ? "bg-primary"
+                          : "bg-muted-foreground/35"
+                      )}
+                    />
+                  </div>
+                  <p
+                    className={cn(
+                      "mt-2 text-base font-semibold",
+                      state.whatsapp.connection.phase === "CONNECTED"
+                        ? "text-primary"
+                        : "text-foreground"
+                    )}
+                  >
+                    {state.whatsapp.connection.phase === "CONNECTED"
+                      ? "Connected"
+                      : "Not connected"}
+                  </p>
+                </div>
               </div>
             </div>
           </div>

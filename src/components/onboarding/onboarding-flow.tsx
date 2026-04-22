@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -17,6 +17,12 @@ import { saveOnboardingStateAction } from "@/app/onboarding/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { businessTypes } from "@/lib/constants";
+import {
+  brandAccentPresets,
+  normalizeBrandHexColor,
+  resolveBrandAccentPreset,
+} from "@/lib/branding";
 import {
   Progress,
   ProgressLabel,
@@ -181,7 +187,26 @@ function NativeSelect({
 
 function getStepError(state: OnboardingState) {
   switch (state.currentStep) {
+    case 1:
+      if (!state.owner.name.trim()) {
+        return "Enter the clinic owner name before continuing.";
+      }
+      return null;
     case 2:
+      if (!state.clinic.name.trim()) {
+        return "Enter the clinic name before continuing.";
+      }
+      if (!businessTypes.includes(state.clinic.type as (typeof businessTypes)[number])) {
+        return "Select the clinic type before continuing.";
+      }
+      if (
+        state.clinic.accentColor === "custom" &&
+        !normalizeBrandHexColor(state.clinic.accentHex)
+      ) {
+        return "Enter a valid brand HEX color, for example #268987.";
+      }
+      return null;
+    case 4:
       if (!state.staffMember.name.trim()) {
         return "Add at least one staff member name before continuing.";
       }
@@ -227,6 +252,18 @@ export function OnboardingFlow({
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isPending, startSaving] = useTransition();
+  const selectedAccent = resolveBrandAccentPreset(
+    state.clinic.accentColor === "custom"
+      ? state.clinic.accentHex
+      : state.clinic.accentColor
+  );
+  const normalizedCustomAccent = normalizeBrandHexColor(state.clinic.accentHex);
+  const customAccentInvalid =
+    state.clinic.accentColor === "custom" && !normalizedCustomAccent;
+  const previewAccent = normalizedCustomAccent ?? selectedAccent.value;
+  const visibleAccentPresets = brandAccentPresets.filter(
+    (preset) => preset.id !== "emerald"
+  );
 
   const stepIndex = Math.min(
     Math.max(state.currentStep, 1),
@@ -234,6 +271,12 @@ export function OnboardingFlow({
   ) - 1;
   const step = onboardingSteps[stepIndex];
   const progressValue = ((stepIndex + 1) / onboardingSteps.length) * 100;
+  const progressInset =
+    onboardingSteps.length > 1 ? `${50 / onboardingSteps.length}%` : "50%";
+  const progressWidth =
+    onboardingSteps.length > 1
+      ? `${(stepIndex / (onboardingSteps.length - 1)) * (100 - 100 / onboardingSteps.length)}%`
+      : "0%";
   const nextStepLabel =
     onboardingSteps[Math.min(stepIndex + 1, onboardingSteps.length - 1)]
       ?.shortLabel;
@@ -254,6 +297,18 @@ export function OnboardingFlow({
 
   const hint = useMemo(() => {
     switch (step.id) {
+      case "owner":
+        return {
+          title: "Account owner",
+          icon: <Users className="size-4" />,
+          body: "This name is used for the owner profile and can be updated later from the account menu.",
+        };
+      case "clinic":
+        return {
+          title: "Workspace identity",
+          icon: <LayoutDashboard className="size-4" />,
+          body: "The clinic identity appears in the sidebar. Colors can be adjusted now or later in Settings.",
+        };
       case "hours":
         return {
           title: "Why this matters",
@@ -375,6 +430,206 @@ export function OnboardingFlow({
   }
 
   function renderStepContent() {
+    if (step.id === "owner") {
+      return (
+        <div className="mx-auto grid w-full max-w-xl gap-5">
+          <div className="rounded-[1.35rem] border border-border bg-card p-5 shadow-[0_14px_32px_rgba(20,32,51,0.035)]">
+            <div className="space-y-3">
+              <FieldLabel>Owner name</FieldLabel>
+              <Input
+                value={state.owner.name}
+                onChange={(event) =>
+                  setState((current) => ({
+                    ...current,
+                    owner: {
+                      ...current.owner,
+                      name: event.target.value,
+                    },
+                    staffMember: {
+                      ...current.staffMember,
+                      name: current.staffMember.name || event.target.value,
+                    },
+                  }))
+                }
+                placeholder="Elton Bajra"
+                className={fieldInputClass}
+              />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (step.id === "clinic") {
+      return (
+        <div className="grid gap-5">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-3">
+              <FieldLabel>Clinic name</FieldLabel>
+              <Input
+                value={state.clinic.name}
+                onChange={(event) =>
+                  setState((current) => ({
+                    ...current,
+                    clinic: {
+                      ...current.clinic,
+                      name: event.target.value,
+                    },
+                  }))
+                }
+                placeholder="Aldent"
+                className={fieldInputClass}
+              />
+            </div>
+            <div className="space-y-3">
+              <FieldLabel>Clinic type</FieldLabel>
+              <NativeSelect
+                value={state.clinic.type}
+                onChange={(value) =>
+                  setState((current) => ({
+                    ...current,
+                    clinic: {
+                      ...current.clinic,
+                      type: value,
+                    },
+                  }))
+                }
+                options={[...businessTypes]}
+              />
+            </div>
+            <div className="space-y-3 md:col-span-2">
+              <FieldLabel>Logo URL optional</FieldLabel>
+              <Input
+                value={state.clinic.logoUrl}
+                onChange={(event) =>
+                  setState((current) => ({
+                    ...current,
+                    clinic: {
+                      ...current.clinic,
+                      logoUrl: event.target.value,
+                    },
+                  }))
+                }
+                placeholder="https://example.com/logo.png"
+                className={fieldInputClass}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-[1.35rem] border border-border bg-card p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  Brand color
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Use the default or choose a color that matches the clinic.
+                </p>
+              </div>
+              <div
+                className="flex h-10 min-w-28 items-center justify-center rounded-full px-4 text-sm font-semibold text-white"
+                style={{ backgroundColor: previewAccent }}
+              >
+                Preview
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {visibleAccentPresets.map((preset) => {
+                const selected = state.clinic.accentColor === preset.id;
+
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() =>
+                      setState((current) => ({
+                        ...current,
+                        clinic: {
+                          ...current.clinic,
+                          accentColor: preset.id,
+                          accentHex: preset.value,
+                        },
+                      }))
+                    }
+                    className={cn(
+                      "rounded-[1rem] border bg-white/84 p-3 text-left transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(20,32,51,0.055)]",
+                      selected
+                        ? "border-primary/55 ring-2 ring-primary/15"
+                        : "border-border"
+                    )}
+                  >
+                    <span
+                      className="block h-10 rounded-[0.8rem]"
+                      style={{ backgroundColor: preset.value }}
+                    />
+                    <span className="mt-2 block text-sm font-semibold text-foreground">
+                      {preset.name}
+                    </span>
+                  </button>
+                );
+              })}
+              <div
+                className={cn(
+                  "rounded-[1rem] border bg-white/84 p-3",
+                  state.clinic.accentColor === "custom"
+                    ? "border-primary/55 ring-2 ring-primary/15"
+                    : "border-border",
+                  customAccentInvalid && "border-destructive/45"
+                )}
+              >
+                <button
+                  type="button"
+                  className="w-full text-left"
+                  onClick={() =>
+                    setState((current) => ({
+                      ...current,
+                      clinic: {
+                        ...current.clinic,
+                        accentColor: "custom",
+                      },
+                    }))
+                  }
+                >
+                  <span
+                    className="block h-10 rounded-[0.8rem]"
+                    style={{ backgroundColor: previewAccent }}
+                  />
+                  <span className="mt-2 block text-sm font-semibold text-foreground">
+                    Custom HEX
+                  </span>
+                </button>
+                <Input
+                  value={state.clinic.accentHex}
+                  onFocus={() =>
+                    setState((current) => ({
+                      ...current,
+                      clinic: {
+                        ...current.clinic,
+                        accentColor: "custom",
+                      },
+                    }))
+                  }
+                  onChange={(event) =>
+                    setState((current) => ({
+                      ...current,
+                      clinic: {
+                        ...current.clinic,
+                        accentColor: "custom",
+                        accentHex: event.target.value,
+                      },
+                    }))
+                  }
+                  placeholder="#268987"
+                  className="mt-3 h-10 rounded-[0.75rem] bg-white/88 font-mono text-xs uppercase tracking-[0.08em]"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     if (step.id === "hours") {
       return (
         <div className="space-y-3">
@@ -536,16 +791,30 @@ export function OnboardingFlow({
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div
+      className="min-h-screen bg-background"
+      style={
+        {
+          "--primary": selectedAccent.value,
+          "--primary-soft": selectedAccent.soft,
+          "--primary-shadow": selectedAccent.shadow,
+          "--ring": selectedAccent.shadow,
+          "--accent": selectedAccent.soft,
+          "--accent-foreground": selectedAccent.value,
+        } as CSSProperties
+      }
+    >
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between gap-4 border-b border-border pb-6">
           <div className="flex min-w-0 items-center gap-4">
             <BrandMark href="/dashboard" includeSubtitle={false} />
             <div className="hidden min-w-0 sm:block">
               <p className="truncate text-sm font-medium text-foreground">
-                {businessName}
+                {state.clinic.name || businessName}
               </p>
-              <p className="truncate text-sm text-muted-foreground">{ownerName}</p>
+              <p className="truncate text-sm text-muted-foreground">
+                {state.owner.name || ownerName}
+              </p>
             </div>
           </div>
           <Button
@@ -562,15 +831,21 @@ export function OnboardingFlow({
 
         <div className="py-6">
           <div className="mx-auto max-w-3xl rounded-[1.5rem] border border-border bg-card px-8 py-7 shadow-[0_18px_42px_rgba(20,32,51,0.055)]">
-            <div className="relative grid grid-cols-3">
-              <div className="absolute left-[16.66%] right-[16.66%] top-4 h-0.5 bg-border" />
+            <div
+              className="relative grid"
+              style={{
+                gridTemplateColumns: `repeat(${onboardingSteps.length}, minmax(0, 1fr))`,
+              }}
+            >
               <div
-                className="absolute left-[16.66%] top-4 h-0.5 bg-primary transition-[width] duration-500 ease-out"
+                className="absolute top-4 h-0.5 bg-border"
+                style={{ left: progressInset, right: progressInset }}
+              />
+              <div
+                className="absolute top-4 h-0.5 bg-primary transition-[width] duration-500 ease-out"
                 style={{
-                  width:
-                    onboardingSteps.length <= 1
-                      ? "0%"
-                      : `${(stepIndex / (onboardingSteps.length - 1)) * 66.66}%`,
+                  left: progressInset,
+                  width: progressWidth,
                 }}
               />
               {onboardingSteps.map((item, index) => {

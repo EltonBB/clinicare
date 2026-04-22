@@ -1,6 +1,8 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { businessTypes } from "@/lib/constants";
+import { normalizeBrandHexColor, resolveBrandAccentPreset } from "@/lib/branding";
 import { defaultReminderTemplate } from "@/lib/settings";
 import {
   weekdayOrder,
@@ -22,13 +24,24 @@ async function bootstrapWorkspaceFromOnboarding(user: {
 }, nextState: OnboardingState) {
   const metadata = user.user_metadata ?? {};
   const businessName =
-    typeof metadata.business_name === "string" && metadata.business_name.trim().length > 0
-      ? metadata.business_name.trim()
+    nextState.clinic.name.trim().length > 0
+      ? nextState.clinic.name.trim()
+      : typeof metadata.business_name === "string" && metadata.business_name.trim().length > 0
+        ? metadata.business_name.trim()
       : "Vela Workspace";
   const businessType =
-    typeof metadata.business_type === "string" && metadata.business_type.trim().length > 0
-      ? metadata.business_type.trim()
+    businessTypes.includes(nextState.clinic.type as (typeof businessTypes)[number])
+      ? nextState.clinic.type
+      : typeof metadata.business_type === "string" && metadata.business_type.trim().length > 0
+        ? metadata.business_type.trim()
       : "Clinic";
+  const customAccentHex = normalizeBrandHexColor(nextState.clinic.accentHex);
+  const accentPreset = resolveBrandAccentPreset(nextState.clinic.accentColor);
+  const brandAccentColor =
+    nextState.clinic.accentColor === "custom" && customAccentHex
+      ? customAccentHex
+      : accentPreset.id;
+  const logoUrl = nextState.clinic.logoUrl.trim() || null;
 
   return prisma.$transaction(async (tx) => {
     const business = await tx.business.upsert({
@@ -38,12 +51,16 @@ async function bootstrapWorkspaceFromOnboarding(user: {
       update: {
         name: businessName,
         businessType,
+        logoUrl,
+        brandAccentColor,
         dashboardFocus: nextState.dashboard.focus,
       },
       create: {
         ownerId: user.id,
         name: businessName,
         businessType,
+        logoUrl,
+        brandAccentColor,
         dashboardFocus: nextState.dashboard.focus,
         plan: "BASIC",
         planStatus: "ACTIVE",
@@ -117,6 +134,7 @@ async function bootstrapWorkspaceFromOnboarding(user: {
 
     const staffName =
       nextState.staffMember.name.trim() ||
+      nextState.owner.name.trim() ||
       (typeof metadata.full_name === "string" && metadata.full_name.trim().length > 0
         ? metadata.full_name.trim()
         : user.email?.trim() || "Workspace Owner");
@@ -181,6 +199,8 @@ export async function saveOnboardingStateAction(
   }
 
   const normalizedState = normalizeOnboardingState(nextState);
+  const ownerName = normalizedState.owner.name.trim();
+  const clinicName = normalizedState.clinic.name.trim();
 
   if (normalizedState.completed) {
     try {
@@ -198,6 +218,12 @@ export async function saveOnboardingStateAction(
 
   const nextMetadata = {
     ...(user.user_metadata ?? {}),
+    full_name: ownerName || user.user_metadata?.full_name,
+    business_name: clinicName || user.user_metadata?.business_name,
+    business_type: normalizedState.clinic.type || user.user_metadata?.business_type,
+    business_logo_url: normalizedState.clinic.logoUrl || null,
+    business_brand_accent: normalizedState.clinic.accentColor,
+    business_brand_hex: normalizedState.clinic.accentHex,
     onboarding_state: normalizedState,
     onboarding_current_step: normalizedState.currentStep,
     onboarding_completed: normalizedState.completed,

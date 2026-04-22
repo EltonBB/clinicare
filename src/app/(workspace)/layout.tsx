@@ -66,6 +66,7 @@ export default async function WorkspaceLayout({
       planName={planDisplayName(business.plan)}
       planStatus={planStatusLabel(business.planStatus)}
       brandAccentColor={business.brandAccentColor}
+      logoUrl={business.logoUrl}
       tourScopeId={business.id}
       tourCompleted={tourCompleted}
       unreadCount={unreadCount}

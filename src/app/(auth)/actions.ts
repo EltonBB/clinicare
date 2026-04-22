@@ -3,17 +3,13 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import { businessTypes } from "@/lib/constants";
 import { buildAuthRedirectUrl } from "@/lib/app-url";
 import { createEmailVerificationReceipt } from "@/lib/email-verification-receipts";
 import { createClient } from "@/utils/supabase/server";
 
 type FormValues = {
-  businessName?: string;
-  fullName?: string;
   email?: string;
   password?: string;
-  businessType?: string;
   next?: string;
 };
 
@@ -59,15 +55,8 @@ export type PasswordResetActionState = {
 };
 
 const signUpSchema = z.object({
-  businessName: z.string().trim().min(2, "Enter your business name."),
-  fullName: z.string().trim().min(2, "Enter your name."),
   email: z.string().trim().email("Enter a valid email address."),
   password: z.string().min(8, "Password must be at least 8 characters."),
-  businessType: z
-    .string()
-    .refine((value) => businessTypes.includes(value as (typeof businessTypes)[number]), {
-      message: "Select a business type.",
-    }),
 });
 
 const loginSchema = z.object({
@@ -141,11 +130,8 @@ export async function signUpAction(
   formData: FormData
 ): Promise<AuthActionState> {
   const values = {
-    businessName: String(formData.get("businessName") ?? "").trim(),
-    fullName: String(formData.get("fullName") ?? "").trim(),
     email: String(formData.get("email") ?? "").trim(),
     password: String(formData.get("password") ?? ""),
-    businessType: String(formData.get("businessType") ?? ""),
   };
 
   const parsed = signUpSchema.safeParse(values);
@@ -178,11 +164,6 @@ export async function signUpAction(
     password: parsed.data.password,
     options: {
       emailRedirectTo,
-      data: {
-        business_name: parsed.data.businessName,
-        full_name: parsed.data.fullName,
-        business_type: parsed.data.businessType,
-      },
     },
   });
 

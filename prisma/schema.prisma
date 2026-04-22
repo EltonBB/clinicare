@@ -13,6 +13,7 @@ model Business {
   ownerId            String              @unique
   name               String
   businessType       String
+  logoUrl            String?
   dashboardFocus     String              @default("appointments")
   brandAccentColor   String?
   plan               BusinessPlan        @default(BASIC)

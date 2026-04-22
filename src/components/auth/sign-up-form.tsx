@@ -1,12 +1,10 @@
 "use client";
 
 import { useActionState } from "react";
-import { ChevronDown } from "lucide-react";
 
 import { signUpAction, type AuthActionState } from "@/app/(auth)/actions";
 import { SubmitButton } from "@/components/auth/submit-button";
 import { Input } from "@/components/ui/input";
-import { businessTypes } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 const initialState: AuthActionState = {};
@@ -39,36 +37,6 @@ export function SignUpForm() {
       ) : null}
 
       <div className="space-y-3">
-        <FieldLabel>Business Name</FieldLabel>
-        <Input
-          name="businessName"
-          placeholder="e.g. Acme Clinic"
-          defaultValue={state.values?.businessName}
-          aria-invalid={Boolean(state.fieldErrors?.businessName)}
-          className={cn(
-            "h-12 rounded-[1rem] border-border/80 bg-white/84 px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70",
-            state.fieldErrors?.businessName && "border-destructive"
-          )}
-        />
-        <FieldError message={state.fieldErrors?.businessName} />
-      </div>
-
-      <div className="space-y-3">
-        <FieldLabel>Your Name</FieldLabel>
-        <Input
-          name="fullName"
-          placeholder="John Doe"
-          defaultValue={state.values?.fullName}
-          aria-invalid={Boolean(state.fieldErrors?.fullName)}
-          className={cn(
-            "h-12 rounded-[1rem] border-border/80 bg-white/84 px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70",
-            state.fieldErrors?.fullName && "border-destructive"
-          )}
-        />
-        <FieldError message={state.fieldErrors?.fullName} />
-      </div>
-
-      <div className="space-y-3">
         <FieldLabel>Email</FieldLabel>
         <Input
           name="email"
@@ -98,32 +66,6 @@ export function SignUpForm() {
           )}
         />
         <FieldError message={state.fieldErrors?.password} />
-      </div>
-
-      <div className="space-y-3">
-        <FieldLabel>Business Type</FieldLabel>
-        <div className="relative">
-          <select
-            name="businessType"
-            defaultValue={state.values?.businessType ?? ""}
-            className={cn(
-              "h-12 w-full appearance-none rounded-[1rem] border border-border/80 bg-white/84 px-4 pr-11 text-[15px] text-foreground shadow-none outline-none transition-colors focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-              state.fieldErrors?.businessType && "border-destructive"
-            )}
-            aria-invalid={Boolean(state.fieldErrors?.businessType)}
-          >
-            <option value="" disabled>
-              Select business type
-            </option>
-            {businessTypes.map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        </div>
-        <FieldError message={state.fieldErrors?.businessType} />
       </div>
 
       <div className="space-y-3 pt-3">

@@ -33,15 +33,46 @@ export default async function OnboardingPage() {
   const businessName =
     typeof metadata.business_name === "string" && metadata.business_name.length > 0
       ? metadata.business_name
-      : "Vela Workspace";
+      : initialState.clinic.name || "Vela Workspace";
   const ownerName =
     typeof metadata.full_name === "string" && metadata.full_name.length > 0
       ? metadata.full_name
-      : user.email ?? "Workspace Owner";
+      : initialState.owner.name || user.email || "Workspace Owner";
+  const hydratedInitialState = {
+    ...initialState,
+    owner: {
+      ...initialState.owner,
+      name: initialState.owner.name || ownerName,
+    },
+    clinic: {
+      ...initialState.clinic,
+      name:
+        initialState.clinic.name ||
+        (businessName === "Vela Workspace" ? "" : businessName),
+      type:
+        initialState.clinic.type ||
+        (typeof metadata.business_type === "string" ? metadata.business_type : "Clinic"),
+      logoUrl:
+        initialState.clinic.logoUrl ||
+        (typeof metadata.business_logo_url === "string"
+          ? metadata.business_logo_url
+          : ""),
+      accentColor:
+        initialState.clinic.accentColor ||
+        (typeof metadata.business_brand_accent === "string"
+          ? metadata.business_brand_accent
+          : "teal"),
+      accentHex:
+        initialState.clinic.accentHex ||
+        (typeof metadata.business_brand_hex === "string"
+          ? metadata.business_brand_hex
+          : "#268987"),
+    },
+  };
 
   return (
     <OnboardingFlow
-      initialState={initialState}
+      initialState={hydratedInitialState}
       businessName={businessName}
       ownerName={ownerName}
     />

@@ -30,6 +30,7 @@ type AppShellProps = {
   planName?: string;
   planStatus?: string;
   brandAccentColor?: string | null;
+  logoUrl?: string | null;
   tourScopeId?: string;
   tourCompleted?: boolean;
   unreadCount?: number;
@@ -45,6 +46,7 @@ export function AppShell({
   planName = "Basic",
   planStatus = "active",
   brandAccentColor = null,
+  logoUrl = null,
   tourScopeId = "default",
   tourCompleted = false,
   unreadCount = 0,
@@ -150,7 +152,15 @@ export function AppShell({
                 className="group flex items-center gap-3 rounded-[1.1rem] px-1 py-1"
               >
                 <span className="flex size-11 shrink-0 items-center justify-center rounded-[1rem] bg-primary text-sm font-semibold uppercase text-primary-foreground shadow-[0_12px_24px_var(--primary-shadow)]">
-                  {businessName.charAt(0)}
+                  {logoUrl ? (
+                    <span
+                      aria-hidden="true"
+                      className="size-full rounded-[1rem] bg-cover bg-center"
+                      style={{ backgroundImage: `url("${logoUrl}")` }}
+                    />
+                  ) : (
+                    businessName.charAt(0)
+                  )}
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-lg font-semibold tracking-tight text-foreground">

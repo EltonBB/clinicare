@@ -6,20 +6,24 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function SignUpPage() {
   return (
-    <Card className="surface-card overflow-hidden">
-      <CardHeader className="space-y-6 px-8 pt-9 text-center sm:px-10 sm:pt-10">
-        <BrandMark
-          href="/sign-up"
-          includeSubtitle={false}
-          className="justify-center"
-        />
+    <Card className="surface-card overflow-hidden border-white/75 bg-white/86 shadow-[0_26px_80px_rgba(20,32,51,0.12)] backdrop-blur">
+      <div className="h-1.5 bg-[linear-gradient(90deg,var(--primary),color-mix(in_oklab,var(--primary)_34%,white),var(--primary))]" />
+      <CardHeader className="space-y-7 px-8 pt-9 text-center sm:px-10 sm:pt-10">
+        <div className="mx-auto flex size-12 items-center justify-center rounded-[1rem] bg-primary/10 text-primary shadow-[0_16px_34px_var(--primary-shadow)]">
+          <BrandMark
+            href="/sign-up"
+            compact
+            includeSubtitle={false}
+            className="justify-center"
+          />
+        </div>
         <div className="space-y-3">
           <CardTitle className="text-[2rem] font-semibold tracking-tight">
-          Start managing with clarity.
+            Create your Vela account.
           </CardTitle>
           <p className="mx-auto max-w-sm text-[15px] leading-7 text-muted-foreground">
-            Create your Vela workspace for appointments, clients, staff, and
-            WhatsApp reminders.
+            Start with email and password. Clinic details come after email
+            confirmation.
           </p>
         </div>
       </CardHeader>
