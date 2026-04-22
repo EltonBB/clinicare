@@ -83,8 +83,8 @@ function DashboardEmptyState({ view }: { view: DashboardViewModel }) {
 
   return (
     <div className="overflow-hidden rounded-[1.25rem] border border-dashed border-primary/25 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),var(--primary-soft))] p-6 shadow-[0_18px_44px_rgba(20,32,51,0.055)]">
-      <div className="flex max-w-2xl flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-3">
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+        <div className="max-w-xl space-y-3">
           <div className="flex size-11 items-center justify-center rounded-[1rem] bg-primary/12 text-primary">
             {isNoClients ? <UsersRound className="size-5" /> : <CalendarPlus2 className="size-5" />}
           </div>
@@ -98,7 +98,7 @@ function DashboardEmptyState({ view }: { view: DashboardViewModel }) {
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-col gap-2 sm:w-56">
+        <div className="flex shrink-0 flex-col gap-2 sm:w-56 lg:ml-auto">
           <Link
             href={isNoClients ? "/clients?new=1&next=calendar" : bookingHref}
             className={cn(
@@ -109,6 +109,18 @@ function DashboardEmptyState({ view }: { view: DashboardViewModel }) {
             <span>{isNoClients ? "Add first client" : "Book appointment"}</span>
             <ArrowRight className="size-4" />
           </Link>
+          {!isNoClients ? (
+            <Link
+              href="/clients?new=1"
+              className={cn(
+                buttonVariants({ variant: "outline", size: "lg" }),
+                "w-full justify-between rounded-[0.95rem] bg-white/72"
+              )}
+            >
+              <span>New client</span>
+              <CirclePlus className="size-4" />
+            </Link>
+          ) : null}
           <Link
             href="/inbox"
             className={cn(
