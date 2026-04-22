@@ -4,7 +4,7 @@ import {
   CalendarPlus2,
   CirclePlus,
   MessageSquareText,
-  Sparkles,
+  BadgeCheck,
   UsersRound,
 } from "lucide-react";
 
@@ -204,51 +204,34 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
             initialSummary={view.unreadSummary}
           />
 
-          <section className="surface-soft space-y-4 rounded-[1.1rem] px-4 py-4">
+          <section className="surface-soft space-y-3 rounded-[1.1rem] px-4 py-4">
             <div className="flex items-center gap-2">
-              <Sparkles className="size-4 text-primary" />
+              <BadgeCheck className="size-4 text-primary" />
               <p className="text-base font-semibold text-foreground">
-                {view.planSummary.planName}
+                Vela {view.planSummary.planName} plan
               </p>
             </div>
-            <div className="mt-4 space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-4">
-                  <p className="text-sm font-medium text-foreground">Plan status</p>
-                  <p className="text-sm font-semibold text-primary">
-                    {view.planSummary.statusLabel}
-                  </p>
-                </div>
-                <p className="text-sm leading-7 text-muted-foreground">
-                  {view.planSummary.detail}
-                </p>
-              </div>
-
-              <Link
-                href="/pricing"
-                className="inline-flex items-center gap-2 text-sm font-medium text-foreground transition-transform duration-200 hover:translate-x-0.5"
-              >
-                View plans
-                <ArrowRight className="size-4" />
-              </Link>
+            <div className="flex items-center justify-between gap-4 border-t border-border/70 pt-3">
+              <p className="text-sm text-muted-foreground">Plan status</p>
+              <p className="text-sm font-semibold text-primary">
+                {view.planSummary.statusLabel}
+              </p>
             </div>
           </section>
 
           <section className="surface-soft space-y-4 rounded-[1.1rem] px-4 py-4">
             <div className="flex items-center justify-between gap-4">
-              <p className="text-sm font-medium text-foreground">Daily capacity</p>
-              <p className="text-sm font-semibold text-primary">
-                {view.planSummary.capacityUsedPercent}%
+              <p className="text-sm font-medium text-foreground">
+                Appointments for today
+              </p>
+              <p className="text-3xl font-semibold tracking-tight text-primary">
+                {view.appointments.length}
               </p>
             </div>
-            <div className="mt-3 h-2 rounded-full bg-white/80 shadow-[inset_0_1px_2px_rgba(20,32,51,0.08)]">
-              <div
-                className="h-2 rounded-full bg-[linear-gradient(90deg,color-mix(in_oklab,var(--primary)_70%,white),var(--primary))]"
-                style={{ width: `${view.planSummary.capacityUsedPercent}%` }}
-              />
-            </div>
-            <p className="mt-4 text-sm text-muted-foreground">
-              {view.planSummary.remainingSlotsLabel}
+            <p className="text-sm text-muted-foreground">
+              {view.appointments.length === 1
+                ? "1 appointment scheduled today."
+                : `${view.appointments.length} appointments scheduled today.`}
             </p>
           </section>
         </div>

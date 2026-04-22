@@ -10,7 +10,6 @@ import { LogoutButton } from "@/components/auth/logout-button";
 import { NotificationsMenu } from "@/components/layout/notifications-menu";
 import { OwnerAccountDialog } from "@/components/layout/owner-account-dialog";
 import { WorkspaceTour } from "@/components/layout/workspace-tour";
-import { UpgradeModalTrigger } from "@/components/upgrade/upgrade-modal-trigger";
 import { resolveBrandAccentPreset } from "@/lib/branding";
 import { navigationItems } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
@@ -27,6 +26,7 @@ type AppShellProps = {
   ownerName?: string;
   ownerEmail?: string;
   ownerPhone?: string;
+  planName?: string;
   brandAccentColor?: string | null;
   tourScopeId?: string;
   tourCompleted?: boolean;
@@ -40,6 +40,7 @@ export function AppShell({
   ownerName = "Alex Rivera",
   ownerEmail = "owner@vela.app",
   ownerPhone = "",
+  planName = "Basic",
   brandAccentColor = null,
   tourScopeId = "default",
   tourCompleted = false,
@@ -184,13 +185,13 @@ export function AppShell({
             </nav>
 
             <div className="mt-4 space-y-4 border-t border-sidebar-border/70 px-1 pt-5">
-              <div className="surface-soft space-y-3 rounded-[1.05rem] px-4 py-4 text-sm">
-                <p className="font-medium text-foreground">Vela Pro Access</p>
-                <p className="leading-6 text-muted-foreground">
-                Unlock automation, advanced analytics, and premium client
-                experiences.
+              <div className="surface-soft rounded-[1.05rem] px-4 py-4 text-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Current plan
                 </p>
-                <UpgradeModalTrigger triggerClassName="w-full" />
+                <p className="mt-2 text-base font-semibold text-foreground">
+                  Vela {planName} plan
+                </p>
               </div>
 
               <div className="glass-divider rounded-[1.05rem] px-3 py-3">

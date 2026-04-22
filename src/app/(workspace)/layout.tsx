@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { planDisplayName } from "@/lib/billing";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { isOnboardingCompleted } from "@/lib/onboarding";
 import { prisma } from "@/lib/prisma";
@@ -62,6 +63,7 @@ export default async function WorkspaceLayout({
       ownerName={ownerName}
       ownerEmail={user.email ?? ""}
       ownerPhone={ownerPhone}
+      planName={planDisplayName(business.plan)}
       brandAccentColor={business.brandAccentColor}
       tourScopeId={business.id}
       tourCompleted={tourCompleted}

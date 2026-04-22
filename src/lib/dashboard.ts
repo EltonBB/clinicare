@@ -29,9 +29,6 @@ export type DashboardMessageSummary = {
 export type DashboardPlanSummary = {
   planName: string;
   statusLabel: string;
-  detail: string;
-  capacityUsedPercent: number;
-  remainingSlotsLabel: string;
 };
 
 export type DashboardWorkspaceState = {
@@ -75,27 +72,13 @@ function toDashboardStatus(status: Appointment["status"]): DashboardAppointmentS
 }
 
 function buildPlanSummary(
-  business: Business,
-  todaysAppointmentsCount: number,
-  todaysHours: number
+  business: Business
 ): DashboardPlanSummary {
   const planName = planDisplayName(business.plan);
-  const estimatedCapacity = Math.max(todaysHours, 1);
-  const capacityUsedPercent = Math.min(
-    Math.round((todaysAppointmentsCount / estimatedCapacity) * 100),
-    100
-  );
-  const remainingSlots = Math.max(estimatedCapacity - todaysAppointmentsCount, 0);
 
   return {
     planName,
     statusLabel: planStatusLabel(business.planStatus),
-    detail:
-      planName === "Pro"
-        ? "Your workspace is on the Pro plan with reports and premium workflow tools enabled."
-        : "Your workspace is on the Basic plan with scheduling, clients, inbox, and settings available.",
-    capacityUsedPercent,
-    remainingSlotsLabel: `${remainingSlots} slots remaining for today`,
   };
 }
 
@@ -112,7 +95,6 @@ export function buildDashboardViewFromWorkspace(args: {
     business,
     appointments,
     conversations,
-    todaysHours,
     clientCount,
     appointmentCount,
     recentClientId,
@@ -184,7 +166,7 @@ export function buildDashboardViewFromWorkspace(args: {
           ? `Client replies are waiting for ${business.name}. Open inbox to keep response times tight and bookings moving.`
           : `No unread client messages for ${business.name} right now. Open inbox to review the latest conversation history.`,
     },
-    planSummary: buildPlanSummary(business, appointments.length, todaysHours),
+    planSummary: buildPlanSummary(business),
     workspaceState: {
       clientCount,
       appointmentCount,
