@@ -8,7 +8,6 @@ import {
   prepareWhatsAppLiveConnectionAction,
   refreshWhatsAppLiveConnectionAction,
   saveSettingsAction,
-  submitWhatsAppVerificationCodeAction,
 } from "@/app/(workspace)/settings/actions";
 import { businessTypes } from "@/lib/constants";
 import { brandAccentPresets, normalizeBrandHexColor } from "@/lib/branding";
@@ -25,7 +24,6 @@ import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { UpgradeModalTrigger } from "@/components/upgrade/upgrade-modal-trigger";
 
 type SettingsWorkspaceProps = {
   initialState: SettingsState;
@@ -95,6 +93,28 @@ function NativeSelect({
   );
 }
 
+function HourSelect({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <select
+      value={String(value)}
+      onChange={(event) => onChange(Number(event.target.value))}
+      className="h-11 w-full rounded-[0.9rem] border border-border/80 bg-white/84 px-3 text-sm outline-none transition-[border-color,background-color,box-shadow] duration-200 focus:border-ring focus:bg-white focus-visible:ring-3 focus-visible:ring-ring/40"
+    >
+      {reminderHourOptions.map((option) => (
+        <option key={option} value={option}>
+          {option}h
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function SettingsSection({
   id,
   title,
@@ -125,18 +145,6 @@ function SettingsSection({
   );
 }
 
-function connectionStatusTone(phase: SettingsState["whatsapp"]["connection"]["phase"]) {
-  if (phase === "CONNECTED") {
-    return "bg-primary/10 text-primary";
-  }
-
-  if (phase === "NEEDS_SUPPORT") {
-    return "bg-destructive/10 text-destructive";
-  }
-
-  return "bg-white text-muted-foreground ring-1 ring-border/70";
-}
-
 export function SettingsWorkspace({
   initialState,
   flashMessage = "",
@@ -155,13 +163,10 @@ export function SettingsWorkspace({
   const [message, setMessage] = useState(flashMessage);
   const [errorMessage, setErrorMessage] = useState("");
   const [isPending, startSaving] = useTransition();
-  const [connectionStatus, setConnectionStatus] = useState("");
-  const [connectionError, setConnectionError] = useState("");
+  const [, setConnectionStatus] = useState("");
+  const [, setConnectionError] = useState("");
   const [isPreparingConnection, startPreparingConnection] = useTransition();
-  const [verificationCode, setVerificationCode] = useState("");
   const [isRefreshingConnection, startRefreshingConnection] = useTransition();
-  const [isSubmittingVerificationCode, startSubmittingVerificationCode] =
-    useTransition();
   const visibleAccentPresets = brandAccentPresets.filter(
     (preset) => preset.id !== "emerald"
   );
@@ -296,36 +301,6 @@ export function SettingsWorkspace({
 
       setConnectionError("");
       setConnectionStatus(result.message ?? "Latest WhatsApp status loaded.");
-    });
-  }
-
-  function handleSubmitVerificationCode() {
-    startSubmittingVerificationCode(async () => {
-      const result = await submitWhatsAppVerificationCodeAction(verificationCode);
-
-      if (result.connection) {
-        setState((current) => ({
-          ...current,
-          whatsapp: {
-            ...current.whatsapp,
-            connection: result.connection!,
-          },
-        }));
-      }
-
-      if (!result.ok) {
-        setConnectionError(
-          result.error ?? "We couldn't submit the verification code."
-        );
-        setConnectionStatus("");
-        return;
-      }
-
-      setVerificationCode("");
-      setConnectionError("");
-      setConnectionStatus(
-        result.message ?? "Verification code submitted."
-      );
     });
   }
 
@@ -725,10 +700,10 @@ export function SettingsWorkspace({
         <SettingsSection
           id="whatsapp-configuration"
           title="WhatsApp configuration"
-          description="Connect the clinic's WhatsApp number, keep reminders tied to the right inbox, and manage the setup from one place."
+          description="Connect the clinic WhatsApp number used for inbox messages and reminders."
           tourTarget="settings-whatsapp"
         >
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px_auto] lg:items-end">
             <div className="space-y-2">
               <FieldLabel>WhatsApp number</FieldLabel>
               <Input
@@ -746,175 +721,46 @@ export function SettingsWorkspace({
                 className="h-11 rounded-[0.9rem] bg-white/84"
               />
             </div>
-          </div>
-          <div className="mt-4 flex items-center justify-between rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
-            <div>
-              <p className="text-sm font-medium text-foreground">Send reminders</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Control whether reminders are enabled for WhatsApp messaging.
+            <div className="rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-3">
+              <FieldLabel>Status</FieldLabel>
+              <p
+                className={cn(
+                  "mt-1 text-sm font-semibold",
+                  state.whatsapp.connection.phase === "CONNECTED"
+                    ? "text-primary"
+                    : "text-muted-foreground"
+                )}
+              >
+                {state.whatsapp.connection.phase === "CONNECTED"
+                  ? "Connected"
+                  : "Not connected"}
               </p>
             </div>
-            <Toggle
-              checked={state.whatsapp.sendReminders}
-              onPressedChange={(checked) =>
-                setState((current) => ({
-                  ...current,
-                  whatsapp: {
-                    ...current.whatsapp,
-                    sendReminders: checked,
-                  },
-                }))
-              }
-            />
-          </div>
-          <div className="mt-4 rounded-[1rem] border border-primary/12 bg-[linear-gradient(135deg,var(--primary-soft),rgba(255,255,255,0.92))] px-5 py-5 shadow-[0_18px_40px_rgba(20,32,51,0.04)]">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
-                    WhatsApp
-                  </span>
-                  <span
-                    className={cn(
-                      "rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em]",
-                      connectionStatusTone(state.whatsapp.connection.phase)
-                    )}
-                  >
-                    {state.whatsapp.connection.phaseLabel}
-                  </span>
-                </div>
-                <div className="space-y-1">
-                  <FieldLabel>Connection status</FieldLabel>
-                  <p className="text-lg font-semibold text-foreground">
-                    {state.whatsapp.connection.headline}
-                  </p>
-                  <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
-                    {state.whatsapp.connection.detail}
-                  </p>
-                  <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
-                    {state.whatsapp.connection.nextStep}
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  variant="default"
-                  className="h-11 rounded-[0.95rem] px-5"
-                  onClick={handlePrepareLiveConnection}
-                  disabled={isPreparingConnection}
-                >
-                  {isPreparingConnection
-                    ? "Starting..."
-                    : state.whatsapp.connection.primaryActionLabel}
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-11 rounded-[0.95rem] bg-white/84 px-5"
-                  onClick={handleRefreshLiveConnection}
-                  disabled={isRefreshingConnection}
-                >
-                  {isRefreshingConnection ? "Refreshing..." : "Refresh status"}
-                </Button>
-              </div>
+            <div className="flex flex-col gap-2 sm:flex-row lg:justify-end">
+              <Button
+                variant="default"
+                className="h-11 rounded-[0.95rem] px-5"
+                onClick={handlePrepareLiveConnection}
+                disabled={isPreparingConnection}
+              >
+                {isPreparingConnection ? "Connecting..." : "Connect"}
+              </Button>
+              <Button
+                variant="outline"
+                className="h-11 rounded-[0.95rem] bg-white/84 px-5"
+                onClick={handleRefreshLiveConnection}
+                disabled={isRefreshingConnection}
+              >
+                {isRefreshingConnection ? "Refreshing..." : "Refresh status"}
+              </Button>
             </div>
-
-            {connectionError ? (
-              <div className="mt-4 rounded-[0.9rem] border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                {connectionError}
-              </div>
-            ) : null}
-            {!connectionError && connectionStatus ? (
-              <div className="mt-4 rounded-[0.9rem] border border-primary/20 bg-primary/8 px-3 py-2 text-sm text-primary">
-                {connectionStatus}
-              </div>
-            ) : null}
-
-            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Requested clinic number
-                </p>
-                <p className="mt-2 text-sm font-medium text-foreground">
-                  {state.whatsapp.connection.requestedPhoneNumber || "Not set"}
-                </p>
-              </div>
-              <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  {state.whatsapp.connection.alternatePhoneNumber &&
-                  !state.whatsapp.connection.senderPhoneNumber
-                    ? "Current active number"
-                    : "Active sender"}
-                </p>
-                <p className="mt-2 text-sm font-medium text-foreground">
-                  {state.whatsapp.connection.senderPhoneNumber ||
-                    state.whatsapp.connection.alternatePhoneNumber ||
-                    "Not connected yet"}
-                </p>
-              </div>
-              <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Setup step
-                </p>
-                <p className="mt-2 text-sm font-medium text-foreground">
-                  {state.whatsapp.connection.phaseLabel}
-                </p>
-                <p className="mt-2 text-xs uppercase tracking-[0.12em] text-muted-foreground">
-                  Verification {state.whatsapp.connection.verificationLabel}
-                </p>
-              </div>
-              <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Last update
-                </p>
-                <p className="mt-2 text-sm font-medium text-foreground">
-                  {state.whatsapp.connection.lastSyncedLabel || "Not synced yet"}
-                </p>
-              </div>
-            </div>
-
-            {(state.whatsapp.connection.onboardingStartedAtLabel ||
-              state.whatsapp.connection.connectedAtLabel ||
-              state.whatsapp.connection.lastSyncedLabel ||
-              state.whatsapp.connection.lastError) ? (
-              <div className="mt-5 grid gap-3 md:grid-cols-2">
-                {state.whatsapp.connection.onboardingStartedAtLabel ? (
-                  <div className="rounded-[0.9rem] border border-border/80 bg-white/76 px-4 py-3 text-sm text-muted-foreground">
-                    Onboarding started{" "}
-                    <span className="font-medium text-foreground">
-                      {state.whatsapp.connection.onboardingStartedAtLabel}
-                    </span>
-                  </div>
-                ) : null}
-                {state.whatsapp.connection.connectedAtLabel ? (
-                  <div className="rounded-[0.9rem] border border-border/80 bg-white/76 px-4 py-3 text-sm text-muted-foreground">
-                    Connected{" "}
-                    <span className="font-medium text-foreground">
-                      {state.whatsapp.connection.connectedAtLabel}
-                    </span>
-                  </div>
-                ) : null}
-                {state.whatsapp.connection.lastSyncedLabel ? (
-                  <div className="rounded-[0.9rem] border border-border/80 bg-white/76 px-4 py-3 text-sm text-muted-foreground">
-                    Last sync{" "}
-                    <span className="font-medium text-foreground">
-                      {state.whatsapp.connection.lastSyncedLabel}
-                    </span>
-                  </div>
-                ) : null}
-                {state.whatsapp.connection.lastError ? (
-                  <div className="rounded-[0.9rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-                    {state.whatsapp.connection.lastError}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
           </div>
         </SettingsSection>
 
         <SettingsSection
           id="reminders"
           title="Reminders"
-          description="Define the reminder cadence and shared template that appointments can reuse across the MVP workflow."
+          description="Choose when clients receive appointment reminders before their visit starts."
         >
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
@@ -925,7 +771,7 @@ export function SettingsWorkspace({
                       First reminder
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Send before the appointment starts.
+                      Example: 24h means the first reminder is sent 24 hours before the appointment time comes.
                     </p>
                   </div>
                   <Toggle
@@ -943,21 +789,20 @@ export function SettingsWorkspace({
                 </div>
                 <div className="mt-4 space-y-2">
                   <FieldLabel>Send time</FieldLabel>
-                  <NativeSelect
-                    value={String(state.reminders.firstReminderHours)}
-                    options={reminderHourOptions}
+                  <HourSelect
+                    value={state.reminders.firstReminderHours}
                     onChange={(value) =>
                       setState((current) => ({
                         ...current,
                         reminders: {
                           ...current.reminders,
-                          firstReminderHours: Number(value),
+                          firstReminderHours: value,
                         },
                       }))
                     }
                   />
                   <p className="text-xs text-muted-foreground">
-                    {state.reminders.firstReminderHours} hours before the appointment.
+                    {state.reminders.firstReminderHours}h before the appointment.
                   </p>
                 </div>
               </div>
@@ -969,7 +814,7 @@ export function SettingsWorkspace({
                       Second reminder
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Optional final prompt closer to the visit.
+                      Example: 2h means the second reminder is sent 2 hours before the appointment time comes.
                     </p>
                   </div>
                   <Toggle
@@ -987,21 +832,20 @@ export function SettingsWorkspace({
                 </div>
                 <div className="mt-4 space-y-2">
                   <FieldLabel>Send time</FieldLabel>
-                  <NativeSelect
-                    value={String(state.reminders.secondReminderHours)}
-                    options={reminderHourOptions}
+                  <HourSelect
+                    value={state.reminders.secondReminderHours}
                     onChange={(value) =>
                       setState((current) => ({
                         ...current,
                         reminders: {
                           ...current.reminders,
-                          secondReminderHours: Number(value),
+                          secondReminderHours: value,
                         },
                       }))
                     }
                   />
                   <p className="text-xs text-muted-foreground">
-                    {state.reminders.secondReminderHours} hours before the appointment.
+                    {state.reminders.secondReminderHours}h before the appointment.
                   </p>
                 </div>
               </div>
@@ -1027,103 +871,36 @@ export function SettingsWorkspace({
                 className="min-h-32 rounded-[0.95rem] bg-white/84 px-4 py-3"
               />
             </div>
-
-            {state.whatsapp.connection.mode === "LIVE" &&
-            state.whatsapp.connection.showVerificationInput ? (
-              <div className="mt-5 rounded-[0.95rem] border border-border/80 bg-white/84 px-4 py-4">
-                <p className="text-sm font-medium text-foreground">
-                  Verification code
-                </p>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  If the clinic number receives a verification code, paste it
-                  here and submit it.
-                </p>
-                <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                  <Input
-                    value={verificationCode}
-                    onChange={(event) => setVerificationCode(event.target.value)}
-                    placeholder="Enter code"
-                    className="h-11 rounded-[0.9rem] bg-white/84"
-                  />
-                  <Button
-                    variant="outline"
-                    className="h-11 rounded-[0.9rem] bg-white/84 px-5"
-                    onClick={handleSubmitVerificationCode}
-                    disabled={isSubmittingVerificationCode}
-                  >
-                    {isSubmittingVerificationCode
-                      ? "Submitting..."
-                      : "Submit code"}
-                  </Button>
-                </div>
-              </div>
-            ) : null}
           </div>
         </SettingsSection>
 
         <SettingsSection
           id="billing"
           title="Billing"
-          description="Review the current plan, see what is locked, and use the prepared upgrade path while live payments are still pending."
+          description="Review the current plan and open pricing if you want to upgrade."
         >
-          <div className="space-y-4">
-            <div className="overflow-hidden rounded-[1rem] border border-primary/12 bg-[linear-gradient(135deg,var(--primary-soft),rgba(255,255,255,0.92))] shadow-[0_18px_40px_rgba(20,32,51,0.04)]">
-              <div className="space-y-5 px-5 py-5">
-                <div className="space-y-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Billing plan
-                  </p>
-                  <div className="flex items-center gap-3">
-                    <p className="text-2xl font-semibold text-foreground">
-                      {state.billing.planName}
-                    </p>
-                    <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
-                      {state.billing.statusLabel}
-                    </span>
-                  </div>
-                </div>
-                <p className="max-w-3xl text-sm leading-7 text-muted-foreground">
-                  {state.billing.note}
+          <div className="flex flex-col gap-4 rounded-[1rem] border border-border/80 bg-white/88 px-5 py-5 shadow-[0_16px_34px_rgba(20,32,51,0.04)] sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <FieldLabel>Current plan</FieldLabel>
+              <div className="mt-2 flex items-center gap-3">
+                <p className="text-2xl font-semibold text-foreground">
+                  Vela {state.billing.planName}
                 </p>
+                <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+                  {state.billing.statusLabel}
+                </span>
               </div>
             </div>
-
-            <div className="rounded-[0.95rem] border border-border/80 bg-white/88 px-4 py-4">
-              <FieldLabel>Locked on Basic</FieldLabel>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {state.billing.lockedFeatures.map((feature) => (
-                  <span
-                    key={feature}
-                    className="rounded-full border border-border/80 bg-muted/35 px-3 py-1 text-xs font-medium text-muted-foreground"
-                  >
-                    {feature}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-[1rem] border border-border/80 bg-white/88 px-5 py-5 shadow-[0_16px_34px_rgba(20,32,51,0.04)]">
-              <FieldLabel>Plan upgrade</FieldLabel>
-              <div className="mt-4 space-y-3">
-                <UpgradeModalTrigger
-                  label={state.billing.ctaLabel}
-                  triggerClassName={cn(
-                    buttonVariants({ variant: "default", size: "lg" }),
-                    "h-12 w-full rounded-[0.95rem] justify-center"
-                  )}
-                />
-                <Link
-                  href="/pricing"
-                  className={cn(
-                    buttonVariants({ variant: "outline", size: "lg" }),
-                    "h-12 w-full rounded-[0.95rem] justify-center bg-white/76 px-4"
-                  )}
-                >
-                  View pricing
-                  <ArrowUpRight className="size-4" />
-                </Link>
-              </div>
-            </div>
+            <Link
+              href="/pricing"
+              className={cn(
+                buttonVariants({ variant: "outline", size: "lg" }),
+                "h-11 rounded-[0.95rem] justify-center bg-white/76 px-5"
+              )}
+            >
+              View pricing
+              <ArrowUpRight className="size-4" />
+            </Link>
           </div>
         </SettingsSection>
       </div>
