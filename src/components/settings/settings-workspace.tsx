@@ -703,40 +703,8 @@ export function SettingsWorkspace({
           description="Connect the clinic WhatsApp number used for inbox messages and reminders."
           tourTarget="settings-whatsapp"
         >
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px_auto] lg:items-end">
-            <div className="space-y-2">
-              <FieldLabel>WhatsApp number</FieldLabel>
-              <Input
-                value={state.whatsapp.phoneNumber}
-                onChange={(event) =>
-                  setState((current) => ({
-                    ...current,
-                    whatsapp: {
-                      ...current.whatsapp,
-                      phoneNumber: event.target.value,
-                    },
-                  }))
-                }
-                placeholder="+1 555 000 0000"
-                className="h-11 rounded-[0.9rem] bg-white/84"
-              />
-            </div>
-            <div className="rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-3">
-              <FieldLabel>Status</FieldLabel>
-              <p
-                className={cn(
-                  "mt-1 text-sm font-semibold",
-                  state.whatsapp.connection.phase === "CONNECTED"
-                    ? "text-primary"
-                    : "text-muted-foreground"
-                )}
-              >
-                {state.whatsapp.connection.phase === "CONNECTED"
-                  ? "Connected"
-                  : "Not connected"}
-              </p>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row lg:justify-end">
+          <div className="rounded-[1rem] border border-border/80 bg-muted/35 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
               <Button
                 variant="default"
                 className="h-11 rounded-[0.95rem] px-5"
@@ -754,13 +722,58 @@ export function SettingsWorkspace({
                 {isRefreshingConnection ? "Refreshing..." : "Refresh status"}
               </Button>
             </div>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_240px] lg:items-end">
+              <div className="space-y-2">
+                <FieldLabel>WhatsApp number</FieldLabel>
+                <Input
+                  value={state.whatsapp.phoneNumber}
+                  onChange={(event) =>
+                    setState((current) => ({
+                      ...current,
+                      whatsapp: {
+                        ...current.whatsapp,
+                        phoneNumber: event.target.value,
+                      },
+                    }))
+                  }
+                  placeholder="+1 555 000 0000"
+                  className="h-11 rounded-[0.9rem] bg-white/84"
+                />
+              </div>
+              <div className="rounded-[0.95rem] border border-border/80 bg-white/88 px-4 py-3 shadow-[0_10px_24px_rgba(20,32,51,0.035)]">
+                <div className="flex items-center justify-between gap-3">
+                  <FieldLabel>Status</FieldLabel>
+                  <span
+                    className={cn(
+                      "size-2.5 rounded-full",
+                      state.whatsapp.connection.phase === "CONNECTED"
+                        ? "bg-primary"
+                        : "bg-muted-foreground/35"
+                    )}
+                  />
+                </div>
+                <p
+                  className={cn(
+                    "mt-2 text-base font-semibold",
+                    state.whatsapp.connection.phase === "CONNECTED"
+                      ? "text-primary"
+                      : "text-foreground"
+                  )}
+                >
+                  {state.whatsapp.connection.phase === "CONNECTED"
+                    ? "Connected"
+                    : "Not connected"}
+                </p>
+              </div>
+            </div>
           </div>
         </SettingsSection>
 
         <SettingsSection
           id="reminders"
           title="Reminders"
-          description="Choose when clients receive appointment reminders before their visit starts."
+          description=""
         >
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
@@ -769,9 +782,6 @@ export function SettingsWorkspace({
                   <div>
                     <p className="text-sm font-medium text-foreground">
                       First reminder
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Example: 24h means the first reminder is sent 24 hours before the appointment time comes.
                     </p>
                   </div>
                   <Toggle
@@ -812,9 +822,6 @@ export function SettingsWorkspace({
                   <div>
                     <p className="text-sm font-medium text-foreground">
                       Second reminder
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Example: 2h means the second reminder is sent 2 hours before the appointment time comes.
                     </p>
                   </div>
                   <Toggle
