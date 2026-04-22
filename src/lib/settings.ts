@@ -30,7 +30,7 @@ import {
 export const defaultReminderTemplate =
   "Hi {client_name}, this is a reminder for your appointment at {time} on {date}. Reply here if you need to reschedule.";
 
-export type StaffRole = "Owner" | "Manager" | "Specialist" | "Reception";
+export type StaffRole = "Manager" | "Specialist" | "Reception";
 
 export type SettingsStaffMember = {
   id: string;
@@ -118,9 +118,9 @@ type SettingsWorkspaceData = {
 };
 
 function normalizeStaffRole(value: unknown): StaffRole {
-  const roles: StaffRole[] = ["Owner", "Manager", "Specialist", "Reception"];
+  const roles: StaffRole[] = ["Manager", "Specialist", "Reception"];
 
-  return roles.includes(value as StaffRole) ? (value as StaffRole) : "Owner";
+  return roles.includes(value as StaffRole) ? (value as StaffRole) : "Specialist";
 }
 
 function normalizeWorkingHoursFromDatabase(hours: BusinessHours[]): WorkingHoursState {
@@ -159,7 +159,7 @@ function normalizeSettingsStaff(staffMembers: StaffMember[], fallbackName: strin
     {
       id: "staff-seed",
       name: fallbackName,
-      role: "Owner" as const,
+      role: "Specialist" as const,
     },
   ];
 }
@@ -525,4 +525,4 @@ export const timeOptions = [
   "19:00",
 ];
 
-export const staffRoles: StaffRole[] = ["Owner", "Manager", "Specialist", "Reception"];
+export const staffRoles: StaffRole[] = ["Manager", "Specialist", "Reception"];

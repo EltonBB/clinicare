@@ -79,7 +79,7 @@ export async function saveSettingsAction(
   if (payload.appearance.accentColor === "custom" && !customAccentHex) {
     return {
       ok: false,
-      error: "Enter a valid HEX color, for example #268987.",
+      error: "Enter a valid HEX color, for example #3b82f6.",
     };
   }
 
@@ -104,7 +104,7 @@ export async function saveSettingsAction(
           {
             id: "owner-seed",
             name: payload.business.ownerName.trim() || user.email || "Workspace Owner",
-            role: "Owner" as const,
+            role: "Specialist" as const,
           },
         ];
   const existingConnection = await prisma.whatsAppConnection.findUnique({

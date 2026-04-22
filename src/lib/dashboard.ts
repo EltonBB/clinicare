@@ -37,6 +37,7 @@ export type DashboardWorkspaceState = {
   dashboardFocus: string;
   recentClientId?: string;
   scheduleState: "no-clients" | "no-appointments" | "no-today" | "active";
+  selectedWidgets: string[];
 };
 
 export type DashboardViewModel = {
@@ -104,11 +105,16 @@ export function buildDashboardViewFromWorkspace(args: {
   const bookingHref = recentClientId
     ? `/calendar?new=1&client=${recentClientId}&date=${todayKey}`
     : `/calendar?new=1&date=${todayKey}`;
-  const dashboardFocus = ["appointments", "clients", "inbox"].includes(
-    business.dashboardFocus
-  )
-    ? business.dashboardFocus
-    : "appointments";
+  const allowedWidgets = ["appointments", "clients", "inbox"] as const;
+  type DashboardWidget = (typeof allowedWidgets)[number];
+  const selectedWidgets = business.dashboardFocus
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item): item is DashboardWidget =>
+      allowedWidgets.includes(item as DashboardWidget)
+    );
+  const dashboardWidgets: DashboardWidget[] =
+    selectedWidgets.length > 0 ? selectedWidgets : [...allowedWidgets];
   const scheduleState =
     clientCount === 0
       ? "no-clients"
@@ -132,17 +138,22 @@ export function buildDashboardViewFromWorkspace(args: {
     href: "/inbox",
     tone: "secondary",
   };
-  const quickActions: DashboardQuickAction[] =
-    clientCount === 0
-      ? [
-          { label: "Add first client", href: "/clients?new=1&next=calendar", tone: "primary" },
-          inboxAction,
-        ]
-      : dashboardFocus === "clients"
-        ? [{ ...clientAction, tone: "primary" }, { ...appointmentAction, tone: "secondary" }, inboxAction]
-        : dashboardFocus === "inbox"
-          ? [{ ...inboxAction, tone: "primary" }, { ...appointmentAction, tone: "secondary" }, clientAction]
-          : [appointmentAction, clientAction, inboxAction];
+  const actionsByWidget: Record<DashboardWidget, DashboardQuickAction> = {
+    appointments: appointmentAction,
+    clients:
+      clientCount === 0
+        ? {
+            label: "Add first client",
+            href: "/clients?new=1&next=calendar",
+            tone: "primary",
+          }
+        : clientAction,
+    inbox: inboxAction,
+  };
+  const quickActions = dashboardWidgets.map((widget, index) => ({
+    ...actionsByWidget[widget],
+    tone: index === 0 ? "primary" as const : "secondary" as const,
+  }));
 
   return {
     businessName: business.name,
@@ -170,7 +181,8 @@ export function buildDashboardViewFromWorkspace(args: {
     workspaceState: {
       clientCount,
       appointmentCount,
-      dashboardFocus,
+      dashboardFocus: dashboardWidgets[0] ?? "appointments",
+      selectedWidgets: dashboardWidgets,
       recentClientId,
       scheduleState,
     },

@@ -77,7 +77,7 @@ export type OnboardingState = {
     role: string;
   };
   dashboard: {
-    focus: "appointments" | "clients" | "inbox";
+    widgets: Array<"appointments" | "clients" | "inbox">;
   };
 };
 
@@ -102,16 +102,16 @@ export function createDefaultOnboardingState(): OnboardingState {
       name: "",
       type: "Clinic",
       logoUrl: "",
-      accentColor: "teal",
-      accentHex: "#268987",
+      accentColor: "blue",
+      accentHex: "#3b82f6",
     },
     workingHours: defaultWorkingHours,
     staffMember: {
       name: "",
-      role: "Owner",
+      role: "Specialist",
     },
     dashboard: {
-      focus: "appointments",
+      widgets: ["appointments", "clients", "inbox"],
     },
   };
 }
@@ -128,13 +128,26 @@ function readBoolean(value: unknown, fallback: boolean) {
   return typeof value === "boolean" ? value : fallback;
 }
 
-function readDashboardFocus(
+function readDashboardWidgets(
   value: unknown,
-  fallback: OnboardingState["dashboard"]["focus"]
+  fallback: OnboardingState["dashboard"]["widgets"]
 ) {
-  return value === "appointments" || value === "clients" || value === "inbox"
-    ? value
-    : fallback;
+  const allowed = new Set(["appointments", "clients", "inbox"]);
+
+  if (Array.isArray(value)) {
+    const widgets = value.filter(
+      (item): item is OnboardingState["dashboard"]["widgets"][number] =>
+        typeof item === "string" && allowed.has(item)
+    );
+
+    return widgets.length > 0 ? widgets : fallback;
+  }
+
+  if (typeof value === "string" && allowed.has(value)) {
+    return [value as OnboardingState["dashboard"]["widgets"][number]];
+  }
+
+  return fallback;
 }
 
 function readCurrentStep(value: unknown) {
@@ -187,7 +200,10 @@ export function normalizeOnboardingState(value: unknown): OnboardingState {
       role: readString(staffMember.role, defaults.staffMember.role),
     },
     dashboard: {
-      focus: readDashboardFocus(dashboard.focus, defaults.dashboard.focus),
+      widgets: readDashboardWidgets(
+        dashboard.widgets ?? dashboard.focus,
+        defaults.dashboard.widgets
+      ),
     },
   };
 }

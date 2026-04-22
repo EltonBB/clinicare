@@ -42,6 +42,7 @@ async function bootstrapWorkspaceFromOnboarding(user: {
       ? customAccentHex
       : accentPreset.id;
   const logoUrl = nextState.clinic.logoUrl.trim() || null;
+  const dashboardFocus = nextState.dashboard.widgets.join(",");
 
   return prisma.$transaction(async (tx) => {
     const business = await tx.business.upsert({
@@ -53,7 +54,7 @@ async function bootstrapWorkspaceFromOnboarding(user: {
         businessType,
         logoUrl,
         brandAccentColor,
-        dashboardFocus: nextState.dashboard.focus,
+        dashboardFocus,
       },
       create: {
         ownerId: user.id,
@@ -61,7 +62,7 @@ async function bootstrapWorkspaceFromOnboarding(user: {
         businessType,
         logoUrl,
         brandAccentColor,
-        dashboardFocus: nextState.dashboard.focus,
+        dashboardFocus,
         plan: "BASIC",
         planStatus: "ACTIVE",
         trialEndsAt: null,
@@ -151,7 +152,7 @@ async function bootstrapWorkspaceFromOnboarding(user: {
         data: {
           businessId: business.id,
           name: staffName,
-          role: nextState.staffMember.role || "Owner",
+          role: nextState.staffMember.role || "Specialist",
         },
       });
     }

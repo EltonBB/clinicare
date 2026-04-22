@@ -1,14 +1,12 @@
 "use client";
 
-import { useMemo, useState, useTransition, type CSSProperties } from "react";
+import { useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
   CalendarDays,
   CheckCircle2,
-  Clock3,
-  LayoutDashboard,
   MessageSquareText,
   Users,
 } from "lucide-react";
@@ -23,11 +21,6 @@ import {
   normalizeBrandHexColor,
   resolveBrandAccentPreset,
 } from "@/lib/branding";
-import {
-  Progress,
-  ProgressLabel,
-  ProgressValue,
-} from "@/components/ui/progress";
 import {
   onboardingSteps,
   weekdayOrder,
@@ -62,7 +55,7 @@ const timeOptions = [
   "19:00",
 ];
 
-const staffRoles = ["Owner", "Manager", "Specialist", "Reception"];
+const staffRoles = ["Manager", "Specialist", "Reception"];
 
 const fieldInputClass =
   "h-12 rounded-[0.95rem] border-border bg-card px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70";
@@ -76,54 +69,11 @@ type OnboardingFlowProps = {
   ownerName: string;
 };
 
-function StepMeta({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="space-y-3 text-center">
-      <h1 className="text-[2.25rem] font-semibold tracking-tight text-foreground">
-        {title}
-      </h1>
-      <p className="mx-auto max-w-2xl text-[15px] leading-7 text-muted-foreground">
-        {description}
-      </p>
-    </div>
-  );
-}
-
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
     <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
       {children}
     </label>
-  );
-}
-
-function SurfaceNote({
-  icon,
-  title,
-  children,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-[1.35rem] border border-border bg-card p-5">
-      <div className="flex items-start gap-4">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-          {icon}
-        </div>
-        <div className="space-y-2">
-          <p className="text-sm font-semibold text-foreground">{title}</p>
-          <p className="text-sm leading-6 text-muted-foreground">{children}</p>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -203,12 +153,17 @@ function getStepError(state: OnboardingState) {
         state.clinic.accentColor === "custom" &&
         !normalizeBrandHexColor(state.clinic.accentHex)
       ) {
-        return "Enter a valid brand HEX color, for example #268987.";
+        return "Enter a valid brand HEX color, for example #3b82f6.";
       }
       return null;
     case 4:
       if (!state.staffMember.name.trim()) {
         return "Add at least one staff member name before continuing.";
+      }
+      return null;
+    case 5:
+      if (state.dashboard.widgets.length === 0) {
+        return "Choose at least one dashboard widget.";
       }
       return null;
     default:
@@ -217,7 +172,7 @@ function getStepError(state: OnboardingState) {
 }
 
 const dashboardFocusOptions: Array<{
-  value: OnboardingState["dashboard"]["focus"];
+  value: OnboardingState["dashboard"]["widgets"][number];
   title: string;
   description: string;
   icon: React.ReactNode;
@@ -270,7 +225,6 @@ export function OnboardingFlow({
     onboardingSteps.length
   ) - 1;
   const step = onboardingSteps[stepIndex];
-  const progressValue = ((stepIndex + 1) / onboardingSteps.length) * 100;
   const progressInset =
     onboardingSteps.length > 1 ? `${50 / onboardingSteps.length}%` : "50%";
   const progressWidth =
@@ -280,57 +234,6 @@ export function OnboardingFlow({
   const nextStepLabel =
     onboardingSteps[Math.min(stepIndex + 1, onboardingSteps.length - 1)]
       ?.shortLabel;
-
-  const estimatedHours = useMemo(() => {
-    return weekdayOrder.reduce((total, day) => {
-      const current = state.workingHours[day];
-
-      if (!current.enabled) {
-        return total;
-      }
-
-      const [startHour] = current.start.split(":").map(Number);
-      const [endHour] = current.end.split(":").map(Number);
-      return total + Math.max(endHour - startHour, 0);
-    }, 0);
-  }, [state.workingHours]);
-
-  const hint = useMemo(() => {
-    switch (step.id) {
-      case "owner":
-        return {
-          title: "Account owner",
-          icon: <Users className="size-4" />,
-          body: "This name is used for the owner profile and can be updated later from the account menu.",
-        };
-      case "clinic":
-        return {
-          title: "Workspace identity",
-          icon: <LayoutDashboard className="size-4" />,
-          body: "The clinic identity appears in the sidebar. Colors can be adjusted now or later in Settings.",
-        };
-      case "hours":
-        return {
-          title: "Why this matters",
-          icon: <Clock3 className="size-4" />,
-          body: "Clear working hours make availability predictable for clients and keep your first calendar view realistic from day one.",
-        };
-      case "staff":
-        return {
-          title: "Keep it simple",
-          icon: <Users className="size-4" />,
-          body: "For MVP, one staff profile is enough. You can add more people later in Settings without redoing onboarding.",
-        };
-      case "dashboard":
-        return {
-          title: "Dashboard behavior",
-          icon: <LayoutDashboard className="size-4" />,
-          body: "This changes the first shortcuts and empty states the clinic sees. The team can still use every feature from the sidebar.",
-        };
-      default:
-        return null;
-    }
-  }, [step.id]);
 
   function persistState(
     nextState: OnboardingState,
@@ -429,6 +332,36 @@ export function OnboardingFlow({
     }));
   }
 
+  function handleLogoUpload(file: File | null) {
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setErrorMessage("Upload an image file for the clinic logo.");
+      return;
+    }
+
+    if (file.size > 750_000) {
+      setErrorMessage("Logo file is too large. Upload an image under 750 KB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      setState((current) => ({
+        ...current,
+        clinic: {
+          ...current.clinic,
+          logoUrl: result,
+        },
+      }));
+      setErrorMessage("");
+    };
+    reader.readAsDataURL(file);
+  }
+
   function renderStepContent() {
     if (step.id === "owner") {
       return (
@@ -445,13 +378,9 @@ export function OnboardingFlow({
                       ...current.owner,
                       name: event.target.value,
                     },
-                    staffMember: {
-                      ...current.staffMember,
-                      name: current.staffMember.name || event.target.value,
-                    },
                   }))
                 }
-                placeholder="Elton Bajra"
+                placeholder="Owner name"
                 className={fieldInputClass}
               />
             </div>
@@ -498,21 +427,47 @@ export function OnboardingFlow({
               />
             </div>
             <div className="space-y-3 md:col-span-2">
-              <FieldLabel>Logo URL optional</FieldLabel>
-              <Input
-                value={state.clinic.logoUrl}
-                onChange={(event) =>
-                  setState((current) => ({
-                    ...current,
-                    clinic: {
-                      ...current.clinic,
-                      logoUrl: event.target.value,
-                    },
-                  }))
-                }
-                placeholder="https://example.com/logo.png"
-                className={fieldInputClass}
-              />
+              <FieldLabel>Logo optional</FieldLabel>
+              <div className="grid gap-3 rounded-[1.1rem] border border-border bg-card p-4 sm:grid-cols-[72px_minmax(0,1fr)] sm:items-center">
+                <div className="flex size-[72px] items-center justify-center overflow-hidden rounded-[1.15rem] bg-primary/10 text-xl font-semibold text-primary">
+                  {state.clinic.logoUrl ? (
+                    <span
+                      aria-hidden="true"
+                      className="size-full bg-cover bg-center"
+                      style={{ backgroundImage: `url("${state.clinic.logoUrl}")` }}
+                    />
+                  ) : (
+                    (state.clinic.name || "V").charAt(0)
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) =>
+                      handleLogoUpload(event.currentTarget.files?.[0] ?? null)
+                    }
+                    className="h-12 rounded-[0.95rem] border-border bg-white/84 px-4 text-[15px] file:mr-4 file:rounded-full file:border-0 file:bg-primary/10 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-primary"
+                  />
+                  {state.clinic.logoUrl ? (
+                    <button
+                      type="button"
+                      className="text-sm font-medium text-muted-foreground hover:text-foreground"
+                      onClick={() =>
+                        setState((current) => ({
+                          ...current,
+                          clinic: {
+                            ...current.clinic,
+                            logoUrl: "",
+                          },
+                        }))
+                      }
+                    >
+                      Remove logo
+                    </button>
+                  ) : null}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -620,7 +575,7 @@ export function OnboardingFlow({
                       },
                     }))
                   }
-                  placeholder="#268987"
+                  placeholder="#3b82f6"
                   className="mt-3 h-10 rounded-[0.75rem] bg-white/88 font-mono text-xs uppercase tracking-[0.08em]"
                 />
               </div>
@@ -631,8 +586,28 @@ export function OnboardingFlow({
     }
 
     if (step.id === "hours") {
+      const weeklyHours = weekdayOrder.reduce((total, day) => {
+        const current = state.workingHours[day];
+
+        if (!current.enabled) {
+          return total;
+        }
+
+        const [startHour] = current.start.split(":").map(Number);
+        const [endHour] = current.end.split(":").map(Number);
+        return total + Math.max(endHour - startHour, 0);
+      }, 0);
+
       return (
         <div className="space-y-3">
+          <div className="flex items-center justify-between rounded-[1.1rem] border border-border bg-card px-5 py-4">
+            <p className="text-sm font-medium text-foreground">
+              Weekly availability
+            </p>
+            <p className="text-lg font-semibold text-primary">
+              {weeklyHours}h/week
+            </p>
+          </div>
           {weekdayOrder.map((day) => {
             const item = state.workingHours[day];
 
@@ -696,7 +671,7 @@ export function OnboardingFlow({
                   },
                 }))
               }
-              placeholder="Dr. Sarah Lee"
+              placeholder="Staff name"
               className={fieldInputClass}
             />
           </div>
@@ -717,10 +692,10 @@ export function OnboardingFlow({
             />
           </div>
           <div className="rounded-[1.35rem] border border-border bg-card p-5 md:col-span-2">
-            <p className="text-sm font-semibold text-foreground">Preview</p>
+            <p className="text-sm font-semibold text-foreground">Staff preview</p>
             <div className="mt-4 flex items-center gap-4 rounded-[1rem] bg-muted/55 p-4">
               <div className="flex size-11 items-center justify-center rounded-full bg-primary/12 text-sm font-semibold text-primary">
-                {(state.staffMember.name || ownerName)
+                {(state.staffMember.name || "Staff")
                   .split(" ")
                   .map((part) => part[0])
                   .join("")
@@ -728,7 +703,7 @@ export function OnboardingFlow({
               </div>
               <div>
                 <p className="font-medium text-foreground">
-                  {state.staffMember.name || ownerName}
+                  {state.staffMember.name || "Staff name"}
                 </p>
                 <p className="text-sm text-muted-foreground">
                   {state.staffMember.role}
@@ -744,7 +719,7 @@ export function OnboardingFlow({
       return (
         <div className="grid gap-4 md:grid-cols-3">
           {dashboardFocusOptions.map((option) => {
-            const selected = state.dashboard.focus === option.value;
+            const selected = state.dashboard.widgets.includes(option.value);
 
             return (
               <button
@@ -755,7 +730,11 @@ export function OnboardingFlow({
                     ...current,
                     dashboard: {
                       ...current.dashboard,
-                      focus: option.value,
+                      widgets: selected
+                        ? current.dashboard.widgets.filter(
+                            (widget) => widget !== option.value
+                          )
+                        : [...current.dashboard.widgets, option.value],
                     },
                   }))
                 }
@@ -830,7 +809,7 @@ export function OnboardingFlow({
         </div>
 
         <div className="py-6">
-          <div className="mx-auto max-w-3xl rounded-[1.5rem] border border-border bg-card px-8 py-7 shadow-[0_18px_42px_rgba(20,32,51,0.055)]">
+          <div className="mx-auto max-w-3xl px-8 py-7">
             <div
               className="relative grid"
               style={{
@@ -871,14 +850,6 @@ export function OnboardingFlow({
                     >
                       {completed ? <CheckCircle2 className="size-4" /> : index + 1}
                     </span>
-                    <span
-                      className={cn(
-                        "text-xs font-semibold text-muted-foreground",
-                        (completed || current) && "text-foreground"
-                      )}
-                    >
-                      {item.shortLabel}
-                    </span>
                   </div>
                 );
               })}
@@ -887,15 +858,8 @@ export function OnboardingFlow({
         </div>
 
         <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col py-4 sm:py-8">
-          <StepMeta title={step.title} description={step.description} />
-
-          <div className="mt-10 space-y-8">
+          <div className="space-y-8">
             {renderStepContent()}
-            {hint ? (
-              <SurfaceNote icon={hint.icon} title={hint.title}>
-                {hint.body}
-              </SurfaceNote>
-            ) : null}
           </div>
 
           <div className="mt-auto space-y-5 pt-10">
@@ -942,27 +906,6 @@ export function OnboardingFlow({
               </Button>
             </div>
 
-            <div className="grid gap-5 border-t border-border pt-6 sm:grid-cols-[1fr_auto] sm:items-end">
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Estimated coverage
-                </p>
-                <p className="text-2xl font-semibold tracking-tight text-foreground">
-                  {estimatedHours} hours/week
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Dashboard focus: {state.dashboard.focus}
-                </p>
-              </div>
-              <div className="w-full sm:w-[220px]">
-                <Progress value={progressValue}>
-                  <ProgressLabel className="sr-only">
-                    Onboarding progress
-                  </ProgressLabel>
-                  <ProgressValue />
-                </Progress>
-              </div>
-            </div>
           </div>
         </div>
       </div>

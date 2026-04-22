@@ -37,12 +37,14 @@ export default async function OnboardingPage() {
   const ownerName =
     typeof metadata.full_name === "string" && metadata.full_name.length > 0
       ? metadata.full_name
-      : initialState.owner.name || user.email || "Workspace Owner";
+      : initialState.owner.name || "Owner name";
   const hydratedInitialState = {
     ...initialState,
     owner: {
       ...initialState.owner,
-      name: initialState.owner.name || ownerName,
+      name:
+        initialState.owner.name ||
+        (ownerName === "Owner name" ? "" : ownerName),
     },
     clinic: {
       ...initialState.clinic,
@@ -61,12 +63,12 @@ export default async function OnboardingPage() {
         initialState.clinic.accentColor ||
         (typeof metadata.business_brand_accent === "string"
           ? metadata.business_brand_accent
-          : "teal"),
+          : "blue"),
       accentHex:
         initialState.clinic.accentHex ||
         (typeof metadata.business_brand_hex === "string"
           ? metadata.business_brand_hex
-          : "#268987"),
+          : "#3b82f6"),
     },
   };
 

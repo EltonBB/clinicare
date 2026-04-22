@@ -175,7 +175,7 @@ export function SettingsWorkspace({
   const normalizedCustomAccent = normalizeBrandHexColor(
     state.appearance.accentHex
   );
-  const previewAccent = normalizedCustomAccent ?? "#268987";
+  const previewAccent = normalizedCustomAccent ?? "#3b82f6";
   const customAccentSelected = state.appearance.accentColor === "custom";
   const customAccentInvalid = customAccentSelected && !normalizedCustomAccent;
 
@@ -227,7 +227,7 @@ export function SettingsWorkspace({
 
   function handleSave() {
     if (customAccentInvalid) {
-      setErrorMessage("Enter a valid HEX color, for example #268987.");
+      setErrorMessage("Enter a valid HEX color, for example #3b82f6.");
       setMessage("");
       return;
     }
@@ -550,7 +550,7 @@ export function SettingsWorkspace({
                         },
                       }))
                     }
-                    placeholder="#268987"
+                    placeholder="#3b82f6"
                     className={cn(
                       "h-10 rounded-[0.75rem] bg-white/88 font-mono text-xs uppercase tracking-[0.08em]",
                       customAccentInvalid &&
