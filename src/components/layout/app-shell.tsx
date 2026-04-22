@@ -237,15 +237,18 @@ export function AppShell({
         </aside>
 
         <div className="relative flex min-h-screen min-w-0 flex-1 flex-col">
-          <div className="sticky top-0 z-30 border-b border-border/70 bg-white/82 px-4 py-2 text-center text-sm font-semibold tracking-[0.2em] text-foreground/80 backdrop-blur-xl sm:px-6 lg:px-8">
-            VELA
-          </div>
-          <header className="sticky top-[2.35rem] z-20 px-4 pt-4 sm:px-6 lg:px-8">
+          <header className="sticky top-0 z-20 px-4 pt-4 sm:px-6 lg:px-8">
             <div className="mx-auto flex h-[4.5rem] w-full max-w-[1600px] items-center justify-between gap-4 rounded-[1.2rem] border border-border/80 bg-white/92 px-5 shadow-[0_10px_24px_rgba(20,32,51,0.035)]">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="lg:hidden">
                   <BrandMark compact href="/dashboard" />
                 </div>
+                <Link
+                  href="/dashboard"
+                  className="hidden text-lg font-semibold tracking-[0.08em] text-foreground transition-colors hover:text-primary lg:block"
+                >
+                  Vela
+                </Link>
               </div>
               <div className="flex items-center gap-2">
                 <NotificationsMenu unreadCount={liveUnreadCount} items={liveNotifications} />
