@@ -30,6 +30,7 @@ model Business {
   conversations      Conversation[]
   reminderSettings   ReminderSettings?
   whatsappConnection WhatsAppConnection?
+  analyticsSnapshots AnalyticsSnapshot[]
 }
 
 model BusinessHours {
@@ -48,18 +49,18 @@ model BusinessHours {
 }
 
 model StaffMember {
-  id           String        @id @default(cuid())
+  id           String           @id @default(cuid())
   businessId   String
-  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business     Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
   name         String
   role         String
   email        String?
   phone        String?
   profileNote  String?
-  status       StaffStatus   @default(ACTIVE)
-  isActive     Boolean       @default(true)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  status       StaffStatus      @default(ACTIVE)
+  isActive     Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
   appointments Appointment[]
   timeEntries  StaffTimeEntry[]
 
@@ -106,15 +107,15 @@ model Client {
 }
 
 model ClientGalleryItem {
-  id        String            @id @default(cuid())
+  id         String            @id @default(cuid())
   businessId String
-  clientId  String
-  client    Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  type      ClientGalleryType @default(AFTER)
-  imageUrl  String
-  caption   String?
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
+  clientId   String
+  client     Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  type       ClientGalleryType @default(AFTER)
+  imageUrl   String
+  caption    String?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
 
   @@index([businessId, clientId, createdAt])
 }
@@ -237,6 +238,27 @@ model EmailVerificationReceipt {
   @@index([verifiedAt])
 }
 
+model AnalyticsSnapshot {
+  id          String                  @id @default(cuid())
+  businessId  String
+  business    Business                @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  periodType  AnalyticsSnapshotPeriod
+  periodStart DateTime
+  periodEnd   DateTime
+  kpiPayload  Json
+  aiPayload   Json?
+  provider    String                  @default("rules")
+  model       String?
+  status      AnalyticsSnapshotStatus @default(FALLBACK)
+  error       String?
+  generatedAt DateTime                @default(now())
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+
+  @@unique([businessId, periodType, periodStart, periodEnd])
+  @@index([businessId, periodType, generatedAt])
+}
+
 enum AppointmentStatus {
   CONFIRMED
   PENDING
@@ -325,4 +347,16 @@ enum WhatsAppDisplayNameStatus {
 enum AppointmentReminderType {
   TWENTY_FOUR_HOUR
   TWO_HOUR
+}
+
+enum AnalyticsSnapshotPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum AnalyticsSnapshotStatus {
+  GENERATED
+  FALLBACK
+  ERRORED
 }

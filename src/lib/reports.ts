@@ -27,6 +27,7 @@ import type {
 export type ReportMetricTrend = "up" | "down" | "flat";
 export type ReportSnapshotTone = "strong" | "healthy" | "watch" | "attention";
 export type ReportPeriodKey = "daily" | "weekly" | "monthly";
+export type ReportInsightSource = "ai" | "rules";
 
 export type ReportMetric = {
   label: string;
@@ -49,12 +50,22 @@ export type ReportSnapshot = {
   strength: string;
   watch: string;
   focus: string;
+  source: ReportInsightSource;
+  generatedAt?: string;
+  model?: string;
+  actions?: Array<{
+    title: string;
+    detail: string;
+    priority: "high" | "medium" | "low";
+  }>;
 };
 
 export type ReportPeriodView = {
   key: ReportPeriodKey;
   label: string;
   rangeLabel: string;
+  periodStart: string;
+  periodEnd: string;
   comparisonLabel: string;
   highlightValue: string;
   highlightChange: string;
@@ -90,6 +101,18 @@ type ReportsWorkspaceArgs = {
   businessHours: Array<Pick<BusinessHours, "weekday" | "isOpen" | "startTime" | "endTime">>;
   staffMembers: Array<Pick<StaffMember, "status" | "isActive">>;
   conversations: Array<Pick<Conversation, "unreadCount">>;
+  aiSnapshots?: ReportAiSnapshotInput[];
+};
+
+export type ReportAiSnapshotInput = {
+  periodType: "DAILY" | "WEEKLY" | "MONTHLY";
+  periodStart: Date;
+  periodEnd: Date;
+  aiPayload: unknown;
+  provider: string;
+  model: string | null;
+  status: "GENERATED" | "FALLBACK" | "ERRORED";
+  generatedAt: Date;
 };
 
 type PeriodWindow = {
@@ -116,6 +139,70 @@ type PeriodStats = {
 };
 
 const periodOrder: ReportPeriodKey[] = ["daily", "weekly", "monthly"];
+
+function periodKeyToSnapshotType(period: ReportPeriodKey): ReportAiSnapshotInput["periodType"] {
+  if (period === "daily") return "DAILY";
+  if (period === "weekly") return "WEEKLY";
+  return "MONTHLY";
+}
+
+function sameInstant(left: Date, right: Date) {
+  return left.getTime() === right.getTime();
+}
+
+function cleanText(value: unknown, fallback: string, maxLength = 420) {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return fallback;
+  }
+
+  return normalized.slice(0, maxLength);
+}
+
+function cleanScore(value: unknown, fallback: number) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function cleanTone(value: unknown, fallback: ReportSnapshotTone): ReportSnapshotTone {
+  return value === "strong" ||
+    value === "healthy" ||
+    value === "watch" ||
+    value === "attention"
+    ? value
+    : fallback;
+}
+
+function cleanActionPriority(value: unknown): "high" | "medium" | "low" {
+  return value === "high" || value === "medium" || value === "low"
+    ? value
+    : "medium";
+}
+
+function aiSnapshotForPeriod(
+  snapshots: ReportAiSnapshotInput[],
+  period: ReportPeriodKey,
+  window: PeriodWindow
+) {
+  const periodType = periodKeyToSnapshotType(period);
+
+  return snapshots
+    .filter(
+      (snapshot) =>
+        snapshot.status === "GENERATED" &&
+        snapshot.periodType === periodType &&
+        sameInstant(snapshot.periodStart, window.start) &&
+        sameInstant(snapshot.periodEnd, window.end)
+    )
+    .sort((left, right) => right.generatedAt.getTime() - left.generatedAt.getTime())[0];
+}
 
 function formatPercent(value: number) {
   return `${value.toFixed(1)}%`;
@@ -477,6 +564,55 @@ function buildSnapshot(
     strength,
     watch,
     focus,
+    source: "rules",
+    actions: [
+      {
+        title: "Protect the strongest signal",
+        detail: strength,
+        priority: "medium",
+      },
+      {
+        title: "Work the highest risk",
+        detail: focus,
+        priority: tone === "attention" || tone === "watch" ? "high" : "medium",
+      },
+    ],
+  };
+}
+
+function applyAiSnapshot(
+  fallback: ReportSnapshot,
+  snapshot: ReportAiSnapshotInput | undefined
+): ReportSnapshot {
+  if (!snapshot || typeof snapshot.aiPayload !== "object" || snapshot.aiPayload === null) {
+    return fallback;
+  }
+
+  const payload = snapshot.aiPayload as Record<string, unknown>;
+  const rawActions = Array.isArray(payload.actions) ? payload.actions : [];
+  const actions = rawActions
+    .filter((action): action is Record<string, unknown> => {
+      return typeof action === "object" && action !== null;
+    })
+    .slice(0, 4)
+    .map((action) => ({
+      title: cleanText(action.title, "Recommended action", 96),
+      detail: cleanText(action.detail ?? action.why, fallback.focus, 240),
+      priority: cleanActionPriority(action.priority),
+    }));
+
+  return {
+    score: cleanScore(payload.score, fallback.score),
+    tone: cleanTone(payload.tone, fallback.tone),
+    headline: cleanText(payload.headline, fallback.headline, 160),
+    summary: cleanText(payload.summary, fallback.summary, 420),
+    strength: cleanText(payload.strength, fallback.strength, 420),
+    watch: cleanText(payload.watch, fallback.watch, 420),
+    focus: cleanText(payload.focus, fallback.focus, 420),
+    source: "ai",
+    generatedAt: snapshot.generatedAt.toISOString(),
+    model: snapshot.model ?? undefined,
+    actions: actions.length > 0 ? actions : fallback.actions,
   };
 }
 
@@ -612,20 +748,27 @@ function buildPeriodView(args: {
   current: PeriodStats;
   previous: PeriodStats;
   chartPoints: ReportChartPoint[];
+  aiSnapshots: ReportAiSnapshotInput[];
 }): ReportPeriodView {
-  const { key, label, window, current, previous, chartPoints } = args;
+  const { key, label, window, current, previous, chartPoints, aiSnapshots } = args;
   const comparisonLabel = formatComparisonLabel(key);
   const { metrics, deltas } = buildMetrics({
     current,
     previous,
     comparisonLabel,
   });
-  const snapshot = buildSnapshot(key, current, deltas);
+  const fallbackSnapshot = buildSnapshot(key, current, deltas);
+  const snapshot = applyAiSnapshot(
+    fallbackSnapshot,
+    aiSnapshotForPeriod(aiSnapshots, key, window)
+  );
 
   return {
     key,
     label,
     rangeLabel: formatRangeLabel(window, key),
+    periodStart: window.start.toISOString(),
+    periodEnd: window.end.toISOString(),
     comparisonLabel,
     highlightValue: `${snapshot.score}/100`,
     highlightChange:
@@ -660,6 +803,7 @@ export function buildReportsViewFromWorkspace({
   businessHours,
   staffMembers,
   conversations,
+  aiSnapshots = [],
 }: ReportsWorkspaceArgs): ReportsViewModel {
   const now = new Date();
   const activeStaffCount = staffMembers.filter(
@@ -759,6 +903,7 @@ export function buildReportsViewFromWorkspace({
         current: dailyCurrent,
         previous: dailyPrevious,
         chartPoints: buildDailyChart(appointments),
+        aiSnapshots,
       }),
       weekly: buildPeriodView({
         key: "weekly",
@@ -767,6 +912,7 @@ export function buildReportsViewFromWorkspace({
         current: weeklyCurrent,
         previous: weeklyPrevious,
         chartPoints: buildWeeklyChart(appointments),
+        aiSnapshots,
       }),
       monthly: buildPeriodView({
         key: "monthly",
@@ -775,6 +921,7 @@ export function buildReportsViewFromWorkspace({
         current: monthlyCurrent,
         previous: monthlyPrevious,
         chartPoints: buildMonthlyChart(appointments),
+        aiSnapshots,
       }),
     },
   };
