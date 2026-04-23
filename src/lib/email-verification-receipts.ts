@@ -53,3 +53,20 @@ export async function getEmailVerificationReceiptStatus(ticket: string | null | 
     verified: Boolean(receipt?.verifiedAt),
   };
 }
+
+export async function getEmailVerificationReceiptEmail(ticket: string | null | undefined) {
+  if (!ticket) {
+    return null;
+  }
+
+  const receipt = await prisma.emailVerificationReceipt.findUnique({
+    where: {
+      ticket,
+    },
+    select: {
+      email: true,
+    },
+  });
+
+  return receipt?.email ?? null;
+}

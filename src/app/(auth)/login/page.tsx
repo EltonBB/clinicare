@@ -4,6 +4,8 @@ import { BrandMark } from "@/components/brand-mark";
 import { AuthConfirmationBridge } from "@/components/auth/auth-confirmation-bridge";
 import { LoginForm } from "@/components/auth/login-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { sanitizeOversizedAuthMetadataByEmail } from "@/lib/auth-metadata";
+import { getEmailVerificationReceiptEmail } from "@/lib/email-verification-receipts";
 
 type LoginPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -11,6 +13,13 @@ type LoginPageProps = {
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = searchParams ? await searchParams : {};
+  const ticket = typeof params.ticket === "string" ? params.ticket : "";
+  const receiptEmail = ticket ? await getEmailVerificationReceiptEmail(ticket) : null;
+
+  if (receiptEmail) {
+    await sanitizeOversizedAuthMetadataByEmail(receiptEmail);
+  }
+
   const nextPath = typeof params.next === "string" ? params.next : "/dashboard";
   const reset = params.reset === "1";
   const verified = params.verified === "1";
