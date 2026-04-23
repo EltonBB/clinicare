@@ -68,6 +68,7 @@ export type SettingsState = {
     businessType: BusinessType;
     ownerName: string;
     supportEmail: string;
+    logoUrl: string;
   };
   appearance: {
     accentColor: BrandAccentChoice;
@@ -560,6 +561,7 @@ export function buildSettingsStateFromWorkspace({
       businessType,
       ownerName,
       supportEmail,
+      logoUrl: business.logoUrl ?? "",
     },
     appearance: {
       accentColor: isCustomAccent ? "custom" : accentPreset.id ?? defaultBrandAccent.id,

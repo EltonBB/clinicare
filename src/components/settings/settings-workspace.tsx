@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition, type CSSProperties } from "react";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, ImageUp } from "lucide-react";
 
 import {
   prepareWhatsAppLiveConnectionAction,
@@ -215,6 +215,30 @@ export function SettingsWorkspace({
     });
   }
 
+  function handleLogoUpload(file: File | null) {
+    if (!file) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+
+      if (!result) {
+        return;
+      }
+
+      setState((current) => ({
+        ...current,
+        business: {
+          ...current.business,
+          logoUrl: result,
+        },
+      }));
+    };
+    reader.readAsDataURL(file);
+  }
+
   function handlePrepareLiveConnection() {
     startPreparingConnection(async () => {
       const result = await prepareWhatsAppLiveConnectionAction();
@@ -360,6 +384,47 @@ export function SettingsWorkspace({
                   }))
                 }
               />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <FieldLabel>Clinic logo</FieldLabel>
+              <div className="grid gap-3 rounded-[1rem] border border-border/80 bg-white/72 p-3 sm:grid-cols-[76px_minmax(0,1fr)_auto] sm:items-center">
+                <div className="flex size-16 items-center justify-center overflow-hidden rounded-[1rem] bg-primary/10 text-lg font-semibold text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]">
+                  {state.business.logoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={state.business.logoUrl}
+                      alt={`${state.business.businessName || "Clinic"} logo`}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    (state.business.businessName || "V").charAt(0).toUpperCase()
+                  )}
+                </div>
+                <Input
+                  value={state.business.logoUrl}
+                  onChange={(event) =>
+                    setState((current) => ({
+                      ...current,
+                      business: {
+                        ...current.business,
+                        logoUrl: event.target.value,
+                      },
+                    }))
+                  }
+                  placeholder="Paste logo URL or upload an image"
+                  className="h-11 rounded-[0.9rem] bg-white/84"
+                />
+                <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-[0.9rem] border border-border/80 bg-white px-4 text-sm font-medium text-foreground shadow-sm transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[0_12px_26px_rgba(20,32,51,0.06)]">
+                  <ImageUp className="size-4 text-primary" />
+                  Upload logo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={(event) => handleLogoUpload(event.target.files?.[0] ?? null)}
+                  />
+                </label>
+              </div>
             </div>
             <div className="space-y-2">
               <FieldLabel>Owner name</FieldLabel>

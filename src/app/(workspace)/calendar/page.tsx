@@ -26,6 +26,9 @@ export default async function CalendarPage({
     prisma.appointment.findMany({
       where: {
         businessId: business.id,
+        status: {
+          not: "COMPLETED",
+        },
       },
       include: {
         client: {

@@ -137,7 +137,10 @@ model Appointment {
   reminders     AppointmentReminder[]
 
   @@index([businessId, startAt])
+  @@index([businessId, status, startAt])
+  @@index([businessId, status, endAt])
   @@index([clientId, startAt])
+  @@index([staffMemberId, status, startAt])
 }
 
 model AppointmentReminder {

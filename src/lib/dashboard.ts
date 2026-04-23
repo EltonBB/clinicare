@@ -9,6 +9,8 @@ export const dashboardWidgetOptions = [
   "analytics",
 ] as const;
 
+export const configurableDashboardWidgetOptions = ["analytics"] as const;
+
 export type DashboardWidget = (typeof dashboardWidgetOptions)[number];
 
 export type DashboardAppointmentStatus = "confirmed" | "pending" | "cancelled" | "completed";
@@ -41,6 +43,15 @@ export type DashboardPlanSummary = {
   isPro: boolean;
 };
 
+export type DashboardAnalyticsSummary = {
+  todaysAppointments: number;
+  completedThisMonth: number;
+  completionRate: number;
+  activeClients: number;
+  unreadMessages: number;
+  averageDurationMinutes: number;
+};
+
 export type DashboardWorkspaceState = {
   clientCount: number;
   appointmentCount: number;
@@ -62,7 +73,9 @@ export type DashboardViewModel = {
   quickActions: DashboardQuickAction[];
   unreadSummary: DashboardMessageSummary;
   planSummary: DashboardPlanSummary;
+  analyticsSummary: DashboardAnalyticsSummary;
   workspaceState: DashboardWorkspaceState;
+  availableWidgets: DashboardWidget[];
 };
 
 type TodayAppointmentWithRelations = Appointment & {
@@ -113,6 +126,8 @@ export function buildDashboardViewFromWorkspace(args: {
   todaysHours: number;
   clientCount: number;
   appointmentCount: number;
+  analyticsAppointments: Array<Pick<Appointment, "status" | "startAt" | "endAt">>;
+  monthStart: Date;
   recentClientId?: string;
 }): DashboardViewModel {
   const {
@@ -123,9 +138,35 @@ export function buildDashboardViewFromWorkspace(args: {
     conversations,
     clientCount,
     appointmentCount,
+    analyticsAppointments,
+    monthStart,
     recentClientId,
   } = args;
   const unreadCount = conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0);
+  const completedAppointments = analyticsAppointments.filter(
+    (appointment) => appointment.status === "COMPLETED"
+  );
+  const finalAppointments = analyticsAppointments.filter(
+    (appointment) =>
+      appointment.status === "COMPLETED" || appointment.status === "CANCELLED"
+  );
+  const completionRate =
+    finalAppointments.length > 0
+      ? Math.round((completedAppointments.length / finalAppointments.length) * 100)
+      : 0;
+  const completedThisMonth = completedAppointments.filter(
+    (appointment) => appointment.startAt >= monthStart
+  ).length;
+  const averageDurationMinutes =
+    completedAppointments.length > 0
+      ? Math.round(
+          completedAppointments.reduce(
+            (sum, appointment) =>
+              sum + Math.max(differenceInMinutes(appointment.endAt, appointment.startAt), 0),
+            0
+          ) / completedAppointments.length
+        )
+      : 0;
   const todayKey = format(new Date(), "yyyy-MM-dd");
   const bookingHref = recentClientId
     ? `/calendar?new=1&client=${recentClientId}&date=${todayKey}`
@@ -138,6 +179,9 @@ export function buildDashboardViewFromWorkspace(args: {
     );
   const dashboardWidgets: DashboardWidget[] =
     selectedWidgets.length > 0 ? selectedWidgets : ["todayAppointments"];
+  const availableWidgets = dashboardWidgets.filter((widget) =>
+    configurableDashboardWidgetOptions.includes(widget as (typeof configurableDashboardWidgetOptions)[number])
+  );
   const scheduleState =
     clientCount === 0
       ? "no-clients"
@@ -212,13 +256,22 @@ export function buildDashboardViewFromWorkspace(args: {
           : `No unread client messages for ${business.name} right now. Open inbox to review the latest conversation history.`,
     },
     planSummary: buildPlanSummary(business),
+    analyticsSummary: {
+      todaysAppointments: appointments.length,
+      completedThisMonth,
+      completionRate,
+      activeClients: clientCount,
+      unreadMessages: unreadCount,
+      averageDurationMinutes,
+    },
     workspaceState: {
       clientCount,
       appointmentCount,
       dashboardFocus: dashboardWidgets[0] ?? "appointments",
-      selectedWidgets: dashboardWidgets,
+      selectedWidgets: availableWidgets,
       recentClientId,
       scheduleState,
     },
+    availableWidgets: [...configurableDashboardWidgetOptions],
   };
 }

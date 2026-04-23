@@ -152,6 +152,7 @@ export async function saveSettingsAction(
       data: {
         name: payload.business.businessName.trim() || business.name,
         businessType: payload.business.businessType,
+        logoUrl: payload.business.logoUrl.trim() || null,
         brandAccentColor,
         whatsappNumber: normalizedWhatsAppNumber || null,
         whatsappEnabled: payload.whatsapp.sendReminders,

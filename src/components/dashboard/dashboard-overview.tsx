@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   CalendarPlus2,
-  CheckCircle2,
+  Check,
   Clock3,
   CirclePlus,
   LockKeyhole,
@@ -28,12 +28,7 @@ import type {
   DashboardViewModel,
 } from "@/lib/dashboard";
 
-const contentWidgetValues: DashboardWidget[] = [
-  "todayAppointments",
-  "lastClients",
-  "nextStaffAppointment",
-  "analytics",
-];
+const contentWidgetValues: DashboardWidget[] = ["analytics"];
 
 const dashboardWidgetOptions: Array<{
   value: DashboardWidget;
@@ -42,27 +37,9 @@ const dashboardWidgetOptions: Array<{
   icon: React.ReactNode;
 }> = [
   {
-    value: "todayAppointments",
-    title: "Today's appointments",
-    description: "Shows today's appointments as a dashboard widget.",
-    icon: <CalendarPlus2 className="size-5" />,
-  },
-  {
-    value: "lastClients",
-    title: "Last 5 clients",
-    description: "Shows recently updated clients for quick access.",
-    icon: <UsersRound className="size-5" />,
-  },
-  {
-    value: "nextStaffAppointment",
-    title: "Next staff appointment",
-    description: "Shows the next upcoming appointment with staff.",
-    icon: <Clock3 className="size-5" />,
-  },
-  {
     value: "analytics",
     title: "Analytics",
-    description: "Shows performance insights for Pro workspaces.",
+    description: "Shows performance insights and upgrade-only stats.",
     icon: <LineChart className="size-5" />,
   },
 ];
@@ -235,46 +212,74 @@ function NextStaffAppointmentWidget({ view }: { view: DashboardViewModel }) {
 
 function AnalyticsWidget({ view }: { view: DashboardViewModel }) {
   const isPro = view.planSummary.isPro;
+  const analytics = view.analyticsSummary;
 
   return (
     <section
       className={cn(
-        "rounded-[1.2rem] border border-border/80 bg-white/92 p-5 shadow-[0_12px_28px_rgba(20,32,51,0.035)]",
+        "rounded-[1.35rem] border border-border/80 bg-white/92 p-5 shadow-[0_12px_28px_rgba(20,32,51,0.035)] lg:col-span-2",
         !isPro && "bg-[linear-gradient(135deg,rgba(255,255,255,0.96),var(--primary-soft))]"
       )}
     >
-      <div className="flex items-start justify-between gap-4">
-        <span className="flex size-11 items-center justify-center rounded-[1rem] bg-primary/10 text-primary">
-          {isPro ? <LineChart className="size-5" /> : <LockKeyhole className="size-5" />}
-        </span>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-4">
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-[1rem] bg-primary/10 text-primary">
+            {isPro ? <LineChart className="size-5" /> : <LockKeyhole className="size-5" />}
+          </span>
+          <div>
+            <p className="text-base font-semibold text-foreground">
+              {isPro ? "Analytics" : "Analytics locked"}
+            </p>
+            <p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
+              {isPro
+                ? "Track completed work, client activity, and message pressure from one view."
+                : "Upgrade to Pro to unlock appointment, client, and message performance stats."}
+            </p>
+          </div>
+        </div>
         {!isPro ? (
-          <span className="rounded-full border border-primary/20 bg-white/80 px-3 py-1 text-xs font-semibold text-primary">
+          <span className="w-fit rounded-full border border-primary/20 bg-white/80 px-3 py-1 text-xs font-semibold text-primary">
             Pro
           </span>
         ) : null}
       </div>
-      <p className="mt-5 text-base font-semibold text-foreground">
-        {isPro ? "Analytics" : "Analytics locked"}
-      </p>
       {isPro ? (
-        <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-1 2xl:grid-cols-3">
-          <div className="rounded-[0.9rem] bg-muted/45 px-4 py-3">
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="rounded-[1rem] bg-muted/45 px-4 py-4">
             <p className="text-2xl font-semibold text-primary">
-              {view.appointments.length}
+              {analytics.todaysAppointments}
             </p>
-            <p className="text-xs text-muted-foreground">Today</p>
+            <p className="text-xs text-muted-foreground">Active today</p>
           </div>
-          <div className="rounded-[0.9rem] bg-muted/45 px-4 py-3">
+          <div className="rounded-[1rem] bg-muted/45 px-4 py-4">
             <p className="text-2xl font-semibold text-primary">
-              {view.workspaceState.clientCount}
+              {analytics.completedThisMonth}
             </p>
-            <p className="text-xs text-muted-foreground">Clients</p>
+            <p className="text-xs text-muted-foreground">Completed this month</p>
           </div>
-          <div className="rounded-[0.9rem] bg-muted/45 px-4 py-3">
+          <div className="rounded-[1rem] bg-muted/45 px-4 py-4">
             <p className="text-2xl font-semibold text-primary">
-              {view.unreadSummary.unreadCount}
+              {analytics.completionRate}%
             </p>
-            <p className="text-xs text-muted-foreground">Unread</p>
+            <p className="text-xs text-muted-foreground">Completion rate</p>
+          </div>
+          <div className="rounded-[1rem] bg-muted/45 px-4 py-4">
+            <p className="text-2xl font-semibold text-primary">
+              {analytics.activeClients}
+            </p>
+            <p className="text-xs text-muted-foreground">Active clients</p>
+          </div>
+          <div className="rounded-[1rem] bg-muted/45 px-4 py-4">
+            <p className="text-2xl font-semibold text-primary">
+              {analytics.unreadMessages}
+            </p>
+            <p className="text-xs text-muted-foreground">Unread messages</p>
+          </div>
+          <div className="rounded-[1rem] bg-muted/45 px-4 py-4">
+            <p className="text-2xl font-semibold text-primary">
+              {analytics.averageDurationMinutes || "-"}
+            </p>
+            <p className="text-xs text-muted-foreground">Avg completed minutes</p>
           </div>
         </div>
       ) : (
@@ -299,9 +304,11 @@ function AnalyticsWidget({ view }: { view: DashboardViewModel }) {
 }
 
 function DashboardCustomizer({
+  availableWidgets,
   selectedWidgets,
   onSelectedWidgetsChange,
 }: {
+  availableWidgets: DashboardWidget[];
   selectedWidgets: DashboardWidget[];
   onSelectedWidgetsChange: (widgets: DashboardWidget[]) => void;
 }) {
@@ -381,6 +388,10 @@ function DashboardCustomizer({
             </div>
             <div className="mt-5 grid gap-3 md:grid-cols-2">
               {dashboardWidgetOptions.map((option) => {
+                if (!availableWidgets.includes(option.value)) {
+                  return null;
+                }
+
                 const selected = widgets.includes(option.value);
 
                 return (
@@ -389,10 +400,10 @@ function DashboardCustomizer({
                     type="button"
                     onClick={() => toggleWidget(option.value)}
                     className={cn(
-                      "rounded-[1rem] border p-4 text-left transition-[border-color,background-color,transform] hover:-translate-y-0.5",
+                      "rounded-[1rem] border bg-white p-4 text-left transition-[border-color,background-color] duration-150",
                       selected
-                        ? "border-primary/45 bg-primary/6 ring-1 ring-primary/15"
-                        : "border-border bg-white hover:border-primary/25"
+                        ? "border-primary/45 bg-primary/6"
+                        : "border-border hover:border-primary/25"
                     )}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -407,7 +418,7 @@ function DashboardCustomizer({
                             : "border-border bg-white/80 text-transparent"
                         )}
                       >
-                        <CheckCircle2 className="size-4" />
+                        <Check className="size-4" />
                       </span>
                     </div>
                     <p className="mt-4 text-sm font-semibold text-foreground">
@@ -479,15 +490,9 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-3">
-          {selectedWidgets.includes("todayAppointments") ? (
-            <TodayAppointmentsWidget view={view} />
-          ) : null}
-          {selectedWidgets.includes("lastClients") ? (
-            <LastClientsWidget view={view} />
-          ) : null}
-          {selectedWidgets.includes("nextStaffAppointment") ? (
-            <NextStaffAppointmentWidget view={view} />
-          ) : null}
+          <TodayAppointmentsWidget view={view} />
+          <LastClientsWidget view={view} />
+          <NextStaffAppointmentWidget view={view} />
           {selectedWidgets.includes("analytics") ? (
             <AnalyticsWidget view={view} />
           ) : null}
@@ -503,6 +508,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
       <aside className="section-reveal-delayed xl:pt-[7.15rem]">
         <div className="space-y-5 rounded-[1.2rem] border border-border/75 bg-white/92 p-5 shadow-[0_10px_24px_rgba(20,32,51,0.032)] xl:min-h-[calc(100vh-11rem)] xl:p-6">
           <DashboardCustomizer
+            availableWidgets={view.availableWidgets}
             selectedWidgets={selectedWidgets}
             onSelectedWidgetsChange={setSelectedWidgets}
           />

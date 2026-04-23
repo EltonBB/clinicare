@@ -2,7 +2,7 @@ import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
 import { prisma } from "@/lib/prisma";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { buildDashboardViewFromWorkspace } from "@/lib/dashboard";
-import { startOfDay, endOfDay } from "date-fns";
+import { startOfDay, endOfDay, startOfMonth, subDays } from "date-fns";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 
 export default async function DashboardPage() {
@@ -13,6 +13,8 @@ export default async function DashboardPage() {
 
   const todayStart = startOfDay(new Date());
   const todayEnd = endOfDay(new Date());
+  const monthStart = startOfMonth(new Date());
+  const recentWindowStart = startOfDay(subDays(new Date(), 29));
   const weekdayMap = [6, 0, 1, 2, 3, 4, 5];
   const todayWeekday = weekdayMap[new Date().getDay()] ?? 0;
 
@@ -25,11 +27,15 @@ export default async function DashboardPage() {
     appointmentCountResult,
     lastClientsResult,
     nextAppointmentResult,
+    analyticsAppointmentsResult,
   ] =
     await Promise.allSettled([
       prisma.appointment.findMany({
         where: {
           businessId: business.id,
+          status: {
+            not: "COMPLETED",
+          },
           startAt: {
             gte: todayStart,
             lte: todayEnd,
@@ -119,6 +125,9 @@ export default async function DashboardPage() {
           startAt: {
             gte: new Date(),
           },
+          status: {
+            not: "COMPLETED",
+          },
         },
         include: {
           client: {
@@ -134,6 +143,20 @@ export default async function DashboardPage() {
         },
         orderBy: {
           startAt: "asc",
+        },
+      }),
+      prisma.appointment.findMany({
+        where: {
+          businessId: business.id,
+          startAt: {
+            gte: recentWindowStart,
+            lte: todayEnd,
+          },
+        },
+        select: {
+          status: true,
+          startAt: true,
+          endAt: true,
         },
       }),
     ]);
@@ -154,6 +177,10 @@ export default async function DashboardPage() {
     lastClientsResult.status === "fulfilled" ? lastClientsResult.value : [];
   const nextAppointment =
     nextAppointmentResult.status === "fulfilled" ? nextAppointmentResult.value : null;
+  const analyticsAppointments =
+    analyticsAppointmentsResult.status === "fulfilled"
+      ? analyticsAppointmentsResult.value
+      : [];
 
   if (appointmentsResult.status === "rejected") {
     console.error("Dashboard appointments query failed", appointmentsResult.reason);
@@ -196,6 +223,13 @@ export default async function DashboardPage() {
     );
   }
 
+  if (analyticsAppointmentsResult.status === "rejected") {
+    console.error(
+      "Dashboard analytics appointments query failed",
+      analyticsAppointmentsResult.reason
+    );
+  }
+
   const todaysHours =
     todaysHoursRecord && todaysHoursRecord.isOpen
       ? Math.max(
@@ -214,6 +248,8 @@ export default async function DashboardPage() {
     todaysHours,
     clientCount,
     appointmentCount,
+    analyticsAppointments,
+    monthStart,
     recentClientId: recentClient?.id,
   });
 

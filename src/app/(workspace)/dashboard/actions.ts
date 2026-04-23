@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import {
-  dashboardWidgetOptions,
+  configurableDashboardWidgetOptions,
   type DashboardWidget,
 } from "@/lib/dashboard";
 import { prisma } from "@/lib/prisma";
@@ -34,14 +34,11 @@ export async function saveDashboardWidgetsAction(
   const business = await requireCurrentBusiness(user, {
     missingBusinessRedirect: "/onboarding",
   });
-  const allowed = new Set<DashboardWidget>(dashboardWidgetOptions);
+  const allowed = new Set<DashboardWidget>(configurableDashboardWidgetOptions);
   const normalizedWidgets = widgets.filter((widget, index) => {
     return allowed.has(widget) && widgets.indexOf(widget) === index;
   });
-  const nextWidgets =
-    normalizedWidgets.length > 0
-      ? normalizedWidgets
-      : (["todayAppointments"] satisfies DashboardWidget[]);
+  const nextWidgets = normalizedWidgets;
 
   await prisma.business.update({
     where: {

@@ -4,6 +4,7 @@ import { ProFeatureLock } from "@/components/billing/pro-feature-lock";
 import { ReportsOverview } from "@/components/reports/reports-overview";
 import { buildReportsViewFromWorkspace } from "@/lib/reports";
 import { prisma } from "@/lib/prisma";
+import { endOfDay, startOfDay, subDays } from "date-fns";
 
 export default async function ReportsPage() {
   const { business } = await requireCurrentWorkspace("/reports", {
@@ -19,14 +20,24 @@ export default async function ReportsPage() {
     );
   }
 
+  const reportStart = startOfDay(subDays(new Date(), 59));
+  const reportEnd = endOfDay(new Date());
+
   const [appointments, clients, messages] = await Promise.all([
     prisma.appointment.findMany({
       where: {
         businessId: business.id,
+        startAt: {
+          gte: reportStart,
+          lte: reportEnd,
+        },
       },
       select: {
         status: true,
         startAt: true,
+        endAt: true,
+        clientId: true,
+        staffMemberId: true,
       },
     }),
     prisma.client.findMany({
@@ -41,6 +52,10 @@ export default async function ReportsPage() {
     }),
     prisma.message.findMany({
       where: {
+        sentAt: {
+          gte: reportStart,
+          lte: reportEnd,
+        },
         conversation: {
           businessId: business.id,
         },

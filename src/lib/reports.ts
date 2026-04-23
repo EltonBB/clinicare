@@ -1,4 +1,5 @@
 import {
+  differenceInMinutes,
   endOfDay,
   endOfWeek,
   format,
@@ -39,9 +40,14 @@ export type ReportsViewModel = {
   };
 };
 
+type ReportAppointment = Pick<
+  Appointment,
+  "status" | "startAt" | "endAt" | "clientId" | "staffMemberId"
+>;
+
 type ReportsWorkspaceArgs = {
   business: Pick<Business, "name">;
-  appointments: Array<Pick<Appointment, "status" | "startAt">>;
+  appointments: ReportAppointment[];
   clients: Array<Pick<Client, "createdAt" | "status" | "isArchived">>;
   messages: Array<Pick<Message, "direction" | "sentAt">>;
 };
@@ -135,6 +141,68 @@ function noShowRateBetween(
   ).length;
 
   return (cancelled / scoped.length) * 100;
+}
+
+function completionRateBetween(appointments: ReportAppointment[], start: Date, end: Date) {
+  const scoped = appointments.filter(
+    (appointment) => appointment.startAt >= start && appointment.startAt <= end
+  );
+  const finalAppointments = scoped.filter(
+    (appointment) =>
+      appointment.status === "COMPLETED" || appointment.status === "CANCELLED"
+  );
+
+  if (finalAppointments.length === 0) {
+    return 0;
+  }
+
+  const completed = finalAppointments.filter(
+    (appointment) => appointment.status === "COMPLETED"
+  ).length;
+
+  return (completed / finalAppointments.length) * 100;
+}
+
+function averageCompletedDurationMinutes(
+  appointments: ReportAppointment[],
+  start: Date,
+  end: Date
+) {
+  const completed = appointments.filter(
+    (appointment) =>
+      appointment.status === "COMPLETED" &&
+      appointment.startAt >= start &&
+      appointment.startAt <= end
+  );
+
+  if (completed.length === 0) {
+    return 0;
+  }
+
+  return Math.round(
+    completed.reduce(
+      (total, appointment) =>
+        total + Math.max(differenceInMinutes(appointment.endAt, appointment.startAt), 0),
+      0
+    ) / completed.length
+  );
+}
+
+function repeatClientCountBetween(appointments: ReportAppointment[], start: Date, end: Date) {
+  const counts = new Map<string, number>();
+
+  appointments
+    .filter(
+      (appointment) =>
+        appointment.status === "COMPLETED" &&
+        appointment.startAt >= start &&
+        appointment.startAt <= end
+    )
+    .forEach((appointment) => {
+      counts.set(appointment.clientId, (counts.get(appointment.clientId) ?? 0) + 1);
+    });
+
+  return Array.from(counts.values()).filter((count) => count > 1).length;
 }
 
 function buildSnapshot(args: {
@@ -235,6 +303,27 @@ export function buildReportsViewFromWorkspace({
     previousWindowEnd
   );
   const messagesDelta = formatDelta(messagesSentCurrent, messagesSentPrevious);
+  const completionRateCurrent = completionRateBetween(
+    appointments,
+    currentWindowStart,
+    endOfDay(now)
+  );
+  const completionRatePrevious = completionRateBetween(
+    appointments,
+    previousWindowStart,
+    previousWindowEnd
+  );
+  const completionDelta = formatDelta(completionRateCurrent, completionRatePrevious);
+  const averageDuration = averageCompletedDurationMinutes(
+    appointments,
+    currentWindowStart,
+    endOfDay(now)
+  );
+  const repeatClients = repeatClientCountBetween(
+    appointments,
+    currentWindowStart,
+    endOfDay(now)
+  );
 
   const chartPoints = Array.from({ length: 6 }, (_, index) => {
     const weekStart = startOfWeek(subWeeks(now, 5 - index), { weekStartsOn: 1 });
@@ -251,10 +340,22 @@ export function buildReportsViewFromWorkspace({
     description: `${business.name} performance at a glance with the essential operational numbers the team needs each week.`,
     metrics: [
       {
-        label: "Total appointments",
+        label: "Appointments",
         value: totalAppointments.toLocaleString("en-US"),
         delta: appointmentDelta.delta,
         trend: appointmentDelta.trend,
+      },
+      {
+        label: "Completion rate",
+        value: formatPercent(completionRateCurrent),
+        delta: completionDelta.delta,
+        trend: completionDelta.trend,
+      },
+      {
+        label: "New clients",
+        value: newClientsCurrent.toLocaleString("en-US"),
+        delta: newClientsDelta.delta,
+        trend: newClientsDelta.trend,
       },
       {
         label: "No-show rate",
@@ -263,10 +364,10 @@ export function buildReportsViewFromWorkspace({
         trend: noShowDelta.trend,
       },
       {
-        label: "New clients",
-        value: newClientsCurrent.toLocaleString("en-US"),
-        delta: newClientsDelta.delta,
-        trend: newClientsDelta.trend,
+        label: "Avg visit length",
+        value: averageDuration > 0 ? `${averageDuration}m` : "-",
+        delta: `${repeatClients} repeat clients`,
+        trend: repeatClients > 0 ? "up" : "flat",
       },
       {
         label: "Messages sent",

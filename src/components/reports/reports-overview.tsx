@@ -57,7 +57,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
         </p>
       </div>
 
-      <section className="section-reveal grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="section-reveal grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {view.metrics.map((metric) => (
           <div
             key={metric.label}
