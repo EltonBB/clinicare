@@ -244,8 +244,8 @@ export async function saveOnboardingStateAction(
     business_logo_url: metadataState.clinic.logoUrl || null,
     business_brand_accent: metadataState.clinic.accentColor,
     business_brand_hex: metadataState.clinic.accentHex,
-    onboarding_state: metadataState,
-    onboarding_current_step: metadataState.currentStep,
+    onboarding_state: null,
+    onboarding_current_step: null,
     onboarding_completed: metadataState.completed,
   };
 

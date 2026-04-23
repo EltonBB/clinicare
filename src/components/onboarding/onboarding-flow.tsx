@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, type CSSProperties } from "react";
+import { useEffect, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -23,6 +23,7 @@ import {
   resolveBrandAccentPreset,
 } from "@/lib/branding";
 import {
+  normalizeOnboardingState,
   onboardingSteps,
   weekdayOrder,
   type OnboardingState,
@@ -63,6 +64,8 @@ const fieldInputClass =
 
 const selectClass =
   "h-12 w-full appearance-none rounded-[0.95rem] border border-border bg-card px-4 pr-10 text-[15px] text-foreground shadow-none outline-none transition-colors focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+
+const onboardingDraftStorageKey = "vela:onboarding-draft";
 
 type OnboardingFlowProps = {
   initialState: OnboardingState;
@@ -224,7 +227,25 @@ export function OnboardingFlow({
   ownerName,
 }: OnboardingFlowProps) {
   const router = useRouter();
-  const [state, setState] = useState(initialState);
+  const [state, setState] = useState(() => {
+    if (typeof window === "undefined") {
+      return initialState;
+    }
+
+    const rawDraft = window.localStorage.getItem(onboardingDraftStorageKey);
+
+    if (!rawDraft) {
+      return initialState;
+    }
+
+    try {
+      const parsedDraft = normalizeOnboardingState(JSON.parse(rawDraft));
+      return parsedDraft.completed ? initialState : parsedDraft;
+    } catch {
+      window.localStorage.removeItem(onboardingDraftStorageKey);
+      return initialState;
+    }
+  });
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isPending, startSaving] = useTransition();
@@ -256,6 +277,19 @@ export function OnboardingFlow({
     onboardingSteps[Math.min(stepIndex + 1, onboardingSteps.length - 1)]
       ?.shortLabel;
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (state.completed) {
+      window.localStorage.removeItem(onboardingDraftStorageKey);
+      return;
+    }
+
+    window.localStorage.setItem(onboardingDraftStorageKey, JSON.stringify(state));
+  }, [state]);
+
   function persistState(
     nextState: OnboardingState,
     options?: { complete?: boolean; status?: string }
@@ -276,12 +310,12 @@ export function OnboardingFlow({
       setStatusMessage(options?.status ?? "Progress saved.");
 
       if (options?.complete) {
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem(onboardingDraftStorageKey);
+        }
         router.push("/onboarding/complete");
-        router.refresh();
         return;
       }
-
-      router.refresh();
     });
   }
 
