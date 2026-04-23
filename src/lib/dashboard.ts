@@ -9,7 +9,12 @@ export const dashboardWidgetOptions = [
   "analytics",
 ] as const;
 
-export const configurableDashboardWidgetOptions = ["analytics"] as const;
+export const configurableDashboardWidgetOptions = [
+  "todayAppointments",
+  "lastClients",
+  "nextStaffAppointment",
+  "analytics",
+] as const;
 
 export type DashboardWidget = (typeof dashboardWidgetOptions)[number];
 
@@ -179,9 +184,6 @@ export function buildDashboardViewFromWorkspace(args: {
     );
   const dashboardWidgets: DashboardWidget[] =
     selectedWidgets.length > 0 ? selectedWidgets : ["todayAppointments"];
-  const availableWidgets = dashboardWidgets.filter((widget) =>
-    configurableDashboardWidgetOptions.includes(widget as (typeof configurableDashboardWidgetOptions)[number])
-  );
   const scheduleState =
     clientCount === 0
       ? "no-clients"
@@ -268,7 +270,7 @@ export function buildDashboardViewFromWorkspace(args: {
       clientCount,
       appointmentCount,
       dashboardFocus: dashboardWidgets[0] ?? "appointments",
-      selectedWidgets: availableWidgets,
+      selectedWidgets: dashboardWidgets,
       recentClientId,
       scheduleState,
     },

@@ -28,7 +28,12 @@ import type {
   DashboardViewModel,
 } from "@/lib/dashboard";
 
-const contentWidgetValues: DashboardWidget[] = ["analytics"];
+const contentWidgetValues: DashboardWidget[] = [
+  "todayAppointments",
+  "lastClients",
+  "nextStaffAppointment",
+  "analytics",
+];
 
 const dashboardWidgetOptions: Array<{
   value: DashboardWidget;
@@ -36,6 +41,24 @@ const dashboardWidgetOptions: Array<{
   description: string;
   icon: React.ReactNode;
 }> = [
+  {
+    value: "todayAppointments",
+    title: "Today's appointments",
+    description: "Shows today's appointments on the dashboard.",
+    icon: <CalendarPlus2 className="size-5" />,
+  },
+  {
+    value: "lastClients",
+    title: "Last 5 clients",
+    description: "Shows recently updated clients for quick access.",
+    icon: <UsersRound className="size-5" />,
+  },
+  {
+    value: "nextStaffAppointment",
+    title: "Next staff appointment",
+    description: "Shows the next upcoming appointment with staff.",
+    icon: <Clock3 className="size-5" />,
+  },
   {
     value: "analytics",
     title: "Analytics",
@@ -490,16 +513,21 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-3">
-          <TodayAppointmentsWidget view={view} />
-          <LastClientsWidget view={view} />
-          <NextStaffAppointmentWidget view={view} />
+          {selectedWidgets.includes("todayAppointments") ? (
+            <TodayAppointmentsWidget view={view} />
+          ) : null}
+          {selectedWidgets.includes("lastClients") ? (
+            <LastClientsWidget view={view} />
+          ) : null}
+          {selectedWidgets.includes("nextStaffAppointment") ? (
+            <NextStaffAppointmentWidget view={view} />
+          ) : null}
           {selectedWidgets.includes("analytics") ? (
             <AnalyticsWidget view={view} />
           ) : null}
           {selectedContentWidgets.length === 0 ? (
             <div className="rounded-[1.2rem] border border-dashed border-border bg-white/72 p-6 text-sm text-muted-foreground lg:col-span-3">
-              Select extra widgets such as today&apos;s appointments, last
-              clients, or next staff appointment to fill this workspace area.
+              Select dashboard widgets to choose what appears in the main workspace area.
             </div>
           ) : null}
         </div>
