@@ -505,8 +505,8 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
         </div>
       </section>
 
-      <aside className="section-reveal-delayed self-start xl:pt-[7.15rem]">
-        <div className="space-y-5 rounded-[1.2rem] border border-border/75 bg-white/92 p-5 shadow-[0_10px_24px_rgba(20,32,51,0.032)] xl:p-6">
+      <aside className="section-reveal-delayed flex self-stretch xl:pt-[9.25rem]">
+        <div className="flex h-full w-full flex-col space-y-5 rounded-[1.2rem] border border-border/75 bg-white/92 p-5 shadow-[0_10px_24px_rgba(20,32,51,0.032)] xl:p-6">
           <DashboardCustomizer
             availableWidgets={view.availableWidgets}
             selectedWidgets={selectedWidgets}
