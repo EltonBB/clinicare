@@ -22,7 +22,7 @@ function getDateTimeFormat(timeZone: string) {
   });
 }
 
-function getZonedDateParts(date: Date, timeZone: string): ZonedDateParts {
+export function getZonedDateParts(date: Date, timeZone = getAppTimeZone()): ZonedDateParts {
   const parts = getDateTimeFormat(timeZone).formatToParts(date);
   const values = Object.fromEntries(
     parts
@@ -101,23 +101,103 @@ export function zonedDateTimeToUtc(args: {
 
 export function getZonedDayWindow(date = new Date(), timeZone = getAppTimeZone()) {
   const parts = getZonedDateParts(date, timeZone);
+  return getZonedDayWindowFromParts(parts.year, parts.month, parts.day, timeZone);
+}
+
+export function getZonedDayWindowFromParts(
+  year: number,
+  month: number,
+  day: number,
+  timeZone = getAppTimeZone()
+) {
   const start = zonedDateTimeToUtc({
-    year: parts.year,
-    month: parts.month,
-    day: parts.day,
+    year,
+    month,
+    day,
     timeZone,
   });
   const nextDayStart = zonedDateTimeToUtc({
-    year: parts.year,
-    month: parts.month,
-    day: parts.day + 1,
+    year,
+    month,
+    day: day + 1,
     timeZone,
   });
 
   return {
     start,
     end: new Date(nextDayStart.getTime() - 1),
-    parts,
+    parts: getZonedDateParts(start, timeZone),
+  };
+}
+
+export function addZonedDays(
+  parts: Pick<ZonedDateParts, "year" | "month" | "day">,
+  amount: number
+) {
+  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + amount));
+
+  return {
+    year: date.getUTCFullYear(),
+    month: date.getUTCMonth() + 1,
+    day: date.getUTCDate(),
+  };
+}
+
+export function getZonedDayWindowByOffset(
+  date = new Date(),
+  dayOffset = 0,
+  timeZone = getAppTimeZone()
+) {
+  const parts = getZonedDateParts(date, timeZone);
+  const shifted = addZonedDays(parts, dayOffset);
+
+  return getZonedDayWindowFromParts(
+    shifted.year,
+    shifted.month,
+    shifted.day,
+    timeZone
+  );
+}
+
+export function getZonedWeekWindow(date = new Date(), timeZone = getAppTimeZone()) {
+  const parts = getZonedDateParts(date, timeZone);
+  const localDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  const daysSinceMonday = (localDate.getUTCDay() + 6) % 7;
+  const startParts = addZonedDays(parts, -daysSinceMonday);
+  const endParts = addZonedDays(startParts, 7);
+  const start = zonedDateTimeToUtc({ ...startParts, timeZone });
+  const nextWeekStart = zonedDateTimeToUtc({ ...endParts, timeZone });
+
+  return {
+    start,
+    end: new Date(nextWeekStart.getTime() - 1),
+    parts: startParts,
+  };
+}
+
+export function getZonedMonthWindow(date = new Date(), timeZone = getAppTimeZone()) {
+  const parts = getZonedDateParts(date, timeZone);
+  const start = zonedDateTimeToUtc({
+    year: parts.year,
+    month: parts.month,
+    day: 1,
+    timeZone,
+  });
+  const nextMonthStart = zonedDateTimeToUtc({
+    year: parts.month === 12 ? parts.year + 1 : parts.year,
+    month: parts.month === 12 ? 1 : parts.month + 1,
+    day: 1,
+    timeZone,
+  });
+
+  return {
+    start,
+    end: new Date(nextMonthStart.getTime() - 1),
+    parts: {
+      year: parts.year,
+      month: parts.month,
+      day: 1,
+    },
   };
 }
 
@@ -146,6 +226,36 @@ export function formatZonedLongDate(date = new Date(), timeZone = getAppTimeZone
     weekday: "long",
     month: "long",
     day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
+export function formatZonedDayName(date: Date, timeZone = getAppTimeZone()) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    weekday: "short",
+  }).format(date);
+}
+
+export function formatZonedMonthName(date: Date, timeZone = getAppTimeZone()) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    month: "short",
+  }).format(date);
+}
+
+export function formatZonedShortDate(date: Date, timeZone = getAppTimeZone()) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
+export function formatZonedMonthYear(date: Date, timeZone = getAppTimeZone()) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    month: "long",
     year: "numeric",
   }).format(date);
 }

@@ -1,18 +1,6 @@
 import {
-  addMilliseconds,
   differenceInMinutes,
-  eachDayOfInterval,
-  endOfDay,
-  endOfMonth,
-  endOfWeek,
-  format,
   isWithinInterval,
-  startOfDay,
-  startOfMonth,
-  startOfWeek,
-  subDays,
-  subMonths,
-  subWeeks,
 } from "date-fns";
 import type {
   Appointment,
@@ -23,6 +11,19 @@ import type {
   Message,
   StaffMember,
 } from "@prisma/client";
+import {
+  addZonedDays,
+  formatZonedDayName,
+  formatZonedMonthName,
+  formatZonedMonthYear,
+  formatZonedShortDate,
+  getAppTimeZone,
+  getZonedDateParts,
+  getZonedDayWindowByOffset,
+  getZonedDayWindowFromParts,
+  getZonedMonthWindow,
+  getZonedWeekWindow,
+} from "@/lib/time-zone";
 
 export type ReportMetricTrend = "up" | "down" | "flat";
 export type ReportSnapshotTone = "strong" | "healthy" | "watch" | "attention";
@@ -102,12 +103,15 @@ type ReportsWorkspaceArgs = {
   staffMembers: Array<Pick<StaffMember, "status" | "isActive">>;
   conversations: Array<Pick<Conversation, "unreadCount">>;
   aiSnapshots?: ReportAiSnapshotInput[];
+  now?: Date;
+  timeZone?: string;
 };
 
 export type ReportAiSnapshotInput = {
   periodType: "DAILY" | "WEEKLY" | "MONTHLY";
   periodStart: Date;
   periodEnd: Date;
+  kpiPayload: unknown;
   aiPayload: unknown;
   provider: string;
   model: string | null;
@@ -148,6 +152,10 @@ function periodKeyToSnapshotType(period: ReportPeriodKey): ReportAiSnapshotInput
 
 function sameInstant(left: Date, right: Date) {
   return left.getTime() === right.getTime();
+}
+
+function samePeriodStart(left: Date, right: Date) {
+  return sameInstant(left, right);
 }
 
 function cleanText(value: unknown, fallback: string, maxLength = 420) {
@@ -198,10 +206,44 @@ function aiSnapshotForPeriod(
       (snapshot) =>
         snapshot.status === "GENERATED" &&
         snapshot.periodType === periodType &&
-        sameInstant(snapshot.periodStart, window.start) &&
-        sameInstant(snapshot.periodEnd, window.end)
+        samePeriodStart(snapshot.periodStart, window.start)
     )
     .sort((left, right) => right.generatedAt.getTime() - left.generatedAt.getTime())[0];
+}
+
+function metricSignature(metrics: ReportMetric[]) {
+  return metrics.map((metric) => ({
+    label: metric.label,
+    value: metric.value,
+    delta: metric.delta,
+    trend: metric.trend,
+  }));
+}
+
+function chartSignature(points: ReportChartPoint[]) {
+  return points.map((point) => ({
+    label: point.label,
+    value: point.value,
+  }));
+}
+
+function isAiSnapshotFreshForView(
+  snapshot: ReportAiSnapshotInput | undefined,
+  metrics: ReportMetric[],
+  chartPoints: ReportChartPoint[]
+) {
+  if (!snapshot || typeof snapshot.kpiPayload !== "object" || snapshot.kpiPayload === null) {
+    return false;
+  }
+
+  const payload = snapshot.kpiPayload as Record<string, unknown>;
+  const payloadMetrics = Array.isArray(payload.metrics) ? payload.metrics : [];
+  const payloadTrend = Array.isArray(payload.trend) ? payload.trend : [];
+
+  return (
+    JSON.stringify(payloadMetrics) === JSON.stringify(metricSignature(metrics)) &&
+    JSON.stringify(payloadTrend) === JSON.stringify(chartSignature(chartPoints))
+  );
 }
 
 function formatPercent(value: number) {
@@ -245,19 +287,6 @@ function formatDelta(
   return { delta, trend };
 }
 
-function compareSameLengthWindow(start: Date, end: Date): PeriodWindow {
-  const durationMs = Math.max(end.getTime() - start.getTime(), 1);
-  const previousEnd = addMilliseconds(start, -1);
-  const previousStart = addMilliseconds(previousEnd, -durationMs);
-
-  return {
-    start,
-    end,
-    previousStart,
-    previousEnd,
-  };
-}
-
 function parseTimeToMinutes(value: string) {
   const [hours, minutes] = value.split(":").map((part) => Number(part));
   if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
@@ -279,16 +308,19 @@ function formatComparisonLabel(period: ReportPeriodKey) {
   return "vs last month";
 }
 
-function formatRangeLabel(window: PeriodWindow, period: ReportPeriodKey) {
+function formatRangeLabel(window: PeriodWindow, period: ReportPeriodKey, timeZone: string) {
   if (period === "daily") {
-    return format(window.start, "EEE, MMM d");
+    return formatZonedShortDate(window.start, timeZone);
   }
 
   if (period === "weekly") {
-    return `${format(window.start, "MMM d")} - ${format(window.end, "MMM d")}`;
+    return `${formatZonedShortDate(window.start, timeZone)} - ${formatZonedShortDate(
+      window.end,
+      timeZone
+    )}`;
   }
 
-  return format(window.start, "MMMM yyyy");
+  return formatZonedMonthYear(window.start, timeZone);
 }
 
 function isBookedStatus(status: Appointment["status"]) {
@@ -333,15 +365,23 @@ function filterClientsInRange(
 function buildCapacityMinutes(
   window: PeriodWindow,
   businessHours: Array<Pick<BusinessHours, "weekday" | "isOpen" | "startTime" | "endTime">>,
-  activeStaffCount: number
+  activeStaffCount: number,
+  timeZone: string
 ) {
   const safeStaffCount = Math.max(activeStaffCount, 1);
-  const windowEndDay = startOfDay(window.end).getTime();
-  const endMinutes = window.end.getHours() * 60 + window.end.getMinutes();
+  const startParts = getZonedDateParts(window.start, timeZone);
+  const endParts = getZonedDateParts(window.end, timeZone);
+  const localStartDate = Date.UTC(startParts.year, startParts.month - 1, startParts.day);
+  const localEndDate = Date.UTC(endParts.year, endParts.month - 1, endParts.day);
+  const dayCount = Math.max(
+    Math.floor((localEndDate - localStartDate) / 86_400_000) + 1,
+    1
+  );
 
-  return eachDayOfInterval({ start: startOfDay(window.start), end: startOfDay(window.end) }).reduce(
-    (total, day) => {
-      const weekday = (day.getDay() + 6) % 7;
+  return Array.from({ length: dayCount }, (_, index) => addZonedDays(startParts, index)).reduce(
+    (total, dayParts) => {
+      const localDate = new Date(Date.UTC(dayParts.year, dayParts.month - 1, dayParts.day));
+      const weekday = (localDate.getUTCDay() + 6) % 7;
       const schedule = businessHours.find((item) => item.weekday === weekday);
 
       if (!schedule?.isOpen) {
@@ -349,10 +389,7 @@ function buildCapacityMinutes(
       }
 
       const dayStartMinutes = parseTimeToMinutes(schedule.startTime);
-      const dayEndMinutes =
-        startOfDay(day).getTime() === windowEndDay
-          ? Math.min(parseTimeToMinutes(schedule.endTime), endMinutes)
-          : parseTimeToMinutes(schedule.endTime);
+      const dayEndMinutes = parseTimeToMinutes(schedule.endTime);
       const minutes = Math.max(
         dayEndMinutes - dayStartMinutes,
         0
@@ -372,8 +409,9 @@ function buildPeriodStats(args: {
   activeStaffCount: number;
   unreadMessages: number;
   window: PeriodWindow;
+  timeZone: string;
 }): PeriodStats {
-  const { appointments, clients, messages, businessHours, activeStaffCount, unreadMessages, window } =
+  const { appointments, clients, messages, businessHours, activeStaffCount, unreadMessages, window, timeZone } =
     args;
   const scopedAppointments = filterAppointmentsInRange(appointments, window.start, window.end);
   const finalizedAppointments = scopedAppointments.filter(
@@ -393,7 +431,12 @@ function buildPeriodStats(args: {
         total + Math.max(differenceInMinutes(appointment.endAt, appointment.startAt), 0),
       0
     );
-  const capacityMinutes = buildCapacityMinutes(window, businessHours, activeStaffCount);
+  const capacityMinutes = buildCapacityMinutes(
+    window,
+    businessHours,
+    activeStaffCount,
+    timeZone
+  );
   const scopedClients = filterClientsInRange(clients, window.start, window.end);
   const scopedMessages = filterMessagesInRange(messages, window.start, window.end);
   const outboundMessages = scopedMessages.filter(
@@ -705,37 +748,82 @@ function buildMetrics(args: {
   };
 }
 
-function buildDailyChart(appointments: ReportAppointment[]): ReportChartPoint[] {
+function buildDailyChart(
+  appointments: ReportAppointment[],
+  now: Date,
+  timeZone: string
+): ReportChartPoint[] {
   return Array.from({ length: 7 }, (_, index) => {
-    const day = startOfDay(subDays(new Date(), 6 - index));
-    const dayEnd = endOfDay(day);
+    const dayWindow = getZonedDayWindowByOffset(now, index - 6, timeZone);
 
     return {
-      label: format(day, "EEE"),
-      value: filterAppointmentsInRange(appointments, day, dayEnd).length,
+      label: formatZonedDayName(dayWindow.start, timeZone),
+      value: filterAppointmentsInRange(appointments, dayWindow.start, dayWindow.end).length,
     };
   });
 }
 
-function buildWeeklyChart(appointments: ReportAppointment[]): ReportChartPoint[] {
+function buildWeeklyChart(
+  appointments: ReportAppointment[],
+  now: Date,
+  timeZone: string
+): ReportChartPoint[] {
+  const currentWeek = getZonedWeekWindow(now, timeZone);
+
   return Array.from({ length: 8 }, (_, index) => {
-    const weekStart = startOfWeek(subWeeks(new Date(), 7 - index), { weekStartsOn: 1 });
-    const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
+    const startParts = addZonedDays(currentWeek.parts, (index - 7) * 7);
+    const weekStart = getZonedDayWindowFromParts(
+      startParts.year,
+      startParts.month,
+      startParts.day,
+      timeZone
+    ).start;
+    const nextStartParts = addZonedDays(startParts, 7);
+    const nextWeekStart = getZonedDayWindowFromParts(
+      nextStartParts.year,
+      nextStartParts.month,
+      nextStartParts.day,
+      timeZone
+    ).start;
+    const weekEnd = new Date(nextWeekStart.getTime() - 1);
 
     return {
-      label: format(weekStart, "'W'II"),
+      label: `W${index + 1}`,
       value: filterAppointmentsInRange(appointments, weekStart, weekEnd).length,
     };
   });
 }
 
-function buildMonthlyChart(appointments: ReportAppointment[]): ReportChartPoint[] {
+function buildMonthlyChart(
+  appointments: ReportAppointment[],
+  now: Date,
+  timeZone: string
+): ReportChartPoint[] {
+  const currentMonth = getZonedMonthWindow(now, timeZone);
+
   return Array.from({ length: 6 }, (_, index) => {
-    const monthStart = startOfMonth(subMonths(new Date(), 5 - index));
-    const monthEnd = endOfMonth(monthStart);
+    const monthOffset = index - 5;
+    const localMonthIndex = currentMonth.parts.month - 1 + monthOffset;
+    const monthDate = new Date(Date.UTC(currentMonth.parts.year, localMonthIndex, 1));
+    const monthStart = getZonedDayWindowFromParts(
+      monthDate.getUTCFullYear(),
+      monthDate.getUTCMonth() + 1,
+      1,
+      timeZone
+    ).start;
+    const nextMonthDate = new Date(
+      Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth() + 1, 1)
+    );
+    const nextMonthStart = getZonedDayWindowFromParts(
+      nextMonthDate.getUTCFullYear(),
+      nextMonthDate.getUTCMonth() + 1,
+      1,
+      timeZone
+    ).start;
+    const monthEnd = new Date(nextMonthStart.getTime() - 1);
 
     return {
-      label: format(monthStart, "MMM"),
+      label: formatZonedMonthName(monthStart, timeZone),
       value: filterAppointmentsInRange(appointments, monthStart, monthEnd).length,
     };
   });
@@ -749,8 +837,9 @@ function buildPeriodView(args: {
   previous: PeriodStats;
   chartPoints: ReportChartPoint[];
   aiSnapshots: ReportAiSnapshotInput[];
+  timeZone: string;
 }): ReportPeriodView {
-  const { key, label, window, current, previous, chartPoints, aiSnapshots } = args;
+  const { key, label, window, current, previous, chartPoints, aiSnapshots, timeZone } = args;
   const comparisonLabel = formatComparisonLabel(key);
   const { metrics, deltas } = buildMetrics({
     current,
@@ -758,15 +847,18 @@ function buildPeriodView(args: {
     comparisonLabel,
   });
   const fallbackSnapshot = buildSnapshot(key, current, deltas);
+  const matchedAiSnapshot = aiSnapshotForPeriod(aiSnapshots, key, window);
   const snapshot = applyAiSnapshot(
     fallbackSnapshot,
-    aiSnapshotForPeriod(aiSnapshots, key, window)
+    isAiSnapshotFreshForView(matchedAiSnapshot, metrics, chartPoints)
+      ? matchedAiSnapshot
+      : undefined
   );
 
   return {
     key,
     label,
-    rangeLabel: formatRangeLabel(window, key),
+    rangeLabel: formatRangeLabel(window, key, timeZone),
     periodStart: window.start.toISOString(),
     periodEnd: window.end.toISOString(),
     comparisonLabel,
@@ -804,8 +896,9 @@ export function buildReportsViewFromWorkspace({
   staffMembers,
   conversations,
   aiSnapshots = [],
+  now = new Date(),
+  timeZone = getAppTimeZone(),
 }: ReportsWorkspaceArgs): ReportsViewModel {
-  const now = new Date();
   const activeStaffCount = staffMembers.filter(
     (member) => member.isActive && member.status !== "INACTIVE"
   ).length;
@@ -814,9 +907,56 @@ export function buildReportsViewFromWorkspace({
     0
   );
 
-  const dailyWindow = compareSameLengthWindow(startOfDay(now), now);
-  const weeklyWindow = compareSameLengthWindow(startOfWeek(now, { weekStartsOn: 1 }), now);
-  const monthlyWindow = compareSameLengthWindow(startOfMonth(now), now);
+  const dailyCurrentWindow = getZonedDayWindowByOffset(now, 0, timeZone);
+  const dailyPreviousWindow = getZonedDayWindowByOffset(now, -1, timeZone);
+  const weeklyCurrentWindow = getZonedWeekWindow(now, timeZone);
+  const previousWeekStartParts = addZonedDays(weeklyCurrentWindow.parts, -7);
+  const previousWeekEndParts = addZonedDays(weeklyCurrentWindow.parts, 0);
+  const weeklyPreviousWindow = {
+    start: getZonedDayWindowFromParts(
+      previousWeekStartParts.year,
+      previousWeekStartParts.month,
+      previousWeekStartParts.day,
+      timeZone
+    ).start,
+    end: new Date(
+      getZonedDayWindowFromParts(
+        previousWeekEndParts.year,
+        previousWeekEndParts.month,
+        previousWeekEndParts.day,
+        timeZone
+      ).start.getTime() - 1
+    ),
+  };
+  const monthlyCurrentWindow = getZonedMonthWindow(now, timeZone);
+  const previousMonthDate = new Date(
+    Date.UTC(monthlyCurrentWindow.parts.year, monthlyCurrentWindow.parts.month - 2, 1)
+  );
+  const monthlyPreviousStart = getZonedDayWindowFromParts(
+    previousMonthDate.getUTCFullYear(),
+    previousMonthDate.getUTCMonth() + 1,
+    1,
+    timeZone
+  ).start;
+  const monthlyPreviousEnd = new Date(monthlyCurrentWindow.start.getTime() - 1);
+  const dailyWindow: PeriodWindow = {
+    start: dailyCurrentWindow.start,
+    end: dailyCurrentWindow.end,
+    previousStart: dailyPreviousWindow.start,
+    previousEnd: dailyPreviousWindow.end,
+  };
+  const weeklyWindow: PeriodWindow = {
+    start: weeklyCurrentWindow.start,
+    end: weeklyCurrentWindow.end,
+    previousStart: weeklyPreviousWindow.start,
+    previousEnd: weeklyPreviousWindow.end,
+  };
+  const monthlyWindow: PeriodWindow = {
+    start: monthlyCurrentWindow.start,
+    end: monthlyCurrentWindow.end,
+    previousStart: monthlyPreviousStart,
+    previousEnd: monthlyPreviousEnd,
+  };
 
   const dailyCurrent = buildPeriodStats({
     appointments,
@@ -826,6 +966,7 @@ export function buildReportsViewFromWorkspace({
     activeStaffCount,
     unreadMessages,
     window: dailyWindow,
+    timeZone,
   });
   const dailyPrevious = buildPeriodStats({
     appointments,
@@ -840,6 +981,7 @@ export function buildReportsViewFromWorkspace({
       previousStart: dailyWindow.previousStart,
       previousEnd: dailyWindow.previousEnd,
     },
+    timeZone,
   });
 
   const weeklyCurrent = buildPeriodStats({
@@ -850,6 +992,7 @@ export function buildReportsViewFromWorkspace({
     activeStaffCount,
     unreadMessages,
     window: weeklyWindow,
+    timeZone,
   });
   const weeklyPrevious = buildPeriodStats({
     appointments,
@@ -864,6 +1007,7 @@ export function buildReportsViewFromWorkspace({
       previousStart: weeklyWindow.previousStart,
       previousEnd: weeklyWindow.previousEnd,
     },
+    timeZone,
   });
 
   const monthlyCurrent = buildPeriodStats({
@@ -874,6 +1018,7 @@ export function buildReportsViewFromWorkspace({
     activeStaffCount,
     unreadMessages,
     window: monthlyWindow,
+    timeZone,
   });
   const monthlyPrevious = buildPeriodStats({
     appointments,
@@ -888,6 +1033,7 @@ export function buildReportsViewFromWorkspace({
       previousStart: monthlyWindow.previousStart,
       previousEnd: monthlyWindow.previousEnd,
     },
+    timeZone,
   });
 
   return {
@@ -902,8 +1048,9 @@ export function buildReportsViewFromWorkspace({
         window: dailyWindow,
         current: dailyCurrent,
         previous: dailyPrevious,
-        chartPoints: buildDailyChart(appointments),
+        chartPoints: buildDailyChart(appointments, now, timeZone),
         aiSnapshots,
+        timeZone,
       }),
       weekly: buildPeriodView({
         key: "weekly",
@@ -911,8 +1058,9 @@ export function buildReportsViewFromWorkspace({
         window: weeklyWindow,
         current: weeklyCurrent,
         previous: weeklyPrevious,
-        chartPoints: buildWeeklyChart(appointments),
+        chartPoints: buildWeeklyChart(appointments, now, timeZone),
         aiSnapshots,
+        timeZone,
       }),
       monthly: buildPeriodView({
         key: "monthly",
@@ -920,8 +1068,9 @@ export function buildReportsViewFromWorkspace({
         window: monthlyWindow,
         current: monthlyCurrent,
         previous: monthlyPrevious,
-        chartPoints: buildMonthlyChart(appointments),
+        chartPoints: buildMonthlyChart(appointments, now, timeZone),
         aiSnapshots,
+        timeZone,
       }),
     },
   };
