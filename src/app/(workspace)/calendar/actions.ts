@@ -65,6 +65,46 @@ function parseDateTime(date: string, time: string) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function timeToMinutes(time: string) {
+  const [hours, minutes] = time.split(":").map(Number);
+  return (hours || 0) * 60 + (minutes || 0);
+}
+
+async function isInsideBusinessHours(args: {
+  businessId: string;
+  startAt: Date;
+  startTime: string;
+  endTime: string;
+}) {
+  const weekday = (args.startAt.getDay() + 6) % 7;
+  const hours = await prisma.businessHours.findUnique({
+    where: {
+      businessId_weekday: {
+        businessId: args.businessId,
+        weekday,
+      },
+    },
+    select: {
+      isOpen: true,
+      startTime: true,
+      endTime: true,
+    },
+  });
+
+  const start = timeToMinutes(args.startTime);
+  const end = timeToMinutes(args.endTime);
+
+  if (!hours) {
+    return weekday < 5 && start >= timeToMinutes("09:00") && end <= timeToMinutes("17:00");
+  }
+
+  if (!hours.isOpen) {
+    return false;
+  }
+
+  return start >= timeToMinutes(hours.startTime) && end <= timeToMinutes(hours.endTime);
+}
+
 async function hydrateAppointment(appointmentId: string) {
   const appointment = await prisma.appointment.findUniqueOrThrow({
     where: {
@@ -89,6 +129,8 @@ async function hydrateAppointment(appointmentId: string) {
   const status =
     appointment.status === "CANCELLED"
       ? "cancelled"
+      : appointment.status === "COMPLETED"
+        ? "completed"
       : appointment.status === "PENDING"
         ? "pending"
         : "confirmed";
@@ -105,7 +147,12 @@ async function hydrateAppointment(appointmentId: string) {
     endTime: format(appointment.endAt, "HH:mm"),
     notes: appointment.notes ?? "",
     status,
-    tone: status === "confirmed" ? "primary" : status === "pending" ? "secondary" : "muted",
+    tone:
+      status === "confirmed" || status === "completed"
+        ? "primary"
+        : status === "pending"
+          ? "secondary"
+          : "muted",
   } satisfies CalendarAppointment;
 }
 
@@ -115,7 +162,7 @@ async function refreshClientLastVisitAt(clientId: string, businessId: string) {
       businessId,
       clientId,
       status: {
-        not: "CANCELLED",
+        in: ["CONFIRMED", "COMPLETED"],
       },
     },
     select: {
@@ -157,6 +204,20 @@ export async function saveAppointmentAction(
     return {
       ok: false,
       error: "Choose a client and valid start/end time before saving.",
+    };
+  }
+
+  const insideBusinessHours = await isInsideBusinessHours({
+    businessId: business.id,
+    startAt,
+    startTime: payload.startTime,
+    endTime: payload.endTime,
+  });
+
+  if (!insideBusinessHours) {
+    return {
+      ok: false,
+      error: "This appointment is outside your operating hours. Choose a time inside the clinic schedule.",
     };
   }
 

@@ -1,9 +1,11 @@
 import { format } from "date-fns";
 import type {
+  Appointment,
   Business,
   BusinessHours,
   ReminderSettings,
   StaffMember,
+  StaffTimeEntry,
   WhatsAppConnection,
   WhatsAppDisplayNameStatus,
   WhatsAppConnectionMode,
@@ -31,11 +33,25 @@ export const defaultReminderTemplate =
   "Hi {client_name}, this is a reminder for your appointment at {time} on {date}. Reply here if you need to reschedule.";
 
 export type StaffRole = "Manager" | "Specialist" | "Reception";
+export type StaffProfileStatus = "ACTIVE" | "AWAY" | "INACTIVE";
 
 export type SettingsStaffMember = {
   id: string;
   name: string;
   role: StaffRole;
+  email: string;
+  phone: string;
+  profileNote: string;
+  status: StaffProfileStatus;
+  isCheckedIn: boolean;
+  weeklyHours: number;
+  completedThisMonth: number;
+  recentAppointments: Array<{
+    id: string;
+    title: string;
+    clientName: string;
+    date: string;
+  }>;
 };
 
 export type SettingsReminders = {
@@ -112,7 +128,18 @@ type SettingsWorkspaceData = {
   supportEmail: string;
   ownerName: string;
   businessHours: BusinessHours[];
-  staffMembers: StaffMember[];
+  staffMembers: Array<
+    StaffMember & {
+      timeEntries?: Pick<StaffTimeEntry, "checkedInAt" | "checkedOutAt">[];
+      appointments?: Array<
+        Pick<Appointment, "id" | "title" | "startAt" | "status"> & {
+          client: {
+            name: string;
+          };
+        }
+      >;
+    }
+  >;
   reminderSettings: ReminderSettings | null;
   whatsappConnection: WhatsAppConnection | null;
 };
@@ -121,6 +148,38 @@ function normalizeStaffRole(value: unknown): StaffRole {
   const roles: StaffRole[] = ["Manager", "Specialist", "Reception"];
 
   return roles.includes(value as StaffRole) ? (value as StaffRole) : "Specialist";
+}
+
+function normalizeStaffStatus(value: unknown): StaffProfileStatus {
+  const statuses: StaffProfileStatus[] = ["ACTIVE", "AWAY", "INACTIVE"];
+
+  return statuses.includes(value as StaffProfileStatus)
+    ? (value as StaffProfileStatus)
+    : "ACTIVE";
+}
+
+function calculateWeeklyHours(entries: Pick<StaffTimeEntry, "checkedInAt" | "checkedOutAt">[]) {
+  const now = new Date();
+  const weekStart = new Date(now);
+  weekStart.setHours(0, 0, 0, 0);
+  weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+
+  const minutes = entries.reduce((total, entry) => {
+    const checkedOutAt = entry.checkedOutAt ?? now;
+    if (checkedOutAt < weekStart) {
+      return total;
+    }
+
+    const start = entry.checkedInAt < weekStart ? weekStart : entry.checkedInAt;
+    return total + Math.max(checkedOutAt.getTime() - start.getTime(), 0) / 60000;
+  }, 0);
+
+  return Math.round((minutes / 60) * 10) / 10;
+}
+
+function isThisMonth(value: Date) {
+  const now = new Date();
+  return value.getFullYear() === now.getFullYear() && value.getMonth() === now.getMonth();
 }
 
 function normalizeWorkingHoursFromDatabase(hours: BusinessHours[]): WorkingHoursState {
@@ -146,13 +205,37 @@ function normalizeWorkingHoursFromDatabase(hours: BusinessHours[]): WorkingHours
   }, {} as WorkingHoursState);
 }
 
-function normalizeSettingsStaff(staffMembers: StaffMember[], fallbackName: string) {
+function normalizeSettingsStaff(
+  staffMembers: SettingsWorkspaceData["staffMembers"],
+  fallbackName: string
+) {
   if (staffMembers.length > 0) {
-    return staffMembers.map((member) => ({
-      id: member.id,
-      name: member.name,
-      role: normalizeStaffRole(member.role),
-    }));
+    return staffMembers.map((member) => {
+      const completedAppointments =
+        member.appointments?.filter((appointment) => appointment.status === "COMPLETED") ?? [];
+
+      return {
+        id: member.id,
+        name: member.name,
+        role: normalizeStaffRole(member.role),
+        email: member.email ?? "",
+        phone: member.phone ?? "",
+        profileNote: member.profileNote ?? "",
+        status: normalizeStaffStatus(member.status),
+        isCheckedIn:
+          member.timeEntries?.some((entry) => !entry.checkedOutAt) ?? false,
+        weeklyHours: calculateWeeklyHours(member.timeEntries ?? []),
+        completedThisMonth: completedAppointments.filter((appointment) =>
+          isThisMonth(appointment.startAt)
+        ).length,
+        recentAppointments: completedAppointments.slice(0, 5).map((appointment) => ({
+          id: appointment.id,
+          title: appointment.title,
+          clientName: appointment.client.name,
+          date: format(appointment.startAt, "MMM d"),
+        })),
+      };
+    });
   }
 
   return [
@@ -160,6 +243,14 @@ function normalizeSettingsStaff(staffMembers: StaffMember[], fallbackName: strin
       id: "staff-seed",
       name: fallbackName,
       role: "Specialist" as const,
+      email: "",
+      phone: "",
+      profileNote: "",
+      status: "ACTIVE" as const,
+      isCheckedIn: false,
+      weeklyHours: 0,
+      completedThisMonth: 0,
+      recentAppointments: [],
     },
   ];
 }

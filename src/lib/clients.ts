@@ -1,4 +1,4 @@
-import type { Appointment, Client, Message } from "@prisma/client";
+import type { Appointment, Client, ClientGalleryItem, Message } from "@prisma/client";
 import { format } from "date-fns";
 
 export type ClientStatus = "active" | "at-risk" | "inactive" | "archived";
@@ -33,6 +33,18 @@ export type ClientRecord = {
   };
   history: ClientHistoryEntry[];
   messages: ClientMessageEntry[];
+  appointmentStats: {
+    completed: number;
+    cancelled: number;
+    pending: number;
+  };
+  gallery: Array<{
+    id: string;
+    type: "before" | "after";
+    imageUrl: string;
+    caption: string;
+    createdAt: string;
+  }>;
 };
 
 export type ClientsViewModel = {
@@ -55,6 +67,7 @@ export type SaveClientPayload = {
 type ClientWithRelations = Client & {
   appointments: Pick<Appointment, "id" | "title" | "startAt" | "status">[];
   messages: Pick<Message, "id" | "body" | "direction" | "sentAt">[];
+  galleryItems: Pick<ClientGalleryItem, "id" | "type" | "imageUrl" | "caption" | "createdAt">[];
 };
 
 function formatStatus(value: ClientWithRelations["status"], isArchived: boolean): ClientStatus {
@@ -122,6 +135,16 @@ function buildMessages(client: ClientWithRelations): ClientMessageEntry[] {
 }
 
 export function buildClientRecord(client: ClientWithRelations): ClientRecord {
+  const completed = client.appointments.filter(
+    (appointment) => appointment.status === "COMPLETED"
+  ).length;
+  const cancelled = client.appointments.filter(
+    (appointment) => appointment.status === "CANCELLED"
+  ).length;
+  const pending = client.appointments.filter(
+    (appointment) => appointment.status === "PENDING"
+  ).length;
+
   return {
     id: client.id,
     name: client.name,
@@ -138,6 +161,18 @@ export function buildClientRecord(client: ClientWithRelations): ClientRecord {
     },
     history: buildHistory(client),
     messages: buildMessages(client),
+    appointmentStats: {
+      completed,
+      cancelled,
+      pending,
+    },
+    gallery: client.galleryItems.map((item) => ({
+      id: item.id,
+      type: item.type === "BEFORE" ? "before" : "after",
+      imageUrl: item.imageUrl,
+      caption: item.caption ?? "",
+      createdAt: format(item.createdAt, "MMM d, yyyy"),
+    })),
   };
 }
 

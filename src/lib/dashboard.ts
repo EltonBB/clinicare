@@ -11,7 +11,7 @@ export const dashboardWidgetOptions = [
 
 export type DashboardWidget = (typeof dashboardWidgetOptions)[number];
 
-export type DashboardAppointmentStatus = "confirmed" | "pending" | "cancelled";
+export type DashboardAppointmentStatus = "confirmed" | "pending" | "cancelled" | "completed";
 
 export type DashboardAppointment = {
   id: string;
@@ -79,6 +79,10 @@ type ClientSummaryRow = Pick<Client, "id" | "name" | "phone">;
 function toDashboardStatus(status: Appointment["status"]): DashboardAppointmentStatus {
   if (status === "CANCELLED") {
     return "cancelled";
+  }
+
+  if (status === "COMPLETED") {
+    return "completed";
   }
 
   if (status === "PENDING") {

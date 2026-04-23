@@ -30,6 +30,10 @@ function clampReminderHours(value: number, fallback: number) {
   return Math.min(Math.max(Math.round(value), 1), 24);
 }
 
+function staffTimeEntryCutoff() {
+  return new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+}
+
 export type SaveSettingsResult = {
   ok: boolean;
   error?: string;
@@ -53,6 +57,11 @@ export type PrepareWhatsAppLiveConnectionResult = {
 export type RefreshWhatsAppLiveConnectionResult = PrepareWhatsAppLiveConnectionResult;
 
 export type SubmitWhatsAppVerificationCodeResult = PrepareWhatsAppLiveConnectionResult;
+
+export type StaffTimeClockResult = {
+  ok: boolean;
+  error?: string;
+};
 
 export async function saveSettingsAction(
   payload: SaveSettingsPayload
@@ -105,6 +114,14 @@ export async function saveSettingsAction(
             id: "owner-seed",
             name: payload.business.ownerName.trim() || user.email || "Workspace Owner",
             role: "Specialist" as const,
+            email: "",
+            phone: "",
+            profileNote: "",
+            status: "ACTIVE" as const,
+            isCheckedIn: false,
+            weeklyHours: 0,
+            completedThisMonth: 0,
+            recentAppointments: [],
           },
         ];
   const existingConnection = await prisma.whatsAppConnection.findUnique({
@@ -326,6 +343,11 @@ export async function saveSettingsAction(
           data: {
             name: member.name.trim(),
             role: member.role,
+            email: member.email.trim() || null,
+            phone: member.phone.trim() || null,
+            profileNote: member.profileNote.trim() || null,
+            status: member.status,
+            isActive: member.status !== "INACTIVE",
           },
         });
       } else {
@@ -334,6 +356,11 @@ export async function saveSettingsAction(
             businessId: business.id,
             name: member.name.trim(),
             role: member.role,
+            email: member.email.trim() || null,
+            phone: member.phone.trim() || null,
+            profileNote: member.profileNote.trim() || null,
+            status: member.status,
+            isActive: member.status !== "INACTIVE",
           },
         });
       }
@@ -397,6 +424,33 @@ export async function saveSettingsAction(
       where: {
         businessId: business.id,
       },
+      include: {
+        timeEntries: {
+          where: {
+            checkedInAt: {
+              gte: staffTimeEntryCutoff(),
+            },
+          },
+          orderBy: {
+            checkedInAt: "desc",
+          },
+        },
+        appointments: {
+          where: {
+            status: "COMPLETED",
+          },
+          include: {
+            client: {
+              select: {
+                name: true,
+              },
+            },
+          },
+          orderBy: {
+            startAt: "desc",
+          },
+        },
+      },
       orderBy: {
         createdAt: "asc",
       },
@@ -430,6 +484,113 @@ export async function saveSettingsAction(
   return {
     ok: true,
     state: nextState,
+  };
+}
+
+export async function checkInStaffAction(staffMemberId: string): Promise<StaffTimeClockResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      error: "Your session expired. Log in again to update staff time.",
+    };
+  }
+
+  const business = await requireCurrentBusiness(user, {
+    missingBusinessRedirect: "/onboarding",
+  });
+  const staff = await prisma.staffMember.findFirst({
+    where: {
+      id: staffMemberId,
+      businessId: business.id,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!staff) {
+    return {
+      ok: false,
+      error: "Staff member not found in this workspace.",
+    };
+  }
+
+  const openEntry = await prisma.staffTimeEntry.findFirst({
+    where: {
+      staffMemberId,
+      checkedOutAt: null,
+    },
+  });
+
+  if (!openEntry) {
+    await prisma.staffTimeEntry.create({
+      data: {
+        businessId: business.id,
+        staffMemberId,
+        checkedInAt: new Date(),
+      },
+    });
+  }
+
+  revalidatePath("/settings");
+
+  return {
+    ok: true,
+  };
+}
+
+export async function checkOutStaffAction(staffMemberId: string): Promise<StaffTimeClockResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      error: "Your session expired. Log in again to update staff time.",
+    };
+  }
+
+  const business = await requireCurrentBusiness(user, {
+    missingBusinessRedirect: "/onboarding",
+  });
+  const openEntry = await prisma.staffTimeEntry.findFirst({
+    where: {
+      staffMemberId,
+      businessId: business.id,
+      checkedOutAt: null,
+    },
+    orderBy: {
+      checkedInAt: "desc",
+    },
+  });
+
+  if (!openEntry) {
+    return {
+      ok: false,
+      error: "This staff member is not checked in.",
+    };
+  }
+
+  await prisma.staffTimeEntry.update({
+    where: {
+      id: openEntry.id,
+    },
+    data: {
+      checkedOutAt: new Date(),
+    },
+  });
+
+  revalidatePath("/settings");
+
+  return {
+    ok: true,
   };
 }
 

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import {
+  addClientGalleryItemAction,
   archiveClientAction,
   deleteClientAction,
   saveClientAction,
@@ -145,6 +146,9 @@ export function ClientsWorkspace({
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [nextStepClient, setNextStepClient] = useState<ClientRecord | null>(null);
+  const [galleryType, setGalleryType] = useState<"before" | "after">("before");
+  const [galleryCaption, setGalleryCaption] = useState("");
+  const [galleryImage, setGalleryImage] = useState("");
   const [isPending, startSaving] = useTransition();
   const deferredQuery = useDeferredValue(query);
   const hasClients = clients.length > 0;
@@ -291,6 +295,49 @@ export function ClientsWorkspace({
       setDrawerOpen(false);
       setErrorMessage("");
       setStatusMessage("Client deleted.");
+    });
+  }
+
+  function handleGalleryFile(file?: File) {
+    if (!file) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setGalleryImage(typeof reader.result === "string" ? reader.result : "");
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function addGalleryItem() {
+    if (!selectedClient) {
+      return;
+    }
+
+    startSaving(async () => {
+      const result = await addClientGalleryItemAction({
+        clientId: selectedClient.id,
+        type: galleryType,
+        imageUrl: galleryImage,
+        caption: galleryCaption,
+      });
+
+      if (!result.ok || !result.client) {
+        setErrorMessage(result.error ?? "We couldn't add this gallery photo.");
+        setStatusMessage("");
+        return;
+      }
+
+      setClients((current) =>
+        current.map((client) =>
+          client.id === result.client!.id ? result.client! : client
+        )
+      );
+      setGalleryImage("");
+      setGalleryCaption("");
+      setErrorMessage("");
+      setStatusMessage("Client gallery updated.");
     });
   }
 
@@ -506,6 +553,7 @@ export function ClientsWorkspace({
                 <div className="border-b border-border/80 px-5 pt-4">
                   <TabsList variant="line" className="rounded-none p-0">
                     <TabsTrigger value="history">History</TabsTrigger>
+                    <TabsTrigger value="gallery">Gallery</TabsTrigger>
                     <TabsTrigger value="notes">Notes</TabsTrigger>
                     <TabsTrigger value="messages">Messages</TabsTrigger>
                     <TabsTrigger value="details">Details</TabsTrigger>
@@ -514,6 +562,32 @@ export function ClientsWorkspace({
 
                 <div className="px-5 py-5">
                   <TabsContent value="history" className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-[0.95rem] border border-border/80 bg-white/68 px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                          Completed
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold text-primary">
+                          {selectedClient.appointmentStats.completed}
+                        </p>
+                      </div>
+                      <div className="rounded-[0.95rem] border border-border/80 bg-white/68 px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                          Cancelled
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold text-destructive">
+                          {selectedClient.appointmentStats.cancelled}
+                        </p>
+                      </div>
+                      <div className="rounded-[0.95rem] border border-border/80 bg-white/68 px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                          Pending
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold text-muted-foreground">
+                          {selectedClient.appointmentStats.pending}
+                        </p>
+                      </div>
+                    </div>
                     {selectedClient.history.length > 0 ? selectedClient.history.map((entry) => (
                       <div key={entry.id} className="rounded-[0.95rem] border border-border/80 bg-white/68 px-4 py-4">
                         <div className="flex items-center justify-between gap-3">
@@ -529,6 +603,76 @@ export function ClientsWorkspace({
                     )) : (
                       <div className="rounded-[0.95rem] border border-dashed border-border/90 bg-white/54 px-4 py-4 text-sm text-muted-foreground">
                         No history yet.
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="gallery" className="space-y-4">
+                    <div className="rounded-[1rem] border border-border/80 bg-white/68 p-4">
+                      <div className="grid gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
+                        <NativeSelect
+                          value={galleryType}
+                          options={["before", "after"]}
+                          onChange={(value) => setGalleryType(value as "before" | "after")}
+                        />
+                        <Input
+                          value={galleryCaption}
+                          onChange={(event) => setGalleryCaption(event.target.value)}
+                          placeholder="Caption, for example Before treatment"
+                          className="h-11 rounded-[0.9rem] bg-white/84"
+                        />
+                      </div>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_150px]">
+                        <label className="flex min-h-28 cursor-pointer items-center justify-center rounded-[0.95rem] border border-dashed border-border bg-muted/35 px-4 py-4 text-center text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/5">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="sr-only"
+                            onChange={(event) => handleGalleryFile(event.target.files?.[0])}
+                          />
+                          {galleryImage ? "Photo selected. Add it to save." : "Upload or take a before/after photo"}
+                        </label>
+                        <Button
+                          className="h-full min-h-12 rounded-[0.95rem]"
+                          onClick={addGalleryItem}
+                          disabled={!galleryImage || isPending}
+                        >
+                          Add photo
+                        </Button>
+                      </div>
+                    </div>
+
+                    {selectedClient.gallery.length > 0 ? (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {selectedClient.gallery.map((item) => (
+                          <figure
+                            key={item.id}
+                            className="overflow-hidden rounded-[1rem] border border-border/80 bg-white/78"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={item.imageUrl}
+                              alt={item.caption || `${item.type} client photo`}
+                              className="aspect-[4/3] w-full object-cover"
+                            />
+                            <figcaption className="px-3 py-3">
+                              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+                                {item.type}
+                              </p>
+                              <p className="mt-1 text-sm text-foreground">
+                                {item.caption || "No caption"}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {item.createdAt}
+                              </p>
+                            </figcaption>
+                          </figure>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-[0.95rem] border border-dashed border-border/90 bg-white/54 px-4 py-4 text-sm text-muted-foreground">
+                        No client photos yet.
                       </div>
                     )}
                   </TabsContent>

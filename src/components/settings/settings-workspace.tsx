@@ -5,6 +5,8 @@ import { useState, useTransition, type CSSProperties } from "react";
 import { ArrowUpRight, Plus, Trash2 } from "lucide-react";
 
 import {
+  checkInStaffAction,
+  checkOutStaffAction,
   prepareWhatsAppLiveConnectionAction,
   refreshWhatsAppLiveConnectionAction,
   saveSettingsAction,
@@ -33,6 +35,11 @@ type SettingsWorkspaceProps = {
 const reminderHourOptions = Array.from({ length: 24 }, (_, index) =>
   String(24 - index)
 );
+const staffStatusOptions: SettingsStaffMember["status"][] = [
+  "ACTIVE",
+  "AWAY",
+  "INACTIVE",
+];
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -210,6 +217,14 @@ export function SettingsWorkspace({
           id: crypto.randomUUID(),
           name: "",
           role: "Specialist",
+          email: "",
+          phone: "",
+          profileNote: "",
+          status: "ACTIVE",
+          isCheckedIn: false,
+          weeklyHours: 0,
+          completedThisMonth: 0,
+          recentAppointments: [],
         },
       ],
     }));
@@ -249,6 +264,24 @@ export function SettingsWorkspace({
       setState(result.state);
       setErrorMessage("");
       setMessage("Settings saved.");
+    });
+  }
+
+  function handleStaffClock(member: SettingsStaffMember) {
+    startSaving(async () => {
+      const result = member.isCheckedIn
+        ? await checkOutStaffAction(member.id)
+        : await checkInStaffAction(member.id);
+
+      if (!result.ok) {
+        setErrorMessage(result.error ?? "We couldn't update staff time.");
+        setMessage("");
+        return;
+      }
+
+      updateStaffMember(member.id, { isCheckedIn: !member.isCheckedIn });
+      setErrorMessage("");
+      setMessage(member.isCheckedIn ? "Staff checked out." : "Staff checked in.");
     });
   }
 
@@ -655,37 +688,119 @@ export function SettingsWorkspace({
         <SettingsSection
           id="staff-management"
           title="Staff management"
-          description="Keep staff management simple for MVP: add or remove people so bookings and messages have an owner."
+          description="Manage staff profiles, availability status, time tracking, and recent completed work."
         >
-          <div className="space-y-3">
+          <div className="space-y-4">
             {state.staff.map((member) => (
               <div
                 key={member.id}
-                className="grid gap-3 rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4 md:grid-cols-[minmax(0,1fr)_220px_44px]"
+                className="rounded-[1rem] border border-border/80 bg-muted/35 p-4"
               >
-                <Input
-                  value={member.name}
-                  onChange={(event) =>
-                    updateStaffMember(member.id, { name: event.target.value })
-                  }
-                  placeholder="Staff name"
-                  className="h-11 rounded-[0.9rem] bg-white/84"
-                />
-                <NativeSelect
-                  value={member.role}
-                  options={[...staffRoles]}
-                  onChange={(value) =>
-                    updateStaffMember(member.id, { role: value as SettingsStaffMember["role"] })
-                  }
-                />
-                <button
-                  type="button"
-                  onClick={() => removeStaffMember(member.id)}
-                  className="inline-flex h-11 items-center justify-center rounded-[0.9rem] border border-border/80 bg-white/84 text-muted-foreground transition-colors hover:bg-white"
-                  aria-label="Remove staff member"
-                >
-                  <Trash2 className="size-4" />
-                </button>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="grid flex-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <Input
+                      value={member.name}
+                      onChange={(event) =>
+                        updateStaffMember(member.id, { name: event.target.value })
+                      }
+                      placeholder="Staff name"
+                      className="h-11 rounded-[0.9rem] bg-white/84"
+                    />
+                    <NativeSelect
+                      value={member.role}
+                      options={[...staffRoles]}
+                      onChange={(value) =>
+                        updateStaffMember(member.id, { role: value as SettingsStaffMember["role"] })
+                      }
+                    />
+                    <NativeSelect
+                      value={member.status}
+                      options={[...staffStatusOptions]}
+                      onChange={(value) =>
+                        updateStaffMember(member.id, {
+                          status: value as SettingsStaffMember["status"],
+                        })
+                      }
+                    />
+                    <Input
+                      value={member.phone}
+                      onChange={(event) =>
+                        updateStaffMember(member.id, { phone: event.target.value })
+                      }
+                      placeholder="Phone"
+                      className="h-11 rounded-[0.9rem] bg-white/84"
+                    />
+                    <Input
+                      value={member.email}
+                      onChange={(event) =>
+                        updateStaffMember(member.id, { email: event.target.value })
+                      }
+                      placeholder="Email"
+                      className="h-11 rounded-[0.9rem] bg-white/84"
+                    />
+                    <Input
+                      value={member.profileNote}
+                      onChange={(event) =>
+                        updateStaffMember(member.id, { profileNote: event.target.value })
+                      }
+                      placeholder="Profile note"
+                      className="h-11 rounded-[0.9rem] bg-white/84 md:col-span-2 xl:col-span-3"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant={member.isCheckedIn ? "outline" : "default"}
+                      className="h-11 rounded-[0.9rem]"
+                      onClick={() => handleStaffClock(member)}
+                      disabled={member.id.startsWith("staff-seed") || isPending}
+                    >
+                      {member.isCheckedIn ? "Check out" : "Check in"}
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => removeStaffMember(member.id)}
+                      className="inline-flex h-11 w-11 items-center justify-center rounded-[0.9rem] border border-border/80 bg-white/84 text-muted-foreground transition-colors hover:bg-white"
+                      aria-label="Remove staff member"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-[0.9rem] bg-white/78 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      This week
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-primary">
+                      {member.weeklyHours}h
+                    </p>
+                  </div>
+                  <div className="rounded-[0.9rem] bg-white/78 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Completed this month
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-primary">
+                      {member.completedThisMonth}
+                    </p>
+                  </div>
+                  <div className="rounded-[0.9rem] bg-white/78 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Last 5 completed
+                    </p>
+                    <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                      {member.recentAppointments.length > 0 ? (
+                        member.recentAppointments.map((appointment) => (
+                          <p key={appointment.id} className="truncate">
+                            {appointment.date} - {appointment.clientName}
+                          </p>
+                        ))
+                      ) : (
+                        <p>No completed appointments yet.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             ))}
           </div>

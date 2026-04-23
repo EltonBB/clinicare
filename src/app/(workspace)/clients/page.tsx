@@ -40,6 +40,18 @@ export default async function ClientsPage({
           sentAt: "desc",
         },
       },
+      galleryItems: {
+        select: {
+          id: true,
+          type: true,
+          imageUrl: true,
+          caption: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      },
     },
     orderBy: [
       {

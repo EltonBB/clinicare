@@ -22,7 +22,7 @@ export default async function CalendarPage({
     date: requestedDate,
   } = await searchParams;
 
-  const [appointments, clients, staffMembers] = await Promise.all([
+  const [appointments, clients, staffMembers, businessHours] = await Promise.all([
     prisma.appointment.findMany({
       where: {
         businessId: business.id,
@@ -63,6 +63,9 @@ export default async function CalendarPage({
       where: {
         businessId: business.id,
         isActive: true,
+        status: {
+          not: "INACTIVE",
+        },
       },
       select: {
         id: true,
@@ -72,12 +75,21 @@ export default async function CalendarPage({
         name: "asc",
       },
     }),
+    prisma.businessHours.findMany({
+      where: {
+        businessId: business.id,
+      },
+      orderBy: {
+        weekday: "asc",
+      },
+    }),
   ]);
 
   const initialView = buildCalendarViewFromRecords({
     appointments,
     clients,
     staffMembers,
+    businessHours,
     ownerName,
     initialDate: isValidDateParam(requestedDate) ? requestedDate : undefined,
   });

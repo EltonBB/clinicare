@@ -8,6 +8,10 @@ type SettingsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
+function staffTimeEntryCutoff() {
+  return new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+}
+
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
   const params = searchParams ? await searchParams : {};
   const { user, business } = await requireCurrentWorkspace("/settings", {
@@ -28,6 +32,33 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     prisma.staffMember.findMany({
       where: {
         businessId: business.id,
+      },
+      include: {
+        timeEntries: {
+          where: {
+            checkedInAt: {
+              gte: staffTimeEntryCutoff(),
+            },
+          },
+          orderBy: {
+            checkedInAt: "desc",
+          },
+        },
+        appointments: {
+          where: {
+            status: "COMPLETED",
+          },
+          include: {
+            client: {
+              select: {
+                name: true,
+              },
+            },
+          },
+          orderBy: {
+            startAt: "desc",
+          },
+        },
       },
       orderBy: {
         createdAt: "asc",

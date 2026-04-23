@@ -53,12 +53,31 @@ model StaffMember {
   business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
   name         String
   role         String
+  email        String?
+  phone        String?
+  profileNote  String?
+  status       StaffStatus   @default(ACTIVE)
   isActive     Boolean       @default(true)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   appointments Appointment[]
+  timeEntries  StaffTimeEntry[]
 
   @@index([businessId])
+}
+
+model StaffTimeEntry {
+  id            String      @id @default(cuid())
+  businessId    String
+  staffMemberId String
+  staffMember   StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+  checkedInAt   DateTime
+  checkedOutAt  DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([businessId, staffMemberId, checkedInAt])
+  @@index([staffMemberId, checkedOutAt])
 }
 
 model Client {
@@ -79,10 +98,25 @@ model Client {
   updatedAt         DateTime               @updatedAt
   appointments      Appointment[]
   messages          Message[]
+  galleryItems      ClientGalleryItem[]
 
   @@unique([businessId, phone])
   @@index([businessId, isArchived])
   @@index([businessId, phone])
+}
+
+model ClientGalleryItem {
+  id        String            @id @default(cuid())
+  businessId String
+  clientId  String
+  client    Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  type      ClientGalleryType @default(AFTER)
+  imageUrl  String
+  caption   String?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@index([businessId, clientId, createdAt])
 }
 
 model Appointment {
@@ -204,6 +238,18 @@ enum AppointmentStatus {
   CONFIRMED
   PENDING
   CANCELLED
+  COMPLETED
+}
+
+enum StaffStatus {
+  ACTIVE
+  AWAY
+  INACTIVE
+}
+
+enum ClientGalleryType {
+  BEFORE
+  AFTER
 }
 
 enum MessageDirection {

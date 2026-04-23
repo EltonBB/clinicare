@@ -30,6 +30,19 @@ export type DeleteClientResult = {
   clientId?: string;
 };
 
+export type AddClientGalleryItemPayload = {
+  clientId: string;
+  type: "before" | "after";
+  imageUrl: string;
+  caption: string;
+};
+
+export type AddClientGalleryItemResult = {
+  ok: boolean;
+  error?: string;
+  client?: ClientRecord;
+};
+
 async function getAuthedBusiness() {
   const supabase = await createClient();
   const {
@@ -77,10 +90,75 @@ async function fetchClientRecord(clientId: string) {
           sentAt: "desc",
         },
       },
+      galleryItems: {
+        select: {
+          id: true,
+          type: true,
+          imageUrl: true,
+          caption: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      },
     },
   });
 
   return buildClientRecord(client);
+}
+
+export async function addClientGalleryItemAction(
+  payload: AddClientGalleryItemPayload
+): Promise<AddClientGalleryItemResult> {
+  const context = await getAuthedBusiness();
+
+  if ("error" in context) {
+    return {
+      ok: false,
+      error: context.error,
+    };
+  }
+
+  const business = context.business;
+  const client = await prisma.client.findFirst({
+    where: {
+      id: payload.clientId,
+      businessId: business.id,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!client) {
+    return {
+      ok: false,
+      error: "Client not found in this clinic workspace.",
+    };
+  }
+
+  if (!payload.imageUrl.trim()) {
+    return {
+      ok: false,
+      error: "Choose a photo before adding it to the gallery.",
+    };
+  }
+
+  await prisma.clientGalleryItem.create({
+    data: {
+      businessId: business.id,
+      clientId: payload.clientId,
+      type: payload.type === "before" ? "BEFORE" : "AFTER",
+      imageUrl: payload.imageUrl,
+      caption: payload.caption.trim() || null,
+    },
+  });
+
+  return {
+    ok: true,
+    client: await fetchClientRecord(payload.clientId),
+  };
 }
 
 async function syncClientInboxThread(businessId: string, clientId: string) {

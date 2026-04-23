@@ -69,6 +69,7 @@ const dashboardWidgetOptions: Array<{
 
 const statusStyles: Record<DashboardAppointmentStatus, string> = {
   confirmed: "bg-primary/12 text-primary ring-1 ring-primary/10",
+  completed: "bg-primary/12 text-primary ring-1 ring-primary/10",
   pending: "bg-secondary/92 text-muted-foreground ring-1 ring-border/70",
   cancelled: "bg-destructive/10 text-destructive ring-1 ring-destructive/10",
 };

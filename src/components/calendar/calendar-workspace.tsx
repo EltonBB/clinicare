@@ -52,6 +52,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type {
   CalendarAppointment,
+  CalendarBusinessHours,
   CalendarSelectOption,
   CalendarViewModel,
 } from "@/lib/calendar";
@@ -93,7 +94,15 @@ const statusOptions: CalendarAppointment["status"][] = [
   "confirmed",
   "pending",
   "cancelled",
+  "completed",
 ];
+
+const timeSlots = Array.from({ length: 96 }, (_, index) => {
+  const minutes = index * 15;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+});
 
 function emptyDraft(
   date: string,
@@ -118,6 +127,19 @@ function emptyDraft(
 function timeToMinutes(time: string) {
   const [hours, minutes] = time.split(":").map(Number);
   return (hours || 0) * 60 + (minutes || 0);
+}
+
+function businessHoursForDate(date: Date, hours: CalendarBusinessHours[]) {
+  const weekday = (date.getDay() + 6) % 7;
+
+  return (
+    hours.find((item) => item.weekday === weekday) ?? {
+      weekday,
+      enabled: weekday < 5,
+      start: "09:00",
+      end: "17:00",
+    }
+  );
 }
 
 function weekDays(activeDate: Date) {
@@ -300,6 +322,33 @@ function ClientSearchSelect({
   );
 }
 
+function TimeSelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <select
+      value={options.includes(value) ? value : ""}
+      onChange={(event) => onChange(event.target.value)}
+      className="h-11 w-full rounded-[0.9rem] border border-border/80 bg-white/84 px-3 text-sm outline-none transition-[border-color,background-color,box-shadow] duration-200 focus:border-ring focus:bg-white focus-visible:ring-3 focus-visible:ring-ring/40"
+    >
+      <option value="" disabled>
+        Choose time
+      </option>
+      {options.map((option) => (
+        <option key={option} value={option}>
+          {option}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export function CalendarWorkspace({
   initialView,
   ownerName,
@@ -328,6 +377,28 @@ export function CalendarWorkspace({
   const currentWeek = useMemo(() => weekDays(activeDate), [activeDate]);
   const currentMonth = useMemo(() => monthDays(activeDate), [activeDate]);
   const selectedDateKey = format(activeDate, "yyyy-MM-dd");
+  const draftDate = parseISO(draft.date);
+  const draftBusinessHours = businessHoursForDate(draftDate, initialView.businessHours);
+  const selectableStartTimes =
+    draftBusinessHours?.enabled
+      ? timeSlots.filter((time) => {
+          const minutes = timeToMinutes(time);
+          return (
+            minutes >= timeToMinutes(draftBusinessHours.start) &&
+            minutes < timeToMinutes(draftBusinessHours.end)
+          );
+        })
+      : [];
+  const selectableEndTimes =
+    draftBusinessHours?.enabled
+      ? timeSlots.filter((time) => {
+          const minutes = timeToMinutes(time);
+          return (
+            minutes > timeToMinutes(draft.startTime) &&
+            minutes <= timeToMinutes(draftBusinessHours.end)
+          );
+        })
+      : [];
 
   const visibleAppointments = useMemo(() => {
     if (view === "day") {
@@ -918,28 +989,51 @@ export function CalendarWorkspace({
                   <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     Start
                   </label>
-                  <Input
-                    type="time"
+                  <TimeSelect
                     value={draft.startTime}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, startTime: event.target.value }))
+                    options={selectableStartTimes}
+                    onChange={(value) =>
+                      setDraft((current) => {
+                        const nextEndOptions =
+                          draftBusinessHours?.enabled
+                            ? timeSlots.filter((time) => {
+                                const minutes = timeToMinutes(time);
+                                return (
+                                  minutes > timeToMinutes(value) &&
+                                  minutes <= timeToMinutes(draftBusinessHours.end)
+                                );
+                              })
+                            : [];
+                        const nextEnd =
+                          timeToMinutes(current.endTime) <= timeToMinutes(value)
+                            ? nextEndOptions[0] ?? current.endTime
+                            : current.endTime;
+                        return { ...current, startTime: value, endTime: nextEnd };
+                      })
                     }
-                    className="h-11 rounded-[0.9rem] bg-white/84"
                   />
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     End
                   </label>
-                  <Input
-                    type="time"
+                  <TimeSelect
                     value={draft.endTime}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, endTime: event.target.value }))
+                    options={selectableEndTimes}
+                    onChange={(value) =>
+                      setDraft((current) => ({ ...current, endTime: value }))
                     }
-                    className="h-11 rounded-[0.9rem] bg-white/84"
                   />
                 </div>
+                {!draftBusinessHours?.enabled ? (
+                  <p className="text-xs text-destructive sm:col-span-3">
+                    This date is outside operating days. Choose an open day to book.
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground sm:col-span-3">
+                    Available hours: {draftBusinessHours.start} - {draftBusinessHours.end}
+                  </p>
+                )}
               </div>
 
               <div className="surface-soft grid gap-4 rounded-[1.05rem] p-4 sm:grid-cols-2">
