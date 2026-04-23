@@ -810,9 +810,9 @@ export function OnboardingFlow({
                     }))
                   }
                   className={cn(
-                    "group rounded-[1.35rem] border bg-card p-5 text-left transition-[border-color,box-shadow,transform,background-color] duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_18px_40px_rgba(20,32,51,0.06)]",
+                    "group rounded-[1.35rem] border bg-card p-5 text-left transition-[border-color,transform,background-color] duration-200 hover:-translate-y-0.5 hover:border-primary/30",
                     selected
-                      ? "border-primary/55 bg-primary/8 shadow-[0_18px_40px_var(--primary-shadow)]"
+                      ? "border-primary/55 bg-primary/8 ring-1 ring-primary/15"
                       : "border-border"
                   )}
                 >
@@ -827,13 +827,13 @@ export function OnboardingFlow({
                     </span>
                     <span
                       className={cn(
-                        "inline-flex h-7 items-center rounded-full border px-3 text-xs font-semibold",
+                        "inline-flex size-8 items-center justify-center rounded-full border transition-colors",
                         selected
                           ? "border-primary/25 bg-primary text-primary-foreground"
-                          : "border-border bg-white/80 text-muted-foreground"
+                          : "border-border bg-white/80 text-transparent"
                       )}
                     >
-                      {selected ? "Selected" : "Select"}
+                      <CheckCircle2 className="size-4" />
                     </span>
                   </span>
                   <span className="mt-5 block text-base font-semibold text-foreground">

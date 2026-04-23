@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ArrowRight,
   CalendarPlus2,
+  CheckCircle2,
   Clock3,
+  CirclePlus,
   MessageSquareText,
   Settings2,
   UsersRound,
@@ -24,6 +25,13 @@ import type {
   DashboardWidget,
   DashboardViewModel,
 } from "@/lib/dashboard";
+
+const actionWidgetValues: DashboardWidget[] = ["appointments", "clients", "inbox"];
+const contentWidgetValues: DashboardWidget[] = [
+  "todayAppointments",
+  "lastClients",
+  "nextStaffAppointment",
+];
 
 const dashboardWidgetOptions: Array<{
   value: DashboardWidget;
@@ -114,109 +122,51 @@ function AppointmentRow({ appointment }: { appointment: DashboardAppointment }) 
   );
 }
 
-function DashboardEmptyState({
-  view,
-  actionHref,
-  actionLabel,
-}: {
-  view: DashboardViewModel;
-  actionHref: string;
-  actionLabel: string;
-}) {
-  const { scheduleState, recentClientId } = view.workspaceState;
-  const isNoClients = scheduleState === "no-clients";
-  const isNoAppointments = scheduleState === "no-appointments";
-  const bookingHref = recentClientId
-    ? `/calendar?new=1&client=${recentClientId}`
-    : "/calendar?new=1";
+function buildActionWidgets(
+  selectedWidgets: DashboardWidget[],
+  view: DashboardViewModel
+): DashboardViewModel["quickActions"] {
+  const recentClientId = view.workspaceState.recentClientId;
+  const actionByWidget: Partial<
+    Record<DashboardWidget, DashboardViewModel["quickActions"][number]>
+  > = {
+    appointments: {
+      label:
+        view.workspaceState.appointmentCount === 0
+          ? "Book first appointment"
+          : "New appointment",
+      href: recentClientId
+        ? `/calendar?new=1&client=${recentClientId}`
+        : "/calendar?new=1",
+      tone: "primary",
+    },
+    clients: {
+      label:
+        view.workspaceState.clientCount === 0 ? "Add first client" : "New client",
+      href:
+        view.workspaceState.clientCount === 0
+          ? "/clients?new=1&next=calendar"
+          : "/clients?new=1",
+      tone: "secondary",
+    },
+    inbox: {
+      label: "Open inbox",
+      href: "/inbox",
+      tone: "secondary",
+    },
+  };
 
-  const title = isNoClients
-    ? "Start by adding your first client"
-    : isNoAppointments
-      ? "Book the first appointment"
-      : "No appointments today";
-  const description = isNoClients
-    ? "Create a client once, then Clinicare can carry that person into booking, inbox, and future history."
-    : isNoAppointments
-      ? "Your client list is ready. Add the first appointment so the calendar and dashboard start showing real work."
-      : "Your schedule is clear for today. Book another visit or open the calendar to review upcoming days.";
-
-  return (
-    <div className="overflow-hidden rounded-[1.25rem] border border-dashed border-primary/25 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),var(--primary-soft))] p-6 shadow-[0_18px_44px_rgba(20,32,51,0.055)]">
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-        <div className="max-w-xl space-y-3">
-          <div className="flex size-11 items-center justify-center rounded-[1rem] bg-primary/12 text-primary">
-            {isNoClients ? <UsersRound className="size-5" /> : <CalendarPlus2 className="size-5" />}
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-xl font-semibold tracking-tight text-foreground">
-              {title}
-            </h2>
-            <p className="max-w-xl text-sm leading-7 text-muted-foreground">
-              {description}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex shrink-0 flex-col gap-2 sm:w-56 lg:ml-auto">
-          <Link
-            href={actionHref || (isNoClients ? "/clients?new=1&next=calendar" : bookingHref)}
-            className={cn(
-              buttonVariants({ variant: "default", size: "lg" }),
-              "w-full justify-between rounded-[0.95rem]"
-            )}
-          >
-            <span>{actionLabel || (isNoClients ? "Add first client" : "Book appointment")}</span>
-            <ArrowRight className="size-4" />
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ActionWidget({ action }: { action: DashboardViewModel["quickActions"][number] }) {
-  return (
-    <section className="rounded-[1.2rem] border border-border/80 bg-white/92 p-5 shadow-[0_12px_28px_rgba(20,32,51,0.035)]">
-      <div className="flex items-start justify-between gap-4">
-        <span className="flex size-11 items-center justify-center rounded-[1rem] bg-primary/10 text-primary">
-          {action.href === "/inbox" ? (
-            <MessageSquareText className="size-5" />
-          ) : action.href.startsWith("/clients") ? (
-            <UsersRound className="size-5" />
-          ) : (
-            <CalendarPlus2 className="size-5" />
-          )}
-        </span>
-      </div>
-      <p className="mt-5 text-base font-semibold text-foreground">
-        {action.label}
-      </p>
-      <Link
-        href={action.href}
-        className={cn(
-          buttonVariants({
-            variant: action.tone === "primary" ? "default" : "outline",
-            size: "lg",
-          }),
-          "mt-4 h-11 w-full justify-between rounded-[0.9rem] px-4",
-          action.tone === "secondary" && "bg-white/78"
-        )}
-      >
-        <span>{action.label}</span>
-        <ArrowRight className="size-4" />
-      </Link>
-    </section>
-  );
+  return selectedWidgets
+    .filter((widget) => actionWidgetValues.includes(widget))
+    .map((widget, index) => ({
+      ...actionByWidget[widget]!,
+      tone: index === 0 ? ("primary" as const) : ("secondary" as const),
+    }));
 }
 
 function TodayAppointmentsWidget({ view }: { view: DashboardViewModel }) {
-  const appointmentAction = view.quickActions.find((action) =>
-    action.href.startsWith("/calendar")
-  );
-
   return (
-    <section className="space-y-3 rounded-[1.2rem] border border-border/80 bg-white/92 p-5 shadow-[0_12px_28px_rgba(20,32,51,0.035)] md:col-span-2">
+    <section className="space-y-3 rounded-[1.2rem] border border-border/80 bg-white/92 p-5 shadow-[0_12px_28px_rgba(20,32,51,0.035)] lg:col-span-2">
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className="text-sm font-semibold text-foreground">
@@ -237,11 +187,9 @@ function TodayAppointmentsWidget({ view }: { view: DashboardViewModel }) {
           ))}
         </div>
       ) : (
-        <DashboardEmptyState
-          view={view}
-          actionHref={appointmentAction?.href ?? "/calendar?new=1"}
-          actionLabel={appointmentAction?.label ?? "Book appointment"}
-        />
+        <p className="rounded-[0.9rem] bg-muted/45 px-4 py-3 text-sm text-muted-foreground">
+          No appointments scheduled today.
+        </p>
       )}
     </section>
   );
@@ -308,21 +256,33 @@ function NextStaffAppointmentWidget({ view }: { view: DashboardViewModel }) {
 
 function DashboardCustomizer({
   selectedWidgets,
+  onSelectedWidgetsChange,
 }: {
   selectedWidgets: DashboardWidget[];
+  onSelectedWidgetsChange: (widgets: DashboardWidget[]) => void;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [widgets, setWidgets] = useState<DashboardWidget[]>(selectedWidgets);
+  const [savedWidgets, setSavedWidgets] = useState<DashboardWidget[]>(selectedWidgets);
   const [message, setMessage] = useState("");
   const [isPending, startTransition] = useTransition();
 
   function toggleWidget(widget: DashboardWidget) {
-    setWidgets((current) =>
-      current.includes(widget)
+    setWidgets((current) => {
+      const nextWidgets = current.includes(widget)
         ? current.filter((item) => item !== widget)
-        : [...current, widget]
-    );
+        : [...current, widget];
+      onSelectedWidgetsChange(nextWidgets);
+      return nextWidgets;
+    });
+  }
+
+  function cancelChanges() {
+    setWidgets(savedWidgets);
+    onSelectedWidgetsChange(savedWidgets);
+    setMessage("");
+    setOpen(false);
   }
 
   function saveWidgets() {
@@ -334,6 +294,10 @@ function DashboardCustomizer({
         return;
       }
 
+      const nextWidgets = result.widgets ?? widgets;
+      setWidgets(nextWidgets);
+      setSavedWidgets(nextWidgets);
+      onSelectedWidgetsChange(nextWidgets);
       setMessage("");
       setOpen(false);
       router.refresh();
@@ -341,7 +305,7 @@ function DashboardCustomizer({
   }
 
   return (
-    <>
+    <div className="relative">
       <Button
         type="button"
         variant="outline"
@@ -352,8 +316,7 @@ function DashboardCustomizer({
         Customize dashboard
       </Button>
       {open ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/18 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-3xl rounded-[1.35rem] border border-border bg-white p-5 shadow-[0_28px_80px_rgba(20,32,51,0.18)]">
+        <div className="absolute right-0 top-12 z-50 w-[min(760px,calc(100vw-2rem))] rounded-[1.35rem] border border-border bg-white p-5 shadow-[0_18px_48px_rgba(20,32,51,0.13)]">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-lg font-semibold text-foreground">
@@ -366,7 +329,7 @@ function DashboardCustomizer({
               <button
                 type="button"
                 className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-                onClick={() => setOpen(false)}
+                onClick={cancelChanges}
                 aria-label="Close dashboard customization"
               >
                 <X className="size-4" />
@@ -382,10 +345,10 @@ function DashboardCustomizer({
                     type="button"
                     onClick={() => toggleWidget(option.value)}
                     className={cn(
-                      "rounded-[1rem] border p-4 text-left transition-[border-color,background-color,box-shadow,transform] hover:-translate-y-0.5",
+                      "rounded-[1rem] border p-4 text-left transition-[border-color,background-color,transform] hover:-translate-y-0.5",
                       selected
-                        ? "border-primary/45 bg-primary/8 shadow-[0_16px_34px_var(--primary-shadow)]"
-                        : "border-border bg-white"
+                        ? "border-primary/45 bg-primary/6 ring-1 ring-primary/15"
+                        : "border-border bg-white hover:border-primary/25"
                     )}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -394,13 +357,13 @@ function DashboardCustomizer({
                       </span>
                       <span
                         className={cn(
-                          "inline-flex h-7 items-center rounded-full border px-3 text-xs font-semibold",
+                          "inline-flex size-7 items-center justify-center rounded-full border transition-colors",
                           selected
                             ? "border-primary/25 bg-primary text-primary-foreground"
-                            : "border-border bg-white/80 text-muted-foreground"
+                            : "border-border bg-white/80 text-transparent"
                         )}
                       >
-                        {selected ? "Selected" : "Select"}
+                        <CheckCircle2 className="size-4" />
                       </span>
                     </div>
                     <p className="mt-4 text-sm font-semibold text-foreground">
@@ -423,7 +386,7 @@ function DashboardCustomizer({
                 type="button"
                 variant="outline"
                 className="rounded-[0.9rem] bg-white"
-                onClick={() => setOpen(false)}
+                onClick={cancelChanges}
               >
                 Cancel
               </Button>
@@ -436,19 +399,23 @@ function DashboardCustomizer({
                 {isPending ? "Saving..." : "Save widgets"}
               </Button>
             </div>
-          </div>
         </div>
       ) : null}
-    </>
+    </div>
   );
 }
 
 export function DashboardOverview({ view }: { view: DashboardViewModel }) {
-  const selectedWidgets = view.workspaceState.selectedWidgets;
-  const actionWidgets = view.quickActions;
+  const [selectedWidgets, setSelectedWidgets] = useState<DashboardWidget[]>(
+    view.workspaceState.selectedWidgets
+  );
+  const actionWidgets = buildActionWidgets(selectedWidgets, view);
+  const selectedContentWidgets = selectedWidgets.filter((widget) =>
+    contentWidgetValues.includes(widget)
+  );
 
   return (
-    <div className="space-y-8">
+    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-8">
       <section
         className="section-reveal space-y-6"
         data-tour="dashboard-overview"
@@ -465,13 +432,9 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
               {view.dateLabel}
             </p>
           </div>
-          <DashboardCustomizer selectedWidgets={selectedWidgets} />
         </div>
 
         <div className="grid gap-4 lg:grid-cols-3">
-          {actionWidgets.map((action) => (
-            <ActionWidget key={action.label} action={action} />
-          ))}
           {selectedWidgets.includes("todayAppointments") ? (
             <TodayAppointmentsWidget view={view} />
           ) : null}
@@ -481,16 +444,79 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           {selectedWidgets.includes("nextStaffAppointment") ? (
             <NextStaffAppointmentWidget view={view} />
           ) : null}
-          {selectedWidgets.includes("inbox") ? (
-            <DashboardUnreadCard initialSummary={view.unreadSummary} />
-          ) : null}
-          {selectedWidgets.length === 0 ? (
-            <div className="rounded-[1.2rem] border border-border bg-white/92 p-6 text-sm text-muted-foreground">
-              No widgets selected. Use Customize dashboard to add widgets.
+          {selectedContentWidgets.length === 0 ? (
+            <div className="rounded-[1.2rem] border border-dashed border-border bg-white/72 p-6 text-sm text-muted-foreground lg:col-span-3">
+              Select extra widgets such as today&apos;s appointments, last
+              clients, or next staff appointment to fill this workspace area.
             </div>
           ) : null}
         </div>
       </section>
+
+      <aside className="section-reveal-delayed xl:pt-[7.15rem]">
+        <div className="space-y-5 rounded-[1.2rem] border border-border/75 bg-white/92 p-5 shadow-[0_10px_24px_rgba(20,32,51,0.032)] xl:min-h-[calc(100vh-11rem)] xl:p-6">
+          <DashboardCustomizer
+            selectedWidgets={selectedWidgets}
+            onSelectedWidgetsChange={setSelectedWidgets}
+          />
+
+          <section className="space-y-4" data-tour="dashboard-quick-actions">
+            <p className="text-[13px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+              Quick actions
+            </p>
+            <div className="grid gap-3">
+              {actionWidgets.length > 0 ? (
+                actionWidgets.map((action) => (
+                  <Link
+                    key={action.label}
+                    href={action.href}
+                    className={cn(
+                      buttonVariants({
+                        variant: action.tone === "primary" ? "default" : "outline",
+                        size: "lg",
+                      }),
+                      "h-11 w-full justify-between rounded-[0.9rem] px-4",
+                      action.tone === "secondary" && "bg-white/78"
+                    )}
+                  >
+                    <span>{action.label}</span>
+                    {action.href === "/inbox" ? (
+                      <MessageSquareText className="size-4" />
+                    ) : action.href.startsWith("/clients") ? (
+                      <CirclePlus className="size-4" />
+                    ) : (
+                      <CalendarPlus2 className="size-4" />
+                    )}
+                  </Link>
+                ))
+              ) : (
+                <p className="rounded-[0.9rem] bg-muted/45 px-4 py-3 text-sm text-muted-foreground">
+                  Select appointment, client, or inbox actions from Customize
+                  dashboard.
+                </p>
+              )}
+            </div>
+          </section>
+
+          <DashboardUnreadCard initialSummary={view.unreadSummary} />
+
+          <section className="overflow-hidden rounded-[1.1rem] border border-border/80 bg-white/88 shadow-[0_14px_30px_rgba(20,32,51,0.04)]">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 px-4 py-4">
+                <span className="flex size-10 items-center justify-center rounded-[0.9rem] bg-primary/10 text-primary">
+                  <CalendarPlus2 className="size-4" />
+                </span>
+                <p className="text-sm font-semibold text-foreground">
+                  Appointments today
+                </p>
+              </div>
+              <p className="px-4 text-4xl font-semibold tracking-tight text-primary">
+                {view.appointments.length}
+              </p>
+            </div>
+          </section>
+        </div>
+      </aside>
     </div>
   );
 }
