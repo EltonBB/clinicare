@@ -17,6 +17,24 @@ export type SaveOnboardingStateResult = {
   state?: OnboardingState;
 };
 
+function isEmbeddedLogoUrl(value: string) {
+  return value.startsWith("data:");
+}
+
+function sanitizeOnboardingStateForMetadata(state: OnboardingState): OnboardingState {
+  if (!isEmbeddedLogoUrl(state.clinic.logoUrl.trim())) {
+    return state;
+  }
+
+  return {
+    ...state,
+    clinic: {
+      ...state.clinic,
+      logoUrl: "",
+    },
+  };
+}
+
 async function bootstrapWorkspaceFromOnboarding(user: {
   id: string;
   email?: string | null;
@@ -200,6 +218,7 @@ export async function saveOnboardingStateAction(
   }
 
   const normalizedState = normalizeOnboardingState(nextState);
+  const metadataState = sanitizeOnboardingStateForMetadata(normalizedState);
   const ownerName = normalizedState.owner.name.trim();
   const clinicName = normalizedState.clinic.name.trim();
 
@@ -222,12 +241,12 @@ export async function saveOnboardingStateAction(
     full_name: ownerName || user.user_metadata?.full_name,
     business_name: clinicName || user.user_metadata?.business_name,
     business_type: normalizedState.clinic.type || user.user_metadata?.business_type,
-    business_logo_url: normalizedState.clinic.logoUrl || null,
-    business_brand_accent: normalizedState.clinic.accentColor,
-    business_brand_hex: normalizedState.clinic.accentHex,
-    onboarding_state: normalizedState,
-    onboarding_current_step: normalizedState.currentStep,
-    onboarding_completed: normalizedState.completed,
+    business_logo_url: metadataState.clinic.logoUrl || null,
+    business_brand_accent: metadataState.clinic.accentColor,
+    business_brand_hex: metadataState.clinic.accentHex,
+    onboarding_state: metadataState,
+    onboarding_current_step: metadataState.currentStep,
+    onboarding_completed: metadataState.completed,
   };
 
   const { error } = await supabase.auth.updateUser({
