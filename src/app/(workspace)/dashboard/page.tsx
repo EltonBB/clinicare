@@ -2,7 +2,13 @@ import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
 import { prisma } from "@/lib/prisma";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { buildDashboardViewFromWorkspace } from "@/lib/dashboard";
-import { startOfDay, endOfDay, startOfMonth, subDays } from "date-fns";
+import { subDays } from "date-fns";
+import {
+  getAppTimeZone,
+  getZonedDayWindow,
+  getZonedMonthStart,
+  getZonedWeekday,
+} from "@/lib/time-zone";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 
 export default async function DashboardPage() {
@@ -11,12 +17,15 @@ export default async function DashboardPage() {
   });
   await syncWhatsAppConnectionForBusiness(business.id);
 
-  const todayStart = startOfDay(new Date());
-  const todayEnd = endOfDay(new Date());
-  const monthStart = startOfMonth(new Date());
-  const recentWindowStart = startOfDay(subDays(new Date(), 29));
+  const now = new Date();
+  const timeZone = getAppTimeZone();
+  const todayWindow = getZonedDayWindow(now, timeZone);
+  const todayStart = todayWindow.start;
+  const todayEnd = todayWindow.end;
+  const monthStart = getZonedMonthStart(now, timeZone);
+  const recentWindowStart = getZonedDayWindow(subDays(now, 29), timeZone).start;
   const weekdayMap = [6, 0, 1, 2, 3, 4, 5];
-  const todayWeekday = weekdayMap[new Date().getDay()] ?? 0;
+  const todayWeekday = weekdayMap[getZonedWeekday(now, timeZone)] ?? 0;
 
   const [
     appointmentsResult,
@@ -123,7 +132,7 @@ export default async function DashboardPage() {
         where: {
           businessId: business.id,
           startAt: {
-            gte: new Date(),
+            gte: now,
           },
           status: {
             not: "COMPLETED",
@@ -251,6 +260,8 @@ export default async function DashboardPage() {
     analyticsAppointments,
     monthStart,
     recentClientId: recentClient?.id,
+    now,
+    timeZone,
   });
 
   return <DashboardOverview view={view} />;

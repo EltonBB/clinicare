@@ -1,6 +1,13 @@
-import { differenceInMinutes, format } from "date-fns";
+import { differenceInMinutes } from "date-fns";
 import type { Appointment, Business, Client, Conversation } from "@prisma/client";
 import { isProBusinessPlan, planDisplayName, planStatusLabel } from "@/lib/billing";
+import {
+  formatZonedDateKey,
+  formatZonedLongDate,
+  formatZonedShortDateTime,
+  formatZonedTime,
+  getAppTimeZone,
+} from "@/lib/time-zone";
 
 export const dashboardWidgetOptions = [
   "todayAppointments",
@@ -134,6 +141,8 @@ export function buildDashboardViewFromWorkspace(args: {
   analyticsAppointments: Array<Pick<Appointment, "status" | "startAt" | "endAt">>;
   monthStart: Date;
   recentClientId?: string;
+  now?: Date;
+  timeZone?: string;
 }): DashboardViewModel {
   const {
     business,
@@ -146,6 +155,8 @@ export function buildDashboardViewFromWorkspace(args: {
     analyticsAppointments,
     monthStart,
     recentClientId,
+    now = new Date(),
+    timeZone = getAppTimeZone(),
   } = args;
   const unreadCount = conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0);
   const completedAppointments = analyticsAppointments.filter(
@@ -172,7 +183,7 @@ export function buildDashboardViewFromWorkspace(args: {
           ) / completedAppointments.length
         )
       : 0;
-  const todayKey = format(new Date(), "yyyy-MM-dd");
+  const todayKey = formatZonedDateKey(now, timeZone);
   const bookingHref = recentClientId
     ? `/calendar?new=1&client=${recentClientId}&date=${todayKey}`
     : `/calendar?new=1&date=${todayKey}`;
@@ -221,7 +232,7 @@ export function buildDashboardViewFromWorkspace(args: {
   const nextDashboardAppointment = nextAppointment
     ? {
         id: nextAppointment.id,
-        time: format(nextAppointment.startAt, "MMM d, hh:mm a"),
+        time: formatZonedShortDateTime(nextAppointment.startAt, timeZone),
         durationMinutes: Math.max(
           differenceInMinutes(nextAppointment.endAt, nextAppointment.startAt),
           0
@@ -236,10 +247,10 @@ export function buildDashboardViewFromWorkspace(args: {
   return {
     businessName: business.name,
     heading: "Today",
-    dateLabel: format(new Date(), "EEEE, MMMM d, yyyy"),
+    dateLabel: formatZonedLongDate(now, timeZone),
     appointments: appointments.map((appointment) => ({
       id: appointment.id,
-      time: format(appointment.startAt, "hh:mm a"),
+      time: formatZonedTime(appointment.startAt, timeZone),
       durationMinutes: Math.max(differenceInMinutes(appointment.endAt, appointment.startAt), 0),
       clientName: appointment.client.name,
       service: appointment.title,
