@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { businessTypes } from "@/lib/constants";
 import { normalizeBrandHexColor, resolveBrandAccentPreset } from "@/lib/branding";
+import { sanitizeAuthMetadataForSession } from "@/lib/auth-metadata";
 import { defaultReminderTemplate } from "@/lib/settings";
 import {
   weekdayOrder,
@@ -237,11 +238,10 @@ export async function saveOnboardingStateAction(
   }
 
   const nextMetadata = {
-    ...(user.user_metadata ?? {}),
+    ...sanitizeAuthMetadataForSession(user.user_metadata),
     full_name: ownerName || user.user_metadata?.full_name,
     business_name: clinicName || user.user_metadata?.business_name,
     business_type: normalizedState.clinic.type || user.user_metadata?.business_type,
-    business_logo_url: metadataState.clinic.logoUrl || null,
     business_brand_accent: metadataState.clinic.accentColor,
     business_brand_hex: metadataState.clinic.accentHex,
     onboarding_state: null,

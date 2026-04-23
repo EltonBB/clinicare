@@ -28,6 +28,14 @@ function copyCookies(source: NextResponse, target: NextResponse) {
 }
 
 export async function updateSession(request: NextRequest) {
+  if (request.nextUrl.pathname === "/auth/confirm") {
+    return NextResponse.next({
+      request: {
+        headers: request.headers,
+      },
+    });
+  }
+
   let response = NextResponse.next({
     request: {
       headers: request.headers,

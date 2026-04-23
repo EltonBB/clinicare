@@ -1,6 +1,7 @@
 "use server";
 
 import { requireCurrentWorkspace } from "@/lib/business";
+import { sanitizeAuthMetadataForSession } from "@/lib/auth-metadata";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/utils/supabase/server";
 
@@ -81,7 +82,7 @@ export async function completeWorkspaceTourAction(): Promise<{
   }
 
   const metadata = {
-    ...(user.user_metadata ?? {}),
+    ...sanitizeAuthMetadataForSession(user.user_metadata),
     workspace_tour_completed_at: new Date().toISOString(),
     workspace_tour_completed_business_id: business.id,
   };

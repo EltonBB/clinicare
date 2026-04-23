@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/prisma";
 import { requireCurrentBusiness } from "@/lib/business";
+import { sanitizeAuthMetadataForSession } from "@/lib/auth-metadata";
 import { createClient } from "@/utils/supabase/server";
 import { sendTwilioWhatsAppMessage } from "@/lib/whatsapp";
 import {
@@ -392,7 +393,7 @@ export async function saveSettingsAction(
   });
 
   const nextMetadata = {
-    ...(user.user_metadata ?? {}),
+    ...sanitizeAuthMetadataForSession(user.user_metadata),
     full_name: payload.business.ownerName,
   };
 

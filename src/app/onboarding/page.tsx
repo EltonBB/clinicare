@@ -54,11 +54,7 @@ export default async function OnboardingPage() {
       type:
         initialState.clinic.type ||
         (typeof metadata.business_type === "string" ? metadata.business_type : "Clinic"),
-      logoUrl:
-        initialState.clinic.logoUrl ||
-        (typeof metadata.business_logo_url === "string"
-          ? metadata.business_logo_url
-          : ""),
+      logoUrl: initialState.clinic.logoUrl,
       accentColor:
         initialState.clinic.accentColor ||
         (typeof metadata.business_brand_accent === "string"

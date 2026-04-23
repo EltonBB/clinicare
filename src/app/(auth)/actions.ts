@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { buildAuthRedirectUrl } from "@/lib/app-url";
+import { sanitizeAuthMetadataForSession } from "@/lib/auth-metadata";
 import { createEmailVerificationReceipt } from "@/lib/email-verification-receipts";
 import { createClient } from "@/utils/supabase/server";
 
@@ -431,7 +432,7 @@ export async function updateOwnerProfileAction(
     };
   }
 
-  const currentMetadata = user.user_metadata ?? {};
+  const currentMetadata = sanitizeAuthMetadataForSession(user.user_metadata);
   const metadataPatch = {
     ...currentMetadata,
     full_name: parsed.data.fullName,
