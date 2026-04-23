@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   MessageSquareMore,
   Settings,
+  UserRoundCog,
   Users,
 } from "lucide-react";
 
@@ -29,6 +30,11 @@ export const navigationItems: NavigationItem[] = [
     label: "Clients",
     href: "/clients",
     icon: Users,
+  },
+  {
+    label: "Staff",
+    href: "/staff",
+    icon: UserRoundCog,
   },
   {
     label: "Inbox",

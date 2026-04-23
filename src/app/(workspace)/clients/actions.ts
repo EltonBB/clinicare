@@ -32,7 +32,6 @@ export type DeleteClientResult = {
 
 export type AddClientGalleryItemPayload = {
   clientId: string;
-  type: "before" | "after";
   imageUrl: string;
   caption: string;
 };
@@ -149,7 +148,6 @@ export async function addClientGalleryItemAction(
     data: {
       businessId: business.id,
       clientId: payload.clientId,
-      type: payload.type === "before" ? "BEFORE" : "AFTER",
       imageUrl: payload.imageUrl,
       caption: payload.caption.trim() || null,
     },

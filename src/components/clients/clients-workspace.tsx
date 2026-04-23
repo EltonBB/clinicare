@@ -146,7 +146,6 @@ export function ClientsWorkspace({
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [nextStepClient, setNextStepClient] = useState<ClientRecord | null>(null);
-  const [galleryType, setGalleryType] = useState<"before" | "after">("before");
   const [galleryCaption, setGalleryCaption] = useState("");
   const [galleryImage, setGalleryImage] = useState("");
   const [isPending, startSaving] = useTransition();
@@ -318,7 +317,6 @@ export function ClientsWorkspace({
     startSaving(async () => {
       const result = await addClientGalleryItemAction({
         clientId: selectedClient.id,
-        type: galleryType,
         imageUrl: galleryImage,
         caption: galleryCaption,
       });
@@ -609,16 +607,11 @@ export function ClientsWorkspace({
 
                   <TabsContent value="gallery" className="space-y-4">
                     <div className="rounded-[1rem] border border-border/80 bg-white/68 p-4">
-                      <div className="grid gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
-                        <NativeSelect
-                          value={galleryType}
-                          options={["before", "after"]}
-                          onChange={(value) => setGalleryType(value as "before" | "after")}
-                        />
+                      <div className="grid gap-3">
                         <Input
                           value={galleryCaption}
                           onChange={(event) => setGalleryCaption(event.target.value)}
-                          placeholder="Caption, for example Before treatment"
+                          placeholder="Add a note for this image"
                           className="h-11 rounded-[0.9rem] bg-white/84"
                         />
                       </div>
@@ -631,7 +624,7 @@ export function ClientsWorkspace({
                             className="sr-only"
                             onChange={(event) => handleGalleryFile(event.target.files?.[0])}
                           />
-                          {galleryImage ? "Photo selected. Add it to save." : "Upload or take a before/after photo"}
+                          {galleryImage ? "Photo selected. Add it to save." : "Upload or take a client photo"}
                         </label>
                         <Button
                           className="h-full min-h-12 rounded-[0.95rem]"
@@ -653,15 +646,12 @@ export function ClientsWorkspace({
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={item.imageUrl}
-                              alt={item.caption || `${item.type} client photo`}
+                              alt={item.caption || "Client gallery photo"}
                               className="aspect-[4/3] w-full object-cover"
                             />
                             <figcaption className="px-3 py-3">
-                              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-                                {item.type}
-                              </p>
                               <p className="mt-1 text-sm text-foreground">
-                                {item.caption || "No caption"}
+                                {item.caption || "No note"}
                               </p>
                               <p className="mt-1 text-xs text-muted-foreground">
                                 {item.createdAt}

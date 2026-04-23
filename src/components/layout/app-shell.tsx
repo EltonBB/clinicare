@@ -84,6 +84,8 @@ export function AppShell({
         return "calendar-nav";
       case "/clients":
         return "clients-nav";
+      case "/staff":
+        return undefined;
       case "/inbox":
         return "inbox-nav";
       case "/settings":
@@ -283,7 +285,7 @@ export function AppShell({
       </div>
 
       <nav className="fixed inset-x-3 bottom-3 z-30 rounded-[1.25rem] border border-border/80 bg-white/94 px-2 py-2 shadow-[0_12px_28px_rgba(20,32,51,0.06)] lg:hidden">
-        <div className="grid grid-cols-6 gap-1">
+        <div className="grid grid-cols-7 gap-1">
           {navigationItems.map((item) => {
             const Icon = item.icon;
             const isActive =

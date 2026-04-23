@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { completePastConfirmedAppointments } from "@/lib/appointments";
 import { planDisplayName, planStatusLabel } from "@/lib/billing";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { isOnboardingCompleted } from "@/lib/onboarding";
@@ -18,6 +19,8 @@ export default async function WorkspaceLayout({
   if (!isOnboardingCompleted(user.user_metadata)) {
     redirect("/onboarding");
   }
+
+  await completePastConfirmedAppointments(business.id);
 
   const { businessName, ownerName } = toBusinessIdentity(business, user);
   const ownerPhone =
