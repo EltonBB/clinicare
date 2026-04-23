@@ -20,10 +20,10 @@ export default async function ReportsPage() {
     );
   }
 
-  const reportStart = startOfDay(subDays(new Date(), 59));
+  const reportStart = startOfDay(subDays(new Date(), 209));
   const reportEnd = endOfDay(new Date());
 
-  const [appointments, clients, messages] = await Promise.all([
+  const [appointments, clients, messages, businessHours, staffMembers, conversations] = await Promise.all([
     prisma.appointment.findMany({
       where: {
         businessId: business.id,
@@ -65,6 +65,34 @@ export default async function ReportsPage() {
         sentAt: true,
       },
     }),
+    prisma.businessHours.findMany({
+      where: {
+        businessId: business.id,
+      },
+      select: {
+        weekday: true,
+        isOpen: true,
+        startTime: true,
+        endTime: true,
+      },
+    }),
+    prisma.staffMember.findMany({
+      where: {
+        businessId: business.id,
+      },
+      select: {
+        status: true,
+        isActive: true,
+      },
+    }),
+    prisma.conversation.findMany({
+      where: {
+        businessId: business.id,
+      },
+      select: {
+        unreadCount: true,
+      },
+    }),
   ]);
 
   const view = buildReportsViewFromWorkspace({
@@ -72,6 +100,9 @@ export default async function ReportsPage() {
     appointments,
     clients,
     messages,
+    businessHours,
+    staffMembers,
+    conversations,
   });
 
   return <ReportsOverview view={view} />;
