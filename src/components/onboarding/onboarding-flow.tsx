@@ -8,7 +8,7 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock3,
-  MessageSquareText,
+  LineChart,
   Users,
 } from "lucide-react";
 
@@ -179,24 +179,6 @@ const dashboardFocusOptions: Array<{
   icon: React.ReactNode;
 }> = [
   {
-    value: "appointments",
-    title: "Book appointments",
-    description: "Adds one dashboard card with a button to create appointments.",
-    icon: <CalendarDays className="size-5" />,
-  },
-  {
-    value: "clients",
-    title: "Add clients",
-    description: "Adds one dashboard card with a button to register clients.",
-    icon: <Users className="size-5" />,
-  },
-  {
-    value: "inbox",
-    title: "Open inbox",
-    description: "Adds one dashboard card with a button to handle messages.",
-    icon: <MessageSquareText className="size-5" />,
-  },
-  {
     value: "todayAppointments",
     title: "Today's appointments",
     description: "Shows today's appointment list directly on the dashboard.",
@@ -214,24 +196,26 @@ const dashboardFocusOptions: Array<{
     description: "Shows the next upcoming appointment with assigned staff.",
     icon: <Clock3 className="size-5" />,
   },
+  {
+    value: "analytics",
+    title: "Analytics",
+    description: "Shows workspace stats. Basic accounts see the Pro upgrade prompt.",
+    icon: <LineChart className="size-5" />,
+  },
 ];
 
 const dashboardWidgetCopy: Record<
   OnboardingState["dashboard"]["widgets"][number],
   string
 > = {
-  appointments:
-    "You selected appointments. This will show an appointment action on the dashboard.",
-  clients:
-    "You selected clients. This will show a client action on the dashboard.",
-  inbox:
-    "You selected inbox. This will show a message action on the dashboard.",
   todayAppointments:
     "You selected today's appointments. This will show the daily schedule on the dashboard.",
   lastClients:
     "You selected last 5 clients. This will show recent client records on the dashboard.",
   nextStaffAppointment:
     "You selected next staff appointment. This will show the next assigned visit on the dashboard.",
+  analytics:
+    "You selected analytics. Basic plans see the Pro upgrade card and Pro plans see stats.",
 };
 
 export function OnboardingFlow({

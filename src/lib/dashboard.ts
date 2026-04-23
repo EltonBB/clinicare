@@ -1,14 +1,12 @@
 import { differenceInMinutes, format } from "date-fns";
 import type { Appointment, Business, Client, Conversation } from "@prisma/client";
-import { planDisplayName, planStatusLabel } from "@/lib/billing";
+import { isProBusinessPlan, planDisplayName, planStatusLabel } from "@/lib/billing";
 
 export const dashboardWidgetOptions = [
-  "appointments",
-  "clients",
-  "inbox",
   "todayAppointments",
   "lastClients",
   "nextStaffAppointment",
+  "analytics",
 ] as const;
 
 export type DashboardWidget = (typeof dashboardWidgetOptions)[number];
@@ -40,6 +38,7 @@ export type DashboardMessageSummary = {
 export type DashboardPlanSummary = {
   planName: string;
   statusLabel: string;
+  isPro: boolean;
 };
 
 export type DashboardWorkspaceState = {
@@ -97,6 +96,7 @@ function buildPlanSummary(
   return {
     planName,
     statusLabel: planStatusLabel(business.planStatus),
+    isPro: isProBusinessPlan(business.plan),
   };
 }
 
@@ -133,7 +133,7 @@ export function buildDashboardViewFromWorkspace(args: {
       dashboardWidgetOptions.includes(item as DashboardWidget)
     );
   const dashboardWidgets: DashboardWidget[] =
-    selectedWidgets.length > 0 ? selectedWidgets : ["appointments", "clients", "inbox"];
+    selectedWidgets.length > 0 ? selectedWidgets : ["todayAppointments"];
   const scheduleState =
     clientCount === 0
       ? "no-clients"
@@ -157,24 +157,17 @@ export function buildDashboardViewFromWorkspace(args: {
     href: "/inbox",
     tone: "secondary",
   };
-  const actionsByWidget: Partial<Record<DashboardWidget, DashboardQuickAction>> = {
-    appointments: appointmentAction,
-    clients:
-      clientCount === 0
-        ? {
-            label: "Add first client",
-            href: "/clients?new=1&next=calendar",
-            tone: "primary",
-          }
-        : clientAction,
-    inbox: inboxAction,
-  };
-  const quickActions = dashboardWidgets
-    .filter((widget) => widget in actionsByWidget)
-    .map((widget, index) => ({
-      ...actionsByWidget[widget]!,
-      tone: index === 0 ? "primary" as const : "secondary" as const,
-    }));
+  const quickActions: DashboardQuickAction[] = [
+    appointmentAction,
+    clientCount === 0
+      ? {
+          label: "Add first client",
+          href: "/clients?new=1&next=calendar",
+          tone: "secondary",
+        }
+      : clientAction,
+    inboxAction,
+  ];
   const nextDashboardAppointment = nextAppointment
     ? {
         id: nextAppointment.id,

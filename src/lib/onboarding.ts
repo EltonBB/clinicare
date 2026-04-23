@@ -78,12 +78,10 @@ export type OnboardingState = {
   };
   dashboard: {
     widgets: Array<
-      | "appointments"
-      | "clients"
-      | "inbox"
       | "todayAppointments"
       | "lastClients"
       | "nextStaffAppointment"
+      | "analytics"
     >;
   };
 };
@@ -118,7 +116,7 @@ export function createDefaultOnboardingState(): OnboardingState {
       role: "Specialist",
     },
     dashboard: {
-      widgets: ["appointments", "clients", "inbox"],
+      widgets: ["todayAppointments"],
     },
   };
 }
@@ -140,12 +138,10 @@ function readDashboardWidgets(
   fallback: OnboardingState["dashboard"]["widgets"]
 ) {
   const allowed = new Set([
-    "appointments",
-    "clients",
-    "inbox",
     "todayAppointments",
     "lastClients",
     "nextStaffAppointment",
+    "analytics",
   ]);
 
   if (Array.isArray(value)) {

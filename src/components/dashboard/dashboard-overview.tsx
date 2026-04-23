@@ -8,6 +8,8 @@ import {
   CheckCircle2,
   Clock3,
   CirclePlus,
+  LockKeyhole,
+  LineChart,
   MessageSquareText,
   Settings2,
   UsersRound,
@@ -26,11 +28,11 @@ import type {
   DashboardViewModel,
 } from "@/lib/dashboard";
 
-const actionWidgetValues: DashboardWidget[] = ["appointments", "clients", "inbox"];
 const contentWidgetValues: DashboardWidget[] = [
   "todayAppointments",
   "lastClients",
   "nextStaffAppointment",
+  "analytics",
 ];
 
 const dashboardWidgetOptions: Array<{
@@ -39,24 +41,6 @@ const dashboardWidgetOptions: Array<{
   description: string;
   icon: React.ReactNode;
 }> = [
-  {
-    value: "appointments",
-    title: "Book appointments",
-    description: "Shows a focused action for creating appointments.",
-    icon: <CalendarPlus2 className="size-5" />,
-  },
-  {
-    value: "clients",
-    title: "Add clients",
-    description: "Shows a focused action for registering clients.",
-    icon: <UsersRound className="size-5" />,
-  },
-  {
-    value: "inbox",
-    title: "Open inbox",
-    description: "Shows a focused action for WhatsApp conversations.",
-    icon: <MessageSquareText className="size-5" />,
-  },
   {
     value: "todayAppointments",
     title: "Today's appointments",
@@ -74,6 +58,12 @@ const dashboardWidgetOptions: Array<{
     title: "Next staff appointment",
     description: "Shows the next upcoming appointment with staff.",
     icon: <Clock3 className="size-5" />,
+  },
+  {
+    value: "analytics",
+    title: "Analytics",
+    description: "Shows performance insights for Pro workspaces.",
+    icon: <LineChart className="size-5" />,
   },
 ];
 
@@ -122,15 +112,10 @@ function AppointmentRow({ appointment }: { appointment: DashboardAppointment }) 
   );
 }
 
-function buildActionWidgets(
-  selectedWidgets: DashboardWidget[],
-  view: DashboardViewModel
-): DashboardViewModel["quickActions"] {
+function buildActionWidgets(view: DashboardViewModel): DashboardViewModel["quickActions"] {
   const recentClientId = view.workspaceState.recentClientId;
-  const actionByWidget: Partial<
-    Record<DashboardWidget, DashboardViewModel["quickActions"][number]>
-  > = {
-    appointments: {
+  return [
+    {
       label:
         view.workspaceState.appointmentCount === 0
           ? "Book first appointment"
@@ -140,7 +125,7 @@ function buildActionWidgets(
         : "/calendar?new=1",
       tone: "primary",
     },
-    clients: {
+    {
       label:
         view.workspaceState.clientCount === 0 ? "Add first client" : "New client",
       href:
@@ -149,19 +134,12 @@ function buildActionWidgets(
           : "/clients?new=1",
       tone: "secondary",
     },
-    inbox: {
+    {
       label: "Open inbox",
       href: "/inbox",
       tone: "secondary",
     },
-  };
-
-  return selectedWidgets
-    .filter((widget) => actionWidgetValues.includes(widget))
-    .map((widget, index) => ({
-      ...actionByWidget[widget]!,
-      tone: index === 0 ? ("primary" as const) : ("secondary" as const),
-    }));
+  ];
 }
 
 function TodayAppointmentsWidget({ view }: { view: DashboardViewModel }) {
@@ -249,6 +227,71 @@ function NextStaffAppointmentWidget({ view }: { view: DashboardViewModel }) {
         <p className="mt-4 rounded-[0.9rem] bg-muted/45 px-4 py-3 text-sm text-muted-foreground">
           No upcoming staff appointments.
         </p>
+      )}
+    </section>
+  );
+}
+
+function AnalyticsWidget({ view }: { view: DashboardViewModel }) {
+  const isPro = view.planSummary.isPro;
+
+  return (
+    <section
+      className={cn(
+        "rounded-[1.2rem] border border-border/80 bg-white/92 p-5 shadow-[0_12px_28px_rgba(20,32,51,0.035)]",
+        !isPro && "bg-[linear-gradient(135deg,rgba(255,255,255,0.96),var(--primary-soft))]"
+      )}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <span className="flex size-11 items-center justify-center rounded-[1rem] bg-primary/10 text-primary">
+          {isPro ? <LineChart className="size-5" /> : <LockKeyhole className="size-5" />}
+        </span>
+        {!isPro ? (
+          <span className="rounded-full border border-primary/20 bg-white/80 px-3 py-1 text-xs font-semibold text-primary">
+            Pro
+          </span>
+        ) : null}
+      </div>
+      <p className="mt-5 text-base font-semibold text-foreground">
+        {isPro ? "Analytics" : "Analytics locked"}
+      </p>
+      {isPro ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-1 2xl:grid-cols-3">
+          <div className="rounded-[0.9rem] bg-muted/45 px-4 py-3">
+            <p className="text-2xl font-semibold text-primary">
+              {view.appointments.length}
+            </p>
+            <p className="text-xs text-muted-foreground">Today</p>
+          </div>
+          <div className="rounded-[0.9rem] bg-muted/45 px-4 py-3">
+            <p className="text-2xl font-semibold text-primary">
+              {view.workspaceState.clientCount}
+            </p>
+            <p className="text-xs text-muted-foreground">Clients</p>
+          </div>
+          <div className="rounded-[0.9rem] bg-muted/45 px-4 py-3">
+            <p className="text-2xl font-semibold text-primary">
+              {view.unreadSummary.unreadCount}
+            </p>
+            <p className="text-xs text-muted-foreground">Unread</p>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4 space-y-4">
+          <p className="text-sm leading-6 text-muted-foreground">
+            Upgrade to Pro to unlock appointment, client, and message performance stats.
+          </p>
+          <Link
+            href="/pricing"
+            className={cn(
+              buttonVariants({ variant: "default", size: "lg" }),
+              "h-11 w-full justify-between rounded-[0.9rem] px-4"
+            )}
+          >
+            <span>Upgrade to Pro</span>
+            <LineChart className="size-4" />
+          </Link>
+        </div>
       )}
     </section>
   );
@@ -409,7 +452,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
   const [selectedWidgets, setSelectedWidgets] = useState<DashboardWidget[]>(
     view.workspaceState.selectedWidgets
   );
-  const actionWidgets = buildActionWidgets(selectedWidgets, view);
+  const actionWidgets = buildActionWidgets(view);
   const selectedContentWidgets = selectedWidgets.filter((widget) =>
     contentWidgetValues.includes(widget)
   );
@@ -443,6 +486,9 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           ) : null}
           {selectedWidgets.includes("nextStaffAppointment") ? (
             <NextStaffAppointmentWidget view={view} />
+          ) : null}
+          {selectedWidgets.includes("analytics") ? (
+            <AnalyticsWidget view={view} />
           ) : null}
           {selectedContentWidgets.length === 0 ? (
             <div className="rounded-[1.2rem] border border-dashed border-border bg-white/72 p-6 text-sm text-muted-foreground lg:col-span-3">

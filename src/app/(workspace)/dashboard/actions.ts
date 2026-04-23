@@ -41,7 +41,7 @@ export async function saveDashboardWidgetsAction(
   const nextWidgets =
     normalizedWidgets.length > 0
       ? normalizedWidgets
-      : (["appointments", "clients", "inbox"] satisfies DashboardWidget[]);
+      : (["todayAppointments"] satisfies DashboardWidget[]);
 
   await prisma.business.update({
     where: {
