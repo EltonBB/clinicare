@@ -356,11 +356,11 @@ function DashboardCustomizer({
   }
 
   return (
-    <div className="relative">
+    <div className="relative flex justify-end">
       <Button
         type="button"
         variant="outline"
-        className="h-10 rounded-[0.9rem] bg-white/82"
+        className="h-10 rounded-[0.9rem] bg-white/82 px-4"
         onClick={() => setOpen(true)}
       >
         <Settings2 className="size-4" />
@@ -470,7 +470,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
   );
 
   return (
-    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-8">
+    <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-8">
       <section
         className="section-reveal space-y-6"
         data-tour="dashboard-overview"
@@ -505,8 +505,8 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
         </div>
       </section>
 
-      <aside className="section-reveal-delayed xl:pt-[7.15rem]">
-        <div className="space-y-5 rounded-[1.2rem] border border-border/75 bg-white/92 p-5 shadow-[0_10px_24px_rgba(20,32,51,0.032)] xl:min-h-[calc(100vh-11rem)] xl:p-6">
+      <aside className="section-reveal-delayed self-start xl:pt-[7.15rem]">
+        <div className="space-y-5 rounded-[1.2rem] border border-border/75 bg-white/92 p-5 shadow-[0_10px_24px_rgba(20,32,51,0.032)] xl:p-6">
           <DashboardCustomizer
             availableWidgets={view.availableWidgets}
             selectedWidgets={selectedWidgets}
