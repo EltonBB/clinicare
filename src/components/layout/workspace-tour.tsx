@@ -20,16 +20,15 @@ import {
 
 import { completeWorkspaceTourAction } from "@/app/(workspace)/actions";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
 const TOUR_STORAGE_KEY = "vela-workspace-tour-state-v9";
 const ACTIVE_TARGET_CLASSES = [
   "relative",
   "z-[81]",
   "rounded-[1rem]",
-  "ring-2",
-  "ring-primary/85",
-  "shadow-[0_0_0_8px_var(--primary-shadow),0_16px_34px_rgba(15,23,42,0.14)]",
+  "ring-1",
+  "ring-primary/25",
+  "shadow-[0_0_0_4px_color-mix(in_oklab,var(--primary)_8%,transparent)]",
   "transition-[box-shadow,ring-color]",
   "duration-300",
 ];
@@ -568,9 +567,9 @@ export function WorkspaceTour({
 
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
-    const cardWidth = Math.min(420, viewportWidth - 32);
-    const cardHeightGuess = 450;
-    const gap = 20;
+    const cardWidth = Math.min(390, viewportWidth - 32);
+    const cardHeightGuess = 395;
+    const gap = 28;
     const maxHeight = "calc(100vh - 2rem)";
 
     if (viewportWidth < 1024) {
@@ -584,9 +583,9 @@ export function WorkspaceTour({
     }
 
     const clampTop = (value: number) =>
-      Math.max(24, Math.min(value, viewportHeight - cardHeightGuess - 24));
+      Math.max(16, Math.min(value, viewportHeight - cardHeightGuess - 16));
     const clampLeft = (value: number) =>
-      Math.max(24, Math.min(value, viewportWidth - cardWidth - 24));
+      Math.max(16, Math.min(value, viewportWidth - cardWidth - 16));
     const centeredTop = (rect: Rect) =>
       clampTop(rect.top + rect.height / 2 - cardHeightGuess / 2);
     const centeredLeft = (rect: Rect) =>
@@ -621,15 +620,17 @@ export function WorkspaceTour({
 
     const targetRight = targetRect.left + targetRect.width;
     const targetBottom = targetRect.top + targetRect.height;
-    const hasRightSpace = viewportWidth - targetRight >= cardWidth + gap + 24;
-    const hasLeftSpace = targetRect.left >= cardWidth + gap + 24;
-    const hasBelowSpace = viewportHeight - targetBottom >= cardHeightGuess + gap + 24;
-    const hasAboveSpace = targetRect.top >= cardHeightGuess + gap + 24;
+    const hasRightSpace = viewportWidth - targetRight >= cardWidth + gap + 16;
+    const hasLeftSpace = targetRect.left >= cardWidth + gap + 16;
+    const hasBelowSpace = viewportHeight - targetBottom >= cardHeightGuess + gap + 16;
+    const hasAboveSpace = targetRect.top >= cardHeightGuess + gap + 16;
 
     if (currentStep.placement === "sidebar") {
       return {
         top: clampTop(targetRect.top + targetRect.height / 2 - 120),
-        left: clampLeft(targetRect.left + targetRect.width + 28),
+        left: hasRightSpace
+          ? clampLeft(targetRight + gap)
+          : clampLeft(targetRect.left - cardWidth - gap),
         width: cardWidth,
         maxHeight,
       };
@@ -672,10 +673,8 @@ export function WorkspaceTour({
     }
 
     return {
-      top: clampTop(viewportHeight - cardHeightGuess - 24),
-      left: clampLeft(
-        currentStep.placement === "header-action" ? targetRect.left - cardWidth - gap : 24
-      ),
+      top: clampTop(96),
+      left: clampLeft(targetRect.left > viewportWidth / 2 ? 24 : viewportWidth - cardWidth - 24),
       width: cardWidth,
       maxHeight,
     };
@@ -736,7 +735,7 @@ export function WorkspaceTour({
   return (
     <div className="pointer-events-none fixed inset-0 z-[90]">
       <div className="pointer-events-auto absolute" style={coachmarkStyle}>
-        <div className="tour-coachmark dialog-scroll-body relative overflow-y-auto rounded-[1.45rem] border border-border/80 bg-white p-5 shadow-[0_24px_60px_rgba(15,23,42,0.14)] backdrop-blur-sm md:p-6">
+        <div className="tour-coachmark dialog-scroll-body relative overflow-y-auto rounded-[1.35rem] border border-border/80 bg-white p-5 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-sm">
           <div className="tour-orb pointer-events-none absolute -right-6 top-4 size-20 rounded-full bg-primary/10 blur-2xl" />
           <div className="tour-orb pointer-events-none absolute right-16 top-10 size-8 rounded-full bg-primary/10 blur-xl" />
           <div className="flex items-start justify-between gap-4">
@@ -776,10 +775,10 @@ export function WorkspaceTour({
             {currentStep.points.map((point) => (
               <div
                 key={point}
-                className="flex gap-3 rounded-[0.95rem] border border-border/70 bg-slate-50/80 px-3 py-2.5"
+                className="flex gap-3 rounded-[0.85rem] border border-border/70 bg-slate-50/70 px-3 py-2"
               >
-                <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
-                <p className="text-sm leading-6 text-muted-foreground">{point}</p>
+                <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-primary" />
+                <p className="text-[13px] leading-6 text-muted-foreground">{point}</p>
               </div>
             ))}
           </div>
@@ -792,26 +791,7 @@ export function WorkspaceTour({
             </div>
           ) : null}
 
-          <div className="mt-6 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              {tourSteps.map((tourStep, index) => (
-                <span
-                  key={tourStep.id}
-                  className={cn(
-                    "h-2 rounded-full transition-all duration-300",
-                    index === tourState.currentStepIndex
-                      ? "w-9 bg-primary"
-                      : "w-2 bg-slate-300"
-                  )}
-                />
-              ))}
-            </div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              {tourState.currentStepIndex + 1}/{tourSteps.length}
-            </p>
-          </div>
-
-          <div className="mt-6 flex items-center justify-between gap-3">
+          <div className="mt-5 flex items-center justify-between gap-3 border-t border-border/70 pt-4">
             <div className="flex items-center gap-3">
               <Button
                 type="button"
