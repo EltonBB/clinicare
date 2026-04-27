@@ -21,16 +21,10 @@ import {
 import { completeWorkspaceTourAction } from "@/app/(workspace)/actions";
 import { Button } from "@/components/ui/button";
 
-const TOUR_STORAGE_KEY = "vela-workspace-tour-state-v9";
+const TOUR_STORAGE_KEY = "vela-workspace-tour-state-v10";
 const ACTIVE_TARGET_CLASSES = [
   "relative",
   "z-[81]",
-  "rounded-[1rem]",
-  "ring-1",
-  "ring-primary/25",
-  "shadow-[0_0_0_4px_color-mix(in_oklab,var(--primary)_8%,transparent)]",
-  "transition-[box-shadow,ring-color]",
-  "duration-300",
 ];
 
 type Placement = "sidebar" | "header-action" | "content";
@@ -356,6 +350,25 @@ function findVisibleTarget(target: string) {
   );
 }
 
+function hasVisibleBlockingSurface() {
+  const blockingSurfaces = Array.from(
+    document.querySelectorAll<HTMLElement>('[role="dialog"], [data-tour-suspend="true"]')
+  );
+
+  return blockingSurfaces.some((surface) => {
+    const styles = window.getComputedStyle(surface);
+    const rect = surface.getBoundingClientRect();
+
+    return (
+      styles.display !== "none" &&
+      styles.visibility !== "hidden" &&
+      styles.pointerEvents !== "none" &&
+      rect.width > 0 &&
+      rect.height > 0
+    );
+  });
+}
+
 function toRect(element: HTMLElement): Rect {
   const rect = element.getBoundingClientRect();
 
@@ -379,11 +392,13 @@ export function WorkspaceTour({
   const storageKey = `${TOUR_STORAGE_KEY}:${scopeId}`;
   const [tourState, setTourState] = useState<TourState>(initialTourState);
   const [targetRect, setTargetRect] = useState<Rect | null>(null);
+  const [isBlockingSurfaceOpen, setIsBlockingSurfaceOpen] = useState(false);
 
   const currentStep = tourSteps[tourState.currentStepIndex] ?? null;
   const isOpen = tourState.active && Boolean(currentStep);
   const isOnExpectedPath = Boolean(currentStep && pathname === currentStep.path);
-  const shouldRender = isOpen && Boolean(currentStep) && isOnExpectedPath;
+  const shouldRender =
+    isOpen && Boolean(currentStep) && isOnExpectedPath && !isBlockingSurfaceOpen;
   const isLastStep = tourState.currentStepIndex === tourSteps.length - 1;
 
   useEffect(() => {
@@ -457,6 +472,37 @@ export function WorkspaceTour({
       window.cancelAnimationFrame(frame);
     };
   }, [currentStep, pathname, storageKey, tourState.active, tourState.currentStepIndex]);
+
+  useEffect(() => {
+    let frame = 0;
+
+    const syncBlockingSurface = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const nextValue = hasVisibleBlockingSurface();
+        setIsBlockingSurfaceOpen((currentValue) =>
+          currentValue === nextValue ? currentValue : nextValue
+        );
+      });
+    };
+
+    const observer = new MutationObserver(syncBlockingSurface);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "style", "data-state", "aria-hidden"],
+    });
+
+    syncBlockingSurface();
+    window.addEventListener("resize", syncBlockingSurface);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("resize", syncBlockingSurface);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isOpen || !currentStep) {
@@ -567,9 +613,9 @@ export function WorkspaceTour({
 
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
-    const cardWidth = Math.min(390, viewportWidth - 32);
-    const cardHeightGuess = 395;
-    const gap = 28;
+    const cardWidth = Math.min(360, viewportWidth - 32);
+    const cardHeightGuess = 330;
+    const gap = 24;
     const maxHeight = "calc(100vh - 2rem)";
 
     if (viewportWidth < 1024) {
@@ -735,20 +781,29 @@ export function WorkspaceTour({
   return (
     <div className="pointer-events-none fixed inset-0 z-[90]">
       <div className="pointer-events-auto absolute" style={coachmarkStyle}>
-        <div className="tour-coachmark dialog-scroll-body relative overflow-y-auto rounded-[1.35rem] border border-border/80 bg-white p-5 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-sm">
-          <div className="tour-orb pointer-events-none absolute -right-6 top-4 size-20 rounded-full bg-primary/10 blur-2xl" />
-          <div className="tour-orb pointer-events-none absolute right-16 top-10 size-8 rounded-full bg-primary/10 blur-xl" />
+        <div
+          className="tour-coachmark relative overflow-y-auto rounded-[1.15rem] border border-border/90 bg-white/95 p-4 shadow-[0_18px_48px_rgba(15,23,42,0.13)] backdrop-blur-md [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          aria-live="polite"
+        >
           <div className="flex items-start justify-between gap-4">
-            <div className="space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
-                {currentStep.icon}
-                {currentStep.kicker}
+            <div className="min-w-0 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">
+                  {currentStep.icon}
+                  Vela guide
+                </span>
+                <span className="rounded-full border border-border/80 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  {tourState.currentStepIndex + 1}/{tourSteps.length}
+                </span>
               </div>
               <div className="space-y-2">
-                <p className="text-[1.35rem] font-semibold tracking-tight text-foreground">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+                  {currentStep.kicker}
+                </p>
+                <p className="text-xl font-semibold tracking-tight text-foreground">
                   {currentStep.title}
                 </p>
-                <p className="text-sm leading-7 text-muted-foreground">
+                <p className="text-sm leading-6 text-muted-foreground">
                   {currentStep.description}
                 </p>
               </div>
@@ -756,7 +811,7 @@ export function WorkspaceTour({
             <button
               type="button"
               onClick={finishTour}
-              className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-border/80 bg-white text-muted-foreground transition-colors hover:text-foreground"
+              className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-border/80 bg-white text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
               aria-label="Close tour"
             >
               <X className="size-4" />
@@ -771,14 +826,16 @@ export function WorkspaceTour({
             </div>
           ) : null}
 
-          <div className="mt-5 grid gap-2">
-            {currentStep.points.map((point) => (
+          <div className="mt-4 grid gap-2.5">
+            {currentStep.points.map((point, index) => (
               <div
                 key={point}
-                className="flex gap-3 rounded-[0.85rem] border border-border/70 bg-slate-50/70 px-3 py-2"
+                className="grid grid-cols-[1.45rem_1fr] items-start gap-2.5"
               >
-                <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-primary" />
-                <p className="text-[13px] leading-6 text-muted-foreground">{point}</p>
+                <span className="flex size-5 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold tabular text-primary">
+                  {index + 1}
+                </span>
+                <p className="text-[13px] leading-5 text-muted-foreground">{point}</p>
               </div>
             ))}
           </div>
@@ -796,7 +853,7 @@ export function WorkspaceTour({
               <Button
                 type="button"
                 variant="ghost"
-                className="rounded-[0.95rem] px-0 text-muted-foreground hover:bg-transparent"
+                className="h-9 rounded-[0.8rem] px-0 text-muted-foreground hover:bg-transparent"
                 onClick={handleBack}
                 disabled={tourState.currentStepIndex === 0}
               >
@@ -806,7 +863,7 @@ export function WorkspaceTour({
               <Button
                 type="button"
                 variant="ghost"
-                className="rounded-[0.95rem] px-0 text-muted-foreground hover:bg-transparent"
+                className="h-9 rounded-[0.8rem] px-0 text-muted-foreground hover:bg-transparent"
                 onClick={finishTour}
               >
                 Skip
@@ -816,7 +873,7 @@ export function WorkspaceTour({
             {currentStep.advanceMode === "button" ? (
               <Button
                 type="button"
-                className="h-11 rounded-[1rem] px-5"
+                className="h-10 rounded-[0.9rem] px-4"
                 onClick={handleNext}
               >
                 {isLastStep ? "Done" : currentStep.buttonLabel ?? "Next"}
@@ -825,7 +882,7 @@ export function WorkspaceTour({
             ) : (
               <Button
                 type="button"
-                className="h-11 rounded-[1rem] px-5"
+                className="h-10 rounded-[0.9rem] px-4"
                 onClick={() => handleNext()}
               >
                 {currentStep.buttonLabel ?? "Go to next step"}
