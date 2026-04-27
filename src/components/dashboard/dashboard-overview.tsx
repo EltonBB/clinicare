@@ -495,11 +495,11 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
 
   return (
     <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-8">
-      <section
-        className="section-reveal space-y-6"
-        data-tour="dashboard-overview"
-      >
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <section className="section-reveal space-y-6">
+        <div
+          className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+          data-tour="dashboard-overview"
+        >
           <div className="space-y-3">
             <p className="text-[12px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
               Today overview

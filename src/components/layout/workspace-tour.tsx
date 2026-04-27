@@ -426,6 +426,40 @@ export function WorkspaceTour({
   }, [initialCompleted, pathname, storageKey]);
 
   useEffect(() => {
+    if (!tourState.active || !currentStep || pathname === currentStep.path) {
+      return;
+    }
+
+    const nextIndexFromCurrent = tourSteps.findIndex(
+      (step, index) => index >= tourState.currentStepIndex && step.path === pathname
+    );
+    const nextIndex =
+      nextIndexFromCurrent === -1
+        ? tourSteps.findIndex((step) => step.path === pathname)
+        : nextIndexFromCurrent;
+
+    if (nextIndex === -1 || nextIndex === tourState.currentStepIndex) {
+      return;
+    }
+
+    const nextState = {
+      active: true,
+      currentStepIndex: nextIndex,
+      completed: false,
+    };
+
+    writeTourState(storageKey, nextState);
+
+    const frame = window.requestAnimationFrame(() => {
+      setTourState(nextState);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [currentStep, pathname, storageKey, tourState.active, tourState.currentStepIndex]);
+
+  useEffect(() => {
     if (!isOpen || !currentStep) {
       return;
     }
@@ -535,7 +569,9 @@ export function WorkspaceTour({
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
     const cardWidth = Math.min(420, viewportWidth - 32);
-    const cardHeightGuess = 290;
+    const cardHeightGuess = 450;
+    const gap = 20;
+    const maxHeight = "calc(100vh - 2rem)";
 
     if (viewportWidth < 1024) {
       return {
@@ -543,13 +579,18 @@ export function WorkspaceTour({
         right: 16,
         bottom: 16,
         width: "auto",
+        maxHeight,
       };
     }
 
     const clampTop = (value: number) =>
-      Math.max(88, Math.min(value, viewportHeight - cardHeightGuess - 24));
+      Math.max(24, Math.min(value, viewportHeight - cardHeightGuess - 24));
     const clampLeft = (value: number) =>
       Math.max(24, Math.min(value, viewportWidth - cardWidth - 24));
+    const centeredTop = (rect: Rect) =>
+      clampTop(rect.top + rect.height / 2 - cardHeightGuess / 2);
+    const centeredLeft = (rect: Rect) =>
+      clampLeft(rect.left + rect.width / 2 - cardWidth / 2);
 
     if (!targetRect) {
       if (currentStep.placement === "sidebar") {
@@ -557,6 +598,7 @@ export function WorkspaceTour({
           top: 124,
           left: Math.min(324, viewportWidth - cardWidth - 24),
           width: cardWidth,
+          maxHeight,
         };
       }
 
@@ -565,6 +607,7 @@ export function WorkspaceTour({
           top: 132,
           left: Math.max(24, viewportWidth - cardWidth - 36),
           width: cardWidth,
+          maxHeight,
         };
       }
 
@@ -572,29 +615,69 @@ export function WorkspaceTour({
         top: 132,
         left: Math.max(24, viewportWidth - cardWidth - 40),
         width: cardWidth,
+        maxHeight,
       };
     }
+
+    const targetRight = targetRect.left + targetRect.width;
+    const targetBottom = targetRect.top + targetRect.height;
+    const hasRightSpace = viewportWidth - targetRight >= cardWidth + gap + 24;
+    const hasLeftSpace = targetRect.left >= cardWidth + gap + 24;
+    const hasBelowSpace = viewportHeight - targetBottom >= cardHeightGuess + gap + 24;
+    const hasAboveSpace = targetRect.top >= cardHeightGuess + gap + 24;
 
     if (currentStep.placement === "sidebar") {
       return {
         top: clampTop(targetRect.top + targetRect.height / 2 - 120),
         left: clampLeft(targetRect.left + targetRect.width + 28),
         width: cardWidth,
+        maxHeight,
       };
     }
 
-    if (currentStep.placement === "header-action") {
+    if (hasRightSpace) {
       return {
-        top: clampTop(targetRect.top + targetRect.height + 20),
-        left: clampLeft(targetRect.left + targetRect.width - cardWidth),
+        top: centeredTop(targetRect),
+        left: clampLeft(targetRight + gap),
         width: cardWidth,
+        maxHeight,
+      };
+    }
+
+    if (hasLeftSpace) {
+      return {
+        top: centeredTop(targetRect),
+        left: clampLeft(targetRect.left - cardWidth - gap),
+        width: cardWidth,
+        maxHeight,
+      };
+    }
+
+    if (hasBelowSpace) {
+      return {
+        top: clampTop(targetBottom + gap),
+        left: centeredLeft(targetRect),
+        width: cardWidth,
+        maxHeight,
+      };
+    }
+
+    if (hasAboveSpace) {
+      return {
+        top: clampTop(targetRect.top - cardHeightGuess - gap),
+        left: centeredLeft(targetRect),
+        width: cardWidth,
+        maxHeight,
       };
     }
 
     return {
-      top: clampTop(targetRect.top + 18),
-      left: clampLeft(targetRect.left + Math.min(32, targetRect.width * 0.08)),
+      top: clampTop(viewportHeight - cardHeightGuess - 24),
+      left: clampLeft(
+        currentStep.placement === "header-action" ? targetRect.left - cardWidth - gap : 24
+      ),
       width: cardWidth,
+      maxHeight,
     };
   }, [currentStep, targetRect]);
 
@@ -651,9 +734,9 @@ export function WorkspaceTour({
   }
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-[80]">
+    <div className="pointer-events-none fixed inset-0 z-[90]">
       <div className="pointer-events-auto absolute" style={coachmarkStyle}>
-        <div className="tour-coachmark relative overflow-hidden rounded-[1.45rem] border border-border/80 bg-white/98 p-5 shadow-[0_24px_60px_rgba(15,23,42,0.14)] backdrop-blur-sm md:p-6">
+        <div className="tour-coachmark dialog-scroll-body relative overflow-y-auto rounded-[1.45rem] border border-border/80 bg-white p-5 shadow-[0_24px_60px_rgba(15,23,42,0.14)] backdrop-blur-sm md:p-6">
           <div className="tour-orb pointer-events-none absolute -right-6 top-4 size-20 rounded-full bg-primary/10 blur-2xl" />
           <div className="tour-orb pointer-events-none absolute right-16 top-10 size-8 rounded-full bg-primary/10 blur-xl" />
           <div className="flex items-start justify-between gap-4">
