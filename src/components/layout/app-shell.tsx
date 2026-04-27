@@ -85,9 +85,11 @@ export function AppShell({
       case "/clients":
         return "clients-nav";
       case "/staff":
-        return undefined;
+        return "staff-nav";
       case "/inbox":
         return "inbox-nav";
+      case "/reports":
+        return "reports-nav";
       case "/settings":
         return "settings-nav";
       default:

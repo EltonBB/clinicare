@@ -385,6 +385,7 @@ function DashboardCustomizer({
         variant="outline"
         className="h-10 rounded-[0.9rem] bg-white/82 px-4"
         onClick={() => setOpen(true)}
+        data-tour="dashboard-customize"
       >
         <Settings2 className="size-4" />
         Customize dashboard

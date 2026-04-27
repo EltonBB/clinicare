@@ -1,14 +1,28 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Sparkles, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  BarChart3,
+  CalendarDays,
+  CheckCircle2,
+  LayoutDashboard,
+  MessageSquareText,
+  Settings2,
+  UserRoundCog,
+  UsersRound,
+  WandSparkles,
+  X,
+} from "lucide-react";
 
 import { completeWorkspaceTourAction } from "@/app/(workspace)/actions";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const TOUR_STORAGE_KEY = "vela-workspace-tour-state-v8";
+const TOUR_STORAGE_KEY = "vela-workspace-tour-state-v9";
 const ACTIVE_TARGET_CLASSES = [
   "relative",
   "z-[81]",
@@ -29,6 +43,8 @@ type TourStep = {
   kicker: string;
   title: string;
   description: string;
+  points: string[];
+  icon: ReactNode;
   actionLabel?: string;
   buttonLabel?: string;
   advanceMode: "button" | "click";
@@ -59,24 +75,89 @@ const tourSteps: TourStep[] = [
     id: "dashboard-sidebar",
     path: "/dashboard",
     target: "sidebar-shell",
-    kicker: "Dashboard",
-    title: "This is the clinic dashboard",
+    kicker: "Workspace map",
+    title: "Start with the sidebar",
     description:
-      "Start here to understand the workspace. The left sidebar is the clinic's main map for moving between the dashboard, calendar, clients, inbox, and settings.",
+      "This is the clinic's main navigation. Every major part of the workspace is one click away, so the team never has to hunt for core tools.",
+    points: [
+      "Dashboard gives the daily overview.",
+      "Calendar, Clients, Staff, Inbox, Reports, and Settings each have their own workspace.",
+      "The current plan and account menu stay at the bottom.",
+    ],
+    icon: <LayoutDashboard className="size-4" />,
     advanceMode: "button",
     placement: "sidebar",
+  },
+  {
+    id: "dashboard-overview",
+    path: "/dashboard",
+    target: "dashboard-overview",
+    kicker: "Today overview",
+    title: "Read the clinic day from here",
+    description:
+      "The dashboard summarizes what matters right now so a clinic owner can understand the day before opening any detailed page.",
+    points: [
+      "Today's appointments show the active schedule.",
+      "Recent clients and next staff appointment keep follow-up visible.",
+      "Analytics gives quick performance signals for Pro workspaces.",
+    ],
+    icon: <LayoutDashboard className="size-4" />,
+    buttonLabel: "Next",
+    advanceMode: "button",
+    placement: "content",
+  },
+  {
+    id: "dashboard-actions",
+    path: "/dashboard",
+    target: "dashboard-quick-actions",
+    kicker: "Quick actions",
+    title: "Use the right-side actions for fast work",
+    description:
+      "The right panel keeps the most common actions visible without crowding the main dashboard.",
+    points: [
+      "Book an appointment from anywhere on the dashboard.",
+      "Add a new client before scheduling if needed.",
+      "Open Inbox when a WhatsApp conversation needs attention.",
+    ],
+    icon: <WandSparkles className="size-4" />,
+    buttonLabel: "Next",
+    advanceMode: "button",
+    placement: "content",
+  },
+  {
+    id: "dashboard-customize",
+    path: "/dashboard",
+    target: "dashboard-customize",
+    kicker: "Personalize",
+    title: "Customize what the dashboard shows",
+    description:
+      "Every clinic can choose the widgets that match how they work. This keeps the dashboard useful instead of overloaded.",
+    points: [
+      "Select appointment, client, staff, and analytics widgets.",
+      "Changes apply to the dashboard layout.",
+      "The right-side quick actions stay available for everyone.",
+    ],
+    icon: <Settings2 className="size-4" />,
+    buttonLabel: "Next",
+    advanceMode: "button",
+    placement: "header-action",
   },
   {
     id: "calendar-nav",
     path: "/dashboard",
     target: "calendar-nav",
     kicker: "Calendar",
-    title: "Open Calendar next",
+    title: "Calendar manages bookings",
     description:
-      "Calendar is the booking workspace. This is where the clinic manages appointments and the daily schedule.",
-    actionLabel: "Next: click Calendar in the sidebar",
+      "Calendar is where appointments are created and reviewed. Use it to control the clinic schedule and avoid bookings outside operating hours.",
+    points: [
+      "Create appointments with client search and staff assignment.",
+      "Booked visits appear in the weekly calendar.",
+      "Completed visits move into client and staff records.",
+    ],
+    icon: <CalendarDays className="size-4" />,
     buttonLabel: "Go to Calendar",
-    advanceMode: "click",
+    advanceMode: "button",
     placement: "sidebar",
   },
   {
@@ -84,9 +165,16 @@ const tourSteps: TourStep[] = [
     path: "/calendar",
     target: "calendar-create",
     kicker: "Appointments",
-    title: "This is where appointments are created",
+    title: "Create appointments from here",
     description:
-      "Use this button whenever the clinic needs to book a visit, consultation, or follow-up into the schedule.",
+      "The booking drawer connects the client, staff member, service, date, time, status, and notes into one appointment record.",
+    points: [
+      "Search and select an existing client instead of scanning long dropdowns.",
+      "Choose a staff member and time that fits operating hours.",
+      "The appointment appears naturally in Dashboard, Calendar, Reports, Staff, and Client history.",
+    ],
+    icon: <CalendarDays className="size-4" />,
+    buttonLabel: "Next",
     advanceMode: "button",
     placement: "header-action",
   },
@@ -95,12 +183,17 @@ const tourSteps: TourStep[] = [
     path: "/calendar",
     target: "clients-nav",
     kicker: "Clients",
-    title: "Now move to Clients",
+    title: "Clients is the relationship hub",
     description:
-      "Clients is where the clinic stores profiles, notes, contact details, and message context for each person.",
-    actionLabel: "Next: click Clients in the sidebar",
+      "Each client profile keeps the useful context together instead of spreading it across calendar notes and chat messages.",
+    points: [
+      "Profiles store contact details, status, notes, and preferred channel.",
+      "History tracks completed and cancelled appointments.",
+      "Gallery keeps uploaded client images and captions attached to the profile.",
+    ],
+    icon: <UsersRound className="size-4" />,
     buttonLabel: "Go to Clients",
-    advanceMode: "click",
+    advanceMode: "button",
     placement: "sidebar",
   },
   {
@@ -108,20 +201,105 @@ const tourSteps: TourStep[] = [
     path: "/clients",
     target: "clients-create",
     kicker: "Clients",
-    title: "This is where a client is registered",
+    title: "Register clients when needed",
     description:
-      "Use this button whenever the clinic needs to add a new client profile into the workspace.",
+      "Use the client button when the clinic already knows the person. Unknown WhatsApp conversations can also be converted into clients later.",
+    points: [
+      "Add basic contact details and notes.",
+      "Open the profile to view history, gallery, messages, and details.",
+      "Client records can be used immediately when booking appointments.",
+    ],
+    icon: <UsersRound className="size-4" />,
+    buttonLabel: "Next",
     advanceMode: "button",
     placement: "header-action",
   },
   {
-    id: "settings-nav",
+    id: "staff-nav",
     path: "/clients",
+    target: "staff-nav",
+    kicker: "Staff",
+    title: "Staff has its own workspace",
+    description:
+      "Staff should not be hidden inside settings. This page tracks the people doing the work and the appointment records tied to them.",
+    points: [
+      "Add, update, archive, and filter staff profiles.",
+      "Check staff in and out to track weekly hours.",
+      "Completed appointments count toward each staff member's monthly record.",
+    ],
+    icon: <UserRoundCog className="size-4" />,
+    buttonLabel: "Go to Staff",
+    advanceMode: "button",
+    placement: "sidebar",
+  },
+  {
+    id: "inbox-nav",
+    path: "/staff",
+    target: "inbox-nav",
+    kicker: "Inbox",
+    title: "Inbox handles WhatsApp conversations",
+    description:
+      "Inbox is where client messages arrive and where staff replies without leaving Vela.",
+    points: [
+      "Known client conversations stay linked to their profiles.",
+      "Unknown numbers appear as unregistered contacts.",
+      "Convert an unknown conversation into a client without losing message history.",
+    ],
+    icon: <MessageSquareText className="size-4" />,
+    buttonLabel: "Go to Inbox",
+    advanceMode: "button",
+    placement: "sidebar",
+  },
+  {
+    id: "reports-nav",
+    path: "/inbox",
+    target: "reports-nav",
+    kicker: "Reports",
+    title: "Reports explain clinic performance",
+    description:
+      "Reports turns appointments, clients, messages, and operating hours into daily, weekly, and monthly performance insight.",
+    points: [
+      "Track appointments, completion rate, lost slots, clients, repeat visits, messages, and utilization.",
+      "Pro workspaces can refresh AI analysis for the selected period.",
+      "Use recommendations to see what the clinic should improve next.",
+    ],
+    icon: <BarChart3 className="size-4" />,
+    buttonLabel: "Go to Reports",
+    advanceMode: "button",
+    placement: "sidebar",
+  },
+  {
+    id: "settings-nav",
+    path: "/reports",
     target: "settings-nav",
     kicker: "Settings",
-    title: "Settings is where the clinic changes configuration",
+    title: "Settings controls clinic configuration",
     description:
-      "Use Settings to manage clinic details, staff, reminders, and WhatsApp configuration whenever something needs to be updated.",
+      "Settings keeps the setup features out of the daily workflow but available when the clinic needs to change configuration.",
+    points: [
+      "Connect or refresh the clinic WhatsApp number.",
+      "Set reminder timing and reminder template.",
+      "Update branding, colors, logo, and plan information.",
+    ],
+    icon: <Settings2 className="size-4" />,
+    buttonLabel: "Go to Settings",
+    advanceMode: "button",
+    placement: "sidebar",
+  },
+  {
+    id: "tour-complete",
+    path: "/settings",
+    target: "settings-whatsapp",
+    kicker: "Ready",
+    title: "The workspace is ready to explore",
+    description:
+      "The main operating loop is now clear: create clients, book appointments, reply in Inbox, review Staff records, and use Reports to improve the clinic.",
+    points: [
+      "You can come back to Settings when WhatsApp, reminders, or branding need changes.",
+      "The tour only appears for first-time users and is saved after completion.",
+      "Use the sidebar and dashboard actions to move faster.",
+    ],
+    icon: <CheckCircle2 className="size-4" />,
     advanceMode: "button",
     placement: "sidebar",
   },
@@ -481,7 +659,7 @@ export function WorkspaceTour({
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-3">
               <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
-                <Sparkles className="size-3.5" />
+                {currentStep.icon}
                 {currentStep.kicker}
               </div>
               <div className="space-y-2">
@@ -510,6 +688,18 @@ export function WorkspaceTour({
               </p>
             </div>
           ) : null}
+
+          <div className="mt-5 grid gap-2">
+            {currentStep.points.map((point) => (
+              <div
+                key={point}
+                className="flex gap-3 rounded-[0.95rem] border border-border/70 bg-slate-50/80 px-3 py-2.5"
+              >
+                <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
+                <p className="text-sm leading-6 text-muted-foreground">{point}</p>
+              </div>
+            ))}
+          </div>
 
           {isLastStep ? (
             <div className="mt-5 rounded-[1rem] border border-primary/15 bg-primary/5 px-4 py-3">
@@ -566,7 +756,7 @@ export function WorkspaceTour({
                 className="h-11 rounded-[1rem] px-5"
                 onClick={handleNext}
               >
-                {isLastStep ? "Done" : "Next"}
+                {isLastStep ? "Done" : currentStep.buttonLabel ?? "Next"}
                 <ArrowRight data-icon="inline-end" />
               </Button>
             ) : (
