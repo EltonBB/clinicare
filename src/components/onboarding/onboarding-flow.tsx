@@ -29,6 +29,11 @@ import {
   type OnboardingState,
   type WeekdayKey,
 } from "@/lib/onboarding";
+import { isStorageReference } from "@/lib/media-storage";
+import {
+  createSignedImageUrl,
+  uploadWorkspaceImage,
+} from "@/lib/media-storage-client";
 import { cn } from "@/lib/utils";
 
 const weekdayLabels: Record<WeekdayKey, string> = {
@@ -248,6 +253,8 @@ export function OnboardingFlow({
   });
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState("");
+  const [isLogoUploading, setIsLogoUploading] = useState(false);
   const [isPending, startSaving] = useTransition();
   const selectedAccent = resolveBrandAccentPreset(
     state.clinic.accentColor === "custom"
@@ -261,6 +268,30 @@ export function OnboardingFlow({
   const visibleAccentPresets = brandAccentPresets.filter(
     (preset) => preset.id !== "emerald"
   );
+
+  useEffect(() => {
+    let ignore = false;
+
+    if (!isStorageReference(state.clinic.logoUrl) || logoPreviewUrl) {
+      return;
+    }
+
+    createSignedImageUrl(state.clinic.logoUrl)
+      .then((signedUrl) => {
+        if (!ignore) {
+          setLogoPreviewUrl(signedUrl);
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setLogoPreviewUrl("");
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [logoPreviewUrl, state.clinic.logoUrl]);
 
   const stepIndex = Math.min(
     Math.max(state.currentStep, 1),
@@ -298,6 +329,9 @@ export function OnboardingFlow({
       const result = await saveOnboardingStateAction(nextState);
 
       if (!result.ok || !result.state) {
+        if (result.state) {
+          setState(result.state);
+        }
         setErrorMessage(
           result.error ?? "We couldn't save your onboarding progress."
         );
@@ -387,7 +421,7 @@ export function OnboardingFlow({
     }));
   }
 
-  function handleLogoUpload(file: File | null) {
+  async function handleLogoUpload(file: File | null) {
     if (!file) {
       return;
     }
@@ -402,19 +436,30 @@ export function OnboardingFlow({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = typeof reader.result === "string" ? reader.result : "";
+    setIsLogoUploading(true);
+
+    try {
+      const uploadedLogo = await uploadWorkspaceImage(file, {
+        folder: "logos",
+        maxBytes: 750_000,
+      });
+
       setState((current) => ({
         ...current,
         clinic: {
           ...current.clinic,
-          logoUrl: result,
+          logoUrl: uploadedLogo.storageUrl,
         },
       }));
+      setLogoPreviewUrl(uploadedLogo.signedUrl);
       setErrorMessage("");
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "We couldn't upload this logo."
+      );
+    } finally {
+      setIsLogoUploading(false);
+    }
   }
 
   function renderStepContent() {
@@ -457,6 +502,10 @@ export function OnboardingFlow({
     }
 
     if (step.id === "clinic") {
+      const logoDisplayUrl =
+        logoPreviewUrl ||
+        (isStorageReference(state.clinic.logoUrl) ? "" : state.clinic.logoUrl);
+
       return (
         <div className="grid gap-5">
           <div className="grid gap-4 md:grid-cols-2">
@@ -497,18 +546,23 @@ export function OnboardingFlow({
               <FieldLabel>Logo optional</FieldLabel>
               <div className="grid gap-3 rounded-[1.1rem] border border-border bg-card p-4 sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center">
                 <div className="flex size-[72px] items-center justify-center overflow-hidden rounded-[1.15rem] bg-primary/10 text-xl font-semibold text-primary">
-                  {state.clinic.logoUrl ? (
+                  {logoDisplayUrl ? (
                     <span
                       aria-hidden="true"
                       className="size-full bg-cover bg-center"
-                      style={{ backgroundImage: `url("${state.clinic.logoUrl}")` }}
+                      style={{ backgroundImage: `url("${logoDisplayUrl}")` }}
                     />
                   ) : (
                     (state.clinic.name || "V").charAt(0)
                   )}
                 </div>
                 <Input
-                  value={state.clinic.logoUrl.startsWith("data:") ? "" : state.clinic.logoUrl}
+                  value={
+                    state.clinic.logoUrl.startsWith("data:") ||
+                    isStorageReference(state.clinic.logoUrl)
+                      ? ""
+                      : state.clinic.logoUrl
+                  }
                   onChange={(event) =>
                     setState((current) => ({
                       ...current,
@@ -518,6 +572,7 @@ export function OnboardingFlow({
                       },
                     }))
                   }
+                  onInput={() => setLogoPreviewUrl("")}
                   placeholder="Paste logo URL"
                   className={fieldInputClass}
                 />
@@ -526,6 +581,7 @@ export function OnboardingFlow({
                     id="clinic-logo-upload"
                     type="file"
                     accept="image/*"
+                    disabled={isLogoUploading}
                     onChange={(event) =>
                       handleLogoUpload(event.currentTarget.files?.[0] ?? null)
                     }
@@ -535,21 +591,22 @@ export function OnboardingFlow({
                     htmlFor="clinic-logo-upload"
                     className="inline-flex h-12 cursor-pointer items-center justify-center rounded-[0.95rem] bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-[0_14px_28px_var(--primary-shadow)] hover:-translate-y-0.5"
                   >
-                    Upload logo
+                    {isLogoUploading ? "Uploading..." : "Upload logo"}
                   </label>
                   {state.clinic.logoUrl ? (
                     <button
                       type="button"
                       className="h-12 rounded-[0.95rem] border border-border bg-white/80 px-4 text-sm font-medium text-muted-foreground hover:text-foreground"
-                      onClick={() =>
+                      onClick={() => {
+                        setLogoPreviewUrl("");
                         setState((current) => ({
                           ...current,
                           clinic: {
                             ...current.clinic,
                             logoUrl: "",
                           },
-                        }))
-                      }
+                        }));
+                      }}
                     >
                       Remove logo
                     </button>

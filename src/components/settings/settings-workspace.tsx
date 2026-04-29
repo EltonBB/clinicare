@@ -12,6 +12,8 @@ import {
 import { businessTypes } from "@/lib/constants";
 import { brandAccentPresets, normalizeBrandHexColor } from "@/lib/branding";
 import { cn } from "@/lib/utils";
+import { isStorageReference } from "@/lib/media-storage";
+import { uploadWorkspaceImage } from "@/lib/media-storage-client";
 import {
   timeOptions,
   weekdayLabels,
@@ -160,6 +162,7 @@ export function SettingsWorkspace({
   const [state, setState] = useState(initialState);
   const [message, setMessage] = useState(flashMessage);
   const [errorMessage, setErrorMessage] = useState("");
+  const [isLogoUploading, setIsLogoUploading] = useState(false);
   const [isPending, startSaving] = useTransition();
   const [, setConnectionStatus] = useState("");
   const [, setConnectionError] = useState("");
@@ -174,6 +177,9 @@ export function SettingsWorkspace({
   const previewAccent = normalizedCustomAccent ?? "#3b82f6";
   const customAccentSelected = state.appearance.accentColor === "custom";
   const customAccentInvalid = customAccentSelected && !normalizedCustomAccent;
+  const logoDisplayUrl =
+    state.business.logoDisplayUrl ||
+    (isStorageReference(state.business.logoUrl) ? "" : state.business.logoUrl);
 
   function updateDay(day: WeekdayKey, patch: Partial<(typeof state.workingHours)[WeekdayKey]>) {
     setState((current) => ({
@@ -215,28 +221,48 @@ export function SettingsWorkspace({
     });
   }
 
-  function handleLogoUpload(file: File | null) {
+  async function handleLogoUpload(file: File | null) {
     if (!file) {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = typeof reader.result === "string" ? reader.result : "";
+    if (!file.type.startsWith("image/")) {
+      setErrorMessage("Upload an image file for the clinic logo.");
+      setMessage("");
+      return;
+    }
 
-      if (!result) {
-        return;
-      }
+    if (file.size > 750_000) {
+      setErrorMessage("Logo file is too large. Upload an image under 750 KB.");
+      setMessage("");
+      return;
+    }
 
+    setIsLogoUploading(true);
+
+    try {
+      const uploadedLogo = await uploadWorkspaceImage(file, {
+        folder: "logos",
+        maxBytes: 750_000,
+      });
       setState((current) => ({
         ...current,
         business: {
           ...current.business,
-          logoUrl: result,
+          logoUrl: uploadedLogo.storageUrl,
+          logoDisplayUrl: uploadedLogo.signedUrl,
         },
       }));
-    };
-    reader.readAsDataURL(file);
+      setErrorMessage("");
+      setMessage("Logo uploaded. Save changes to keep it.");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "We couldn't upload this logo."
+      );
+      setMessage("");
+    } finally {
+      setIsLogoUploading(false);
+    }
   }
 
   function handlePrepareLiveConnection() {
@@ -389,10 +415,10 @@ export function SettingsWorkspace({
               <FieldLabel>Clinic logo</FieldLabel>
               <div className="grid gap-3 rounded-[1rem] border border-border/80 bg-white/72 p-3 sm:grid-cols-[76px_minmax(0,1fr)_auto] sm:items-center">
                 <div className="flex size-16 items-center justify-center overflow-hidden rounded-[1rem] bg-primary/10 text-lg font-semibold text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]">
-                  {state.business.logoUrl ? (
+                  {logoDisplayUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={state.business.logoUrl}
+                      src={logoDisplayUrl}
                       alt={`${state.business.businessName || "Clinic"} logo`}
                       className="h-full w-full object-cover"
                     />
@@ -401,13 +427,18 @@ export function SettingsWorkspace({
                   )}
                 </div>
                 <Input
-                  value={state.business.logoUrl}
+                  value={
+                    isStorageReference(state.business.logoUrl)
+                      ? ""
+                      : state.business.logoUrl
+                  }
                   onChange={(event) =>
                     setState((current) => ({
                       ...current,
                       business: {
                         ...current.business,
                         logoUrl: event.target.value,
+                        logoDisplayUrl: event.target.value,
                       },
                     }))
                   }
@@ -416,10 +447,11 @@ export function SettingsWorkspace({
                 />
                 <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-[0.9rem] border border-border/80 bg-white px-4 text-sm font-medium text-foreground shadow-sm transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[0_12px_26px_rgba(20,32,51,0.06)]">
                   <ImageUp className="size-4 text-primary" />
-                  Upload logo
+                  {isLogoUploading ? "Uploading..." : "Upload logo"}
                   <input
                     type="file"
                     accept="image/*"
+                    disabled={isLogoUploading}
                     className="sr-only"
                     onChange={(event) => handleLogoUpload(event.target.files?.[0] ?? null)}
                   />

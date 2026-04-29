@@ -2,6 +2,7 @@ import { SettingsWorkspace } from "@/components/settings/settings-workspace";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
 import { buildSettingsStateFromWorkspace } from "@/lib/settings";
+import { resolveMediaDisplayUrl } from "@/lib/media-storage-server";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 
 type SettingsPageProps = {
@@ -76,8 +77,10 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     }),
   ]);
 
+  const logoDisplayUrl = await resolveMediaDisplayUrl(business.logoUrl);
   const initialState = buildSettingsStateFromWorkspace({
     business,
+    logoDisplayUrl,
     supportEmail: user.email ?? "",
     ownerName:
       typeof user.user_metadata?.full_name === "string" &&

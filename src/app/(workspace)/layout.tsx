@@ -6,6 +6,7 @@ import { planDisplayName, planStatusLabel } from "@/lib/billing";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { isOnboardingCompleted } from "@/lib/onboarding";
 import { prisma } from "@/lib/prisma";
+import { resolveMediaDisplayUrl } from "@/lib/media-storage-server";
 
 export default async function WorkspaceLayout({
   children,
@@ -23,6 +24,7 @@ export default async function WorkspaceLayout({
   await completePastConfirmedAppointments(business.id);
 
   const { businessName, ownerName } = toBusinessIdentity(business, user);
+  const logoDisplayUrl = await resolveMediaDisplayUrl(business.logoUrl);
   const ownerPhone =
     typeof user.user_metadata?.owner_phone === "string"
       ? user.user_metadata.owner_phone
@@ -69,7 +71,7 @@ export default async function WorkspaceLayout({
       planName={planDisplayName(business.plan)}
       planStatus={planStatusLabel(business.planStatus)}
       brandAccentColor={business.brandAccentColor}
-      logoUrl={business.logoUrl}
+      logoUrl={logoDisplayUrl}
       tourScopeId={business.id}
       tourCompleted={tourCompleted}
       unreadCount={unreadCount}

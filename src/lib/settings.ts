@@ -69,6 +69,7 @@ export type SettingsState = {
     ownerName: string;
     supportEmail: string;
     logoUrl: string;
+    logoDisplayUrl: string;
   };
   appearance: {
     accentColor: BrandAccentChoice;
@@ -143,6 +144,7 @@ type SettingsWorkspaceData = {
   >;
   reminderSettings: ReminderSettings | null;
   whatsappConnection: WhatsAppConnection | null;
+  logoDisplayUrl?: string;
 };
 
 function normalizeStaffRole(value: unknown): StaffRole {
@@ -546,6 +548,7 @@ export function buildSettingsStateFromWorkspace({
   staffMembers,
   reminderSettings,
   whatsappConnection,
+  logoDisplayUrl: resolvedLogoDisplayUrl,
 }: SettingsWorkspaceData): SettingsState {
   const businessType = businessTypes.includes(business.businessType as BusinessType)
     ? (business.businessType as BusinessType)
@@ -554,6 +557,8 @@ export function buildSettingsStateFromWorkspace({
   const savedCustomHex = normalizeBrandHexColor(business.brandAccentColor);
   const isCustomAccent = Boolean(savedCustomHex && accentPreset.id === "custom");
   const reminderTemplate = reminderSettings?.template ?? defaultReminderTemplate;
+  const logoUrl = business.logoUrl ?? "";
+  const logoDisplayUrl = resolvedLogoDisplayUrl ?? logoUrl;
 
   return {
     business: {
@@ -561,7 +566,8 @@ export function buildSettingsStateFromWorkspace({
       businessType,
       ownerName,
       supportEmail,
-      logoUrl: business.logoUrl ?? "",
+      logoUrl,
+      logoDisplayUrl,
     },
     appearance: {
       accentColor: isCustomAccent ? "custom" : accentPreset.id ?? defaultBrandAccent.id,

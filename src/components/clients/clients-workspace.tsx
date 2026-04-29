@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { uploadWorkspaceImage } from "@/lib/media-storage-client";
 import { cn } from "@/lib/utils";
 import type { ClientRecord, ClientStatus, ClientsViewModel } from "@/lib/clients";
 
@@ -148,6 +149,7 @@ export function ClientsWorkspace({
   const [nextStepClient, setNextStepClient] = useState<ClientRecord | null>(null);
   const [galleryCaption, setGalleryCaption] = useState("");
   const [galleryImage, setGalleryImage] = useState("");
+  const [isGalleryUploading, setIsGalleryUploading] = useState(false);
   const [isPending, startSaving] = useTransition();
   const deferredQuery = useDeferredValue(query);
   const hasClients = clients.length > 0;
@@ -297,16 +299,41 @@ export function ClientsWorkspace({
     });
   }
 
-  function handleGalleryFile(file?: File) {
+  async function handleGalleryFile(file?: File) {
     if (!file) {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setGalleryImage(typeof reader.result === "string" ? reader.result : "");
-    };
-    reader.readAsDataURL(file);
+    if (!file.type.startsWith("image/")) {
+      setErrorMessage("Upload an image file for the client gallery.");
+      setStatusMessage("");
+      return;
+    }
+
+    if (file.size > 5_000_000) {
+      setErrorMessage("Gallery photo is too large. Upload an image under 5 MB.");
+      setStatusMessage("");
+      return;
+    }
+
+    setIsGalleryUploading(true);
+
+    try {
+      const uploadedImage = await uploadWorkspaceImage(file, {
+        folder: "client-gallery",
+        maxBytes: 5_000_000,
+      });
+      setGalleryImage(uploadedImage.storageUrl);
+      setErrorMessage("");
+      setStatusMessage("Photo uploaded. Add it to save it to this client.");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "We couldn't upload this photo."
+      );
+      setStatusMessage("");
+    } finally {
+      setIsGalleryUploading(false);
+    }
   }
 
   function addGalleryItem() {
@@ -623,13 +650,18 @@ export function ClientsWorkspace({
                             capture="environment"
                             className="sr-only"
                             onChange={(event) => handleGalleryFile(event.target.files?.[0])}
+                            disabled={isGalleryUploading}
                           />
-                          {galleryImage ? "Photo selected. Add it to save." : "Upload or take a client photo"}
+                          {isGalleryUploading
+                            ? "Uploading photo..."
+                            : galleryImage
+                              ? "Photo uploaded. Add it to save."
+                              : "Upload or take a client photo"}
                         </label>
                         <Button
                           className="h-full min-h-12 rounded-[0.95rem]"
                           onClick={addGalleryItem}
-                          disabled={!galleryImage || isPending}
+                          disabled={!galleryImage || isPending || isGalleryUploading}
                         >
                           Add photo
                         </Button>

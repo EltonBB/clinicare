@@ -39,6 +39,7 @@ The core product direction is customer-first: clinics should not need to underst
 - WhatsApp setup moved to Settings with simplified customer-facing connection state, connect/retry, and refresh actions.
 - Reminder settings with configurable first and second reminder hours and editable reminder template.
 - Appearance/branding settings with app accent color and logo update support.
+- Private Supabase Storage-backed uploads for clinic logos and client gallery images, with Prisma/auth metadata storing storage references and the UI resolving short-lived signed display URLs.
 - Reports page with daily, weekly, and monthly metrics, charts, snapshots, and AI-generated or fallback recommendations.
 - First-user workspace tour redesigned as a clean coachmark flow that avoids highlight rings, pauses while drawers/modals are open, and persists completion.
 
@@ -49,7 +50,7 @@ The core product direction is customer-first: clinics should not need to underst
 - A clinic can create clients and then book appointments using those clients.
 - Appointments show on the dashboard/calendar and feed staff/client records when completed.
 - Staff can be managed from the Staff page and tracked with check-in/check-out.
-- Client records can hold appointment history, notes, messages, and gallery images.
+- Client records can hold appointment history, notes, messages, and private Supabase-hosted gallery images.
 - The Twilio WhatsApp test sender can receive inbound messages, create conversations, reply from Inbox, and convert unknown contacts to clients.
 - Reports can calculate core performance metrics and refresh AI analysis when the OpenAI environment key is configured.
 
@@ -58,14 +59,14 @@ The core product direction is customer-first: clinics should not need to underst
 - True customer-owned WhatsApp number onboarding is not production-ready until the required Twilio Tech Provider / Meta Embedded Signup business setup is available.
 - WhatsApp currently relies on the configured Twilio sender/test setup for validation.
 - AI reports need a valid server-side OpenAI API key in production; otherwise the app must use fallback rule-based analytics.
-- Uploaded logo/image handling should avoid storing large base64 payloads in auth/session metadata or cookies.
+- Supabase media storage requires a private `clinic-media` bucket and storage policies described in `docs/media-storage.md`.
 - Billing/plan enforcement is partially represented in UI; full paid upgrade/payment flow still needs production implementation.
 
 ## Next Priorities
 
 1. Stabilize and test the full first-user flow on a clean account: signup, confirm email, onboarding, dashboard, tour, client, booking, staff, reports.
 2. Verify completed appointment automation end-to-end: completed appointments leave active calendar views and appear in staff/client records.
-3. Finish production-safe media storage for clinic logos and client gallery uploads using a proper storage service instead of session metadata.
+3. Confirm the private Supabase media bucket/policies in production and smoke-test signed logo/gallery display against the live project.
 4. Harden reports and AI analytics refresh for daily/weekly/monthly periods with clear fallback behavior and cost controls.
 5. Continue WhatsApp provider work only after business/provider requirements are ready; keep Settings flow customer-friendly in the meantime.
 6. Implement real billing/plan upgrade flow when pricing and payment provider decisions are final.
@@ -89,4 +90,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Added persistent project context plan files: `AGENTS.md` startup workflow and this `PROJECT_STATUS.md` living status file.
+- Replaced base64/public logo and gallery image handling with private Supabase Storage references plus short-lived signed display URLs, added server-side guards against persisted `data:` image payloads, documented the required private `clinic-media` bucket policies, and verified with `npm run lint` and `npm run build`.

@@ -63,7 +63,7 @@ export default async function ClientsPage({
     ],
   });
 
-  const initialView = buildClientsViewFromRecords(records);
+  const initialView = await buildClientsViewFromRecords(records);
   const initialSelectedClientId =
     typeof client === "string" &&
     initialView.clients.some((record) => record.id === client)

@@ -1,6 +1,8 @@
 import type { Appointment, Client, ClientGalleryItem, Message } from "@prisma/client";
 import { format } from "date-fns";
 
+import { resolveMediaDisplayUrl } from "@/lib/media-storage-server";
+
 export type ClientStatus = "active" | "at-risk" | "inactive" | "archived";
 
 export type ClientHistoryEntry = {
@@ -134,7 +136,7 @@ function buildMessages(client: ClientWithRelations): ClientMessageEntry[] {
   }));
 }
 
-export function buildClientRecord(client: ClientWithRelations): ClientRecord {
+export async function buildClientRecord(client: ClientWithRelations): Promise<ClientRecord> {
   const completed = client.appointments.filter(
     (appointment) => appointment.status === "COMPLETED"
   ).length;
@@ -166,18 +168,22 @@ export function buildClientRecord(client: ClientWithRelations): ClientRecord {
       cancelled,
       pending,
     },
-    gallery: client.galleryItems.map((item) => ({
-      id: item.id,
-      type: item.type === "BEFORE" ? "before" : "after",
-      imageUrl: item.imageUrl,
-      caption: item.caption ?? "",
-      createdAt: format(item.createdAt, "MMM d, yyyy"),
-    })),
+    gallery: await Promise.all(
+      client.galleryItems.map(async (item) => ({
+        id: item.id,
+        type: item.type === "BEFORE" ? "before" : "after",
+        imageUrl: await resolveMediaDisplayUrl(item.imageUrl),
+        caption: item.caption ?? "",
+        createdAt: format(item.createdAt, "MMM d, yyyy"),
+      }))
+    ),
   };
 }
 
-export function buildClientsViewFromRecords(records: ClientWithRelations[]): ClientsViewModel {
-  const clients = records.map(buildClientRecord);
+export async function buildClientsViewFromRecords(
+  records: ClientWithRelations[]
+): Promise<ClientsViewModel> {
+  const clients = await Promise.all(records.map(buildClientRecord));
 
   return {
     clients,

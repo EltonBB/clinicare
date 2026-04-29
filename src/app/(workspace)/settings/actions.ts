@@ -13,6 +13,7 @@ import {
   syncWhatsAppConnectionForBusiness,
 } from "@/lib/whatsapp-connection";
 import { normalizePhone } from "@/lib/inbox";
+import { resolveMediaDisplayUrl } from "@/lib/media-storage-server";
 import { normalizeBrandHexColor, resolveBrandAccentPreset } from "@/lib/branding";
 import {
   buildWhatsAppConnectionSummary,
@@ -29,6 +30,10 @@ function clampReminderHours(value: number, fallback: number) {
   }
 
   return Math.min(Math.max(Math.round(value), 1), 24);
+}
+
+function isEmbeddedImageUrl(value: string) {
+  return value.trim().startsWith("data:");
 }
 
 function staffTimeEntryCutoff() {
@@ -90,6 +95,13 @@ export async function saveSettingsAction(
     return {
       ok: false,
       error: "Enter a valid HEX color, for example #3b82f6.",
+    };
+  }
+
+  if (isEmbeddedImageUrl(payload.business.logoUrl)) {
+    return {
+      ok: false,
+      error: "Upload the clinic logo again before saving settings.",
     };
   }
 
@@ -469,8 +481,10 @@ export async function saveSettingsAction(
     }),
   ]);
 
+  const logoDisplayUrl = await resolveMediaDisplayUrl(updatedBusiness.logoUrl);
   const nextState: SettingsState = buildSettingsStateFromWorkspace({
     business: updatedBusiness,
+    logoDisplayUrl,
     supportEmail: user.email ?? "",
     ownerName: payload.business.ownerName,
     businessHours,

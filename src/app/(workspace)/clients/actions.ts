@@ -42,6 +42,10 @@ export type AddClientGalleryItemResult = {
   client?: ClientRecord;
 };
 
+function isEmbeddedImageUrl(value: string) {
+  return value.trim().startsWith("data:");
+}
+
 async function getAuthedBusiness() {
   const supabase = await createClient();
   const {
@@ -141,6 +145,13 @@ export async function addClientGalleryItemAction(
     return {
       ok: false,
       error: "Choose a photo before adding it to the gallery.",
+    };
+  }
+
+  if (isEmbeddedImageUrl(payload.imageUrl)) {
+    return {
+      ok: false,
+      error: "Upload the photo again before adding it to the gallery.",
     };
   }
 

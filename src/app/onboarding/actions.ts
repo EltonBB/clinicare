@@ -223,6 +223,20 @@ export async function saveOnboardingStateAction(
   const ownerName = normalizedState.owner.name.trim();
   const clinicName = normalizedState.clinic.name.trim();
 
+  if (normalizedState.completed && isEmbeddedLogoUrl(normalizedState.clinic.logoUrl.trim())) {
+    return {
+      ok: false,
+      error: "Upload the clinic logo again before completing onboarding.",
+      state: {
+        ...normalizedState,
+        clinic: {
+          ...normalizedState.clinic,
+          logoUrl: "",
+        },
+      },
+    };
+  }
+
   if (normalizedState.completed) {
     try {
       await bootstrapWorkspaceFromOnboarding(user, normalizedState);
