@@ -59,14 +59,14 @@ The core product direction is customer-first: clinics should not need to underst
 - True customer-owned WhatsApp number onboarding is not production-ready until the required Twilio Tech Provider / Meta Embedded Signup business setup is available.
 - WhatsApp currently relies on the configured Twilio sender/test setup for validation.
 - AI reports need a valid server-side OpenAI API key in production; otherwise the app must use fallback rule-based analytics.
-- Supabase media storage requires a private `clinic-media` bucket and storage policies described in `docs/media-storage.md`.
+- Supabase media storage uses a private `clinic-media` bucket with authenticated per-user folder policies applied.
 - Billing/plan enforcement is partially represented in UI; full paid upgrade/payment flow still needs production implementation.
 
 ## Next Priorities
 
 1. Stabilize and test the full first-user flow on a clean account: signup, confirm email, onboarding, dashboard, tour, client, booking, staff, reports.
 2. Verify completed appointment automation end-to-end: completed appointments leave active calendar views and appear in staff/client records.
-3. Confirm the private Supabase media bucket/policies in production and smoke-test signed logo/gallery display against the live project.
+3. Smoke-test signed logo/gallery upload and display against the live production app.
 4. Harden reports and AI analytics refresh for daily/weekly/monthly periods with clear fallback behavior and cost controls.
 5. Continue WhatsApp provider work only after business/provider requirements are ready; keep Settings flow customer-friendly in the meantime.
 6. Implement real billing/plan upgrade flow when pricing and payment provider decisions are final.
@@ -90,4 +90,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Replaced base64/public logo and gallery image handling with private Supabase Storage references plus short-lived signed display URLs, added server-side guards against persisted `data:` image payloads, documented the required private `clinic-media` bucket policies, and verified with `npm run lint` and `npm run build`.
+- Configured the private Supabase `clinic-media` bucket with authenticated per-user folder policies for read/upload/update/delete. Previous media-storage code was pushed to GitHub and deployed on Vercel; next step is live upload/display smoke testing.
