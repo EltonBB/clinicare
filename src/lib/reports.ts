@@ -29,6 +29,7 @@ export type ReportMetricTrend = "up" | "down" | "flat";
 export type ReportSnapshotTone = "strong" | "healthy" | "watch" | "attention";
 export type ReportPeriodKey = "daily" | "weekly" | "monthly";
 export type ReportInsightSource = "ai" | "rules";
+export type ReportInsightStatus = "generated" | "fallback" | "errored" | "rules";
 
 export type ReportMetric = {
   label: string;
@@ -52,6 +53,10 @@ export type ReportSnapshot = {
   watch: string;
   focus: string;
   source: ReportInsightSource;
+  status: ReportInsightStatus;
+  statusLabel: string;
+  auditLabel: string;
+  unavailableReason?: string;
   generatedAt?: string;
   model?: string;
   actions?: Array<{
@@ -116,6 +121,7 @@ export type ReportAiSnapshotInput = {
   provider: string;
   model: string | null;
   status: "GENERATED" | "FALLBACK" | "ERRORED";
+  error?: string | null;
   generatedAt: Date;
 };
 
@@ -204,7 +210,6 @@ function aiSnapshotForPeriod(
   return snapshots
     .filter(
       (snapshot) =>
-        snapshot.status === "GENERATED" &&
         snapshot.periodType === periodType &&
         samePeriodStart(snapshot.periodStart, window.start)
     )
@@ -608,6 +613,9 @@ function buildSnapshot(
     watch,
     focus,
     source: "rules",
+    status: "rules",
+    statusLabel: "Rule-based insight",
+    auditLabel: "Generated from current clinic metrics without AI.",
     actions: [
       {
         title: "Protect the strongest signal",
@@ -625,9 +633,36 @@ function buildSnapshot(
 
 function applyAiSnapshot(
   fallback: ReportSnapshot,
-  snapshot: ReportAiSnapshotInput | undefined
+  snapshot: ReportAiSnapshotInput | undefined,
+  isFresh: boolean
 ): ReportSnapshot {
-  if (!snapshot || typeof snapshot.aiPayload !== "object" || snapshot.aiPayload === null) {
+  if (!snapshot) {
+    return fallback;
+  }
+
+  const generatedAt = snapshot.generatedAt.toISOString();
+
+  if (snapshot.status !== "GENERATED" || !isFresh) {
+    return {
+      ...fallback,
+      status: snapshot.status === "ERRORED" ? "errored" : "fallback",
+      statusLabel:
+        snapshot.status === "ERRORED"
+          ? "AI refresh failed, using rules"
+          : "AI unavailable, using rules",
+      auditLabel: isFresh
+        ? "The current period has an audited rule-based fallback snapshot."
+        : "The latest AI snapshot no longer matches the current metrics, so rules are used.",
+      unavailableReason:
+        !isFresh && snapshot.status === "GENERATED"
+          ? "Metrics changed after the last AI snapshot."
+          : snapshot.error ?? undefined,
+      generatedAt,
+      model: snapshot.model ?? undefined,
+    };
+  }
+
+  if (typeof snapshot.aiPayload !== "object" || snapshot.aiPayload === null) {
     return fallback;
   }
 
@@ -653,7 +688,10 @@ function applyAiSnapshot(
     watch: cleanText(payload.watch, fallback.watch, 420),
     focus: cleanText(payload.focus, fallback.focus, 420),
     source: "ai",
-    generatedAt: snapshot.generatedAt.toISOString(),
+    status: "generated",
+    statusLabel: "AI generated",
+    auditLabel: "Generated from the saved metrics snapshot for this exact period.",
+    generatedAt,
     model: snapshot.model ?? undefined,
     actions: actions.length > 0 ? actions : fallback.actions,
   };
@@ -850,9 +888,8 @@ function buildPeriodView(args: {
   const matchedAiSnapshot = aiSnapshotForPeriod(aiSnapshots, key, window);
   const snapshot = applyAiSnapshot(
     fallbackSnapshot,
+    matchedAiSnapshot,
     isAiSnapshotFreshForView(matchedAiSnapshot, metrics, chartPoints)
-      ? matchedAiSnapshot
-      : undefined
   );
 
   return {

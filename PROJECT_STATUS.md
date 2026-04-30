@@ -1,6 +1,6 @@
 # Project Status: Vela / Clinicare
 
-Last updated: 2026-04-29
+Last updated: 2026-04-30
 
 ## Product Overview
 
@@ -40,7 +40,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Reminder settings with configurable first and second reminder hours and editable reminder template.
 - Appearance/branding settings with app accent color and logo update support.
 - Private Supabase Storage-backed uploads for clinic logos and client gallery images, with Prisma/auth metadata storing storage references and the UI resolving short-lived signed display URLs.
-- Reports page with daily, weekly, and monthly metrics, charts, snapshots, and AI-generated or fallback recommendations.
+- Reports page with daily, weekly, and monthly metrics, charts, auditable snapshots, AI-generated recommendations, rule-based fallback states, and refresh cooldown protection.
 - First-user workspace tour redesigned as a clean coachmark flow that avoids highlight rings, pauses while drawers/modals are open, and persists completion.
 
 ## Current Working Flows
@@ -52,13 +52,13 @@ The core product direction is customer-first: clinics should not need to underst
 - Staff can be managed from the Staff page and tracked with check-in/check-out.
 - Client records can hold appointment history, notes, messages, and private Supabase-hosted gallery images.
 - The Twilio WhatsApp test sender can receive inbound messages, create conversations, reply from Inbox, and convert unknown contacts to clients.
-- Reports can calculate core performance metrics and refresh AI analysis when the OpenAI environment key is configured.
+- Reports can calculate core performance metrics, refresh AI analysis when the OpenAI environment key is configured, and clearly show when rule-based insights are used instead.
 
 ## Known Issues / Blockers
 
 - True customer-owned WhatsApp number onboarding is not production-ready until the required Twilio Tech Provider / Meta Embedded Signup business setup is available.
 - WhatsApp currently relies on the configured Twilio sender/test setup for validation.
-- AI reports need a valid server-side OpenAI API key in production; otherwise the app must use fallback rule-based analytics.
+- AI reports need a valid server-side OpenAI API key in production; otherwise the app records an auditable fallback snapshot and clearly shows that rules are being used.
 - Supabase media storage uses a private `clinic-media` bucket with authenticated per-user folder policies applied.
 - Billing/plan enforcement is partially represented in UI; full paid upgrade/payment flow still needs production implementation.
 
@@ -66,8 +66,8 @@ The core product direction is customer-first: clinics should not need to underst
 
 1. Stabilize and test the full first-user flow on a clean account: signup, confirm email, onboarding, dashboard, tour, client, booking, staff, reports.
 2. Verify completed appointment automation end-to-end: completed appointments leave active calendar views and appear in staff/client records.
-3. Smoke-test signed logo/gallery upload and display against the live production app.
-4. Harden reports and AI analytics refresh for daily/weekly/monthly periods with clear fallback behavior and cost controls.
+3. Smoke-test signed logo/gallery upload, display, logo replacement cleanup, and client-delete media cleanup against the live production app.
+4. Continue hardening reports with any launch-specific wording or plan-gating requirements that come out of user testing.
 5. Continue WhatsApp provider work only after business/provider requirements are ready; keep Settings flow customer-friendly in the meantime.
 6. Implement real billing/plan upgrade flow when pricing and payment provider decisions are final.
 
@@ -90,4 +90,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Configured the private Supabase `clinic-media` bucket with authenticated per-user folder policies for read/upload/update/delete. Previous media-storage code was pushed to GitHub and deployed on Vercel; next step is live upload/display smoke testing.
+- Hardened reports with visible AI fallback/audit states and manual refresh cooldowns; added repeatable old-media URL normalization; configured media cleanup when clients are deleted and old logos are replaced. Ran the media normalization script against the configured database and it found 0 old logo/gallery URLs to convert.

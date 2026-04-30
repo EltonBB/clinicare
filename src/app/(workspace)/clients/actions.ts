@@ -10,6 +10,8 @@ import {
   type ClientRecord,
   type SaveClientPayload,
 } from "@/lib/clients";
+import { normalizeStorageReference } from "@/lib/media-storage";
+import { deleteStorageReferences } from "@/lib/media-storage-server";
 import { createClient } from "@/utils/supabase/server";
 
 export type SaveClientResult = {
@@ -41,10 +43,6 @@ export type AddClientGalleryItemResult = {
   error?: string;
   client?: ClientRecord;
 };
-
-function isEmbeddedImageUrl(value: string) {
-  return value.trim().startsWith("data:");
-}
 
 async function getAuthedBusiness() {
   const supabase = await createClient();
@@ -148,7 +146,9 @@ export async function addClientGalleryItemAction(
     };
   }
 
-  if (isEmbeddedImageUrl(payload.imageUrl)) {
+  const normalizedImageUrl = normalizeStorageReference(payload.imageUrl);
+
+  if (normalizedImageUrl.startsWith("data:")) {
     return {
       ok: false,
       error: "Upload the photo again before adding it to the gallery.",
@@ -159,7 +159,7 @@ export async function addClientGalleryItemAction(
     data: {
       businessId: business.id,
       clientId: payload.clientId,
-      imageUrl: payload.imageUrl,
+      imageUrl: normalizedImageUrl,
       caption: payload.caption.trim() || null,
     },
   });
@@ -352,6 +352,11 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
     },
     select: {
       id: true,
+      galleryItems: {
+        select: {
+          imageUrl: true,
+        },
+      },
     },
   });
 
@@ -367,6 +372,8 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
       id: clientId,
     },
   });
+
+  await deleteStorageReferences(existing.galleryItems.map((item) => item.imageUrl));
 
   return {
     ok: true,

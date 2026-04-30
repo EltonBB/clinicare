@@ -25,12 +25,11 @@ export default async function ReportsPage() {
     prisma.analyticsSnapshot.findMany({
       where: {
         businessId: business.id,
-        status: "GENERATED",
       },
       orderBy: {
         generatedAt: "desc",
       },
-      take: 12,
+      take: 18,
     }),
   ]);
 

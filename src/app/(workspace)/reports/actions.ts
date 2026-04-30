@@ -31,8 +31,11 @@ export async function refreshAnalyticsInsightsAction(
   revalidatePath("/dashboard");
 
   const generated = results.filter((result) => result.usedAi).length;
+  const rateLimited = results.find((result) => result.rateLimited);
   const message =
-    generated > 0
+    rateLimited
+      ? rateLimited.message
+      : generated > 0
       ? `Generated ${generated} AI insight${generated === 1 ? "" : "s"}.`
       : results[0]?.message ?? "AI insights were not generated.";
 

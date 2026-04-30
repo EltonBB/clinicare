@@ -363,7 +363,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
 
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-1">
-                {period.snapshot.source === "ai" ? "AI generated" : "Rule based"}
+                {period.snapshot.statusLabel}
               </span>
               {period.snapshot.model ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-1">
@@ -380,6 +380,13 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                     minute: "2-digit",
                   })}
                 </span>
+              ) : null}
+            </div>
+
+            <div className="rounded-[0.7rem] border border-border/75 bg-white/75 px-3 py-2 text-xs leading-5 text-muted-foreground">
+              <p>{period.snapshot.auditLabel}</p>
+              {period.snapshot.unavailableReason ? (
+                <p className="mt-1">Reason: {period.snapshot.unavailableReason}</p>
               ) : null}
             </div>
 

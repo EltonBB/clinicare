@@ -4,6 +4,8 @@ import { buildReportsViewFromWorkspace, type ReportPeriodKey } from "@/lib/repor
 import { getReportWorkspaceData } from "@/lib/report-data";
 import { prisma } from "@/lib/prisma";
 
+const manualRefreshCooldownMs = 15 * 60 * 1000;
+
 const AI_SNAPSHOT_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -83,6 +85,8 @@ export type GenerateAnalyticsSnapshotResult = {
   period: ReportPeriodKey;
   usedAi: boolean;
   message: string;
+  rateLimited?: boolean;
+  nextRefreshAt?: string;
 };
 
 function periodKeyToSnapshotPeriod(period: ReportPeriodKey): AnalyticsSnapshotPeriod {
@@ -248,7 +252,8 @@ async function requestOpenAIInsight(promptPayload: unknown) {
 
 export async function generateAnalyticsSnapshotForBusiness(
   businessId: string,
-  period: ReportPeriodKey
+  period: ReportPeriodKey,
+  options?: { force?: boolean }
 ): Promise<GenerateAnalyticsSnapshotResult> {
   const workspace = await getReportWorkspaceData(businessId);
   const report = buildReportsViewFromWorkspace(workspace);
@@ -262,6 +267,44 @@ export async function generateAnalyticsSnapshotForBusiness(
   const periodType = periodKeyToSnapshotPeriod(period);
   const periodStart = new Date(periodView.periodStart);
   const periodEnd = new Date(periodView.periodEnd);
+  const existingSnapshot = await prisma.analyticsSnapshot.findUnique({
+    where: {
+      businessId_periodType_periodStart_periodEnd: {
+        businessId,
+        periodType,
+        periodStart,
+        periodEnd,
+      },
+    },
+    select: {
+      generatedAt: true,
+      status: true,
+      provider: true,
+      model: true,
+    },
+  });
+
+  if (
+    !options?.force &&
+    existingSnapshot &&
+    Date.now() - existingSnapshot.generatedAt.getTime() < manualRefreshCooldownMs
+  ) {
+    const nextRefreshAt = new Date(
+      existingSnapshot.generatedAt.getTime() + manualRefreshCooldownMs
+    );
+
+    return {
+      ok: existingSnapshot.status === "GENERATED",
+      period,
+      usedAi: existingSnapshot.status === "GENERATED",
+      rateLimited: true,
+      nextRefreshAt: nextRefreshAt.toISOString(),
+      message: `Insights were refreshed recently. Try again after ${nextRefreshAt.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })}.`,
+    };
+  }
 
   try {
     const aiResult = await requestOpenAIInsight(promptPayload);
@@ -281,7 +324,7 @@ export async function generateAnalyticsSnapshotForBusiness(
           aiPayload: Prisma.JsonNull,
           provider: "rules",
           model: aiResult.model ?? null,
-          status: "ERRORED",
+          status: "FALLBACK",
           error: aiResult.error,
           generatedAt: new Date(),
         },
@@ -294,7 +337,7 @@ export async function generateAnalyticsSnapshotForBusiness(
           aiPayload: Prisma.JsonNull,
           provider: "rules",
           model: aiResult.model ?? null,
-          status: "ERRORED",
+          status: "FALLBACK",
           error: aiResult.error,
         },
       });
@@ -303,7 +346,7 @@ export async function generateAnalyticsSnapshotForBusiness(
         ok: false,
         period,
         usedAi: false,
-        message: aiResult.error,
+        message: "AI is unavailable right now, so reports are using rule-based insights.",
       };
     }
 
@@ -397,7 +440,7 @@ export async function generateAnalyticsSnapshotsForBusiness(businessId: string) 
   const periods: ReportPeriodKey[] = ["daily", "weekly", "monthly"];
 
   for (const period of periods) {
-    results.push(await generateAnalyticsSnapshotForBusiness(businessId, period));
+    results.push(await generateAnalyticsSnapshotForBusiness(businessId, period, { force: true }));
   }
 
   return results;

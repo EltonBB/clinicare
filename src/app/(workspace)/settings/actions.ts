@@ -13,7 +13,11 @@ import {
   syncWhatsAppConnectionForBusiness,
 } from "@/lib/whatsapp-connection";
 import { normalizePhone } from "@/lib/inbox";
-import { resolveMediaDisplayUrl } from "@/lib/media-storage-server";
+import { normalizeStorageReference } from "@/lib/media-storage";
+import {
+  deleteStorageReferences,
+  resolveMediaDisplayUrl,
+} from "@/lib/media-storage-server";
 import { normalizeBrandHexColor, resolveBrandAccentPreset } from "@/lib/branding";
 import {
   buildWhatsAppConnectionSummary,
@@ -30,10 +34,6 @@ function clampReminderHours(value: number, fallback: number) {
   }
 
   return Math.min(Math.max(Math.round(value), 1), 24);
-}
-
-function isEmbeddedImageUrl(value: string) {
-  return value.trim().startsWith("data:");
 }
 
 function staffTimeEntryCutoff() {
@@ -90,6 +90,7 @@ export async function saveSettingsAction(
   const normalizedWhatsAppNumber = normalizePhone(payload.whatsapp.phoneNumber);
   const customAccentHex = normalizeBrandHexColor(payload.appearance.accentHex);
   const accentPreset = resolveBrandAccentPreset(payload.appearance.accentColor);
+  const nextLogoUrl = normalizeStorageReference(payload.business.logoUrl);
 
   if (payload.appearance.accentColor === "custom" && !customAccentHex) {
     return {
@@ -98,7 +99,7 @@ export async function saveSettingsAction(
     };
   }
 
-  if (isEmbeddedImageUrl(payload.business.logoUrl)) {
+  if (nextLogoUrl.startsWith("data:")) {
     return {
       ok: false,
       error: "Upload the clinic logo again before saving settings.",
@@ -156,6 +157,7 @@ export async function saveSettingsAction(
       lastError: true,
     },
   });
+  const previousLogoUrl = business.logoUrl ?? "";
 
   await prisma.$transaction(async (tx) => {
     await tx.business.update({
@@ -165,7 +167,7 @@ export async function saveSettingsAction(
       data: {
         name: payload.business.businessName.trim() || business.name,
         businessType: payload.business.businessType,
-        logoUrl: payload.business.logoUrl.trim() || null,
+        logoUrl: nextLogoUrl || null,
         brandAccentColor,
         whatsappNumber: normalizedWhatsAppNumber || null,
         whatsappEnabled: payload.whatsapp.sendReminders,
@@ -418,6 +420,10 @@ export async function saveSettingsAction(
       ok: false,
       error: error.message,
     };
+  }
+
+  if (previousLogoUrl && previousLogoUrl !== nextLogoUrl) {
+    await deleteStorageReferences([previousLogoUrl]);
   }
 
   const [updatedBusiness, businessHours, staffMembers, reminderSettings, whatsappConnection] = await Promise.all([
