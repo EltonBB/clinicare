@@ -310,12 +310,68 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 {period.snapshot.summary}
               </p>
+              {period.snapshot.diagnosis ? (
+                <div className="mt-3 rounded-[0.65rem] border border-border/70 bg-white/75 p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      Diagnosis
+                    </p>
+                    {period.snapshot.severity ? (
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em]",
+                          priorityStyles[period.snapshot.severity]
+                        )}
+                      >
+                        {period.snapshot.severity} severity
+                      </span>
+                    ) : null}
+                    {period.snapshot.confidence ? (
+                      <span className="rounded-full bg-secondary px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                        {period.snapshot.confidence} confidence
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    {period.snapshot.diagnosis}
+                  </p>
+                </div>
+              ) : null}
               {period.snapshot.deepDive ? (
                 <p className="mt-3 border-t border-border/70 pt-3 text-sm leading-6 text-muted-foreground">
                   {period.snapshot.deepDive}
                 </p>
               ) : null}
             </div>
+
+            {period.snapshot.rootCauses?.length ? (
+              <div className="grid gap-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Likely causes
+                </p>
+                {period.snapshot.rootCauses.map((cause) => (
+                  <div
+                    key={`${cause.title}-${cause.severity}`}
+                    className="rounded-[0.7rem] border border-border/75 bg-white/75 p-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm font-semibold text-foreground">{cause.title}</p>
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em]",
+                          priorityStyles[cause.severity]
+                        )}
+                      >
+                        {cause.severity}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      {cause.evidence}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
             {period.snapshot.statHighlights?.length ? (
               <div className="grid gap-2">
@@ -402,6 +458,30 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               </div>
             ) : null}
 
+            {period.snapshot.recommendedPlaybook ? (
+              <div className="rounded-[0.7rem] border border-border/75 bg-white/80 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Recommended playbook
+                </p>
+                <p className="mt-2 text-sm font-semibold text-foreground">
+                  {period.snapshot.recommendedPlaybook.name}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {period.snapshot.recommendedPlaybook.why}
+                </p>
+                <div className="mt-3 grid gap-2">
+                  {period.snapshot.recommendedPlaybook.steps.map((step, index) => (
+                    <div
+                      key={`${step}-${index}`}
+                      className="rounded-[0.6rem] bg-secondary/70 px-3 py-2 text-sm leading-6 text-muted-foreground"
+                    >
+                      {step}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             <div className="mt-2 space-y-2">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                 Suggested actions
@@ -436,6 +516,27 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                 </div>
               ))}
             </div>
+
+            {period.snapshot.whatToMonitor?.length ? (
+              <div className="rounded-[0.7rem] border border-border/75 bg-white/75 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Watch next
+                </p>
+                <div className="mt-3 grid gap-2">
+                  {period.snapshot.whatToMonitor.map((item) => (
+                    <div
+                      key={`${item.metric}-${item.target}`}
+                      className="flex items-start justify-between gap-3 text-sm"
+                    >
+                      <p className="font-medium text-foreground">{item.metric}</p>
+                      <p className="max-w-[55%] text-right leading-5 text-muted-foreground">
+                        {item.target}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-1">

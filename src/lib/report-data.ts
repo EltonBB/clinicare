@@ -40,6 +40,7 @@ export async function getReportWorkspaceData(businessId: string) {
         status: true,
         startAt: true,
         endAt: true,
+        createdAt: true,
         clientId: true,
         staffMemberId: true,
       },
@@ -85,6 +86,9 @@ export async function getReportWorkspaceData(businessId: string) {
         businessId,
       },
       select: {
+        id: true,
+        name: true,
+        role: true,
         status: true,
         isActive: true,
       },

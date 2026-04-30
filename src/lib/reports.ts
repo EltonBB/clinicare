@@ -49,10 +49,18 @@ export type ReportSnapshot = {
   tone: ReportSnapshotTone;
   headline: string;
   summary: string;
+  diagnosis?: string;
+  severity?: "high" | "medium" | "low";
+  confidence?: "high" | "medium" | "low";
   strength: string;
   watch: string;
   focus: string;
   deepDive?: string;
+  rootCauses?: Array<{
+    title: string;
+    evidence: string;
+    severity: "high" | "medium" | "low";
+  }>;
   statHighlights?: Array<{
     label: string;
     value: string;
@@ -62,6 +70,15 @@ export type ReportSnapshot = {
     title: string;
     detail: string;
     impact: "high" | "medium" | "low";
+  }>;
+  recommendedPlaybook?: {
+    name: string;
+    why: string;
+    steps: string[];
+  };
+  whatToMonitor?: Array<{
+    metric: string;
+    target: string;
   }>;
   source: ReportInsightSource;
   status: ReportInsightStatus;
@@ -91,6 +108,7 @@ export type ReportPeriodView = {
   highlightTrend: ReportMetricTrend;
   highlightSummary: string;
   metrics: ReportMetric[];
+  diagnostics: ReportPeriodDiagnostics;
   chart: {
     title: string;
     periodLabel: string;
@@ -109,7 +127,7 @@ export type ReportsViewModel = {
 
 type ReportAppointment = Pick<
   Appointment,
-  "status" | "startAt" | "endAt" | "clientId"
+  "status" | "startAt" | "endAt" | "createdAt" | "clientId" | "staffMemberId"
 >;
 
 type ReportsWorkspaceArgs = {
@@ -118,7 +136,7 @@ type ReportsWorkspaceArgs = {
   clients: Array<Pick<Client, "createdAt" | "status" | "isArchived">>;
   messages: Array<Pick<Message, "direction" | "sentAt">>;
   businessHours: Array<Pick<BusinessHours, "weekday" | "isOpen" | "startTime" | "endTime">>;
-  staffMembers: Array<Pick<StaffMember, "status" | "isActive">>;
+  staffMembers: Array<Pick<StaffMember, "id" | "name" | "role" | "status" | "isActive">>;
   conversations: Array<Pick<Conversation, "unreadCount">>;
   aiSnapshots?: ReportAiSnapshotInput[];
   now?: Date;
@@ -159,6 +177,38 @@ type PeriodStats = {
   followUpRate: number;
   averageVisitLength: number;
   unreadMessages: number;
+};
+
+export type ReportPeriodDiagnostics = {
+  statusMix: Array<{
+    label: string;
+    count: number;
+    share: string;
+  }>;
+  demandWindows: {
+    busiestDays: Array<{ label: string; count: number }>;
+    quietestDays: Array<{ label: string; count: number }>;
+    busiestHours: Array<{ label: string; count: number }>;
+  };
+  staffLoad: Array<{
+    name: string;
+    role: string;
+    appointments: number;
+    bookedMinutes: number;
+    utilizationShare: string;
+  }>;
+  bookingBehavior: {
+    averageLeadTimeHours: number;
+    sameDayBookings: number;
+    unassignedAppointments: number;
+  };
+  clientMix: {
+    active: number;
+    atRisk: number;
+    inactive: number;
+    archived: number;
+  };
+  evidenceSummary: string;
 };
 
 const periodOrder: ReportPeriodKey[] = ["daily", "weekly", "monthly"];
@@ -217,6 +267,19 @@ function cleanInsightImpact(value: unknown): "high" | "medium" | "low" {
   return cleanActionPriority(value);
 }
 
+function cleanSteps(value: unknown, fallback: string[]) {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+
+  const steps = value
+    .filter((step): step is string => typeof step === "string" && step.trim().length > 0)
+    .slice(0, 5)
+    .map((step) => step.trim().slice(0, 160));
+
+  return steps.length > 0 ? steps : fallback;
+}
+
 function aiSnapshotForPeriod(
   snapshots: ReportAiSnapshotInput[],
   period: ReportPeriodKey,
@@ -252,7 +315,8 @@ function chartSignature(points: ReportChartPoint[]) {
 function isAiSnapshotFreshForView(
   snapshot: ReportAiSnapshotInput | undefined,
   metrics: ReportMetric[],
-  chartPoints: ReportChartPoint[]
+  chartPoints: ReportChartPoint[],
+  diagnostics: ReportPeriodDiagnostics
 ) {
   if (!snapshot || typeof snapshot.kpiPayload !== "object" || snapshot.kpiPayload === null) {
     return false;
@@ -261,10 +325,12 @@ function isAiSnapshotFreshForView(
   const payload = snapshot.kpiPayload as Record<string, unknown>;
   const payloadMetrics = Array.isArray(payload.metrics) ? payload.metrics : [];
   const payloadTrend = Array.isArray(payload.trend) ? payload.trend : [];
+  const payloadDiagnostics = payload.diagnostics ?? null;
 
   return (
     JSON.stringify(payloadMetrics) === JSON.stringify(metricSignature(metrics)) &&
-    JSON.stringify(payloadTrend) === JSON.stringify(chartSignature(chartPoints))
+    JSON.stringify(payloadTrend) === JSON.stringify(chartSignature(chartPoints)) &&
+    JSON.stringify(payloadDiagnostics) === JSON.stringify(diagnostics)
   );
 }
 
@@ -274,6 +340,21 @@ function formatPercent(value: number) {
 
 function formatPercentShort(value: number) {
   return `${value.toFixed(0)}%`;
+}
+
+function formatHourLabel(hour: number) {
+  const normalized = Math.max(0, Math.min(23, hour));
+  const suffix = normalized >= 12 ? "PM" : "AM";
+  const hour12 = normalized % 12 === 0 ? 12 : normalized % 12;
+
+  return `${hour12} ${suffix}`;
+}
+
+function statusLabel(status: Appointment["status"]) {
+  if (status === "COMPLETED") return "Completed";
+  if (status === "CANCELLED") return "Cancelled";
+  if (status === "CONFIRMED") return "Confirmed";
+  return "Pending";
 }
 
 function formatDelta(
@@ -517,6 +598,173 @@ function buildPeriodStats(args: {
   };
 }
 
+function buildPeriodDiagnostics(args: {
+  appointments: ReportAppointment[];
+  clients: Array<Pick<Client, "createdAt" | "status" | "isArchived">>;
+  staffMembers: Array<Pick<StaffMember, "id" | "name" | "role" | "status" | "isActive">>;
+  window: PeriodWindow;
+  timeZone: string;
+}): ReportPeriodDiagnostics {
+  const scopedAppointments = filterAppointmentsInRange(
+    args.appointments,
+    args.window.start,
+    args.window.end
+  );
+  const bookedAppointments = scopedAppointments.filter((appointment) =>
+    isBookedStatus(appointment.status)
+  );
+  const totalAppointments = Math.max(scopedAppointments.length, 1);
+  const statusMix = (["COMPLETED", "CONFIRMED", "PENDING", "CANCELLED"] as const).map(
+    (status) => {
+      const count = scopedAppointments.filter(
+        (appointment) => appointment.status === status
+      ).length;
+
+      return {
+        label: statusLabel(status),
+        count,
+        share: formatPercent((count / totalAppointments) * 100),
+      };
+    }
+  );
+  const dayCounts = new Map<string, number>();
+  const hourCounts = new Map<number, number>();
+  const staffCounts = new Map<string, { appointments: number; bookedMinutes: number }>();
+  let totalBookedMinutes = 0;
+  let totalLeadTimeHours = 0;
+  let leadTimeCount = 0;
+  let sameDayBookings = 0;
+  let unassignedAppointments = 0;
+
+  scopedAppointments.forEach((appointment) => {
+    const dayLabel = formatZonedDayName(appointment.startAt, args.timeZone);
+    const hour = getZonedDateParts(appointment.startAt, args.timeZone).hour;
+    const duration = Math.max(
+      differenceInMinutes(appointment.endAt, appointment.startAt),
+      0
+    );
+    const leadTimeHours = Math.max(
+      differenceInMinutes(appointment.startAt, appointment.createdAt) / 60,
+      0
+    );
+
+    dayCounts.set(dayLabel, (dayCounts.get(dayLabel) ?? 0) + 1);
+    hourCounts.set(hour, (hourCounts.get(hour) ?? 0) + 1);
+
+    if (appointment.staffMemberId) {
+      const current = staffCounts.get(appointment.staffMemberId) ?? {
+        appointments: 0,
+        bookedMinutes: 0,
+      };
+      staffCounts.set(appointment.staffMemberId, {
+        appointments: current.appointments + 1,
+        bookedMinutes: current.bookedMinutes + (isBookedStatus(appointment.status) ? duration : 0),
+      });
+    } else {
+      unassignedAppointments += 1;
+    }
+
+    if (isBookedStatus(appointment.status)) {
+      totalBookedMinutes += duration;
+    }
+
+    totalLeadTimeHours += leadTimeHours;
+    leadTimeCount += 1;
+
+    if (leadTimeHours <= 24) {
+      sameDayBookings += 1;
+    }
+  });
+
+  const sortedDays = Array.from(dayCounts.entries())
+    .map(([label, count]) => ({ label, count }))
+    .sort((left, right) => right.count - left.count);
+  const busiestHours = Array.from(hourCounts.entries())
+    .map(([hour, count]) => ({
+      label: formatHourLabel(hour),
+      count,
+    }))
+    .sort((left, right) => right.count - left.count)
+    .slice(0, 3);
+  const staffLoad = args.staffMembers
+    .filter((member) => member.isActive && member.status !== "INACTIVE")
+    .map((member) => {
+      const load = staffCounts.get(member.id) ?? {
+        appointments: 0,
+        bookedMinutes: 0,
+      };
+
+      return {
+        name: member.name,
+        role: member.role,
+        appointments: load.appointments,
+        bookedMinutes: load.bookedMinutes,
+        utilizationShare:
+          totalBookedMinutes > 0
+            ? formatPercent((load.bookedMinutes / totalBookedMinutes) * 100)
+            : "0.0%",
+      };
+    })
+    .sort((left, right) => right.bookedMinutes - left.bookedMinutes)
+    .slice(0, 6);
+  const clientMix = args.clients.reduce(
+    (mix, client) => {
+      if (client.isArchived || client.status === "ARCHIVED") {
+        mix.archived += 1;
+      } else if (client.status === "AT_RISK") {
+        mix.atRisk += 1;
+      } else if (client.status === "INACTIVE") {
+        mix.inactive += 1;
+      } else {
+        mix.active += 1;
+      }
+
+      return mix;
+    },
+    {
+      active: 0,
+      atRisk: 0,
+      inactive: 0,
+      archived: 0,
+    }
+  );
+  const completion = statusMix.find((item) => item.label === "Completed");
+  const cancelled = statusMix.find((item) => item.label === "Cancelled");
+  const busiestDay = sortedDays[0];
+  const nonEmptyDays = sortedDays.filter((item) => item.count > 0);
+  const quietestDay = nonEmptyDays[nonEmptyDays.length - 1];
+
+  return {
+    statusMix,
+    demandWindows: {
+      busiestDays: sortedDays.slice(0, 3),
+      quietestDays: sortedDays.slice().reverse().slice(0, 3),
+      busiestHours,
+    },
+    staffLoad,
+    bookingBehavior: {
+      averageLeadTimeHours:
+        leadTimeCount > 0 ? Math.round(totalLeadTimeHours / leadTimeCount) : 0,
+      sameDayBookings,
+      unassignedAppointments,
+    },
+    clientMix,
+    evidenceSummary: [
+      `${completion?.share ?? "0.0%"} completed and ${cancelled?.share ?? "0.0%"} cancelled`,
+      busiestDay ? `busiest day ${busiestDay.label} (${busiestDay.count})` : null,
+      quietestDay ? `quietest day ${quietestDay.label} (${quietestDay.count})` : null,
+      bookedAppointments.length > 0
+        ? `${sameDayBookings} same-day booking${sameDayBookings === 1 ? "" : "s"}`
+        : null,
+      unassignedAppointments > 0
+        ? `${unassignedAppointments} unassigned appointment${unassignedAppointments === 1 ? "" : "s"}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join("; "),
+  };
+}
+
 function scorePeriod(stats: PeriodStats) {
   let score = 100;
 
@@ -626,10 +874,32 @@ function buildSnapshot(
     tone,
     headline,
     summary,
+    diagnosis: watch,
+    severity: tone === "attention" || tone === "watch" ? "high" : "medium",
+    confidence: stats.scheduledCount >= 8 ? "medium" : "low",
     strength,
     watch,
     focus,
     deepDive: `${summary} ${watch} ${focus}`,
+    rootCauses: [
+      {
+        title:
+          stats.lostSlotRate > 10
+            ? "Lost slots are reducing usable capacity"
+            : stats.utilizationRate < 55
+              ? "Open capacity is not converting into visits"
+              : "The main operating constraint is not yet dominant",
+        evidence: watch,
+        severity: tone === "attention" || tone === "watch" ? "high" : "medium",
+      },
+      {
+        title: "Retention and follow-up need regular monitoring",
+        evidence: `Repeat visits are ${formatPercent(stats.repeatVisitRate)} and follow-up coverage is ${
+          stats.inboundMessages > 0 ? formatPercent(stats.followUpRate) : "not yet measurable"
+        }.`,
+        severity: stats.repeatVisitRate < 25 ? "medium" : "low",
+      },
+    ],
     statHighlights: [
       {
         label: "Completion",
@@ -666,6 +936,32 @@ function buildSnapshot(
         title: "Keep the strongest operating habit visible",
         detail: strength,
         impact: "medium",
+      },
+    ],
+    recommendedPlaybook: {
+      name:
+        stats.lostSlotRate > 10
+          ? "Cancellation recovery"
+          : stats.utilizationRate < 55
+            ? "Reactivation and booking lift"
+            : stats.repeatVisitRate < 25
+              ? "Next-visit retention"
+              : "Maintain operating rhythm",
+      why: focus,
+      steps: [
+        "Review the highest-risk metric before the next refresh.",
+        "Assign one owner for the next operational action.",
+        "Check whether the same pattern improves in the next period.",
+      ],
+    },
+    whatToMonitor: [
+      {
+        metric: "Completion rate",
+        target: "Keep finalized visits above 90% completed.",
+      },
+      {
+        metric: "Schedule utilization",
+        target: "Move booked capacity toward a healthy 70-92% range.",
       },
     ],
     source: "rules",
@@ -731,9 +1027,25 @@ function applyAiSnapshot(
   const rawStatHighlights = Array.isArray(payload.statHighlights)
     ? payload.statHighlights
     : [];
+  const rawRootCauses = Array.isArray(payload.rootCauses)
+    ? payload.rootCauses
+    : [];
   const rawOpportunities = Array.isArray(payload.opportunities)
     ? payload.opportunities
     : [];
+  const rawMonitor = Array.isArray(payload.whatToMonitor)
+    ? payload.whatToMonitor
+    : [];
+  const rootCauses = rawRootCauses
+    .filter((item): item is Record<string, unknown> => {
+      return typeof item === "object" && item !== null;
+    })
+    .slice(0, 4)
+    .map((item) => ({
+      title: cleanText(item.title, "Likely cause", 96),
+      evidence: cleanText(item.evidence, fallback.watch, 240),
+      severity: cleanInsightImpact(item.severity),
+    }));
   const statHighlights = rawStatHighlights
     .filter((item): item is Record<string, unknown> => {
       return typeof item === "object" && item !== null;
@@ -753,6 +1065,34 @@ function applyAiSnapshot(
       title: cleanText(item.title, "Improvement opportunity", 96),
       detail: cleanText(item.detail, fallback.focus, 240),
       impact: cleanInsightImpact(item.impact),
+    }));
+  const recommendedPlaybook =
+    typeof payload.recommendedPlaybook === "object" && payload.recommendedPlaybook !== null
+      ? {
+          name: cleanText(
+            (payload.recommendedPlaybook as Record<string, unknown>).name,
+            fallback.recommendedPlaybook?.name ?? "Recommended playbook",
+            96
+          ),
+          why: cleanText(
+            (payload.recommendedPlaybook as Record<string, unknown>).why,
+            fallback.recommendedPlaybook?.why ?? fallback.focus,
+            240
+          ),
+          steps: cleanSteps(
+            (payload.recommendedPlaybook as Record<string, unknown>).steps,
+            fallback.recommendedPlaybook?.steps ?? []
+          ),
+        }
+      : fallback.recommendedPlaybook;
+  const whatToMonitor = rawMonitor
+    .filter((item): item is Record<string, unknown> => {
+      return typeof item === "object" && item !== null;
+    })
+    .slice(0, 4)
+    .map((item) => ({
+      metric: cleanText(item.metric, "Metric", 72),
+      target: cleanText(item.target, "Watch the next report.", 120),
     }));
   const actions = rawActions
     .filter((action): action is Record<string, unknown> => {
@@ -776,12 +1116,18 @@ function applyAiSnapshot(
     tone: cleanTone(payload.tone, fallback.tone),
     headline: cleanText(payload.headline, fallback.headline, 160),
     summary: cleanText(payload.summary, fallback.summary, 420),
+    diagnosis: cleanText(payload.diagnosis, fallback.diagnosis ?? fallback.watch, 420),
+    severity: cleanInsightImpact(payload.severity),
+    confidence: cleanInsightImpact(payload.confidence),
     strength: cleanText(payload.strength, fallback.strength, 420),
     watch: cleanText(payload.watch, fallback.watch, 420),
     focus: cleanText(payload.focus, fallback.focus, 420),
     deepDive: cleanText(payload.deepDive, fallback.deepDive ?? fallback.summary, 700),
+    rootCauses: rootCauses.length > 0 ? rootCauses : fallback.rootCauses,
     statHighlights: statHighlights.length > 0 ? statHighlights : fallback.statHighlights,
     opportunities: opportunities.length > 0 ? opportunities : fallback.opportunities,
+    recommendedPlaybook,
+    whatToMonitor: whatToMonitor.length > 0 ? whatToMonitor : fallback.whatToMonitor,
     source: "ai",
     status: "generated",
     statusLabel: "AI generated",
@@ -968,11 +1314,22 @@ function buildPeriodView(args: {
   window: PeriodWindow;
   current: PeriodStats;
   previous: PeriodStats;
+  diagnostics: ReportPeriodDiagnostics;
   chartPoints: ReportChartPoint[];
   aiSnapshots: ReportAiSnapshotInput[];
   timeZone: string;
 }): ReportPeriodView {
-  const { key, label, window, current, previous, chartPoints, aiSnapshots, timeZone } = args;
+  const {
+    key,
+    label,
+    window,
+    current,
+    previous,
+    diagnostics,
+    chartPoints,
+    aiSnapshots,
+    timeZone,
+  } = args;
   const comparisonLabel = formatComparisonLabel(key);
   const { metrics, deltas } = buildMetrics({
     current,
@@ -984,7 +1341,7 @@ function buildPeriodView(args: {
   const snapshot = applyAiSnapshot(
     fallbackSnapshot,
     matchedAiSnapshot,
-    isAiSnapshotFreshForView(matchedAiSnapshot, metrics, chartPoints)
+    isAiSnapshotFreshForView(matchedAiSnapshot, metrics, chartPoints, diagnostics)
   );
 
   return {
@@ -1000,6 +1357,7 @@ function buildPeriodView(args: {
     highlightTrend: deltas.completion.trend,
     highlightSummary: snapshot.summary,
     metrics,
+    diagnostics,
     chart: {
       title:
         key === "daily"
@@ -1100,6 +1458,13 @@ export function buildReportsViewFromWorkspace({
     window: dailyWindow,
     timeZone,
   });
+  const dailyDiagnostics = buildPeriodDiagnostics({
+    appointments,
+    clients,
+    staffMembers,
+    window: dailyWindow,
+    timeZone,
+  });
   const dailyPrevious = buildPeriodStats({
     appointments,
     clients,
@@ -1126,6 +1491,13 @@ export function buildReportsViewFromWorkspace({
     window: weeklyWindow,
     timeZone,
   });
+  const weeklyDiagnostics = buildPeriodDiagnostics({
+    appointments,
+    clients,
+    staffMembers,
+    window: weeklyWindow,
+    timeZone,
+  });
   const weeklyPrevious = buildPeriodStats({
     appointments,
     clients,
@@ -1149,6 +1521,13 @@ export function buildReportsViewFromWorkspace({
     businessHours,
     activeStaffCount,
     unreadMessages,
+    window: monthlyWindow,
+    timeZone,
+  });
+  const monthlyDiagnostics = buildPeriodDiagnostics({
+    appointments,
+    clients,
+    staffMembers,
     window: monthlyWindow,
     timeZone,
   });
@@ -1180,6 +1559,7 @@ export function buildReportsViewFromWorkspace({
         window: dailyWindow,
         current: dailyCurrent,
         previous: dailyPrevious,
+        diagnostics: dailyDiagnostics,
         chartPoints: buildDailyChart(appointments, now, timeZone),
         aiSnapshots,
         timeZone,
@@ -1190,6 +1570,7 @@ export function buildReportsViewFromWorkspace({
         window: weeklyWindow,
         current: weeklyCurrent,
         previous: weeklyPrevious,
+        diagnostics: weeklyDiagnostics,
         chartPoints: buildWeeklyChart(appointments, now, timeZone),
         aiSnapshots,
         timeZone,
@@ -1200,6 +1581,7 @@ export function buildReportsViewFromWorkspace({
         window: monthlyWindow,
         current: monthlyCurrent,
         previous: monthlyPrevious,
+        diagnostics: monthlyDiagnostics,
         chartPoints: buildMonthlyChart(appointments, now, timeZone),
         aiSnapshots,
         timeZone,

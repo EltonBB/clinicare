@@ -14,12 +14,18 @@ const AI_PERIOD_SCHEMA = {
     "tone",
     "headline",
     "summary",
+    "diagnosis",
+    "severity",
+    "confidence",
     "strength",
     "watch",
     "focus",
     "deepDive",
+    "rootCauses",
     "statHighlights",
     "opportunities",
+    "recommendedPlaybook",
+    "whatToMonitor",
     "actions",
   ],
   properties: {
@@ -40,6 +46,18 @@ const AI_PERIOD_SCHEMA = {
       type: "string",
       maxLength: 420,
     },
+    diagnosis: {
+      type: "string",
+      maxLength: 420,
+    },
+    severity: {
+      type: "string",
+      enum: ["high", "medium", "low"],
+    },
+    confidence: {
+      type: "string",
+      enum: ["high", "medium", "low"],
+    },
     strength: {
       type: "string",
       maxLength: 420,
@@ -55,6 +73,30 @@ const AI_PERIOD_SCHEMA = {
     deepDive: {
       type: "string",
       maxLength: 700,
+    },
+    rootCauses: {
+      type: "array",
+      minItems: 2,
+      maxItems: 4,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "evidence", "severity"],
+        properties: {
+          title: {
+            type: "string",
+            maxLength: 96,
+          },
+          evidence: {
+            type: "string",
+            maxLength: 240,
+          },
+          severity: {
+            type: "string",
+            enum: ["high", "medium", "low"],
+          },
+        },
+      },
     },
     statHighlights: {
       type: "array",
@@ -100,6 +142,50 @@ const AI_PERIOD_SCHEMA = {
           impact: {
             type: "string",
             enum: ["high", "medium", "low"],
+          },
+        },
+      },
+    },
+    recommendedPlaybook: {
+      type: "object",
+      additionalProperties: false,
+      required: ["name", "why", "steps"],
+      properties: {
+        name: {
+          type: "string",
+          maxLength: 96,
+        },
+        why: {
+          type: "string",
+          maxLength: 240,
+        },
+        steps: {
+          type: "array",
+          minItems: 2,
+          maxItems: 5,
+          items: {
+            type: "string",
+            maxLength: 160,
+          },
+        },
+      },
+    },
+    whatToMonitor: {
+      type: "array",
+      minItems: 2,
+      maxItems: 4,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["metric", "target"],
+        properties: {
+          metric: {
+            type: "string",
+            maxLength: 72,
+          },
+          target: {
+            type: "string",
+            maxLength: 120,
           },
         },
       },
@@ -234,6 +320,7 @@ function buildAiPromptPayload(args: {
       comparisonLabel: period.comparisonLabel,
     },
     currentRuleSnapshot: period.snapshot,
+    diagnostics: period.diagnostics,
     metrics: period.metrics.map((metric) => ({
       label: metric.label,
       value: metric.value,
@@ -263,6 +350,7 @@ function buildAllTimeframesPayload(report: ReturnType<typeof buildReportsViewFro
         rangeLabel: period.rangeLabel,
         comparisonLabel: period.comparisonLabel,
         currentRuleSnapshot: period.snapshot,
+        diagnostics: period.diagnostics,
         metrics: period.metrics.map((metric) => ({
           label: metric.label,
           value: metric.value,
@@ -290,8 +378,14 @@ function buildAiRefreshPromptPayload(args: {
       type: args.businessType,
     },
     task:
-      "Analyze daily, weekly, and monthly clinic performance together. Return one detailed snapshot for each timeframe. Use cross-timeframe patterns to explain what changed, what matters, and what the owner should do next.",
+      "Analyze daily, weekly, and monthly clinic performance together. Return one detailed diagnostic snapshot for each timeframe. Use cross-timeframe patterns, operational diagnostics, staff load, booking behavior, demand windows, status mix, and client mix to explain what changed, the likely root causes, severity, confidence, and what the owner should do next.",
     timeframes: buildAllTimeframesPayload(args.report),
+    diagnosticInstructions: [
+      "Do not repeat the metrics as a generic summary; diagnose the clinic's operating pattern.",
+      "Tie every root cause to evidence from the provided metrics or diagnostics.",
+      "If evidence is weak or volume is low, say confidence is low and recommend what to monitor next.",
+      "Prefer practical clinic operations advice: booking flow, rebooking, reminders, staff coverage, cancellation recovery, client reactivation, and inbox discipline.",
+    ],
     guardrails: {
       doNotInventNumbers: true,
       doNotMentionPatientsByName: true,
@@ -331,7 +425,7 @@ async function requestOpenAIInsight(
         {
           role: "system",
           content:
-            "You are an operations analyst for small clinics. Interpret only the provided aggregate metrics. Return practical, detailed recommendations in the requested JSON schema. Do not invent metrics, diagnose medical issues, or mention individual patients.",
+            "You are an operations analyst for small clinics. Interpret only the provided aggregate metrics and diagnostics. Diagnose operational causes, not medical conditions. Return practical, evidence-based recommendations in the requested JSON schema. Do not invent metrics, diagnose medical issues, or mention individual patients.",
         },
         {
           role: "user",
