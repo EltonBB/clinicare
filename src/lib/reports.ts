@@ -52,6 +52,17 @@ export type ReportSnapshot = {
   strength: string;
   watch: string;
   focus: string;
+  deepDive?: string;
+  statHighlights?: Array<{
+    label: string;
+    value: string;
+    readout: string;
+  }>;
+  opportunities?: Array<{
+    title: string;
+    detail: string;
+    impact: "high" | "medium" | "low";
+  }>;
   source: ReportInsightSource;
   status: ReportInsightStatus;
   statusLabel: string;
@@ -63,6 +74,8 @@ export type ReportSnapshot = {
     title: string;
     detail: string;
     priority: "high" | "medium" | "low";
+    metric?: string;
+    expectedImpact?: string;
   }>;
 };
 
@@ -198,6 +211,10 @@ function cleanActionPriority(value: unknown): "high" | "medium" | "low" {
   return value === "high" || value === "medium" || value === "low"
     ? value
     : "medium";
+}
+
+function cleanInsightImpact(value: unknown): "high" | "medium" | "low" {
+  return cleanActionPriority(value);
 }
 
 function aiSnapshotForPeriod(
@@ -612,6 +629,45 @@ function buildSnapshot(
     strength,
     watch,
     focus,
+    deepDive: `${summary} ${watch} ${focus}`,
+    statHighlights: [
+      {
+        label: "Completion",
+        value: formatPercent(stats.completionRate),
+        readout:
+          stats.completionRate >= 90
+            ? "Most finalized visits are turning into completed care."
+            : "Completion has room to improve through confirmations and recovery follow-up.",
+      },
+      {
+        label: "Utilization",
+        value: formatPercent(stats.utilizationRate),
+        readout:
+          stats.utilizationRate >= 70 && stats.utilizationRate <= 92
+            ? "Booked time is sitting in a healthy operating range."
+            : "Capacity and demand are not yet balanced for this timeframe.",
+      },
+      {
+        label: "Repeat visits",
+        value: formatPercent(stats.repeatVisitRate),
+        readout:
+          stats.repeatVisitRate >= 25
+            ? "Return demand is contributing to the schedule."
+            : "Retention follow-up is the clearest growth lever.",
+      },
+    ],
+    opportunities: [
+      {
+        title: "Convert leakage into booked care",
+        detail: focus,
+        impact: tone === "attention" || tone === "watch" ? "high" : "medium",
+      },
+      {
+        title: "Keep the strongest operating habit visible",
+        detail: strength,
+        impact: "medium",
+      },
+    ],
     source: "rules",
     status: "rules",
     statusLabel: "Rule-based insight",
@@ -621,11 +677,15 @@ function buildSnapshot(
         title: "Protect the strongest signal",
         detail: strength,
         priority: "medium",
+        metric: "Completion and utilization",
+        expectedImpact: "Preserves the operating behavior currently supporting the score.",
       },
       {
         title: "Work the highest risk",
         detail: focus,
         priority: tone === "attention" || tone === "watch" ? "high" : "medium",
+        metric: "Highest-risk metric",
+        expectedImpact: "Improves the metric most likely to hold back the next report.",
       },
     ],
   };
@@ -668,6 +728,32 @@ function applyAiSnapshot(
 
   const payload = snapshot.aiPayload as Record<string, unknown>;
   const rawActions = Array.isArray(payload.actions) ? payload.actions : [];
+  const rawStatHighlights = Array.isArray(payload.statHighlights)
+    ? payload.statHighlights
+    : [];
+  const rawOpportunities = Array.isArray(payload.opportunities)
+    ? payload.opportunities
+    : [];
+  const statHighlights = rawStatHighlights
+    .filter((item): item is Record<string, unknown> => {
+      return typeof item === "object" && item !== null;
+    })
+    .slice(0, 4)
+    .map((item) => ({
+      label: cleanText(item.label, "Metric", 72),
+      value: cleanText(item.value, "-", 40),
+      readout: cleanText(item.readout, fallback.summary, 180),
+    }));
+  const opportunities = rawOpportunities
+    .filter((item): item is Record<string, unknown> => {
+      return typeof item === "object" && item !== null;
+    })
+    .slice(0, 4)
+    .map((item) => ({
+      title: cleanText(item.title, "Improvement opportunity", 96),
+      detail: cleanText(item.detail, fallback.focus, 240),
+      impact: cleanInsightImpact(item.impact),
+    }));
   const actions = rawActions
     .filter((action): action is Record<string, unknown> => {
       return typeof action === "object" && action !== null;
@@ -675,8 +761,14 @@ function applyAiSnapshot(
     .slice(0, 4)
     .map((action) => ({
       title: cleanText(action.title, "Recommended action", 96),
-      detail: cleanText(action.detail ?? action.why, fallback.focus, 240),
+      detail: cleanText(action.detail ?? action.why, fallback.focus, 280),
       priority: cleanActionPriority(action.priority),
+      metric: cleanText(action.metric, "Clinic performance", 72),
+      expectedImpact: cleanText(
+        action.expectedImpact,
+        "Expected to improve the next report.",
+        180
+      ),
     }));
 
   return {
@@ -687,6 +779,9 @@ function applyAiSnapshot(
     strength: cleanText(payload.strength, fallback.strength, 420),
     watch: cleanText(payload.watch, fallback.watch, 420),
     focus: cleanText(payload.focus, fallback.focus, 420),
+    deepDive: cleanText(payload.deepDive, fallback.deepDive ?? fallback.summary, 700),
+    statHighlights: statHighlights.length > 0 ? statHighlights : fallback.statHighlights,
+    opportunities: opportunities.length > 0 ? opportunities : fallback.opportunities,
     source: "ai",
     status: "generated",
     statusLabel: "AI generated",

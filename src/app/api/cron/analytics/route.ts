@@ -37,7 +37,7 @@ export async function GET(request: Request) {
   const results = [];
 
   for (const business of proBusinesses) {
-    const snapshots = await generateAnalyticsSnapshotsForBusiness(business.id);
+    const snapshots = await generateAnalyticsSnapshotsForBusiness(business.id, { force: true });
     results.push({
       businessId: business.id,
       generated: snapshots.filter((snapshot) => snapshot.usedAi).length,

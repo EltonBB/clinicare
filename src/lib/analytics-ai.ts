@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 
 const manualRefreshCooldownMs = 15 * 60 * 1000;
 
-const AI_SNAPSHOT_SCHEMA = {
+const AI_PERIOD_SCHEMA = {
   type: "object",
   additionalProperties: false,
   required: [
@@ -17,6 +17,9 @@ const AI_SNAPSHOT_SCHEMA = {
     "strength",
     "watch",
     "focus",
+    "deepDive",
+    "statHighlights",
+    "opportunities",
     "actions",
   ],
   properties: {
@@ -49,14 +52,42 @@ const AI_SNAPSHOT_SCHEMA = {
       type: "string",
       maxLength: 420,
     },
-    actions: {
+    deepDive: {
+      type: "string",
+      maxLength: 700,
+    },
+    statHighlights: {
       type: "array",
       minItems: 2,
       maxItems: 4,
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["title", "detail", "priority"],
+        required: ["label", "value", "readout"],
+        properties: {
+          label: {
+            type: "string",
+            maxLength: 72,
+          },
+          value: {
+            type: "string",
+            maxLength: 40,
+          },
+          readout: {
+            type: "string",
+            maxLength: 180,
+          },
+        },
+      },
+    },
+    opportunities: {
+      type: "array",
+      minItems: 2,
+      maxItems: 4,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "detail", "impact"],
         properties: {
           title: {
             type: "string",
@@ -66,13 +97,58 @@ const AI_SNAPSHOT_SCHEMA = {
             type: "string",
             maxLength: 240,
           },
-          priority: {
+          impact: {
             type: "string",
             enum: ["high", "medium", "low"],
           },
         },
       },
     },
+    actions: {
+      type: "array",
+      minItems: 2,
+      maxItems: 4,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "detail", "priority", "metric", "expectedImpact"],
+        properties: {
+          title: {
+            type: "string",
+            maxLength: 96,
+          },
+          detail: {
+            type: "string",
+            maxLength: 280,
+          },
+          priority: {
+            type: "string",
+            enum: ["high", "medium", "low"],
+          },
+          metric: {
+            type: "string",
+            maxLength: 72,
+          },
+          expectedImpact: {
+            type: "string",
+            maxLength: 180,
+          },
+        },
+      },
+    },
+  },
+} as const;
+
+const AI_SNAPSHOT_SCHEMA = AI_PERIOD_SCHEMA;
+
+const AI_REFRESH_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["daily", "weekly", "monthly"],
+  properties: {
+    daily: AI_PERIOD_SCHEMA,
+    weekly: AI_PERIOD_SCHEMA,
+    monthly: AI_PERIOD_SCHEMA,
   },
 } as const;
 
@@ -144,6 +220,7 @@ function buildAiPromptPayload(args: {
   report: ReturnType<typeof buildReportsViewFromWorkspace>;
 }) {
   const period = args.report.periods[args.period];
+  const allTimeframes = buildAllTimeframesPayload(args.report);
 
   return {
     clinic: {
@@ -165,6 +242,7 @@ function buildAiPromptPayload(args: {
       helper: metric.helper,
     })),
     trend: period.chart.points,
+    allTimeframes,
     guardrails: {
       doNotInventNumbers: true,
       doNotMentionPatientsByName: true,
@@ -173,7 +251,65 @@ function buildAiPromptPayload(args: {
   };
 }
 
-async function requestOpenAIInsight(promptPayload: unknown) {
+function buildAllTimeframesPayload(report: ReturnType<typeof buildReportsViewFromWorkspace>) {
+  const periods: ReportPeriodKey[] = ["daily", "weekly", "monthly"];
+
+  return periods.reduce(
+    (payload, key) => {
+      const period = report.periods[key];
+
+      payload[key] = {
+        label: period.label,
+        rangeLabel: period.rangeLabel,
+        comparisonLabel: period.comparisonLabel,
+        currentRuleSnapshot: period.snapshot,
+        metrics: period.metrics.map((metric) => ({
+          label: metric.label,
+          value: metric.value,
+          delta: metric.delta,
+          trend: metric.trend,
+          helper: metric.helper,
+        })),
+        trend: period.chart.points,
+      };
+
+      return payload;
+    },
+    {} as Record<ReportPeriodKey, unknown>
+  );
+}
+
+function buildAiRefreshPromptPayload(args: {
+  businessName: string;
+  businessType: string;
+  report: ReturnType<typeof buildReportsViewFromWorkspace>;
+}) {
+  return {
+    clinic: {
+      name: args.businessName,
+      type: args.businessType,
+    },
+    task:
+      "Analyze daily, weekly, and monthly clinic performance together. Return one detailed snapshot for each timeframe. Use cross-timeframe patterns to explain what changed, what matters, and what the owner should do next.",
+    timeframes: buildAllTimeframesPayload(args.report),
+    guardrails: {
+      doNotInventNumbers: true,
+      doNotMentionPatientsByName: true,
+      useOnlyProvidedMetrics: true,
+      recommendationStyle:
+        "specific operational advice for a clinic owner, tied to the provided stats and timeframe",
+    },
+  };
+}
+
+async function requestOpenAIInsight(
+  promptPayload: unknown,
+  options?: {
+    schema?: typeof AI_SNAPSHOT_SCHEMA | typeof AI_REFRESH_SCHEMA;
+    schemaName?: string;
+    maxOutputTokens?: number;
+  }
+) {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     return {
@@ -195,7 +331,7 @@ async function requestOpenAIInsight(promptPayload: unknown) {
         {
           role: "system",
           content:
-            "You are an operations analyst for small clinics. Interpret only the provided aggregate metrics. Return concise, practical recommendations in the requested JSON schema. Do not invent metrics, diagnose medical issues, or mention individual patients.",
+            "You are an operations analyst for small clinics. Interpret only the provided aggregate metrics. Return practical, detailed recommendations in the requested JSON schema. Do not invent metrics, diagnose medical issues, or mention individual patients.",
         },
         {
           role: "user",
@@ -205,12 +341,12 @@ async function requestOpenAIInsight(promptPayload: unknown) {
       text: {
         format: {
           type: "json_schema",
-          name: "clinic_analytics_snapshot",
+          name: options?.schemaName ?? "clinic_analytics_snapshot",
           strict: true,
-          schema: AI_SNAPSHOT_SCHEMA,
+          schema: options?.schema ?? AI_SNAPSHOT_SCHEMA,
         },
       },
-      max_output_tokens: 1400,
+      max_output_tokens: options?.maxOutputTokens ?? 1800,
     }),
     signal: AbortSignal.timeout(20_000),
     cache: "no-store",
@@ -435,15 +571,241 @@ export async function generateAnalyticsSnapshotForBusiness(
   }
 }
 
-export async function generateAnalyticsSnapshotsForBusiness(businessId: string) {
-  const results: GenerateAnalyticsSnapshotResult[] = [];
+function allPeriodsRateLimited(results: GenerateAnalyticsSnapshotResult[]) {
+  return results.length === 3 && results.every((result) => result.rateLimited);
+}
+
+async function upsertSnapshot(args: {
+  businessId: string;
+  period: ReportPeriodKey;
+  report: ReturnType<typeof buildReportsViewFromWorkspace>;
+  promptPayload: unknown;
+  aiPayload: unknown;
+  provider: string;
+  model: string | null;
+  status: "GENERATED" | "FALLBACK" | "ERRORED";
+  error?: string | null;
+}) {
+  const periodView = args.report.periods[args.period];
+  const periodType = periodKeyToSnapshotPeriod(args.period);
+  const periodStart = new Date(periodView.periodStart);
+  const periodEnd = new Date(periodView.periodEnd);
+  const aiPayload = args.aiPayload === null ? Prisma.JsonNull : asJson(args.aiPayload);
+
+  await prisma.analyticsSnapshot.upsert({
+    where: {
+      businessId_periodType_periodStart_periodEnd: {
+        businessId: args.businessId,
+        periodType,
+        periodStart,
+        periodEnd,
+      },
+    },
+    update: {
+      kpiPayload: asJson(args.promptPayload),
+      aiPayload,
+      provider: args.provider,
+      model: args.model,
+      status: args.status,
+      error: args.error ?? null,
+      generatedAt: new Date(),
+    },
+    create: {
+      businessId: args.businessId,
+      periodType,
+      periodStart,
+      periodEnd,
+      kpiPayload: asJson(args.promptPayload),
+      aiPayload,
+      provider: args.provider,
+      model: args.model,
+      status: args.status,
+      error: args.error ?? null,
+    },
+  });
+}
+
+function getPeriodPayload(payload: unknown, period: ReportPeriodKey) {
+  if (typeof payload !== "object" || payload === null) {
+    return null;
+  }
+
+  const value = (payload as Record<string, unknown>)[period];
+  return typeof value === "object" && value !== null ? value : null;
+}
+
+async function getManualCooldownResults(args: {
+  businessId: string;
+  report: ReturnType<typeof buildReportsViewFromWorkspace>;
+}) {
   const periods: ReportPeriodKey[] = ["daily", "weekly", "monthly"];
+  const results: GenerateAnalyticsSnapshotResult[] = [];
 
   for (const period of periods) {
-    results.push(await generateAnalyticsSnapshotForBusiness(businessId, period, { force: true }));
+    const periodView = args.report.periods[period];
+    const periodType = periodKeyToSnapshotPeriod(period);
+    const periodStart = new Date(periodView.periodStart);
+    const periodEnd = new Date(periodView.periodEnd);
+    const existingSnapshot = await prisma.analyticsSnapshot.findUnique({
+      where: {
+        businessId_periodType_periodStart_periodEnd: {
+          businessId: args.businessId,
+          periodType,
+          periodStart,
+          periodEnd,
+        },
+      },
+      select: {
+        generatedAt: true,
+        status: true,
+      },
+    });
+
+    if (
+      existingSnapshot &&
+      Date.now() - existingSnapshot.generatedAt.getTime() < manualRefreshCooldownMs
+    ) {
+      const nextRefreshAt = new Date(
+        existingSnapshot.generatedAt.getTime() + manualRefreshCooldownMs
+      );
+
+      results.push({
+        ok: existingSnapshot.status === "GENERATED",
+        period,
+        usedAi: existingSnapshot.status === "GENERATED",
+        rateLimited: true,
+        nextRefreshAt: nextRefreshAt.toISOString(),
+        message: `Full AI analysis was refreshed recently. Try again after ${nextRefreshAt.toLocaleTimeString(
+          [],
+          {
+            hour: "2-digit",
+            minute: "2-digit",
+          }
+        )}.`,
+      });
+    }
   }
 
   return results;
+}
+
+export async function generateAnalyticsSnapshotsForBusiness(
+  businessId: string,
+  options?: { force?: boolean }
+): Promise<GenerateAnalyticsSnapshotResult[]> {
+  const workspace = await getReportWorkspaceData(businessId);
+  const report = buildReportsViewFromWorkspace(workspace);
+  const periods: ReportPeriodKey[] = ["daily", "weekly", "monthly"];
+  const cooldownResults = options?.force
+    ? []
+    : await getManualCooldownResults({ businessId, report });
+
+  if (allPeriodsRateLimited(cooldownResults)) {
+    return cooldownResults;
+  }
+
+  const refreshPromptPayload = buildAiRefreshPromptPayload({
+    businessName: workspace.business.name,
+    businessType: workspace.business.businessType,
+    report,
+  });
+  const periodPromptPayloads = periods.reduce(
+    (payloads, period) => {
+      payloads[period] = buildAiPromptPayload({
+        businessName: workspace.business.name,
+        businessType: workspace.business.businessType,
+        period,
+        report,
+      });
+
+      return payloads;
+    },
+    {} as Record<ReportPeriodKey, unknown>
+  );
+
+  try {
+    const aiResult = await requestOpenAIInsight(refreshPromptPayload, {
+      schema: AI_REFRESH_SCHEMA,
+      schemaName: "clinic_analytics_refresh",
+      maxOutputTokens: 4200,
+    });
+
+    if (!aiResult.ok) {
+      await Promise.all(
+        periods.map((period) =>
+          upsertSnapshot({
+            businessId,
+            period,
+            report,
+            promptPayload: periodPromptPayloads[period],
+            aiPayload: null,
+            provider: "rules",
+            model: aiResult.model ?? null,
+            status: "FALLBACK",
+            error: aiResult.error,
+          })
+        )
+      );
+
+      return periods.map((period): GenerateAnalyticsSnapshotResult => ({
+        ok: false,
+        period,
+        usedAi: false,
+        message: "AI is unavailable right now, so reports are using rule-based insights.",
+      }));
+    }
+
+    await Promise.all(
+      periods.map((period) =>
+        upsertSnapshot({
+          businessId,
+          period,
+          report,
+          promptPayload: periodPromptPayloads[period],
+          aiPayload: getPeriodPayload(aiResult.payload, period),
+          provider: "openai",
+          model: aiResult.model,
+          status: "GENERATED",
+          error: null,
+        })
+      )
+    );
+
+    return periods.map((period): GenerateAnalyticsSnapshotResult => ({
+      ok: true,
+      period,
+      usedAi: true,
+      message: "AI insight generated.",
+    }));
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "AI analytics generation failed.";
+
+    await Promise.all(
+      periods.map((period) =>
+        upsertSnapshot({
+          businessId,
+          period,
+          report,
+          promptPayload: periodPromptPayloads[period],
+          aiPayload: null,
+          provider: "rules",
+          model: getAnalyticsModel(),
+          status: "ERRORED",
+          error: message,
+        })
+      )
+    );
+
+    return periods.map((period): GenerateAnalyticsSnapshotResult => ({
+      ok: false,
+      period,
+      usedAi: false,
+      message,
+    }));
+  }
 }
 
 export function reportPeriodKeyFromSnapshotPeriod(period: AnalyticsSnapshotPeriod) {

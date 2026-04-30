@@ -82,7 +82,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
     setRefreshMessage(null);
 
     startTransition(async () => {
-      const result = await refreshAnalyticsInsightsAction(selectedPeriod);
+      const result = await refreshAnalyticsInsightsAction();
       setRefreshMessage(result.message);
       setIsRefreshing(false);
       router.refresh();
@@ -132,8 +132,15 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-foreground shadow-sm hover:border-primary/30 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <RefreshCw className={cn("size-4", isRefreshing && "animate-spin")} />
-              Refresh AI
+              Refresh AI analysis
             </button>
+          </div>
+        </div>
+
+        <div className="border-b border-border/80 px-5 py-3">
+          <div className="inline-flex items-center gap-2 rounded-md bg-primary/8 px-3 py-2 text-sm text-muted-foreground">
+            <Brain className="size-4 text-primary" />
+            Refresh reviews today, this week, and this month together.
           </div>
         </div>
 
@@ -303,7 +310,34 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 {period.snapshot.summary}
               </p>
+              {period.snapshot.deepDive ? (
+                <p className="mt-3 border-t border-border/70 pt-3 text-sm leading-6 text-muted-foreground">
+                  {period.snapshot.deepDive}
+                </p>
+              ) : null}
             </div>
+
+            {period.snapshot.statHighlights?.length ? (
+              <div className="grid gap-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Key stats
+                </p>
+                {period.snapshot.statHighlights.map((stat) => (
+                  <div
+                    key={`${stat.label}-${stat.value}`}
+                    className="rounded-[0.7rem] border border-border/75 bg-white/75 p-3"
+                  >
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="text-sm font-medium text-foreground">{stat.label}</p>
+                      <p className="text-sm font-semibold text-primary">{stat.value}</p>
+                    </div>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                      {stat.readout}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
             <div className="grid gap-3">
               <div className="flex gap-3">
@@ -337,7 +371,41 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               </div>
             </div>
 
+            {period.snapshot.opportunities?.length ? (
+              <div className="mt-2 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Improvement opportunities
+                </p>
+                {period.snapshot.opportunities.map((opportunity) => (
+                  <div
+                    key={`${opportunity.title}-${opportunity.impact}`}
+                    className="rounded-[0.7rem] border border-border/75 bg-white/80 p-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm font-semibold text-foreground">
+                        {opportunity.title}
+                      </p>
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em]",
+                          priorityStyles[opportunity.impact]
+                        )}
+                      >
+                        {opportunity.impact}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      {opportunity.detail}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
             <div className="mt-2 space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Suggested actions
+              </p>
               {period.snapshot.actions?.map((action) => (
                 <div
                   key={`${action.title}-${action.priority}`}
@@ -357,6 +425,14 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
                     {action.detail}
                   </p>
+                  {action.metric || action.expectedImpact ? (
+                    <div className="mt-3 grid gap-2 border-t border-border/70 pt-3 text-xs text-muted-foreground">
+                      {action.metric ? <p>Metric: {action.metric}</p> : null}
+                      {action.expectedImpact ? (
+                        <p>Expected impact: {action.expectedImpact}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>

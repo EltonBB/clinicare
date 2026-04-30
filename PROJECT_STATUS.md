@@ -40,7 +40,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Reminder settings with configurable first and second reminder hours and editable reminder template.
 - Appearance/branding settings with app accent color and logo update support.
 - Private Supabase Storage-backed uploads for clinic logos and client gallery images, with Prisma/auth metadata storing storage references and the UI resolving short-lived signed display URLs.
-- Reports page with daily, weekly, and monthly metrics, charts, auditable snapshots, AI-generated recommendations, rule-based fallback states, and refresh cooldown protection.
+- Reports page with daily, weekly, and monthly metrics, charts, auditable snapshots, full three-timeframe AI refresh, detailed stat readouts, improvement opportunities, AI-generated recommendations, rule-based fallback states, and refresh cooldown protection.
 - First-user workspace tour redesigned as a clean coachmark flow that avoids highlight rings, pauses while drawers/modals are open, and persists completion.
 
 ## Current Working Flows
@@ -52,7 +52,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Staff can be managed from the Staff page and tracked with check-in/check-out.
 - Client records can hold appointment history, notes, messages, and private Supabase-hosted gallery images.
 - The Twilio WhatsApp test sender can receive inbound messages, create conversations, reply from Inbox, and convert unknown contacts to clients.
-- Reports can calculate core performance metrics, refresh AI analysis when the OpenAI environment key is configured, and clearly show when rule-based insights are used instead.
+- Reports can calculate core performance metrics, refresh AI analysis across daily/weekly/monthly together when the OpenAI environment key is configured, and clearly show when rule-based insights are used instead.
 
 ## Known Issues / Blockers
 
@@ -67,7 +67,7 @@ The core product direction is customer-first: clinics should not need to underst
 1. Stabilize and test the full first-user flow on a clean account: signup, confirm email, onboarding, dashboard, tour, client, booking, staff, reports.
 2. Verify completed appointment automation end-to-end: completed appointments leave active calendar views and appear in staff/client records.
 3. Smoke-test signed logo/gallery upload, display, logo replacement cleanup, and client-delete media cleanup against the live production app.
-4. Continue hardening reports with any launch-specific wording or plan-gating requirements that come out of user testing.
+4. Continue hardening reports with any launch-specific wording, prompt evaluation, or plan-gating requirements that come out of user testing.
 5. Continue WhatsApp provider work only after business/provider requirements are ready; keep Settings flow customer-friendly in the meantime.
 6. Implement real billing/plan upgrade flow when pricing and payment provider decisions are final.
 
@@ -86,8 +86,8 @@ The core product direction is customer-first: clinics should not need to underst
 - Staff add/edit/archive and check-in/check-out.
 - Inbox inbound WhatsApp, outbound reply, unread count, and convert-to-client.
 - Settings: WhatsApp status, reminders, branding, logo, plan display.
-- Reports: daily, weekly, monthly metrics and AI/fallback snapshot refresh.
+- Reports: daily, weekly, monthly metrics, full three-timeframe AI refresh, detailed suggestions, and AI/fallback snapshot states.
 
 ## Last Completed Task
 
-- Hardened reports with visible AI fallback/audit states and manual refresh cooldowns; added repeatable old-media URL normalization; configured media cleanup when clients are deleted and old logos are replaced. Ran the media normalization script against the configured database and it found 0 old logo/gallery URLs to convert.
+- Improved Reports AI refresh so one manual refresh analyzes daily, weekly, and monthly together, stores auditable snapshots for all three timeframes, and shows deeper stat highlights, opportunities, suggested actions, and expected impact in the Reports UI. Verified with lint and production build.

@@ -3,12 +3,10 @@
 import { revalidatePath } from "next/cache";
 
 import {
-  generateAnalyticsSnapshotForBusiness,
   generateAnalyticsSnapshotsForBusiness,
   type GenerateAnalyticsSnapshotResult,
 } from "@/lib/analytics-ai";
 import { requireCurrentWorkspace } from "@/lib/business";
-import type { ReportPeriodKey } from "@/lib/reports";
 
 export type RefreshAnalyticsInsightsResult = {
   ok: boolean;
@@ -16,16 +14,12 @@ export type RefreshAnalyticsInsightsResult = {
   results: GenerateAnalyticsSnapshotResult[];
 };
 
-export async function refreshAnalyticsInsightsAction(
-  period?: ReportPeriodKey
-): Promise<RefreshAnalyticsInsightsResult> {
+export async function refreshAnalyticsInsightsAction(): Promise<RefreshAnalyticsInsightsResult> {
   const { business } = await requireCurrentWorkspace("/reports", {
     missingBusinessRedirect: "/onboarding",
   });
 
-  const results = period
-    ? [await generateAnalyticsSnapshotForBusiness(business.id, period)]
-    : await generateAnalyticsSnapshotsForBusiness(business.id);
+  const results = await generateAnalyticsSnapshotsForBusiness(business.id);
 
   revalidatePath("/reports");
   revalidatePath("/dashboard");
@@ -36,7 +30,7 @@ export async function refreshAnalyticsInsightsAction(
     rateLimited
       ? rateLimited.message
       : generated > 0
-      ? `Generated ${generated} AI insight${generated === 1 ? "" : "s"}.`
+      ? `Generated a fresh AI analysis for ${generated} timeframe${generated === 1 ? "" : "s"}.`
       : results[0]?.message ?? "AI insights were not generated.";
 
   return {
