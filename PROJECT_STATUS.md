@@ -90,4 +90,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Optimized Reports AI refresh latency after `gpt-5-mini` diagnosis still took too long in production: GPT-5 reports now use minimal reasoning effort, the structured output is slightly tighter, and failed/fallback snapshots no longer trigger the manual refresh cooldown. Verified with lint and production build.
+- Rebalanced the Reports page so all core metrics appear as report cards, operational statistics live in the main content area, and the snapshot sidebar stays brief with diagnosis, top cause, and next move. Verified with lint and production build.

@@ -74,8 +74,15 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
   const period = view.periods[selectedPeriod];
   const chartValues = period.chart.points.map((point) => point.value);
   const linePath = useMemo(() => buildLinePath(chartValues, 620, 190), [chartValues]);
-  const topMetrics = period.metrics.slice(0, 3);
-  const secondaryMetrics = period.metrics.slice(3);
+  const topMetrics = period.metrics;
+  const topCause = period.snapshot.rootCauses?.[0];
+  const primaryAction = period.snapshot.actions?.[0];
+  const primaryOpportunity = period.snapshot.opportunities?.[0];
+  const busiestDays = period.diagnostics.demandWindows.busiestDays;
+  const quietestDays = period.diagnostics.demandWindows.quietestDays.filter(
+    (item) => item.count > 0
+  );
+  const busiestHours = period.diagnostics.demandWindows.busiestHours;
 
   function refreshInsights() {
     setIsRefreshing(true);
@@ -144,7 +151,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
           </div>
         </div>
 
-        <div className="grid gap-4 p-5 md:grid-cols-3">
+        <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
           {topMetrics.map((metric) => (
             <div
               key={metric.label}
@@ -175,31 +182,6 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_360px]">
         <div className="space-y-6">
-          <div className="section-reveal grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-            {secondaryMetrics.map((metric) => (
-              <div
-                key={metric.label}
-                className="rounded-[0.75rem] border border-border/75 bg-white/88 px-4 py-4 shadow-[0_14px_32px_rgba(20,32,51,0.035)]"
-              >
-                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  {metric.label}
-                </p>
-                <p className="mt-3 text-2xl font-semibold tracking-tight text-foreground">
-                  {metric.value}
-                </p>
-                <p
-                  className={cn(
-                    "mt-2 inline-flex items-center gap-1 text-xs font-medium",
-                    metricTone[metric.trend]
-                  )}
-                >
-                  <TrendIcon trend={metric.trend} />
-                  {metric.delta}
-                </p>
-              </div>
-            ))}
-          </div>
-
           <div className="section-reveal surface-card rounded-[0.9rem] px-6 py-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -277,6 +259,222 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               </svg>
             </div>
           </div>
+
+          <div className="section-reveal grid gap-4 lg:grid-cols-3">
+            <div className="rounded-[0.75rem] border border-border/75 bg-white/88 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Appointment status
+              </p>
+              <div className="mt-4 grid gap-3">
+                {period.diagnostics.statusMix.map((item) => (
+                  <div key={item.label} className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{item.label}</p>
+                      <p className="text-xs text-muted-foreground">{item.share}</p>
+                    </div>
+                    <p className="text-xl font-semibold text-foreground">{item.count}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[0.75rem] border border-border/75 bg-white/88 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Booking behavior
+              </p>
+              <div className="mt-4 grid gap-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm text-muted-foreground">Average lead time</p>
+                  <p className="text-xl font-semibold text-foreground">
+                    {period.diagnostics.bookingBehavior.averageLeadTimeHours}h
+                  </p>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm text-muted-foreground">Same-day bookings</p>
+                  <p className="text-xl font-semibold text-foreground">
+                    {period.diagnostics.bookingBehavior.sameDayBookings}
+                  </p>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm text-muted-foreground">Unassigned visits</p>
+                  <p className="text-xl font-semibold text-foreground">
+                    {period.diagnostics.bookingBehavior.unassignedAppointments}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[0.75rem] border border-border/75 bg-white/88 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Client mix
+              </p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                {[
+                  ["Active", period.diagnostics.clientMix.active],
+                  ["At risk", period.diagnostics.clientMix.atRisk],
+                  ["Inactive", period.diagnostics.clientMix.inactive],
+                  ["Archived", period.diagnostics.clientMix.archived],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-[0.65rem] bg-secondary/70 p-3">
+                    <p className="text-xs text-muted-foreground">{label}</p>
+                    <p className="mt-1 text-xl font-semibold text-foreground">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="section-reveal grid gap-4 lg:grid-cols-2">
+            <div className="rounded-[0.75rem] border border-border/75 bg-white/88 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Demand windows
+              </p>
+              <div className="mt-4 grid gap-4 md:grid-cols-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Busiest days</p>
+                  <div className="mt-3 grid gap-2">
+                    {busiestDays.length > 0 ? (
+                      busiestDays.map((item) => (
+                        <div key={item.label} className="flex justify-between gap-3 text-sm">
+                          <span className="text-muted-foreground">{item.label}</span>
+                          <span className="font-medium text-foreground">{item.count}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No visits yet.</p>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Quietest days</p>
+                  <div className="mt-3 grid gap-2">
+                    {quietestDays.length > 0 ? (
+                      quietestDays.map((item) => (
+                        <div key={item.label} className="flex justify-between gap-3 text-sm">
+                          <span className="text-muted-foreground">{item.label}</span>
+                          <span className="font-medium text-foreground">{item.count}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No visits yet.</p>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Busiest hours</p>
+                  <div className="mt-3 grid gap-2">
+                    {busiestHours.length > 0 ? (
+                      busiestHours.map((item) => (
+                        <div key={item.label} className="flex justify-between gap-3 text-sm">
+                          <span className="text-muted-foreground">{item.label}</span>
+                          <span className="font-medium text-foreground">{item.count}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No visits yet.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[0.75rem] border border-border/75 bg-white/88 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Staff load
+              </p>
+              <div className="mt-4 grid gap-3">
+                {period.diagnostics.staffLoad.length > 0 ? (
+                  period.diagnostics.staffLoad.map((staff) => (
+                    <div
+                      key={staff.name}
+                      className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-[0.65rem] bg-secondary/60 p-3"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{staff.name}</p>
+                        <p className="text-xs text-muted-foreground">{staff.role}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-foreground">
+                          {staff.appointments} visits
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {staff.utilizationShare} of booked time
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">No active staff load yet.</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="section-reveal grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            {period.snapshot.recommendedPlaybook ? (
+              <div className="rounded-[0.75rem] border border-border/75 bg-white/88 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Recommended playbook
+                </p>
+                <h3 className="mt-2 text-lg font-semibold text-foreground">
+                  {period.snapshot.recommendedPlaybook.name}
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {period.snapshot.recommendedPlaybook.why}
+                </p>
+                <div className="mt-4 grid gap-2">
+                  {period.snapshot.recommendedPlaybook.steps.map((step, index) => (
+                    <div
+                      key={`${step}-${index}`}
+                      className="rounded-[0.65rem] bg-secondary/70 px-3 py-2 text-sm leading-6 text-muted-foreground"
+                    >
+                      {step}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="rounded-[0.75rem] border border-border/75 bg-white/88 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Actions and monitoring
+              </p>
+              <div className="mt-4 grid gap-3">
+                {period.snapshot.actions?.slice(0, 3).map((action) => (
+                  <div key={action.title} className="rounded-[0.65rem] bg-secondary/60 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm font-semibold text-foreground">{action.title}</p>
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em]",
+                          priorityStyles[action.priority]
+                        )}
+                      >
+                        {action.priority}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      {action.detail}
+                    </p>
+                    {action.expectedImpact ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Expected impact: {action.expectedImpact}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+                {period.snapshot.whatToMonitor?.slice(0, 3).map((item) => (
+                  <div
+                    key={`${item.metric}-${item.target}`}
+                    className="flex items-start justify-between gap-3 border-t border-border/70 pt-3 text-sm"
+                  >
+                    <p className="font-medium text-foreground">{item.metric}</p>
+                    <p className="max-w-[60%] text-right text-muted-foreground">{item.target}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
 
         <aside
@@ -337,61 +535,27 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                   </p>
                 </div>
               ) : null}
-              {period.snapshot.deepDive ? (
-                <p className="mt-3 border-t border-border/70 pt-3 text-sm leading-6 text-muted-foreground">
-                  {period.snapshot.deepDive}
-                </p>
-              ) : null}
             </div>
 
-            {period.snapshot.rootCauses?.length ? (
-              <div className="grid gap-2">
+            {topCause ? (
+              <div className="rounded-[0.7rem] border border-border/75 bg-white/75 p-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Likely causes
+                  Top cause
                 </p>
-                {period.snapshot.rootCauses.map((cause) => (
-                  <div
-                    key={`${cause.title}-${cause.severity}`}
-                    className="rounded-[0.7rem] border border-border/75 bg-white/75 p-3"
+                <div className="mt-2 flex items-start justify-between gap-3">
+                  <p className="text-sm font-semibold text-foreground">{topCause.title}</p>
+                  <span
+                    className={cn(
+                      "rounded-full px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em]",
+                      priorityStyles[topCause.severity]
+                    )}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm font-semibold text-foreground">{cause.title}</p>
-                      <span
-                        className={cn(
-                          "rounded-full px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em]",
-                          priorityStyles[cause.severity]
-                        )}
-                      >
-                        {cause.severity}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                      {cause.evidence}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            {period.snapshot.statHighlights?.length ? (
-              <div className="grid gap-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Key stats
+                    {topCause.severity}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {topCause.evidence}
                 </p>
-                {period.snapshot.statHighlights.map((stat) => (
-                  <div
-                    key={`${stat.label}-${stat.value}`}
-                    className="rounded-[0.7rem] border border-border/75 bg-white/75 p-3"
-                  >
-                    <div className="flex items-baseline justify-between gap-3">
-                      <p className="text-sm font-medium text-foreground">{stat.label}</p>
-                      <p className="text-sm font-semibold text-primary">{stat.value}</p>
-                    </div>
-                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                      {stat.readout}
-                    </p>
-                  </div>
-                ))}
               </div>
             ) : null}
 
@@ -427,114 +591,38 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               </div>
             </div>
 
-            {period.snapshot.opportunities?.length ? (
-              <div className="mt-2 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Improvement opportunities
-                </p>
-                {period.snapshot.opportunities.map((opportunity) => (
-                  <div
-                    key={`${opportunity.title}-${opportunity.impact}`}
-                    className="rounded-[0.7rem] border border-border/75 bg-white/80 p-3"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm font-semibold text-foreground">
-                        {opportunity.title}
-                      </p>
-                      <span
-                        className={cn(
-                          "rounded-full px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em]",
-                          priorityStyles[opportunity.impact]
-                        )}
-                      >
-                        {opportunity.impact}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                      {opportunity.detail}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            {period.snapshot.recommendedPlaybook ? (
+            {primaryAction || primaryOpportunity ? (
               <div className="rounded-[0.7rem] border border-border/75 bg-white/80 p-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Recommended playbook
+                  Next move
                 </p>
-                <p className="mt-2 text-sm font-semibold text-foreground">
-                  {period.snapshot.recommendedPlaybook.name}
-                </p>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  {period.snapshot.recommendedPlaybook.why}
-                </p>
-                <div className="mt-3 grid gap-2">
-                  {period.snapshot.recommendedPlaybook.steps.map((step, index) => (
-                    <div
-                      key={`${step}-${index}`}
-                      className="rounded-[0.6rem] bg-secondary/70 px-3 py-2 text-sm leading-6 text-muted-foreground"
-                    >
-                      {step}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="mt-2 space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Suggested actions
-              </p>
-              {period.snapshot.actions?.map((action) => (
-                <div
-                  key={`${action.title}-${action.priority}`}
-                  className="rounded-[0.7rem] border border-border/75 bg-white/80 p-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-sm font-semibold text-foreground">{action.title}</p>
+                <div className="mt-2 flex items-start justify-between gap-3">
+                  <p className="text-sm font-semibold text-foreground">
+                    {primaryAction?.title ?? primaryOpportunity?.title}
+                  </p>
+                  {primaryAction ? (
                     <span
                       className={cn(
                         "rounded-full px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em]",
-                        priorityStyles[action.priority]
+                        priorityStyles[primaryAction.priority]
                       )}
                     >
-                      {action.priority}
+                      {primaryAction.priority}
                     </span>
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    {action.detail}
-                  </p>
-                  {action.metric || action.expectedImpact ? (
-                    <div className="mt-3 grid gap-2 border-t border-border/70 pt-3 text-xs text-muted-foreground">
-                      {action.metric ? <p>Metric: {action.metric}</p> : null}
-                      {action.expectedImpact ? (
-                        <p>Expected impact: {action.expectedImpact}</p>
-                      ) : null}
-                    </div>
-                  ) : null}
+                  ) : primaryOpportunity ? (
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em]",
+                          priorityStyles[primaryOpportunity.impact]
+                        )}
+                      >
+                        {primaryOpportunity.impact}
+                      </span>
+                    ) : null}
                 </div>
-              ))}
-            </div>
-
-            {period.snapshot.whatToMonitor?.length ? (
-              <div className="rounded-[0.7rem] border border-border/75 bg-white/75 p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Watch next
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {primaryAction?.detail ?? primaryOpportunity?.detail}
                 </p>
-                <div className="mt-3 grid gap-2">
-                  {period.snapshot.whatToMonitor.map((item) => (
-                    <div
-                      key={`${item.metric}-${item.target}`}
-                      className="flex items-start justify-between gap-3 text-sm"
-                    >
-                      <p className="font-medium text-foreground">{item.metric}</p>
-                      <p className="max-w-[55%] text-right leading-5 text-muted-foreground">
-                        {item.target}
-                      </p>
-                    </div>
-                  ))}
-                </div>
               </div>
             ) : null}
 
