@@ -90,4 +90,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Rebalanced the Reports page so all core metrics appear as report cards, operational statistics live in the main content area, and the snapshot sidebar stays brief with diagnosis, top cause, and next move. Verified with lint and production build.
+- Rebalanced the Reports page so all core metrics appear as report cards, operational statistics live in the main content area, and the snapshot sidebar stays brief with diagnosis, top cause, and next move. Added a short-timeout OpenAI analytics fallback chain so slow or unavailable primary models can retry on faster backup models before rules are used. Verified with lint and production build.

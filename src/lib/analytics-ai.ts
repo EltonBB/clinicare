@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 
 const manualRefreshCooldownMs = 15 * 60 * 1000;
 const analyticsRequestTimeoutMs = 50 * 1000;
+const analyticsModelAttemptTimeoutMs = 22 * 1000;
 
 const AI_PERIOD_SCHEMA = {
   type: "object",
@@ -243,6 +244,18 @@ function getAnalyticsModel() {
   return process.env.OPENAI_ANALYTICS_MODEL?.trim() || "gpt-4.1-mini";
 }
 
+function getAnalyticsModels() {
+  const candidates = [
+    getAnalyticsModel(),
+    process.env.OPENAI_ANALYTICS_FALLBACK_MODEL?.trim() || "gpt-4.1-mini",
+    "gpt-4o-mini",
+  ];
+
+  return candidates.filter(
+    (model, index): model is string => Boolean(model) && candidates.indexOf(model) === index
+  );
+}
+
 function buildReasoningOptions(model: string) {
   return model.startsWith("gpt-5")
     ? {
@@ -423,73 +436,97 @@ async function requestOpenAIInsight(
     };
   }
 
-  const model = getAnalyticsModel();
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      input: [
-        {
-          role: "system",
-          content:
-            "You are an operations analyst for small clinics. Interpret only the provided aggregate metrics and diagnostics. Diagnose operational causes, not medical conditions. Return practical, evidence-based recommendations in the requested JSON schema. Do not invent metrics, diagnose medical issues, or mention individual patients.",
-        },
-        {
-          role: "user",
-          content: JSON.stringify(promptPayload),
-        },
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: options?.schemaName ?? "clinic_analytics_snapshot",
-          strict: true,
-          schema: options?.schema ?? AI_SNAPSHOT_SCHEMA,
-        },
-      },
-      ...buildReasoningOptions(model),
-      max_output_tokens: options?.maxOutputTokens ?? 1800,
-    }),
-    signal: AbortSignal.timeout(analyticsRequestTimeoutMs),
-    cache: "no-store",
-  });
+  const startedAt = Date.now();
+  const models = getAnalyticsModels();
+  let lastModel = models[0] ?? getAnalyticsModel();
+  let lastError = "OpenAI analytics request failed.";
 
-  if (!response.ok) {
-    return {
-      ok: false as const,
-      error: `OpenAI analytics request failed with ${response.status}.`,
-      model,
-    };
+  for (const model of models) {
+    lastModel = model;
+    const remainingTimeoutMs = analyticsRequestTimeoutMs - (Date.now() - startedAt);
+
+    if (remainingTimeoutMs < 5000) {
+      lastError = "OpenAI analytics request timed out before a backup model could finish.";
+      break;
+    }
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          input: [
+            {
+              role: "system",
+              content:
+                "You are an operations analyst for small clinics. Interpret only the provided aggregate metrics and diagnostics. Diagnose operational causes, not medical conditions. Return practical, evidence-based recommendations in the requested JSON schema. Do not invent metrics, diagnose medical issues, or mention individual patients.",
+            },
+            {
+              role: "user",
+              content: JSON.stringify(promptPayload),
+            },
+          ],
+          text: {
+            format: {
+              type: "json_schema",
+              name: options?.schemaName ?? "clinic_analytics_snapshot",
+              strict: true,
+              schema: options?.schema ?? AI_SNAPSHOT_SCHEMA,
+            },
+          },
+          ...buildReasoningOptions(model),
+          max_output_tokens: options?.maxOutputTokens ?? 1800,
+        }),
+        signal: AbortSignal.timeout(
+          Math.min(analyticsModelAttemptTimeoutMs, remainingTimeoutMs)
+        ),
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        lastError = `OpenAI analytics request failed with ${response.status}.`;
+
+        if (response.status === 401 || response.status === 403) {
+          break;
+        }
+
+        continue;
+      }
+
+      const payload = (await response.json()) as unknown;
+      const text = extractOpenAIText(payload);
+
+      if (!text) {
+        lastError = "OpenAI analytics response did not include structured text.";
+        continue;
+      }
+
+      try {
+        return {
+          ok: true as const,
+          model,
+          payload: JSON.parse(text) as unknown,
+        };
+      } catch {
+        lastError = "OpenAI analytics response was not valid JSON.";
+      }
+    } catch (error) {
+      lastError =
+        error instanceof Error
+          ? error.message
+          : "OpenAI analytics request failed.";
+    }
   }
 
-  const payload = (await response.json()) as unknown;
-  const text = extractOpenAIText(payload);
-
-  if (!text) {
-    return {
-      ok: false as const,
-      error: "OpenAI analytics response did not include structured text.",
-      model,
-    };
-  }
-
-  try {
-    return {
-      ok: true as const,
-      model,
-      payload: JSON.parse(text) as unknown,
-    };
-  } catch {
-    return {
-      ok: false as const,
-      error: "OpenAI analytics response was not valid JSON.",
-      model,
-    };
-  }
+  return {
+    ok: false as const,
+    error: lastError,
+    model: lastModel,
+  };
 }
 
 export async function generateAnalyticsSnapshotForBusiness(
