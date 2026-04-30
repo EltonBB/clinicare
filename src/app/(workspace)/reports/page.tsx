@@ -6,6 +6,8 @@ import { buildReportsViewFromWorkspace } from "@/lib/reports";
 import { prisma } from "@/lib/prisma";
 import { getReportWorkspaceData } from "@/lib/report-data";
 
+export const maxDuration = 60;
+
 export default async function ReportsPage() {
   const { business } = await requireCurrentWorkspace("/reports", {
     missingBusinessRedirect: "/onboarding",

@@ -90,4 +90,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Deepened Reports AI diagnosis by adding operational evidence to the snapshot payload: status mix, demand windows, staff load, booking lead time, client mix, root causes, diagnosis severity/confidence, recommended playbooks, and monitoring targets. Verified with lint and production build.
+- Increased the Reports AI refresh time budget for deeper `gpt-5-mini` diagnosis and clarified timeout fallback messaging after the first production refresh hit the previous 20-second request timeout. Verified with lint and production build.

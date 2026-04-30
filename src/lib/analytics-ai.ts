@@ -5,6 +5,7 @@ import { getReportWorkspaceData } from "@/lib/report-data";
 import { prisma } from "@/lib/prisma";
 
 const manualRefreshCooldownMs = 15 * 60 * 1000;
+const analyticsRequestTimeoutMs = 50 * 1000;
 
 const AI_PERIOD_SCHEMA = {
   type: "object",
@@ -442,7 +443,7 @@ async function requestOpenAIInsight(
       },
       max_output_tokens: options?.maxOutputTokens ?? 1800,
     }),
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(analyticsRequestTimeoutMs),
     cache: "no-store",
   });
 
@@ -619,10 +620,15 @@ export async function generateAnalyticsSnapshotForBusiness(
       message: "AI insight generated.",
     };
   } catch (error) {
-    const message =
+    const rawMessage =
       error instanceof Error
         ? error.message
         : "AI analytics generation failed.";
+    const message =
+      rawMessage.toLowerCase().includes("timeout") ||
+      rawMessage.toLowerCase().includes("aborted")
+        ? "AI analysis took too long, so reports are using rule-based insights. Try refreshing again in a minute."
+        : rawMessage;
 
     await prisma.analyticsSnapshot.upsert({
       where: {
@@ -872,10 +878,15 @@ export async function generateAnalyticsSnapshotsForBusiness(
       message: "AI insight generated.",
     }));
   } catch (error) {
-    const message =
+    const rawMessage =
       error instanceof Error
         ? error.message
         : "AI analytics generation failed.";
+    const message =
+      rawMessage.toLowerCase().includes("timeout") ||
+      rawMessage.toLowerCase().includes("aborted")
+        ? "AI analysis took too long, so reports are using rule-based insights. Try refreshing again in a minute."
+        : rawMessage;
 
     await Promise.all(
       periods.map((period) =>
