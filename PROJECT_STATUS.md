@@ -90,4 +90,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Increased the Reports AI refresh time budget for deeper `gpt-5-mini` diagnosis and clarified timeout fallback messaging after the first production refresh hit the previous 20-second request timeout. Verified with lint and production build.
+- Optimized Reports AI refresh latency after `gpt-5-mini` diagnosis still took too long in production: GPT-5 reports now use minimal reasoning effort, the structured output is slightly tighter, and failed/fallback snapshots no longer trigger the manual refresh cooldown. Verified with lint and production build.

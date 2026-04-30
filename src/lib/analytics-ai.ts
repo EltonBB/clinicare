@@ -78,7 +78,7 @@ const AI_PERIOD_SCHEMA = {
     rootCauses: {
       type: "array",
       minItems: 2,
-      maxItems: 4,
+      maxItems: 3,
       items: {
         type: "object",
         additionalProperties: false,
@@ -102,7 +102,7 @@ const AI_PERIOD_SCHEMA = {
     statHighlights: {
       type: "array",
       minItems: 2,
-      maxItems: 4,
+      maxItems: 3,
       items: {
         type: "object",
         additionalProperties: false,
@@ -126,7 +126,7 @@ const AI_PERIOD_SCHEMA = {
     opportunities: {
       type: "array",
       minItems: 2,
-      maxItems: 4,
+      maxItems: 3,
       items: {
         type: "object",
         additionalProperties: false,
@@ -163,7 +163,7 @@ const AI_PERIOD_SCHEMA = {
         steps: {
           type: "array",
           minItems: 2,
-          maxItems: 5,
+          maxItems: 3,
           items: {
             type: "string",
             maxLength: 160,
@@ -174,7 +174,7 @@ const AI_PERIOD_SCHEMA = {
     whatToMonitor: {
       type: "array",
       minItems: 2,
-      maxItems: 4,
+      maxItems: 3,
       items: {
         type: "object",
         additionalProperties: false,
@@ -194,7 +194,7 @@ const AI_PERIOD_SCHEMA = {
     actions: {
       type: "array",
       minItems: 2,
-      maxItems: 4,
+      maxItems: 3,
       items: {
         type: "object",
         additionalProperties: false,
@@ -241,6 +241,16 @@ const AI_REFRESH_SCHEMA = {
 
 function getAnalyticsModel() {
   return process.env.OPENAI_ANALYTICS_MODEL?.trim() || "gpt-4.1-mini";
+}
+
+function buildReasoningOptions(model: string) {
+  return model.startsWith("gpt-5")
+    ? {
+        reasoning: {
+          effort: "minimal",
+        },
+      }
+    : {};
 }
 
 export type GenerateAnalyticsSnapshotResult = {
@@ -441,6 +451,7 @@ async function requestOpenAIInsight(
           schema: options?.schema ?? AI_SNAPSHOT_SCHEMA,
         },
       },
+      ...buildReasoningOptions(model),
       max_output_tokens: options?.maxOutputTokens ?? 1800,
     }),
     signal: AbortSignal.timeout(analyticsRequestTimeoutMs),
@@ -518,6 +529,7 @@ export async function generateAnalyticsSnapshotForBusiness(
   if (
     !options?.force &&
     existingSnapshot &&
+    existingSnapshot.status === "GENERATED" &&
     Date.now() - existingSnapshot.generatedAt.getTime() < manualRefreshCooldownMs
   ) {
     const nextRefreshAt = new Date(
@@ -763,6 +775,7 @@ async function getManualCooldownResults(args: {
 
     if (
       existingSnapshot &&
+      existingSnapshot.status === "GENERATED" &&
       Date.now() - existingSnapshot.generatedAt.getTime() < manualRefreshCooldownMs
     ) {
       const nextRefreshAt = new Date(
@@ -827,7 +840,7 @@ export async function generateAnalyticsSnapshotsForBusiness(
     const aiResult = await requestOpenAIInsight(refreshPromptPayload, {
       schema: AI_REFRESH_SCHEMA,
       schemaName: "clinic_analytics_refresh",
-      maxOutputTokens: 4200,
+      maxOutputTokens: 3200,
     });
 
     if (!aiResult.ok) {
