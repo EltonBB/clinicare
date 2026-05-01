@@ -1,3 +1,5 @@
+import { after } from "next/server";
+
 import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
 import { prisma } from "@/lib/prisma";
 import { requireCurrentWorkspace } from "@/lib/business";
@@ -15,7 +17,13 @@ export default async function DashboardPage() {
   const { business } = await requireCurrentWorkspace("/dashboard", {
     missingBusinessRedirect: "/onboarding",
   });
-  await syncWhatsAppConnectionForBusiness(business.id);
+  after(async () => {
+    try {
+      await syncWhatsAppConnectionForBusiness(business.id);
+    } catch {
+      console.error("Failed to refresh WhatsApp connection after dashboard response.");
+    }
+  });
 
   const now = new Date();
   const timeZone = getAppTimeZone();

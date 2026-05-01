@@ -152,14 +152,16 @@ export function buildInboxConversation(
   clients: InboxClientLink[]
 ): InboxConversation {
   const linkedClient = linkedClientForConversation(conversation, clients);
-  const messages = conversation.messages.map((message) => ({
-    id: message.id,
-    sender: toMessageSender(message.direction),
-    body: message.body,
-    timestamp: formatMessageTimestamp(message.sentAt),
-    deliveryStatus: toInboxDeliveryStatus(message.deliveryStatus),
-    deliveryLabel: deliveryLabel(message.deliveryStatus),
-  }));
+  const messages = [...conversation.messages]
+    .sort((first, second) => first.sentAt.getTime() - second.sentAt.getTime())
+    .map((message) => ({
+      id: message.id,
+      sender: toMessageSender(message.direction),
+      body: message.body,
+      timestamp: formatMessageTimestamp(message.sentAt),
+      deliveryStatus: toInboxDeliveryStatus(message.deliveryStatus),
+      deliveryLabel: deliveryLabel(message.deliveryStatus),
+    }));
   const lastMessage = conversation.messages[conversation.messages.length - 1];
   const lastActivityAt = lastMessage?.sentAt ?? conversation.updatedAt;
   const isLinkedClient = Boolean(linkedClient);

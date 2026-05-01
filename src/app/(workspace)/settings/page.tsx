@@ -1,3 +1,5 @@
+import { after } from "next/server";
+
 import { SettingsWorkspace } from "@/components/settings/settings-workspace";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
@@ -13,13 +15,24 @@ function staffTimeEntryCutoff() {
   return new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
 }
 
+function completedAppointmentCutoff() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1);
+}
+
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
   const params = searchParams ? await searchParams : {};
   const { user, business } = await requireCurrentWorkspace("/settings", {
     missingBusinessRedirect: "/onboarding",
   });
 
-  await syncWhatsAppConnectionForBusiness(business.id);
+  after(async () => {
+    try {
+      await syncWhatsAppConnectionForBusiness(business.id);
+    } catch {
+      console.error("Failed to refresh WhatsApp connection after settings response.");
+    }
+  });
 
   const [businessHours, staffMembers, reminderSettings, whatsappConnection] = await Promise.all([
     prisma.businessHours.findMany({
@@ -48,6 +61,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         appointments: {
           where: {
             status: "COMPLETED",
+            startAt: {
+              gte: completedAppointmentCutoff(),
+            },
           },
           include: {
             client: {
@@ -59,6 +75,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           orderBy: {
             startAt: "desc",
           },
+          take: 50,
         },
       },
       orderBy: {

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useState, type CSSProperties } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { BadgeCheck } from "lucide-react";
 
 import { refreshWorkspaceNotificationsAction } from "@/app/(workspace)/actions";
@@ -53,7 +53,11 @@ export function AppShell({
   notifications = [],
 }: AppShellProps) {
   const pathname = usePathname();
-  const accent = resolveBrandAccentPreset(brandAccentColor);
+  const router = useRouter();
+  const accent = useMemo(
+    () => resolveBrandAccentPreset(brandAccentColor),
+    [brandAccentColor]
+  );
   const [liveUnreadCount, setLiveUnreadCount] = useState(unreadCount);
   const [liveNotifications, setLiveNotifications] = useState(notifications);
 
@@ -97,8 +101,23 @@ export function AppShell({
     }
   }
 
+  const prefetchRoute = useCallback((href: string) => {
+    if (href !== pathname) {
+      router.prefetch(href);
+    }
+  }, [pathname, router]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      navigationItems.forEach((item) => prefetchRoute(item.href));
+    }, 600);
+
+    return () => window.clearTimeout(timeout);
+  }, [prefetchRoute]);
+
   useEffect(() => {
     let cancelled = false;
+    let interval: number | undefined;
 
     async function refreshNotifications() {
       if (document.visibilityState !== "visible") {
@@ -115,17 +134,21 @@ export function AppShell({
       setLiveNotifications(result.view.notifications);
     }
 
-    void refreshNotifications();
-
-    const interval = window.setInterval(() => {
+    const timeout = window.setTimeout(() => {
       void refreshNotifications();
-    }, 3500);
+      interval = window.setInterval(() => {
+        void refreshNotifications();
+      }, 15000);
+    }, 8000);
 
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
+      window.clearTimeout(timeout);
+      if (interval) {
+        window.clearInterval(interval);
+      }
     };
-  }, [pathname]);
+  }, []);
 
   return (
     <div
@@ -188,26 +211,15 @@ export function AppShell({
                   "bg-primary/8 text-foreground shadow-[0_10px_22px_rgba(20,32,51,0.04)] ring-1 ring-primary/25"
               );
 
-              if (item.href === "/inbox") {
-                return (
-                  <a
-                    key={item.href}
-                    href={item.href}
-                    className={navClasses}
-                    data-tour={getTourTarget(item.href)}
-                  >
-                    <Icon className="size-4" />
-                    {item.label}
-                  </a>
-                );
-              }
-
               return (
                 <Link
                   key={item.href}
                   href={item.href}
+                  prefetch
                   className={navClasses}
                   data-tour={getTourTarget(item.href)}
+                  onFocus={() => prefetchRoute(item.href)}
+                  onMouseEnter={() => prefetchRoute(item.href)}
                 >
                   <Icon className="size-4" />
                   {item.label}
@@ -297,26 +309,15 @@ export function AppShell({
               isActive && "bg-primary/8 text-foreground shadow-[0_8px_18px_rgba(20,32,51,0.035)] ring-1 ring-primary/20"
             );
 
-            if (item.href === "/inbox") {
-              return (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  className={mobileNavClasses}
-                  data-tour={getTourTarget(item.href)}
-                >
-                  <Icon className="size-4" />
-                  <span className="truncate">{item.label}</span>
-                </a>
-              );
-            }
-
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch
                 className={mobileNavClasses}
                 data-tour={getTourTarget(item.href)}
+                onFocus={() => prefetchRoute(item.href)}
+                onMouseEnter={() => prefetchRoute(item.href)}
               >
                 <Icon className="size-4" />
                 <span className="truncate">{item.label}</span>

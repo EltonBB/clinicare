@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { completePastConfirmedAppointments } from "@/lib/appointments";
@@ -21,10 +22,15 @@ export default async function WorkspaceLayout({
     redirect("/onboarding");
   }
 
-  await completePastConfirmedAppointments(business.id);
+  after(async () => {
+    try {
+      await completePastConfirmedAppointments(business.id);
+    } catch {
+      console.error("Failed to complete past appointments after response.");
+    }
+  });
 
   const { businessName, ownerName } = toBusinessIdentity(business, user);
-  const logoDisplayUrl = await resolveMediaDisplayUrl(business.logoUrl);
   const ownerPhone =
     typeof user.user_metadata?.owner_phone === "string"
       ? user.user_metadata.owner_phone
@@ -33,23 +39,26 @@ export default async function WorkspaceLayout({
     user.user_metadata?.workspace_tour_completed_business_id === business.id &&
     typeof user.user_metadata?.workspace_tour_completed_at === "string" &&
     user.user_metadata.workspace_tour_completed_at.length > 0;
-  const notificationRows = await prisma.conversation.findMany({
-    where: {
-      businessId: business.id,
-      unreadCount: {
-        gt: 0,
+  const [logoDisplayUrl, notificationRows] = await Promise.all([
+    resolveMediaDisplayUrl(business.logoUrl),
+    prisma.conversation.findMany({
+      where: {
+        businessId: business.id,
+        unreadCount: {
+          gt: 0,
+        },
       },
-    },
-    orderBy: {
-      updatedAt: "desc",
-    },
-    take: 3,
-    select: {
-      id: true,
-      contactName: true,
-      unreadCount: true,
-    },
-  });
+      orderBy: {
+        updatedAt: "desc",
+      },
+      take: 3,
+      select: {
+        id: true,
+        contactName: true,
+        unreadCount: true,
+      },
+    }),
+  ]);
   const unreadCount = notificationRows.reduce(
     (total, row) => total + row.unreadCount,
     0

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { cache } from "react";
 
 import type { Business } from "@prisma/client";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
@@ -11,7 +12,7 @@ export type WorkspaceContext = {
   business: Business;
 };
 
-export async function getCurrentBusiness(
+export const getCurrentBusiness = cache(async function getCurrentBusiness(
   authUserId: string
 ): Promise<Business | null> {
   return prisma.business.findUnique({
@@ -19,7 +20,7 @@ export async function getCurrentBusiness(
       ownerId: authUserId,
     },
   });
-}
+});
 
 export async function requireCurrentBusiness(
   user: SupabaseUser,

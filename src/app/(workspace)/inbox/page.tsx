@@ -1,3 +1,5 @@
+import { after } from "next/server";
+
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { InboxWorkspace } from "@/components/inbox/inbox-workspace";
 import { buildInboxViewFromWorkspace } from "@/lib/inbox";
@@ -22,7 +24,13 @@ export default async function InboxPage({
       ? await ensureConversationForClient(business.id, client)
       : null;
 
-  const syncedConnection = await syncWhatsAppConnectionForBusiness(business.id);
+  after(async () => {
+    try {
+      await syncWhatsAppConnectionForBusiness(business.id);
+    } catch {
+      console.error("Failed to refresh WhatsApp connection after inbox response.");
+    }
+  });
 
   const [clients, conversations, whatsappConnection] = await Promise.all([
     prisma.client.findMany({
@@ -62,8 +70,9 @@ export default async function InboxPage({
             sentAt: true,
           },
           orderBy: {
-            sentAt: "asc",
+            sentAt: "desc",
           },
+          take: 50,
         },
       },
       orderBy: [
@@ -74,8 +83,13 @@ export default async function InboxPage({
           createdAt: "desc",
         },
       ],
+      take: 50,
     }),
-    Promise.resolve(syncedConnection),
+    prisma.whatsAppConnection.findUnique({
+      where: {
+        businessId: business.id,
+      },
+    }),
   ]);
   const inboxView = buildInboxViewFromWorkspace({
     conversations,

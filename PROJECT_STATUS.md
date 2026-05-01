@@ -45,6 +45,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Public legal policy pages for Terms of Service, Privacy Policy, and Refund Policy at `/terms-and-conditions`, `/privacy`, and `/refund`, with Vela-specific SaaS, clinic data, messaging, media, AI reports, billing, cancellation, and refund language.
 - First-user workspace tour redesigned as a clean coachmark flow that avoids highlight rings, pauses while drawers/modals are open, and persists completion.
 - Security/performance hardening pass completed: Next Proxy protects all workspace routes including `/staff`, global security headers are configured, user-facing provider/database errors are generic, private media uploads are limited to common raster image formats, email verification receipt updates cannot create arbitrary verified tickets, and expensive client/staff/reminder queries are capped or simplified.
+- Workspace navigation performance pass completed: dynamic workspace routes now have an instant loading shell, all sidebar/mobile nav items use client-side prefetched links, workspace auth/business lookups are request-deduped, non-critical maintenance work runs after the response, and inbox/settings data loads are capped for faster page opens.
 
 ## Current Working Flows
 
@@ -56,6 +57,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Client records can hold appointment history, notes, messages, and private Supabase-hosted gallery images.
 - The Twilio WhatsApp test sender can receive inbound messages, create conversations, reply from Inbox, and convert unknown contacts to clients.
 - Reports can calculate core performance metrics, derive operational evidence from appointment status mix, demand windows, staff load, booking lead time, and client mix, refresh AI analysis across daily/weekly/monthly together when the OpenAI environment key is configured, score each timeframe from current clinic metrics, generate rule-based guidance from actual period data, handle sparse/unmeasured data without false zeros, and clearly show when rule-based insights are used instead.
+- Workspace page-to-page navigation keeps the shared shell interactive and shows a skeleton immediately while dynamic page data streams in.
 
 ## Known Issues / Blockers
 
@@ -100,4 +102,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Completed a security and performance hardening pass for launch readiness. Migrated from deprecated `middleware.ts` to Next 16 `proxy.ts`, protected `/staff` at the proxy layer, added global security headers, tightened email verification and media upload behavior, replaced customer-facing raw provider errors with generic product-safe messages, reduced sensitive server logs, capped heavy client/staff relation loading, simplified reminder conversation upserts, updated Next.js to 16.2.4, refreshed vulnerable transitive packages, and verified lint, dependency audit, production build, and public table RLS state.
+- Improved workspace navigation speed and perceived responsiveness. Added a shared workspace `loading.tsx`, changed all workspace nav items to prefetched client-side `Link` navigation, warmed likely routes after shell hydration and on hover/focus, request-deduped auth/business lookups with React cache, moved appointment completion and WhatsApp connection sync into post-response `after()` work, capped inbox/settings relation loading, and verified lint, dependency audit, and production build.
