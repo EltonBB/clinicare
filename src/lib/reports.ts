@@ -165,11 +165,13 @@ type PeriodWindow = {
 
 type PeriodStats = {
   scheduledCount: number;
+  finalizedCount: number;
   completedCount: number;
   cancelledCount: number;
   completionRate: number;
   lostSlotRate: number;
   utilizationRate: number;
+  capacityMinutes: number;
   newClients: number;
   repeatVisitRate: number;
   outboundMessages: number;
@@ -238,23 +240,6 @@ function cleanText(value: unknown, fallback: string, maxLength = 420) {
   }
 
   return normalized.slice(0, maxLength);
-}
-
-function cleanScore(value: unknown, fallback: number) {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return fallback;
-  }
-
-  return Math.max(0, Math.min(100, Math.round(value)));
-}
-
-function cleanTone(value: unknown, fallback: ReportSnapshotTone): ReportSnapshotTone {
-  return value === "strong" ||
-    value === "healthy" ||
-    value === "watch" ||
-    value === "attention"
-    ? value
-    : fallback;
 }
 
 function cleanActionPriority(value: unknown): "high" | "medium" | "low" {
@@ -591,6 +576,7 @@ function buildPeriodStats(args: {
 
   return {
     scheduledCount: scopedAppointments.length,
+    finalizedCount: finalizedAppointments.length,
     completedCount: completedAppointments.length,
     cancelledCount: cancelledAppointments.length,
     completionRate:
@@ -601,6 +587,7 @@ function buildPeriodStats(args: {
       finalizedAppointments.length > 0
         ? (cancelledAppointments.length / finalizedAppointments.length) * 100
         : 0,
+    capacityMinutes,
     utilizationRate:
       capacityMinutes > 0 ? Math.min((bookedMinutes / capacityMinutes) * 100, 999) : 0,
     newClients: scopedClients.length,
@@ -790,20 +777,61 @@ function buildPeriodDiagnostics(args: {
   };
 }
 
+function clampScoreComponent(value: number, max: number) {
+  return Math.max(0, Math.min(value, max));
+}
+
 function scorePeriod(stats: PeriodStats) {
-  let score = 100;
+  const completionScore =
+    stats.finalizedCount > 0
+      ? clampScoreComponent((stats.completionRate / 100) * 26, 26)
+      : stats.scheduledCount > 0
+        ? 14
+        : 8;
+  const lostSlotScore =
+    stats.finalizedCount > 0
+      ? clampScoreComponent(((100 - stats.lostSlotRate) / 100) * 18, 18)
+      : stats.scheduledCount > 0
+        ? 10
+        : 7;
+  const utilizationScore =
+    stats.capacityMinutes <= 0
+      ? 10
+      : stats.utilizationRate <= 0
+        ? 0
+        : stats.utilizationRate < 70
+          ? clampScoreComponent((stats.utilizationRate / 70) * 24, 24)
+          : stats.utilizationRate <= 92
+            ? 24
+            : clampScoreComponent(24 - (stats.utilizationRate - 92) * 0.55, 24);
+  const demandScore = clampScoreComponent(stats.scheduledCount * 2.5 + stats.newClients * 1.5, 12);
+  const retentionScore =
+    stats.completedCount > 0
+      ? clampScoreComponent(4 + (stats.repeatVisitRate / 25) * 6, 10)
+      : stats.scheduledCount > 1
+        ? 4
+        : 2;
+  const followUpScore =
+    stats.inboundMessages === 0
+      ? 6
+      : clampScoreComponent((stats.followUpRate / 100) * 6, 6);
+  const inboxScore = stats.unreadMessages > 5 ? 0 : 4;
 
-  if (stats.completionRate < 90) score -= 15;
-  if (stats.completionRate < 80) score -= 10;
-  if (stats.lostSlotRate > 8) score -= 15;
-  if (stats.lostSlotRate > 15) score -= 10;
-  if (stats.utilizationRate < 55) score -= 12;
-  if (stats.utilizationRate > 95) score -= 8;
-  if (stats.repeatVisitRate < 25) score -= 10;
-  if (stats.inboundMessages > 0 && stats.followUpRate < 50) score -= 10;
-  if (stats.unreadMessages > 5) score -= 8;
-
-  return Math.max(20, Math.min(Math.round(score), 100));
+  return Math.max(
+    15,
+    Math.min(
+      Math.round(
+        completionScore +
+          lostSlotScore +
+          utilizationScore +
+          demandScore +
+          retentionScore +
+          followUpScore +
+          inboxScore
+      ),
+      100
+    )
+  );
 }
 
 function toneFromScore(score: number): ReportSnapshotTone {
@@ -1137,8 +1165,8 @@ function applyAiSnapshot(
     }));
 
   return {
-    score: cleanScore(payload.score, fallback.score),
-    tone: cleanTone(payload.tone, fallback.tone),
+    score: fallback.score,
+    tone: fallback.tone,
     headline: cleanText(payload.headline, fallback.headline, 160),
     summary: cleanText(payload.summary, fallback.summary, 420),
     diagnosis: cleanText(payload.diagnosis, fallback.diagnosis ?? fallback.watch, 420),
@@ -1156,7 +1184,7 @@ function applyAiSnapshot(
     source: "ai",
     status: "generated",
     statusLabel: "AI generated",
-    auditLabel: "Generated from the saved metrics snapshot for this exact period.",
+    auditLabel: "AI text was generated from the saved metrics snapshot; score is recalculated from current clinic metrics.",
     generatedAt,
     model: snapshot.model ?? undefined,
     actions: actions.length > 0 ? actions : fallback.actions,

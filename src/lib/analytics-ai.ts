@@ -423,7 +423,7 @@ async function requestOpenAIInsight(
             {
               role: "system",
               content:
-                "You are an operations analyst for small clinics. Interpret only the provided aggregate metrics and diagnostics. Diagnose operational causes, not medical conditions. Return practical, evidence-based recommendations in the requested JSON schema. Do not invent metrics, diagnose medical issues, or mention individual patients.",
+                "You are an operations analyst for small clinics. Interpret only the provided aggregate metrics and diagnostics. Diagnose operational causes, not medical conditions. Return practical, evidence-based recommendations in the requested JSON schema. The score and tone are already calculated from clinic metrics, so copy currentRuleSnapshot.score and currentRuleSnapshot.tone exactly. Do not invent metrics, diagnose medical issues, or mention individual patients.",
             },
             {
               role: "user",
