@@ -455,7 +455,6 @@ function buildCustomerFacingConnectionCopy(args: {
         phaseLabel: "Needs support",
         headline: "Connection needs attention",
         detail:
-          args.lastError.trim() ||
           "We couldn't finish connecting this clinic number yet. The app saved the number and is ready to try again when the issue is resolved.",
         nextStep:
           "Retry the setup. If the same message appears again, finish the number move or verification step and then reconnect.",
@@ -496,7 +495,10 @@ export function buildWhatsAppConnectionSummary(
     requestedPhoneNumber,
     senderPhoneNumber,
     alternatePhoneNumber,
-    lastError: connection?.lastError ?? "",
+    lastError:
+      status === "ERRORED"
+        ? "We couldn't finish connecting this clinic number yet."
+        : connection?.lastError ?? "",
   });
 
   const statusLabelMap: Record<WhatsAppConnectionStatus, string> = {

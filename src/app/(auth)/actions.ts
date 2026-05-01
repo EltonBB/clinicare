@@ -170,7 +170,7 @@ export async function signUpAction(
 
   if (error) {
     return {
-      error: error.message,
+      error: "We couldn't create the account. Check the details and try again.",
       values,
     };
   }
@@ -269,7 +269,7 @@ export async function resendConfirmationAction(
 
   if (error) {
     return {
-      error: error.message,
+      error: "We couldn't resend the verification email right now.",
       values,
     };
   }
@@ -315,16 +315,9 @@ export async function forgotPasswordAction(
 
   const supabase = await createClient();
   const redirectTo = await buildAuthRedirectUrl("/reset-password");
-  const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
     redirectTo,
   });
-
-  if (error) {
-    return {
-      error: error.message,
-      values,
-    };
-  }
 
   return {
     success: `A password reset link was sent to ${parsed.data.email}.`,
@@ -379,7 +372,7 @@ export async function resetPasswordAction(
 
   if (error) {
     return {
-      error: error.message,
+      error: "We couldn't update the password. Request a fresh recovery link and try again.",
       values,
     };
   }
@@ -455,7 +448,7 @@ export async function updateOwnerProfileAction(
 
   if (profileError) {
     return {
-      error: profileError.message,
+      error: "We couldn't update the account profile right now.",
       values,
     };
   }
@@ -467,7 +460,7 @@ export async function updateOwnerProfileAction(
 
     if (passwordError) {
       return {
-        error: passwordError.message,
+        error: "We couldn't update the password right now.",
         values,
       };
     }

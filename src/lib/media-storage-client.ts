@@ -15,6 +15,8 @@ const extensionByMimeType: Record<string, string> = {
   "image/gif": "gif",
 };
 
+const allowedImageTypes = new Set(Object.keys(extensionByMimeType));
+
 export type UploadWorkspaceImageOptions = {
   folder: WorkspaceImageFolder;
   maxBytes: number;
@@ -37,8 +39,8 @@ export async function uploadWorkspaceImage(
   file: File,
   options: UploadWorkspaceImageOptions
 ) {
-  if (!file.type.startsWith("image/")) {
-    throw new Error("Upload an image file.");
+  if (!allowedImageTypes.has(file.type)) {
+    throw new Error("Upload a JPG, PNG, WebP, or GIF image.");
   }
 
   if (file.size > options.maxBytes) {
@@ -63,7 +65,7 @@ export async function uploadWorkspaceImage(
   });
 
   if (error) {
-    throw new Error(error.message);
+    throw new Error("We couldn't upload this image. Try again.");
   }
 
   const { data, error: signedUrlError } = await supabase.storage
@@ -71,7 +73,7 @@ export async function uploadWorkspaceImage(
     .createSignedUrl(path, 60 * 60);
 
   if (signedUrlError) {
-    throw new Error(signedUrlError.message);
+    throw new Error("We couldn't prepare this image for preview. Try again.");
   }
 
   return {
@@ -93,7 +95,7 @@ export async function createSignedImageUrl(storageUrl: string) {
     .createSignedUrl(reference.path, 60 * 60);
 
   if (error) {
-    throw new Error(error.message);
+    throw new Error("We couldn't load this image. Try again.");
   }
 
   return data.signedUrl;

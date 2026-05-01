@@ -38,8 +38,8 @@ export async function GET(request: Request) {
         },
       }
     );
-  } catch (error) {
-    console.error("Reminder cron job failed.", error);
+  } catch {
+    console.error("Reminder cron job failed.");
 
     return NextResponse.json(
       {

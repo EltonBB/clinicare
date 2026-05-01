@@ -362,7 +362,7 @@ export async function sendInboxMessageAction(
         from: senderPhoneNumber,
       });
     }
-  } catch (error) {
+  } catch {
     await prisma.whatsAppConnection.update({
       where: {
         businessId: context.business.id,
@@ -375,10 +375,7 @@ export async function sendInboxMessageAction(
 
     return {
       ok: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "We couldn't send the WhatsApp message.",
+      error: "We couldn't send the WhatsApp message.",
     };
   }
 

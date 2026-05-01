@@ -14,6 +14,7 @@ const protectedPrefixes = [
   "/inbox",
   "/reports",
   "/settings",
+  "/staff",
 ];
 
 const authRoutes = ["/sign-up", "/login", "/confirm-email", "/forgot-password"];

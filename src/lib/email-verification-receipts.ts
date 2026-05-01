@@ -21,15 +21,11 @@ export async function markEmailVerificationReceiptVerified(ticket: string | null
     return;
   }
 
-  await prisma.emailVerificationReceipt.upsert({
+  await prisma.emailVerificationReceipt.updateMany({
     where: {
       ticket,
     },
-    update: {
-      verifiedAt: new Date(),
-    },
-    create: {
-      ticket,
+    data: {
       verifiedAt: new Date(),
     },
   });

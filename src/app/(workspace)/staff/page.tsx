@@ -3,6 +3,11 @@ import { requireCurrentWorkspace } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
 import { buildStaffViewFromRecords } from "@/lib/staff";
 
+function completedAppointmentCutoff() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1);
+}
+
 function staffTimeEntryCutoff() {
   return new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
 }
@@ -34,6 +39,9 @@ export default async function StaffPage({
       appointments: {
         where: {
           status: "COMPLETED",
+          startAt: {
+            gte: completedAppointmentCutoff(),
+          },
         },
         include: {
           client: {
@@ -45,6 +53,7 @@ export default async function StaffPage({
         orderBy: {
           startAt: "desc",
         },
+        take: 50,
       },
     },
     orderBy: [

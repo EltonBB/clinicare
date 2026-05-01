@@ -28,6 +28,7 @@ export default async function ClientsPage({
         orderBy: {
           startAt: "desc",
         },
+        take: 25,
       },
       messages: {
         select: {
@@ -39,6 +40,7 @@ export default async function ClientsPage({
         orderBy: {
           sentAt: "desc",
         },
+        take: 25,
       },
       galleryItems: {
         select: {
@@ -50,6 +52,12 @@ export default async function ClientsPage({
         },
         orderBy: {
           createdAt: "desc",
+        },
+        take: 24,
+      },
+      _count: {
+        select: {
+          appointments: true,
         },
       },
     },

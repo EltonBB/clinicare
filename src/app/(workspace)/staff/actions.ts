@@ -34,6 +34,11 @@ function staffTimeEntryCutoff() {
   return new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
 }
 
+function completedAppointmentCutoff() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1);
+}
+
 async function getAuthedBusiness() {
   const supabase = await createClient();
   const {
@@ -73,6 +78,9 @@ async function fetchStaffRecord(staffId: string, businessId: string) {
       appointments: {
         where: {
           status: "COMPLETED",
+          startAt: {
+            gte: completedAppointmentCutoff(),
+          },
         },
         include: {
           client: {
@@ -84,6 +92,7 @@ async function fetchStaffRecord(staffId: string, businessId: string) {
         orderBy: {
           startAt: "desc",
         },
+        take: 50,
       },
     },
   });

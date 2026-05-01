@@ -240,13 +240,10 @@ export async function saveOnboardingStateAction(
   if (normalizedState.completed) {
     try {
       await bootstrapWorkspaceFromOnboarding(user, normalizedState);
-    } catch (error) {
+    } catch {
       return {
         ok: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "We couldn't create your clinic workspace. Try again.",
+        error: "We couldn't create your clinic workspace. Try again.",
       };
     }
   }
@@ -270,7 +267,7 @@ export async function saveOnboardingStateAction(
   if (error) {
     return {
       ok: false,
-      error: error.message,
+      error: "We couldn't save onboarding right now. Try again.",
     };
   }
 

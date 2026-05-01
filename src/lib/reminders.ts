@@ -1,6 +1,6 @@
 import { addHours, format, isAfter } from "date-fns";
 
-import { phoneLookupKey, normalizePhone } from "@/lib/inbox";
+import { normalizePhone } from "@/lib/inbox";
 import { prisma } from "@/lib/prisma";
 import { sendTwilioWhatsAppMessage } from "@/lib/whatsapp";
 
@@ -187,44 +187,27 @@ export async function syncAppointmentRemindersForBusiness(
       });
 
       await prisma.$transaction(async (tx) => {
-        const businessConversations = await tx.conversation.findMany({
+        const clientConversation = await tx.conversation.upsert({
           where: {
+            businessId_phoneNumber: {
+              businessId,
+              phoneNumber: clientPhone,
+            },
+          },
+          update: {
+            contactName: appointment.client.name,
+            unreadCount: 0,
+          },
+          create: {
             businessId,
+            phoneNumber: clientPhone,
+            contactName: appointment.client.name,
+            unreadCount: 0,
           },
           select: {
             id: true,
-            phoneNumber: true,
-            contactName: true,
           },
         });
-        const existingConversation = businessConversations.find(
-          (conversation) => phoneLookupKey(conversation.phoneNumber) === phoneLookupKey(clientPhone)
-        );
-        const clientConversation = existingConversation
-          ? existingConversation
-          : await tx.conversation.upsert({
-              where: {
-                businessId_phoneNumber: {
-                  businessId,
-                  phoneNumber: clientPhone,
-                },
-              },
-              update: {
-                contactName: appointment.client.name,
-                unreadCount: 0,
-              },
-              create: {
-                businessId,
-                phoneNumber: clientPhone,
-                contactName: appointment.client.name,
-                unreadCount: 0,
-              },
-              select: {
-                id: true,
-                phoneNumber: true,
-                contactName: true,
-              },
-            });
 
         await tx.message.create({
           data: {
@@ -266,13 +249,12 @@ export async function syncAppointmentRemindersForBusiness(
       });
 
       sent += 1;
-    } catch (error) {
+    } catch {
       failed += 1;
       console.error("Failed to send appointment reminder.", {
         businessId,
         appointmentId: appointment.id,
         reminderType,
-        error: error instanceof Error ? error.message : error,
       });
     }
   }

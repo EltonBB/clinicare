@@ -79,6 +79,7 @@ async function fetchClientRecord(clientId: string) {
         orderBy: {
           startAt: "desc",
         },
+        take: 25,
       },
       messages: {
         select: {
@@ -90,6 +91,7 @@ async function fetchClientRecord(clientId: string) {
         orderBy: {
           sentAt: "desc",
         },
+        take: 25,
       },
       galleryItems: {
         select: {
@@ -101,6 +103,12 @@ async function fetchClientRecord(clientId: string) {
         },
         orderBy: {
           createdAt: "desc",
+        },
+        take: 24,
+      },
+      _count: {
+        select: {
+          appointments: true,
         },
       },
     },
@@ -277,13 +285,10 @@ export async function saveClientAction(
       ok: true,
       client: await fetchClientRecord(clientId!),
     };
-  } catch (error) {
+  } catch {
     return {
       ok: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "We couldn't save the client record.",
+      error: "We couldn't save the client record.",
     };
   }
 }

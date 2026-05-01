@@ -22,8 +22,6 @@ export async function resolveMediaDisplayUrl(value: string | null | undefined) {
   if (error) {
     console.error("Failed to create signed media URL.", {
       bucket: reference.bucket,
-      path: reference.path,
-      message: error.message,
     });
     return "";
   }
@@ -64,8 +62,7 @@ export async function deleteStorageReferences(
       if (error) {
         console.error("Failed to delete media objects.", {
           bucket,
-          paths: Array.from(paths),
-          message: error.message,
+          count: paths.size,
         });
       }
     })

@@ -98,7 +98,7 @@ export function AuthConfirmScreen() {
         return;
       }
 
-      if (!authError || (!isRecoveryFlow && !isEmailChangeFlow)) {
+      if (!authError) {
         await markTicketVerified();
         await supabase.auth.signOut();
         setState("verified");

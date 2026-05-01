@@ -116,10 +116,7 @@ async function resolveInboundConnection(toPhone: string, fromPhone: string) {
       return sandboxMatch;
     }
 
-    console.error("Twilio webhook matched multiple connected clinic senders.", {
-      toPhone: normalizedTo,
-      fromPhone: normalizedFrom,
-    });
+    console.error("Twilio webhook matched multiple connected clinic senders.");
     return null;
   }
 
@@ -134,9 +131,7 @@ async function resolveInboundConnection(toPhone: string, fromPhone: string) {
   }
 
   if (requestedMatch.length > 1) {
-    console.error("Twilio webhook matched multiple requested clinic numbers.", {
-      toPhone: normalizedTo,
-    });
+    console.error("Twilio webhook matched multiple requested clinic numbers.");
   }
 
   return null;
@@ -262,9 +257,7 @@ export async function POST(request: Request) {
   );
 
   if (!isValid) {
-    console.error("Rejected Twilio webhook due to invalid signature.", {
-      validationUrls: resolveWebhookValidationUrls(request),
-    });
+    console.error("Rejected Twilio webhook due to invalid signature.");
     return NextResponse.json(
       { error: "Invalid Twilio signature." },
       { status: 403 }
@@ -302,10 +295,7 @@ export async function POST(request: Request) {
   const resolved = await resolveInboundConversation(inboundConnection, from);
 
   if (!resolved) {
-    console.error("Twilio webhook did not match any clinic conversation or client.", {
-      from,
-      to,
-    });
+    console.error("Twilio webhook did not match any clinic conversation or client.");
     return xmlResponse();
   }
 

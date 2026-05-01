@@ -346,13 +346,10 @@ export async function saveAppointmentAction(
       ok: true,
       appointment: await hydrateAppointment(appointmentId!),
     };
-  } catch (error) {
+  } catch {
     return {
       ok: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "We couldn't save the appointment.",
+      error: "We couldn't save the appointment.",
     };
   }
 }

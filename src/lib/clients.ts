@@ -70,6 +70,9 @@ type ClientWithRelations = Client & {
   appointments: Pick<Appointment, "id" | "title" | "startAt" | "status">[];
   messages: Pick<Message, "id" | "body" | "direction" | "sentAt">[];
   galleryItems: Pick<ClientGalleryItem, "id" | "type" | "imageUrl" | "caption" | "createdAt">[];
+  _count?: {
+    appointments: number;
+  };
 };
 
 function formatStatus(value: ClientWithRelations["status"], isArchived: boolean): ClientStatus {
@@ -153,7 +156,7 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
     email: client.email ?? "",
     phone: client.phone,
     lastVisit: formatLastVisit(client),
-    totalVisits: client.appointments.length,
+    totalVisits: client._count?.appointments ?? client.appointments.length,
     status: formatStatus(client.status, client.isArchived),
     notes: client.notes ?? "No notes yet.",
     details: {

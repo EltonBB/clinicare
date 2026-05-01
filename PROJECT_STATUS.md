@@ -10,7 +10,7 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Technical Stack
 
-- Next.js 16.2.2 App Router with React 19.
+- Next.js 16.2.4 App Router with React 19.
 - TypeScript, Tailwind CSS 4, shadcn-style UI components, Radix primitives, Lucide icons.
 - Prisma with PostgreSQL via Supabase.
 - Supabase Auth for email/password authentication and email confirmation.
@@ -44,6 +44,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Reports page with daily, weekly, and monthly metrics, charts, auditable snapshots, full three-timeframe AI refresh, deeper operational diagnostics, root-cause analysis, recommended playbooks, monitoring targets, AI-generated recommendations, metric-driven snapshot scoring, data-backed fallback guidance, customer-safe snapshot metadata, rule-based fallback states, and refresh cooldown protection.
 - Public legal policy pages for Terms of Service, Privacy Policy, and Refund Policy at `/terms-and-conditions`, `/privacy`, and `/refund`, with Vela-specific SaaS, clinic data, messaging, media, AI reports, billing, cancellation, and refund language.
 - First-user workspace tour redesigned as a clean coachmark flow that avoids highlight rings, pauses while drawers/modals are open, and persists completion.
+- Security/performance hardening pass completed: Next Proxy protects all workspace routes including `/staff`, global security headers are configured, user-facing provider/database errors are generic, private media uploads are limited to common raster image formats, email verification receipt updates cannot create arbitrary verified tickets, and expensive client/staff/reminder queries are capped or simplified.
 
 ## Current Working Flows
 
@@ -64,6 +65,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Reports AI manual refresh uses a short cooldown to control cost and prevent accidental repeated refreshes.
 - Supabase media storage uses a private `clinic-media` bucket with authenticated per-user folder policies applied.
 - Supabase database tables use RLS with no public table policies; app data access is intentionally server-side through Prisma.
+- Dependency audit is currently clean after updating Next.js to 16.2.4, refreshing transitive dependencies, and overriding PostCSS to a patched version.
 - Billing/plan enforcement is partially represented in UI; full paid upgrade/payment flow still needs production implementation.
 
 ## Next Priorities
@@ -78,6 +80,7 @@ The core product direction is customer-first: clinics should not need to underst
 ## Testing Checklist
 
 - `npm run lint`
+- `npm audit --omit=dev`
 - `npm run build`
 - New account signup and email confirmation.
 - Onboarding from owner step through completion.
@@ -93,7 +96,8 @@ The core product direction is customer-first: clinics should not need to underst
 - Reports: daily, weekly, monthly metrics, metric-driven snapshot scores, sparse-data states, full three-timeframe AI refresh, diagnosis/root-cause/playbook sections, detailed suggestions, data-backed fallback copy, cooldown behavior, and AI/fallback snapshot states.
 - Public policies: `/terms-and-conditions`, `/privacy`, and `/refund` load without authentication and match the current Vela product scope.
 - Supabase security: public Prisma tables report RLS enabled and anon REST table access returns no rows.
+- Route protection: `/dashboard`, `/calendar`, `/clients`, `/staff`, `/inbox`, `/reports`, and `/settings` redirect unauthenticated users to login.
 
 ## Last Completed Task
 
-- Resolved Supabase `rls_disabled_in_public` warning by enabling Row Level Security on all public Prisma application tables, preserving server-side Prisma access, and adding an auditable SQL file at `docs/supabase-enable-public-rls.sql`. Verified table RLS state, server-side Prisma access, anon REST denial, and lint.
+- Completed a security and performance hardening pass for launch readiness. Migrated from deprecated `middleware.ts` to Next 16 `proxy.ts`, protected `/staff` at the proxy layer, added global security headers, tightened email verification and media upload behavior, replaced customer-facing raw provider errors with generic product-safe messages, reduced sensitive server logs, capped heavy client/staff relation loading, simplified reminder conversation upserts, updated Next.js to 16.2.4, refreshed vulnerable transitive packages, and verified lint, dependency audit, production build, and public table RLS state.

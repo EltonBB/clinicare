@@ -40,6 +40,11 @@ function staffTimeEntryCutoff() {
   return new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
 }
 
+function completedAppointmentCutoff() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1);
+}
+
 export type SaveSettingsResult = {
   ok: boolean;
   error?: string;
@@ -418,7 +423,7 @@ export async function saveSettingsAction(
   if (error) {
     return {
       ok: false,
-      error: error.message,
+      error: "We couldn't update settings right now.",
     };
   }
 
@@ -458,6 +463,9 @@ export async function saveSettingsAction(
         appointments: {
           where: {
             status: "COMPLETED",
+            startAt: {
+              gte: completedAppointmentCutoff(),
+            },
           },
           include: {
             client: {
@@ -469,6 +477,7 @@ export async function saveSettingsAction(
           orderBy: {
             startAt: "desc",
           },
+          take: 50,
         },
       },
       orderBy: {
@@ -697,7 +706,7 @@ export async function sendWhatsAppTestAction(
         business.whatsappNumber ?? ""
       ),
     };
-  } catch (error) {
+  } catch {
     const connection = await prisma.whatsAppConnection.upsert({
       where: {
         businessId: business.id,
@@ -713,10 +722,7 @@ export async function sendWhatsAppTestAction(
         verificationStatus: "FAILED",
         displayNameStatus: "UNKNOWN",
         onboardingStartedAt: null,
-        lastError:
-          error instanceof Error
-            ? error.message
-            : "We couldn't send the WhatsApp sandbox test.",
+        lastError: "We couldn't send the WhatsApp sandbox test.",
         lastSyncedAt: new Date(),
       },
       create: {
@@ -732,20 +738,14 @@ export async function sendWhatsAppTestAction(
         verificationStatus: "FAILED",
         displayNameStatus: "UNKNOWN",
         onboardingStartedAt: null,
-        lastError:
-          error instanceof Error
-            ? error.message
-            : "We couldn't send the WhatsApp sandbox test.",
+        lastError: "We couldn't send the WhatsApp sandbox test.",
         lastSyncedAt: new Date(),
       },
     });
 
     return {
       ok: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "We couldn't send the WhatsApp sandbox test.",
+      error: "We couldn't send the WhatsApp sandbox test.",
       connection: buildWhatsAppConnectionSummary(
         connection,
         business.whatsappNumber ?? ""
@@ -810,13 +810,10 @@ export async function prepareWhatsAppLiveConnectionAction(): Promise<PrepareWhat
         business.whatsappNumber ?? ""
       ),
     };
-  } catch (error) {
+  } catch {
     return {
       ok: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "We couldn't start the clinic WhatsApp connection.",
+      error: "We couldn't start the clinic WhatsApp connection.",
     };
   }
 }
@@ -842,13 +839,10 @@ export async function refreshWhatsAppLiveConnectionAction(): Promise<RefreshWhat
 
   try {
     connection = await syncWhatsAppConnectionForBusiness(business.id);
-  } catch (error) {
+  } catch {
     return {
       ok: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "We couldn't refresh the clinic WhatsApp connection.",
+      error: "We couldn't refresh the clinic WhatsApp connection.",
     };
   }
 
@@ -935,13 +929,10 @@ export async function submitWhatsAppVerificationCodeAction(
         business.whatsappNumber ?? ""
       ),
     };
-  } catch (error) {
+  } catch {
     return {
       ok: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "We couldn't submit the verification code.",
+      error: "We couldn't submit the verification code.",
     };
   }
 }
