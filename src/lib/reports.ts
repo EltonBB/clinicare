@@ -302,6 +302,7 @@ function metricSignature(metrics: ReportMetric[]) {
     value: metric.value,
     delta: metric.delta,
     trend: metric.trend,
+    helper: metric.helper,
   }));
 }
 
@@ -310,6 +311,30 @@ function chartSignature(points: ReportChartPoint[]) {
     label: point.label,
     value: point.value,
   }));
+}
+
+function stableValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => stableValue(item));
+  }
+
+  if (typeof value === "object" && value !== null) {
+    return Object.keys(value as Record<string, unknown>)
+      .sort()
+      .reduce(
+        (result, key) => {
+          result[key] = stableValue((value as Record<string, unknown>)[key]);
+          return result;
+        },
+        {} as Record<string, unknown>
+      );
+  }
+
+  return value ?? null;
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(stableValue(value));
 }
 
 function isAiSnapshotFreshForView(
@@ -328,9 +353,9 @@ function isAiSnapshotFreshForView(
   const payloadDiagnostics = payload.diagnostics ?? null;
 
   return (
-    JSON.stringify(payloadMetrics) === JSON.stringify(metricSignature(metrics)) &&
-    JSON.stringify(payloadTrend) === JSON.stringify(chartSignature(chartPoints)) &&
-    JSON.stringify(payloadDiagnostics) === JSON.stringify(diagnostics)
+    stableJson(payloadMetrics) === stableJson(metricSignature(metrics)) &&
+    stableJson(payloadTrend) === stableJson(chartSignature(chartPoints)) &&
+    stableJson(payloadDiagnostics) === stableJson(diagnostics)
   );
 }
 

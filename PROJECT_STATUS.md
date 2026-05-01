@@ -90,4 +90,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Split full Reports AI refresh into smaller parallel per-timeframe requests so daily, weekly, and monthly analysis no longer depend on one large structured response. This keeps `gpt-4.1-mini` faster and reduces timeout-driven fallback to rules. Verified with lint and production build.
+- Fixed Reports AI snapshot freshness detection so newly generated snapshots are not immediately rejected as stale. The comparison now includes the saved metric helper text and uses stable normalized JSON comparisons for diagnostics. Verified with lint and production build.
