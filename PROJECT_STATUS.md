@@ -40,6 +40,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Reminder settings with configurable first and second reminder hours and editable reminder template.
 - Appearance/branding settings with app accent color and logo update support.
 - Private Supabase Storage-backed uploads for clinic logos and client gallery images, with Prisma/auth metadata storing storage references and the UI resolving short-lived signed display URLs.
+- Supabase public application tables now have Row Level Security enabled so the browser-exposed Supabase anon API cannot read or write Prisma application data without explicit policies.
 - Reports page with daily, weekly, and monthly metrics, charts, auditable snapshots, full three-timeframe AI refresh, deeper operational diagnostics, root-cause analysis, recommended playbooks, monitoring targets, AI-generated recommendations, metric-driven snapshot scoring, data-backed fallback guidance, customer-safe snapshot metadata, rule-based fallback states, and refresh cooldown protection.
 - Public legal policy pages for Terms of Service, Privacy Policy, and Refund Policy at `/terms-and-conditions`, `/privacy`, and `/refund`, with Vela-specific SaaS, clinic data, messaging, media, AI reports, billing, cancellation, and refund language.
 - First-user workspace tour redesigned as a clean coachmark flow that avoids highlight rings, pauses while drawers/modals are open, and persists completion.
@@ -62,6 +63,7 @@ The core product direction is customer-first: clinics should not need to underst
 - AI reports need a valid server-side OpenAI API key in production; otherwise the app records an auditable fallback snapshot and clearly shows that rules are being used.
 - Reports AI manual refresh uses a short cooldown to control cost and prevent accidental repeated refreshes.
 - Supabase media storage uses a private `clinic-media` bucket with authenticated per-user folder policies applied.
+- Supabase database tables use RLS with no public table policies; app data access is intentionally server-side through Prisma.
 - Billing/plan enforcement is partially represented in UI; full paid upgrade/payment flow still needs production implementation.
 
 ## Next Priorities
@@ -90,7 +92,8 @@ The core product direction is customer-first: clinics should not need to underst
 - Settings: WhatsApp status, reminders, branding, logo, plan display.
 - Reports: daily, weekly, monthly metrics, metric-driven snapshot scores, sparse-data states, full three-timeframe AI refresh, diagnosis/root-cause/playbook sections, detailed suggestions, data-backed fallback copy, cooldown behavior, and AI/fallback snapshot states.
 - Public policies: `/terms-and-conditions`, `/privacy`, and `/refund` load without authentication and match the current Vela product scope.
+- Supabase security: public Prisma tables report RLS enabled and anon REST table access returns no rows.
 
 ## Last Completed Task
 
-- Added public Terms of Service, Privacy Policy, and Refund Policy pages tailored to Vela / Clinicare's clinic workspace, client data, private media, messaging, AI reports, subscription billing, cancellation, and refund behavior. Verified with lint and production build.
+- Resolved Supabase `rls_disabled_in_public` warning by enabling Row Level Security on all public Prisma application tables, preserving server-side Prisma access, and adding an auditable SQL file at `docs/supabase-enable-public-rls.sql`. Verified table RLS state, server-side Prisma access, anon REST denial, and lint.
