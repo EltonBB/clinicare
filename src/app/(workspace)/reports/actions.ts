@@ -25,12 +25,20 @@ export async function refreshAnalyticsInsightsAction(): Promise<RefreshAnalytics
   revalidatePath("/dashboard");
 
   const generated = results.filter((result) => result.usedAi).length;
-  const rateLimited = results.find((result) => result.rateLimited);
+  const rateLimitedCount = results.filter((result) => result.rateLimited).length;
+  const allRateLimited = rateLimitedCount === results.length && results.length > 0;
+  const firstRateLimited = results.find((result) => result.rateLimited);
   const message =
-    rateLimited
-      ? rateLimited.message
+    generated > 0 && !allRateLimited
+      ? `Generated fresh analysis for ${generated} timeframe${generated === 1 ? "" : "s"}${
+          rateLimitedCount > 0
+            ? ` and kept ${rateLimitedCount} recent timeframe${rateLimitedCount === 1 ? "" : "s"}`
+            : ""
+        }.`
+      : firstRateLimited
+      ? firstRateLimited.message
       : generated > 0
-      ? `Generated a fresh AI analysis for ${generated} timeframe${generated === 1 ? "" : "s"}.`
+      ? `Generated fresh analysis for ${generated} timeframe${generated === 1 ? "" : "s"}.`
       : results[0]?.message ?? "AI insights were not generated.";
 
   return {

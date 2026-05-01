@@ -89,10 +89,17 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
     setRefreshMessage(null);
 
     startTransition(async () => {
-      const result = await refreshAnalyticsInsightsAction();
-      setRefreshMessage(result.message);
-      setIsRefreshing(false);
-      router.refresh();
+      try {
+        const result = await refreshAnalyticsInsightsAction();
+        setRefreshMessage(result.message);
+        router.refresh();
+      } catch {
+        setRefreshMessage(
+          "Analysis could not refresh right now. Current reports are still using saved metrics."
+        );
+      } finally {
+        setIsRefreshing(false);
+      }
     });
   }
 
@@ -119,6 +126,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                   <button
                     key={item.key}
                     type="button"
+                    aria-pressed={selected}
                     onClick={() => setSelectedPeriod(item.key)}
                     className={cn(
                       "rounded-[0.45rem] px-3 py-2 text-sm font-medium transition-colors",
@@ -630,11 +638,6 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-1">
                 {period.snapshot.statusLabel}
               </span>
-              {period.snapshot.model ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-1">
-                  {period.snapshot.model}
-                </span>
-              ) : null}
               {period.snapshot.generatedAt ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-1">
                   <CalendarDays className="size-3" />

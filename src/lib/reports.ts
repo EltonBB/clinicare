@@ -377,37 +377,71 @@ function statusLabel(status: Appointment["status"]) {
   return "Pending";
 }
 
-function formatDelta(
-  current: number,
-  previous: number,
-  options?: {
-    inverse?: boolean;
-    suffix?: string;
-  }
-): { delta: string; trend: ReportMetricTrend } {
-  const safePrevious = previous === 0 ? 0 : ((current - previous) / previous) * 100;
-  const rawDelta = previous === 0 ? (current === 0 ? 0 : 100) : safePrevious;
-  const normalized = Number.isFinite(rawDelta) ? rawDelta : 0;
-  const absolute = Math.abs(normalized).toFixed(1).replace(/\.0$/, "");
-  const delta = `${normalized >= 0 ? "+" : "-"}${absolute}${options?.suffix ?? "%"}`;
+function formatCountChange(current: number, previous: number) {
+  const change = current - previous;
 
-  if (Math.abs(normalized) < 0.1) {
+  if (change === 0) {
     return {
-      delta: options?.suffix === "%" ? "0%" : "0",
-      trend: "flat",
+      delta: "0",
+      trend: "flat" as const,
     };
   }
 
-  const positive = normalized > 0;
+  return {
+    delta: `${change > 0 ? "+" : ""}${change.toLocaleString("en-US")}`,
+    trend: change > 0 ? ("up" as const) : ("down" as const),
+  };
+}
+
+function formatPointChange(
+  current: number,
+  previous: number,
+  options?: { inverse?: boolean }
+) {
+  const change = current - previous;
+
+  if (Math.abs(change) < 0.1) {
+    return {
+      delta: "0 pts",
+      trend: "flat" as const,
+    };
+  }
+
   const trend = options?.inverse
-    ? positive
+    ? change > 0
       ? "down"
       : "up"
-    : positive
+    : change > 0
       ? "up"
       : "down";
 
-  return { delta, trend };
+  return {
+    delta: `${change > 0 ? "+" : ""}${change.toFixed(1).replace(/\.0$/, "")} pts`,
+    trend: trend as ReportMetricTrend,
+  };
+}
+
+function formatMinuteChange(current: number, previous: number) {
+  const change = current - previous;
+
+  if (change === 0) {
+    return {
+      delta: "0m",
+      trend: "flat" as const,
+    };
+  }
+
+  return {
+    delta: `${change > 0 ? "+" : ""}${change}m`,
+    trend: change > 0 ? ("up" as const) : ("down" as const),
+  };
+}
+
+function unmeasuredDelta(label: string) {
+  return {
+    delta: label,
+    trend: "flat" as const,
+  };
 }
 
 function parseTimeToMinutes(value: string) {
@@ -1499,20 +1533,42 @@ function buildMetrics(args: {
   comparisonLabel: string;
 }) {
   const { current, previous, comparisonLabel } = args;
-  const appointmentDelta = formatDelta(current.scheduledCount, previous.scheduledCount);
-  const completionDelta = formatDelta(current.completionRate, previous.completionRate);
-  const lostSlotDelta = formatDelta(current.lostSlotRate, previous.lostSlotRate, {
-    inverse: true,
-  });
-  const utilizationDelta = formatDelta(current.utilizationRate, previous.utilizationRate);
-  const newClientsDelta = formatDelta(current.newClients, previous.newClients);
-  const repeatVisitDelta = formatDelta(current.repeatVisitRate, previous.repeatVisitRate);
-  const followUpDelta = formatDelta(current.followUpRate, previous.followUpRate);
-  const averageDurationDelta = formatDelta(
-    current.averageVisitLength,
-    previous.averageVisitLength,
-    { suffix: "%" }
+  const appointmentDelta = formatCountChange(current.scheduledCount, previous.scheduledCount);
+  const completionDelta =
+    current.finalizedCount > 0 && previous.finalizedCount > 0
+      ? formatPointChange(current.completionRate, previous.completionRate)
+      : current.finalizedCount > 0
+        ? unmeasuredDelta("Now measured")
+        : unmeasuredDelta("No outcomes");
+  const lostSlotDelta =
+    current.finalizedCount > 0 && previous.finalizedCount > 0
+      ? formatPointChange(current.lostSlotRate, previous.lostSlotRate, { inverse: true })
+      : current.finalizedCount > 0
+        ? unmeasuredDelta("Now measured")
+        : unmeasuredDelta("No outcomes");
+  const utilizationDelta = formatPointChange(
+    current.utilizationRate,
+    previous.utilizationRate
   );
+  const newClientsDelta = formatCountChange(current.newClients, previous.newClients);
+  const repeatVisitDelta =
+    current.completedCount > 0 && previous.completedCount > 0
+      ? formatPointChange(current.repeatVisitRate, previous.repeatVisitRate)
+      : current.completedCount > 0
+        ? unmeasuredDelta("Now measured")
+        : unmeasuredDelta("No visits");
+  const followUpDelta =
+    current.inboundMessages > 0 && previous.inboundMessages > 0
+      ? formatPointChange(current.followUpRate, previous.followUpRate)
+      : current.inboundMessages > 0
+        ? unmeasuredDelta("Now measured")
+        : unmeasuredDelta("No inbound");
+  const averageDurationDelta =
+    current.completedCount > 0 && previous.completedCount > 0
+      ? formatMinuteChange(current.averageVisitLength, previous.averageVisitLength)
+      : current.completedCount > 0
+        ? unmeasuredDelta("Now measured")
+        : unmeasuredDelta("No visits");
 
   return {
     metrics: [
@@ -1525,14 +1581,14 @@ function buildMetrics(args: {
       },
       {
         label: "Completion rate",
-        value: formatPercent(current.completionRate),
+        value: current.finalizedCount > 0 ? formatPercent(current.completionRate) : "-",
         delta: completionDelta.delta,
         trend: completionDelta.trend,
-        helper: comparisonLabel,
+        helper: "Completed vs finalized visits",
       },
       {
         label: "Lost-slot rate",
-        value: formatPercent(current.lostSlotRate),
+        value: current.finalizedCount > 0 ? formatPercent(current.lostSlotRate) : "-",
         delta: lostSlotDelta.delta,
         trend: lostSlotDelta.trend,
         helper: "Cancelled visit pressure",
@@ -1553,7 +1609,7 @@ function buildMetrics(args: {
       },
       {
         label: "Repeat-visit rate",
-        value: formatPercent(current.repeatVisitRate),
+        value: current.completedCount > 0 ? formatPercent(current.repeatVisitRate) : "-",
         delta: repeatVisitDelta.delta,
         trend: repeatVisitDelta.trend,
         helper: "Clients with multiple completed visits",
