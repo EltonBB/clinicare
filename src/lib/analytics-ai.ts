@@ -229,17 +229,6 @@ const AI_PERIOD_SCHEMA = {
 
 const AI_SNAPSHOT_SCHEMA = AI_PERIOD_SCHEMA;
 
-const AI_REFRESH_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["daily", "weekly", "monthly"],
-  properties: {
-    daily: AI_PERIOD_SCHEMA,
-    weekly: AI_PERIOD_SCHEMA,
-    monthly: AI_PERIOD_SCHEMA,
-  },
-} as const;
-
 function getAnalyticsModel() {
   return process.env.OPENAI_ANALYTICS_MODEL?.trim() || "gpt-4.1-mini";
 }
@@ -391,39 +380,10 @@ function buildAllTimeframesPayload(report: ReturnType<typeof buildReportsViewFro
   );
 }
 
-function buildAiRefreshPromptPayload(args: {
-  businessName: string;
-  businessType: string;
-  report: ReturnType<typeof buildReportsViewFromWorkspace>;
-}) {
-  return {
-    clinic: {
-      name: args.businessName,
-      type: args.businessType,
-    },
-    task:
-      "Analyze daily, weekly, and monthly clinic performance together. Return one detailed diagnostic snapshot for each timeframe. Use cross-timeframe patterns, operational diagnostics, staff load, booking behavior, demand windows, status mix, and client mix to explain what changed, the likely root causes, severity, confidence, and what the owner should do next.",
-    timeframes: buildAllTimeframesPayload(args.report),
-    diagnosticInstructions: [
-      "Do not repeat the metrics as a generic summary; diagnose the clinic's operating pattern.",
-      "Tie every root cause to evidence from the provided metrics or diagnostics.",
-      "If evidence is weak or volume is low, say confidence is low and recommend what to monitor next.",
-      "Prefer practical clinic operations advice: booking flow, rebooking, reminders, staff coverage, cancellation recovery, client reactivation, and inbox discipline.",
-    ],
-    guardrails: {
-      doNotInventNumbers: true,
-      doNotMentionPatientsByName: true,
-      useOnlyProvidedMetrics: true,
-      recommendationStyle:
-        "specific operational advice for a clinic owner, tied to the provided stats and timeframe",
-    },
-  };
-}
-
 async function requestOpenAIInsight(
   promptPayload: unknown,
   options?: {
-    schema?: typeof AI_SNAPSHOT_SCHEMA | typeof AI_REFRESH_SCHEMA;
+    schema?: typeof AI_SNAPSHOT_SCHEMA;
     schemaName?: string;
     maxOutputTokens?: number;
   }
@@ -774,15 +734,6 @@ async function upsertSnapshot(args: {
   });
 }
 
-function getPeriodPayload(payload: unknown, period: ReportPeriodKey) {
-  if (typeof payload !== "object" || payload === null) {
-    return null;
-  }
-
-  const value = (payload as Record<string, unknown>)[period];
-  return typeof value === "object" && value !== null ? value : null;
-}
-
 async function getManualCooldownResults(args: {
   businessId: string;
   report: ReturnType<typeof buildReportsViewFromWorkspace>;
@@ -854,11 +805,6 @@ export async function generateAnalyticsSnapshotsForBusiness(
     return cooldownResults;
   }
 
-  const refreshPromptPayload = buildAiRefreshPromptPayload({
-    businessName: workspace.business.name,
-    businessType: workspace.business.businessType,
-    report,
-  });
   const periodPromptPayloads = periods.reduce(
     (payloads, period) => {
       payloads[period] = buildAiPromptPayload({
@@ -872,18 +818,22 @@ export async function generateAnalyticsSnapshotsForBusiness(
     },
     {} as Record<ReportPeriodKey, unknown>
   );
+  const rateLimitedPeriods = new Map(
+    cooldownResults.map((result) => [result.period, result])
+  );
+  const periodsToRefresh = periods.filter((period) => !rateLimitedPeriods.has(period));
 
   try {
-    const aiResult = await requestOpenAIInsight(refreshPromptPayload, {
-      schema: AI_REFRESH_SCHEMA,
-      schemaName: "clinic_analytics_refresh",
-      maxOutputTokens: 3200,
-    });
+    const refreshedResults = await Promise.all(
+      periodsToRefresh.map(async (period): Promise<GenerateAnalyticsSnapshotResult> => {
+        const aiResult = await requestOpenAIInsight(periodPromptPayloads[period], {
+          schema: AI_SNAPSHOT_SCHEMA,
+          schemaName: `clinic_${period}_analytics_snapshot`,
+          maxOutputTokens: 1400,
+        });
 
-    if (!aiResult.ok) {
-      await Promise.all(
-        periods.map((period) =>
-          upsertSnapshot({
+        if (!aiResult.ok) {
+          await upsertSnapshot({
             businessId,
             period,
             report,
@@ -893,40 +843,47 @@ export async function generateAnalyticsSnapshotsForBusiness(
             model: aiResult.model ?? null,
             status: "FALLBACK",
             error: aiResult.error,
-          })
-        )
-      );
+          });
 
-      return periods.map((period): GenerateAnalyticsSnapshotResult => ({
-        ok: false,
-        period,
-        usedAi: false,
-        message: "AI is unavailable right now, so reports are using rule-based insights.",
-      }));
-    }
+          return {
+            ok: false,
+            period,
+            usedAi: false,
+            message: "AI is unavailable right now, so reports are using rule-based insights.",
+          };
+        }
 
-    await Promise.all(
-      periods.map((period) =>
-        upsertSnapshot({
+        await upsertSnapshot({
           businessId,
           period,
           report,
           promptPayload: periodPromptPayloads[period],
-          aiPayload: getPeriodPayload(aiResult.payload, period),
+          aiPayload: aiResult.payload,
           provider: "openai",
           model: aiResult.model,
           status: "GENERATED",
           error: null,
-        })
-      )
+        });
+
+        return {
+          ok: true,
+          period,
+          usedAi: true,
+          message: "AI insight generated.",
+        };
+      })
     );
 
-    return periods.map((period): GenerateAnalyticsSnapshotResult => ({
-      ok: true,
-      period,
-      usedAi: true,
-      message: "AI insight generated.",
-    }));
+    return periods.map(
+      (period) =>
+        rateLimitedPeriods.get(period) ??
+        refreshedResults.find((result) => result.period === period) ?? {
+          ok: false,
+          period,
+          usedAi: false,
+          message: "AI refresh did not return a result for this timeframe.",
+        }
+    );
   } catch (error) {
     const rawMessage =
       error instanceof Error

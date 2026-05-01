@@ -1,6 +1,6 @@
 # Project Status: Vela / Clinicare
 
-Last updated: 2026-04-30
+Last updated: 2026-05-01
 
 ## Product Overview
 
@@ -90,4 +90,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Rebalanced the Reports page so all core metrics appear as report cards, operational statistics live in the main content area, and the snapshot sidebar stays brief with diagnosis, top cause, and next move. Added a short-timeout OpenAI analytics fallback chain so slow or unavailable primary models can retry on faster backup models before rules are used. Verified with lint and production build.
+- Split full Reports AI refresh into smaller parallel per-timeframe requests so daily, weekly, and monthly analysis no longer depend on one large structured response. This keeps `gpt-4.1-mini` faster and reduces timeout-driven fallback to rules. Verified with lint and production build.
