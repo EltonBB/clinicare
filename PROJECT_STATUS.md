@@ -59,6 +59,7 @@ The core product direction is customer-first: clinics should not need to underst
 - True customer-owned WhatsApp number onboarding is not production-ready until the required Twilio Tech Provider / Meta Embedded Signup business setup is available.
 - WhatsApp currently relies on the configured Twilio sender/test setup for validation.
 - AI reports need a valid server-side OpenAI API key in production; otherwise the app records an auditable fallback snapshot and clearly shows that rules are being used.
+- Reports AI manual refresh cooldown is temporarily disabled for production testing and should be restored after validation.
 - Supabase media storage uses a private `clinic-media` bucket with authenticated per-user folder policies applied.
 - Billing/plan enforcement is partially represented in UI; full paid upgrade/payment flow still needs production implementation.
 
@@ -90,4 +91,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Fixed Reports AI snapshot freshness detection so newly generated snapshots are not immediately rejected as stale. The comparison now includes the saved metric helper text and uses stable normalized JSON comparisons for diagnostics. Verified with lint and production build.
+- Temporarily disabled the Reports AI manual refresh cooldown so repeated production testing can verify AI generation, saved snapshot freshness, and fallback behavior without waiting between refreshes. Verified with lint and production build.

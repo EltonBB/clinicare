@@ -4,7 +4,7 @@ import { buildReportsViewFromWorkspace, type ReportPeriodKey } from "@/lib/repor
 import { getReportWorkspaceData } from "@/lib/report-data";
 import { prisma } from "@/lib/prisma";
 
-const manualRefreshCooldownMs = 15 * 60 * 1000;
+const manualRefreshCooldownMs = 0;
 const analyticsRequestTimeoutMs = 50 * 1000;
 const analyticsModelAttemptTimeoutMs = 22 * 1000;
 
