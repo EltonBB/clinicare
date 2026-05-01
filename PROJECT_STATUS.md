@@ -41,6 +41,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Appearance/branding settings with app accent color and logo update support.
 - Private Supabase Storage-backed uploads for clinic logos and client gallery images, with Prisma/auth metadata storing storage references and the UI resolving short-lived signed display URLs.
 - Reports page with daily, weekly, and monthly metrics, charts, auditable snapshots, full three-timeframe AI refresh, deeper operational diagnostics, root-cause analysis, recommended playbooks, monitoring targets, AI-generated recommendations, metric-driven snapshot scoring, data-backed fallback guidance, customer-safe snapshot metadata, rule-based fallback states, and refresh cooldown protection.
+- Public legal policy pages for Terms of Service, Privacy Policy, and Refund Policy at `/terms-and-conditions`, `/privacy`, and `/refund`, with Vela-specific SaaS, clinic data, messaging, media, AI reports, billing, cancellation, and refund language.
 - First-user workspace tour redesigned as a clean coachmark flow that avoids highlight rings, pauses while drawers/modals are open, and persists completion.
 
 ## Current Working Flows
@@ -88,7 +89,8 @@ The core product direction is customer-first: clinics should not need to underst
 - Inbox inbound WhatsApp, outbound reply, unread count, and convert-to-client.
 - Settings: WhatsApp status, reminders, branding, logo, plan display.
 - Reports: daily, weekly, monthly metrics, metric-driven snapshot scores, sparse-data states, full three-timeframe AI refresh, diagnosis/root-cause/playbook sections, detailed suggestions, data-backed fallback copy, cooldown behavior, and AI/fallback snapshot states.
+- Public policies: `/terms-and-conditions`, `/privacy`, and `/refund` load without authentication and match the current Vela product scope.
 
 ## Last Completed Task
 
-- Hardened Reports for shipping: restored the manual refresh cooldown, made refresh failures recover cleanly in the UI, removed raw model names from customer-facing snapshot metadata, changed count/percentage deltas to more accurate units, and made unmeasured metrics display as not measured instead of false zeroes. Verified with lint and production build.
+- Added public Terms of Service, Privacy Policy, and Refund Policy pages tailored to Vela / Clinicare's clinic workspace, client data, private media, messaging, AI reports, subscription billing, cancellation, and refund behavior. Verified with lint and production build.
