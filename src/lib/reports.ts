@@ -168,6 +168,7 @@ type PeriodStats = {
   finalizedCount: number;
   completedCount: number;
   cancelledCount: number;
+  bookedMinutes: number;
   completionRate: number;
   lostSlotRate: number;
   utilizationRate: number;
@@ -240,6 +241,15 @@ function cleanText(value: unknown, fallback: string, maxLength = 420) {
   }
 
   return normalized.slice(0, maxLength);
+}
+
+function optionalCleanText(value: unknown, maxLength = 420) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return normalized ? normalized.slice(0, maxLength) : null;
 }
 
 function cleanActionPriority(value: unknown): "high" | "medium" | "low" {
@@ -579,6 +589,7 @@ function buildPeriodStats(args: {
     finalizedCount: finalizedAppointments.length,
     completedCount: completedAppointments.length,
     cancelledCount: cancelledAppointments.length,
+    bookedMinutes,
     completionRate:
       finalizedAppointments.length > 0
         ? (completedAppointments.length / finalizedAppointments.length) * 100
@@ -850,6 +861,298 @@ function toneFromScore(score: number): ReportSnapshotTone {
   return "attention";
 }
 
+function buildPerformanceSummary(stats: PeriodStats, deltas: {
+  appointments: { delta: string; trend: ReportMetricTrend };
+}) {
+  if (stats.scheduledCount === 0) {
+    return "No appointments are booked in this timeframe yet, so the report is using capacity, client, inbox, and schedule setup data until visit activity starts.";
+  }
+
+  const bookedHours = (stats.bookedMinutes / 60).toFixed(1).replace(/\.0$/, "");
+  const completion =
+    stats.finalizedCount > 0
+      ? `${formatPercent(stats.completionRate)} completion across ${stats.finalizedCount} finalized visit${
+          stats.finalizedCount === 1 ? "" : "s"
+        }`
+      : "no finalized visits yet";
+  const movement =
+    deltas.appointments.trend === "up"
+      ? `booked activity is up ${deltas.appointments.delta}`
+      : deltas.appointments.trend === "down"
+        ? `booked activity is down ${deltas.appointments.delta}`
+        : "booked activity is flat";
+
+  return `${stats.scheduledCount} appointment${stats.scheduledCount === 1 ? "" : "s"} are on the schedule, covering ${bookedHours} booked hour${
+    bookedHours === "1" ? "" : "s"
+  }; ${completion}, and ${movement}.`;
+}
+
+function buildStrength(stats: PeriodStats, periodLabel: string) {
+  if (stats.scheduledCount === 0) {
+    return `There are no booked appointments ${periodLabel}, so the clearest signal is unused capacity rather than visit execution.`;
+  }
+
+  if (stats.finalizedCount === 0) {
+    return `${stats.scheduledCount} appointment${stats.scheduledCount === 1 ? "" : "s"} are booked ${periodLabel}, but none are finalized yet, so execution quality is still unproven.`;
+  }
+
+  if (stats.completionRate >= 90 && stats.lostSlotRate <= 8) {
+    return `Visit execution is reliable: ${formatPercent(stats.completionRate)} completed with only ${formatPercent(
+      stats.lostSlotRate
+    )} lost slots.`;
+  }
+
+  if (stats.utilizationRate >= 70 && stats.utilizationRate <= 92) {
+    return `Capacity is being used well at ${formatPercent(stats.utilizationRate)} schedule utilization, which is a healthy operating range.`;
+  }
+
+  if (stats.newClients > 0) {
+    return `${stats.newClients} new client${stats.newClients === 1 ? "" : "s"} entered the clinic ${periodLabel}, which keeps acquisition moving.`;
+  }
+
+  return `${stats.completedCount} completed visit${stats.completedCount === 1 ? "" : "s"} give the clinic a measurable baseline ${periodLabel}.`;
+}
+
+function buildWatch(stats: PeriodStats) {
+  if (stats.scheduledCount === 0) {
+    return `There are 0 booked appointments while utilization is ${formatPercent(stats.utilizationRate)}, so open capacity is the main issue.`;
+  }
+
+  if (stats.finalizedCount === 0) {
+    return `${stats.scheduledCount} appointment${stats.scheduledCount === 1 ? "" : "s"} are booked but not finalized yet, so completion and lost-slot rates cannot be judged from outcomes.`;
+  }
+
+  if (stats.lostSlotRate > 10) {
+    return `Lost-slot pressure is high at ${formatPercent(stats.lostSlotRate)} across ${stats.cancelledCount} cancelled visit${
+      stats.cancelledCount === 1 ? "" : "s"
+    }. Missed or cancelled visits are the clearest source of preventable leakage.`;
+  }
+
+  if (stats.utilizationRate < 55) {
+    return `Schedule utilization is only ${formatPercent(stats.utilizationRate)}. Open hours are not turning into enough booked care time.`;
+  }
+
+  if (stats.utilizationRate > 95) {
+    return `Schedule utilization is ${formatPercent(stats.utilizationRate)}, which risks overload and weaker patient experience.`;
+  }
+
+  if (stats.repeatVisitRate < 25) {
+    return `Repeat-visit rate is ${formatPercent(stats.repeatVisitRate)}. The clinic is not yet pulling enough return demand from recent patients.`;
+  }
+
+  if (stats.inboundMessages > 0 && stats.followUpRate < 50) {
+    return `Only ${formatPercent(stats.followUpRate)} of inbound message volume is matched by outbound follow-up. Response discipline is still weak.`;
+  }
+
+  return `No single operational risk dominates right now: completion is ${formatPercent(stats.completionRate)}, lost slots are ${formatPercent(stats.lostSlotRate)}, and utilization is ${formatPercent(stats.utilizationRate)}.`;
+}
+
+function buildFocus(stats: PeriodStats) {
+  if (stats.scheduledCount === 0) {
+    return "Create measurable demand first: book upcoming visits, reactivate existing clients, and fill the next available open slots.";
+  }
+
+  if (stats.finalizedCount === 0) {
+    return "Get booked appointments to a clear outcome by confirming attendance, completing finished visits, and marking cancellations quickly.";
+  }
+
+  if (stats.lostSlotRate > 10) {
+    return "Tighten reminders, confirm uncertain appointments earlier, and use the inbox for same-day recovery when a slot is at risk.";
+  }
+
+  if (stats.utilizationRate < 55 && stats.newClients === 0) {
+    return "Push reactivation: bring back older clients, reduce empty hours, and make the next available appointment easier to book.";
+  }
+
+  if (stats.utilizationRate < 55) {
+    return "Keep acquisition active, but turn more demand into attended visits by reducing no-shows and simplifying rescheduling.";
+  }
+
+  if (stats.utilizationRate > 95) {
+    return "Protect quality by adding staff coverage, extending open hours, or creating more buffer between visits.";
+  }
+
+  if (stats.repeatVisitRate < 25) {
+    return "Focus on retention: follow up after completed visits and create a clearer path to the next appointment before the client leaves.";
+  }
+
+  if (stats.inboundMessages > 0 && stats.followUpRate < 50) {
+    return "Improve inbox handling. Faster replies and more outbound follow-up should convert more conversations into booked care.";
+  }
+
+  return "Keep reinforcing what works: preserve completion quality, hold cancellations down, and monitor whether growth stays manageable.";
+}
+
+function buildPrimaryConstraint(stats: PeriodStats) {
+  if (stats.scheduledCount === 0) {
+    return {
+      title: "No booked demand in this timeframe",
+      metric: "Appointments",
+      value: "0 booked",
+      severity: "high" as const,
+    };
+  }
+
+  if (stats.finalizedCount === 0) {
+    return {
+      title: "Booked visits need final outcomes",
+      metric: "Finalized visits",
+      value: "0 finalized",
+      severity: "medium" as const,
+    };
+  }
+
+  if (stats.lostSlotRate > 10) {
+    return {
+      title: "Lost slots are reducing usable capacity",
+      metric: "Lost-slot rate",
+      value: formatPercent(stats.lostSlotRate),
+      severity: "high" as const,
+    };
+  }
+
+  if (stats.utilizationRate < 55) {
+    return {
+      title: "Open capacity is not converting into visits",
+      metric: "Schedule utilization",
+      value: formatPercent(stats.utilizationRate),
+      severity: "high" as const,
+    };
+  }
+
+  if (stats.utilizationRate > 95) {
+    return {
+      title: "Schedule is near overload",
+      metric: "Schedule utilization",
+      value: formatPercent(stats.utilizationRate),
+      severity: "medium" as const,
+    };
+  }
+
+  if (stats.repeatVisitRate < 25) {
+    return {
+      title: "Return demand needs more follow-up",
+      metric: "Repeat-visit rate",
+      value: formatPercent(stats.repeatVisitRate),
+      severity: "medium" as const,
+    };
+  }
+
+  if (stats.inboundMessages > 0 && stats.followUpRate < 50) {
+    return {
+      title: "Inbound demand needs stronger response",
+      metric: "Follow-up coverage",
+      value: formatPercent(stats.followUpRate),
+      severity: "medium" as const,
+    };
+  }
+
+  return {
+    title: "No dominant operating constraint",
+    metric: "Performance score",
+    value: `${scorePeriod(stats)}/100`,
+    severity: "low" as const,
+  };
+}
+
+function buildDynamicPlaybookSteps(stats: PeriodStats) {
+  if (stats.scheduledCount === 0) {
+    return [
+      `Book at least 1 appointment into the open schedule for this period.`,
+      `Use the client list to contact inactive or at-risk clients before the next report.`,
+      "Check utilization again after the schedule has booked minutes to measure.",
+    ];
+  }
+
+  if (stats.finalizedCount === 0) {
+    return [
+      `Confirm the ${stats.scheduledCount} booked appointment${stats.scheduledCount === 1 ? "" : "s"} before they start.`,
+      "Mark each visit completed or cancelled as soon as the outcome is known.",
+      "Refresh reports after outcomes are recorded so completion and lost-slot rates become measurable.",
+    ];
+  }
+
+  if (stats.lostSlotRate > 10) {
+    return [
+      `Review the ${stats.cancelledCount} cancelled visit${stats.cancelledCount === 1 ? "" : "s"} and identify avoidable causes.`,
+      "Send confirmation messages earlier for appointments that look uncertain.",
+      "Offer same-day rescheduling when a cancellation frees a slot.",
+    ];
+  }
+
+  if (stats.utilizationRate < 55) {
+    return [
+      `Raise booked capacity from ${formatPercent(stats.utilizationRate)} toward 70%.`,
+      stats.newClients > 0
+        ? `Convert the ${stats.newClients} new client${stats.newClients === 1 ? "" : "s"} into attended visits.`
+        : "Reactivate inactive clients and fill the next available open slots.",
+      "Review empty hours and move demand toward the quietest parts of the schedule.",
+    ];
+  }
+
+  if (stats.utilizationRate > 95) {
+    return [
+      `Reduce pressure from ${formatPercent(stats.utilizationRate)} utilization toward the 70-92% range.`,
+      "Add buffer time around longer visits or move overflow demand to another staff member.",
+      "Watch completion and cancellation changes after capacity pressure is reduced.",
+    ];
+  }
+
+  if (stats.repeatVisitRate < 25) {
+    return [
+      `Lift repeat visits from ${formatPercent(stats.repeatVisitRate)} toward 25%.`,
+      "Ask completed clients to book their next visit before leaving the clinic.",
+      "Send follow-up messages to completed clients without another visit booked.",
+    ];
+  }
+
+  if (stats.inboundMessages > 0 && stats.followUpRate < 50) {
+    return [
+      `Improve follow-up coverage from ${formatPercent(stats.followUpRate)} toward 80% or higher.`,
+      `Reply to the ${stats.inboundMessages} inbound message${stats.inboundMessages === 1 ? "" : "s"} counted in this period.`,
+      "Turn unresolved conversations into booked visits or clear next steps.",
+    ];
+  }
+
+  return [
+    `Protect ${formatPercent(stats.completionRate)} completion by keeping confirmations consistent.`,
+    `Keep lost slots near ${formatPercent(stats.lostSlotRate)} or lower.`,
+    `Hold utilization inside the healthy 70-92% range; current utilization is ${formatPercent(stats.utilizationRate)}.`,
+  ];
+}
+
+function buildWhatToMonitor(stats: PeriodStats) {
+  const monitors = [
+    {
+      metric: "Appointments",
+      target:
+        stats.scheduledCount === 0
+          ? "Move from 0 booked appointments to at least 1 booked visit."
+          : `Protect or grow the current ${stats.scheduledCount} booked appointment${
+              stats.scheduledCount === 1 ? "" : "s"
+            }.`,
+    },
+    {
+      metric: "Schedule utilization",
+      target: `Current utilization is ${formatPercent(stats.utilizationRate)}; healthy range is 70-92%.`,
+    },
+  ];
+
+  if (stats.finalizedCount > 0) {
+    monitors.push({
+      metric: "Completion rate",
+      target: `Current completion is ${formatPercent(stats.completionRate)}; keep finalized visits above 90% completed.`,
+    });
+  } else {
+    monitors.push({
+      metric: "Finalized visits",
+      target: "Record completed or cancelled outcomes so completion quality becomes measurable.",
+    });
+  }
+
+  return monitors;
+}
+
 function buildSnapshot(
   period: ReportPeriodKey,
   stats: PeriodStats,
@@ -874,53 +1177,12 @@ function buildSnapshot(
           ? `Clinic performance needs watching ${periodLabel}.`
           : `Clinic performance needs attention ${periodLabel}.`;
 
-  const summary =
-    deltas.appointments.trend === "up"
-      ? `Booked activity is moving up ${deltas.appointments.delta} while completion is at ${formatPercent(
-          stats.completionRate
-        )}.`
-      : deltas.appointments.trend === "down"
-        ? `Booked activity is softer ${deltas.appointments.delta}, so demand and retention should be watched closely.`
-        : `Booked activity is steady, giving a clear baseline to improve operational discipline.`;
-
-  const strength =
-    stats.completionRate >= 90 && stats.lostSlotRate <= 8
-      ? `Visit execution is reliable: ${formatPercent(stats.completionRate)} completed with only ${formatPercent(
-          stats.lostSlotRate
-        )} lost slots.`
-      : stats.utilizationRate >= 70 && stats.utilizationRate <= 92
-        ? `Capacity is being used well at ${formatPercent(stats.utilizationRate)} schedule utilization, which is a healthy operating range.`
-        : stats.newClients > 0
-          ? `${stats.newClients} new clients entered the clinic ${periodLabel}, which keeps acquisition moving.`
-          : `The clinic kept a stable operating rhythm ${periodLabel}, which is useful for controlled improvement.`;
-
-  const watch =
-    stats.lostSlotRate > 10
-      ? `Lost-slot pressure is high at ${formatPercent(stats.lostSlotRate)}. Missed or cancelled visits are the clearest source of preventable leakage.`
-      : stats.utilizationRate < 55
-        ? `Schedule utilization is only ${formatPercent(stats.utilizationRate)}. Open hours are not turning into enough booked care time.`
-        : stats.utilizationRate > 95
-          ? `Schedule utilization is ${formatPercent(stats.utilizationRate)}, which risks overload and weaker patient experience.`
-          : stats.repeatVisitRate < 25
-            ? `Repeat-visit rate is ${formatPercent(stats.repeatVisitRate)}. The clinic is not yet pulling enough return demand from recent patients.`
-            : stats.inboundMessages > 0 && stats.followUpRate < 50
-              ? `Only ${formatPercent(stats.followUpRate)} of inbound message volume is matched by outbound follow-up. Response discipline is still weak.`
-              : `No single operational risk dominates right now, so the focus can stay on compounding good scheduling habits.`;
-
-  const focus =
-    stats.lostSlotRate > 10
-      ? "Tighten reminders, confirm uncertain appointments earlier, and use the inbox for same-day recovery when a slot is at risk."
-      : stats.utilizationRate < 55 && stats.newClients === 0
-        ? "Push reactivation: bring back older clients, reduce empty hours, and make the next available appointment easier to book."
-        : stats.utilizationRate < 55
-          ? "Keep acquisition active, but turn more demand into attended visits by reducing no-shows and simplifying rescheduling."
-          : stats.utilizationRate > 95
-            ? "Protect quality by adding staff coverage, extending open hours, or creating more buffer between visits."
-            : stats.repeatVisitRate < 25
-              ? "Focus on retention: follow up after completed visits and create a clearer path to the next appointment before the client leaves."
-              : stats.inboundMessages > 0 && stats.followUpRate < 50
-                ? "Improve inbox handling. Faster replies and more outbound follow-up should convert more conversations into booked care."
-                : "Keep reinforcing what works: preserve completion quality, hold cancellations down, and monitor whether growth stays manageable.";
+  const summary = buildPerformanceSummary(stats, deltas);
+  const strength = buildStrength(stats, periodLabel);
+  const watch = buildWatch(stats);
+  const focus = buildFocus(stats);
+  const primaryConstraint = buildPrimaryConstraint(stats);
+  const monitorTargets = buildWhatToMonitor(stats);
 
   return {
     score,
@@ -936,14 +1198,9 @@ function buildSnapshot(
     deepDive: `${summary} ${watch} ${focus}`,
     rootCauses: [
       {
-        title:
-          stats.lostSlotRate > 10
-            ? "Lost slots are reducing usable capacity"
-            : stats.utilizationRate < 55
-              ? "Open capacity is not converting into visits"
-              : "The main operating constraint is not yet dominant",
-        evidence: watch,
-        severity: tone === "attention" || tone === "watch" ? "high" : "medium",
+        title: primaryConstraint.title,
+        evidence: `${primaryConstraint.metric}: ${primaryConstraint.value}. ${watch}`,
+        severity: primaryConstraint.severity,
       },
       {
         title: "Retention and follow-up need regular monitoring",
@@ -993,48 +1250,54 @@ function buildSnapshot(
     ],
     recommendedPlaybook: {
       name:
-        stats.lostSlotRate > 10
-          ? "Cancellation recovery"
-          : stats.utilizationRate < 55
-            ? "Reactivation and booking lift"
-            : stats.repeatVisitRate < 25
-              ? "Next-visit retention"
-              : "Maintain operating rhythm",
+        stats.scheduledCount === 0
+          ? "Demand creation"
+          : stats.finalizedCount === 0
+            ? "Outcome capture"
+            : stats.lostSlotRate > 10
+              ? "Cancellation recovery"
+              : stats.utilizationRate < 55
+                ? "Reactivation and booking lift"
+                : stats.repeatVisitRate < 25
+                  ? "Next-visit retention"
+                  : "Maintain operating rhythm",
       why: focus,
-      steps: [
-        "Review the highest-risk metric before the next refresh.",
-        "Assign one owner for the next operational action.",
-        "Check whether the same pattern improves in the next period.",
-      ],
+      steps: buildDynamicPlaybookSteps(stats),
     },
-    whatToMonitor: [
-      {
-        metric: "Completion rate",
-        target: "Keep finalized visits above 90% completed.",
-      },
-      {
-        metric: "Schedule utilization",
-        target: "Move booked capacity toward a healthy 70-92% range.",
-      },
-    ],
+    whatToMonitor: monitorTargets,
     source: "rules",
     status: "rules",
     statusLabel: "Rule-based insight",
     auditLabel: "Generated from current clinic metrics without AI.",
     actions: [
       {
-        title: "Protect the strongest signal",
+        title:
+          stats.scheduledCount === 0
+            ? "Create booked demand"
+            : stats.finalizedCount === 0
+              ? "Finalize booked visits"
+              : "Protect the strongest signal",
         detail: strength,
         priority: "medium",
-        metric: "Completion and utilization",
-        expectedImpact: "Preserves the operating behavior currently supporting the score.",
+        metric:
+          stats.scheduledCount === 0
+            ? "Appointments"
+            : stats.finalizedCount === 0
+              ? "Finalized visits"
+              : "Completion and utilization",
+        expectedImpact:
+          stats.scheduledCount === 0
+            ? "Creates the visit data needed for the next report to diagnose performance."
+            : stats.finalizedCount === 0
+              ? "Turns booked visits into measurable completion and lost-slot rates."
+              : `Protects the current ${score}/100 performance score by preserving the strongest metric signal.`,
       },
       {
-        title: "Work the highest risk",
+        title: `Work ${primaryConstraint.metric.toLowerCase()}`,
         detail: focus,
         priority: tone === "attention" || tone === "watch" ? "high" : "medium",
-        metric: "Highest-risk metric",
-        expectedImpact: "Improves the metric most likely to hold back the next report.",
+        metric: primaryConstraint.metric,
+        expectedImpact: `Targets ${primaryConstraint.metric.toLowerCase()} at ${primaryConstraint.value}, the clearest constraint in this timeframe.`,
       },
     ],
   };
@@ -1093,32 +1356,57 @@ function applyAiSnapshot(
     .filter((item): item is Record<string, unknown> => {
       return typeof item === "object" && item !== null;
     })
-    .slice(0, 4)
-    .map((item) => ({
-      title: cleanText(item.title, "Likely cause", 96),
-      evidence: cleanText(item.evidence, fallback.watch, 240),
-      severity: cleanInsightImpact(item.severity),
-    }));
+    .map((item) => {
+      const title = optionalCleanText(item.title, 96);
+      const evidence = optionalCleanText(item.evidence, 240);
+
+      return title && evidence
+        ? {
+            title,
+            evidence,
+            severity: cleanInsightImpact(item.severity),
+          }
+        : null;
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+    .slice(0, 4);
   const statHighlights = rawStatHighlights
     .filter((item): item is Record<string, unknown> => {
       return typeof item === "object" && item !== null;
     })
-    .slice(0, 4)
-    .map((item) => ({
-      label: cleanText(item.label, "Metric", 72),
-      value: cleanText(item.value, "-", 40),
-      readout: cleanText(item.readout, fallback.summary, 180),
-    }));
+    .map((item) => {
+      const label = optionalCleanText(item.label, 72);
+      const value = optionalCleanText(item.value, 40);
+      const readout = optionalCleanText(item.readout, 180);
+
+      return label && value && readout
+        ? {
+            label,
+            value,
+            readout,
+          }
+        : null;
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+    .slice(0, 4);
   const opportunities = rawOpportunities
     .filter((item): item is Record<string, unknown> => {
       return typeof item === "object" && item !== null;
     })
-    .slice(0, 4)
-    .map((item) => ({
-      title: cleanText(item.title, "Improvement opportunity", 96),
-      detail: cleanText(item.detail, fallback.focus, 240),
-      impact: cleanInsightImpact(item.impact),
-    }));
+    .map((item) => {
+      const title = optionalCleanText(item.title, 96);
+      const detail = optionalCleanText(item.detail, 240);
+
+      return title && detail
+        ? {
+            title,
+            detail,
+            impact: cleanInsightImpact(item.impact),
+          }
+        : null;
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+    .slice(0, 4);
   const recommendedPlaybook =
     typeof payload.recommendedPlaybook === "object" && payload.recommendedPlaybook !== null
       ? {
@@ -1142,27 +1430,41 @@ function applyAiSnapshot(
     .filter((item): item is Record<string, unknown> => {
       return typeof item === "object" && item !== null;
     })
-    .slice(0, 4)
-    .map((item) => ({
-      metric: cleanText(item.metric, "Metric", 72),
-      target: cleanText(item.target, "Watch the next report.", 120),
-    }));
+    .map((item) => {
+      const metric = optionalCleanText(item.metric, 72);
+      const target = optionalCleanText(item.target, 120);
+
+      return metric && target
+        ? {
+            metric,
+            target,
+          }
+        : null;
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+    .slice(0, 4);
   const actions = rawActions
     .filter((action): action is Record<string, unknown> => {
       return typeof action === "object" && action !== null;
     })
-    .slice(0, 4)
-    .map((action) => ({
-      title: cleanText(action.title, "Recommended action", 96),
-      detail: cleanText(action.detail ?? action.why, fallback.focus, 280),
-      priority: cleanActionPriority(action.priority),
-      metric: cleanText(action.metric, "Clinic performance", 72),
-      expectedImpact: cleanText(
-        action.expectedImpact,
-        "Expected to improve the next report.",
-        180
-      ),
-    }));
+    .map((action) => {
+      const title = optionalCleanText(action.title, 96);
+      const detail = optionalCleanText(action.detail ?? action.why, 280);
+      const metric = optionalCleanText(action.metric, 72);
+      const expectedImpact = optionalCleanText(action.expectedImpact, 180);
+
+      return title && detail
+        ? {
+            title,
+            detail,
+            priority: cleanActionPriority(action.priority),
+            metric: metric ?? fallback.actions?.[0]?.metric,
+            expectedImpact: expectedImpact ?? undefined,
+          }
+        : null;
+    })
+    .filter((action): action is NonNullable<typeof action> => action !== null)
+    .slice(0, 4);
 
   return {
     score: fallback.score,
@@ -1258,14 +1560,14 @@ function buildMetrics(args: {
       },
       {
         label: "Follow-up coverage",
-        value: current.inboundMessages > 0 ? formatPercent(current.followUpRate) : "—",
+        value: current.inboundMessages > 0 ? formatPercent(current.followUpRate) : "-",
         delta: followUpDelta.delta,
         trend: followUpDelta.trend,
         helper: "Outbound vs inbound messages",
       },
       {
         label: "Avg visit length",
-        value: current.averageVisitLength > 0 ? `${current.averageVisitLength}m` : "—",
+        value: current.averageVisitLength > 0 ? `${current.averageVisitLength}m` : "-",
         delta: averageDurationDelta.delta,
         trend: averageDurationDelta.trend,
         helper: `${current.unreadMessages} unread message${current.unreadMessages === 1 ? "" : "s"}`,
