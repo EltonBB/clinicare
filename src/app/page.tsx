@@ -116,18 +116,18 @@ function SecondaryButton({ href = "/login", children = "Log in" }) {
 
 function HeroMockup() {
   return (
-    <div className="relative mx-auto mt-16 h-[34rem] max-w-6xl sm:h-[40rem] lg:mt-10">
-      <div className="landing-streak landing-streak-left" />
-      <div className="landing-streak landing-streak-right" />
-      <div className="landing-arc" />
+    <div className="relative mx-auto mt-14 flex w-full max-w-[21.5rem] flex-col gap-4 overflow-hidden sm:mt-16 sm:max-w-6xl lg:mt-10 lg:block lg:h-[40rem] lg:overflow-visible">
+      <div className="landing-streak landing-streak-left hidden lg:block" />
+      <div className="landing-streak landing-streak-right hidden lg:block" />
+      <div className="landing-arc hidden lg:block" />
 
-      <div className="landing-float absolute left-1/2 top-8 w-[min(88vw,780px)] -translate-x-1/2 rounded-[1.35rem] border border-[#dce9e7] bg-white/88 p-4 shadow-[0_42px_100px_rgba(16,37,43,0.14)] backdrop-blur">
+      <div className="landing-float relative w-full overflow-hidden rounded-[1.15rem] border border-[#dce9e7] bg-white/88 p-3 shadow-[0_26px_70px_rgba(16,37,43,0.12)] backdrop-blur sm:p-4 lg:absolute lg:left-1/2 lg:top-8 lg:w-[min(88vw,780px)] lg:-translate-x-1/2 lg:overflow-visible lg:rounded-[1.35rem] lg:shadow-[0_42px_100px_rgba(16,37,43,0.14)]">
         <div className="flex h-10 items-center gap-2 border-b border-[#edf3f2] px-1 pb-4">
           <span className="size-2.5 rounded-full bg-[#7fb0ff]" />
           <span className="size-2.5 rounded-full bg-[#e9c85d]" />
           <span className="size-2.5 rounded-full bg-[#3b82f6]" />
-          <span className="ml-5 text-xs font-black text-[#10252b]">Dashboard</span>
-          <span className="ml-auto rounded-full bg-[#f4faf8] px-3 py-1 text-xs font-bold text-[#58716f]">
+          <span className="ml-3 text-xs font-black text-[#10252b] sm:ml-5">Dashboard</span>
+          <span className="ml-auto hidden rounded-full bg-[#f4faf8] px-3 py-1 text-xs font-bold text-[#58716f] sm:inline-flex">
             This week
           </span>
         </div>
@@ -146,7 +146,28 @@ function HeroMockup() {
             ))}
           </aside>
 
-          <div className="min-w-0">
+          <div className="min-w-0 sm:hidden">
+            <div className="grid grid-cols-5 border-b border-l border-[#e8f0ef] text-center text-[9px] font-black text-[#6d8180]">
+              {["Mon", "Tue", "Wed", "Thu", "Fri"].map((day) => (
+                <div key={day} className="border-r border-[#e8f0ef] py-2">
+                  {day}
+                </div>
+              ))}
+            </div>
+            <div className="grid h-44 grid-cols-5 border-l border-[#e8f0ef]">
+              {Array.from({ length: 20 }).map((_, index) => (
+                <div key={index} className="relative border-b border-r border-[#e8f0ef] bg-white">
+                  {[2, 6, 12, 18].includes(index) ? (
+                    <div className="absolute inset-x-1 top-2 rounded-[0.55rem] bg-[#e8f6f1] px-1.5 py-1.5 text-[9px] font-black leading-3 text-[#0d6556]">
+                      {["09:00", "11:15", "13:00", "14:00"][index % 4]}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="hidden min-w-0 sm:block">
             <div className="grid grid-cols-7 border-b border-l border-[#e8f0ef] text-center text-[10px] font-black text-[#6d8180]">
               {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
                 <div key={day} className="border-r border-[#e8f0ef] py-2">
@@ -154,7 +175,7 @@ function HeroMockup() {
                 </div>
               ))}
             </div>
-            <div className="grid h-72 grid-cols-7 border-l border-[#e8f0ef]">
+            <div className="grid h-64 grid-cols-7 border-l border-[#e8f0ef] lg:h-72">
               {Array.from({ length: 35 }).map((_, index) => (
                 <div key={index} className="relative border-b border-r border-[#e8f0ef] bg-white">
                   {[2, 8, 12, 18, 23].includes(index) ? (
@@ -170,7 +191,7 @@ function HeroMockup() {
         </div>
       </div>
 
-      <div className="landing-card-pop absolute left-3 top-[18rem] w-[15.5rem] rounded-[1.1rem] border border-[#dce9e7] bg-white p-4 shadow-[0_28px_70px_rgba(16,37,43,0.14)] sm:left-8 lg:left-12">
+      <div className="landing-card-pop relative w-full overflow-hidden rounded-[1.1rem] border border-[#dce9e7] bg-white p-4 shadow-[0_18px_44px_rgba(16,37,43,0.1)] sm:w-[15.5rem] lg:absolute lg:left-12 lg:top-[18rem] lg:overflow-visible lg:shadow-[0_28px_70px_rgba(16,37,43,0.14)]">
         <div className="flex items-center gap-3">
           <div className="size-12 rounded-full bg-[linear-gradient(135deg,#fdd8d0,#dff4ef)]" />
           <div>
@@ -182,12 +203,13 @@ function HeroMockup() {
           <p>Last visit: Apr 26, 2026</p>
           <p>Next: Tomorrow, 11:00 AM</p>
         </div>
-        <div className="mt-4 rounded-[0.75rem] bg-[#3b82f6] px-3 py-3 text-center text-xs font-black text-white">
-          Send WhatsApp reminder
+        <div className="mt-4 rounded-[0.75rem] bg-[#3b82f6] px-3 py-3 text-center text-xs font-black leading-4 text-white">
+          <span className="sm:hidden">Send reminder</span>
+          <span className="hidden sm:inline">Send WhatsApp reminder</span>
         </div>
       </div>
 
-      <div className="landing-card-pop landing-card-delay absolute right-3 top-[10rem] w-[14rem] rounded-[1.1rem] border border-[#dce9e7] bg-white p-4 shadow-[0_28px_70px_rgba(16,37,43,0.14)] sm:right-10">
+      <div className="landing-card-pop landing-card-delay relative w-full overflow-hidden rounded-[1.1rem] border border-[#dce9e7] bg-white p-4 shadow-[0_18px_44px_rgba(16,37,43,0.1)] sm:w-[14rem] sm:self-end lg:absolute lg:right-10 lg:top-[10rem] lg:overflow-visible lg:shadow-[0_28px_70px_rgba(16,37,43,0.14)]">
         <p className="text-sm font-black text-[#10252b]">Today&apos;s appointments</p>
         <p className="mt-3 text-5xl font-black tracking-[-0.06em] text-[#10252b]">8</p>
         <p className="text-xs font-black text-[#3b82f6]">+20% vs yesterday</p>
@@ -204,10 +226,12 @@ function HeroMockup() {
         </div>
       </div>
 
-      <div className="landing-card-pop landing-card-delay-2 absolute bottom-4 right-8 w-[18rem] rounded-[1.1rem] border border-[#dce9e7] bg-white p-4 shadow-[0_28px_70px_rgba(16,37,43,0.14)]">
+      <div className="landing-card-pop landing-card-delay-2 relative w-full overflow-hidden rounded-[1.1rem] border border-[#dce9e7] bg-white p-4 shadow-[0_18px_44px_rgba(16,37,43,0.1)] sm:w-[18rem] sm:self-center lg:absolute lg:bottom-4 lg:right-8 lg:overflow-visible lg:shadow-[0_28px_70px_rgba(16,37,43,0.14)]">
         <div className="flex items-center justify-between">
           <p className="text-sm font-black text-[#10252b]">AI snapshot</p>
-          <span className="rounded-full bg-[#f7fbfa] px-3 py-1 text-xs font-bold text-[#607774]">This week</span>
+          <span className="hidden rounded-full bg-[#f7fbfa] px-3 py-1 text-xs font-bold text-[#607774] sm:inline-flex">
+            This week
+          </span>
         </div>
         <div className="mt-5 flex items-center gap-4">
           <div className="grid size-20 place-items-center rounded-full border-[7px] border-[#3b82f6] text-center">
@@ -279,7 +303,7 @@ export default function Home() {
       <section id="features" className="bg-[#f5f8fc] px-5 py-24 sm:px-8">
         <div className="mx-auto max-w-7xl">
           <div className="text-center">
-            <h2 className="text-4xl font-black tracking-[-0.055em] text-[#101820] sm:text-5xl">
+            <h2 className="text-3xl font-black leading-tight tracking-[-0.035em] text-[#101820] sm:text-5xl sm:tracking-[-0.055em]">
               Everything flows.
               <span className="block text-[#3b82f6]">So your day can too.</span>
             </h2>
@@ -307,7 +331,7 @@ export default function Home() {
         <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[0.62fr_1fr] lg:items-center">
           <div>
             <p className="text-sm font-black uppercase tracking-[0.18em] text-[#3b82f6]">AI reports</p>
-            <h2 className="mt-5 text-4xl font-black tracking-[-0.055em] text-[#101820] sm:text-5xl">
+            <h2 className="mt-5 text-3xl font-black leading-tight tracking-[-0.035em] text-[#101820] sm:text-5xl sm:tracking-[-0.055em]">
               Insights that help you make better calls.
             </h2>
             <p className="mt-5 max-w-md text-base font-semibold leading-8 text-[#637775]">
@@ -382,7 +406,7 @@ export default function Home() {
       <section id="security" className="bg-[#f5f8fc] px-5 py-24 sm:px-8">
         <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[0.58fr_1fr] lg:items-center">
           <div>
-            <h2 className="text-4xl font-black tracking-[-0.055em] text-[#101820] sm:text-5xl">
+            <h2 className="text-3xl font-black leading-tight tracking-[-0.035em] text-[#101820] sm:text-5xl sm:tracking-[-0.055em]">
               Your data.
               <span className="block text-[#3b82f6]">Always private.</span>
             </h2>
@@ -417,7 +441,7 @@ export default function Home() {
         <div className="mx-auto max-w-7xl overflow-hidden rounded-[1.35rem] border border-[#dce9e7] bg-[radial-gradient(circle_at_88%_12%,rgba(191,215,255,0.58),transparent_34%),#eef5ff] p-8 shadow-[0_28px_80px_rgba(16,37,43,0.08)] sm:p-12">
           <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
             <div>
-              <h2 className="max-w-xl text-4xl font-black tracking-[-0.055em] text-[#101820] sm:text-5xl">
+              <h2 className="max-w-xl text-3xl font-black leading-tight tracking-[-0.035em] text-[#101820] sm:text-5xl sm:tracking-[-0.055em]">
                 Ready to simplify your clinic?
               </h2>
               <p className="mt-4 max-w-xl text-base font-semibold leading-8 text-[#637775]">

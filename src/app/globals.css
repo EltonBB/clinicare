@@ -285,6 +285,22 @@
       -78px 84px 0 -77px rgba(59, 130, 246, 0.08);
   }
 
+  @media (width < 64rem) {
+    .landing-float,
+    .landing-card-pop {
+      animation-name: vela-card-pop;
+      animation-duration: 560ms;
+      animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+      animation-fill-mode: both;
+      will-change: opacity, transform;
+    }
+
+    .landing-card-delay,
+    .landing-card-delay-2 {
+      animation-delay: 80ms;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .section-reveal,
     .section-reveal-delayed,

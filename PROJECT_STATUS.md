@@ -46,7 +46,7 @@ The core product direction is customer-first: clinics should not need to underst
 - First-user workspace tour redesigned as a clean coachmark flow that avoids highlight rings, pauses while drawers/modals are open, and persists completion.
 - Security/performance hardening pass completed: Next Proxy protects all workspace routes including `/staff`, global security headers are configured, user-facing provider/database errors are generic, private media uploads are limited to common raster image formats, email verification receipt updates cannot create arbitrary verified tickets, and expensive client/staff/reminder queries are capped or simplified.
 - Workspace navigation performance pass completed: dynamic workspace routes now have an instant loading shell, all sidebar/mobile nav items use client-side prefetched links, workspace auth/business lookups are request-deduped, non-critical maintenance work runs after the response, and inbox/settings data loads are capped for faster page opens.
-- Public marketing landing page at `/` now uses a simplified animated product-led design inspired by the Dribbble reference, with the default Vela blue accent color, a large hero, floating clinic workspace mockups, compact workflow blocks, AI reporting, privacy messaging, and signup/login CTAs into the auth flow.
+- Public marketing landing page at `/` now uses a simplified animated product-led design inspired by the Dribbble reference, with the default Vela blue accent color, a large hero, floating clinic workspace mockups on desktop, a cleaner stacked mobile preview, compact workflow blocks, AI reporting, privacy messaging, and signup/login CTAs into the auth flow.
 
 ## Current Working Flows
 
@@ -105,4 +105,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Updated the public Vela landing page accent system to match the app's default blue accent color. Replaced the prior green/coral marketing accents across the brand mark, CTAs, product mockups, icons, report visuals, motion streaks, and soft backgrounds while keeping the simplified Dribbble-inspired layout and auth CTAs.
+- Improved public landing page mobile responsiveness. The hero product mockup now switches from the desktop floating composition to a centered stacked mobile layout, uses a compact phone calendar preview, prevents card overflow/clipping, shortens mobile-only mockup labels, and tightens mobile section heading sizing while preserving the desktop landing design.
