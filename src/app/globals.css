@@ -260,13 +260,13 @@
   .landing-streak-left {
     left: 4%;
     top: 36%;
-    background: linear-gradient(90deg, transparent, #0a7f67, transparent);
+    background: linear-gradient(90deg, transparent, #3b82f6, transparent);
   }
 
   .landing-streak-right {
     right: 6%;
     top: 53%;
-    background: linear-gradient(90deg, transparent, #ff6048, transparent);
+    background: linear-gradient(90deg, transparent, #73a7fb, transparent);
     animation-delay: 1.2s;
   }
 
@@ -277,12 +277,12 @@
     top: -2rem;
     height: 40rem;
     width: 40rem;
-    border: 1px solid rgba(10, 127, 103, 0.12);
+    border: 1px solid rgba(59, 130, 246, 0.14);
     border-radius: 999px;
     box-shadow:
-      -26px 28px 0 -25px rgba(10, 127, 103, 0.12),
-      -52px 56px 0 -51px rgba(10, 127, 103, 0.1),
-      -78px 84px 0 -77px rgba(10, 127, 103, 0.08);
+      -26px 28px 0 -25px rgba(59, 130, 246, 0.14),
+      -52px 56px 0 -51px rgba(59, 130, 246, 0.11),
+      -78px 84px 0 -77px rgba(59, 130, 246, 0.08);
   }
 
   @media (prefers-reduced-motion: reduce) {

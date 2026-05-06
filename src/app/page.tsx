@@ -82,8 +82,8 @@ function BrandMark() {
   return (
     <span className="flex items-center gap-3">
       <span className="relative flex size-9 items-center justify-center">
-        <span className="absolute h-8 w-3 -rotate-12 rounded-full bg-[#54b99a]" />
-        <span className="absolute h-8 w-3 rotate-[28deg] rounded-full bg-[#0a7f67]" />
+        <span className="absolute h-8 w-3 -rotate-12 rounded-full bg-[#73a7fb]" />
+        <span className="absolute h-8 w-3 rotate-[28deg] rounded-full bg-[#3b82f6]" />
       </span>
       <span className="text-lg font-black tracking-[0.08em] text-[#101820]">VELA</span>
     </span>
@@ -94,7 +94,7 @@ function PrimaryButton({ href = "/sign-up", children = "Start free" }) {
   return (
     <Link
       href={href}
-      className="group inline-flex h-12 items-center justify-center rounded-[0.8rem] bg-[#ff6048] px-5 text-sm font-extrabold text-white shadow-[0_16px_34px_rgba(255,96,72,0.24)] hover:-translate-y-0.5 hover:bg-[#ee523d] focus-visible:ring-3 focus-visible:ring-[#ff6048]/25"
+      className="group inline-flex h-12 items-center justify-center rounded-[0.8rem] bg-[#3b82f6] px-5 text-sm font-extrabold text-white shadow-[0_16px_34px_rgba(59,130,246,0.24)] hover:-translate-y-0.5 hover:bg-[#2563eb] focus-visible:ring-3 focus-visible:ring-[#3b82f6]/25"
     >
       {children}
       <ArrowRight className="ml-2 size-4 transition-transform group-hover:translate-x-0.5" />
@@ -123,9 +123,9 @@ function HeroMockup() {
 
       <div className="landing-float absolute left-1/2 top-8 w-[min(88vw,780px)] -translate-x-1/2 rounded-[1.35rem] border border-[#dce9e7] bg-white/88 p-4 shadow-[0_42px_100px_rgba(16,37,43,0.14)] backdrop-blur">
         <div className="flex h-10 items-center gap-2 border-b border-[#edf3f2] px-1 pb-4">
-          <span className="size-2.5 rounded-full bg-[#ff7d68]" />
+          <span className="size-2.5 rounded-full bg-[#7fb0ff]" />
           <span className="size-2.5 rounded-full bg-[#e9c85d]" />
-          <span className="size-2.5 rounded-full bg-[#54b99a]" />
+          <span className="size-2.5 rounded-full bg-[#3b82f6]" />
           <span className="ml-5 text-xs font-black text-[#10252b]">Dashboard</span>
           <span className="ml-auto rounded-full bg-[#f4faf8] px-3 py-1 text-xs font-bold text-[#58716f]">
             This week
@@ -138,7 +138,7 @@ function HeroMockup() {
               <div
                 key={item}
                 className={`mb-2 rounded-[0.7rem] px-3 py-2 ${
-                  index === 0 ? "bg-[#e7f6f1] text-[#0a7f67]" : ""
+                  index === 0 ? "bg-[#eef5ff] text-[#3b82f6]" : ""
                 }`}
               >
                 {item}
@@ -182,7 +182,7 @@ function HeroMockup() {
           <p>Last visit: Apr 26, 2026</p>
           <p>Next: Tomorrow, 11:00 AM</p>
         </div>
-        <div className="mt-4 rounded-[0.75rem] bg-[#0a7f67] px-3 py-3 text-center text-xs font-black text-white">
+        <div className="mt-4 rounded-[0.75rem] bg-[#3b82f6] px-3 py-3 text-center text-xs font-black text-white">
           Send WhatsApp reminder
         </div>
       </div>
@@ -190,9 +190,9 @@ function HeroMockup() {
       <div className="landing-card-pop landing-card-delay absolute right-3 top-[10rem] w-[14rem] rounded-[1.1rem] border border-[#dce9e7] bg-white p-4 shadow-[0_28px_70px_rgba(16,37,43,0.14)] sm:right-10">
         <p className="text-sm font-black text-[#10252b]">Today&apos;s appointments</p>
         <p className="mt-3 text-5xl font-black tracking-[-0.06em] text-[#10252b]">8</p>
-        <p className="text-xs font-black text-[#0a7f67]">+20% vs yesterday</p>
-        <div className="mt-5 h-16 rounded-[0.8rem] bg-[linear-gradient(135deg,rgba(84,185,154,0.14),rgba(255,255,255,0.7))]">
-          <svg viewBox="0 0 180 64" className="h-full w-full text-[#0a7f67]">
+        <p className="text-xs font-black text-[#3b82f6]">+20% vs yesterday</p>
+        <div className="mt-5 h-16 rounded-[0.8rem] bg-[linear-gradient(135deg,rgba(59,130,246,0.14),rgba(255,255,255,0.7))]">
+          <svg viewBox="0 0 180 64" className="h-full w-full text-[#3b82f6]">
             <path
               d="M8 48 C 30 12, 46 58, 66 31 S 98 15, 116 30 S 150 16, 172 22"
               fill="none"
@@ -210,8 +210,8 @@ function HeroMockup() {
           <span className="rounded-full bg-[#f7fbfa] px-3 py-1 text-xs font-bold text-[#607774]">This week</span>
         </div>
         <div className="mt-5 flex items-center gap-4">
-          <div className="grid size-20 place-items-center rounded-full border-[7px] border-[#0a7f67] text-center">
-            <span className="text-2xl font-black leading-none text-[#0a7f67]">86</span>
+          <div className="grid size-20 place-items-center rounded-full border-[7px] border-[#3b82f6] text-center">
+            <span className="text-2xl font-black leading-none text-[#3b82f6]">86</span>
           </div>
           <div>
             <p className="text-sm font-black text-[#10252b]">Excellent week</p>
@@ -234,15 +234,15 @@ function HeroMockup() {
 
 export default function Home() {
   return (
-    <main className="min-h-screen overflow-hidden bg-[#f6fbfa] text-[#10252b]">
-      <section className="relative overflow-hidden bg-[radial-gradient(circle_at_72%_20%,rgba(179,229,216,0.35),transparent_38%),linear-gradient(180deg,#f7fcfb_0%,#f2faf8_100%)]">
+    <main className="min-h-screen overflow-hidden bg-[#f5f8fc] text-[#10252b]">
+      <section className="relative overflow-hidden bg-[radial-gradient(circle_at_72%_20%,rgba(191,215,255,0.44),transparent_38%),linear-gradient(180deg,#f8fbff_0%,#eef5ff_100%)]">
         <header className="relative z-20 mx-auto flex max-w-7xl items-center justify-between px-5 py-6 sm:px-8">
           <Link href="/" aria-label="Vela home">
             <BrandMark />
           </Link>
           <nav className="hidden items-center gap-10 text-sm font-extrabold text-[#344a4f] lg:flex">
             {navItems.map((item) => (
-              <Link key={item.label} href={item.href} className="hover:text-[#0a7f67]">
+              <Link key={item.label} href={item.href} className="hover:text-[#3b82f6]">
                 {item.label}
               </Link>
             ))}
@@ -250,7 +250,7 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <Link
               href="/login"
-              className="hidden text-sm font-extrabold text-[#344a4f] hover:text-[#0a7f67] sm:inline"
+              className="hidden text-sm font-extrabold text-[#344a4f] hover:text-[#3b82f6] sm:inline"
             >
               Log in
             </Link>
@@ -276,12 +276,12 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="features" className="bg-[#f6fbfa] px-5 py-24 sm:px-8">
+      <section id="features" className="bg-[#f5f8fc] px-5 py-24 sm:px-8">
         <div className="mx-auto max-w-7xl">
           <div className="text-center">
             <h2 className="text-4xl font-black tracking-[-0.055em] text-[#101820] sm:text-5xl">
               Everything flows.
-              <span className="block text-[#0a7f67]">So your day can too.</span>
+              <span className="block text-[#3b82f6]">So your day can too.</span>
             </h2>
           </div>
           <div className="mt-16 grid gap-10 md:grid-cols-4">
@@ -289,7 +289,7 @@ export default function Home() {
               const Icon = item.icon;
               return (
                 <article key={item.title} className="landing-reveal text-center">
-                  <div className="mx-auto grid size-16 place-items-center rounded-[1rem] bg-[#e7f6f1] text-[#0a7f67]">
+                  <div className="mx-auto grid size-16 place-items-center rounded-[1rem] bg-[#eef5ff] text-[#3b82f6]">
                     <Icon className="size-7" />
                   </div>
                   <h3 className="mt-6 text-lg font-black text-[#10252b]">{item.title}</h3>
@@ -303,10 +303,10 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="flow" className="bg-[#f6fbfa] px-5 py-20 sm:px-8">
+      <section id="flow" className="bg-[#f5f8fc] px-5 py-20 sm:px-8">
         <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[0.62fr_1fr] lg:items-center">
           <div>
-            <p className="text-sm font-black uppercase tracking-[0.18em] text-[#0a7f67]">AI reports</p>
+            <p className="text-sm font-black uppercase tracking-[0.18em] text-[#3b82f6]">AI reports</p>
             <h2 className="mt-5 text-4xl font-black tracking-[-0.055em] text-[#101820] sm:text-5xl">
               Insights that help you make better calls.
             </h2>
@@ -320,7 +320,7 @@ export default function Home() {
                 "Personalized improvement suggestions",
               ].map((item) => (
                 <div key={item} className="flex items-center gap-3 text-sm font-black text-[#10252b]">
-                  <CheckCircle2 className="size-5 fill-[#0a7f67] text-white" />
+                  <CheckCircle2 className="size-5 fill-[#3b82f6] text-white" />
                   {item}
                 </div>
               ))}
@@ -338,15 +338,15 @@ export default function Home() {
               {reportStats.map(([label, value, change]) => (
                 <div key={label} className="rounded-[0.9rem] border border-[#edf3f2] bg-[#fbfefd] p-4">
                   <p className="text-xs font-black text-[#637775]">{label}</p>
-                  <p className="mt-2 text-2xl font-black tracking-[-0.04em] text-[#0a7f67]">{value}</p>
-                  <p className="mt-1 text-xs font-black text-[#0a7f67]">{change} vs last month</p>
+                  <p className="mt-2 text-2xl font-black tracking-[-0.04em] text-[#3b82f6]">{value}</p>
+                  <p className="mt-1 text-xs font-black text-[#3b82f6]">{change} vs last month</p>
                 </div>
               ))}
             </div>
             <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_0.78fr]">
               <div className="rounded-[1rem] border border-[#edf3f2] p-5">
                 <p className="text-sm font-black text-[#10252b]">Trend</p>
-                <svg viewBox="0 0 520 220" className="mt-6 h-56 w-full text-[#0a7f67]">
+                <svg viewBox="0 0 520 220" className="mt-6 h-56 w-full text-[#3b82f6]">
                   <path
                     d="M10 170 C 45 98, 80 110, 116 138 S 178 38, 224 92 S 300 70, 340 58 S 420 92, 500 42"
                     fill="none"
@@ -364,12 +364,12 @@ export default function Home() {
                 <div className="mt-5 space-y-4">
                   {recommendations.map((item) => (
                     <div key={item} className="flex gap-3 text-sm font-semibold leading-6 text-[#637775]">
-                      <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-[#0a7f67]" />
+                      <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-[#3b82f6]" />
                       {item}
                     </div>
                   ))}
                 </div>
-                <Link href="/sign-up" className="mt-7 inline-flex items-center text-sm font-black text-[#0a7f67]">
+                <Link href="/sign-up" className="mt-7 inline-flex items-center text-sm font-black text-[#3b82f6]">
                   View full AI report
                   <ArrowRight className="ml-2 size-4" />
                 </Link>
@@ -379,12 +379,12 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="security" className="bg-[#f6fbfa] px-5 py-24 sm:px-8">
+      <section id="security" className="bg-[#f5f8fc] px-5 py-24 sm:px-8">
         <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[0.58fr_1fr] lg:items-center">
           <div>
             <h2 className="text-4xl font-black tracking-[-0.055em] text-[#101820] sm:text-5xl">
               Your data.
-              <span className="block text-[#0a7f67]">Always private.</span>
+              <span className="block text-[#3b82f6]">Always private.</span>
             </h2>
             <p className="mt-5 max-w-md text-base font-semibold leading-8 text-[#637775]">
               Vela is designed so each clinic sees its own workspace, client records,
@@ -401,7 +401,7 @@ export default function Home() {
                     index > 0 ? "border-t border-[#dce9e7] md:border-l md:border-t-0" : ""
                   }`}
                 >
-                  <div className="mx-auto grid size-16 place-items-center rounded-[1rem] bg-[#e7f6f1] text-[#0a7f67]">
+                  <div className="mx-auto grid size-16 place-items-center rounded-[1rem] bg-[#eef5ff] text-[#3b82f6]">
                     <SecurityIcon className="size-7" />
                   </div>
                   <h3 className="mt-6 text-base font-black text-[#10252b]">{item.title}</h3>
@@ -413,8 +413,8 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="bg-[#f6fbfa] px-5 pb-16 sm:px-8">
-        <div className="mx-auto max-w-7xl overflow-hidden rounded-[1.35rem] border border-[#dce9e7] bg-[radial-gradient(circle_at_88%_12%,rgba(179,229,216,0.46),transparent_34%),#eef8f5] p-8 shadow-[0_28px_80px_rgba(16,37,43,0.08)] sm:p-12">
+      <section className="bg-[#f5f8fc] px-5 pb-16 sm:px-8">
+        <div className="mx-auto max-w-7xl overflow-hidden rounded-[1.35rem] border border-[#dce9e7] bg-[radial-gradient(circle_at_88%_12%,rgba(191,215,255,0.58),transparent_34%),#eef5ff] p-8 shadow-[0_28px_80px_rgba(16,37,43,0.08)] sm:p-12">
           <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
             <div>
               <h2 className="max-w-xl text-4xl font-black tracking-[-0.055em] text-[#101820] sm:text-5xl">
@@ -432,7 +432,7 @@ export default function Home() {
         </div>
       </section>
 
-      <footer className="bg-[#f6fbfa] px-5 py-8 sm:px-8">
+      <footer className="bg-[#f5f8fc] px-5 py-8 sm:px-8">
         <div className="mx-auto flex max-w-7xl flex-col gap-6 text-xs font-bold text-[#637775] md:flex-row md:items-center md:justify-between">
           <BrandMark />
           <div className="flex flex-wrap gap-6">
