@@ -4,229 +4,229 @@ import {
   ArrowRight,
   BarChart3,
   CalendarDays,
-  Check,
-  ChevronRight,
-  FileImage,
+  CheckCircle2,
   LockKeyhole,
-  MessageSquareText,
-  Play,
+  MessageCircle,
   ShieldCheck,
-  Sparkles,
-  Star,
   UsersRound,
-  Zap,
 } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Vela | Clinic operating system",
   description:
-    "Run bookings, clients, staff, WhatsApp reminders, private media, and AI clinic reports from one calm workspace.",
+    "Run bookings, clients, reminders, private media, and AI clinic reports from one calm workspace.",
 };
 
-const navItems = ["Product", "Workflows", "Reports", "Security", "Pricing"];
-
-const proofPoints = [
-  "Built for appointment-led clinics",
-  "Private client galleries",
-  "WhatsApp-ready workflows",
-  "AI reporting with rule fallback",
+const navItems = [
+  { label: "Features", href: "#features" },
+  { label: "How it works", href: "#flow" },
+  { label: "Security", href: "#security" },
+  { label: "Pricing", href: "/pricing" },
 ];
 
-const workflow = [
+const flowItems = [
   {
-    title: "Book the visit",
-    detail: "Create appointments inside clinic hours, assign staff, and keep today clear.",
+    title: "Manage bookings",
+    copy: "Smart calendar, staff schedules, and clean appointment flow.",
     icon: CalendarDays,
   },
   {
-    title: "Know the client",
-    detail: "See history, notes, messages, and private photos before every appointment.",
+    title: "Care for clients",
+    copy: "Profiles, visit history, notes, messages, and private media.",
     icon: UsersRound,
   },
   {
-    title: "Follow up faster",
-    detail: "Reply from the inbox and send reminder workflows without exposing providers.",
-    icon: MessageSquareText,
+    title: "Stay in touch",
+    copy: "WhatsApp-ready reminders and inbox context for follow-up.",
+    icon: MessageCircle,
   },
   {
-    title: "Improve the clinic",
-    detail: "Use daily, weekly, and monthly analysis to catch weak spots early.",
+    title: "Improve with AI",
+    copy: "Reports that explain trends, risks, and next actions.",
     icon: BarChart3,
   },
 ];
 
-const featureBands = [
+const reportStats = [
+  ["Completion", "92%", "+12%"],
+  ["No-show risk", "8%", "-10%"],
+  ["New clients", "24", "+33%"],
+  ["Follow-up", "81%", "+15%"],
+];
+
+const recommendations = [
+  "Move three quiet slots into posted hours.",
+  "Follow up with inactive clients this week.",
+  "Keep morning capacity protected for repeat visits.",
+];
+
+const securityHighlights = [
   {
-    title: "A calendar that protects the day",
-    detail:
-      "Appointments, clients, staff, operating hours, and completion status stay connected, so the clinic team can trust the schedule.",
-    stat: "4 views",
-    label: "Schedule control",
-    icon: CalendarDays,
+    title: "Private by design",
+    copy: "Client photos and records are scoped to the clinic.",
+    icon: ShieldCheck,
   },
   {
-    title: "Client records with visual context",
-    detail:
-      "Keep notes, visit history, message context, and private before/after style gallery images in the same record.",
-    stat: "Private",
-    label: "Media by clinic",
-    icon: FileImage,
+    title: "Secure workspace",
+    copy: "Protected routes keep clinic tools behind auth.",
+    icon: LockKeyhole,
   },
   {
-    title: "Inbox and reminders in one flow",
-    detail:
-      "Manage conversations, unread messages, unknown contacts, and reminder templates from the workspace.",
-    stat: "Live",
-    label: "WhatsApp inbox",
-    icon: MessageSquareText,
+    title: "You stay in control",
+    copy: "Clean policies and simple account access.",
+    icon: CheckCircle2,
   },
 ];
 
-const reportCards = [
-  "Schedule utilization",
-  "Completion rate",
-  "Follow-up coverage",
-  "Repeat visits",
-  "Staff load",
-  "At-risk clients",
-];
-
-const securityItems = [
-  "Clinic-scoped data access",
-  "Private media storage",
-  "Short-lived image display URLs",
-  "Server-side database access",
-  "Protected workspace routes",
-  "Customer-safe error states",
-];
-
-const faqs = [
-  {
-    question: "Is Vela only for medical clinics?",
-    answer:
-      "No. Vela is designed for appointment-based clinics, med spas, beauty clinics, wellness teams, and similar service businesses that need a clean operating workspace.",
-  },
-  {
-    question: "Can a clinic test it before committing?",
-    answer:
-      "Yes. The primary path is to start free, set up a workspace, add clients, create appointments, and test reports with real clinic-style workflows.",
-  },
-  {
-    question: "Does Vela expose technical provider details?",
-    answer:
-      "No. The product language stays focused on clinic workflows. Provider complexity stays behind simple states and support-friendly messages.",
-  },
-];
-
-function CtaButtons({ compact = false }: { compact?: boolean }) {
+function BrandMark() {
   return (
-    <div className="flex flex-col gap-3 sm:flex-row">
-      <Link
-        href="/sign-up"
-        className="group inline-flex h-12 items-center justify-center rounded-[0.9rem] bg-[#e36f54] px-5 text-sm font-extrabold text-white shadow-[0_18px_38px_rgba(227,111,84,0.28)] hover:-translate-y-0.5 hover:bg-[#d86149] focus-visible:ring-3 focus-visible:ring-[#e36f54]/30"
-      >
-        Start free
-        <ArrowRight className="ml-2 size-4 transition-transform group-hover:translate-x-0.5" />
-      </Link>
-      <Link
-        href={compact ? "/pricing" : "#product-tour"}
-        className="inline-flex h-12 items-center justify-center rounded-[0.9rem] border border-[#c8d7dc] bg-white/82 px-5 text-sm font-bold text-[#12303a] shadow-[0_14px_30px_rgba(18,48,58,0.06)] hover:-translate-y-0.5 hover:border-[#8bb7af] hover:bg-white"
-      >
-        {compact ? "See pricing" : "Watch product tour"}
-        {compact ? (
-          <ChevronRight className="ml-2 size-4" />
-        ) : (
-          <Play className="ml-2 size-4 fill-current" />
-        )}
-      </Link>
-    </div>
+    <span className="flex items-center gap-3">
+      <span className="relative flex size-9 items-center justify-center">
+        <span className="absolute h-8 w-3 -rotate-12 rounded-full bg-[#54b99a]" />
+        <span className="absolute h-8 w-3 rotate-[28deg] rounded-full bg-[#0a7f67]" />
+      </span>
+      <span className="text-lg font-black tracking-[0.08em] text-[#101820]">VELA</span>
+    </span>
   );
 }
 
-function ProductScene() {
+function PrimaryButton({ href = "/sign-up", children = "Start free" }) {
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-      <div className="absolute inset-0 bg-[linear-gradient(110deg,rgba(248,251,252,0.95)_0%,rgba(238,247,244,0.72)_44%,rgba(255,246,242,0.72)_100%)]" />
-      <div className="absolute left-[5vw] top-28 hidden h-[32rem] w-[48rem] rotate-[-4deg] rounded-[1.4rem] border border-white/80 bg-white/58 shadow-[0_40px_100px_rgba(18,48,58,0.14)] backdrop-blur-md lg:block">
-        <div className="flex h-14 items-center gap-2 border-b border-[#d7e4e7]/70 px-5">
-          <span className="size-3 rounded-full bg-[#e36f54]" />
-          <span className="size-3 rounded-full bg-[#e8bd5f]" />
-          <span className="size-3 rounded-full bg-[#45a88a]" />
-          <span className="ml-4 text-xs font-bold text-[#67818a]">Clinic dashboard</span>
+    <Link
+      href={href}
+      className="group inline-flex h-12 items-center justify-center rounded-[0.8rem] bg-[#ff6048] px-5 text-sm font-extrabold text-white shadow-[0_16px_34px_rgba(255,96,72,0.24)] hover:-translate-y-0.5 hover:bg-[#ee523d] focus-visible:ring-3 focus-visible:ring-[#ff6048]/25"
+    >
+      {children}
+      <ArrowRight className="ml-2 size-4 transition-transform group-hover:translate-x-0.5" />
+    </Link>
+  );
+}
+
+function SecondaryButton({ href = "/login", children = "Log in" }) {
+  return (
+    <Link
+      href={href}
+      className="group inline-flex h-12 items-center justify-center rounded-[0.8rem] border border-[#d9e7e6] bg-white px-5 text-sm font-extrabold text-[#10252b] shadow-[0_12px_26px_rgba(16,37,43,0.06)] hover:-translate-y-0.5 hover:border-[#b9d5d0]"
+    >
+      {children}
+      <ArrowRight className="ml-2 size-4 transition-transform group-hover:translate-x-0.5" />
+    </Link>
+  );
+}
+
+function HeroMockup() {
+  return (
+    <div className="relative mx-auto mt-16 h-[34rem] max-w-6xl sm:h-[40rem] lg:mt-10">
+      <div className="landing-streak landing-streak-left" />
+      <div className="landing-streak landing-streak-right" />
+      <div className="landing-arc" />
+
+      <div className="landing-float absolute left-1/2 top-8 w-[min(88vw,780px)] -translate-x-1/2 rounded-[1.35rem] border border-[#dce9e7] bg-white/88 p-4 shadow-[0_42px_100px_rgba(16,37,43,0.14)] backdrop-blur">
+        <div className="flex h-10 items-center gap-2 border-b border-[#edf3f2] px-1 pb-4">
+          <span className="size-2.5 rounded-full bg-[#ff7d68]" />
+          <span className="size-2.5 rounded-full bg-[#e9c85d]" />
+          <span className="size-2.5 rounded-full bg-[#54b99a]" />
+          <span className="ml-5 text-xs font-black text-[#10252b]">Dashboard</span>
+          <span className="ml-auto rounded-full bg-[#f4faf8] px-3 py-1 text-xs font-bold text-[#58716f]">
+            This week
+          </span>
         </div>
-        <div className="grid grid-cols-[170px_1fr] gap-4 p-5">
-          <div className="space-y-3">
-            {["Dashboard", "Calendar", "Clients", "Reports"].map((item, index) => (
+
+        <div className="grid gap-4 pt-5 lg:grid-cols-[155px_1fr]">
+          <aside className="hidden rounded-[1rem] bg-[#f7fbfa] p-4 text-xs font-bold text-[#607774] lg:block">
+            {["Overview", "Calendar", "Clients", "Inbox", "Reports"].map((item, index) => (
               <div
                 key={item}
-                className={`rounded-[0.75rem] px-3 py-3 text-xs font-bold ${
-                  index === 0 ? "bg-[#eaf7f2] text-[#1c6958]" : "bg-white/66 text-[#6a8088]"
+                className={`mb-2 rounded-[0.7rem] px-3 py-2 ${
+                  index === 0 ? "bg-[#e7f6f1] text-[#0a7f67]" : ""
                 }`}
               >
                 {item}
               </div>
             ))}
-          </div>
-          <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                ["Today", "12 visits"],
-                ["Completion", "94%"],
-                ["Unread", "3"],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded-[0.9rem] bg-white/86 p-4 shadow-sm">
-                  <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#78909a]">
-                    {label}
-                  </p>
-                  <p className="mt-2 text-xl font-extrabold text-[#12303a]">{value}</p>
+          </aside>
+
+          <div className="min-w-0">
+            <div className="grid grid-cols-7 border-b border-l border-[#e8f0ef] text-center text-[10px] font-black text-[#6d8180]">
+              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+                <div key={day} className="border-r border-[#e8f0ef] py-2">
+                  {day}
                 </div>
               ))}
             </div>
-            <div className="rounded-[1rem] bg-white/88 p-4">
-              <div className="mb-4 flex items-center justify-between">
-                <p className="text-sm font-extrabold text-[#12303a]">Appointments</p>
-                <p className="text-xs font-bold text-[#45a88a]">Open slots protected</p>
-              </div>
-              <div className="space-y-3">
-                {[
-                  ["09:30", "Mira Jensen", "Facial follow-up"],
-                  ["11:00", "Alex Barta", "Laser consultation"],
-                  ["14:15", "Noemi Hart", "Review photos"],
-                ].map(([time, name, detail]) => (
-                  <div key={time} className="grid grid-cols-[64px_1fr] rounded-[0.8rem] bg-[#f5faf8] p-3">
-                    <span className="text-xs font-extrabold text-[#45a88a]">{time}</span>
-                    <span>
-                      <span className="block text-sm font-extrabold text-[#12303a]">{name}</span>
-                      <span className="block text-xs text-[#6f858c]">{detail}</span>
-                    </span>
-                  </div>
-                ))}
-              </div>
+            <div className="grid h-72 grid-cols-7 border-l border-[#e8f0ef]">
+              {Array.from({ length: 35 }).map((_, index) => (
+                <div key={index} className="relative border-b border-r border-[#e8f0ef] bg-white">
+                  {[2, 8, 12, 18, 23].includes(index) ? (
+                    <div className="absolute inset-x-2 top-3 rounded-[0.65rem] bg-[#e8f6f1] px-2 py-2 text-[10px] font-black leading-4 text-[#0d6556]">
+                      {["09:00", "10:30", "13:00", "11:15", "14:00"][index % 5]}
+                      <span className="block font-bold text-[#62807b]">Client visit</span>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
             </div>
           </div>
         </div>
       </div>
-      <div className="absolute right-[7vw] top-24 hidden h-[27rem] w-[24rem] rotate-[5deg] rounded-[1.25rem] border border-white/80 bg-white/72 p-5 shadow-[0_34px_90px_rgba(18,48,58,0.13)] backdrop-blur-md md:block">
+
+      <div className="landing-card-pop absolute left-3 top-[18rem] w-[15.5rem] rounded-[1.1rem] border border-[#dce9e7] bg-white p-4 shadow-[0_28px_70px_rgba(16,37,43,0.14)] sm:left-8 lg:left-12">
+        <div className="flex items-center gap-3">
+          <div className="size-12 rounded-full bg-[linear-gradient(135deg,#fdd8d0,#dff4ef)]" />
+          <div>
+            <p className="text-sm font-black text-[#10252b]">Sofia Martinez</p>
+            <p className="text-xs font-bold text-[#748986]">Returning client</p>
+          </div>
+        </div>
+        <div className="mt-4 space-y-2 text-xs font-bold text-[#607774]">
+          <p>Last visit: Apr 26, 2026</p>
+          <p>Next: Tomorrow, 11:00 AM</p>
+        </div>
+        <div className="mt-4 rounded-[0.75rem] bg-[#0a7f67] px-3 py-3 text-center text-xs font-black text-white">
+          Send WhatsApp reminder
+        </div>
+      </div>
+
+      <div className="landing-card-pop landing-card-delay absolute right-3 top-[10rem] w-[14rem] rounded-[1.1rem] border border-[#dce9e7] bg-white p-4 shadow-[0_28px_70px_rgba(16,37,43,0.14)] sm:right-10">
+        <p className="text-sm font-black text-[#10252b]">Today&apos;s appointments</p>
+        <p className="mt-3 text-5xl font-black tracking-[-0.06em] text-[#10252b]">8</p>
+        <p className="text-xs font-black text-[#0a7f67]">+20% vs yesterday</p>
+        <div className="mt-5 h-16 rounded-[0.8rem] bg-[linear-gradient(135deg,rgba(84,185,154,0.14),rgba(255,255,255,0.7))]">
+          <svg viewBox="0 0 180 64" className="h-full w-full text-[#0a7f67]">
+            <path
+              d="M8 48 C 30 12, 46 58, 66 31 S 98 15, 116 30 S 150 16, 172 22"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="5"
+              strokeLinecap="round"
+            />
+          </svg>
+        </div>
+      </div>
+
+      <div className="landing-card-pop landing-card-delay-2 absolute bottom-4 right-8 w-[18rem] rounded-[1.1rem] border border-[#dce9e7] bg-white p-4 shadow-[0_28px_70px_rgba(16,37,43,0.14)]">
         <div className="flex items-center justify-between">
-          <p className="text-sm font-extrabold text-[#12303a]">AI readout</p>
-          <span className="rounded-full bg-[#fff2ed] px-3 py-1 text-xs font-extrabold text-[#d86149]">
-            88/100
-          </span>
+          <p className="text-sm font-black text-[#10252b]">AI snapshot</p>
+          <span className="rounded-full bg-[#f7fbfa] px-3 py-1 text-xs font-bold text-[#607774]">This week</span>
         </div>
-        <div className="mt-5 space-y-3">
-          {[
-            ["Diagnosis", "Completion is strong; utilization can improve."],
-            ["Cause", "Open capacity is not converting into visits."],
-            ["Next move", "Reduce no-shows and fill midweek gaps."],
-          ].map(([label, detail]) => (
-            <div key={label} className="rounded-[0.95rem] border border-[#dce8e8] bg-white/78 p-4">
-              <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#78909a]">
-                {label}
-              </p>
-              <p className="mt-2 text-sm font-bold leading-6 text-[#24434b]">{detail}</p>
-            </div>
-          ))}
+        <div className="mt-5 flex items-center gap-4">
+          <div className="grid size-20 place-items-center rounded-full border-[7px] border-[#0a7f67] text-center">
+            <span className="text-2xl font-black leading-none text-[#0a7f67]">86</span>
+          </div>
+          <div>
+            <p className="text-sm font-black text-[#10252b]">Excellent week</p>
+            <p className="mt-1 text-xs font-bold leading-5 text-[#607774]">
+              Completion is up and no-shows are down.
+            </p>
+          </div>
         </div>
+        <Link
+          href="/sign-up"
+          className="mt-5 inline-flex h-10 w-full items-center justify-center rounded-[0.75rem] border border-[#d9e7e6] text-xs font-black text-[#10252b]"
+        >
+          View full report
+          <ArrowRight className="ml-2 size-3.5" />
+        </Link>
       </div>
     </div>
   );
@@ -234,109 +234,68 @@ function ProductScene() {
 
 export default function Home() {
   return (
-    <main className="min-h-screen overflow-hidden bg-[#f7fbfc] text-[#12303a]">
-      <section className="relative min-h-[92vh] overflow-hidden">
-        <ProductScene />
-        <header className="relative z-10 mx-auto flex max-w-7xl items-center justify-between px-5 py-5 sm:px-8">
-          <Link href="/" className="flex items-center gap-3">
-            <span className="flex size-10 items-center justify-center rounded-[0.9rem] bg-[#45a88a] text-sm font-black text-white shadow-[0_16px_34px_rgba(69,168,138,0.24)]">
-              V
-            </span>
-            <span className="text-xl font-black tracking-tight">Vela</span>
+    <main className="min-h-screen overflow-hidden bg-[#f6fbfa] text-[#10252b]">
+      <section className="relative overflow-hidden bg-[radial-gradient(circle_at_72%_20%,rgba(179,229,216,0.35),transparent_38%),linear-gradient(180deg,#f7fcfb_0%,#f2faf8_100%)]">
+        <header className="relative z-20 mx-auto flex max-w-7xl items-center justify-between px-5 py-6 sm:px-8">
+          <Link href="/" aria-label="Vela home">
+            <BrandMark />
           </Link>
-          <nav className="hidden items-center gap-7 text-sm font-bold text-[#496670] lg:flex">
+          <nav className="hidden items-center gap-10 text-sm font-extrabold text-[#344a4f] lg:flex">
             {navItems.map((item) => (
-              <Link
-                key={item}
-                href={item === "Pricing" ? "/pricing" : `#${item.toLowerCase()}`}
-                className="hover:text-[#12303a]"
-              >
-                {item}
+              <Link key={item.label} href={item.href} className="hover:text-[#0a7f67]">
+                {item.label}
               </Link>
             ))}
           </nav>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <Link
               href="/login"
-              className="hidden h-10 items-center justify-center rounded-[0.8rem] px-4 text-sm font-extrabold text-[#12303a] hover:bg-white/70 sm:inline-flex"
+              className="hidden text-sm font-extrabold text-[#344a4f] hover:text-[#0a7f67] sm:inline"
             >
               Log in
             </Link>
-            <Link
-              href="/sign-up"
-              className="inline-flex h-10 items-center justify-center rounded-[0.8rem] bg-[#12303a] px-4 text-sm font-extrabold text-white shadow-[0_14px_28px_rgba(18,48,58,0.2)] hover:-translate-y-0.5"
-            >
-              Start free
-            </Link>
+            <span className="hidden sm:inline-flex">
+              <PrimaryButton />
+            </span>
           </div>
         </header>
 
-        <div className="relative z-10 mx-auto grid min-h-[calc(92vh-5rem)] max-w-7xl content-center px-5 pb-14 pt-16 sm:px-8 lg:grid-cols-[minmax(0,0.92fr)_minmax(22rem,0.5fr)]">
-          <div className="max-w-3xl">
-            <h1 className="max-w-4xl text-[clamp(3.2rem,7vw,6.6rem)] font-black leading-[0.93] tracking-[-0.045em] text-[#102b34]">
-              Run your clinic from one calm workspace
-            </h1>
-            <p className="mt-7 max-w-2xl text-lg leading-8 text-[#496670] sm:text-xl sm:leading-9">
-              Vela brings bookings, clients, staff, WhatsApp reminders, private photos,
-              and AI performance reports into one operating system built for clinics.
-            </p>
-            <div className="mt-9">
-              <CtaButtons />
-            </div>
-            <div className="mt-10 grid max-w-2xl grid-cols-2 gap-3 text-sm font-bold text-[#496670] sm:grid-cols-4">
-              {proofPoints.map((point) => (
-                <div key={point} className="flex items-center gap-2">
-                  <Check className="size-4 text-[#45a88a]" />
-                  <span>{point}</span>
-                </div>
-              ))}
-            </div>
+        <div className="relative z-10 mx-auto max-w-7xl px-5 pb-20 pt-12 sm:px-8 lg:pt-20">
+          <h1 className="max-w-5xl text-[clamp(2.65rem,8.8vw,7.6rem)] font-black leading-[0.94] tracking-[-0.055em] text-[#101820] sm:tracking-[-0.065em]">
+            Run the clinic from one calm system
+          </h1>
+          <p className="mt-7 max-w-[22rem] text-base font-semibold leading-7 text-[#637775] sm:max-w-xl sm:text-lg sm:leading-8">
+            Bookings, clients, reminders, and AI insights. Everything you need
+            to deliver exceptional care.
+          </p>
+          <div className="mt-8 flex max-w-[22rem] flex-col gap-3 sm:max-w-none sm:flex-row [&>a]:w-full sm:[&>a]:w-auto">
+            <PrimaryButton />
+            <SecondaryButton />
           </div>
+          <HeroMockup />
         </div>
       </section>
 
-      <section id="product" className="border-y border-[#dbe8e8] bg-white">
-        <div className="mx-auto grid max-w-7xl gap-8 px-5 py-14 sm:px-8 lg:grid-cols-4">
-          {[
-            ["Less admin", "Fewer handoffs between calendars, client notes, messages, and reports."],
-            ["Better follow-up", "Messages and reminders stay connected to the client relationship."],
-            ["Clearer decisions", "AI and rule-based snapshots explain what changed and what to do next."],
-            ["Safer media", "Private clinic media references avoid public gallery links."],
-          ].map(([title, detail]) => (
-            <div key={title} className="landing-reveal">
-              <p className="text-xl font-black text-[#102b34]">{title}</p>
-              <p className="mt-3 text-sm leading-6 text-[#5b737b]">{detail}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section id="workflows" className="mx-auto max-w-7xl px-5 py-24 sm:px-8">
-        <div className="grid gap-12 lg:grid-cols-[0.75fr_1fr] lg:items-start">
-          <div className="sticky top-8">
-            <h2 className="text-4xl font-black tracking-[-0.04em] text-[#102b34] sm:text-5xl">
-              The clinic day, connected end to end.
+      <section id="features" className="bg-[#f6fbfa] px-5 py-24 sm:px-8">
+        <div className="mx-auto max-w-7xl">
+          <div className="text-center">
+            <h2 className="text-4xl font-black tracking-[-0.055em] text-[#101820] sm:text-5xl">
+              Everything flows.
+              <span className="block text-[#0a7f67]">So your day can too.</span>
             </h2>
-            <p className="mt-5 text-lg leading-8 text-[#5b737b]">
-              Vela focuses on the work clinics repeat every day: fill the calendar,
-              understand the client, follow up, and improve performance.
-            </p>
-            <div className="mt-8">
-              <CtaButtons compact />
-            </div>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {workflow.map((item, index) => {
+          <div className="mt-16 grid gap-10 md:grid-cols-4">
+            {flowItems.map((item) => {
               const Icon = item.icon;
               return (
-                <article
-                  key={item.title}
-                  className="landing-reveal rounded-[1.1rem] border border-[#dbe8e8] bg-white p-6 shadow-[0_22px_52px_rgba(18,48,58,0.06)]"
-                  style={{ animationDelay: `${index * 90}ms` }}
-                >
-                  <Icon className="size-6 text-[#45a88a]" />
-                  <h3 className="mt-8 text-2xl font-black tracking-[-0.03em]">{item.title}</h3>
-                  <p className="mt-3 text-sm leading-6 text-[#5b737b]">{item.detail}</p>
+                <article key={item.title} className="landing-reveal text-center">
+                  <div className="mx-auto grid size-16 place-items-center rounded-[1rem] bg-[#e7f6f1] text-[#0a7f67]">
+                    <Icon className="size-7" />
+                  </div>
+                  <h3 className="mt-6 text-lg font-black text-[#10252b]">{item.title}</h3>
+                  <p className="mx-auto mt-3 max-w-[15rem] text-sm font-semibold leading-6 text-[#637775]">
+                    {item.copy}
+                  </p>
                 </article>
               );
             })}
@@ -344,223 +303,147 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="bg-[#102b34] py-24 text-white">
-        <div className="mx-auto max-w-7xl px-5 sm:px-8">
-          <div className="grid gap-10 lg:grid-cols-[0.8fr_1.1fr] lg:items-center">
-            <div>
-              <h2 className="text-4xl font-black tracking-[-0.04em] sm:text-5xl">
-                See the exact state of the clinic in seconds.
-              </h2>
-              <p className="mt-5 text-lg leading-8 text-[#b6c7cb]">
-                The workspace is built around real clinic signals, not disconnected feature tabs.
-                Each module feeds the next.
-              </p>
-            </div>
-            <div id="product-tour" className="grid gap-4">
-              {featureBands.map((feature, index) => {
-                const Icon = feature.icon;
-                return (
-                  <article
-                    key={feature.title}
-                    className="landing-reveal grid gap-5 rounded-[1.1rem] border border-white/12 bg-white/[0.06] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.2)] backdrop-blur md:grid-cols-[88px_1fr_120px]"
-                    style={{ animationDelay: `${index * 90}ms` }}
-                  >
-                    <div className="flex size-14 items-center justify-center rounded-[0.9rem] bg-[#45a88a] text-white">
-                      <Icon className="size-6" />
-                    </div>
-                    <div>
-                      <h3 className="text-2xl font-black tracking-[-0.03em]">{feature.title}</h3>
-                      <p className="mt-2 text-sm leading-6 text-[#c7d6d9]">{feature.detail}</p>
-                    </div>
-                    <div className="rounded-[0.9rem] bg-white/10 p-4">
-                      <p className="text-2xl font-black">{feature.stat}</p>
-                      <p className="mt-1 text-xs font-extrabold uppercase tracking-[0.16em] text-[#9eb4b9]">
-                        {feature.label}
-                      </p>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="reports" className="mx-auto max-w-7xl px-5 py-24 sm:px-8">
-        <div className="grid gap-12 lg:grid-cols-[1fr_0.78fr] lg:items-center">
-          <div className="rounded-[1.25rem] border border-[#dbe8e8] bg-white p-5 shadow-[0_30px_70px_rgba(18,48,58,0.08)]">
-            <div className="grid gap-4 sm:grid-cols-3">
-              {reportCards.map((card, index) => (
-                <div key={card} className="rounded-[0.9rem] bg-[#f5faf8] p-4">
-                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#6f858c]">
-                    {card}
-                  </p>
-                  <p className="mt-3 text-2xl font-black text-[#102b34]">
-                    {["87%", "94%", "72%", "31%", "Balanced", "4"][index]}
-                  </p>
-                </div>
-              ))}
-            </div>
-            <div className="mt-5 rounded-[1rem] bg-[#fff5f0] p-5">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-black text-[#102b34]">This month readout</p>
-                <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-sm font-black text-[#d86149]">
-                  <Sparkles className="size-4" /> 88/100
-                </span>
-              </div>
-              <p className="mt-4 text-lg font-black leading-7 text-[#102b34]">
-                Strong visit execution, but open capacity is not converting into booked care time.
-              </p>
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                {["Likely cause", "Next move", "Monitor"].map((label, index) => (
-                  <div key={label} className="rounded-[0.8rem] bg-white p-4">
-                    <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#78909a]">
-                      {label}
-                    </p>
-                    <p className="mt-2 text-sm font-bold leading-6 text-[#496670]">
-                      {[
-                        "Midweek demand is underused.",
-                        "Prompt clients before gaps widen.",
-                        "Utilization and follow-up coverage.",
-                      ][index]}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+      <section id="flow" className="bg-[#f6fbfa] px-5 py-20 sm:px-8">
+        <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[0.62fr_1fr] lg:items-center">
           <div>
-            <h2 className="text-4xl font-black tracking-[-0.04em] text-[#102b34] sm:text-5xl">
-              Reports that diagnose, not just decorate.
+            <p className="text-sm font-black uppercase tracking-[0.18em] text-[#0a7f67]">AI reports</p>
+            <h2 className="mt-5 text-4xl font-black tracking-[-0.055em] text-[#101820] sm:text-5xl">
+              Insights that help you make better calls.
             </h2>
-            <p className="mt-5 text-lg leading-8 text-[#5b737b]">
-              Daily, weekly, and monthly readouts turn appointments, client activity,
-              messages, and staff load into specific next moves.
+            <p className="mt-5 max-w-md text-base font-semibold leading-8 text-[#637775]">
+              Vela turns daily clinic activity into clear recommendations your team can act on.
             </p>
-            <div className="mt-8 flex flex-col gap-3">
-              {["AI-generated recommendations", "Rule-based fallback when AI is unavailable", "Auditable snapshots for each period"].map((item) => (
-                <div key={item} className="flex items-center gap-3 text-sm font-extrabold text-[#24434b]">
-                  <Check className="size-5 text-[#45a88a]" />
+            <div className="mt-8 space-y-4">
+              {[
+                "Performance snapshots across time",
+                "Trends, risks, and opportunities",
+                "Personalized improvement suggestions",
+              ].map((item) => (
+                <div key={item} className="flex items-center gap-3 text-sm font-black text-[#10252b]">
+                  <CheckCircle2 className="size-5 fill-[#0a7f67] text-white" />
                   {item}
                 </div>
               ))}
             </div>
-            <div className="mt-9">
-              <CtaButtons compact />
+          </div>
+
+          <div className="landing-reveal rounded-[1.35rem] border border-[#dce9e7] bg-white/86 p-5 shadow-[0_34px_90px_rgba(16,37,43,0.09)]">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-black text-[#10252b]">AI performance overview</h3>
+              <span className="rounded-full border border-[#dce9e7] px-3 py-1 text-xs font-black text-[#637775]">
+                This month
+              </span>
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-4">
+              {reportStats.map(([label, value, change]) => (
+                <div key={label} className="rounded-[0.9rem] border border-[#edf3f2] bg-[#fbfefd] p-4">
+                  <p className="text-xs font-black text-[#637775]">{label}</p>
+                  <p className="mt-2 text-2xl font-black tracking-[-0.04em] text-[#0a7f67]">{value}</p>
+                  <p className="mt-1 text-xs font-black text-[#0a7f67]">{change} vs last month</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_0.78fr]">
+              <div className="rounded-[1rem] border border-[#edf3f2] p-5">
+                <p className="text-sm font-black text-[#10252b]">Trend</p>
+                <svg viewBox="0 0 520 220" className="mt-6 h-56 w-full text-[#0a7f67]">
+                  <path
+                    d="M10 170 C 45 98, 80 110, 116 138 S 178 38, 224 92 S 300 70, 340 58 S 420 92, 500 42"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="8"
+                    strokeLinecap="round"
+                  />
+                  {[80, 160, 240, 320, 400].map((x) => (
+                    <line key={x} x1={x} x2={x} y1="20" y2="205" stroke="#edf3f2" strokeWidth="2" />
+                  ))}
+                </svg>
+              </div>
+              <div className="rounded-[1rem] border border-[#edf3f2] p-5">
+                <p className="text-sm font-black text-[#10252b]">Top recommendations</p>
+                <div className="mt-5 space-y-4">
+                  {recommendations.map((item) => (
+                    <div key={item} className="flex gap-3 text-sm font-semibold leading-6 text-[#637775]">
+                      <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-[#0a7f67]" />
+                      {item}
+                    </div>
+                  ))}
+                </div>
+                <Link href="/sign-up" className="mt-7 inline-flex items-center text-sm font-black text-[#0a7f67]">
+                  View full AI report
+                  <ArrowRight className="ml-2 size-4" />
+                </Link>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section id="security" className="bg-white py-24">
-        <div className="mx-auto grid max-w-7xl gap-12 px-5 sm:px-8 lg:grid-cols-[0.72fr_1fr] lg:items-center">
+      <section id="security" className="bg-[#f6fbfa] px-5 py-24 sm:px-8">
+        <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[0.58fr_1fr] lg:items-center">
           <div>
-            <ShieldCheck className="size-10 text-[#45a88a]" />
-            <h2 className="mt-6 text-4xl font-black tracking-[-0.04em] text-[#102b34] sm:text-5xl">
-              Built to keep each clinic’s workspace separate.
+            <h2 className="text-4xl font-black tracking-[-0.055em] text-[#101820] sm:text-5xl">
+              Your data.
+              <span className="block text-[#0a7f67]">Always private.</span>
             </h2>
-            <p className="mt-5 text-lg leading-8 text-[#5b737b]">
-              Vela keeps app data server-side, protects workspace routes, and uses
-              private media handling so client photos do not become public links.
+            <p className="mt-5 max-w-md text-base font-semibold leading-8 text-[#637775]">
+              Vela is designed so each clinic sees its own workspace, client records,
+              and media. Provider details stay behind the product.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {securityItems.map((item, index) => (
-              <div
-                key={item}
-                className="landing-reveal flex items-center gap-3 rounded-[0.95rem] border border-[#dbe8e8] bg-[#f7fbfc] p-4 text-sm font-extrabold text-[#24434b]"
-                style={{ animationDelay: `${index * 55}ms` }}
-              >
-                <LockKeyhole className="size-5 text-[#45a88a]" />
-                {item}
-              </div>
-            ))}
+          <div className="grid gap-0 md:grid-cols-3">
+            {securityHighlights.map((item, index) => {
+              const SecurityIcon = item.icon;
+              return (
+                <article
+                  key={item.title}
+                  className={`landing-reveal px-7 py-8 text-center ${
+                    index > 0 ? "border-t border-[#dce9e7] md:border-l md:border-t-0" : ""
+                  }`}
+                >
+                  <div className="mx-auto grid size-16 place-items-center rounded-[1rem] bg-[#e7f6f1] text-[#0a7f67]">
+                    <SecurityIcon className="size-7" />
+                  </div>
+                  <h3 className="mt-6 text-base font-black text-[#10252b]">{item.title}</h3>
+                  <p className="mt-3 text-sm font-semibold leading-6 text-[#637775]">{item.copy}</p>
+                </article>
+              );
+            })}
           </div>
         </div>
       </section>
 
-      <section id="pricing" className="mx-auto max-w-7xl px-5 py-24 sm:px-8">
-        <div className="overflow-hidden rounded-[1.35rem] bg-[#12303a] text-white shadow-[0_34px_90px_rgba(18,48,58,0.2)]">
-          <div className="grid gap-8 p-7 sm:p-10 lg:grid-cols-[1fr_360px] lg:items-center">
+      <section className="bg-[#f6fbfa] px-5 pb-16 sm:px-8">
+        <div className="mx-auto max-w-7xl overflow-hidden rounded-[1.35rem] border border-[#dce9e7] bg-[radial-gradient(circle_at_88%_12%,rgba(179,229,216,0.46),transparent_34%),#eef8f5] p-8 shadow-[0_28px_80px_rgba(16,37,43,0.08)] sm:p-12">
+          <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
             <div>
-              <h2 className="text-4xl font-black tracking-[-0.04em] sm:text-5xl">
-                Start with the operating system. Upgrade when the clinic is ready.
+              <h2 className="max-w-xl text-4xl font-black tracking-[-0.055em] text-[#101820] sm:text-5xl">
+                Ready to simplify your clinic?
               </h2>
-              <p className="mt-5 max-w-2xl text-lg leading-8 text-[#c5d4d8]">
-                Launch the workspace, test the workflows, and move to advanced reporting
-                when you want deeper visibility.
+              <p className="mt-4 max-w-xl text-base font-semibold leading-8 text-[#637775]">
+                Join clinics that want fewer handoffs, better follow-up, and clearer decisions.
               </p>
             </div>
-            <div className="rounded-[1rem] bg-white p-6 text-[#102b34]">
-              <div className="flex items-center gap-2">
-                <Star className="size-5 fill-[#e8bd5f] text-[#e8bd5f]" />
-                <p className="text-sm font-black">Launch offer</p>
-              </div>
-              <p className="mt-5 text-4xl font-black tracking-[-0.04em]">Test Vela free</p>
-              <p className="mt-3 text-sm leading-6 text-[#5b737b]">
-                Create a clinic workspace, try clients and appointments, then choose a plan.
-              </p>
-              <div className="mt-6">
-                <CtaButtons compact />
-              </div>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <PrimaryButton />
+              <SecondaryButton />
             </div>
           </div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-5 pb-24 sm:px-8">
-        <div className="grid gap-10 lg:grid-cols-[0.65fr_1fr]">
-          <div>
-            <h2 className="text-4xl font-black tracking-[-0.04em] text-[#102b34]">Questions before you test?</h2>
-            <p className="mt-4 text-lg leading-8 text-[#5b737b]">
-              The fastest way to evaluate Vela is to create a workspace and run through a real clinic day.
-            </p>
-          </div>
-          <div className="space-y-3">
-            {faqs.map((faq) => (
-              <details key={faq.question} className="group rounded-[1rem] border border-[#dbe8e8] bg-white p-5">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-lg font-black">
-                  {faq.question}
-                  <ChevronRight className="size-5 transition-transform group-open:rotate-90" />
-                </summary>
-                <p className="mt-4 text-sm leading-7 text-[#5b737b]">{faq.answer}</p>
-              </details>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="relative overflow-hidden bg-[#eaf7f2] px-5 py-24 text-center sm:px-8">
-        <div className="mx-auto max-w-4xl">
-          <Zap className="mx-auto size-10 text-[#45a88a]" />
-          <h2 className="mt-6 text-4xl font-black tracking-[-0.045em] text-[#102b34] sm:text-6xl">
-            Give your clinic a calmer way to run.
-          </h2>
-          <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-[#496670]">
-            Start free, add a few clients, book appointments, and see how Vela turns
-            daily operations into a clear workspace.
-          </p>
-          <div className="mt-9 flex justify-center">
-            <CtaButtons />
-          </div>
-        </div>
-      </section>
-
-      <footer className="border-t border-[#dbe8e8] bg-white px-5 py-8 sm:px-8">
-        <div className="mx-auto flex max-w-7xl flex-col gap-5 text-sm text-[#5b737b] sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <span className="flex size-9 items-center justify-center rounded-[0.8rem] bg-[#45a88a] text-sm font-black text-white">
-              V
-            </span>
-            <span className="font-black text-[#102b34]">Vela</span>
-            <span>Clinic management</span>
-          </div>
-          <div className="flex flex-wrap gap-5">
-            <Link href="/terms-and-conditions">Terms</Link>
+      <footer className="bg-[#f6fbfa] px-5 py-8 sm:px-8">
+        <div className="mx-auto flex max-w-7xl flex-col gap-6 text-xs font-bold text-[#637775] md:flex-row md:items-center md:justify-between">
+          <BrandMark />
+          <div className="flex flex-wrap gap-6">
+            <Link href="#features">Features</Link>
+            <Link href="#flow">How it works</Link>
+            <Link href="/pricing">Pricing</Link>
+            <Link href="#security">Security</Link>
             <Link href="/privacy">Privacy</Link>
-            <Link href="/refund">Refunds</Link>
-            <Link href="/login">Log in</Link>
+            <Link href="/terms-and-conditions">Terms</Link>
           </div>
+          <p>(c) 2026 Vela. All rights reserved.</p>
         </div>
       </footer>
     </main>

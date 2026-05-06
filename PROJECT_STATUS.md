@@ -46,7 +46,7 @@ The core product direction is customer-first: clinics should not need to underst
 - First-user workspace tour redesigned as a clean coachmark flow that avoids highlight rings, pauses while drawers/modals are open, and persists completion.
 - Security/performance hardening pass completed: Next Proxy protects all workspace routes including `/staff`, global security headers are configured, user-facing provider/database errors are generic, private media uploads are limited to common raster image formats, email verification receipt updates cannot create arbitrary verified tickets, and expensive client/staff/reminder queries are capped or simplified.
 - Workspace navigation performance pass completed: dynamic workspace routes now have an instant loading shell, all sidebar/mobile nav items use client-side prefetched links, workspace auth/business lookups are request-deduped, non-critical maintenance work runs after the response, and inbox/settings data loads are capped for faster page opens.
-- Public marketing landing page at `/` now showcases Vela as a clinic operating system with product mockups, workflow sections, reports/AI diagnosis, security/private media messaging, pricing teaser, FAQ, and repeated signup/login CTAs into the auth flow.
+- Public marketing landing page at `/` now uses a simplified animated product-led design inspired by the Dribbble reference, with a large hero, floating clinic workspace mockups, compact workflow blocks, AI reporting, privacy messaging, and signup/login CTAs into the auth flow.
 
 ## Current Working Flows
 
@@ -105,4 +105,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Built the public Vela landing page at `/` as the main client-facing entry point. Replaced the root auth redirect with a static marketing page, added conversion-focused signup/login CTAs, showcased calendar, clients, inbox, reports, AI diagnosis, security/private media, pricing teaser, FAQ, and final CTA sections, refreshed landing motion styles, fixed a new transitive audit advisory, and verified lint, dependency audit, and production build.
+- Redesigned the public Vela landing page at `/` into a simpler animated product-led page based on the provided Dribbble reference. Kept signup/login CTAs wired to auth, simplified the page story around bookings, clients, reminders, AI reports, and privacy, refreshed landing motion styles, and verified lint, dependency audit, production build, and desktop/mobile visual screenshots.
