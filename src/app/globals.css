@@ -219,6 +219,22 @@
     animation: vela-dialog-orb 5.2s linear infinite;
     will-change: transform, opacity;
   }
+
+  .landing-reveal {
+    animation: vela-fade-up 680ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-timeline: view();
+    animation-range: entry 0% cover 30%;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .section-reveal,
+    .section-reveal-delayed,
+    .tour-coachmark,
+    .dialog-accent-orb,
+    .landing-reveal {
+      animation: none;
+    }
+  }
 }
 
 @keyframes vela-fade-up {

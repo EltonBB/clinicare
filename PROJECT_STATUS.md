@@ -46,6 +46,7 @@ The core product direction is customer-first: clinics should not need to underst
 - First-user workspace tour redesigned as a clean coachmark flow that avoids highlight rings, pauses while drawers/modals are open, and persists completion.
 - Security/performance hardening pass completed: Next Proxy protects all workspace routes including `/staff`, global security headers are configured, user-facing provider/database errors are generic, private media uploads are limited to common raster image formats, email verification receipt updates cannot create arbitrary verified tickets, and expensive client/staff/reminder queries are capped or simplified.
 - Workspace navigation performance pass completed: dynamic workspace routes now have an instant loading shell, all sidebar/mobile nav items use client-side prefetched links, workspace auth/business lookups are request-deduped, non-critical maintenance work runs after the response, and inbox/settings data loads are capped for faster page opens.
+- Public marketing landing page at `/` now showcases Vela as a clinic operating system with product mockups, workflow sections, reports/AI diagnosis, security/private media messaging, pricing teaser, FAQ, and repeated signup/login CTAs into the auth flow.
 
 ## Current Working Flows
 
@@ -58,6 +59,7 @@ The core product direction is customer-first: clinics should not need to underst
 - The Twilio WhatsApp test sender can receive inbound messages, create conversations, reply from Inbox, and convert unknown contacts to clients.
 - Reports can calculate core performance metrics, derive operational evidence from appointment status mix, demand windows, staff load, booking lead time, and client mix, refresh AI analysis across daily/weekly/monthly together when the OpenAI environment key is configured, score each timeframe from current clinic metrics, generate rule-based guidance from actual period data, handle sparse/unmeasured data without false zeros, and clearly show when rule-based insights are used instead.
 - Workspace page-to-page navigation keeps the shared shell interactive and shows a skeleton immediately while dynamic page data streams in.
+- Public visitors now land on the marketing homepage first, with signup/login CTAs routing into the existing auth flow.
 
 ## Known Issues / Blockers
 
@@ -97,9 +99,10 @@ The core product direction is customer-first: clinics should not need to underst
 - Settings: WhatsApp status, reminders, branding, logo, plan display.
 - Reports: daily, weekly, monthly metrics, metric-driven snapshot scores, sparse-data states, full three-timeframe AI refresh, diagnosis/root-cause/playbook sections, detailed suggestions, data-backed fallback copy, cooldown behavior, and AI/fallback snapshot states.
 - Public policies: `/terms-and-conditions`, `/privacy`, and `/refund` load without authentication and match the current Vela product scope.
+- Public homepage: `/` loads without authentication, shows the landing page, and routes `Start free` to `/sign-up` and `Log in` to `/login`.
 - Supabase security: public Prisma tables report RLS enabled and anon REST table access returns no rows.
 - Route protection: `/dashboard`, `/calendar`, `/clients`, `/staff`, `/inbox`, `/reports`, and `/settings` redirect unauthenticated users to login.
 
 ## Last Completed Task
 
-- Improved workspace navigation speed and perceived responsiveness. Added a shared workspace `loading.tsx`, changed all workspace nav items to prefetched client-side `Link` navigation, warmed likely routes after shell hydration and on hover/focus, request-deduped auth/business lookups with React cache, moved appointment completion and WhatsApp connection sync into post-response `after()` work, capped inbox/settings relation loading, and verified lint, dependency audit, and production build.
+- Built the public Vela landing page at `/` as the main client-facing entry point. Replaced the root auth redirect with a static marketing page, added conversion-focused signup/login CTAs, showcased calendar, clients, inbox, reports, AI diagnosis, security/private media, pricing teaser, FAQ, and final CTA sections, refreshed landing motion styles, fixed a new transitive audit advisory, and verified lint, dependency audit, and production build.
