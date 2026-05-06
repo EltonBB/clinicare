@@ -288,10 +288,7 @@
   @media (width < 64rem) {
     .landing-float,
     .landing-card-pop {
-      animation-name: vela-card-pop;
-      animation-duration: 560ms;
-      animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
-      animation-fill-mode: both;
+      animation: vela-card-pop 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
       will-change: opacity, transform;
     }
 

@@ -116,7 +116,7 @@ function SecondaryButton({ href = "/login", children = "Log in" }) {
 
 function HeroMockup() {
   return (
-    <div className="relative mx-auto mt-14 flex w-full max-w-[21.5rem] flex-col gap-4 overflow-hidden sm:mt-16 sm:max-w-6xl lg:mt-10 lg:block lg:h-[40rem] lg:overflow-visible">
+    <div className="relative mx-auto mt-14 flex w-full max-w-[19.5rem] flex-col gap-4 overflow-hidden sm:mt-16 sm:max-w-6xl lg:mt-10 lg:block lg:h-[40rem] lg:overflow-visible">
       <div className="landing-streak landing-streak-left hidden lg:block" />
       <div className="landing-streak landing-streak-right hidden lg:block" />
       <div className="landing-arc hidden lg:block" />
@@ -284,15 +284,15 @@ export default function Home() {
           </div>
         </header>
 
-        <div className="relative z-10 mx-auto max-w-7xl px-5 pb-20 pt-12 sm:px-8 lg:pt-20">
-          <h1 className="max-w-5xl text-[clamp(2.65rem,8.8vw,7.6rem)] font-black leading-[0.94] tracking-[-0.055em] text-[#101820] sm:tracking-[-0.065em]">
+        <div className="relative z-10 mx-auto max-w-7xl px-5 pb-20 pt-12 text-center sm:px-8 sm:text-left lg:pt-20">
+          <h1 className="mx-auto max-w-[19rem] text-[2.25rem] font-black leading-[0.98] tracking-[-0.035em] text-[#101820] sm:mx-0 sm:max-w-5xl sm:text-[clamp(2.65rem,8.8vw,7.6rem)] sm:leading-[0.94] sm:tracking-[-0.065em]">
             Run the clinic from one calm system
           </h1>
-          <p className="mt-7 max-w-[22rem] text-base font-semibold leading-7 text-[#637775] sm:max-w-xl sm:text-lg sm:leading-8">
+          <p className="mx-auto mt-7 max-w-[19rem] text-base font-semibold leading-7 text-[#637775] sm:mx-0 sm:max-w-xl sm:text-lg sm:leading-8">
             Bookings, clients, reminders, and AI insights. Everything you need
             to deliver exceptional care.
           </p>
-          <div className="mt-8 flex max-w-[22rem] flex-col gap-3 sm:max-w-none sm:flex-row [&>a]:w-full sm:[&>a]:w-auto">
+          <div className="mx-auto mt-8 flex max-w-[19.5rem] flex-col gap-3 sm:mx-0 sm:max-w-none sm:flex-row [&>a]:w-full sm:[&>a]:w-auto">
             <PrimaryButton />
             <SecondaryButton />
           </div>

@@ -105,4 +105,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Improved public landing page mobile responsiveness. The hero product mockup now switches from the desktop floating composition to a centered stacked mobile layout, uses a compact phone calendar preview, prevents card overflow/clipping, shortens mobile-only mockup labels, and tightens mobile section heading sizing while preserving the desktop landing design.
+- Refined public landing page mobile hero polish. The mobile hero text, supporting copy, CTAs, and stacked product preview now share a centered measure, and mobile landing mockup animations run once instead of inheriting infinite desktop motion that made the dashboard appear to twitch or refresh.
