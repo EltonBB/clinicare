@@ -91,8 +91,6 @@ export default async function ClientsPage({
         ...initialView,
         initialSelectedClientId,
       }}
-      initialNewClientOpen={openNew === "1"}
-      nextAfterCreate={next === "calendar" ? "calendar" : undefined}
     />
   );
 }

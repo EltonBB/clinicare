@@ -12,7 +12,9 @@ import {
   ImagePlus,
   Images,
   Inbox,
+  Mail,
   NotebookText,
+  Phone,
   UserRoundPen,
 } from "lucide-react";
 
@@ -372,40 +374,28 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
 
         <TabsContent value="overview" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
-            <h2 className="text-lg font-semibold text-foreground">Record summary</h2>
-            <dl className="mt-5 grid gap-4 sm:grid-cols-2">
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Preferred channel
-                </dt>
-                <dd className="mt-1 text-sm font-medium text-foreground">
-                  {client.details.preferredChannel}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Assigned staff
-                </dt>
-                <dd className="mt-1 text-sm font-medium text-foreground">
-                  {client.details.assignedStaff}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Completed
-                </dt>
-                <dd className="mt-1 text-sm font-medium text-foreground">
-                  {client.appointmentStats.completed} appointments
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Cancelled
-                </dt>
-                <dd className="mt-1 text-sm font-medium text-foreground">
-                  {client.appointmentStats.cancelled} appointments
-                </dd>
-              </div>
+            <h2 className="text-lg font-semibold text-foreground">Client data</h2>
+            <dl className="mt-5 space-y-3">
+              <OverviewLine label="Name" value={client.name} />
+              <OverviewLine label="Status" value={statusLabels[client.status]} />
+              <OverviewLine
+                icon={Phone}
+                label="Phone"
+                value={client.phone || "Not added"}
+              />
+              <OverviewLine
+                icon={Mail}
+                label="Email"
+                value={client.email || "Not added"}
+              />
+              <OverviewLine label="Preferred channel" value={client.details.preferredChannel} />
+              <OverviewLine label="Assigned staff" value={client.details.assignedStaff} />
+              <OverviewLine label="Last visit" value={client.lastVisit} />
+              <OverviewLine label="Total visits" value={`${client.totalVisits}`} />
+              <OverviewLine
+                label="Tags"
+                value={client.details.tags.length > 0 ? client.details.tags.join(", ") : "No tags"}
+              />
             </dl>
           </section>
 
@@ -696,6 +686,28 @@ function Detail({ label, value }: { label: string; value: string }) {
         {label}
       </dt>
       <dd className="mt-2 text-sm font-medium text-foreground">{value}</dd>
+    </div>
+  );
+}
+
+function OverviewLine({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  icon?: ComponentType<{ className?: string }>;
+}) {
+  return (
+    <div className="grid grid-cols-[120px_minmax(0,1fr)] items-start gap-4 text-sm sm:grid-cols-[160px_minmax(0,1fr)]">
+      <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="flex min-w-0 items-center justify-end gap-2 text-right font-medium text-foreground">
+        {Icon ? <Icon className="size-4 shrink-0 text-muted-foreground" /> : null}
+        <span className="min-w-0 break-words">{value}</span>
+      </dd>
     </div>
   );
 }
