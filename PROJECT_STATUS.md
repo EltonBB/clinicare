@@ -1,6 +1,6 @@
 # Project Status: Vela / Clinicare
 
-Last updated: 2026-05-01
+Last updated: 2026-05-11
 
 ## Product Overview
 
@@ -33,7 +33,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Workspace shell with left navigation, top app bar, owner account dialog, notifications, plan card, and first-user tour.
 - Dashboard with configurable widgets, quick actions, daily overview, today appointments, last clients, staff appointment preview, unread messages, and analytics widget.
 - Calendar with appointment creation, searchable client picker, staff assignment, operating-hours protection, status handling, and calendar appointment layout.
-- Clients workspace with add/edit/archive, profile tabs, history, notes, messages, details, and client gallery image records with captions.
+- Clients workspace with add/edit/archive, a full-width directory, dedicated client record pages, profile tabs, appointment history, notes, messages, details, and private gallery image records with captions.
 - Staff workspace separated from Settings, including staff profiles, active/away/inactive status, check-in/check-out time tracking, monthly completed appointment records, and recent completed work.
 - Inbox with WhatsApp conversations, unread counts, unknown-contact handling, conversion to client, outbound replies, and live notification updates.
 - WhatsApp setup moved to Settings with simplified customer-facing connection state, connect/retry, and refresh actions.
@@ -48,12 +48,14 @@ The core product direction is customer-first: clinics should not need to underst
 - Workspace navigation performance pass completed: dynamic workspace routes now have an instant loading shell, all sidebar/mobile nav items use client-side prefetched links, workspace auth/business lookups are request-deduped, non-critical maintenance work runs after the response, and inbox/settings data loads are capped for faster page opens.
 - Public marketing landing page at `/` now uses a simplified animated product-led design inspired by the Dribbble reference, with the default Vela blue accent color, a large hero, floating clinic workspace mockups on desktop, a cleaner stacked mobile preview, compact workflow blocks, AI reporting, privacy messaging, and signup/login CTAs into the auth flow.
 - Dedicated create pages now exist for `/calendar/new`, `/clients/new`, and `/staff/new`, replacing the main add flows for bookings, clients, and staff with centered single-page forms while preserving edit sheets for existing records.
+- Dedicated client details pages now exist at `/clients/[clientId]`, replacing the old right-side client panel with a full client record view covering overview, past appointments, image records, document readiness, messages, notes, and details.
 
 ## Current Working Flows
 
 - A new user can sign up, confirm email, complete onboarding, and enter the dashboard.
 - A clinic can configure branding, hours, staff, and dashboard widgets during onboarding or later in Settings.
 - A clinic can create clients and then book appointments using those clients.
+- A clinic can open each client from the directory into a dedicated full-page record with appointment history, media, notes, messages, and profile details.
 - Appointments show on the dashboard/calendar and feed staff/client records when completed.
 - Staff can be managed from the Staff page and tracked with check-in/check-out.
 - Client records can hold appointment history, notes, messages, and private Supabase-hosted gallery images.
@@ -77,10 +79,11 @@ The core product direction is customer-first: clinics should not need to underst
 
 1. Stabilize and test the full first-user flow on a clean account: signup, confirm email, onboarding, dashboard, tour, client, booking, staff, reports.
 2. Verify completed appointment automation end-to-end: completed appointments leave active calendar views and appear in staff/client records.
-3. Smoke-test signed logo/gallery upload, display, logo replacement cleanup, and client-delete media cleanup against the live production app.
-4. Continue hardening reports with any launch-specific wording, prompt evaluation, or plan-gating requirements that come out of user testing.
-5. Continue WhatsApp provider work only after business/provider requirements are ready; keep Settings flow customer-friendly in the meantime.
-6. Implement real billing/plan upgrade flow when pricing and payment provider decisions are final.
+3. Decide and implement the production document-upload data model for client PDFs, scans, referrals, and consent forms.
+4. Smoke-test signed logo/gallery upload, display, logo replacement cleanup, and client-delete media cleanup against the live production app.
+5. Continue hardening reports with any launch-specific wording, prompt evaluation, or plan-gating requirements that come out of user testing.
+6. Continue WhatsApp provider work only after business/provider requirements are ready; keep Settings flow customer-friendly in the meantime.
+7. Implement real billing/plan upgrade flow when pricing and payment provider decisions are final.
 
 ## Testing Checklist
 
@@ -92,6 +95,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Dashboard loads with correct local date and selected widgets.
 - First-user tour appears once, avoids modals/drawers, and stays completed after finishing.
 - Create client, edit client, archive client.
+- Open a client details page from the directory and verify overview, appointment history, messages, notes, details, and image upload/display.
 - Upload/add client gallery image record and caption.
 - Create appointment inside operating hours and verify blocked behavior outside operating hours.
 - Verify completed appointment movement into staff/client records.
@@ -106,4 +110,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Converted primary add flows to dedicated create pages. Booking, client, and staff creation now route to `/calendar/new`, `/clients/new`, and `/staff/new` with centered sectioned forms based on existing Vela fields; legacy `?new=1` URLs redirect to the new pages, dashboard/inbox quick actions use the new routes, and dependencies were patched to Next.js 16.2.6 with a clean production audit.
+- Reworked the client directory and client record flow. `/clients` is now a full-width directory with Details/Edit/Archive actions, and each client opens into `/clients/[clientId]` with a dedicated record page for overview, past appointments, image records, document readiness, messages, notes, and profile details. Verified with lint and production build.
