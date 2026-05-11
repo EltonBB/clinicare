@@ -57,6 +57,7 @@ export type ClientDocumentEntry = {
 
 export type ClientPaymentEntry = {
   id: string;
+  appointmentId: string;
   amountCents: number;
   amountDisplay: string;
   status: string;
@@ -155,7 +156,7 @@ type ClientWithRelations = Client & {
   galleryItems: Pick<ClientGalleryItem, "id" | "type" | "imageUrl" | "caption" | "createdAt">[];
   medications: Pick<ClientMedication, "id" | "name" | "dosage" | "frequency" | "notes" | "isActive" | "createdAt">[];
   documents: Pick<ClientDocument, "id" | "fileName" | "fileType" | "fileUrl" | "notes" | "createdAt">[];
-  payments: Pick<ClientPayment, "id" | "amountCents" | "status" | "description" | "receiptUrl" | "paidAt" | "createdAt">[];
+  payments: Pick<ClientPayment, "id" | "appointmentId" | "amountCents" | "status" | "description" | "receiptUrl" | "paidAt" | "createdAt">[];
   _count?: {
     appointments: number;
   };
@@ -270,6 +271,7 @@ async function buildDocuments(client: ClientWithRelations): Promise<ClientDocume
 function buildPayments(client: ClientWithRelations): ClientPaymentEntry[] {
   return client.payments.map((payment) => ({
     id: payment.id,
+    appointmentId: payment.appointmentId ?? "",
     amountCents: payment.amountCents,
     amountDisplay: formatMoney(payment.amountCents),
     status: payment.status,

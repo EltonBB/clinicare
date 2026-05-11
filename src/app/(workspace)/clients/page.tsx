@@ -95,6 +95,7 @@ export default async function ClientsPage({
       payments: {
         select: {
           id: true,
+          appointmentId: true,
           amountCents: true,
           status: true,
           description: true,

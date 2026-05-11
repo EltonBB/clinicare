@@ -1,11 +1,12 @@
 import { notFound } from "next/navigation";
 
-import { ClientDetailsPage } from "@/components/clients/client-details-page";
+import { EditClientForm } from "@/components/clients/edit-client-form";
+import { CreatePageShell } from "@/components/workspace/create-page-shell";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { buildClientRecord } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
 
-export default async function ClientDetailsRoute({
+export default async function EditClientPage({
   params,
 }: {
   params: Promise<{ clientId: string }>;
@@ -116,5 +117,17 @@ export default async function ClientDetailsRoute({
     notFound();
   }
 
-  return <ClientDetailsPage initialClient={await buildClientRecord(client)} />;
+  const record = await buildClientRecord(client);
+
+  return (
+    <CreatePageShell
+      eyebrow="Patient record"
+      title={`Edit ${record.name}`}
+      description="Update patient demographics, clinic information, and medical profile fields from a full-page form."
+      backHref={`/clients/${record.id}`}
+      backLabel="patient details"
+    >
+      <EditClientForm client={record} />
+    </CreatePageShell>
+  );
 }

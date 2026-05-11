@@ -151,20 +151,23 @@ model ClientDocument {
 }
 
 model ClientPayment {
-  id          String    @id @default(cuid())
-  businessId  String
-  clientId    String
-  client      Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  amountCents Int
-  status      String
-  description String?
-  receiptUrl  String?
-  paidAt      DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id            String       @id @default(cuid())
+  businessId    String
+  clientId      String
+  client        Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  amountCents   Int
+  status        String
+  description   String?
+  receiptUrl    String?
+  paidAt        DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   @@index([businessId, clientId, status])
   @@index([businessId, clientId, createdAt])
+  @@index([appointmentId])
 }
 
 model ClientGalleryItem {
@@ -197,6 +200,7 @@ model Appointment {
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
   reminders     AppointmentReminder[]
+  payments      ClientPayment[]
 
   @@index([businessId, startAt])
   @@index([businessId, status, startAt])

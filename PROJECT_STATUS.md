@@ -32,8 +32,8 @@ The core product direction is customer-first: clinics should not need to underst
   - completion page leading to dashboard
 - Workspace shell with left navigation, top app bar, owner account dialog, notifications, plan card, and first-user tour.
 - Dashboard with configurable widgets, quick actions, daily overview, today appointments, last clients, staff appointment preview, unread messages, and analytics widget.
-- Calendar with appointment creation, searchable client picker, staff assignment, operating-hours protection, status handling, and calendar appointment layout.
-- Clients workspace with a full-width directory, Details-only row actions, dedicated patient record pages, MVP patient tabs, appointment history, real patient demographics, medical profile fields, medications, documents/images, messages, payment records, editable details, archive controls, and private gallery image records with captions.
+- Calendar with appointment creation, searchable client picker, staff assignment, operating-hours protection, status handling, optional booking-time payment capture, and calendar appointment layout.
+- Clients workspace with a full-width directory, Details-only row actions, dedicated patient record pages, full-page patient edit flow, MVP patient tabs, appointment history, real patient demographics, medical profile fields, medications, documents/images, messages, booking-linked payment records, archive controls, and private gallery image records with captions.
 - Staff workspace separated from Settings, including staff profiles, active/away/inactive status, check-in/check-out time tracking, monthly completed appointment records, and recent completed work.
 - Inbox with WhatsApp conversations, unread counts, unknown-contact handling, conversion to client, outbound replies, and live notification updates.
 - WhatsApp setup moved to Settings with simplified customer-facing connection state, connect/retry, and refresh actions.
@@ -48,14 +48,16 @@ The core product direction is customer-first: clinics should not need to underst
 - Workspace navigation performance pass completed: dynamic workspace routes now have an instant loading shell, all sidebar/mobile nav items use client-side prefetched links, workspace auth/business lookups are request-deduped, non-critical maintenance work runs after the response, and inbox/settings data loads are capped for faster page opens.
 - Public marketing landing page at `/` now uses a simplified animated product-led design inspired by the Dribbble reference, with the default Vela blue accent color, a large hero, floating clinic workspace mockups on desktop, a cleaner stacked mobile preview, compact workflow blocks, AI reporting, privacy messaging, and signup/login CTAs into the auth flow.
 - Dedicated create pages now exist for `/calendar/new`, `/clients/new`, and `/staff/new`, replacing the main add flows for bookings, clients, and staff with centered single-page forms while preserving edit sheets for existing records.
-- Dedicated patient details pages now exist at `/clients/[clientId]`, replacing the old right-side client panel with a full patient record view covering Overview, Appointments, Medical Info, Documents, Messages, Payments, edit/archive actions, and real medication/document/payment record creation.
+- Dedicated patient details pages now exist at `/clients/[clientId]`, replacing the old right-side client panel with a full patient record view covering Overview, Appointments, Medical Info, Documents, Messages, Payments, edit/archive actions, real medication/document creation, and payment ledger records generated from bookings.
+- Dedicated patient edit pages now exist at `/clients/[clientId]/edit`, replacing the old right-side edit drawer with a full-page form for demographics, clinic information, and medical profile fields.
 
 ## Current Working Flows
 
 - A new user can sign up, confirm email, complete onboarding, and enter the dashboard.
 - A clinic can configure branding, hours, staff, and dashboard widgets during onboarding or later in Settings.
-- A clinic can create clients and then book appointments using those clients.
-- A clinic can open each patient from the directory into a dedicated full-page record with basic information, clinic information, appointments, medical information, current medications, media/document records, messages, and payments.
+- A clinic can create a lightweight patient record first, then add deeper medical history from the patient edit page as the relationship develops.
+- A clinic can book appointments using those clients and record the expected or collected service payment during booking.
+- A clinic can open each patient from the directory into a dedicated full-page record with basic information, clinic information, appointments, medical information, current medications, media/document records, messages, and a payment ledger.
 - Appointments show on the dashboard/calendar and feed staff/client records when completed.
 - Staff can be managed from the Staff page and tracked with check-in/check-out.
 - Client records can hold appointment history, notes, messages, and private Supabase-hosted gallery images.
@@ -94,8 +96,9 @@ The core product direction is customer-first: clinics should not need to underst
 - Onboarding from owner step through completion.
 - Dashboard loads with correct local date and selected widgets.
 - First-user tour appears once, avoids modals/drawers, and stays completed after finishing.
-- Create client, edit client, archive client.
-- Open a client details page from the directory and verify overview, appointment history, medical fields, medications, documents/images, messages, and payments.
+- Create client, edit client through `/clients/[clientId]/edit`, archive client.
+- Open a client details page from the directory and verify overview, appointment history, medical fields, medications, documents/images, messages, and booking-linked payments.
+- Create a booking with a payment amount and verify the payment appears in the patient's Payments tab.
 - Upload/add client gallery image record and caption.
 - Create appointment inside operating hours and verify blocked behavior outside operating hours.
 - Verify completed appointment movement into staff/client records.
@@ -110,4 +113,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Upgraded the patient details system from placeholders to real records. Client create/edit now captures demographics, clinic information, and medical profile fields; `/clients/[clientId]` now supports medication records, document/image records, and payment records backed by new Prisma tables. The database was synced with additive schema changes and RLS was enabled on the new public tables. Verified with lint, production build, and audit.
+- Refined the patient registration and booking flow. New patient creation is now a lighter registration form, patient editing moved from the sidebar drawer to `/clients/[clientId]/edit`, and booking creation can record payment details that appear in the patient payment ledger. Added a nullable appointment link on `ClientPayment`, synced the database, and verified with lint, production build, and audit.

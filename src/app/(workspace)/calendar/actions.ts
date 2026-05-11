@@ -21,6 +21,11 @@ export type SaveAppointmentPayload = {
   endTime: string;
   notes: string;
   status: CalendarAppointmentStatus;
+  paymentAmount?: string;
+  paymentStatus?: string;
+  paymentDescription?: string;
+  paymentReceiptUrl?: string;
+  paymentPaidAt?: string;
 };
 
 export type SaveAppointmentResult = {
@@ -63,6 +68,28 @@ async function getAuthedBusiness() {
 function parseDateTime(date: string, time: string) {
   const parsed = new Date(`${date}T${time}:00`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseOptionalDate(value?: string) {
+  if (!value?.trim()) {
+    return null;
+  }
+
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseAmountToCents(value?: string) {
+  if (!value?.trim()) {
+    return null;
+  }
+
+  const parsed = Number(value.replace(/[^0-9.-]/g, ""));
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return Math.round(parsed * 100);
 }
 
 function timeToMinutes(time: string) {
@@ -342,6 +369,28 @@ export async function saveAppointmentAction(
 
       appointmentId = created.id;
     }
+
+    const paymentAmountCents = parseAmountToCents(payload.paymentAmount);
+    if (paymentAmountCents !== null && paymentAmountCents > 0) {
+      await prisma.clientPayment.create({
+        data: {
+          businessId: business.id,
+          clientId: payload.clientId,
+          appointmentId: appointmentId!,
+          amountCents: paymentAmountCents,
+          status: payload.paymentStatus?.trim() || "Unpaid",
+          description:
+            payload.paymentDescription?.trim() ||
+            `Payment for ${payload.service.trim()}`,
+          receiptUrl: payload.paymentReceiptUrl?.trim() || null,
+          paidAt:
+            payload.paymentStatus === "Paid"
+              ? parseOptionalDate(payload.paymentPaidAt) ?? new Date()
+              : parseOptionalDate(payload.paymentPaidAt),
+        },
+      });
+    }
+
     return {
       ok: true,
       appointment: await hydrateAppointment(appointmentId!),

@@ -75,6 +75,7 @@ export function NewAppointmentForm({
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("10:00");
   const [status, setStatus] = useState<CalendarAppointmentStatus>("confirmed");
+  const [paymentStatus, setPaymentStatus] = useState("Unpaid");
   const selectedHours = useMemo(
     () => businessHoursForDate(date, businessHours),
     [businessHours, date]
@@ -116,6 +117,11 @@ export function NewAppointmentForm({
         endTime,
         notes: String(formData.get("notes") ?? ""),
         status,
+        paymentAmount: String(formData.get("paymentAmount") ?? ""),
+        paymentStatus,
+        paymentDescription: String(formData.get("paymentDescription") ?? ""),
+        paymentReceiptUrl: String(formData.get("paymentReceiptUrl") ?? ""),
+        paymentPaidAt: String(formData.get("paymentPaidAt") ?? ""),
       });
 
       if (!result.ok || !result.appointment) {
@@ -259,6 +265,45 @@ export function NewAppointmentForm({
             ? `Operating hours for this day: ${selectedHours.start} - ${selectedHours.end}.`
             : "This clinic is closed on the selected date. Choose an open day before booking."}
         </p>
+      </section>
+
+      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-5 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
+        <h2 className="text-base font-semibold text-foreground">Payment</h2>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">
+          Add the expected or collected payment for this booked service. Leave amount blank if payment will be handled later.
+        </p>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-foreground">Service amount</span>
+            <Input name="paymentAmount" inputMode="decimal" placeholder="0.00" className="h-11 rounded-[0.9rem] bg-white" />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-foreground">Payment status</span>
+            <select
+              value={paymentStatus}
+              onChange={(event) => setPaymentStatus(event.target.value)}
+              className="h-11 w-full rounded-[0.9rem] border border-border/80 bg-white px-3 text-sm outline-none transition-[border-color,box-shadow] focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/35"
+            >
+              {["Unpaid", "Paid", "Partially Paid"].map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-foreground">Paid date</span>
+            <Input name="paymentPaidAt" type="date" className="h-11 rounded-[0.9rem] bg-white" />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-foreground">Invoice / receipt URL</span>
+            <Input name="paymentReceiptUrl" placeholder="Optional" className="h-11 rounded-[0.9rem] bg-white" />
+          </label>
+          <label className="space-y-2 sm:col-span-2">
+            <span className="text-sm font-semibold text-foreground">Payment note</span>
+            <Textarea name="paymentDescription" placeholder="Deposit, full service payment, balance due..." className="min-h-24 rounded-[0.9rem] bg-white px-3 py-3" />
+          </label>
+        </div>
       </section>
 
       {error ? (

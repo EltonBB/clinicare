@@ -171,6 +171,7 @@ async function fetchClientRecord(clientId: string) {
       payments: {
         select: {
           id: true,
+          appointmentId: true,
           amountCents: true,
           status: true,
           description: true,

@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import type { ComponentType } from "react";
 import { useState, useTransition } from "react";
 import {
@@ -23,22 +22,11 @@ import {
 import {
   addClientDocumentAction,
   addClientMedicationAction,
-  addClientPaymentAction,
   archiveClientAction,
-  deleteClientAction,
-  saveClientAction,
 } from "@/app/(workspace)/clients/actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { uploadWorkspaceImage } from "@/lib/media-storage-client";
@@ -47,28 +35,6 @@ import type { ClientRecord, ClientStatus } from "@/lib/clients";
 
 type ClientDetailsPageProps = {
   initialClient: ClientRecord;
-};
-
-type ClientDraft = {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  gender: string;
-  dateOfBirth: string;
-  address: string;
-  patientType: string;
-  clinicType: string;
-  status: ClientStatus;
-  notes: string;
-  medicalHistory: string;
-  allergies: string;
-  importantHealthNotes: string;
-  previousTreatments: string;
-  treatmentPlan: string;
-  preferredChannel: string;
-  assignedStaff: string;
-  tags: string;
 };
 
 const statusLabels: Record<ClientStatus, string> = {
@@ -84,36 +50,6 @@ function clientInitials(name: string) {
     .map((part) => part[0])
     .join("")
     .slice(0, 2);
-}
-
-function createDraft(client: ClientRecord): ClientDraft {
-  return {
-    id: client.id,
-    name: client.name,
-    email: client.email,
-    phone: client.phone,
-    gender: client.gender === "Not added" ? "" : client.gender,
-    dateOfBirth: client.dateOfBirthInput,
-    address: client.address === "Not added" ? "" : client.address,
-    patientType: client.patientType,
-    clinicType: client.clinicType,
-    status: client.status,
-    notes: client.notes === "No notes yet." ? "" : client.notes,
-    medicalHistory: client.medical.medicalHistory === "Not added yet." ? "" : client.medical.medicalHistory,
-    allergies: client.medical.allergies === "Not added yet." ? "" : client.medical.allergies,
-    importantHealthNotes:
-      client.medical.importantHealthNotes === "Not added yet."
-        ? ""
-        : client.medical.importantHealthNotes,
-    previousTreatments:
-      client.medical.previousTreatments === "Not added yet."
-        ? ""
-        : client.medical.previousTreatments,
-    treatmentPlan: client.medical.treatmentPlan === "Not added yet." ? "" : client.medical.treatmentPlan,
-    preferredChannel: client.details.preferredChannel,
-    assignedStaff: client.details.assignedStaff,
-    tags: client.details.tags.join(", "),
-  };
 }
 
 function NativeSelect({
@@ -169,10 +105,7 @@ function StatCard({
 }
 
 export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
-  const router = useRouter();
   const [client, setClient] = useState(initialClient);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [draft, setDraft] = useState<ClientDraft>(createDraft(initialClient));
   const [medicationDraft, setMedicationDraft] = useState({
     name: "",
     dosage: "",
@@ -185,13 +118,6 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
     fileType: "Image / Scan",
     fileUrl: "",
     notes: "",
-  });
-  const [paymentDraft, setPaymentDraft] = useState({
-    amount: "",
-    status: "Paid",
-    description: "",
-    receiptUrl: "",
-    paidAt: "",
   });
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
@@ -210,49 +136,6 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   const nextAppointment = upcomingAppointments[0]?.date ?? "No appointment booked";
   const lastMessage = client.messages[0]?.timestamp ?? "No messages yet";
 
-  function openEditClient() {
-    setDraft(createDraft(client));
-    setErrorMessage("");
-    setDrawerOpen(true);
-  }
-
-  function saveClient() {
-    startSaving(async () => {
-      const result = await saveClientAction({
-        id: draft.id,
-        name: draft.name,
-        email: draft.email,
-        phone: draft.phone,
-        gender: draft.gender,
-        dateOfBirth: draft.dateOfBirth,
-        address: draft.address,
-        patientType: draft.patientType,
-        clinicType: draft.clinicType,
-        status: draft.status,
-        notes: draft.notes,
-        medicalHistory: draft.medicalHistory,
-        allergies: draft.allergies,
-        importantHealthNotes: draft.importantHealthNotes,
-        previousTreatments: draft.previousTreatments,
-        treatmentPlan: draft.treatmentPlan,
-        preferredChannel: draft.preferredChannel,
-        assignedStaff: draft.assignedStaff,
-        tags: draft.tags,
-      });
-
-      if (!result.ok || !result.client) {
-        setErrorMessage(result.error ?? "We couldn't save the client.");
-        setStatusMessage("");
-        return;
-      }
-
-      setClient(result.client);
-      setDrawerOpen(false);
-      setErrorMessage("");
-      setStatusMessage("Client details updated.");
-    });
-  }
-
   function archiveClient() {
     startSaving(async () => {
       const result = await archiveClientAction(client.id);
@@ -266,24 +149,6 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
       setClient((current) => ({ ...current, status: "archived" }));
       setErrorMessage("");
       setStatusMessage("Client archived.");
-    });
-  }
-
-  function deleteClient() {
-    if (!window.confirm("Delete this client permanently?")) {
-      return;
-    }
-
-    startSaving(async () => {
-      const result = await deleteClientAction(client.id);
-
-      if (!result.ok) {
-        setErrorMessage(result.error ?? "We couldn't delete the client.");
-        setStatusMessage("");
-        return;
-      }
-
-      router.push("/clients");
     });
   }
 
@@ -338,32 +203,6 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
     });
   }
 
-  function addPayment() {
-    startSaving(async () => {
-      const result = await addClientPaymentAction({
-        clientId: client.id,
-        ...paymentDraft,
-      });
-
-      if (!result.ok || !result.client) {
-        setErrorMessage(result.error ?? "We couldn't add this payment.");
-        setStatusMessage("");
-        return;
-      }
-
-      setClient(result.client);
-      setPaymentDraft({
-        amount: "",
-        status: "Paid",
-        description: "",
-        receiptUrl: "",
-        paidAt: "",
-      });
-      setErrorMessage("");
-      setStatusMessage("Payment added.");
-    });
-  }
-
   async function handleDocumentFile(file?: File) {
     if (!file) {
       return;
@@ -410,10 +249,13 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             <CalendarPlus2 className="size-4" />
             Book
           </Link>
-          <Button variant="outline" className="rounded-[0.85rem]" onClick={openEditClient}>
+          <Link
+            href={`/clients/${client.id}/edit`}
+            className={cn(buttonVariants({ variant: "outline" }), "rounded-[0.85rem]")}
+          >
             <UserRoundPen className="size-4" />
             Edit
-          </Button>
+          </Link>
           <Button
             variant="outline"
             className="rounded-[0.85rem]"
@@ -802,58 +644,6 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             <InfoCard icon={CreditCard} title="Payment status" value={client.paymentStats.paymentStatus} />
           </div>
 
-          <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
-            <h2 className="text-lg font-semibold text-foreground">Add payment</h2>
-            <div className="mt-4 grid gap-3 lg:grid-cols-5">
-              <Input
-                value={paymentDraft.amount}
-                onChange={(event) =>
-                  setPaymentDraft((current) => ({ ...current, amount: event.target.value }))
-                }
-                placeholder="Amount"
-                className="h-11 rounded-[0.9rem] bg-white/84"
-              />
-              <NativeSelect
-                value={paymentDraft.status}
-                options={["Paid", "Unpaid", "Partially Paid"]}
-                onChange={(value) =>
-                  setPaymentDraft((current) => ({ ...current, status: value }))
-                }
-              />
-              <Input
-                value={paymentDraft.paidAt}
-                onChange={(event) =>
-                  setPaymentDraft((current) => ({ ...current, paidAt: event.target.value }))
-                }
-                type="date"
-                className="h-11 rounded-[0.9rem] bg-white/84"
-              />
-              <Input
-                value={paymentDraft.receiptUrl}
-                onChange={(event) =>
-                  setPaymentDraft((current) => ({ ...current, receiptUrl: event.target.value }))
-                }
-                placeholder="Invoice / receipt URL"
-                className="h-11 rounded-[0.9rem] bg-white/84"
-              />
-              <Button
-                className="h-11 rounded-[0.9rem]"
-                onClick={addPayment}
-                disabled={isPending || !paymentDraft.amount.trim()}
-              >
-                Add payment
-              </Button>
-              <Textarea
-                value={paymentDraft.description}
-                onChange={(event) =>
-                  setPaymentDraft((current) => ({ ...current, description: event.target.value }))
-                }
-                placeholder="Payment description"
-                className="min-h-20 rounded-[0.9rem] bg-white/84 px-3 py-3 lg:col-span-5"
-              />
-            </div>
-          </section>
-
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {client.payments.length > 0 ? (
               client.payments.map((payment) => (
@@ -866,6 +656,9 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   </div>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">{payment.description}</p>
                   <p className="mt-1 text-xs text-muted-foreground">Paid at: {payment.paidAt}</p>
+                  {payment.appointmentId ? (
+                    <p className="mt-1 text-xs text-muted-foreground">Linked to booked service</p>
+                  ) : null}
                   {payment.receiptUrl ? (
                     <a
                       href={payment.receiptUrl}
@@ -879,108 +672,15 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 </div>
               ))
             ) : (
-              <EmptyPanel icon={CreditCard} title="No payments yet" text="Add paid, unpaid, or partially paid records for this patient." />
+              <EmptyPanel
+                icon={CreditCard}
+                title="No payments yet"
+                text="Payments registered from bookings or appointment sessions will appear here as this patient's payment history."
+              />
             )}
           </div>
         </TabsContent>
       </Tabs>
-
-      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" className="w-full max-w-[460px] p-0 sm:max-w-[460px]">
-          <SheetHeader className="glass-divider rounded-t-[1.2rem] px-5 py-5">
-            <SheetTitle>Edit patient</SheetTitle>
-            <SheetDescription>Update the patient profile used across Vela.</SheetDescription>
-          </SheetHeader>
-
-          <div className="space-y-5 px-5 py-5">
-            <div className="surface-soft grid gap-4 rounded-[1.05rem] p-4 sm:grid-cols-2">
-              <Field label="Full name" value={draft.name} onChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
-              <Field label="Email" value={draft.email} onChange={(value) => setDraft((current) => ({ ...current, email: value }))} />
-              <Field label="Phone number" value={draft.phone} onChange={(value) => setDraft((current) => ({ ...current, phone: value }))} />
-              <Field label="Gender" value={draft.gender} onChange={(value) => setDraft((current) => ({ ...current, gender: value }))} />
-              <Field label="Date of birth" type="date" value={draft.dateOfBirth} onChange={(value) => setDraft((current) => ({ ...current, dateOfBirth: value }))} />
-              <Field label="Address" value={draft.address} onChange={(value) => setDraft((current) => ({ ...current, address: value }))} />
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Patient type
-                </label>
-                <NativeSelect
-                  value={draft.patientType}
-                  options={["New Patient", "Returning Patient", "VIP / Important"]}
-                  onChange={(value) =>
-                    setDraft((current) => ({ ...current, patientType: value }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Status
-                </label>
-                <NativeSelect
-                  value={draft.status}
-                  options={["active", "inactive", "at-risk", "archived"]}
-                  onChange={(value) =>
-                    setDraft((current) => ({ ...current, status: value as ClientStatus }))
-                  }
-                />
-              </div>
-            </div>
-            <div className="surface-soft grid gap-4 rounded-[1.05rem] p-4 sm:grid-cols-2">
-              <Field label="Clinic type" value={draft.clinicType} onChange={(value) => setDraft((current) => ({ ...current, clinicType: value }))} />
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Preferred contact method
-                </label>
-                <NativeSelect
-                  value={draft.preferredChannel}
-                  options={["WhatsApp", "Phone Call", "Email"]}
-                  onChange={(value) => setDraft((current) => ({ ...current, preferredChannel: value }))}
-                />
-              </div>
-              <Field label="Assigned doctor / staff member" value={draft.assignedStaff} onChange={(value) => setDraft((current) => ({ ...current, assignedStaff: value }))} />
-            </div>
-            <div className="surface-soft space-y-2 rounded-[1.05rem] p-4">
-              <Field label="Patient type / tags" value={draft.tags} onChange={(value) => setDraft((current) => ({ ...current, tags: value }))} placeholder="new patient, returning patient, VIP / important" />
-            </div>
-            <div className="surface-soft space-y-2 rounded-[1.05rem] p-4">
-              <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Patient notes
-              </label>
-              <Textarea
-                value={draft.notes}
-                onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))}
-                className="min-h-28 rounded-[0.9rem] bg-white/84 px-3 py-3"
-              />
-            </div>
-          </div>
-          <div className="space-y-5 px-5 pb-5">
-            <div className="surface-soft grid gap-4 rounded-[1.05rem] p-4 sm:grid-cols-2">
-              <TextField label="Medical history" value={draft.medicalHistory} onChange={(value) => setDraft((current) => ({ ...current, medicalHistory: value }))} />
-              <TextField label="Allergies" value={draft.allergies} onChange={(value) => setDraft((current) => ({ ...current, allergies: value }))} />
-              <TextField label="Important health notes" value={draft.importantHealthNotes} onChange={(value) => setDraft((current) => ({ ...current, importantHealthNotes: value }))} />
-              <TextField label="Previous treatments" value={draft.previousTreatments} onChange={(value) => setDraft((current) => ({ ...current, previousTreatments: value }))} />
-              <TextField label="Treatment plan" value={draft.treatmentPlan} onChange={(value) => setDraft((current) => ({ ...current, treatmentPlan: value }))} />
-            </div>
-          </div>
-
-          <SheetFooter className="glass-divider rounded-b-[1.2rem] px-5 py-4">
-            <Button
-              variant="outline"
-              className="rounded-[0.9rem] border-destructive/25 bg-white/70 text-destructive hover:bg-destructive/5 hover:text-destructive"
-              onClick={deleteClient}
-              disabled={isPending}
-            >
-              Delete client
-            </Button>
-            <Button variant="outline" className="rounded-[0.9rem] bg-white/70" onClick={() => setDrawerOpen(false)} disabled={isPending}>
-              Close
-            </Button>
-            <Button className="rounded-[0.9rem]" onClick={saveClient} disabled={isPending}>
-              {isPending ? "Saving..." : "Save changes"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }
@@ -1078,58 +778,6 @@ function OverviewLine({
         {Icon ? <Icon className="size-4 shrink-0 text-muted-foreground" /> : null}
         <span className="min-w-0 break-words">{value}</span>
       </dd>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  type?: string;
-}) {
-  return (
-    <div className="space-y-2">
-      <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-        {label}
-      </label>
-      <Input
-        type={type}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className="h-11 rounded-[0.9rem] bg-white/84"
-      />
-    </div>
-  );
-}
-
-function TextField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-        {label}
-      </label>
-      <Textarea
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="min-h-24 rounded-[0.9rem] bg-white/84 px-3 py-3"
-      />
     </div>
   );
 }
