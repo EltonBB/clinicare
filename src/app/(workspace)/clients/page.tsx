@@ -31,6 +31,7 @@ export default async function ClientsPage({
           title: true,
           startAt: true,
           status: true,
+          notes: true,
         },
         orderBy: {
           startAt: "desc",

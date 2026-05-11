@@ -8,7 +8,9 @@ import {
   Archive,
   ArrowLeft,
   CalendarPlus2,
+  CreditCard,
   FileText,
+  HeartPulse,
   ImagePlus,
   Images,
   Inbox,
@@ -149,6 +151,26 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   const [statusMessage, setStatusMessage] = useState("");
   const [isGalleryUploading, setIsGalleryUploading] = useState(false);
   const [isPending, startSaving] = useTransition();
+  const vipPatient = client.details.tags.some((tag) =>
+    ["vip", "important"].includes(tag.toLowerCase())
+  );
+  const patientType = vipPatient
+    ? "VIP / Important"
+    : client.totalVisits > 0
+      ? "Returning Patient"
+      : "New Patient";
+  const upcomingAppointments = client.appointments.filter(
+    (appointment) => appointment.status === "PENDING" || appointment.status === "CONFIRMED"
+  );
+  const pastAppointments = client.appointments.filter(
+    (appointment) => appointment.status === "COMPLETED"
+  );
+  const cancelledAppointments = client.appointments.filter(
+    (appointment) => appointment.status === "CANCELLED"
+  );
+  const firstVisit = client.appointments.at(-1)?.date ?? "No visits yet";
+  const nextAppointment = upcomingAppointments[0]?.date ?? "No appointment booked";
+  const lastMessage = client.messages[0]?.timestamp ?? "No messages yet";
 
   function openEditClient() {
     setDraft(createDraft(client));
@@ -364,23 +386,21 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
       <Tabs defaultValue="overview" className="section-reveal-delayed gap-5">
         <TabsList variant="line" className="flex-wrap rounded-none p-0">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="appointments">Past appointments</TabsTrigger>
-          <TabsTrigger value="media">Images</TabsTrigger>
+          <TabsTrigger value="appointments">Appointments</TabsTrigger>
+          <TabsTrigger value="medical">Medical Info</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="messages">Messages</TabsTrigger>
-          <TabsTrigger value="notes">Notes</TabsTrigger>
-          <TabsTrigger value="details">Details</TabsTrigger>
+          <TabsTrigger value="payments">Payments</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
-            <h2 className="text-lg font-semibold text-foreground">Client data</h2>
+            <h2 className="text-lg font-semibold text-foreground">Basic information</h2>
             <dl className="mt-5 space-y-3">
-              <OverviewLine label="Name" value={client.name} />
-              <OverviewLine label="Status" value={statusLabels[client.status]} />
+              <OverviewLine label="Full name" value={client.name} />
               <OverviewLine
                 icon={Phone}
-                label="Phone"
+                label="Phone number"
                 value={client.phone || "Not added"}
               />
               <OverviewLine
@@ -388,46 +408,33 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 label="Email"
                 value={client.email || "Not added"}
               />
-              <OverviewLine label="Preferred channel" value={client.details.preferredChannel} />
-              <OverviewLine label="Assigned staff" value={client.details.assignedStaff} />
-              <OverviewLine label="Last visit" value={client.lastVisit} />
-              <OverviewLine label="Total visits" value={`${client.totalVisits}`} />
-              <OverviewLine
-                label="Tags"
-                value={client.details.tags.length > 0 ? client.details.tags.join(", ") : "No tags"}
-              />
+              <OverviewLine label="Gender" value="Not added yet" />
+              <OverviewLine label="Date of birth" value="Not added yet" />
+              <OverviewLine label="Address" value="Not added yet" />
+              <OverviewLine label="Patient type" value={patientType} />
+              <OverviewLine label="Status" value={statusLabels[client.status]} />
             </dl>
           </section>
 
           <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold text-foreground">Recent activity</h2>
-              <Link href={`/calendar/new?client=${client.id}`} className="text-sm font-semibold text-primary">
-                Book next
-              </Link>
-            </div>
-            <div className="mt-4 space-y-3">
-              {client.history.slice(0, 4).map((entry) => (
-                <div key={entry.id} className="rounded-[0.95rem] border border-border/80 bg-white/72 px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-medium text-foreground">{entry.title}</p>
-                    <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                      {entry.date}
-                    </p>
-                  </div>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{entry.detail}</p>
-                </div>
-              ))}
-            </div>
+            <h2 className="text-lg font-semibold text-foreground">Clinic information</h2>
+            <dl className="mt-5 space-y-3">
+              <OverviewLine label="Clinic type" value="Clinic workspace" />
+              <OverviewLine label="Assigned doctor / staff member" value={client.details.assignedStaff} />
+              <OverviewLine label="First visit date" value={firstVisit} />
+              <OverviewLine label="Last visit date" value={client.lastVisit} />
+              <OverviewLine label="Next appointment" value={nextAppointment} />
+              <OverviewLine label="Patient notes" value={client.notes} />
+            </dl>
           </section>
         </TabsContent>
 
         <TabsContent value="appointments" className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-foreground">Past appointments and details</h2>
+              <h2 className="text-lg font-semibold text-foreground">Appointments</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Completed, cancelled, pending, and historical visits linked to this client.
+                Upcoming, past, cancelled, no-show, and appointment-note context for this patient.
               </p>
             </div>
             <Link
@@ -438,49 +445,54 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               Book appointment
             </Link>
           </div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <div className="mt-5 grid gap-3 sm:grid-cols-4">
+            <StatCard label="Upcoming" value={client.appointmentStats.upcoming} />
             <StatCard label="Completed" value={client.appointmentStats.completed} tone="primary" />
             <StatCard label="Cancelled" value={client.appointmentStats.cancelled} tone="danger" />
-            <StatCard label="Pending" value={client.appointmentStats.pending} />
+            <StatCard label="No-shows" value={client.appointmentStats.noShows} />
           </div>
-          <div className="mt-5 space-y-3">
-            {client.history.length > 0 ? (
-              client.history.map((entry) => (
-                <div key={entry.id} className="rounded-[0.95rem] border border-border/80 bg-white/72 px-4 py-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="font-semibold text-foreground">{entry.title}</p>
-                    <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                      {entry.date}
-                    </p>
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{entry.detail}</p>
-                </div>
-              ))
-            ) : (
-              <EmptyPanel icon={CalendarPlus2} title="No appointments yet" text="Book this client to start their visit history." />
-            )}
+          <div className="mt-5 grid gap-4 xl:grid-cols-3">
+            <AppointmentList title="Upcoming appointments" entries={upcomingAppointments} emptyText="No upcoming appointments." />
+            <AppointmentList title="Past appointments" entries={pastAppointments} emptyText="No completed appointments yet." />
+            <AppointmentList title="Cancelled appointments" entries={cancelledAppointments} emptyText="No cancelled appointments." />
           </div>
         </TabsContent>
 
-        <TabsContent value="media" className="space-y-4">
+        <TabsContent value="medical" className="grid gap-4 xl:grid-cols-2">
+          <InfoCard icon={HeartPulse} title="Medical history" value="Not added yet." />
+          <InfoCard icon={HeartPulse} title="Allergies" value="Not added yet." />
+          <InfoCard icon={NotebookText} title="Current medication" value="Not added yet." />
+          <InfoCard icon={HeartPulse} title="Important health notes" value={client.notes} />
+          <InfoCard icon={NotebookText} title="Previous treatments" value="Not added yet." />
+          <InfoCard icon={NotebookText} title="Treatment plan" value="Not added yet." />
+        </TabsContent>
+
+        <TabsContent value="documents" className="space-y-4">
           <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
             <div className="flex items-start gap-3">
               <div className="flex size-10 items-center justify-center rounded-[0.9rem] bg-primary/10 text-primary">
-                <ImagePlus className="size-5" />
+                <FileText className="size-5" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-foreground">Clinical images</h2>
+                <h2 className="text-lg font-semibold text-foreground">Documents & images</h2>
                 <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-                  Save visual client records here, including progress photos, treatment images,
-                  x-rays, scans, referral images, and other image-based clinical media.
+                  Use simple upload types: ID, Consent, Medical History, Report, Image / Scan, and Other.
+                  Image uploads are live now; PDF/document records need the next storage schema step.
                 </p>
               </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {["ID", "Consent", "Medical History", "Report", "Image / Scan", "Other"].map((type) => (
+                <span key={type} className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-foreground">
+                  {type}
+                </span>
+              ))}
             </div>
             <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_190px]">
               <Input
                 value={galleryCaption}
                 onChange={(event) => setGalleryCaption(event.target.value)}
-                placeholder="Image note, for example CT scan, x-ray, before photo, after photo..."
+                placeholder="File notes, for example CT scan, ID, x-ray, before photo..."
                 className="h-11 rounded-[0.9rem] bg-white/84"
               />
               <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-[0.9rem] border border-border bg-white/78 px-4 text-sm font-medium text-foreground transition-colors hover:bg-white">
@@ -516,8 +528,11 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                     className="aspect-[4/3] w-full object-cover"
                   />
                   <figcaption className="px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      Image / Scan
+                    </p>
                     <p className="text-sm font-medium text-foreground">{item.caption || "No note"}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{item.createdAt}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Upload date: {item.createdAt}</p>
                   </figcaption>
                 </figure>
               ))}
@@ -525,14 +540,6 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           ) : (
             <EmptyPanel icon={Images} title="No images yet" text="Upload the first clinical image for this client." />
           )}
-        </TabsContent>
-
-        <TabsContent value="documents" className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
-          <EmptyPanel
-            icon={FileText}
-            title="Document records are ready for the next schema step"
-            text="The current database stores client notes, messages, appointments, and image records. PDF/document upload needs its own storage model before it should be used with real clinic files."
-          />
         </TabsContent>
 
         <TabsContent value="messages" className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
@@ -548,6 +555,12 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               Open inbox
             </Link>
           </div>
+          <dl className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Detail label="WhatsApp number" value={client.phone || "Not added"} />
+            <Detail label="Last message sent" value={lastMessage} />
+            <Detail label="Reminder status" value="Uses appointment reminder settings" />
+            <Detail label="Preferred contact method" value={client.details.preferredChannel} />
+          </dl>
           <div className="mt-5 space-y-3">
             {client.messages.length > 0 ? (
               client.messages.map((message) => (
@@ -579,50 +592,33 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           </div>
         </TabsContent>
 
-        <TabsContent value="notes" className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
-          <div className="flex items-start gap-3">
-            <NotebookText className="mt-1 size-5 text-primary" />
-            <div>
-              <h2 className="text-lg font-semibold text-foreground">Notes</h2>
-              <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
-                {client.notes}
-              </p>
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="details" className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
-          <h2 className="text-lg font-semibold text-foreground">Client details</h2>
-          <dl className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <Detail label="Name" value={client.name} />
-            <Detail label="Phone" value={client.phone} />
-            <Detail label="Email" value={client.email || "Not added"} />
-            <Detail label="Status" value={statusLabels[client.status]} />
-            <Detail label="Preferred channel" value={client.details.preferredChannel} />
-            <Detail label="Assigned staff" value={client.details.assignedStaff} />
-          </dl>
+        <TabsContent value="payments" className="grid gap-4 xl:grid-cols-2">
+          <InfoCard icon={CreditCard} title="Total paid" value="Not connected yet." />
+          <InfoCard icon={CreditCard} title="Unpaid balance" value="Not connected yet." />
+          <InfoCard icon={FileText} title="Invoice / receipt" value="Billing documents are not connected yet." />
+          <InfoCard icon={CreditCard} title="Payment status" value="Not connected yet." />
         </TabsContent>
       </Tabs>
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent side="right" className="w-full max-w-[460px] p-0 sm:max-w-[460px]">
           <SheetHeader className="glass-divider rounded-t-[1.2rem] px-5 py-5">
-            <SheetTitle>Edit client</SheetTitle>
-            <SheetDescription>Update the client profile used across Vela.</SheetDescription>
+            <SheetTitle>Edit patient</SheetTitle>
+            <SheetDescription>Update the patient profile used across Vela.</SheetDescription>
           </SheetHeader>
 
           <div className="space-y-5 px-5 py-5">
             <div className="surface-soft grid gap-4 rounded-[1.05rem] p-4 sm:grid-cols-2">
-              <Field label="Name" value={draft.name} onChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
+              <Field label="Full name" value={draft.name} onChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
               <Field label="Email" value={draft.email} onChange={(value) => setDraft((current) => ({ ...current, email: value }))} />
-              <Field label="Phone" value={draft.phone} onChange={(value) => setDraft((current) => ({ ...current, phone: value }))} />
+              <Field label="Phone number" value={draft.phone} onChange={(value) => setDraft((current) => ({ ...current, phone: value }))} />
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Status
                 </label>
                 <NativeSelect
                   value={draft.status}
-                  options={["active", "at-risk", "inactive", "archived"]}
+                  options={["active", "inactive", "at-risk", "archived"]}
                   onChange={(value) =>
                     setDraft((current) => ({ ...current, status: value as ClientStatus }))
                   }
@@ -632,22 +628,22 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             <div className="surface-soft grid gap-4 rounded-[1.05rem] p-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Preferred channel
+                  Preferred contact method
                 </label>
                 <NativeSelect
                   value={draft.preferredChannel}
-                  options={["WhatsApp", "Phone", "Email"]}
+                  options={["WhatsApp", "Phone Call", "Email"]}
                   onChange={(value) => setDraft((current) => ({ ...current, preferredChannel: value }))}
                 />
               </div>
-              <Field label="Assigned staff" value={draft.assignedStaff} onChange={(value) => setDraft((current) => ({ ...current, assignedStaff: value }))} />
+              <Field label="Assigned doctor / staff member" value={draft.assignedStaff} onChange={(value) => setDraft((current) => ({ ...current, assignedStaff: value }))} />
             </div>
             <div className="surface-soft space-y-2 rounded-[1.05rem] p-4">
-              <Field label="Tags" value={draft.tags} onChange={(value) => setDraft((current) => ({ ...current, tags: value }))} placeholder="priority, whatsapp" />
+              <Field label="Patient type / tags" value={draft.tags} onChange={(value) => setDraft((current) => ({ ...current, tags: value }))} placeholder="new patient, returning patient, VIP / important" />
             </div>
             <div className="surface-soft space-y-2 rounded-[1.05rem] p-4">
               <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Notes
+                Patient notes
               </label>
               <Textarea
                 value={draft.notes}
@@ -687,6 +683,70 @@ function Detail({ label, value }: { label: string; value: string }) {
       </dt>
       <dd className="mt-2 text-sm font-medium text-foreground">{value}</dd>
     </div>
+  );
+}
+
+function AppointmentList({
+  title,
+  entries,
+  emptyText,
+}: {
+  title: string;
+  entries: ClientRecord["appointments"];
+  emptyText: string;
+}) {
+  return (
+    <section className="rounded-[1rem] border border-border/80 bg-white/72 p-4">
+      <h3 className="font-semibold text-foreground">{title}</h3>
+      <div className="mt-4 space-y-3">
+        {entries.length > 0 ? (
+          entries.map((entry) => (
+            <div key={entry.id} className="rounded-[0.9rem] border border-border/80 bg-white/78 px-3 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <p className="font-medium text-foreground">{entry.title}</p>
+                <span className="rounded-full bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground">
+                  {entry.status.toLowerCase()}
+                </span>
+              </div>
+              <p className="mt-1 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                {entry.date}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {entry.notes}
+              </p>
+            </div>
+          ))
+        ) : (
+          <p className="rounded-[0.9rem] border border-dashed border-border/90 bg-white/54 px-3 py-4 text-sm text-muted-foreground">
+            {emptyText}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function InfoCard({
+  icon: Icon,
+  title,
+  value,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  title: string;
+  value: string;
+}) {
+  return (
+    <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+      <div className="flex items-start gap-3">
+        <div className="flex size-10 items-center justify-center rounded-[0.9rem] bg-primary/10 text-primary">
+          <Icon className="size-5" />
+        </div>
+        <div>
+          <h2 className="font-semibold text-foreground">{title}</h2>
+          <p className="mt-2 text-sm leading-7 text-muted-foreground">{value}</p>
+        </div>
+      </div>
+    </section>
   );
 }
 

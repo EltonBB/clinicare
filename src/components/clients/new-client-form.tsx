@@ -70,7 +70,7 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
       });
 
       if (!result.ok || !result.client) {
-        setError(result.error ?? "We couldn't create this client.");
+        setError(result.error ?? "We couldn't create this patient.");
         return;
       }
 
@@ -79,21 +79,21 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
         return;
       }
 
-      router.push(`/clients?client=${result.client.id}`);
+      router.push(`/clients/${result.client.id}`);
     });
   }
 
   return (
     <form action={handleSubmit} className="space-y-5">
       <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-5 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
-        <h2 className="text-base font-semibold text-foreground">Client profile</h2>
+        <h2 className="text-base font-semibold text-foreground">Basic information</h2>
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <label className="space-y-2">
-            <span className="text-sm font-semibold text-foreground">Name</span>
-            <Input name="name" required placeholder="Client name" className="h-11 rounded-[0.9rem] bg-white" />
+            <span className="text-sm font-semibold text-foreground">Full name</span>
+            <Input name="name" required placeholder="Patient name" className="h-11 rounded-[0.9rem] bg-white" />
           </label>
           <label className="space-y-2">
-            <span className="text-sm font-semibold text-foreground">Phone</span>
+            <span className="text-sm font-semibold text-foreground">Phone number</span>
             <Input name="phone" required placeholder="+1 555 000 0000" className="h-11 rounded-[0.9rem] bg-white" />
           </label>
           <label className="space-y-2">
@@ -104,33 +104,33 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
             name="status"
             label="Status"
             value={status}
-            options={["active", "at-risk", "inactive", "archived"]}
+            options={["active", "inactive", "at-risk", "archived"]}
             onChange={(value) => setStatus(value as ClientStatus)}
           />
         </div>
       </section>
 
       <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-5 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
-        <h2 className="text-base font-semibold text-foreground">Preferences and notes</h2>
+        <h2 className="text-base font-semibold text-foreground">Clinic information</h2>
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <SelectField
             name="preferredChannel"
-            label="Preferred channel"
+            label="Preferred contact method"
             value={preferredChannel}
-            options={["WhatsApp", "Phone", "Email"]}
+            options={["WhatsApp", "Phone Call", "Email"]}
             onChange={setPreferredChannel}
           />
           <label className="space-y-2">
-            <span className="text-sm font-semibold text-foreground">Assigned staff</span>
+            <span className="text-sm font-semibold text-foreground">Assigned doctor / staff member</span>
             <Input name="assignedStaff" placeholder="Workspace staff" className="h-11 rounded-[0.9rem] bg-white" />
           </label>
           <label className="space-y-2 sm:col-span-2">
-            <span className="text-sm font-semibold text-foreground">Tags</span>
-            <Input name="tags" placeholder="priority, whatsapp" className="h-11 rounded-[0.9rem] bg-white" />
+            <span className="text-sm font-semibold text-foreground">Patient type / tags</span>
+            <Input name="tags" placeholder="new patient, returning patient, VIP / important" className="h-11 rounded-[0.9rem] bg-white" />
           </label>
           <label className="space-y-2 sm:col-span-2">
-            <span className="text-sm font-semibold text-foreground">Notes</span>
-            <Textarea name="notes" placeholder="Client preferences, care notes, or follow-up context" className="min-h-28 rounded-[0.9rem] bg-white px-3 py-3" />
+            <span className="text-sm font-semibold text-foreground">Patient notes</span>
+            <Textarea name="notes" placeholder="Patient notes, medical context, treatment plan, or follow-up context" className="min-h-28 rounded-[0.9rem] bg-white px-3 py-3" />
           </label>
         </div>
       </section>
@@ -151,7 +151,7 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
         </Link>
         <Button type="submit" className="rounded-[0.9rem]" disabled={isPending}>
           <UserPlus className="size-4" />
-          {isPending ? "Creating..." : "Create client"}
+          {isPending ? "Creating..." : "Create patient"}
         </Button>
       </div>
     </form>

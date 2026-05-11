@@ -27,6 +27,7 @@ export default async function ClientDetailsRoute({
           title: true,
           startAt: true,
           status: true,
+          notes: true,
         },
         orderBy: {
           startAt: "desc",

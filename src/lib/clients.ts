@@ -1,4 +1,4 @@
-import type { Appointment, Client, ClientGalleryItem, Message } from "@prisma/client";
+import type { Appointment, AppointmentStatus, Client, ClientGalleryItem, Message } from "@prisma/client";
 import { format } from "date-fns";
 
 import { resolveMediaDisplayUrl } from "@/lib/media-storage-server";
@@ -19,6 +19,14 @@ export type ClientMessageEntry = {
   timestamp: string;
 };
 
+export type ClientAppointmentEntry = {
+  id: string;
+  date: string;
+  title: string;
+  status: AppointmentStatus;
+  notes: string;
+};
+
 export type ClientRecord = {
   id: string;
   name: string;
@@ -34,11 +42,14 @@ export type ClientRecord = {
     tags: string[];
   };
   history: ClientHistoryEntry[];
+  appointments: ClientAppointmentEntry[];
   messages: ClientMessageEntry[];
   appointmentStats: {
     completed: number;
     cancelled: number;
     pending: number;
+    upcoming: number;
+    noShows: number;
   };
   gallery: Array<{
     id: string;
@@ -67,7 +78,7 @@ export type SaveClientPayload = {
 };
 
 type ClientWithRelations = Client & {
-  appointments: Pick<Appointment, "id" | "title" | "startAt" | "status">[];
+  appointments: Pick<Appointment, "id" | "title" | "startAt" | "status" | "notes">[];
   messages: Pick<Message, "id" | "body" | "direction" | "sentAt">[];
   galleryItems: Pick<ClientGalleryItem, "id" | "type" | "imageUrl" | "caption" | "createdAt">[];
   _count?: {
@@ -139,7 +150,18 @@ function buildMessages(client: ClientWithRelations): ClientMessageEntry[] {
   }));
 }
 
+function buildAppointments(client: ClientWithRelations): ClientAppointmentEntry[] {
+  return client.appointments.map((appointment) => ({
+    id: appointment.id,
+    date: format(appointment.startAt, "MMM d, yyyy"),
+    title: appointment.title,
+    status: appointment.status,
+    notes: appointment.notes ?? "No appointment notes.",
+  }));
+}
+
 export async function buildClientRecord(client: ClientWithRelations): Promise<ClientRecord> {
+  const now = new Date();
   const completed = client.appointments.filter(
     (appointment) => appointment.status === "COMPLETED"
   ).length;
@@ -148,6 +170,11 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
   ).length;
   const pending = client.appointments.filter(
     (appointment) => appointment.status === "PENDING"
+  ).length;
+  const upcoming = client.appointments.filter(
+    (appointment) =>
+      appointment.startAt >= now &&
+      (appointment.status === "PENDING" || appointment.status === "CONFIRMED")
   ).length;
 
   return {
@@ -165,11 +192,14 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
       tags: client.tags,
     },
     history: buildHistory(client),
+    appointments: buildAppointments(client),
     messages: buildMessages(client),
     appointmentStats: {
       completed,
       cancelled,
       pending,
+      upcoming,
+      noShows: 0,
     },
     gallery: await Promise.all(
       client.galleryItems.map(async (item) => ({
