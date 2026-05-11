@@ -110,8 +110,8 @@ export function InboxWorkspace({
     conversations.find((conversation) => conversation.id === selectedConversationId);
   const hasClients = clientCount > 0;
   const bookingHref = recommendedClientId
-    ? `/calendar?new=1&client=${recommendedClientId}`
-    : "/calendar?new=1";
+    ? `/calendar/new?client=${recommendedClientId}`
+    : "/calendar/new";
 
   useEffect(() => {
     let cancelled = false;
@@ -598,7 +598,7 @@ export function InboxWorkspace({
                 {query.trim().length === 0 ? (
                   <div className="flex flex-col justify-center gap-2 sm:flex-row">
                     <Link
-                      href={hasClients ? bookingHref : "/clients?new=1&next=calendar"}
+                      href={hasClients ? bookingHref : "/clients/new?next=calendar"}
                       className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.9rem] bg-primary px-4 text-sm font-medium text-primary-foreground transition-[background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_32px_var(--primary-shadow)]"
                     >
                       {hasClients ? (

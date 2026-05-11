@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+
 import { StaffWorkspace } from "@/components/staff/staff-workspace";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
@@ -21,6 +23,11 @@ export default async function StaffPage({
     missingBusinessRedirect: "/onboarding",
   });
   const { staff: requestedStaffId, new: openNew } = await searchParams;
+
+  if (openNew === "1") {
+    redirect("/staff/new");
+  }
+
   const records = await prisma.staffMember.findMany({
     where: {
       businessId: business.id,

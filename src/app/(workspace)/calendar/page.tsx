@@ -2,8 +2,9 @@ import { CalendarWorkspace } from "@/components/calendar/calendar-workspace";
 import { prisma } from "@/lib/prisma";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { buildCalendarViewFromRecords } from "@/lib/calendar";
+import { redirect } from "next/navigation";
 
-function isValidDateParam(value?: string) {
+function isValidDateParam(value?: string): value is string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
@@ -21,6 +22,17 @@ export default async function CalendarPage({
     client: requestedClientId,
     date: requestedDate,
   } = await searchParams;
+
+  if (openNew === "1") {
+    const params = new URLSearchParams();
+    if (typeof requestedClientId === "string") {
+      params.set("client", requestedClientId);
+    }
+    if (isValidDateParam(requestedDate)) {
+      params.set("date", requestedDate);
+    }
+    redirect(`/calendar/new${params.size ? `?${params.toString()}` : ""}`);
+  }
 
   const [appointments, clients, staffMembers, businessHours] = await Promise.all([
     prisma.appointment.findMany({

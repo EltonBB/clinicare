@@ -122,8 +122,8 @@ function buildActionWidgets(view: DashboardViewModel): DashboardViewModel["quick
           ? "Book first appointment"
           : "New appointment",
       href: recentClientId
-        ? `/calendar?new=1&client=${recentClientId}`
-        : "/calendar?new=1",
+        ? `/calendar/new?client=${recentClientId}`
+        : "/calendar/new",
       tone: "primary",
     },
     {
@@ -131,8 +131,8 @@ function buildActionWidgets(view: DashboardViewModel): DashboardViewModel["quick
         view.workspaceState.clientCount === 0 ? "Add first client" : "New client",
       href:
         view.workspaceState.clientCount === 0
-          ? "/clients?new=1&next=calendar"
-          : "/clients?new=1",
+          ? "/clients/new?next=calendar"
+          : "/clients/new",
       tone: "secondary",
     },
     {

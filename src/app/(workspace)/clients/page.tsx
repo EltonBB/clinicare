@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+
 import { prisma } from "@/lib/prisma";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { ClientsWorkspace } from "@/components/clients/clients-workspace";
@@ -13,6 +15,11 @@ export default async function ClientsPage({
   });
 
   const { client, new: openNew, next } = await searchParams;
+
+  if (openNew === "1") {
+    redirect(`/clients/new${next === "calendar" ? "?next=calendar" : ""}`);
+  }
+
   const records = await prisma.client.findMany({
     where: {
       businessId: business.id,

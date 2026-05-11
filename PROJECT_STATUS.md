@@ -10,7 +10,7 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Technical Stack
 
-- Next.js 16.2.4 App Router with React 19.
+- Next.js 16.2.6 App Router with React 19.
 - TypeScript, Tailwind CSS 4, shadcn-style UI components, Radix primitives, Lucide icons.
 - Prisma with PostgreSQL via Supabase.
 - Supabase Auth for email/password authentication and email confirmation.
@@ -47,6 +47,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Security/performance hardening pass completed: Next Proxy protects all workspace routes including `/staff`, global security headers are configured, user-facing provider/database errors are generic, private media uploads are limited to common raster image formats, email verification receipt updates cannot create arbitrary verified tickets, and expensive client/staff/reminder queries are capped or simplified.
 - Workspace navigation performance pass completed: dynamic workspace routes now have an instant loading shell, all sidebar/mobile nav items use client-side prefetched links, workspace auth/business lookups are request-deduped, non-critical maintenance work runs after the response, and inbox/settings data loads are capped for faster page opens.
 - Public marketing landing page at `/` now uses a simplified animated product-led design inspired by the Dribbble reference, with the default Vela blue accent color, a large hero, floating clinic workspace mockups on desktop, a cleaner stacked mobile preview, compact workflow blocks, AI reporting, privacy messaging, and signup/login CTAs into the auth flow.
+- Dedicated create pages now exist for `/calendar/new`, `/clients/new`, and `/staff/new`, replacing the main add flows for bookings, clients, and staff with centered single-page forms while preserving edit sheets for existing records.
 
 ## Current Working Flows
 
@@ -69,7 +70,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Reports AI manual refresh uses a short cooldown to control cost and prevent accidental repeated refreshes.
 - Supabase media storage uses a private `clinic-media` bucket with authenticated per-user folder policies applied.
 - Supabase database tables use RLS with no public table policies; app data access is intentionally server-side through Prisma.
-- Dependency audit is currently clean after updating Next.js to 16.2.4, refreshing transitive dependencies, and overriding PostCSS to a patched version.
+- Dependency audit is currently clean after updating Next.js to 16.2.6, refreshing transitive dependencies, and overriding PostCSS to a patched version.
 - Billing/plan enforcement is partially represented in UI; full paid upgrade/payment flow still needs production implementation.
 
 ## Next Priorities
@@ -105,4 +106,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Refined public landing page mobile hero polish. The mobile hero text, supporting copy, CTAs, and stacked product preview now share a centered measure, and mobile landing mockup animations run once instead of inheriting infinite desktop motion that made the dashboard appear to twitch or refresh.
+- Converted primary add flows to dedicated create pages. Booking, client, and staff creation now route to `/calendar/new`, `/clients/new`, and `/staff/new` with centered sectioned forms based on existing Vela fields; legacy `?new=1` URLs redirect to the new pages, dashboard/inbox quick actions use the new routes, and dependencies were patched to Next.js 16.2.6 with a clean production audit.

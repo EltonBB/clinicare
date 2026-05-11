@@ -19,7 +19,7 @@ import {
   saveClientAction,
 } from "@/app/(workspace)/clients/actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Sheet,
@@ -176,13 +176,6 @@ export function ClientsWorkspace({
   function replaceClientUrl(clientId?: string) {
     const nextPath = clientId ? `/clients?client=${clientId}` : "/clients";
     window.history.replaceState(null, "", nextPath);
-  }
-
-  function openNewClient() {
-    setDraft(createDraft());
-    setErrorMessage("");
-    setNextStepClient(null);
-    setDrawerOpen(true);
   }
 
   function openEditClient(client: ClientRecord) {
@@ -383,15 +376,17 @@ export function ClientsWorkspace({
             </p>
           </div>
         </div>
-        <Button
-          size="lg"
-          className="section-reveal-delayed h-11 rounded-[0.9rem] px-4"
-          onClick={openNewClient}
+        <Link
+          href="/clients/new"
           data-tour="clients-create"
+          className={cn(
+            buttonVariants({ size: "lg" }),
+            "section-reveal-delayed h-11 rounded-[0.9rem] px-4"
+          )}
         >
           <Plus className="size-4" />
           New client
-        </Button>
+        </Link>
       </div>
 
       <div className="section-reveal flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -432,7 +427,7 @@ export function ClientsWorkspace({
           <span>{statusMessage}</span>
           {nextStepClient ? (
             <Link
-              href={`/calendar?new=1&client=${nextStepClient.id}`}
+              href={`/calendar/new?client=${nextStepClient.id}`}
               className="inline-flex items-center gap-2 font-semibold text-primary transition-transform duration-200 hover:translate-x-0.5"
             >
               Book appointment
@@ -468,14 +463,13 @@ export function ClientsWorkspace({
                       visit history, and notes.
                     </p>
                   </div>
-                  <Button
-                    size="lg"
-                    className="rounded-[0.95rem]"
-                    onClick={openNewClient}
+                  <Link
+                    href="/clients/new"
+                    className={cn(buttonVariants({ size: "lg" }), "rounded-[0.95rem]")}
                   >
                     <Plus className="size-4" />
                     Add first client
-                  </Button>
+                  </Link>
                 </div>
               </div>
             ) : filteredClients.length === 0 ? (

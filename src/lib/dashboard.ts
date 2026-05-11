@@ -185,8 +185,8 @@ export function buildDashboardViewFromWorkspace(args: {
       : 0;
   const todayKey = formatZonedDateKey(now, timeZone);
   const bookingHref = recentClientId
-    ? `/calendar?new=1&client=${recentClientId}&date=${todayKey}`
-    : `/calendar?new=1&date=${todayKey}`;
+    ? `/calendar/new?client=${recentClientId}&date=${todayKey}`
+    : `/calendar/new?date=${todayKey}`;
   const selectedWidgets = business.dashboardFocus
     .split(",")
     .map((item) => item.trim())
@@ -210,7 +210,7 @@ export function buildDashboardViewFromWorkspace(args: {
   };
   const clientAction: DashboardQuickAction = {
     label: "New client",
-    href: "/clients?new=1",
+    href: "/clients/new",
     tone: "secondary",
   };
   const inboxAction: DashboardQuickAction = {
@@ -223,7 +223,7 @@ export function buildDashboardViewFromWorkspace(args: {
     clientCount === 0
       ? {
           label: "Add first client",
-          href: "/clients?new=1&next=calendar",
+          href: "/clients/new?next=calendar",
           tone: "secondary",
         }
       : clientAction,

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useDeferredValue, useMemo, useState, useTransition } from "react";
 import {
   Clock3,
@@ -18,7 +19,7 @@ import {
   saveStaffAction,
 } from "@/app/(workspace)/staff/actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Sheet,
@@ -159,12 +160,6 @@ export function StaffWorkspace({
     window.history.replaceState(null, "", nextPath);
   }
 
-  function openNewStaff() {
-    setDraft(createDraft());
-    setErrorMessage("");
-    setDrawerOpen(true);
-  }
-
   function openEditStaff(member: StaffRecord) {
     setDraft(createDraft(member));
     setErrorMessage("");
@@ -259,14 +254,16 @@ export function StaffWorkspace({
             </p>
           </div>
         </div>
-        <Button
-          size="lg"
-          className="section-reveal-delayed h-11 rounded-[0.9rem] px-4"
-          onClick={openNewStaff}
+        <Link
+          href="/staff/new"
+          className={cn(
+            buttonVariants({ size: "lg" }),
+            "section-reveal-delayed h-11 rounded-[0.9rem] px-4"
+          )}
         >
           <Plus className="size-4" />
           New staff member
-        </Button>
+        </Link>
       </div>
 
       <div className="section-reveal flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -333,10 +330,13 @@ export function StaffWorkspace({
                       Staff records connect bookings, time tracking, and completed work.
                     </p>
                   </div>
-                  <Button size="lg" className="rounded-[0.95rem]" onClick={openNewStaff}>
+                  <Link
+                    href="/staff/new"
+                    className={cn(buttonVariants({ size: "lg" }), "rounded-[0.95rem]")}
+                  >
                     <Plus className="size-4" />
                     Add staff member
-                  </Button>
+                  </Link>
                 </div>
               </div>
             ) : filteredStaff.length === 0 ? (

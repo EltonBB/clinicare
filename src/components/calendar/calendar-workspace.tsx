@@ -46,7 +46,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -427,19 +427,6 @@ export function CalendarWorkspace({
     window.history.replaceState(null, "", "/calendar");
   }
 
-  function openNewBooking(date = selectedDateKey, preferredClientId = initialClientId) {
-    if (!hasClients) {
-      setErrorMessage("Add a client before booking an appointment.");
-      setStatusMessage("");
-      return;
-    }
-
-    setDraft(emptyDraft(date, initialView.clients, initialView.staffMembers, preferredClientId));
-    setErrorMessage("");
-    setSavedAppointmentClientId("");
-    setDrawerOpen(true);
-  }
-
   function openExistingBooking(appointment: CalendarAppointment) {
     setDraft({
       id: appointment.id,
@@ -642,18 +629,17 @@ export function CalendarWorkspace({
           </div>
 
           {hasClients ? (
-            <Button
-              size="lg"
-              className="h-11 rounded-[0.9rem] px-4"
-              onClick={() => openNewBooking()}
+            <Link
+              href={`/calendar/new?date=${selectedDateKey}`}
               data-tour="calendar-create"
+              className={cn(buttonVariants({ size: "lg" }), "h-11 rounded-[0.9rem] px-4")}
             >
               <Plus className="size-4" />
               New appointment
-            </Button>
+            </Link>
           ) : (
             <Link
-              href="/clients?new=1&next=calendar"
+              href="/clients/new?next=calendar"
               className="inline-flex h-11 items-center justify-center gap-2 rounded-[0.9rem] bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_10px_30px_rgba(20,32,51,0.04)] transition-[transform,box-shadow,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_36px_var(--primary-shadow)]"
               data-tour="calendar-create"
             >
@@ -700,7 +686,7 @@ export function CalendarWorkspace({
               </p>
             </div>
             <Link
-              href="/clients?new=1&next=calendar"
+              href="/clients/new?next=calendar"
               className="inline-flex h-11 items-center justify-center gap-2 rounded-[0.95rem] bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_10px_30px_rgba(20,32,51,0.04)] transition-[transform,box-shadow,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_36px_var(--primary-shadow)]"
             >
               <Plus className="size-4" />
@@ -841,15 +827,16 @@ export function CalendarWorkspace({
                 {format(activeDate, "EEEE, MMMM d")}
               </p>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-[0.85rem] bg-white/72"
-              onClick={() => openNewBooking(selectedDateKey)}
+            <Link
+              href={`/calendar/new?date=${selectedDateKey}`}
+              className={cn(
+                buttonVariants({ variant: "outline", size: "sm" }),
+                "rounded-[0.85rem] bg-white/72"
+              )}
             >
               <Plus className="size-4" />
               Add booking
-            </Button>
+            </Link>
           </div>
           <div className="mt-4 space-y-3">
             {appointments
