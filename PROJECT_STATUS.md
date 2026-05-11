@@ -1,6 +1,6 @@
 # Project Status: Vela / Clinicare
 
-Last updated: 2026-05-11
+Last updated: 2026-05-12
 
 ## Product Overview
 
@@ -32,9 +32,9 @@ The core product direction is customer-first: clinics should not need to underst
   - completion page leading to dashboard
 - Workspace shell with left navigation, top app bar, owner account dialog, notifications, plan card, and first-user tour.
 - Dashboard with configurable widgets, quick actions, daily overview, today appointments, last clients, staff appointment preview, unread messages, and analytics widget.
-- Calendar with appointment creation, searchable client picker, staff assignment, operating-hours protection, status handling, optional booking-time payment capture, and calendar appointment layout.
-- Clients workspace with a full-width directory, Details-only row actions, dedicated patient record pages, full-page patient edit flow, MVP patient tabs, appointment history, real patient demographics, medical profile fields, medications, documents/images, messages, booking-linked payment records, archive controls, and private gallery image records with captions.
-- Staff workspace separated from Settings, including staff profiles, active/away/inactive status, check-in/check-out time tracking, monthly completed appointment records, and recent completed work.
+- Calendar with appointment creation, searchable client picker, staff assignment, operating-hours protection, status handling, optional booking-time payment capture, calendar appointment layout, and full-page appointment editing at `/calendar/[appointmentId]/edit`.
+- Clients workspace with a full-width directory, Details-only row actions, dedicated patient record pages, doctor-facing overview summaries, full-page patient edit flow, MVP patient tabs, appointment history, real patient demographics, medical profile fields, medications, documents/images, messages, booking-linked payment records, archive controls, and private gallery image records with captions.
+- Staff workspace separated from Settings, including staff profiles, dedicated staff details/edit pages, active/away/inactive status, row-level check-in/check-out quick actions, monthly completed appointment records, and recent completed work.
 - Inbox with WhatsApp conversations, unread counts, unknown-contact handling, conversion to client, outbound replies, and live notification updates.
 - WhatsApp setup moved to Settings with simplified customer-facing connection state, connect/retry, and refresh actions.
 - Reminder settings with configurable first and second reminder hours and editable reminder template.
@@ -50,16 +50,17 @@ The core product direction is customer-first: clinics should not need to underst
 - Dedicated create pages now exist for `/calendar/new`, `/clients/new`, and `/staff/new`, replacing the main add flows for bookings, clients, and staff with centered single-page forms while preserving edit sheets for existing records.
 - Dedicated patient details pages now exist at `/clients/[clientId]`, replacing the old right-side client panel with a full patient record view covering Overview, Appointments, Medical Info, Documents, Messages, Payments, edit/archive actions, real medication/document creation, and payment ledger records generated from bookings.
 - Dedicated patient edit pages now exist at `/clients/[clientId]/edit`, replacing the old right-side edit drawer with a full-page form for demographics, clinic information, and medical profile fields.
+- Dedicated staff details and edit pages now exist at `/staff/[staffId]` and `/staff/[staffId]/edit`, replacing the old right-side staff drawer with full-page staff records.
 
 ## Current Working Flows
 
 - A new user can sign up, confirm email, complete onboarding, and enter the dashboard.
 - A clinic can configure branding, hours, staff, and dashboard widgets during onboarding or later in Settings.
 - A clinic can create a lightweight patient record first, then add deeper medical history from the patient edit page as the relationship develops.
-- A clinic can book appointments using those clients and record the expected or collected service payment during booking.
-- A clinic can open each patient from the directory into a dedicated full-page record with basic information, clinic information, appointments, medical information, current medications, media/document records, messages, and a payment ledger.
+- A clinic can book appointments using those clients, record the expected or collected service payment during booking, and edit existing bookings from a dedicated page.
+- A clinic can open each patient from the directory into a dedicated full-page record with basic information, care summary, appointment context, medical information, current medications, media/document records, messages, and a payment ledger.
 - Appointments show on the dashboard/calendar and feed staff/client records when completed.
-- Staff can be managed from the Staff page and tracked with check-in/check-out.
+- Staff can be managed from the Staff page, opened into full details pages, edited from full-page forms, and tracked with row-level check-in/check-out.
 - Client records can hold appointment history, notes, messages, and private Supabase-hosted gallery images.
 - The Twilio WhatsApp test sender can receive inbound messages, create conversations, reply from Inbox, and convert unknown contacts to clients.
 - Reports can calculate core performance metrics, derive operational evidence from appointment status mix, demand windows, staff load, booking lead time, and client mix, refresh AI analysis across daily/weekly/monthly together when the OpenAI environment key is configured, score each timeframe from current clinic metrics, generate rule-based guidance from actual period data, handle sparse/unmeasured data without false zeros, and clearly show when rule-based insights are used instead.
@@ -102,7 +103,8 @@ The core product direction is customer-first: clinics should not need to underst
 - Upload/add client gallery image record and caption.
 - Create appointment inside operating hours and verify blocked behavior outside operating hours.
 - Verify completed appointment movement into staff/client records.
-- Staff add/edit/archive and check-in/check-out.
+- Staff add, details, edit, delete, and row-level check-in/check-out.
+- Calendar booking creation and `/calendar/[appointmentId]/edit` save/cancel/delete behavior.
 - Inbox inbound WhatsApp, outbound reply, unread count, and convert-to-client.
 - Settings: WhatsApp status, reminders, branding, logo, plan display.
 - Reports: daily, weekly, monthly metrics, metric-driven snapshot scores, sparse-data states, full three-timeframe AI refresh, diagnosis/root-cause/playbook sections, detailed suggestions, data-backed fallback copy, cooldown behavior, and AI/fallback snapshot states.
@@ -113,4 +115,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Refined the patient registration and booking flow. New patient creation is now a lighter registration form, patient editing moved from the sidebar drawer to `/clients/[clientId]/edit`, and booking creation can record payment details that appear in the patient payment ledger. Added a nullable appointment link on `ClientPayment`, synced the database, and verified with lint, production build, and audit.
+- Removed the remaining staff and booking edit drawers. Staff now uses row-level Details and check-in/out actions plus dedicated `/staff/[staffId]` and `/staff/[staffId]/edit` pages. Existing bookings now open in `/calendar/[appointmentId]/edit` for save/cancel/delete instead of a sidebar. Patient Overview was reworked from "Clinic information" into a doctor-facing care summary with medical, appointment, medication, and payment context. Verified with lint, production build, and audit.

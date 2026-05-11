@@ -2,50 +2,19 @@
 
 import Link from "next/link";
 import { useDeferredValue, useMemo, useState, useTransition } from "react";
-import {
-  Clock3,
-  MoreHorizontal,
-  Plus,
-  Search,
-  Trash2,
-  UserRoundCog,
-  UserRoundPen,
-} from "lucide-react";
+import { ChevronRight, Clock3, Plus, Search, UserRoundCog } from "lucide-react";
 
-import {
-  checkInStaffAction,
-  checkOutStaffAction,
-  deleteStaffAction,
-  saveStaffAction,
-} from "@/app/(workspace)/staff/actions";
+import { checkInStaffAction, checkOutStaffAction } from "@/app/(workspace)/staff/actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import {
-  staffRoles,
-  staffStatuses,
-  type SaveStaffPayload,
-  type StaffRecord,
-  type StaffStatus,
-  type StaffViewModel,
-} from "@/lib/staff";
+import type { StaffRecord, StaffStatus, StaffViewModel } from "@/lib/staff";
 
 type StaffWorkspaceProps = {
   initialView: StaffViewModel;
   initialNewStaffOpen?: boolean;
 };
-
-type StaffDraft = SaveStaffPayload;
 
 const filters: Array<{ label: string; value: "all" | StaffStatus }> = [
   { label: "All", value: "all" },
@@ -54,51 +23,6 @@ const filters: Array<{ label: string; value: "all" | StaffStatus }> = [
   { label: "Inactive", value: "INACTIVE" },
 ];
 
-function createDraft(staff?: StaffRecord): StaffDraft {
-  return staff
-    ? {
-        id: staff.id,
-        name: staff.name,
-        role: staff.role,
-        email: staff.email,
-        phone: staff.phone,
-        profileNote: staff.profileNote,
-        status: staff.status,
-      }
-    : {
-        name: "",
-        role: "Specialist",
-        email: "",
-        phone: "",
-        profileNote: "",
-        status: "ACTIVE",
-      };
-}
-
-function NativeSelect({
-  value,
-  options,
-  onChange,
-}: {
-  value: string;
-  options: string[];
-  onChange: (value: string) => void;
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className="h-11 w-full rounded-[0.9rem] border border-border/80 bg-white/84 px-3 text-sm outline-none transition-[border-color,background-color,box-shadow] duration-200 focus:border-ring focus:bg-white focus-visible:ring-3 focus-visible:ring-ring/40"
-    >
-      {options.map((option) => (
-        <option key={option} value={option}>
-          {option}
-        </option>
-      ))}
-    </select>
-  );
-}
-
 function statusDot(status: StaffStatus) {
   return cn(
     "inline-block size-2 rounded-full",
@@ -106,6 +30,14 @@ function statusDot(status: StaffStatus) {
     status === "AWAY" && "bg-amber-500",
     status === "INACTIVE" && "bg-border"
   );
+}
+
+function staffInitials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2);
 }
 
 function upsertStaff(records: StaffRecord[], staff: StaffRecord) {
@@ -120,16 +52,10 @@ function upsertStaff(records: StaffRecord[], staff: StaffRecord) {
   return clone;
 }
 
-export function StaffWorkspace({
-  initialView,
-  initialNewStaffOpen = false,
-}: StaffWorkspaceProps) {
+export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
   const [staff, setStaff] = useState(initialView.staff);
-  const [selectedStaffId, setSelectedStaffId] = useState(initialView.initialSelectedStaffId);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | StaffStatus>("all");
-  const [drawerOpen, setDrawerOpen] = useState(initialNewStaffOpen);
-  const [draft, setDraft] = useState<StaffDraft>(createDraft());
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [isPending, startSaving] = useTransition();
@@ -152,65 +78,6 @@ export function StaffWorkspace({
     });
   }, [staff, deferredQuery, filter]);
 
-  const selectedStaff =
-    staff.find((member) => member.id === selectedStaffId) ?? filteredStaff[0] ?? staff[0];
-
-  function replaceStaffUrl(staffId?: string) {
-    const nextPath = staffId ? `/staff?staff=${staffId}` : "/staff";
-    window.history.replaceState(null, "", nextPath);
-  }
-
-  function openEditStaff(member: StaffRecord) {
-    setDraft(createDraft(member));
-    setErrorMessage("");
-    setDrawerOpen(true);
-  }
-
-  function saveStaff() {
-    startSaving(async () => {
-      const result = await saveStaffAction(draft);
-
-      if (!result.ok || !result.staff) {
-        setErrorMessage(result.error ?? "We couldn't save this staff member.");
-        setStatusMessage("");
-        return;
-      }
-
-      setStaff((current) => upsertStaff(current, result.staff!));
-      setSelectedStaffId(result.staff.id);
-      setDrawerOpen(false);
-      setErrorMessage("");
-      setStatusMessage(draft.id ? "Staff profile updated." : "Staff member added.");
-      replaceStaffUrl(result.staff.id);
-    });
-  }
-
-  function deleteStaff(memberId: string) {
-    if (!window.confirm("Delete this staff member permanently?")) {
-      return;
-    }
-
-    startSaving(async () => {
-      const result = await deleteStaffAction(memberId);
-
-      if (!result.ok) {
-        setErrorMessage(result.error ?? "We couldn't delete this staff member.");
-        setStatusMessage("");
-        return;
-      }
-
-      setStaff((current) => {
-        const nextStaff = current.filter((member) => member.id !== memberId);
-        setSelectedStaffId(nextStaff[0]?.id ?? "");
-        return nextStaff;
-      });
-      setDrawerOpen(false);
-      setErrorMessage("");
-      setStatusMessage("Staff member deleted.");
-      replaceStaffUrl();
-    });
-  }
-
   function toggleClock(member: StaffRecord) {
     startSaving(async () => {
       const result = member.isCheckedIn
@@ -224,18 +91,9 @@ export function StaffWorkspace({
       }
 
       setStaff((current) => upsertStaff(current, result.staff!));
-      setSelectedStaffId(result.staff.id);
       setErrorMessage("");
       setStatusMessage(member.isCheckedIn ? "Staff checked out." : "Staff checked in.");
     });
-  }
-
-  function handleDrawerOpenChange(open: boolean) {
-    setDrawerOpen(open);
-
-    if (!open && initialNewStaffOpen) {
-      replaceStaffUrl(selectedStaffId || undefined);
-    }
   }
 
   return (
@@ -305,330 +163,94 @@ export function StaffWorkspace({
         </div>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_440px]">
-        <section className="section-reveal overflow-hidden rounded-[1.2rem] border border-border/80 bg-white/74 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm">
-          <div className="hidden grid-cols-[minmax(0,1.4fr)_130px_140px_120px_40px] border-b border-border/80 px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground md:grid">
-            <span>Name</span>
-            <span>Status</span>
-            <span>This week</span>
-            <span>Completed</span>
-            <span />
-          </div>
+      <section className="section-reveal overflow-hidden rounded-[1.2rem] border border-border/80 bg-white/74 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm">
+        <div className="hidden grid-cols-[minmax(0,1.3fr)_130px_130px_120px_220px] border-b border-border/80 px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground md:grid">
+          <span>Name</span>
+          <span>Status</span>
+          <span>This week</span>
+          <span>Completed</span>
+          <span className="text-right">Actions</span>
+        </div>
 
-          <div className="divide-y divide-border/75">
-            {!hasStaff ? (
-              <div className="px-6 py-14">
-                <div className="mx-auto max-w-md space-y-5 text-center">
-                  <div className="mx-auto flex size-12 items-center justify-center rounded-[1.05rem] bg-primary/12 text-primary">
-                    <UserRoundCog className="size-5" />
-                  </div>
-                  <div className="space-y-2">
-                    <h2 className="text-xl font-semibold tracking-tight text-foreground">
-                      Add the first staff member
-                    </h2>
-                    <p className="text-sm leading-7 text-muted-foreground">
-                      Staff records connect bookings, time tracking, and completed work.
-                    </p>
-                  </div>
-                  <Link
-                    href="/staff/new"
-                    className={cn(buttonVariants({ size: "lg" }), "rounded-[0.95rem]")}
-                  >
-                    <Plus className="size-4" />
-                    Add staff member
-                  </Link>
+        <div className="divide-y divide-border/75">
+          {!hasStaff ? (
+            <div className="px-6 py-14">
+              <div className="mx-auto max-w-md space-y-5 text-center">
+                <div className="mx-auto flex size-12 items-center justify-center rounded-[1.05rem] bg-primary/12 text-primary">
+                  <UserRoundCog className="size-5" />
                 </div>
-              </div>
-            ) : filteredStaff.length === 0 ? (
-              <div className="px-6 py-12 text-center text-sm text-muted-foreground">
-                No staff members match this search or filter.
-              </div>
-            ) : (
-              filteredStaff.map((member) => (
-                <button
-                  key={member.id}
-                  type="button"
-                  onClick={() => setSelectedStaffId(member.id)}
-                  className={cn(
-                    "interactive-lift grid w-full gap-4 px-5 py-4 text-left transition-[background-color,transform] duration-200 md:grid-cols-[minmax(0,1.4fr)_130px_140px_120px_40px] md:items-center",
-                    selectedStaff?.id === member.id ? "bg-secondary/38" : "hover:bg-white/58"
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <Avatar size="lg">
-                      <AvatarFallback>
-                        {member.name
-                          .split(" ")
-                          .map((part) => part[0])
-                          .join("")
-                          .slice(0, 2)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-foreground">{member.name}</p>
-                      <p className="truncate text-sm text-muted-foreground">{member.role}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span className={statusDot(member.status)} />
-                    <span className="capitalize">{member.status.toLowerCase()}</span>
-                  </div>
-                  <p className="text-sm font-medium text-foreground">{member.weeklyHours}h</p>
-                  <p className="text-sm font-medium text-foreground">
-                    {member.completedThisMonth}
+                <div className="space-y-2">
+                  <h2 className="text-xl font-semibold tracking-tight text-foreground">
+                    Add the first staff member
+                  </h2>
+                  <p className="text-sm leading-7 text-muted-foreground">
+                    Staff records connect bookings, time tracking, and completed work.
                   </p>
-                  <MoreHorizontal className="hidden size-4 text-muted-foreground md:block" />
-                </button>
-              ))
-            )}
-          </div>
-        </section>
-
-        <aside className="section-reveal-delayed overflow-hidden rounded-[1.2rem] border border-border/80 bg-white/74 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm">
-          {selectedStaff ? (
-            <>
-              <div className="glass-divider px-5 py-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <Avatar size="lg" className="size-12">
-                      <AvatarFallback>
-                        {selectedStaff.name
-                          .split(" ")
-                          .map((part) => part[0])
-                          .join("")
-                          .slice(0, 2)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-xl font-semibold text-foreground">
-                        {selectedStaff.name}
-                      </p>
-                      <p className="mt-1 text-sm text-muted-foreground">{selectedStaff.role}</p>
-                      <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
-                        <span className={statusDot(selectedStaff.status)} />
-                        <span className="capitalize">{selectedStaff.status.toLowerCase()}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="rounded-[0.85rem] bg-white/72"
-                    onClick={() => openEditStaff(selectedStaff)}
-                  >
-                    <UserRoundPen className="size-4" />
-                    Edit
-                  </Button>
                 </div>
+                <Link
+                  href="/staff/new"
+                  className={cn(buttonVariants({ size: "lg" }), "rounded-[0.95rem]")}
+                >
+                  <Plus className="size-4" />
+                  Add staff member
+                </Link>
               </div>
-
-              <div className="space-y-5 px-5 py-5">
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-[0.95rem] border border-border/80 bg-white/68 px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      This week
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold text-primary">
-                      {selectedStaff.weeklyHours}h
-                    </p>
+            </div>
+          ) : filteredStaff.length === 0 ? (
+            <div className="px-6 py-12 text-center text-sm text-muted-foreground">
+              No staff members match this search or filter.
+            </div>
+          ) : (
+            filteredStaff.map((member) => (
+              <div
+                key={member.id}
+                className="grid gap-4 px-5 py-4 transition-colors duration-200 hover:bg-white/58 md:grid-cols-[minmax(0,1.3fr)_130px_130px_120px_220px] md:items-center"
+              >
+                <Link href={`/staff/${member.id}`} className="flex min-w-0 items-center gap-3">
+                  <Avatar size="lg">
+                    <AvatarFallback>{staffInitials(member.name)}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-foreground">{member.name}</p>
+                    <p className="truncate text-sm text-muted-foreground">{member.role}</p>
                   </div>
-                  <div className="rounded-[0.95rem] border border-border/80 bg-white/68 px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      This month
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold text-primary">
-                      {selectedStaff.completedThisMonth}
-                    </p>
-                  </div>
+                </Link>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span className={statusDot(member.status)} />
+                  <span className="capitalize">{member.status.toLowerCase()}</span>
+                </div>
+                <p className="text-sm font-medium text-foreground">
+                  <span className="font-medium md:hidden">This week: </span>
+                  {member.weeklyHours}h
+                </p>
+                <p className="text-sm font-medium text-foreground">
+                  <span className="font-medium md:hidden">Completed: </span>
+                  {member.completedThisMonth}
+                </p>
+                <div className="flex flex-wrap items-center gap-2 md:justify-end">
                   <Button
-                    className="min-h-[92px] rounded-[0.95rem]"
-                    variant={selectedStaff.isCheckedIn ? "outline" : "default"}
-                    onClick={() => toggleClock(selectedStaff)}
+                    variant={member.isCheckedIn ? "outline" : "secondary"}
+                    size="sm"
+                    className="rounded-[0.85rem]"
+                    onClick={() => toggleClock(member)}
                     disabled={isPending}
                   >
                     <Clock3 className="size-4" />
-                    {selectedStaff.isCheckedIn ? "Check out" : "Check in"}
+                    {member.isCheckedIn ? "Out" : "In"}
                   </Button>
-                </div>
-
-                <div className="rounded-[0.95rem] border border-border/80 bg-white/68 px-4 py-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Contact
-                  </p>
-                  <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                    <p>{selectedStaff.phone || "No phone saved."}</p>
-                    <p>{selectedStaff.email || "No email saved."}</p>
-                  </div>
-                </div>
-
-                <div className="rounded-[0.95rem] border border-border/80 bg-white/68 px-4 py-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Profile note
-                  </p>
-                  <p className="mt-3 text-sm leading-7 text-muted-foreground">
-                    {selectedStaff.profileNote || "No staff note yet."}
-                  </p>
-                </div>
-
-                <div className="rounded-[0.95rem] border border-border/80 bg-white/68 px-4 py-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Last 5 completed appointments
-                  </p>
-                  <div className="mt-3 space-y-3">
-                    {selectedStaff.recentAppointments.length > 0 ? (
-                      selectedStaff.recentAppointments.map((appointment) => (
-                        <div
-                          key={appointment.id}
-                          className="rounded-[0.8rem] bg-secondary/46 px-3 py-3"
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="truncate text-sm font-semibold text-foreground">
-                              {appointment.title}
-                            </p>
-                            <p className="shrink-0 text-xs text-muted-foreground">
-                              {appointment.date}
-                            </p>
-                          </div>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {appointment.time} - {appointment.clientName}
-                          </p>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground">
-                        No completed appointments yet.
-                      </p>
-                    )}
-                  </div>
+                  <Link
+                    href={`/staff/${member.id}`}
+                    className={cn(buttonVariants({ size: "sm" }), "rounded-[0.85rem]")}
+                  >
+                    Details
+                    <ChevronRight className="size-4" />
+                  </Link>
                 </div>
               </div>
-            </>
-          ) : (
-            <div className="px-5 py-8 text-sm text-muted-foreground">
-              Add a staff member to see profile details, work time, and completed appointment
-              history here.
-            </div>
+            ))
           )}
-        </aside>
-      </div>
-
-      <Sheet open={drawerOpen} onOpenChange={handleDrawerOpenChange}>
-        <SheetContent side="right" className="w-full max-w-[460px] p-0 sm:max-w-[460px]">
-          <SheetHeader className="glass-divider rounded-t-[1.2rem] px-5 py-5">
-            <SheetTitle>{draft.id ? "Edit staff member" : "Add staff member"}</SheetTitle>
-            <SheetDescription>
-              Keep staff profiles focused on booking ownership and daily operations.
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="space-y-5 px-5 py-5">
-            <div className="surface-soft grid gap-4 rounded-[1.05rem] p-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Name
-                </label>
-                <Input
-                  value={draft.name}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, name: event.target.value }))
-                  }
-                  className="h-11 rounded-[0.9rem] bg-white/84"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Role
-                </label>
-                <NativeSelect
-                  value={draft.role}
-                  options={[...staffRoles]}
-                  onChange={(value) =>
-                    setDraft((current) => ({ ...current, role: value }))
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="surface-soft grid gap-4 rounded-[1.05rem] p-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Status
-                </label>
-                <NativeSelect
-                  value={draft.status}
-                  options={[...staffStatuses]}
-                  onChange={(value) =>
-                    setDraft((current) => ({ ...current, status: value as StaffStatus }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Phone
-                </label>
-                <Input
-                  value={draft.phone}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, phone: event.target.value }))
-                  }
-                  className="h-11 rounded-[0.9rem] bg-white/84"
-                />
-              </div>
-            </div>
-
-            <div className="surface-soft space-y-2 rounded-[1.05rem] p-4">
-              <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Email
-              </label>
-              <Input
-                value={draft.email}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, email: event.target.value }))
-                }
-                className="h-11 rounded-[0.9rem] bg-white/84"
-              />
-            </div>
-
-            <div className="surface-soft space-y-2 rounded-[1.05rem] p-4">
-              <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Profile note
-              </label>
-              <Textarea
-                value={draft.profileNote}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, profileNote: event.target.value }))
-                }
-                className="min-h-28 rounded-[0.9rem] bg-white/84 px-3 py-3"
-              />
-            </div>
-          </div>
-
-          <SheetFooter className="glass-divider rounded-b-[1.2rem] px-5 py-4">
-            {draft.id ? (
-              <Button
-                variant="outline"
-                className="rounded-[0.9rem] border-destructive/25 bg-white/70 text-destructive hover:bg-destructive/5 hover:text-destructive"
-                onClick={() => deleteStaff(draft.id!)}
-                disabled={isPending}
-              >
-                <Trash2 className="size-4" />
-                Delete
-              </Button>
-            ) : null}
-            <Button
-              variant="outline"
-              className="rounded-[0.9rem] bg-white/70"
-              onClick={() => setDrawerOpen(false)}
-              disabled={isPending}
-            >
-              Close
-            </Button>
-            <Button className="rounded-[0.9rem]" onClick={saveStaff} disabled={isPending}>
-              {isPending ? "Saving..." : draft.id ? "Save changes" : "Create staff"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+        </div>
+      </section>
     </div>
   );
 }

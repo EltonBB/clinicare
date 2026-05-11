@@ -3,14 +3,19 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { ArrowLeft, CalendarPlus2, UsersRound } from "lucide-react";
+import { ArrowLeft, CalendarPlus2, Save, Trash2, UsersRound, XCircle } from "lucide-react";
 
-import { saveAppointmentAction } from "@/app/(workspace)/calendar/actions";
+import {
+  cancelAppointmentAction,
+  deleteAppointmentAction,
+  saveAppointmentAction,
+} from "@/app/(workspace)/calendar/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type {
+  CalendarAppointment,
   CalendarAppointmentStatus,
   CalendarBusinessHours,
   CalendarSelectOption,
@@ -23,6 +28,7 @@ type NewAppointmentFormProps = {
   ownerName: string;
   initialClientId?: string;
   initialDate: string;
+  initialAppointment?: CalendarAppointment;
 };
 
 const timeSlots = Array.from({ length: 96 }, (_, index) => {
@@ -65,17 +71,25 @@ export function NewAppointmentForm({
   ownerName,
   initialClientId,
   initialDate,
+  initialAppointment,
 }: NewAppointmentFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
-  const [clientId, setClientId] = useState(initialClientId ?? clients[0]?.id ?? "");
-  const [staffMemberId, setStaffMemberId] = useState(staffMembers[0]?.id ?? "");
-  const [date, setDate] = useState(initialDate);
-  const [startTime, setStartTime] = useState("09:00");
-  const [endTime, setEndTime] = useState("10:00");
-  const [status, setStatus] = useState<CalendarAppointmentStatus>("confirmed");
+  const [clientId, setClientId] = useState(
+    initialAppointment?.clientId ?? initialClientId ?? clients[0]?.id ?? ""
+  );
+  const [staffMemberId, setStaffMemberId] = useState(
+    initialAppointment?.staffMemberId ?? staffMembers[0]?.id ?? ""
+  );
+  const [date, setDate] = useState(initialAppointment?.date ?? initialDate);
+  const [startTime, setStartTime] = useState(initialAppointment?.startTime ?? "09:00");
+  const [endTime, setEndTime] = useState(initialAppointment?.endTime ?? "10:00");
+  const [status, setStatus] = useState<CalendarAppointmentStatus>(
+    initialAppointment?.status ?? "confirmed"
+  );
   const [paymentStatus, setPaymentStatus] = useState("Unpaid");
+  const isEditing = Boolean(initialAppointment);
   const selectedHours = useMemo(
     () => businessHoursForDate(date, businessHours),
     [businessHours, date]
@@ -109,6 +123,7 @@ export function NewAppointmentForm({
     setError("");
     startTransition(async () => {
       const result = await saveAppointmentAction({
+        id: initialAppointment?.id,
         clientId,
         service: String(formData.get("service") ?? ""),
         staffMemberId: staffMemberId || undefined,
@@ -125,11 +140,47 @@ export function NewAppointmentForm({
       });
 
       if (!result.ok || !result.appointment) {
-        setError(result.error ?? "We couldn't create this booking.");
+        setError(result.error ?? `We couldn't ${isEditing ? "update" : "create"} this booking.`);
         return;
       }
 
       router.push(`/calendar?date=${result.appointment.date}`);
+    });
+  }
+
+  function cancelAppointment() {
+    if (!initialAppointment) {
+      return;
+    }
+
+    setError("");
+    startTransition(async () => {
+      const result = await cancelAppointmentAction(initialAppointment.id);
+
+      if (!result.ok) {
+        setError(result.error ?? "We couldn't cancel this booking.");
+        return;
+      }
+
+      router.push(`/calendar?date=${initialAppointment.date}`);
+    });
+  }
+
+  function deleteAppointment() {
+    if (!initialAppointment || !window.confirm("Delete this booking permanently?")) {
+      return;
+    }
+
+    setError("");
+    startTransition(async () => {
+      const result = await deleteAppointmentAction(initialAppointment.id);
+
+      if (!result.ok) {
+        setError(result.error ?? "We couldn't delete this booking.");
+        return;
+      }
+
+      router.push(`/calendar?date=${initialAppointment.date}`);
     });
   }
 
@@ -179,7 +230,13 @@ export function NewAppointmentForm({
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Service</span>
-            <Input name="service" required placeholder="Consultation, follow-up, treatment" className="h-11 rounded-[0.9rem] bg-white" />
+            <Input
+              name="service"
+              required
+              defaultValue={initialAppointment?.service}
+              placeholder="Consultation, follow-up, treatment"
+              className="h-11 rounded-[0.9rem] bg-white"
+            />
           </label>
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Staff</span>
@@ -257,7 +314,7 @@ export function NewAppointmentForm({
           </label>
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-foreground">Notes</span>
-            <Textarea name="notes" placeholder="Reason, preparation notes, or appointment context" className="min-h-28 rounded-[0.9rem] bg-white px-3 py-3" />
+            <Textarea name="notes" defaultValue={initialAppointment?.notes} placeholder="Reason, preparation notes, or appointment context" className="min-h-28 rounded-[0.9rem] bg-white px-3 py-3" />
           </label>
         </div>
         <p className="mt-4 text-xs text-muted-foreground">
@@ -267,6 +324,7 @@ export function NewAppointmentForm({
         </p>
       </section>
 
+      {!isEditing ? (
       <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-5 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
         <h2 className="text-base font-semibold text-foreground">Payment</h2>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">
@@ -305,6 +363,7 @@ export function NewAppointmentForm({
           </label>
         </div>
       </section>
+      ) : null}
 
       {error ? (
         <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
@@ -312,7 +371,34 @@ export function NewAppointmentForm({
         </div>
       ) : null}
 
-      <div className="flex justify-end gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {initialAppointment ? (
+          <div className="flex flex-wrap gap-3">
+            <Button
+              type="button"
+              variant="destructive"
+              className="rounded-[0.9rem]"
+              onClick={cancelAppointment}
+              disabled={isPending || status === "cancelled"}
+            >
+              <XCircle className="size-4" />
+              Cancel booking
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-[0.9rem] border-destructive/25 bg-white text-destructive hover:bg-destructive/5 hover:text-destructive"
+              onClick={deleteAppointment}
+              disabled={isPending}
+            >
+              <Trash2 className="size-4" />
+              Delete booking
+            </Button>
+          </div>
+        ) : (
+          <span />
+        )}
+        <div className="flex justify-end gap-3">
         <Link
           href="/calendar"
           className={cn(buttonVariants({ variant: "outline" }), "rounded-[0.9rem] bg-white")}
@@ -321,9 +407,10 @@ export function NewAppointmentForm({
           Cancel
         </Link>
         <Button type="submit" className="rounded-[0.9rem]" disabled={isPending}>
-          <CalendarPlus2 className="size-4" />
-          {isPending ? "Booking..." : "Book appointment"}
+          {isEditing ? <Save className="size-4" /> : <CalendarPlus2 className="size-4" />}
+          {isPending ? "Saving..." : isEditing ? "Save booking" : "Book appointment"}
         </Button>
+        </div>
       </div>
     </form>
   );

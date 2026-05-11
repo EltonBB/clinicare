@@ -1,0 +1,83 @@
+import { notFound } from "next/navigation";
+
+import { NewStaffForm } from "@/components/staff/new-staff-form";
+import { CreatePageShell } from "@/components/workspace/create-page-shell";
+import { requireCurrentWorkspace } from "@/lib/business";
+import { buildStaffRecord } from "@/lib/staff";
+import { prisma } from "@/lib/prisma";
+
+function completedAppointmentCutoff() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1);
+}
+
+function staffTimeEntryCutoff() {
+  return new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+}
+
+export default async function EditStaffPage({
+  params,
+}: {
+  params: Promise<{ staffId: string }>;
+}) {
+  const { business } = await requireCurrentWorkspace("/staff", {
+    missingBusinessRedirect: "/onboarding",
+  });
+  const { staffId } = await params;
+
+  const staff = await prisma.staffMember.findFirst({
+    where: {
+      id: staffId,
+      businessId: business.id,
+    },
+    include: {
+      timeEntries: {
+        where: {
+          checkedInAt: {
+            gte: staffTimeEntryCutoff(),
+          },
+        },
+        orderBy: {
+          checkedInAt: "desc",
+        },
+      },
+      appointments: {
+        where: {
+          status: "COMPLETED",
+          startAt: {
+            gte: completedAppointmentCutoff(),
+          },
+        },
+        include: {
+          client: {
+            select: {
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          startAt: "desc",
+        },
+        take: 50,
+      },
+    },
+  });
+
+  if (!staff) {
+    notFound();
+  }
+
+  const record = buildStaffRecord(staff);
+
+  return (
+    <CreatePageShell
+      eyebrow="Staff workspace"
+      title={`Edit ${record.name}`}
+      description="Update the staff profile used for booking ownership, time tracking, and completed work records."
+      backHref={`/staff/${record.id}`}
+      backLabel="staff details"
+    >
+      <NewStaffForm staff={record} />
+    </CreatePageShell>
+  );
+}

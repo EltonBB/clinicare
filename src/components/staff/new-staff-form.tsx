@@ -3,14 +3,18 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { ArrowLeft, UserRoundPlus } from "lucide-react";
+import { ArrowLeft, Save, Trash2, UserRoundPlus } from "lucide-react";
 
-import { saveStaffAction } from "@/app/(workspace)/staff/actions";
+import { deleteStaffAction, saveStaffAction } from "@/app/(workspace)/staff/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { staffRoles, staffStatuses, type StaffStatus } from "@/lib/staff";
+import { staffRoles, staffStatuses, type StaffRecord, type StaffStatus } from "@/lib/staff";
 import { cn } from "@/lib/utils";
+
+type NewStaffFormProps = {
+  staff?: StaffRecord;
+};
 
 function SelectField({
   name,
@@ -44,17 +48,19 @@ function SelectField({
   );
 }
 
-export function NewStaffForm() {
+export function NewStaffForm({ staff }: NewStaffFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
-  const [role, setRole] = useState("Specialist");
-  const [status, setStatus] = useState<StaffStatus>("ACTIVE");
+  const [role, setRole] = useState(staff?.role ?? "Specialist");
+  const [status, setStatus] = useState<StaffStatus>(staff?.status ?? "ACTIVE");
+  const isEditing = Boolean(staff);
 
   function handleSubmit(formData: FormData) {
     setError("");
     startTransition(async () => {
       const result = await saveStaffAction({
+        id: staff?.id,
         name: String(formData.get("name") ?? ""),
         role,
         email: String(formData.get("email") ?? ""),
@@ -64,11 +70,29 @@ export function NewStaffForm() {
       });
 
       if (!result.ok || !result.staff) {
-        setError(result.error ?? "We couldn't create this staff member.");
+        setError(result.error ?? `We couldn't ${isEditing ? "update" : "create"} this staff member.`);
         return;
       }
 
-      router.push(`/staff?staff=${result.staff.id}`);
+      router.push(`/staff/${result.staff.id}`);
+    });
+  }
+
+  function deleteStaff() {
+    if (!staff || !window.confirm("Delete this staff member permanently?")) {
+      return;
+    }
+
+    setError("");
+    startTransition(async () => {
+      const result = await deleteStaffAction(staff.id);
+
+      if (!result.ok) {
+        setError(result.error ?? "We couldn't delete this staff member.");
+        return;
+      }
+
+      router.push("/staff");
     });
   }
 
@@ -79,7 +103,7 @@ export function NewStaffForm() {
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Name</span>
-            <Input name="name" required placeholder="Staff member name" className="h-11 rounded-[0.9rem] bg-white" />
+            <Input name="name" required defaultValue={staff?.name} placeholder="Staff member name" className="h-11 rounded-[0.9rem] bg-white" />
           </label>
           <SelectField
             name="role"
@@ -97,11 +121,11 @@ export function NewStaffForm() {
           />
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Phone</span>
-            <Input name="phone" placeholder="+1 555 000 0000" className="h-11 rounded-[0.9rem] bg-white" />
+            <Input name="phone" defaultValue={staff?.phone} placeholder="+1 555 000 0000" className="h-11 rounded-[0.9rem] bg-white" />
           </label>
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-foreground">Email</span>
-            <Input name="email" type="email" placeholder="staff@example.com" className="h-11 rounded-[0.9rem] bg-white" />
+            <Input name="email" type="email" defaultValue={staff?.email} placeholder="staff@example.com" className="h-11 rounded-[0.9rem] bg-white" />
           </label>
         </div>
       </section>
@@ -112,6 +136,7 @@ export function NewStaffForm() {
           <span className="text-sm font-semibold text-foreground">Profile note</span>
           <Textarea
             name="profileNote"
+            defaultValue={staff?.profileNote}
             placeholder="Working preferences, specialties, or scheduling notes"
             className="min-h-32 rounded-[0.9rem] bg-white px-3 py-3"
           />
@@ -124,18 +149,34 @@ export function NewStaffForm() {
         </div>
       ) : null}
 
-      <div className="flex justify-end gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {staff ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-[0.9rem] border-destructive/25 bg-white text-destructive hover:bg-destructive/5 hover:text-destructive"
+            onClick={deleteStaff}
+            disabled={isPending}
+          >
+            <Trash2 className="size-4" />
+            Delete staff member
+          </Button>
+        ) : (
+          <span />
+        )}
+        <div className="flex justify-end gap-3">
         <Link
-          href="/staff"
+          href={staff ? `/staff/${staff.id}` : "/staff"}
           className={cn(buttonVariants({ variant: "outline" }), "rounded-[0.9rem] bg-white")}
         >
           <ArrowLeft className="size-4" />
           Cancel
         </Link>
         <Button type="submit" className="rounded-[0.9rem]" disabled={isPending}>
-          <UserRoundPlus className="size-4" />
-          {isPending ? "Creating..." : "Create staff"}
+          {isEditing ? <Save className="size-4" /> : <UserRoundPlus className="size-4" />}
+          {isPending ? "Saving..." : isEditing ? "Save staff" : "Create staff"}
         </Button>
+        </div>
       </div>
     </form>
   );

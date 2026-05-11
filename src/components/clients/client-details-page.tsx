@@ -135,6 +135,9 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   const firstVisit = client.appointments.at(-1)?.date ?? "No visits yet";
   const nextAppointment = upcomingAppointments[0]?.date ?? "No appointment booked";
   const lastMessage = client.messages[0]?.timestamp ?? "No messages yet";
+  const latestAppointment = client.appointments[0];
+  const currentMedications = client.medications.filter((medication) => medication.isActive);
+  const latestPayment = client.payments[0];
 
   function archiveClient() {
     startSaving(async () => {
@@ -331,7 +334,15 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           <TabsTrigger value="payments">Payments</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <TabsContent value="overview" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-4">
+            <StatCard label="Upcoming" value={client.appointmentStats.upcoming} />
+            <StatCard label="Completed" value={client.appointmentStats.completed} tone="primary" />
+            <StatCard label="Cancelled" value={client.appointmentStats.cancelled} tone="danger" />
+            <StatCard label="Balance" value={client.paymentStats.unpaidBalanceDisplay} />
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
           <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
             <h2 className="text-lg font-semibold text-foreground">Basic information</h2>
             <dl className="mt-5 space-y-3">
@@ -355,16 +366,87 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           </section>
 
           <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
-            <h2 className="text-lg font-semibold text-foreground">Clinic information</h2>
+            <h2 className="text-lg font-semibold text-foreground">Care summary</h2>
             <dl className="mt-5 space-y-3">
-              <OverviewLine label="Clinic type" value={client.clinicType} />
               <OverviewLine label="Assigned doctor / staff member" value={client.details.assignedStaff} />
               <OverviewLine label="First visit date" value={firstVisit} />
               <OverviewLine label="Last visit date" value={client.lastVisit} />
               <OverviewLine label="Next appointment" value={nextAppointment} />
+              <OverviewLine label="Preferred contact" value={client.details.preferredChannel} />
               <OverviewLine label="Patient notes" value={client.notes} />
             </dl>
           </section>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-3">
+            <InfoCard
+              icon={HeartPulse}
+              title="Important health notes"
+              value={client.medical.importantHealthNotes}
+            />
+            <InfoCard
+              icon={HeartPulse}
+              title="Allergies"
+              value={client.medical.allergies}
+            />
+            <InfoCard
+              icon={NotebookText}
+              title="Treatment plan"
+              value={client.medical.treatmentPlan}
+            />
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-3">
+            <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+              <h2 className="text-lg font-semibold text-foreground">Latest appointment</h2>
+              {latestAppointment ? (
+                <div className="mt-4 rounded-[0.95rem] border border-border/80 bg-white/76 px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="font-semibold text-foreground">{latestAppointment.title}</p>
+                    <span className="rounded-full bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground">
+                      {latestAppointment.status.toLowerCase()}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">{latestAppointment.date}</p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{latestAppointment.notes}</p>
+                </div>
+              ) : (
+                <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                  No appointment history yet.
+                </p>
+              )}
+            </section>
+
+            <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+              <h2 className="text-lg font-semibold text-foreground">Current medication</h2>
+              <div className="mt-4 space-y-3">
+                {currentMedications.length > 0 ? (
+                  currentMedications.slice(0, 3).map((medication) => (
+                    <div key={medication.id} className="rounded-[0.95rem] border border-border/80 bg-white/76 px-4 py-3">
+                      <p className="font-semibold text-foreground">{medication.name}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {medication.dosage} · {medication.frequency}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    No active medications recorded.
+                  </p>
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+              <h2 className="text-lg font-semibold text-foreground">Payment snapshot</h2>
+              <dl className="mt-4 space-y-3">
+                <OverviewLine label="Payment status" value={client.paymentStats.paymentStatus} />
+                <OverviewLine label="Total paid" value={client.paymentStats.totalPaidDisplay} />
+                <OverviewLine label="Unpaid balance" value={client.paymentStats.unpaidBalanceDisplay} />
+                <OverviewLine label="Latest payment" value={latestPayment?.amountDisplay ?? "No payments yet"} />
+              </dl>
+            </section>
+          </div>
         </TabsContent>
 
         <TabsContent value="appointments" className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
