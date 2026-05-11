@@ -63,6 +63,50 @@ export default async function ClientsPage({
         },
         take: 24,
       },
+      medications: {
+        select: {
+          id: true,
+          name: true,
+          dosage: true,
+          frequency: true,
+          notes: true,
+          isActive: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 20,
+      },
+      documents: {
+        select: {
+          id: true,
+          fileName: true,
+          fileType: true,
+          fileUrl: true,
+          notes: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 24,
+      },
+      payments: {
+        select: {
+          id: true,
+          amountCents: true,
+          status: true,
+          description: true,
+          receiptUrl: true,
+          paidAt: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 30,
+      },
       _count: {
         select: {
           appointments: true,

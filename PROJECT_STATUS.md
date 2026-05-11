@@ -33,7 +33,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Workspace shell with left navigation, top app bar, owner account dialog, notifications, plan card, and first-user tour.
 - Dashboard with configurable widgets, quick actions, daily overview, today appointments, last clients, staff appointment preview, unread messages, and analytics widget.
 - Calendar with appointment creation, searchable client picker, staff assignment, operating-hours protection, status handling, and calendar appointment layout.
-- Clients workspace with a full-width directory, Details-only row actions, dedicated patient record pages, MVP patient tabs, appointment history, medical-info placeholders, documents/images, messages, payment placeholders, editable details, archive controls, and private gallery image records with captions.
+- Clients workspace with a full-width directory, Details-only row actions, dedicated patient record pages, MVP patient tabs, appointment history, real patient demographics, medical profile fields, medications, documents/images, messages, payment records, editable details, archive controls, and private gallery image records with captions.
 - Staff workspace separated from Settings, including staff profiles, active/away/inactive status, check-in/check-out time tracking, monthly completed appointment records, and recent completed work.
 - Inbox with WhatsApp conversations, unread counts, unknown-contact handling, conversion to client, outbound replies, and live notification updates.
 - WhatsApp setup moved to Settings with simplified customer-facing connection state, connect/retry, and refresh actions.
@@ -48,14 +48,14 @@ The core product direction is customer-first: clinics should not need to underst
 - Workspace navigation performance pass completed: dynamic workspace routes now have an instant loading shell, all sidebar/mobile nav items use client-side prefetched links, workspace auth/business lookups are request-deduped, non-critical maintenance work runs after the response, and inbox/settings data loads are capped for faster page opens.
 - Public marketing landing page at `/` now uses a simplified animated product-led design inspired by the Dribbble reference, with the default Vela blue accent color, a large hero, floating clinic workspace mockups on desktop, a cleaner stacked mobile preview, compact workflow blocks, AI reporting, privacy messaging, and signup/login CTAs into the auth flow.
 - Dedicated create pages now exist for `/calendar/new`, `/clients/new`, and `/staff/new`, replacing the main add flows for bookings, clients, and staff with centered single-page forms while preserving edit sheets for existing records.
-- Dedicated patient details pages now exist at `/clients/[clientId]`, replacing the old right-side client panel with a full patient record view covering Overview, Appointments, Medical Info, Documents, Messages, Payments, edit/archive actions, and clear not-yet-connected states for medical, document, and payment fields that do not yet have database models.
+- Dedicated patient details pages now exist at `/clients/[clientId]`, replacing the old right-side client panel with a full patient record view covering Overview, Appointments, Medical Info, Documents, Messages, Payments, edit/archive actions, and real medication/document/payment record creation.
 
 ## Current Working Flows
 
 - A new user can sign up, confirm email, complete onboarding, and enter the dashboard.
 - A clinic can configure branding, hours, staff, and dashboard widgets during onboarding or later in Settings.
 - A clinic can create clients and then book appointments using those clients.
-- A clinic can open each patient from the directory into a dedicated full-page record with basic information, clinic information, appointments, medical-info placeholders, media/document readiness, messages, and payment placeholders.
+- A clinic can open each patient from the directory into a dedicated full-page record with basic information, clinic information, appointments, medical information, current medications, media/document records, messages, and payments.
 - Appointments show on the dashboard/calendar and feed staff/client records when completed.
 - Staff can be managed from the Staff page and tracked with check-in/check-out.
 - Client records can hold appointment history, notes, messages, and private Supabase-hosted gallery images.
@@ -71,7 +71,7 @@ The core product direction is customer-first: clinics should not need to underst
 - AI reports need a valid server-side OpenAI API key in production; otherwise the app records an auditable fallback snapshot and clearly shows that rules are being used.
 - Reports AI manual refresh uses a short cooldown to control cost and prevent accidental repeated refreshes.
 - Supabase media storage uses a private `clinic-media` bucket with authenticated per-user folder policies applied.
-- Supabase database tables use RLS with no public table policies; app data access is intentionally server-side through Prisma.
+- Supabase database tables use RLS with no public table policies; app data access is intentionally server-side through Prisma. Newly added patient medication, document, and payment tables also have RLS enabled.
 - Dependency audit is currently clean after updating Next.js to 16.2.6, refreshing transitive dependencies, and overriding PostCSS to a patched version.
 - Billing/plan enforcement is partially represented in UI; full paid upgrade/payment flow still needs production implementation.
 
@@ -79,7 +79,7 @@ The core product direction is customer-first: clinics should not need to underst
 
 1. Stabilize and test the full first-user flow on a clean account: signup, confirm email, onboarding, dashboard, tour, client, booking, staff, reports.
 2. Verify completed appointment automation end-to-end: completed appointments leave active calendar views and appear in staff/client records.
-3. Decide and implement the production document-upload data model for client PDFs, scans, referrals, and consent forms.
+3. Add full PDF/document binary upload support if clinics need files beyond image/scan uploads.
 4. Smoke-test signed logo/gallery upload, display, logo replacement cleanup, and client-delete media cleanup against the live production app.
 5. Continue hardening reports with any launch-specific wording, prompt evaluation, or plan-gating requirements that come out of user testing.
 6. Continue WhatsApp provider work only after business/provider requirements are ready; keep Settings flow customer-friendly in the meantime.
@@ -95,7 +95,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Dashboard loads with correct local date and selected widgets.
 - First-user tour appears once, avoids modals/drawers, and stays completed after finishing.
 - Create client, edit client, archive client.
-- Open a client details page from the directory and verify overview, appointment history, messages, notes, details, and image upload/display.
+- Open a client details page from the directory and verify overview, appointment history, medical fields, medications, documents/images, messages, and payments.
 - Upload/add client gallery image record and caption.
 - Create appointment inside operating hours and verify blocked behavior outside operating hours.
 - Verify completed appointment movement into staff/client records.
@@ -110,4 +110,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Updated the patient details structure across the client create/edit/detail flow. `/clients/[clientId]` now uses the MVP tabs Overview, Appointments, Medical Info, Documents, Messages, and Payments, with current app data wired where available and explicit empty states for fields that need future database/storage models. Verified with lint and production build.
+- Upgraded the patient details system from placeholders to real records. Client create/edit now captures demographics, clinic information, and medical profile fields; `/clients/[clientId]` now supports medication records, document/image records, and payment records backed by new Prisma tables. The database was synced with additive schema changes and RLS was enabled on the new public tables. Verified with lint, production build, and audit.

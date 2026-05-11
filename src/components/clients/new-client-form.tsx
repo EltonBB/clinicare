@@ -54,6 +54,7 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
   const [error, setError] = useState("");
   const [status, setStatus] = useState<ClientStatus>("active");
   const [preferredChannel, setPreferredChannel] = useState("WhatsApp");
+  const [patientType, setPatientType] = useState("New Patient");
 
   function handleSubmit(formData: FormData) {
     setError("");
@@ -62,8 +63,18 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
         name: String(formData.get("name") ?? ""),
         email: String(formData.get("email") ?? ""),
         phone: String(formData.get("phone") ?? ""),
+        gender: String(formData.get("gender") ?? ""),
+        dateOfBirth: String(formData.get("dateOfBirth") ?? ""),
+        address: String(formData.get("address") ?? ""),
+        patientType,
+        clinicType: String(formData.get("clinicType") ?? ""),
         status,
         notes: String(formData.get("notes") ?? ""),
+        medicalHistory: String(formData.get("medicalHistory") ?? ""),
+        allergies: String(formData.get("allergies") ?? ""),
+        importantHealthNotes: String(formData.get("importantHealthNotes") ?? ""),
+        previousTreatments: String(formData.get("previousTreatments") ?? ""),
+        treatmentPlan: String(formData.get("treatmentPlan") ?? ""),
         preferredChannel,
         assignedStaff: String(formData.get("assignedStaff") ?? ""),
         tags: String(formData.get("tags") ?? ""),
@@ -100,6 +111,25 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
             <span className="text-sm font-semibold text-foreground">Email</span>
             <Input name="email" type="email" placeholder="client@example.com" className="h-11 rounded-[0.9rem] bg-white" />
           </label>
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-foreground">Gender</span>
+            <Input name="gender" placeholder="Female, male, other..." className="h-11 rounded-[0.9rem] bg-white" />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-foreground">Date of birth</span>
+            <Input name="dateOfBirth" type="date" className="h-11 rounded-[0.9rem] bg-white" />
+          </label>
+          <label className="space-y-2 sm:col-span-2">
+            <span className="text-sm font-semibold text-foreground">Address</span>
+            <Input name="address" placeholder="Patient address" className="h-11 rounded-[0.9rem] bg-white" />
+          </label>
+          <SelectField
+            name="patientType"
+            label="Patient type"
+            value={patientType}
+            options={["New Patient", "Returning Patient", "VIP / Important"]}
+            onChange={setPatientType}
+          />
           <SelectField
             name="status"
             label="Status"
@@ -113,6 +143,10 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
       <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-5 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
         <h2 className="text-base font-semibold text-foreground">Clinic information</h2>
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-foreground">Clinic type</span>
+            <Input name="clinicType" placeholder="Dental, aesthetic, medical..." className="h-11 rounded-[0.9rem] bg-white" />
+          </label>
           <SelectField
             name="preferredChannel"
             label="Preferred contact method"
@@ -131,6 +165,32 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-foreground">Patient notes</span>
             <Textarea name="notes" placeholder="Patient notes, medical context, treatment plan, or follow-up context" className="min-h-28 rounded-[0.9rem] bg-white px-3 py-3" />
+          </label>
+        </div>
+      </section>
+
+      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-5 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
+        <h2 className="text-base font-semibold text-foreground">Medical information</h2>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <label className="space-y-2 sm:col-span-2">
+            <span className="text-sm font-semibold text-foreground">Medical history</span>
+            <Textarea name="medicalHistory" placeholder="Relevant medical history" className="min-h-24 rounded-[0.9rem] bg-white px-3 py-3" />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-foreground">Allergies</span>
+            <Textarea name="allergies" placeholder="Known allergies" className="min-h-24 rounded-[0.9rem] bg-white px-3 py-3" />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-foreground">Important health notes</span>
+            <Textarea name="importantHealthNotes" placeholder="Important health notes" className="min-h-24 rounded-[0.9rem] bg-white px-3 py-3" />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-foreground">Previous treatments</span>
+            <Textarea name="previousTreatments" placeholder="Previous treatments" className="min-h-24 rounded-[0.9rem] bg-white px-3 py-3" />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-foreground">Treatment plan</span>
+            <Textarea name="treatmentPlan" placeholder="Treatment plan" className="min-h-24 rounded-[0.9rem] bg-white px-3 py-3" />
           </label>
         </div>
       </section>

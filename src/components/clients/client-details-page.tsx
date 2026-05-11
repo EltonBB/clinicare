@@ -21,7 +21,9 @@ import {
 } from "lucide-react";
 
 import {
-  addClientGalleryItemAction,
+  addClientDocumentAction,
+  addClientMedicationAction,
+  addClientPaymentAction,
   archiveClientAction,
   deleteClientAction,
   saveClientAction,
@@ -52,8 +54,18 @@ type ClientDraft = {
   name: string;
   email: string;
   phone: string;
+  gender: string;
+  dateOfBirth: string;
+  address: string;
+  patientType: string;
+  clinicType: string;
   status: ClientStatus;
   notes: string;
+  medicalHistory: string;
+  allergies: string;
+  importantHealthNotes: string;
+  previousTreatments: string;
+  treatmentPlan: string;
   preferredChannel: string;
   assignedStaff: string;
   tags: string;
@@ -80,8 +92,24 @@ function createDraft(client: ClientRecord): ClientDraft {
     name: client.name,
     email: client.email,
     phone: client.phone,
+    gender: client.gender === "Not added" ? "" : client.gender,
+    dateOfBirth: client.dateOfBirthInput,
+    address: client.address === "Not added" ? "" : client.address,
+    patientType: client.patientType,
+    clinicType: client.clinicType,
     status: client.status,
     notes: client.notes === "No notes yet." ? "" : client.notes,
+    medicalHistory: client.medical.medicalHistory === "Not added yet." ? "" : client.medical.medicalHistory,
+    allergies: client.medical.allergies === "Not added yet." ? "" : client.medical.allergies,
+    importantHealthNotes:
+      client.medical.importantHealthNotes === "Not added yet."
+        ? ""
+        : client.medical.importantHealthNotes,
+    previousTreatments:
+      client.medical.previousTreatments === "Not added yet."
+        ? ""
+        : client.medical.previousTreatments,
+    treatmentPlan: client.medical.treatmentPlan === "Not added yet." ? "" : client.medical.treatmentPlan,
     preferredChannel: client.details.preferredChannel,
     assignedStaff: client.details.assignedStaff,
     tags: client.details.tags.join(", "),
@@ -145,20 +173,30 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   const [client, setClient] = useState(initialClient);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [draft, setDraft] = useState<ClientDraft>(createDraft(initialClient));
-  const [galleryCaption, setGalleryCaption] = useState("");
-  const [galleryImage, setGalleryImage] = useState("");
+  const [medicationDraft, setMedicationDraft] = useState({
+    name: "",
+    dosage: "",
+    frequency: "",
+    notes: "",
+    isActive: true,
+  });
+  const [documentDraft, setDocumentDraft] = useState({
+    fileName: "",
+    fileType: "Image / Scan",
+    fileUrl: "",
+    notes: "",
+  });
+  const [paymentDraft, setPaymentDraft] = useState({
+    amount: "",
+    status: "Paid",
+    description: "",
+    receiptUrl: "",
+    paidAt: "",
+  });
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [isGalleryUploading, setIsGalleryUploading] = useState(false);
   const [isPending, startSaving] = useTransition();
-  const vipPatient = client.details.tags.some((tag) =>
-    ["vip", "important"].includes(tag.toLowerCase())
-  );
-  const patientType = vipPatient
-    ? "VIP / Important"
-    : client.totalVisits > 0
-      ? "Returning Patient"
-      : "New Patient";
   const upcomingAppointments = client.appointments.filter(
     (appointment) => appointment.status === "PENDING" || appointment.status === "CONFIRMED"
   );
@@ -185,8 +223,18 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
         name: draft.name,
         email: draft.email,
         phone: draft.phone,
+        gender: draft.gender,
+        dateOfBirth: draft.dateOfBirth,
+        address: draft.address,
+        patientType: draft.patientType,
+        clinicType: draft.clinicType,
         status: draft.status,
         notes: draft.notes,
+        medicalHistory: draft.medicalHistory,
+        allergies: draft.allergies,
+        importantHealthNotes: draft.importantHealthNotes,
+        previousTreatments: draft.previousTreatments,
+        treatmentPlan: draft.treatmentPlan,
         preferredChannel: draft.preferredChannel,
         assignedStaff: draft.assignedStaff,
         tags: draft.tags,
@@ -239,20 +287,85 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
     });
   }
 
-  async function handleGalleryFile(file?: File) {
+  function addMedication() {
+    startSaving(async () => {
+      const result = await addClientMedicationAction({
+        clientId: client.id,
+        ...medicationDraft,
+      });
+
+      if (!result.ok || !result.client) {
+        setErrorMessage(result.error ?? "We couldn't add this medication.");
+        setStatusMessage("");
+        return;
+      }
+
+      setClient(result.client);
+      setMedicationDraft({
+        name: "",
+        dosage: "",
+        frequency: "",
+        notes: "",
+        isActive: true,
+      });
+      setErrorMessage("");
+      setStatusMessage("Medication added.");
+    });
+  }
+
+  function addDocument() {
+    startSaving(async () => {
+      const result = await addClientDocumentAction({
+        clientId: client.id,
+        ...documentDraft,
+      });
+
+      if (!result.ok || !result.client) {
+        setErrorMessage(result.error ?? "We couldn't add this document.");
+        setStatusMessage("");
+        return;
+      }
+
+      setClient(result.client);
+      setDocumentDraft({
+        fileName: "",
+        fileType: "Image / Scan",
+        fileUrl: "",
+        notes: "",
+      });
+      setErrorMessage("");
+      setStatusMessage("Document added.");
+    });
+  }
+
+  function addPayment() {
+    startSaving(async () => {
+      const result = await addClientPaymentAction({
+        clientId: client.id,
+        ...paymentDraft,
+      });
+
+      if (!result.ok || !result.client) {
+        setErrorMessage(result.error ?? "We couldn't add this payment.");
+        setStatusMessage("");
+        return;
+      }
+
+      setClient(result.client);
+      setPaymentDraft({
+        amount: "",
+        status: "Paid",
+        description: "",
+        receiptUrl: "",
+        paidAt: "",
+      });
+      setErrorMessage("");
+      setStatusMessage("Payment added.");
+    });
+  }
+
+  async function handleDocumentFile(file?: File) {
     if (!file) {
-      return;
-    }
-
-    if (!file.type.startsWith("image/")) {
-      setErrorMessage("Upload an image file for the client record.");
-      setStatusMessage("");
-      return;
-    }
-
-    if (file.size > 5_000_000) {
-      setErrorMessage("Clinical image is too large. Upload an image under 5 MB.");
-      setStatusMessage("");
       return;
     }
 
@@ -263,37 +376,20 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
         folder: "client-gallery",
         maxBytes: 5_000_000,
       });
-      setGalleryImage(uploadedImage.storageUrl);
+      setDocumentDraft((current) => ({
+        ...current,
+        fileName: current.fileName || file.name,
+        fileType: "Image / Scan",
+        fileUrl: uploadedImage.storageUrl,
+      }));
       setErrorMessage("");
-      setStatusMessage("Image uploaded. Add it to save it to this client.");
+      setStatusMessage("File uploaded. Add it to save it to this patient.");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "We couldn't upload this image.");
+      setErrorMessage(error instanceof Error ? error.message : "We couldn't upload this file.");
       setStatusMessage("");
     } finally {
       setIsGalleryUploading(false);
     }
-  }
-
-  function addGalleryItem() {
-    startSaving(async () => {
-      const result = await addClientGalleryItemAction({
-        clientId: client.id,
-        imageUrl: galleryImage,
-        caption: galleryCaption,
-      });
-
-      if (!result.ok || !result.client) {
-        setErrorMessage(result.error ?? "We couldn't add this image.");
-        setStatusMessage("");
-        return;
-      }
-
-      setClient(result.client);
-      setGalleryImage("");
-      setGalleryCaption("");
-      setErrorMessage("");
-      setStatusMessage("Client media updated.");
-    });
   }
 
   return (
@@ -408,10 +504,10 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 label="Email"
                 value={client.email || "Not added"}
               />
-              <OverviewLine label="Gender" value="Not added yet" />
-              <OverviewLine label="Date of birth" value="Not added yet" />
-              <OverviewLine label="Address" value="Not added yet" />
-              <OverviewLine label="Patient type" value={patientType} />
+              <OverviewLine label="Gender" value={client.gender} />
+              <OverviewLine label="Date of birth" value={client.dateOfBirth} />
+              <OverviewLine label="Address" value={client.address} />
+              <OverviewLine label="Patient type" value={client.patientType} />
               <OverviewLine label="Status" value={statusLabels[client.status]} />
             </dl>
           </section>
@@ -419,7 +515,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
             <h2 className="text-lg font-semibold text-foreground">Clinic information</h2>
             <dl className="mt-5 space-y-3">
-              <OverviewLine label="Clinic type" value="Clinic workspace" />
+              <OverviewLine label="Clinic type" value={client.clinicType} />
               <OverviewLine label="Assigned doctor / staff member" value={client.details.assignedStaff} />
               <OverviewLine label="First visit date" value={firstVisit} />
               <OverviewLine label="Last visit date" value={client.lastVisit} />
@@ -458,13 +554,78 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           </div>
         </TabsContent>
 
-        <TabsContent value="medical" className="grid gap-4 xl:grid-cols-2">
-          <InfoCard icon={HeartPulse} title="Medical history" value="Not added yet." />
-          <InfoCard icon={HeartPulse} title="Allergies" value="Not added yet." />
-          <InfoCard icon={NotebookText} title="Current medication" value="Not added yet." />
-          <InfoCard icon={HeartPulse} title="Important health notes" value={client.notes} />
-          <InfoCard icon={NotebookText} title="Previous treatments" value="Not added yet." />
-          <InfoCard icon={NotebookText} title="Treatment plan" value="Not added yet." />
+        <TabsContent value="medical" className="space-y-4">
+          <div className="grid gap-4 xl:grid-cols-2">
+            <InfoCard icon={HeartPulse} title="Medical history" value={client.medical.medicalHistory} />
+            <InfoCard icon={HeartPulse} title="Allergies" value={client.medical.allergies} />
+            <InfoCard icon={HeartPulse} title="Important health notes" value={client.medical.importantHealthNotes} />
+            <InfoCard icon={NotebookText} title="Previous treatments" value={client.medical.previousTreatments} />
+            <InfoCard icon={NotebookText} title="Treatment plan" value={client.medical.treatmentPlan} />
+          </div>
+
+          <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+            <h2 className="text-lg font-semibold text-foreground">Current medication</h2>
+            <div className="mt-4 grid gap-3 lg:grid-cols-4">
+              <Input
+                value={medicationDraft.name}
+                onChange={(event) =>
+                  setMedicationDraft((current) => ({ ...current, name: event.target.value }))
+                }
+                placeholder="Medication name"
+                className="h-11 rounded-[0.9rem] bg-white/84"
+              />
+              <Input
+                value={medicationDraft.dosage}
+                onChange={(event) =>
+                  setMedicationDraft((current) => ({ ...current, dosage: event.target.value }))
+                }
+                placeholder="Dosage"
+                className="h-11 rounded-[0.9rem] bg-white/84"
+              />
+              <Input
+                value={medicationDraft.frequency}
+                onChange={(event) =>
+                  setMedicationDraft((current) => ({ ...current, frequency: event.target.value }))
+                }
+                placeholder="Frequency"
+                className="h-11 rounded-[0.9rem] bg-white/84"
+              />
+              <Button
+                className="h-11 rounded-[0.9rem]"
+                onClick={addMedication}
+                disabled={isPending || !medicationDraft.name.trim()}
+              >
+                Add medication
+              </Button>
+              <Textarea
+                value={medicationDraft.notes}
+                onChange={(event) =>
+                  setMedicationDraft((current) => ({ ...current, notes: event.target.value }))
+                }
+                placeholder="Medication notes"
+                className="min-h-20 rounded-[0.9rem] bg-white/84 px-3 py-3 lg:col-span-4"
+              />
+            </div>
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {client.medications.length > 0 ? (
+                client.medications.map((medication) => (
+                  <div key={medication.id} className="rounded-[0.95rem] border border-border/80 bg-white/78 px-4 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="font-semibold text-foreground">{medication.name}</p>
+                      <span className="rounded-full bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground">
+                        {medication.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">Dosage: {medication.dosage}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Frequency: {medication.frequency}</p>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{medication.notes}</p>
+                  </div>
+                ))
+              ) : (
+                <EmptyPanel icon={NotebookText} title="No medications yet" text="Add current medication when the patient record needs it." />
+              )}
+            </div>
+          </section>
         </TabsContent>
 
         <TabsContent value="documents" className="space-y-4">
@@ -477,7 +638,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 <h2 className="text-lg font-semibold text-foreground">Documents & images</h2>
                 <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
                   Use simple upload types: ID, Consent, Medical History, Report, Image / Scan, and Other.
-                  Image uploads are live now; PDF/document records need the next storage schema step.
+                  Image/scan uploads and document records are live now. PDF binary upload can be added next.
                 </p>
               </div>
             </div>
@@ -490,10 +651,27 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             </div>
             <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_190px]">
               <Input
-                value={galleryCaption}
-                onChange={(event) => setGalleryCaption(event.target.value)}
-                placeholder="File notes, for example CT scan, ID, x-ray, before photo..."
+                value={documentDraft.fileName}
+                onChange={(event) =>
+                  setDocumentDraft((current) => ({ ...current, fileName: event.target.value }))
+                }
+                placeholder="File name"
                 className="h-11 rounded-[0.9rem] bg-white/84"
+              />
+              <NativeSelect
+                value={documentDraft.fileType}
+                options={["ID", "Consent", "Medical History", "Report", "Image / Scan", "Other"]}
+                onChange={(value) =>
+                  setDocumentDraft((current) => ({ ...current, fileType: value }))
+                }
+              />
+              <Textarea
+                value={documentDraft.notes}
+                onChange={(event) =>
+                  setDocumentDraft((current) => ({ ...current, notes: event.target.value }))
+                }
+                placeholder="File notes"
+                className="min-h-20 rounded-[0.9rem] bg-white/84 px-3 py-3 lg:col-span-2"
               />
               <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-[0.9rem] border border-border bg-white/78 px-4 text-sm font-medium text-foreground transition-colors hover:bg-white">
                 <input
@@ -501,21 +679,46 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   accept="image/*"
                   capture="environment"
                   className="sr-only"
-                  onChange={(event) => handleGalleryFile(event.target.files?.[0])}
+                  onChange={(event) => handleDocumentFile(event.target.files?.[0])}
                   disabled={isGalleryUploading}
                 />
                 <ImagePlus className="size-4" />
-                {isGalleryUploading ? "Uploading..." : galleryImage ? "Image ready" : "Choose image"}
+                {isGalleryUploading ? "Uploading..." : documentDraft.fileUrl ? "File ready" : "Attach image/scan"}
               </label>
+              <Button
+                className="h-11 rounded-[0.9rem]"
+                onClick={addDocument}
+                disabled={isPending || !documentDraft.fileName.trim()}
+              >
+                Add document
+              </Button>
             </div>
-            <Button
-              className="mt-3 rounded-[0.9rem]"
-              onClick={addGalleryItem}
-              disabled={!galleryImage || isPending || isGalleryUploading}
-            >
-              Add image to record
-            </Button>
           </section>
+
+          {client.documents.length > 0 ? (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {client.documents.map((document) => (
+                <div key={document.id} className="rounded-[1rem] border border-border/80 bg-white/78 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    {document.fileType}
+                  </p>
+                  <p className="mt-2 font-semibold text-foreground">{document.fileName}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Upload date: {document.createdAt}</p>
+                  <p className="mt-3 text-sm leading-6 text-muted-foreground">{document.notes}</p>
+                  {document.fileUrl ? (
+                    <a
+                      href={document.fileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 inline-flex text-sm font-semibold text-primary"
+                    >
+                      Open file
+                    </a>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
 
           {client.gallery.length > 0 ? (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -592,11 +795,93 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           </div>
         </TabsContent>
 
-        <TabsContent value="payments" className="grid gap-4 xl:grid-cols-2">
-          <InfoCard icon={CreditCard} title="Total paid" value="Not connected yet." />
-          <InfoCard icon={CreditCard} title="Unpaid balance" value="Not connected yet." />
-          <InfoCard icon={FileText} title="Invoice / receipt" value="Billing documents are not connected yet." />
-          <InfoCard icon={CreditCard} title="Payment status" value="Not connected yet." />
+        <TabsContent value="payments" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-3">
+            <InfoCard icon={CreditCard} title="Total paid" value={client.paymentStats.totalPaidDisplay} />
+            <InfoCard icon={CreditCard} title="Unpaid balance" value={client.paymentStats.unpaidBalanceDisplay} />
+            <InfoCard icon={CreditCard} title="Payment status" value={client.paymentStats.paymentStatus} />
+          </div>
+
+          <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+            <h2 className="text-lg font-semibold text-foreground">Add payment</h2>
+            <div className="mt-4 grid gap-3 lg:grid-cols-5">
+              <Input
+                value={paymentDraft.amount}
+                onChange={(event) =>
+                  setPaymentDraft((current) => ({ ...current, amount: event.target.value }))
+                }
+                placeholder="Amount"
+                className="h-11 rounded-[0.9rem] bg-white/84"
+              />
+              <NativeSelect
+                value={paymentDraft.status}
+                options={["Paid", "Unpaid", "Partially Paid"]}
+                onChange={(value) =>
+                  setPaymentDraft((current) => ({ ...current, status: value }))
+                }
+              />
+              <Input
+                value={paymentDraft.paidAt}
+                onChange={(event) =>
+                  setPaymentDraft((current) => ({ ...current, paidAt: event.target.value }))
+                }
+                type="date"
+                className="h-11 rounded-[0.9rem] bg-white/84"
+              />
+              <Input
+                value={paymentDraft.receiptUrl}
+                onChange={(event) =>
+                  setPaymentDraft((current) => ({ ...current, receiptUrl: event.target.value }))
+                }
+                placeholder="Invoice / receipt URL"
+                className="h-11 rounded-[0.9rem] bg-white/84"
+              />
+              <Button
+                className="h-11 rounded-[0.9rem]"
+                onClick={addPayment}
+                disabled={isPending || !paymentDraft.amount.trim()}
+              >
+                Add payment
+              </Button>
+              <Textarea
+                value={paymentDraft.description}
+                onChange={(event) =>
+                  setPaymentDraft((current) => ({ ...current, description: event.target.value }))
+                }
+                placeholder="Payment description"
+                className="min-h-20 rounded-[0.9rem] bg-white/84 px-3 py-3 lg:col-span-5"
+              />
+            </div>
+          </section>
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {client.payments.length > 0 ? (
+              client.payments.map((payment) => (
+                <div key={payment.id} className="rounded-[0.95rem] border border-border/80 bg-white/78 px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-xl font-semibold text-foreground">{payment.amountDisplay}</p>
+                    <span className="rounded-full bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground">
+                      {payment.status}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{payment.description}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Paid at: {payment.paidAt}</p>
+                  {payment.receiptUrl ? (
+                    <a
+                      href={payment.receiptUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 inline-flex text-sm font-semibold text-primary"
+                    >
+                      Open invoice / receipt
+                    </a>
+                  ) : null}
+                </div>
+              ))
+            ) : (
+              <EmptyPanel icon={CreditCard} title="No payments yet" text="Add paid, unpaid, or partially paid records for this patient." />
+            )}
+          </div>
         </TabsContent>
       </Tabs>
 
@@ -612,6 +897,21 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               <Field label="Full name" value={draft.name} onChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
               <Field label="Email" value={draft.email} onChange={(value) => setDraft((current) => ({ ...current, email: value }))} />
               <Field label="Phone number" value={draft.phone} onChange={(value) => setDraft((current) => ({ ...current, phone: value }))} />
+              <Field label="Gender" value={draft.gender} onChange={(value) => setDraft((current) => ({ ...current, gender: value }))} />
+              <Field label="Date of birth" type="date" value={draft.dateOfBirth} onChange={(value) => setDraft((current) => ({ ...current, dateOfBirth: value }))} />
+              <Field label="Address" value={draft.address} onChange={(value) => setDraft((current) => ({ ...current, address: value }))} />
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Patient type
+                </label>
+                <NativeSelect
+                  value={draft.patientType}
+                  options={["New Patient", "Returning Patient", "VIP / Important"]}
+                  onChange={(value) =>
+                    setDraft((current) => ({ ...current, patientType: value }))
+                  }
+                />
+              </div>
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Status
@@ -626,6 +926,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
             </div>
             <div className="surface-soft grid gap-4 rounded-[1.05rem] p-4 sm:grid-cols-2">
+              <Field label="Clinic type" value={draft.clinicType} onChange={(value) => setDraft((current) => ({ ...current, clinicType: value }))} />
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Preferred contact method
@@ -650,6 +951,15 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))}
                 className="min-h-28 rounded-[0.9rem] bg-white/84 px-3 py-3"
               />
+            </div>
+          </div>
+          <div className="space-y-5 px-5 pb-5">
+            <div className="surface-soft grid gap-4 rounded-[1.05rem] p-4 sm:grid-cols-2">
+              <TextField label="Medical history" value={draft.medicalHistory} onChange={(value) => setDraft((current) => ({ ...current, medicalHistory: value }))} />
+              <TextField label="Allergies" value={draft.allergies} onChange={(value) => setDraft((current) => ({ ...current, allergies: value }))} />
+              <TextField label="Important health notes" value={draft.importantHealthNotes} onChange={(value) => setDraft((current) => ({ ...current, importantHealthNotes: value }))} />
+              <TextField label="Previous treatments" value={draft.previousTreatments} onChange={(value) => setDraft((current) => ({ ...current, previousTreatments: value }))} />
+              <TextField label="Treatment plan" value={draft.treatmentPlan} onChange={(value) => setDraft((current) => ({ ...current, treatmentPlan: value }))} />
             </div>
           </div>
 
@@ -777,11 +1087,13 @@ function Field({
   value,
   onChange,
   placeholder,
+  type = "text",
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  type?: string;
 }) {
   return (
     <div className="space-y-2">
@@ -789,10 +1101,34 @@ function Field({
         {label}
       </label>
       <Input
+        type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         className="h-11 rounded-[0.9rem] bg-white/84"
+      />
+    </div>
+  );
+}
+
+function TextField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
+      </label>
+      <Textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="min-h-24 rounded-[0.9rem] bg-white/84 px-3 py-3"
       />
     </div>
   );

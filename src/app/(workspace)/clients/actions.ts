@@ -44,6 +44,38 @@ export type AddClientGalleryItemResult = {
   client?: ClientRecord;
 };
 
+export type AddClientMedicationPayload = {
+  clientId: string;
+  name: string;
+  dosage: string;
+  frequency: string;
+  notes: string;
+  isActive: boolean;
+};
+
+export type AddClientDocumentPayload = {
+  clientId: string;
+  fileName: string;
+  fileType: string;
+  fileUrl: string;
+  notes: string;
+};
+
+export type AddClientPaymentPayload = {
+  clientId: string;
+  amount: string;
+  status: string;
+  description: string;
+  receiptUrl: string;
+  paidAt: string;
+};
+
+export type ClientRecordMutationResult = {
+  ok: boolean;
+  error?: string;
+  client?: ClientRecord;
+};
+
 async function getAuthedBusiness() {
   const supabase = await createClient();
   const {
@@ -107,6 +139,50 @@ async function fetchClientRecord(clientId: string) {
         },
         take: 24,
       },
+      medications: {
+        select: {
+          id: true,
+          name: true,
+          dosage: true,
+          frequency: true,
+          notes: true,
+          isActive: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 50,
+      },
+      documents: {
+        select: {
+          id: true,
+          fileName: true,
+          fileType: true,
+          fileUrl: true,
+          notes: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 60,
+      },
+      payments: {
+        select: {
+          id: true,
+          amountCents: true,
+          status: true,
+          description: true,
+          receiptUrl: true,
+          paidAt: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 60,
+      },
       _count: {
         select: {
           appointments: true,
@@ -116,6 +192,55 @@ async function fetchClientRecord(clientId: string) {
   });
 
   return buildClientRecord(client);
+}
+
+async function requireOwnedClient(clientId: string) {
+  const context = await getAuthedBusiness();
+
+  if ("error" in context) {
+    return context;
+  }
+
+  const client = await prisma.client.findFirst({
+    where: {
+      id: clientId,
+      businessId: context.business.id,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!client) {
+    return {
+      error: "Patient not found in this clinic workspace.",
+    } as const;
+  }
+
+  return {
+    business: context.business,
+    client,
+  } as const;
+}
+
+function parseOptionalDate(value: string | undefined) {
+  if (!value?.trim()) {
+    return null;
+  }
+
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseAmountToCents(value: string) {
+  const normalized = Number(value.replace(/[^0-9.-]/g, ""));
+
+  if (!Number.isFinite(normalized) || normalized < 0) {
+    return null;
+  }
+
+  return Math.round(normalized * 100);
 }
 
 export async function addClientGalleryItemAction(
@@ -230,7 +355,17 @@ export async function saveClientAction(
     name: cleanedName,
     email: payload.email.trim() || null,
     phone: cleanedPhone,
+    gender: payload.gender?.trim() || null,
+    dateOfBirth: parseOptionalDate(payload.dateOfBirth),
+    address: payload.address?.trim() || null,
+    patientType: payload.patientType?.trim() || "New Patient",
+    clinicType: payload.clinicType?.trim() || null,
     notes: payload.notes.trim() || null,
+    medicalHistory: payload.medicalHistory?.trim() || null,
+    allergies: payload.allergies?.trim() || null,
+    importantHealthNotes: payload.importantHealthNotes?.trim() || null,
+    previousTreatments: payload.previousTreatments?.trim() || null,
+    treatmentPlan: payload.treatmentPlan?.trim() || null,
     status: toPrismaClientStatus(payload.status),
     isArchived: payload.status === "archived",
     preferredChannel: payload.preferredChannel.trim() || null,
@@ -292,6 +427,122 @@ export async function saveClientAction(
       error: "We couldn't save the client record.",
     };
   }
+}
+
+export async function addClientMedicationAction(
+  payload: AddClientMedicationPayload
+): Promise<ClientRecordMutationResult> {
+  const context = await requireOwnedClient(payload.clientId);
+
+  if ("error" in context) {
+    return {
+      ok: false,
+      error: context.error,
+    };
+  }
+
+  const name = payload.name.trim();
+
+  if (!name) {
+    return {
+      ok: false,
+      error: "Medication name is required.",
+    };
+  }
+
+  await prisma.clientMedication.create({
+    data: {
+      businessId: context.business.id,
+      clientId: payload.clientId,
+      name,
+      dosage: payload.dosage.trim() || null,
+      frequency: payload.frequency.trim() || null,
+      notes: payload.notes.trim() || null,
+      isActive: payload.isActive,
+    },
+  });
+
+  return {
+    ok: true,
+    client: await fetchClientRecord(payload.clientId),
+  };
+}
+
+export async function addClientDocumentAction(
+  payload: AddClientDocumentPayload
+): Promise<ClientRecordMutationResult> {
+  const context = await requireOwnedClient(payload.clientId);
+
+  if ("error" in context) {
+    return {
+      ok: false,
+      error: context.error,
+    };
+  }
+
+  const fileName = payload.fileName.trim();
+
+  if (!fileName) {
+    return {
+      ok: false,
+      error: "File name is required.",
+    };
+  }
+
+  await prisma.clientDocument.create({
+    data: {
+      businessId: context.business.id,
+      clientId: payload.clientId,
+      fileName,
+      fileType: payload.fileType.trim() || "Other",
+      fileUrl: normalizeStorageReference(payload.fileUrl.trim()) || null,
+      notes: payload.notes.trim() || null,
+    },
+  });
+
+  return {
+    ok: true,
+    client: await fetchClientRecord(payload.clientId),
+  };
+}
+
+export async function addClientPaymentAction(
+  payload: AddClientPaymentPayload
+): Promise<ClientRecordMutationResult> {
+  const context = await requireOwnedClient(payload.clientId);
+
+  if ("error" in context) {
+    return {
+      ok: false,
+      error: context.error,
+    };
+  }
+
+  const amountCents = parseAmountToCents(payload.amount);
+
+  if (amountCents === null) {
+    return {
+      ok: false,
+      error: "Enter a valid payment amount.",
+    };
+  }
+
+  await prisma.clientPayment.create({
+    data: {
+      businessId: context.business.id,
+      clientId: payload.clientId,
+      amountCents,
+      status: payload.status.trim() || "Unpaid",
+      description: payload.description.trim() || null,
+      receiptUrl: payload.receiptUrl.trim() || null,
+      paidAt: parseOptionalDate(payload.paidAt),
+    },
+  });
+
+  return {
+    ok: true,
+    client: await fetchClientRecord(payload.clientId),
+  };
 }
 
 export async function archiveClientAction(clientId: string): Promise<ArchiveClientResult> {

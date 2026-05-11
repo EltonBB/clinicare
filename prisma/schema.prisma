@@ -82,28 +82,89 @@ model StaffTimeEntry {
 }
 
 model Client {
-  id                String                 @id @default(cuid())
-  businessId        String
-  business          Business               @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  name              String
-  email             String?
-  phone             String
-  notes             String?
-  status            ClientEngagementStatus @default(ACTIVE)
-  preferredChannel  String?
-  assignedStaffName String?
-  tags              String[]               @default([])
-  isArchived        Boolean                @default(false)
-  lastVisitAt       DateTime?
-  createdAt         DateTime               @default(now())
-  updatedAt         DateTime               @updatedAt
-  appointments      Appointment[]
-  messages          Message[]
-  galleryItems      ClientGalleryItem[]
+  id                   String                 @id @default(cuid())
+  businessId           String
+  business             Business               @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name                 String
+  email                String?
+  phone                String
+  gender               String?
+  dateOfBirth          DateTime?
+  address              String?
+  patientType          String?
+  clinicType           String?
+  notes                String?
+  medicalHistory       String?
+  allergies            String?
+  importantHealthNotes String?
+  previousTreatments   String?
+  treatmentPlan        String?
+  status               ClientEngagementStatus @default(ACTIVE)
+  preferredChannel     String?
+  assignedStaffName    String?
+  tags                 String[]               @default([])
+  isArchived           Boolean                @default(false)
+  lastVisitAt          DateTime?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  appointments         Appointment[]
+  messages             Message[]
+  galleryItems         ClientGalleryItem[]
+  medications          ClientMedication[]
+  documents            ClientDocument[]
+  payments             ClientPayment[]
 
   @@unique([businessId, phone])
   @@index([businessId, isArchived])
   @@index([businessId, phone])
+}
+
+model ClientMedication {
+  id         String   @id @default(cuid())
+  businessId String
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name       String
+  dosage     String?
+  frequency  String?
+  notes      String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([businessId, clientId, isActive])
+}
+
+model ClientDocument {
+  id         String   @id @default(cuid())
+  businessId String
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  fileName   String
+  fileType   String
+  fileUrl    String?
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([businessId, clientId, createdAt])
+}
+
+model ClientPayment {
+  id          String    @id @default(cuid())
+  businessId  String
+  clientId    String
+  client      Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  amountCents Int
+  status      String
+  description String?
+  receiptUrl  String?
+  paidAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([businessId, clientId, status])
+  @@index([businessId, clientId, createdAt])
 }
 
 model ClientGalleryItem {

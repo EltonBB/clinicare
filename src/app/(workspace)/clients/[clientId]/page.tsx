@@ -59,6 +59,50 @@ export default async function ClientDetailsRoute({
         },
         take: 60,
       },
+      medications: {
+        select: {
+          id: true,
+          name: true,
+          dosage: true,
+          frequency: true,
+          notes: true,
+          isActive: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 50,
+      },
+      documents: {
+        select: {
+          id: true,
+          fileName: true,
+          fileType: true,
+          fileUrl: true,
+          notes: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 60,
+      },
+      payments: {
+        select: {
+          id: true,
+          amountCents: true,
+          status: true,
+          description: true,
+          receiptUrl: true,
+          paidAt: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 60,
+      },
       _count: {
         select: {
           appointments: true,
