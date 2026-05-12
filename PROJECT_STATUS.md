@@ -1,6 +1,6 @@
 # Project Status: Vela / Clinicare
 
-Last updated: 2026-05-12
+Last updated: 2026-05-13
 
 ## Product Overview
 
@@ -49,6 +49,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Workspace performance cleanup pass completed: the shared shell no longer blocks navigation on notification preview queries, first-user tour code only loads when needed, Clients and Staff directory pages use lightweight list queries, Settings no longer loads or saves staff records, Calendar loads a bounded appointment window, Inbox polling and lookup data are capped, Dashboard unread messages use an aggregate query, stale drawer-era links were replaced with dedicated detail/edit routes, unused UI wrappers/global providers were removed, and unused dependency packages were pruned.
 - Public marketing landing page at `/` now uses a simplified animated product-led design inspired by the Dribbble reference, with the default Vela blue accent color, a large hero, floating clinic workspace mockups on desktop, a cleaner stacked mobile preview, compact workflow blocks, AI reporting, privacy messaging, and signup/login CTAs into the auth flow.
 - Public marketing site expanded from a single landing page into a five-page static route structure: `/`, `/product`, `/pricing`, `/about`, and `/contact`. The pages now share a reusable marketing shell, Vela-blue product-led design system, responsive header/footer, richer Vela workspace screenshot-style product media, pricing cards, About/legal links, and contact/demo form layout.
+- Public marketing site redesigned again with generated Vela-style product visuals instead of literal app screenshots or purely code-drawn mockups. The site now uses made-up clinic/patient data in dashboard, calendar, and patient/report imagery, stronger product-led page structure, clearer CTAs, improved mobile wrapping, and a leaner marketing component.
 - Dedicated create pages now exist for `/calendar/new`, `/clients/new`, and `/staff/new`, replacing the main add flows for bookings, clients, and staff with centered single-page forms while preserving edit sheets for existing records.
 - Dedicated patient details pages now exist at `/clients/[clientId]`, replacing the old right-side client panel with a full patient record view covering Overview, Appointments, Medical Info, Documents, Messages, Payments, edit/archive actions, real medication/document creation, and payment ledger records generated from bookings.
 - Dedicated patient edit pages now exist at `/clients/[clientId]/edit`, replacing the old right-side edit drawer with a full-page form for demographics, clinic information, and medical profile fields.
@@ -68,7 +69,8 @@ The core product direction is customer-first: clinics should not need to underst
 - Reports can calculate core performance metrics, derive operational evidence from appointment status mix, demand windows, staff load, booking lead time, and client mix, refresh AI analysis across daily/weekly/monthly together when the OpenAI environment key is configured, score each timeframe from current clinic metrics, generate rule-based guidance from actual period data, handle sparse/unmeasured data without false zeros, and clearly show when rule-based insights are used instead.
 - Workspace page-to-page navigation keeps the shared shell interactive and shows a skeleton immediately while dynamic page data streams in.
 - Public visitors now land on the marketing homepage first, with signup/login CTAs routing into the existing auth flow.
-- Public visitors can now browse Home, Product, Pricing, About, and Contact pages without authentication, while legal pages remain available at `/terms-and-conditions`, `/privacy`, and `/refund`.
+- Public visitors can browse Home, Product, Pricing, About, and Contact pages without authentication, while legal pages remain available at `/terms-and-conditions`, `/privacy`, and `/refund`.
+- Marketing pages use generated product imagery with sample names and data so prospects see realistic Vela workflows without exposing live customer information.
 
 ## Known Issues / Blockers
 
@@ -90,6 +92,7 @@ The core product direction is customer-first: clinics should not need to underst
 5. Continue hardening reports with any launch-specific wording, prompt evaluation, or plan-gating requirements that come out of user testing.
 6. Continue WhatsApp provider work only after business/provider requirements are ready; keep Settings flow customer-friendly in the meantime.
 7. Implement real billing/plan upgrade flow when pricing and payment provider decisions are final.
+8. Keep production deployment to the GitHub integration path only; avoid direct Vercel CLI deploys so each pushed commit creates one deployment.
 
 ## Testing Checklist
 
@@ -113,10 +116,10 @@ The core product direction is customer-first: clinics should not need to underst
 - Reports: daily, weekly, monthly metrics, metric-driven snapshot scores, sparse-data states, full three-timeframe AI refresh, diagnosis/root-cause/playbook sections, detailed suggestions, data-backed fallback copy, cooldown behavior, and AI/fallback snapshot states.
 - Public policies: `/terms-and-conditions`, `/privacy`, and `/refund` load without authentication and match the current Vela product scope.
 - Public homepage: `/` loads without authentication, shows the landing page, and routes `Start free` to `/sign-up` and `Log in` to `/login`.
-- Public marketing site: `/`, `/product`, `/pricing`, `/about`, and `/contact` load without authentication, render correctly at desktop and narrow viewport sizes, and keep CTAs routed to `/sign-up`, `/login`, `/pricing`, `/product`, `/contact`, and the legal pages.
+- Public marketing site: `/`, `/product`, `/pricing`, `/about`, and `/contact` load without authentication, render correctly at desktop and narrow viewport sizes, display generated product imagery from `public/marketing`, and keep CTAs routed to `/sign-up`, `/login`, `/pricing`, `/product`, `/contact`, and the legal pages.
 - Supabase security: public Prisma tables report RLS enabled and anon REST table access returns no rows.
 - Route protection: `/dashboard`, `/calendar`, `/clients`, `/staff`, `/inbox`, `/reports`, and `/settings` redirect unauthenticated users to login.
 
 ## Last Completed Task
 
-- Completed the second public marketing design pass. The site now follows the generated concept more closely, with a stronger hero, richer Vela workspace product visuals for dashboard/calendar/patient/messaging/report surfaces, expanded homepage content, more varied Product/Pricing/About/Contact sections, and improved mobile structure. Verified with lint, production build, and Chrome headless desktop/mobile screenshots.
+- Completed a generated-asset marketing redesign pass. The five-page public marketing site now uses generated Vela-style dashboard, calendar, and patient/report images with made-up clinic data, cleaner Tars-inspired product-led structure, stronger CTAs, improved mobile wrapping, and a leaner marketing component. Verified with `npm run lint`, `npm run build`, and Chrome headless desktop/mobile screenshots. Deployment should continue through GitHub push only, not direct Vercel CLI deploy.
