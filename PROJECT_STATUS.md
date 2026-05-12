@@ -50,6 +50,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Public marketing landing page at `/` now uses a simplified animated product-led design inspired by the Dribbble reference, with the default Vela blue accent color, a large hero, floating clinic workspace mockups on desktop, a cleaner stacked mobile preview, compact workflow blocks, AI reporting, privacy messaging, and signup/login CTAs into the auth flow.
 - Public marketing site expanded from a single landing page into a five-page static route structure: `/`, `/product`, `/pricing`, `/about`, and `/contact`. The pages now share a reusable marketing shell, Vela-blue product-led design system, responsive header/footer, richer Vela workspace screenshot-style product media, pricing cards, About/legal links, and contact/demo form layout.
 - Public marketing site redesigned again with generated Vela-style product visuals instead of literal app screenshots or purely code-drawn mockups. The site now uses made-up clinic/patient data in dashboard, calendar, and patient/report imagery, stronger product-led page structure, clearer CTAs, improved mobile wrapping, and a leaner marketing component.
+- Fixed the shared Tabs primitive so horizontal tabs explicitly render as a vertical stack of tab list above tab content. This resolves the client details page issue where the tab list appeared in a left empty column and the overview content was pushed to the right.
 - Dedicated create pages now exist for `/calendar/new`, `/clients/new`, and `/staff/new`, replacing the main add flows for bookings, clients, and staff with centered single-page forms while preserving edit sheets for existing records.
 - Dedicated patient details pages now exist at `/clients/[clientId]`, replacing the old right-side client panel with a full patient record view covering Overview, Appointments, Medical Info, Documents, Messages, Payments, edit/archive actions, real medication/document creation, and payment ledger records generated from bookings.
 - Dedicated patient edit pages now exist at `/clients/[clientId]/edit`, replacing the old right-side edit drawer with a full-page form for demographics, clinic information, and medical profile fields.
@@ -71,6 +72,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Public visitors now land on the marketing homepage first, with signup/login CTAs routing into the existing auth flow.
 - Public visitors can browse Home, Product, Pricing, About, and Contact pages without authentication, while legal pages remain available at `/terms-and-conditions`, `/privacy`, and `/refund`.
 - Marketing pages use generated product imagery with sample names and data so prospects see realistic Vela workflows without exposing live customer information.
+- Patient detail tabs now align correctly above the Overview, Appointments, Medical Info, Documents, Messages, and Payments content instead of splitting the tabs and content into separate columns.
 
 ## Known Issues / Blockers
 
@@ -122,4 +124,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Completed a generated-asset marketing redesign pass. The five-page public marketing site now uses generated Vela-style dashboard, calendar, and patient/report images with made-up clinic data, cleaner Tars-inspired product-led structure, stronger CTAs, improved mobile wrapping, and a leaner marketing component. Verified with `npm run lint`, `npm run build`, and Chrome headless desktop/mobile screenshots. Deployment should continue through GitHub push only, not direct Vercel CLI deploy.
+- Fixed the client details tab layout regression by making the shared Tabs orientation layout explicit instead of relying on a non-matching data selector. Verified with `npm run lint` and `npm run build`. Deployment should continue through GitHub push only, not direct Vercel CLI deploy.
