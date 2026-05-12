@@ -1,5 +1,5 @@
 import { differenceInMinutes } from "date-fns";
-import type { Appointment, Business, Client, Conversation } from "@prisma/client";
+import type { Appointment, Business, Client } from "@prisma/client";
 import { isProBusinessPlan, planDisplayName, planStatusLabel } from "@/lib/billing";
 import {
   formatZonedDateKey,
@@ -134,7 +134,7 @@ export function buildDashboardViewFromWorkspace(args: {
   appointments: TodayAppointmentWithRelations[];
   lastClients: ClientSummaryRow[];
   nextAppointment: TodayAppointmentWithRelations | null;
-  conversations: Pick<Conversation, "unreadCount">[];
+  unreadCount: number;
   todaysHours: number;
   clientCount: number;
   appointmentCount: number;
@@ -149,7 +149,7 @@ export function buildDashboardViewFromWorkspace(args: {
     appointments,
     lastClients,
     nextAppointment,
-    conversations,
+    unreadCount,
     clientCount,
     appointmentCount,
     analyticsAppointments,
@@ -158,7 +158,6 @@ export function buildDashboardViewFromWorkspace(args: {
     now = new Date(),
     timeZone = getAppTimeZone(),
   } = args;
-  const unreadCount = conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0);
   const completedAppointments = analyticsAppointments.filter(
     (appointment) => appointment.status === "COMPLETED"
   );

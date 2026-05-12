@@ -36,15 +36,6 @@ function clampReminderHours(value: number, fallback: number) {
   return Math.min(Math.max(Math.round(value), 1), 24);
 }
 
-function staffTimeEntryCutoff() {
-  return new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
-}
-
-function completedAppointmentCutoff() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), 1);
-}
-
 export type SaveSettingsResult = {
   ok: boolean;
   error?: string;
@@ -124,25 +115,6 @@ export async function saveSettingsAction(
     2
   );
 
-  const cleanedStaff = payload.staff.filter((member) => member.name.trim().length > 0);
-  const persistedStaff =
-    cleanedStaff.length > 0
-      ? cleanedStaff
-      : [
-          {
-            id: "owner-seed",
-            name: payload.business.ownerName.trim() || user.email || "Workspace Owner",
-            role: "Specialist" as const,
-            email: "",
-            phone: "",
-            profileNote: "",
-            status: "ACTIVE" as const,
-            isCheckedIn: false,
-            weeklyHours: 0,
-            completedThisMonth: 0,
-            recentAppointments: [],
-          },
-        ];
   const existingConnection = await prisma.whatsAppConnection.findUnique({
     where: {
       businessId: business.id,
@@ -324,69 +296,6 @@ export async function saveSettingsAction(
       });
     }
 
-    const existingStaff = await tx.staffMember.findMany({
-      where: {
-        businessId: business.id,
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    const existingIds = new Set(existingStaff.map((member) => member.id));
-    const submittedIds = new Set(
-      persistedStaff
-        .map((member) => member.id)
-        .filter((id) => existingIds.has(id))
-    );
-
-    const idsToDelete = existingStaff
-      .map((member) => member.id)
-      .filter((id) => !submittedIds.has(id));
-
-    if (idsToDelete.length > 0) {
-      await tx.staffMember.deleteMany({
-        where: {
-          businessId: business.id,
-          id: {
-            in: idsToDelete,
-          },
-        },
-      });
-    }
-
-    for (const member of persistedStaff) {
-      if (existingIds.has(member.id)) {
-        await tx.staffMember.update({
-          where: {
-            id: member.id,
-          },
-          data: {
-            name: member.name.trim(),
-            role: member.role,
-            email: member.email.trim() || null,
-            phone: member.phone.trim() || null,
-            profileNote: member.profileNote.trim() || null,
-            status: member.status,
-            isActive: member.status !== "INACTIVE",
-          },
-        });
-      } else {
-        await tx.staffMember.create({
-          data: {
-            businessId: business.id,
-            name: member.name.trim(),
-            role: member.role,
-            email: member.email.trim() || null,
-            phone: member.phone.trim() || null,
-            profileNote: member.profileNote.trim() || null,
-            status: member.status,
-            isActive: member.status !== "INACTIVE",
-          },
-        });
-      }
-    }
-
     await tx.reminderSettings.upsert({
       where: {
         businessId: business.id,
@@ -431,7 +340,7 @@ export async function saveSettingsAction(
     await deleteStorageReferences([previousLogoUrl]);
   }
 
-  const [updatedBusiness, businessHours, staffMembers, reminderSettings, whatsappConnection] = await Promise.all([
+  const [updatedBusiness, businessHours, reminderSettings, whatsappConnection] = await Promise.all([
     prisma.business.findUniqueOrThrow({
       where: {
         id: business.id,
@@ -443,45 +352,6 @@ export async function saveSettingsAction(
       },
       orderBy: {
         weekday: "asc",
-      },
-    }),
-    prisma.staffMember.findMany({
-      where: {
-        businessId: business.id,
-      },
-      include: {
-        timeEntries: {
-          where: {
-            checkedInAt: {
-              gte: staffTimeEntryCutoff(),
-            },
-          },
-          orderBy: {
-            checkedInAt: "desc",
-          },
-        },
-        appointments: {
-          where: {
-            status: "COMPLETED",
-            startAt: {
-              gte: completedAppointmentCutoff(),
-            },
-          },
-          include: {
-            client: {
-              select: {
-                name: true,
-              },
-            },
-          },
-          orderBy: {
-            startAt: "desc",
-          },
-          take: 50,
-        },
-      },
-      orderBy: {
-        createdAt: "asc",
       },
     }),
     prisma.reminderSettings.findUnique({
@@ -503,7 +373,6 @@ export async function saveSettingsAction(
     supportEmail: user.email ?? "",
     ownerName: payload.business.ownerName,
     businessHours,
-    staffMembers,
     reminderSettings,
     whatsappConnection,
   });

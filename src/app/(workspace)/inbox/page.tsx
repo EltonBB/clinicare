@@ -32,7 +32,7 @@ export default async function InboxPage({
     }
   });
 
-  const [clients, conversations, whatsappConnection] = await Promise.all([
+  const [clients, clientCount, conversations, whatsappConnection] = await Promise.all([
     prisma.client.findMany({
       where: {
         businessId: business.id,
@@ -50,6 +50,12 @@ export default async function InboxPage({
           createdAt: "desc",
         },
       ],
+      take: 150,
+    }),
+    prisma.client.count({
+      where: {
+        businessId: business.id,
+      },
     }),
     prisma.conversation.findMany({
       where: {
@@ -108,7 +114,7 @@ export default async function InboxPage({
         whatsappConnection,
         business.whatsappNumber ?? ""
       )}
-      clientCount={clients.length}
+      clientCount={clientCount}
       recommendedClientId={clients[0]?.id}
     />
   );

@@ -28,6 +28,22 @@ export default async function StaffPage({
     redirect("/staff/new");
   }
 
+  if (typeof requestedStaffId === "string" && requestedStaffId.length > 0) {
+    const matchingStaff = await prisma.staffMember.findFirst({
+      where: {
+        id: requestedStaffId,
+        businessId: business.id,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (matchingStaff) {
+      redirect(`/staff/${matchingStaff.id}`);
+    }
+  }
+
   const records = await prisma.staffMember.findMany({
     where: {
       businessId: business.id,
@@ -50,17 +66,13 @@ export default async function StaffPage({
             gte: completedAppointmentCutoff(),
           },
         },
-        include: {
-          client: {
-            select: {
-              name: true,
-            },
-          },
+        select: {
+          startAt: true,
+          status: true,
         },
         orderBy: {
           startAt: "desc",
         },
-        take: 50,
       },
     },
     orderBy: [
@@ -74,19 +86,6 @@ export default async function StaffPage({
   });
 
   const initialView = buildStaffViewFromRecords(records);
-  const initialSelectedStaffId =
-    typeof requestedStaffId === "string" &&
-    initialView.staff.some((record) => record.id === requestedStaffId)
-      ? requestedStaffId
-      : initialView.initialSelectedStaffId;
 
-  return (
-    <StaffWorkspace
-      initialView={{
-        ...initialView,
-        initialSelectedStaffId,
-      }}
-      initialNewStaffOpen={openNew === "1"}
-    />
-  );
+  return <StaffWorkspace initialView={initialView} />;
 }

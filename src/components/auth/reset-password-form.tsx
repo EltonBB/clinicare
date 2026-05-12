@@ -44,6 +44,7 @@ export function ResetPasswordForm() {
         <Input
           name="password"
           type="password"
+          autoComplete="new-password"
           placeholder="Create a new password"
           defaultValue={state.values?.password}
           aria-invalid={Boolean(state.fieldErrors?.password)}
@@ -60,6 +61,7 @@ export function ResetPasswordForm() {
         <Input
           name="confirmPassword"
           type="password"
+          autoComplete="new-password"
           placeholder="Repeat the new password"
           defaultValue={state.values?.confirmPassword}
           aria-invalid={Boolean(state.fieldErrors?.confirmPassword)}

@@ -29,8 +29,6 @@ type CalendarView = "day" | "week" | "month";
 type CalendarWorkspaceProps = {
   initialView: CalendarViewModel;
   ownerName: string;
-  initialCreateOpen?: boolean;
-  initialClientId?: string;
 };
 
 const views: CalendarView[] = ["day", "week", "month"];

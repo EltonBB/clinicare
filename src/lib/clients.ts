@@ -123,9 +123,13 @@ export type ClientRecord = {
   }>;
 };
 
+export type ClientDirectoryItem = Pick<
+  ClientRecord,
+  "id" | "name" | "email" | "phone" | "lastVisit" | "totalVisits" | "status"
+>;
+
 export type ClientsViewModel = {
-  clients: ClientRecord[];
-  initialSelectedClientId: string;
+  clients: ClientDirectoryItem[];
 };
 
 export type SaveClientPayload = {
@@ -162,7 +166,24 @@ type ClientWithRelations = Client & {
   };
 };
 
-function formatStatus(value: ClientWithRelations["status"], isArchived: boolean): ClientStatus {
+type ClientDirectoryRow = Pick<
+  Client,
+  | "id"
+  | "name"
+  | "email"
+  | "phone"
+  | "status"
+  | "isArchived"
+  | "lastVisitAt"
+  | "createdAt"
+> & {
+  appointments: Pick<Appointment, "startAt">[];
+  _count?: {
+    appointments: number;
+  };
+};
+
+function formatStatus(value: Client["status"], isArchived: boolean): ClientStatus {
   if (isArchived || value === "ARCHIVED") {
     return "archived";
   }
@@ -192,6 +213,12 @@ export function toPrismaClientStatus(status: ClientStatus) {
 }
 
 function formatLastVisit(client: ClientWithRelations) {
+  const latestAppointment = client.appointments[0]?.startAt ?? client.lastVisitAt;
+
+  return latestAppointment ? format(latestAppointment, "MMM d, yyyy") : "No visits yet";
+}
+
+function formatDirectoryLastVisit(client: ClientDirectoryRow) {
   const latestAppointment = client.appointments[0]?.startAt ?? client.lastVisitAt;
 
   return latestAppointment ? format(latestAppointment, "MMM d, yyyy") : "No visits yet";
@@ -372,13 +399,20 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
   };
 }
 
-export async function buildClientsViewFromRecords(
-  records: ClientWithRelations[]
-): Promise<ClientsViewModel> {
-  const clients = await Promise.all(records.map(buildClientRecord));
+export function buildClientDirectoryViewFromRecords(
+  records: ClientDirectoryRow[]
+): ClientsViewModel {
+  const clients = records.map((client) => ({
+    id: client.id,
+    name: client.name,
+    email: client.email ?? "",
+    phone: client.phone,
+    lastVisit: formatDirectoryLastVisit(client),
+    totalVisits: client._count?.appointments ?? 0,
+    status: formatStatus(client.status, client.isArchived),
+  }));
 
   return {
     clients,
-    initialSelectedClientId: clients[0]?.id ?? "",
   };
 }

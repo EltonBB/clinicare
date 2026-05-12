@@ -89,7 +89,10 @@ function AppointmentStatus({ status }: { status: DashboardAppointmentStatus }) {
 
 function AppointmentRow({ appointment }: { appointment: DashboardAppointment }) {
   return (
-    <div className="interactive-lift grid gap-4 rounded-[1.05rem] border border-border/80 bg-white/94 px-5 py-5 shadow-[0_10px_24px_rgba(20,32,51,0.032)] transition-[box-shadow,transform,border-color] duration-200 hover:border-border hover:shadow-[0_14px_28px_rgba(20,32,51,0.04)] sm:grid-cols-[124px_1fr_auto] sm:items-center">
+    <Link
+      href={`/calendar/${appointment.id}/edit`}
+      className="interactive-lift grid gap-4 rounded-[1.05rem] border border-border/80 bg-white/94 px-5 py-5 shadow-[0_10px_24px_rgba(20,32,51,0.032)] transition-[box-shadow,transform,border-color] duration-200 hover:border-border hover:shadow-[0_14px_28px_rgba(20,32,51,0.04)] sm:grid-cols-[124px_1fr_auto] sm:items-center"
+    >
       <div className="border-border/75 sm:border-r sm:pr-5">
         <p className="text-lg font-semibold tracking-tight text-primary">
           {appointment.time}
@@ -109,38 +112,8 @@ function AppointmentRow({ appointment }: { appointment: DashboardAppointment }) 
       <div className="sm:justify-self-end">
         <AppointmentStatus status={appointment.status} />
       </div>
-    </div>
+    </Link>
   );
-}
-
-function buildActionWidgets(view: DashboardViewModel): DashboardViewModel["quickActions"] {
-  const recentClientId = view.workspaceState.recentClientId;
-  return [
-    {
-      label:
-        view.workspaceState.appointmentCount === 0
-          ? "Book first appointment"
-          : "New appointment",
-      href: recentClientId
-        ? `/calendar/new?client=${recentClientId}`
-        : "/calendar/new",
-      tone: "primary",
-    },
-    {
-      label:
-        view.workspaceState.clientCount === 0 ? "Add first client" : "New client",
-      href:
-        view.workspaceState.clientCount === 0
-          ? "/clients/new?next=calendar"
-          : "/clients/new",
-      tone: "secondary",
-    },
-    {
-      label: "Open inbox",
-      href: "/inbox",
-      tone: "secondary",
-    },
-  ];
 }
 
 function TodayAppointmentsWidget({ view }: { view: DashboardViewModel }) {
@@ -186,7 +159,7 @@ function LastClientsWidget({ view }: { view: DashboardViewModel }) {
           view.lastClients.map((client) => (
             <Link
               key={client.id}
-              href={`/clients?client=${client.id}`}
+              href={`/clients/${client.id}`}
               className="block rounded-[0.9rem] bg-muted/45 px-4 py-3 transition-colors hover:bg-primary/8"
             >
               <p className="text-sm font-semibold text-foreground">{client.name}</p>
@@ -215,7 +188,10 @@ function NextStaffAppointmentWidget({ view }: { view: DashboardViewModel }) {
         <Clock3 className="size-4 text-primary" />
       </div>
       {appointment ? (
-        <div className="mt-5 rounded-[1rem] bg-primary/8 p-4">
+        <Link
+          href={`/calendar/${appointment.id}/edit`}
+          className="mt-5 block rounded-[1rem] bg-primary/8 p-4 transition-colors hover:bg-primary/12"
+        >
           <p className="text-lg font-semibold text-primary">{appointment.time}</p>
           <p className="mt-2 text-sm font-semibold text-foreground">
             {appointment.service}
@@ -223,7 +199,7 @@ function NextStaffAppointmentWidget({ view }: { view: DashboardViewModel }) {
           <p className="mt-1 text-sm text-muted-foreground">
             {appointment.clientName} with {appointment.staffName}
           </p>
-        </div>
+        </Link>
       ) : (
         <p className="mt-4 rounded-[0.9rem] bg-muted/45 px-4 py-3 text-sm text-muted-foreground">
           No upcoming staff appointments.
@@ -488,7 +464,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
   const [selectedWidgets, setSelectedWidgets] = useState<DashboardWidget[]>(
     view.workspaceState.selectedWidgets
   );
-  const actionWidgets = buildActionWidgets(view);
+  const actionWidgets = view.quickActions;
   const selectedContentWidgets = selectedWidgets.filter((widget) =>
     contentWidgetValues.includes(widget)
   );

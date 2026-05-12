@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
@@ -10,10 +11,14 @@ import { BrandMark } from "@/components/brand-mark";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { NotificationsMenu } from "@/components/layout/notifications-menu";
 import { OwnerAccountDialog } from "@/components/layout/owner-account-dialog";
-import { WorkspaceTour } from "@/components/layout/workspace-tour";
 import { resolveBrandAccentPreset } from "@/lib/branding";
 import { navigationItems } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
+
+const WorkspaceTour = dynamic(
+  () => import("@/components/layout/workspace-tour").then((mod) => mod.WorkspaceTour),
+  { ssr: false }
+);
 
 type AppShellNotification = {
   id: string;
@@ -110,7 +115,7 @@ export function AppShell({
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       navigationItems.forEach((item) => prefetchRoute(item.href));
-    }, 600);
+    }, 900);
 
     return () => window.clearTimeout(timeout);
   }, [prefetchRoute]);
@@ -138,8 +143,8 @@ export function AppShell({
       void refreshNotifications();
       interval = window.setInterval(() => {
         void refreshNotifications();
-      }, 15000);
-    }, 8000);
+      }, 20000);
+    }, 1200);
 
     return () => {
       cancelled = true;
@@ -327,7 +332,9 @@ export function AppShell({
         </div>
       </nav>
 
-      <WorkspaceTour initialCompleted={tourCompleted} scopeId={tourScopeId} />
+      {!tourCompleted ? (
+        <WorkspaceTour initialCompleted={tourCompleted} scopeId={tourScopeId} />
+      ) : null}
     </div>
   );
 }

@@ -37,7 +37,7 @@ export default async function DashboardPage() {
 
   const [
     appointmentsResult,
-    conversationsResult,
+    unreadMessagesResult,
     todaysHoursResult,
     clientCountResult,
     recentClientResult,
@@ -74,11 +74,11 @@ export default async function DashboardPage() {
           startAt: "asc",
         },
       }),
-      prisma.conversation.findMany({
+      prisma.conversation.aggregate({
         where: {
           businessId: business.id,
         },
-        select: {
+        _sum: {
           unreadCount: true,
         },
       }),
@@ -180,8 +180,10 @@ export default async function DashboardPage() {
 
   const appointments =
     appointmentsResult.status === "fulfilled" ? appointmentsResult.value : [];
-  const conversations =
-    conversationsResult.status === "fulfilled" ? conversationsResult.value : [];
+  const unreadCount =
+    unreadMessagesResult.status === "fulfilled"
+      ? unreadMessagesResult.value._sum.unreadCount ?? 0
+      : 0;
   const todaysHoursRecord =
     todaysHoursResult.status === "fulfilled" ? todaysHoursResult.value : null;
   const clientCount =
@@ -203,10 +205,10 @@ export default async function DashboardPage() {
     console.error("Dashboard appointments query failed", appointmentsResult.reason);
   }
 
-  if (conversationsResult.status === "rejected") {
+  if (unreadMessagesResult.status === "rejected") {
     console.error(
-      "Dashboard conversations query failed",
-      conversationsResult.reason
+      "Dashboard unread messages query failed",
+      unreadMessagesResult.reason
     );
   }
 
@@ -261,7 +263,7 @@ export default async function DashboardPage() {
     appointments,
     lastClients,
     nextAppointment,
-    conversations,
+    unreadCount,
     todaysHours,
     clientCount,
     appointmentCount,

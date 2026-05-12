@@ -50,6 +50,7 @@ export function ForgotPasswordForm() {
         <Input
           name="email"
           type="email"
+          autoComplete="email"
           placeholder="name@company.com"
           defaultValue={state.values?.email}
           aria-invalid={Boolean(state.fieldErrors?.email)}

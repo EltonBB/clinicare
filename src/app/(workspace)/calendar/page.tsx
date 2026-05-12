@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { buildCalendarViewFromRecords } from "@/lib/calendar";
 import { redirect } from "next/navigation";
+import { addMonths, endOfMonth, format, parseISO, startOfMonth, subMonths } from "date-fns";
 
 function isValidDateParam(value?: string): value is string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -22,6 +23,11 @@ export default async function CalendarPage({
     client: requestedClientId,
     date: requestedDate,
   } = await searchParams;
+  const initialDate = isValidDateParam(requestedDate)
+    ? parseISO(requestedDate)
+    : new Date();
+  const rangeStart = startOfMonth(subMonths(initialDate, 1));
+  const rangeEnd = endOfMonth(addMonths(initialDate, 4));
 
   if (openNew === "1") {
     const params = new URLSearchParams();
@@ -40,6 +46,10 @@ export default async function CalendarPage({
         businessId: business.id,
         status: {
           not: "COMPLETED",
+        },
+        startAt: {
+          gte: rangeStart,
+          lte: rangeEnd,
         },
       },
       include: {
@@ -106,21 +116,13 @@ export default async function CalendarPage({
     staffMembers,
     businessHours,
     ownerName,
-    initialDate: isValidDateParam(requestedDate) ? requestedDate : undefined,
+    initialDate: format(initialDate, "yyyy-MM-dd"),
   });
-
-  const initialClientId =
-    typeof requestedClientId === "string" &&
-    clients.some((client) => client.id === requestedClientId)
-      ? requestedClientId
-      : undefined;
 
   return (
     <CalendarWorkspace
       initialView={initialView}
       ownerName={ownerName}
-      initialCreateOpen={openNew === "1"}
-      initialClientId={initialClientId}
     />
   );
 }

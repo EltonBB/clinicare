@@ -44,6 +44,7 @@ export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
         <Input
           name="email"
           type="email"
+          autoComplete="email"
           placeholder="name@company.com"
           defaultValue={state.values?.email}
           aria-invalid={Boolean(state.fieldErrors?.email)}
@@ -60,6 +61,7 @@ export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
         <Input
           name="password"
           type="password"
+          autoComplete="current-password"
           placeholder="Enter your password"
           defaultValue={state.values?.password}
           aria-invalid={Boolean(state.fieldErrors?.password)}

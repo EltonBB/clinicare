@@ -33,9 +33,10 @@ export type StaffRecord = {
   }>;
 };
 
+export type StaffDirectoryItem = Omit<StaffRecord, "recentAppointments">;
+
 export type StaffViewModel = {
-  staff: StaffRecord[];
-  initialSelectedStaffId: string;
+  staff: StaffDirectoryItem[];
 };
 
 export type SaveStaffPayload = {
@@ -57,6 +58,11 @@ type StaffWithRelations = StaffMember & {
       };
     }
   >;
+};
+
+type StaffDirectoryWithRelations = StaffMember & {
+  timeEntries: Pick<StaffTimeEntry, "checkedInAt" | "checkedOutAt">[];
+  appointments: Pick<Appointment, "startAt" | "status">[];
 };
 
 function normalizeStaffStatus(value: StaffMember["status"]): StaffStatus {
@@ -115,11 +121,34 @@ export function buildStaffRecord(member: StaffWithRelations): StaffRecord {
   };
 }
 
-export function buildStaffViewFromRecords(records: StaffWithRelations[]): StaffViewModel {
-  const staff = records.map(buildStaffRecord);
+export function buildStaffDirectoryRecord(
+  member: StaffDirectoryWithRelations
+): StaffDirectoryItem {
+  const completedThisMonth = member.appointments.filter(
+    (appointment) =>
+      appointment.status === "COMPLETED" && isThisMonth(appointment.startAt)
+  ).length;
+
+  return {
+    id: member.id,
+    name: member.name,
+    role: member.role,
+    email: member.email ?? "",
+    phone: member.phone ?? "",
+    profileNote: member.profileNote ?? "",
+    status: normalizeStaffStatus(member.status),
+    isCheckedIn: member.timeEntries.some((entry) => !entry.checkedOutAt),
+    weeklyHours: calculateWeeklyHours(member.timeEntries),
+    completedThisMonth,
+  };
+}
+
+export function buildStaffViewFromRecords(
+  records: StaffDirectoryWithRelations[]
+): StaffViewModel {
+  const staff = records.map(buildStaffDirectoryRecord);
 
   return {
     staff,
-    initialSelectedStaffId: staff[0]?.id ?? "",
   };
 }

@@ -9,11 +9,10 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import type { StaffRecord, StaffStatus, StaffViewModel } from "@/lib/staff";
+import type { StaffDirectoryItem, StaffStatus, StaffViewModel } from "@/lib/staff";
 
 type StaffWorkspaceProps = {
   initialView: StaffViewModel;
-  initialNewStaffOpen?: boolean;
 };
 
 const filters: Array<{ label: string; value: "all" | StaffStatus }> = [
@@ -40,7 +39,7 @@ function staffInitials(name: string) {
     .slice(0, 2);
 }
 
-function upsertStaff(records: StaffRecord[], staff: StaffRecord) {
+function upsertStaff(records: StaffDirectoryItem[], staff: StaffDirectoryItem) {
   const index = records.findIndex((item) => item.id === staff.id);
 
   if (index === -1) {
@@ -78,7 +77,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
     });
   }, [staff, deferredQuery, filter]);
 
-  function toggleClock(member: StaffRecord) {
+  function toggleClock(member: StaffDirectoryItem) {
     startSaving(async () => {
       const result = member.isCheckedIn
         ? await checkOutStaffAction(member.id)

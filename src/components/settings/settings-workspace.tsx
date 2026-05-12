@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition, type CSSProperties } from "react";
-import { ArrowUpRight, ImageUp } from "lucide-react";
+import { ArrowUpRight, ImageUp, UserRoundCog } from "lucide-react";
 
 import {
   prepareWhatsAppLiveConnectionAction,
@@ -154,6 +154,7 @@ export function SettingsWorkspace({
     { href: "#business-details", label: "Business details" },
     { href: "#appearance", label: "Appearance" },
     { href: "#working-hours", label: "Working hours" },
+    { href: "#team", label: "Staff" },
     { href: "#whatsapp-configuration", label: "WhatsApp" },
     { href: "#reminders", label: "Reminders" },
     { href: "#billing", label: "Billing" },
@@ -202,12 +203,7 @@ export function SettingsWorkspace({
     }
 
     startSaving(async () => {
-      const cleanedState: SettingsState = {
-        ...state,
-        staff: state.staff.filter((member) => member.name.trim().length > 0),
-      };
-
-      const result = await saveSettingsAction(cleanedState);
+      const result = await saveSettingsAction(state);
 
       if (!result.ok || !result.state) {
         setErrorMessage(result.error ?? "We couldn't save your settings.");
@@ -346,8 +342,8 @@ export function SettingsWorkspace({
                 Business configuration
               </h1>
               <p className="max-w-2xl text-[15px] leading-7 text-muted-foreground">
-                Manage workspace identity, hours, staff, WhatsApp behavior,
-                reminders, and billing from one MVP control panel.
+                Manage workspace identity, hours, WhatsApp behavior, reminders,
+                and billing from one focused control panel.
               </p>
             </div>
           </div>
@@ -709,6 +705,39 @@ export function SettingsWorkspace({
                 </div>
               );
             })}
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          id="team"
+          title="Staff"
+          description="Staff profiles, work time, and completed appointment records are managed from the dedicated staff workspace."
+        >
+          <div className="flex flex-col gap-4 rounded-[1rem] border border-border/80 bg-white/88 px-5 py-5 shadow-[0_16px_34px_rgba(20,32,51,0.04)] sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-[0.95rem] bg-primary/10 text-primary">
+                <UserRoundCog className="size-5" />
+              </span>
+              <div>
+                <p className="text-base font-semibold text-foreground">
+                  Manage staff records
+                </p>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+                  Add staff, edit profiles, check in/out, and review completed work
+                  without loading that data into Settings.
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/staff"
+              className={cn(
+                buttonVariants({ variant: "outline", size: "lg" }),
+                "h-11 justify-center rounded-[0.95rem] bg-white/76 px-5"
+              )}
+            >
+              Open staff
+              <ArrowUpRight className="size-4" />
+            </Link>
           </div>
         </SettingsSection>
 

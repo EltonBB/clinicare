@@ -160,7 +160,7 @@ const tourSteps: TourStep[] = [
     kicker: "Appointments",
     title: "Create appointments from here",
     description:
-      "The booking drawer connects the client, staff member, service, date, time, status, and notes into one appointment record.",
+      "The booking page connects the client, staff member, service, date, time, status, and notes into one appointment record.",
     points: [
       "Search and select an existing client instead of scanning long dropdowns.",
       "Choose a staff member and time that fits operating hours.",

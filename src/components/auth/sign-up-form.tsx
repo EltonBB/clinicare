@@ -41,6 +41,7 @@ export function SignUpForm() {
         <Input
           name="email"
           type="email"
+          autoComplete="email"
           placeholder="name@company.com"
           defaultValue={state.values?.email}
           aria-invalid={Boolean(state.fieldErrors?.email)}
@@ -57,6 +58,7 @@ export function SignUpForm() {
         <Input
           name="password"
           type="password"
+          autoComplete="new-password"
           placeholder="Create a password"
           defaultValue={state.values?.password}
           aria-invalid={Boolean(state.fieldErrors?.password)}

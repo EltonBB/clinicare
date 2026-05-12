@@ -11,15 +11,6 @@ type SettingsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-function staffTimeEntryCutoff() {
-  return new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
-}
-
-function completedAppointmentCutoff() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), 1);
-}
-
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
   const params = searchParams ? await searchParams : {};
   const { user, business } = await requireCurrentWorkspace("/settings", {
@@ -34,52 +25,13 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     }
   });
 
-  const [businessHours, staffMembers, reminderSettings, whatsappConnection] = await Promise.all([
+  const [businessHours, reminderSettings, whatsappConnection] = await Promise.all([
     prisma.businessHours.findMany({
       where: {
         businessId: business.id,
       },
       orderBy: {
         weekday: "asc",
-      },
-    }),
-    prisma.staffMember.findMany({
-      where: {
-        businessId: business.id,
-      },
-      include: {
-        timeEntries: {
-          where: {
-            checkedInAt: {
-              gte: staffTimeEntryCutoff(),
-            },
-          },
-          orderBy: {
-            checkedInAt: "desc",
-          },
-        },
-        appointments: {
-          where: {
-            status: "COMPLETED",
-            startAt: {
-              gte: completedAppointmentCutoff(),
-            },
-          },
-          include: {
-            client: {
-              select: {
-                name: true,
-              },
-            },
-          },
-          orderBy: {
-            startAt: "desc",
-          },
-          take: 50,
-        },
-      },
-      orderBy: {
-        createdAt: "asc",
       },
     }),
     prisma.reminderSettings.findUnique({
@@ -105,7 +57,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         ? user.user_metadata.full_name
         : user.email ?? "Workspace Owner",
     businessHours,
-    staffMembers,
     reminderSettings,
     whatsappConnection,
   });

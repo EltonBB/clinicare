@@ -90,8 +90,9 @@ async function hydrateConversation(conversationId: string, businessId: string) {
             sentAt: true,
           },
           orderBy: {
-            sentAt: "asc",
+            sentAt: "desc",
           },
+          take: 50,
         },
       },
     }),
@@ -104,6 +105,15 @@ async function hydrateConversation(conversationId: string, businessId: string) {
         name: true,
         phone: true,
       },
+      orderBy: [
+        {
+          updatedAt: "desc",
+        },
+        {
+          createdAt: "desc",
+        },
+      ],
+      take: 150,
     }),
   ]);
 
@@ -129,6 +139,7 @@ async function loadInboxView(businessId: string) {
           createdAt: "desc",
         },
       ],
+      take: 150,
     }),
     prisma.conversation.findMany({
       where: {
@@ -149,8 +160,9 @@ async function loadInboxView(businessId: string) {
             sentAt: true,
           },
           orderBy: {
-            sentAt: "asc",
+            sentAt: "desc",
           },
+          take: 50,
         },
       },
       orderBy: [
@@ -161,6 +173,7 @@ async function loadInboxView(businessId: string) {
           createdAt: "desc",
         },
       ],
+      take: 50,
     }),
   ]);
 

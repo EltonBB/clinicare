@@ -23,33 +23,41 @@ export async function refreshWorkspaceNotificationsAction(): Promise<{
     missingBusinessRedirect: "/onboarding",
   });
 
-  const notificationRows = await prisma.conversation.findMany({
-    where: {
-      businessId: business.id,
-      unreadCount: {
-        gt: 0,
+  const [unreadAggregate, notificationRows] = await Promise.all([
+    prisma.conversation.aggregate({
+      where: {
+        businessId: business.id,
+        unreadCount: {
+          gt: 0,
+        },
       },
-    },
-    orderBy: {
-      updatedAt: "desc",
-    },
-    take: 3,
-    select: {
-      id: true,
-      contactName: true,
-      unreadCount: true,
-    },
-  });
-
-  const unreadCount = notificationRows.reduce(
-    (total, row) => total + row.unreadCount,
-    0
-  );
+      _sum: {
+        unreadCount: true,
+      },
+    }),
+    prisma.conversation.findMany({
+      where: {
+        businessId: business.id,
+        unreadCount: {
+          gt: 0,
+        },
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+      take: 3,
+      select: {
+        id: true,
+        contactName: true,
+        unreadCount: true,
+      },
+    }),
+  ]);
 
   return {
     ok: true,
     view: {
-      unreadCount,
+      unreadCount: unreadAggregate._sum.unreadCount ?? 0,
       notifications: notificationRows.map((row) => ({
         id: row.id,
         title: row.contactName,

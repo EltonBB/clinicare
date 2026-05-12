@@ -142,7 +142,7 @@ export function InboxWorkspace({
 
     const interval = window.setInterval(() => {
       void refreshInbox();
-    }, 3500);
+    }, 15000);
 
     return () => {
       cancelled = true;
@@ -452,7 +452,7 @@ export function InboxWorkspace({
                 <div className="flex items-center gap-3">
                   {activeConversation.clientId ? (
                     <Link
-                      href={`/clients?client=${activeConversation.clientId}`}
+                      href={`/clients/${activeConversation.clientId}`}
                       className="inline-flex items-center gap-1 text-sm font-medium text-primary"
                     >
                       View profile
