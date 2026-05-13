@@ -7,14 +7,10 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronRight,
-  FileImage,
-  LayoutGrid,
   Mail,
   MessageCircle,
   Phone,
-  ShieldCheck,
   Sparkles,
-  Stethoscope,
   UsersRound,
 } from "lucide-react";
 
@@ -34,41 +30,37 @@ const footerLinks = [
   { label: "Refund", href: "/refund" },
 ];
 
-const productImages = {
-  dashboard: "/marketing/vela-dashboard.png",
-  calendar: "/marketing/vela-calendar.png",
-  patientReports: "/marketing/vela-patient-reports.png",
+const marketingImages = {
+  hero: "/marketing/vela-hero-clarity.png",
+  calendar: "/marketing/vela-calendar-clarity.png",
+  clients: "/marketing/vela-clients-confidence.png",
+  reports: "/marketing/vela-reports-action.png",
 };
 
-const modules = [
+const productPillars = [
   {
     icon: CalendarDays,
-    title: "Booking timeline",
-    copy: "Appointments, staff, service notes, status, and payment context stay connected from the first booking.",
+    title: "Scheduling clarity",
+    copy: "See the day, week, and month without digging through separate booking tools.",
   },
   {
     icon: UsersRound,
-    title: "Patient records",
-    copy: "Profiles include appointments, medical notes, medications, documents, images, messages, and payment history.",
-  },
-  {
-    icon: MessageCircle,
-    title: "Message continuity",
-    copy: "WhatsApp-ready conversations keep patient context close to reminders, follow-ups, and client conversion.",
+    title: "Client continuity",
+    copy: "Keep profiles, visit history, images, notes, messages, and payments attached to the patient.",
   },
   {
     icon: BarChart3,
-    title: "Clinic intelligence",
-    copy: "Daily, weekly, and monthly reports diagnose schedule pressure, retention, lost slots, and next actions.",
+    title: "Operational intelligence",
+    copy: "Turn activity into diagnosis, trends, and the next move for the clinic.",
   },
 ];
 
 const workflowSteps = [
-  "Register a patient with only the essentials",
-  "Book the visit, staff member, service, and payment",
-  "Complete the appointment and update the record",
-  "Attach documents, images, scans, notes, and medication context",
-  "Review reports and follow up with the right patients",
+  "Create the patient profile",
+  "Book the appointment and staff member",
+  "Record service, payment, notes, and files",
+  "Follow up with context",
+  "Review what needs attention",
 ];
 
 const basicFeatures = [
@@ -90,18 +82,18 @@ const proFeatures = [
 ];
 
 const comparisonRows = [
-  ["Calendar and appointments", "Included", "Included"],
-  ["Patient medical profile", "Included", "Included"],
+  ["Appointments and calendar", "Included", "Included"],
+  ["Patient record timeline", "Included", "Included"],
   ["Documents, scans, and images", "Included", "Included"],
   ["WhatsApp-ready inbox", "Included", "Included"],
-  ["AI report diagnosis", "Basic", "Advanced"],
+  ["Reports and diagnosis", "Basic", "Advanced"],
   ["Staff performance view", "Limited", "Full"],
   ["Setup support", "Standard", "Priority"],
 ];
 
 export function MarketingShell({ children }: { children: ReactNode }) {
   return (
-    <main className="min-h-screen w-screen max-w-[100vw] overflow-x-hidden bg-[#f4f8fd] text-[#101820]">
+    <main className="min-h-screen w-screen max-w-[100vw] overflow-x-hidden bg-[#f7faff] text-[#07162b]">
       <MarketingHeader />
       {children}
       <MarketingFooter />
@@ -111,10 +103,10 @@ export function MarketingShell({ children }: { children: ReactNode }) {
 
 export function MarketingHeader() {
   return (
-    <header className="sticky top-0 z-40 border-b border-[#dbe6f4] bg-white/90 backdrop-blur-xl">
+    <header className="sticky top-0 z-40 border-b border-[#e2eaf6] bg-white/86 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <BrandMark href="/" includeSubtitle={false} />
-        <nav className="hidden items-center gap-9 text-sm font-semibold text-[#5e6f87] lg:flex">
+        <nav className="hidden items-center gap-9 text-sm font-semibold text-[#64748b] lg:flex">
           {navItems.map((item) => (
             <Link key={item.href} href={item.href} className="transition hover:text-[#3b82f6]">
               {item.label}
@@ -124,13 +116,13 @@ export function MarketingHeader() {
         <div className="flex items-center gap-2">
           <Link
             href="/login"
-            className="hidden h-10 items-center rounded-[8px] border border-[#d7e2f0] bg-white px-4 text-sm font-semibold text-[#101820] transition hover:border-[#9fb7d4] sm:inline-flex"
+            className="hidden h-10 items-center rounded-[9px] border border-[#d8e3f1] bg-white px-4 text-sm font-semibold text-[#07162b] transition hover:border-[#a8bdd8] sm:inline-flex"
           >
             Login
           </Link>
           <Link
             href="/sign-up"
-            className="inline-flex h-10 items-center rounded-[8px] bg-[#3b82f6] px-3 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(59,130,246,0.24)] transition hover:bg-[#2563eb] sm:px-4"
+            className="inline-flex h-10 items-center rounded-[9px] bg-[#3b82f6] px-3 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(59,130,246,0.26)] transition hover:bg-[#2563eb] sm:px-4"
           >
             <span className="sm:hidden">Start</span>
             <span className="hidden sm:inline">Get started</span>
@@ -145,11 +137,34 @@ export function HomePage() {
   return (
     <MarketingShell>
       <HeroSection />
-      <ProofStrip />
-      <ProductSystemSection />
-      <LifecycleSection />
-      <IntelligenceSection />
-      <SecuritySection />
+      <LogoStrip />
+      <WorkflowSection />
+      <FeatureImageSection
+        image={marketingImages.calendar}
+        title="Stay on schedule with total clarity"
+        copy="Vela keeps bookings, staff, open slots, and changes visible so the clinic day stays under control."
+        points={["Day, week, and month views", "Quick rescheduling", "Color-coded appointments", "Real-time visibility"]}
+        ctaHref="/product"
+        ctaLabel="Explore scheduling"
+      />
+      <FeatureImageSection
+        image={marketingImages.clients}
+        title="Manage every client relationship with confidence"
+        copy="Profiles are built for real clinic history: visits, notes, images, documents, reminders, messages, and payments."
+        points={["Complete patient overview", "Visit and payment history", "Documents and scans", "Follow-up context"]}
+        imageFirst
+        ctaHref="/product"
+        ctaLabel="See patient records"
+      />
+      <FeatureImageSection
+        image={marketingImages.reports}
+        title="Turn clinic data into action"
+        copy="Reports show what is happening, why it matters, and which action helps the clinic improve next."
+        points={["Daily, weekly, monthly views", "Clear KPIs", "AI-assisted diagnosis", "Rule-based fallback states"]}
+        ctaHref="/product"
+        ctaLabel="View reporting"
+      />
+      <PlatformSection />
       <CtaBand />
     </MarketingShell>
   );
@@ -159,50 +174,22 @@ export function ProductPage() {
   return (
     <MarketingShell>
       <PageHero
-        title="One system for the clinic workday"
-        copy="Vela brings scheduling, patient records, staff work, messaging, payments, media, and performance reporting into a workspace your team can use every day."
+        title="A calmer operating system for clinic work"
+        copy="Vela connects the daily schedule, patient record, staff activity, messages, documents, payments, and reports in one product."
         primaryHref="/sign-up"
         primaryLabel="Get started"
         secondaryHref="/pricing"
         secondaryLabel="View pricing"
       />
-      <section className="px-4 pb-16 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[1.08fr_0.92fr] lg:items-center">
-          <ProductImageFrame
-            src={productImages.calendar}
-            alt="Generated Vela calendar workspace with made-up clinic appointments"
-            priority
-          />
-          <NarrativeBlock
-            title="A calendar that behaves like clinic operations"
-            copy="Book visits from a focused page, keep staff assignments visible, protect opening hours, and keep completed work flowing into patient and staff records."
-            points={[
-              "Day, week, and month views",
-              "Dedicated create and edit pages",
-              "Booking-time service and payment context",
-              "Completed visits become record history",
-            ]}
-          />
+      <section className="px-4 pb-14 sm:px-6 lg:px-8">
+        <div className="mx-auto grid max-w-7xl gap-4 md:grid-cols-3">
+          {productPillars.map((pillar) => (
+            <PillarCard key={pillar.title} {...pillar} />
+          ))}
         </div>
       </section>
-      <section className="px-4 pb-16 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-3">
-          <FeatureShowcase title="Patient command center" icon={UsersRound}>
-            <ProductImageFrame
-              src={productImages.patientReports}
-              alt="Generated Vela patient record and clinic report view with made-up patient data"
-              compact
-            />
-          </FeatureShowcase>
-          <FeatureShowcase title="Clinic intelligence" icon={Sparkles}>
-            <ReportPreviewCard />
-          </FeatureShowcase>
-          <FeatureShowcase title="Message continuity" icon={MessageCircle}>
-            <InboxPreviewCard />
-          </FeatureShowcase>
-        </div>
-      </section>
-      <LifecycleSection />
+      <ProductShowcase />
+      <WorkflowSection compact />
       <CtaBand />
     </MarketingShell>
   );
@@ -212,8 +199,8 @@ export function PricingPageContent() {
   return (
     <MarketingShell>
       <PageHero
-        title="Simple pricing for a serious clinic workspace"
-        copy="Start with the operating system. Upgrade when you need stronger reporting, staff visibility, automation, and launch support."
+        title="Simple pricing for real clinic operations"
+        copy="Start with the operating system. Upgrade when you need deeper reporting, staff visibility, automation, and setup support."
         primaryHref="/sign-up"
         primaryLabel="Get started"
         secondaryHref="/contact"
@@ -246,59 +233,29 @@ export function AboutPage() {
   return (
     <MarketingShell>
       <PageHero
-        title="Built for clinics that want calmer operations"
-        copy="Vela keeps patient work, appointment work, and performance work in one place so clinic teams spend less time switching tools and more time delivering care."
+        title="Calm operational intelligence for clinics"
+        copy="Vela is built around one belief: clinics should understand the day, care for patients, and improve performance without wrestling with disconnected tools."
         primaryHref="/sign-up"
         primaryLabel="Get started"
         secondaryHref="/contact"
         secondaryLabel="Contact us"
       />
       <section className="px-4 pb-16 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[1fr_1.2fr]">
-          <div className="rounded-[10px] border border-[#dbe6f4] bg-white p-6 shadow-[0_24px_80px_rgba(16,24,32,0.06)] sm:p-8">
-            <p className="max-w-xl text-2xl font-semibold leading-tight tracking-[-0.01em] text-[#111827] sm:text-3xl">
-              The product direction is simple: every clinic should be able to open one workspace and understand what needs attention today.
+        <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+          <div className="rounded-[20px] border border-[#dfe8f6] bg-white p-6 shadow-[0_24px_80px_rgba(20,32,51,0.07)] sm:p-8">
+            <h2 className="text-3xl font-semibold text-[#07162b] sm:text-5xl">
+              A workspace that gives the clinic its focus back.
+            </h2>
+            <p className="mt-5 text-base leading-8 text-[#53667f]">
+              The product hides provider complexity and keeps the customer experience simple: configure the clinic, book care, manage relationships, follow up, and understand performance.
             </p>
-            <div className="mt-8 grid gap-4 text-sm font-semibold text-[#53667f] sm:grid-cols-3">
+            <div className="mt-8 grid gap-3 sm:grid-cols-3">
               <MetricPill value="1" label="workspace" />
               <MetricPill value="6" label="core modules" />
               <MetricPill value="3" label="report windows" />
             </div>
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <InfoCard title="Clinic-first workflow" icon={Stethoscope}>
-              Patients, bookings, staff, documents, messages, and payments are arranged around the way appointment-based clinics actually work.
-            </InfoCard>
-            <InfoCard title="Privacy-minded design" icon={ShieldCheck}>
-              Private media handling, server-side app data access, route protection, and simple customer-facing states are part of the product foundation.
-            </InfoCard>
-            <InfoCard title="Useful reports" icon={Sparkles}>
-              Reports are built to diagnose schedule utilization, completions, client mix, demand windows, and follow-up opportunities.
-            </InfoCard>
-            <InfoCard title="Legal pages included" icon={FileImage}>
-              Terms, privacy, and refund pages are available for launch readiness and customer review.
-            </InfoCard>
-          </div>
-        </div>
-      </section>
-      <section className="px-4 pb-16 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-7xl gap-6 rounded-[10px] border border-[#dbe6f4] bg-white p-5 shadow-[0_24px_80px_rgba(16,24,32,0.06)] lg:grid-cols-[1.2fr_0.8fr] lg:p-8">
-          <ProductImageFrame
-            src={productImages.dashboard}
-            alt="Generated Vela dashboard with made-up clinic data"
-            compact
-          />
-          <div className="flex flex-col justify-center">
-            <h2 className="text-3xl font-semibold tracking-[-0.02em] text-[#111827]">Designed around the operator, not the provider stack.</h2>
-            <p className="mt-4 text-base leading-8 text-[#5d6d85]">
-              Vela hides implementation complexity behind simple product language, so the clinic can configure hours, staff, branding, patients, messages, reports, and reminders without thinking about infrastructure.
-            </p>
-            <div className="mt-7 grid gap-3">
-              {["Customer-safe wording", "Clean workspace navigation", "Launch-ready public pages"].map((item) => (
-                <CheckLine key={item}>{item}</CheckLine>
-              ))}
-            </div>
-          </div>
+          <ImageCard src={marketingImages.reports} alt="Vela reporting product scene" />
         </div>
       </section>
       <LegalPanel />
@@ -312,19 +269,21 @@ export function ContactPage() {
     <MarketingShell>
       <section className="px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[0.78fr_1.22fr]">
-          <div className="rounded-[10px] border border-[#dbe6f4] bg-[#07162b] p-6 text-white shadow-[0_24px_80px_rgba(16,24,32,0.12)] sm:p-8">
-            <h1 className="max-w-md text-4xl font-semibold leading-[0.98] tracking-[-0.045em] sm:text-5xl">See how Vela fits your clinic.</h1>
-            <p className="mt-5 max-w-md text-base leading-8 text-[#b8c7dc]">
-              Ask about setup, patient workflows, WhatsApp readiness, reporting, pricing, or moving your current clinic process into Vela.
+          <div className="rounded-[24px] bg-[#07162b] p-6 text-white shadow-[0_28px_90px_rgba(7,22,43,0.20)] sm:p-8">
+            <h1 className="max-w-md text-4xl font-semibold leading-[0.98] sm:text-6xl">
+              See how Vela fits your clinic.
+            </h1>
+            <p className="mt-5 max-w-md text-base leading-8 text-[#c8d7ec]">
+              Ask about setup, workflows, WhatsApp readiness, reporting, pricing, or moving your current process into Vela.
             </p>
             <div className="mt-8 grid gap-4">
-              <ContactMethod icon={CalendarDays} title="Book a demo" copy="Walk through daily scheduling, records, and reports." />
+              <ContactMethod icon={CalendarDays} title="Book a demo" copy="Walk through scheduling, records, and reports." />
               <ContactMethod icon={Mail} title="Email us" copy="hello@vela.app" />
               <ContactMethod icon={Phone} title="Call us" copy="+1 (555) 123-4567" />
               <ContactMethod icon={MessageCircle} title="Live chat" copy="Available during weekday business hours." />
             </div>
           </div>
-          <div className="rounded-[10px] border border-[#dbe6f4] bg-white p-5 shadow-[0_24px_80px_rgba(16,24,32,0.06)] sm:p-8">
+          <div className="rounded-[24px] border border-[#dfe8f6] bg-white p-5 shadow-[0_24px_80px_rgba(20,32,51,0.07)] sm:p-8">
             <form className="grid gap-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <FormField label="Full name" placeholder="Your name" />
@@ -334,7 +293,7 @@ export function ContactPage() {
                 <FormField label="Clinic / business name" placeholder="Your clinic name" />
                 <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#63748c]">
                   How can we help?
-                  <select className="h-12 rounded-[8px] border border-[#d7e2f0] bg-white px-4 text-sm font-semibold normal-case tracking-normal text-[#101820] outline-none transition focus:border-[#3b82f6]">
+                  <select className="h-12 rounded-[10px] border border-[#d7e2f0] bg-white px-4 text-sm font-semibold normal-case tracking-normal text-[#07162b] outline-none transition focus:border-[#3b82f6]">
                     <option>I want to book a demo</option>
                     <option>I have a pricing question</option>
                     <option>I need help with setup</option>
@@ -346,21 +305,16 @@ export function ContactPage() {
                 <textarea
                   rows={7}
                   placeholder="Tell us about your clinic and what you need..."
-                  className="resize-none rounded-[8px] border border-[#d7e2f0] bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-[#101820] outline-none transition placeholder:text-[#8da0b8] focus:border-[#3b82f6]"
+                  className="resize-none rounded-[10px] border border-[#d7e2f0] bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-[#07162b] outline-none transition placeholder:text-[#8da0b8] focus:border-[#3b82f6]"
                 />
               </label>
               <button
                 type="button"
-                className="inline-flex h-12 items-center justify-center rounded-[8px] bg-[#3b82f6] px-5 text-sm font-bold text-white shadow-[0_18px_36px_rgba(59,130,246,0.24)] transition hover:bg-[#2563eb]"
+                className="inline-flex h-12 items-center justify-center rounded-[10px] bg-[#3b82f6] px-5 text-sm font-bold text-white shadow-[0_18px_36px_rgba(59,130,246,0.24)] transition hover:bg-[#2563eb]"
               >
                 Send message
               </button>
             </form>
-            <div className="mt-6 grid gap-3 border-t border-[#e5edf7] pt-6 sm:grid-cols-3">
-              <MiniFact label="Response" value="within 24h" />
-              <MiniFact label="Best for" value="clinics" />
-              <MiniFact label="Setup" value="guided" />
-            </div>
           </div>
         </div>
       </section>
@@ -370,190 +324,183 @@ export function ContactPage() {
 
 function HeroSection() {
   return (
-    <section className="relative overflow-hidden bg-[radial-gradient(circle_at_20%_10%,rgba(59,130,246,0.18),transparent_34%),linear-gradient(180deg,#ffffff_0%,#edf5ff_100%)] px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
-      <div className="mx-auto grid max-w-7xl gap-9 lg:grid-cols-[0.82fr_1.18fr] lg:items-center">
-        <div className="relative z-10 min-w-0">
-          <h1 className="max-w-xl break-words text-[2.72rem] font-semibold leading-[0.95] tracking-[-0.045em] text-[#07162b] sm:text-6xl lg:text-7xl">
-            <span className="block">Run your clinic</span>
-            <span className="block">from one calm</span>
-            <span className="block">workspace.</span>
-          </h1>
-          <p className="mt-6 max-w-xl text-base leading-8 text-[#53667f] sm:text-lg">
-            Vela connects appointments, patient records, staff, WhatsApp context, payments, documents, images, and clinic intelligence without forcing your team through scattered tools.
-          </p>
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Link
-              href="/sign-up"
-              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[8px] bg-[#3b82f6] px-6 text-sm font-bold text-white shadow-[0_18px_36px_rgba(59,130,246,0.28)] transition hover:bg-[#2563eb] sm:w-auto"
-            >
-              Get started
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
-              href="/product"
-              className="inline-flex h-12 w-full items-center justify-center rounded-[8px] border border-[#cddcf0] bg-white px-6 text-sm font-bold text-[#111827] transition hover:border-[#9fb7d4] sm:w-auto"
-            >
-              See product
-            </Link>
-          </div>
-          <div className="mt-8 grid gap-3 text-sm font-semibold text-[#53667f] sm:grid-cols-2">
-            <CheckLine>No setup fee for MVP access</CheckLine>
-            <CheckLine>Built for appointment-based clinics</CheckLine>
-            <CheckLine>Private media-ready records</CheckLine>
-            <CheckLine>AI reports with rule fallback</CheckLine>
-          </div>
+    <section className="relative overflow-hidden px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.15),transparent_36%),linear-gradient(180deg,#ffffff_0%,#eef6ff_100%)]" />
+      <div className="absolute left-1/2 top-24 h-40 w-[34rem] -translate-x-1/2 rounded-full bg-[#8b5cf6]/18 blur-3xl" />
+      <div className="relative mx-auto max-w-7xl text-center">
+        <h1 className="mx-auto max-w-5xl text-[3.05rem] font-semibold leading-[0.92] text-[#07162b] sm:text-7xl lg:text-8xl">
+          Run your clinic with <span className="bg-gradient-to-r from-[#3b82f6] to-[#6d4dff] bg-clip-text text-transparent">clarity</span>.
+        </h1>
+        <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-[#53667f] sm:text-lg">
+          Vela keeps appointments, clients, staff, messages, payments, documents, and reports organized for better care and calmer operations.
+        </p>
+        <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+          <Link
+            href="/sign-up"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-[10px] bg-[#3b82f6] px-6 text-sm font-bold text-white shadow-[0_18px_44px_rgba(59,130,246,0.28)] transition hover:-translate-y-0.5 hover:bg-[#2563eb]"
+          >
+            Get started
+            <ArrowRight className="size-4" />
+          </Link>
+          <Link
+            href="/product"
+            className="inline-flex h-12 items-center justify-center rounded-[10px] border border-[#cddcf0] bg-white px-6 text-sm font-bold text-[#07162b] transition hover:-translate-y-0.5 hover:border-[#9fb7d4]"
+          >
+            See product
+          </Link>
         </div>
-        <div className="relative min-w-0">
-          <div className="absolute -right-8 top-8 hidden h-40 w-40 rounded-full bg-[#3b82f6]/16 blur-3xl lg:block" />
-          <ProductImageFrame
-            src={productImages.dashboard}
-            alt="Generated Vela dashboard preview using made-up clinic names and appointments"
-            priority
-            hero
-          />
-          <div className="pointer-events-none absolute -bottom-6 left-4 hidden rounded-[10px] border border-[#dbe6f4] bg-white/95 p-4 shadow-[0_22px_60px_rgba(16,24,32,0.14)] backdrop-blur md:block">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#6a7d96]">Today</p>
-            <p className="mt-1 text-2xl font-semibold text-[#111827]">94% completion</p>
-            <p className="mt-1 text-sm text-[#62748b]">2 appointments scheduled</p>
-          </div>
+        <div className="landing-card-pop mx-auto mt-10 max-w-6xl">
+          <ImageCard src={marketingImages.hero} alt="Vela clinic dashboard product scene" priority hero />
         </div>
       </div>
     </section>
   );
 }
 
-function ProofStrip() {
+function LogoStrip() {
   return (
     <section className="px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-7xl gap-3 rounded-[10px] border border-[#dbe6f4] bg-white p-4 shadow-[0_18px_50px_rgba(16,24,32,0.05)] sm:grid-cols-2 lg:grid-cols-4">
-        {modules.map((module) => (
-          <div key={module.title} className="flex gap-3 rounded-[8px] p-4">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-[#eef4ff] text-[#3b82f6]">
-              <module.icon className="h-5 w-5" />
-            </span>
-            <div>
-              <p className="text-sm font-bold text-[#111827]">{module.title}</p>
-              <p className="mt-1 text-xs leading-5 text-[#6a7d96]">{module.copy}</p>
-            </div>
-          </div>
+      <div className="mx-auto grid max-w-7xl gap-3 rounded-[18px] border border-[#dfe8f6] bg-white/82 p-4 shadow-[0_24px_70px_rgba(20,32,51,0.06)] sm:grid-cols-3">
+        {productPillars.map((pillar) => (
+          <PillarCard key={pillar.title} {...pillar} compact />
         ))}
       </div>
     </section>
   );
 }
 
-function ProductSystemSection() {
+function WorkflowSection({ compact = false }: { compact?: boolean }) {
   return (
-    <section className="px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
+    <section className={compact ? "px-4 py-10 sm:px-6 lg:px-8" : "px-4 py-14 sm:px-6 sm:py-20 lg:px-8"}>
       <div className="mx-auto max-w-7xl">
-        <div className="grid gap-5 lg:grid-cols-[0.72fr_1.28fr] lg:items-end">
+        <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr] lg:items-end">
           <div>
-            <h2 className="max-w-xl text-4xl font-semibold leading-[0.98] tracking-[-0.04em] text-[#07162b] sm:text-5xl">
-              Everything connected. Everything in sync.
+            <h2 className="text-4xl font-semibold leading-[0.98] text-[#07162b] sm:text-6xl">
+              From booking to follow-up in one flow.
             </h2>
-            <p className="mt-5 max-w-2xl text-base leading-8 text-[#5d6d85]">
-              The front desk can book the visit, the doctor can open the patient context, and the owner can see what is working without searching through separate systems.
+            <p className="mt-5 max-w-xl text-base leading-8 text-[#53667f]">
+              Every step updates the same clinic workspace, so records stay complete and the team knows what to do next.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <MiniFact label="Workspace" value="patients + staff" />
-            <MiniFact label="Records" value="notes + scans" />
-            <MiniFact label="Reports" value="diagnosis + next move" />
-          </div>
-        </div>
-        <div className="mt-8 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <ProductImageFrame
-            src={productImages.calendar}
-            alt="Generated Vela calendar preview with made-up bookings"
-          />
-          <div className="grid gap-6">
-            <ProductImageFrame
-              src={productImages.patientReports}
-              alt="Generated Vela patient record and reports preview with made-up data"
-              compact
-            />
-            <InboxPreviewCard />
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function LifecycleSection() {
-  return (
-    <section className="px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
-      <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.86fr_1.14fr] lg:items-center">
-        <div>
-          <h2 className="text-4xl font-semibold leading-[0.98] tracking-[-0.04em] text-[#07162b] sm:text-5xl">
-            From first booking to repeat care.
-          </h2>
-          <p className="mt-5 max-w-xl text-base leading-8 text-[#5d6d85]">
-            Vela keeps the process natural: register the patient, book the visit, complete the service, document the care, and follow up from the same record.
-          </p>
-          <div className="mt-8 grid gap-3">
+          <div className="grid gap-3">
             {workflowSteps.map((step, index) => (
-              <div key={step} className="flex items-center gap-3 rounded-[8px] border border-[#dbe6f4] bg-white p-3 shadow-[0_12px_36px_rgba(16,24,32,0.04)]">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] bg-[#eef4ff] text-xs font-bold text-[#3b82f6]">
+              <div key={step} className="group flex items-center gap-4 rounded-[14px] border border-[#dfe8f6] bg-white p-4 shadow-[0_16px_48px_rgba(20,32,51,0.045)] transition hover:-translate-y-0.5 hover:border-[#b9cef0]">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-[#eef4ff] text-sm font-bold text-[#3b82f6]">
                   {index + 1}
                 </span>
-                <p className="text-sm font-semibold text-[#304158]">{step}</p>
+                <p className="text-sm font-semibold text-[#24344d]">{step}</p>
+                <ChevronRight className="ml-auto size-4 text-[#8aa0bd] transition group-hover:translate-x-1 group-hover:text-[#3b82f6]" />
               </div>
             ))}
           </div>
         </div>
-        <ProductImageFrame
-          src={productImages.patientReports}
-          alt="Generated Vela patient details, documents, payments, and AI report preview"
-        />
       </div>
     </section>
   );
 }
 
-function IntelligenceSection() {
+function FeatureImageSection({
+  image,
+  title,
+  copy,
+  points,
+  ctaHref,
+  ctaLabel,
+  imageFirst = false,
+}: {
+  image: string;
+  title: string;
+  copy: string;
+  points: string[];
+  ctaHref: string;
+  ctaLabel: string;
+  imageFirst?: boolean;
+}) {
   return (
     <section className="px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
-      <div className="mx-auto grid max-w-7xl gap-6 rounded-[10px] border border-[#cfe0f6] bg-[#07162b] p-5 text-white shadow-[0_28px_90px_rgba(7,22,43,0.18)] sm:p-8 lg:grid-cols-[1fr_0.92fr] lg:p-10">
-        <div>
-          <h2 className="max-w-2xl text-4xl font-semibold leading-[0.98] tracking-[-0.04em] sm:text-5xl">
-            Reports that explain what to do next.
+      <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
+        <div className={imageFirst ? "lg:order-2" : ""}>
+          <h2 className="text-4xl font-semibold leading-[0.98] text-[#07162b] sm:text-6xl">
+            {title}
           </h2>
-          <p className="mt-5 max-w-2xl text-base leading-8 text-[#b8c7dc]">
-            Vela turns appointment activity into a practical readout: what is working, what needs attention, likely causes, and the next action to improve the clinic.
-          </p>
-          <div className="mt-8 grid gap-3 sm:grid-cols-3">
-            <DarkMetric value="Daily" label="today readout" />
-            <DarkMetric value="Weekly" label="trend diagnosis" />
-            <DarkMetric value="Monthly" label="growth view" />
-          </div>
-          <div className="mt-8 grid gap-3">
-            {["Schedule utilization", "Completion rate", "Client mix", "Lost slots", "Follow-up coverage"].map((item) => (
-              <CheckLine key={item} dark>
-                {item}
-              </CheckLine>
+          <p className="mt-5 max-w-xl text-base leading-8 text-[#53667f]">{copy}</p>
+          <div className="mt-7 grid gap-3">
+            {points.map((point) => (
+              <CheckLine key={point}>{point}</CheckLine>
             ))}
           </div>
+          <Link
+            href={ctaHref}
+            className="mt-8 inline-flex h-11 items-center gap-2 rounded-[10px] bg-white px-5 text-sm font-bold text-[#3b82f6] shadow-[inset_0_0_0_1px_#cddcf0,0_16px_40px_rgba(20,32,51,0.06)] transition hover:-translate-y-0.5 hover:shadow-[inset_0_0_0_1px_#3b82f6,0_18px_48px_rgba(59,130,246,0.12)]"
+          >
+            {ctaLabel}
+            <ArrowRight className="size-4" />
+          </Link>
         </div>
-        <ReportPreviewCard dark />
+        <div className={imageFirst ? "lg:order-1" : ""}>
+          <ImageCard src={image} alt={`${title} Vela product scene`} />
+        </div>
       </div>
     </section>
   );
 }
 
-function SecuritySection() {
+function PlatformSection() {
   return (
-    <section className="px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
-      <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-3">
-        <InfoCard title="Private by design" icon={ShieldCheck}>
-          Clinic records stay behind authenticated app routes, media is stored privately, and signed display URLs are used for images.
-        </InfoCard>
-        <InfoCard title="Launch-ready pages" icon={LayoutGrid}>
-          Public Home, Product, Pricing, About, Contact, Terms, Privacy, and Refund pages are ready for prospects to review.
-        </InfoCard>
-        <InfoCard title="Fast navigation" icon={Sparkles}>
-          Workspace pages use lighter directory data and dedicated details pages, keeping the app responsive as clinics grow.
-        </InfoCard>
+    <section className="px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
+      <div className="mx-auto max-w-7xl rounded-[28px] bg-[#07162b] p-6 text-white shadow-[0_30px_100px_rgba(7,22,43,0.22)] sm:p-8 lg:p-10">
+        <div className="grid gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
+          <div>
+            <h2 className="text-4xl font-semibold leading-[0.98] sm:text-6xl">
+              One workspace. Every clinic signal.
+            </h2>
+            <p className="mt-5 max-w-xl text-base leading-8 text-[#c8d7ec]">
+              Vela connects care delivery with operational awareness: what is booked, who needs follow-up, where capacity is open, and what improved.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <DarkCard icon={CalendarDays} title="Bookings" copy="Schedule, reschedule, and complete appointments." />
+            <DarkCard icon={UsersRound} title="Patients" copy="Keep records, media, messages, and payments together." />
+            <DarkCard icon={MessageCircle} title="Follow-up" copy="Stay close to clients with WhatsApp-ready context." />
+            <DarkCard icon={Sparkles} title="Insights" copy="Read the clinic clearly with AI-assisted reports." />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ProductShowcase() {
+  const items = [
+    {
+      image: marketingImages.calendar,
+      title: "Calendar",
+      copy: "Keep the whole week visible and make changes without breaking the clinic rhythm.",
+    },
+    {
+      image: marketingImages.clients,
+      title: "Clients",
+      copy: "Open the full patient relationship from one clean directory.",
+    },
+    {
+      image: marketingImages.reports,
+      title: "Reports",
+      copy: "See performance, diagnosis, and next actions in one readout.",
+    },
+  ];
+
+  return (
+    <section className="px-4 pb-16 sm:px-6 lg:px-8">
+      <div className="mx-auto grid max-w-7xl gap-6">
+        {items.map((item, index) => (
+          <div key={item.title} className="grid gap-5 rounded-[24px] border border-[#dfe8f6] bg-white p-4 shadow-[0_24px_80px_rgba(20,32,51,0.06)] lg:grid-cols-[0.82fr_1.18fr] lg:items-center lg:p-6">
+            <div className={index % 2 === 1 ? "lg:order-2" : ""}>
+              <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#3b82f6]">{item.title}</p>
+              <h2 className="mt-3 text-3xl font-semibold text-[#07162b] sm:text-5xl">{item.copy}</h2>
+            </div>
+            <ImageCard src={item.image} alt={`${item.title} Vela product visual`} compact />
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -575,22 +522,16 @@ function PageHero({
   secondaryLabel: string;
 }) {
   return (
-    <section className="px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
-      <div className="mx-auto max-w-4xl min-w-0 text-center">
-        <h1 className="break-words text-[2.55rem] font-semibold leading-[0.98] tracking-[-0.045em] text-[#07162b] sm:text-6xl">{title}</h1>
-        <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-[#5d6d85] sm:text-lg">{copy}</p>
+    <section className="px-4 py-12 text-center sm:px-6 sm:py-16 lg:px-8">
+      <div className="mx-auto max-w-4xl">
+        <h1 className="text-[2.8rem] font-semibold leading-[0.96] text-[#07162b] sm:text-7xl">{title}</h1>
+        <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-[#53667f] sm:text-lg">{copy}</p>
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <Link
-            href={primaryHref}
-            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[8px] bg-[#3b82f6] px-6 text-sm font-bold text-white shadow-[0_18px_36px_rgba(59,130,246,0.24)] transition hover:bg-[#2563eb] sm:w-auto"
-          >
+          <Link href={primaryHref} className="inline-flex h-12 items-center justify-center gap-2 rounded-[10px] bg-[#3b82f6] px-6 text-sm font-bold text-white shadow-[0_18px_44px_rgba(59,130,246,0.24)] transition hover:-translate-y-0.5 hover:bg-[#2563eb]">
             {primaryLabel}
-            <ArrowRight className="h-4 w-4" />
+            <ArrowRight className="size-4" />
           </Link>
-          <Link
-            href={secondaryHref}
-            className="inline-flex h-12 w-full items-center justify-center rounded-[8px] border border-[#cddcf0] bg-white px-6 text-sm font-bold text-[#111827] transition hover:border-[#9fb7d4] sm:w-auto"
-          >
+          <Link href={secondaryHref} className="inline-flex h-12 items-center justify-center rounded-[10px] border border-[#cddcf0] bg-white px-6 text-sm font-bold text-[#07162b] transition hover:-translate-y-0.5 hover:border-[#9fb7d4]">
             {secondaryLabel}
           </Link>
         </div>
@@ -599,128 +540,61 @@ function PageHero({
   );
 }
 
-function ProductImageFrame({
+function ImageCard({
   src,
   alt,
   priority = false,
-  compact = false,
   hero = false,
+  compact = false,
 }: {
   src: string;
   alt: string;
   priority?: boolean;
-  compact?: boolean;
   hero?: boolean;
+  compact?: boolean;
 }) {
   return (
-    <div
-      className={[
-        "relative min-w-0 overflow-hidden rounded-[12px] border border-[#d7e2f0] bg-white shadow-[0_28px_90px_rgba(16,24,32,0.12)]",
-        hero ? "p-2" : "p-2",
-        compact ? "min-h-[260px]" : "",
-      ].join(" ")}
-    >
+    <div className="group relative min-w-0 overflow-hidden rounded-[24px] border border-white/70 bg-white shadow-[0_30px_90px_rgba(74,99,138,0.16)]">
       <Image
         src={src}
         alt={alt}
-        width={1600}
-        height={1000}
+        width={1680}
+        height={945}
         priority={priority}
-        sizes={hero ? "(min-width: 1024px) 58vw, 100vw" : "(min-width: 1024px) 50vw, 100vw"}
+        sizes={hero ? "(min-width: 1024px) 80vw, 100vw" : "(min-width: 1024px) 52vw, 100vw"}
         className={[
-          "h-auto w-full rounded-[8px] object-cover",
-          compact ? "aspect-[1.55] object-left-top" : "aspect-[1.6]",
+          "w-full object-cover transition duration-700 group-hover:scale-[1.015]",
+          compact ? "aspect-[1.78]" : "aspect-video",
         ].join(" ")}
       />
+      <div className="pointer-events-none absolute inset-0 rounded-[24px] ring-1 ring-inset ring-white/70" />
     </div>
   );
 }
 
-function NarrativeBlock({ title, copy, points }: { title: string; copy: string; points: string[] }) {
+function PillarCard({ icon: Icon, title, copy, compact = false }: { icon: ElementType; title: string; copy: string; compact?: boolean }) {
   return (
-    <div className="rounded-[10px] border border-[#dbe6f4] bg-white p-6 shadow-[0_24px_80px_rgba(16,24,32,0.06)] sm:p-8">
-      <h2 className="text-3xl font-semibold tracking-[-0.02em] text-[#111827]">{title}</h2>
-      <p className="mt-4 text-base leading-8 text-[#5d6d85]">{copy}</p>
-      <div className="mt-7 grid gap-3">
-        {points.map((point) => (
-          <CheckLine key={point}>{point}</CheckLine>
-        ))}
+    <article className={compact ? "flex gap-3 rounded-[14px] p-4" : "rounded-[18px] border border-[#dfe8f6] bg-white p-5 shadow-[0_18px_54px_rgba(20,32,51,0.05)]"}>
+      <span className="flex size-11 shrink-0 items-center justify-center rounded-[12px] bg-[#eef4ff] text-[#3b82f6]">
+        <Icon className="size-5" />
+      </span>
+      <div className={compact ? "" : "mt-5"}>
+        <h3 className="text-base font-bold text-[#07162b]">{title}</h3>
+        <p className="mt-2 text-sm leading-6 text-[#64748b]">{copy}</p>
       </div>
-    </div>
-  );
-}
-
-function FeatureShowcase({ title, icon: Icon, children }: { title: string; icon: ElementType; children: ReactNode }) {
-  return (
-    <article className="rounded-[10px] border border-[#dbe6f4] bg-white p-5 shadow-[0_24px_80px_rgba(16,24,32,0.06)]">
-      <div className="mb-4 flex items-center gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#eef4ff] text-[#3b82f6]">
-          <Icon className="h-5 w-5" />
-        </span>
-        <h3 className="text-lg font-bold text-[#111827]">{title}</h3>
-      </div>
-      {children}
     </article>
   );
 }
 
-function ReportPreviewCard({ dark = false }: { dark?: boolean }) {
+function DarkCard({ icon: Icon, title, copy }: { icon: ElementType; title: string; copy: string }) {
   return (
-    <div className={dark ? "rounded-[10px] border border-white/12 bg-white p-5 text-[#111827]" : "rounded-[10px] border border-[#dbe6f4] bg-[#fbfdff] p-5"}>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#6a7d96]">Snapshot</p>
-          <h3 className="mt-2 text-2xl font-semibold tracking-[-0.02em] text-[#111827]">This week readout</h3>
-        </div>
-        <div className="rounded-full bg-[#eef4ff] px-3 py-2 text-sm font-bold text-[#3b82f6]">88/100</div>
-      </div>
-      <p className="mt-4 text-sm leading-6 text-[#5d6d85]">Strong completion and low lost slots. Friday has open capacity that can be filled with recall clients.</p>
-      <div className="mt-5 grid gap-3">
-        <ReportRow label="Diagnosis" value="Utilization opportunity" tone="High" />
-        <ReportRow label="Top cause" value="Open capacity on Friday" tone="Medium" />
-        <ReportRow label="Next move" value="Fill 2 open slots with recalls" tone="High" />
-      </div>
-    </div>
-  );
-}
-
-function ReportRow({ label, value, tone }: { label: string; value: string; tone: string }) {
-  return (
-    <div className="rounded-[8px] border border-[#e1e9f4] bg-white p-3">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#6a7d96]">{label}</p>
-        <span className="rounded-full bg-[#fff1eb] px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#d76d4b]">{tone}</span>
-      </div>
-      <p className="mt-2 text-sm font-semibold text-[#223047]">{value}</p>
-    </div>
-  );
-}
-
-function InboxPreviewCard() {
-  return (
-    <div className="rounded-[10px] border border-[#dbe6f4] bg-[#fbfdff] p-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#6a7d96]">Inbox</p>
-          <h3 className="mt-2 text-2xl font-semibold tracking-[-0.02em] text-[#111827]">Follow-up without losing context.</h3>
-        </div>
-        <span className="flex h-11 w-11 items-center justify-center rounded-[9px] bg-[#e9fff4] text-[#0ea56f]">
-          <MessageCircle className="h-5 w-5" />
-        </span>
-      </div>
-      <div className="mt-5 grid gap-3">
-        {[
-          ["Mira Kelmendi", "Reminder sent for tomorrow at 10:30"],
-          ["Adrian Hoxha", "Asked to reschedule veneers visit"],
-          ["Unknown contact", "Convert to patient record"],
-        ].map(([name, message]) => (
-          <div key={name} className="rounded-[8px] border border-[#e1e9f4] bg-white p-3">
-            <p className="text-sm font-bold text-[#111827]">{name}</p>
-            <p className="mt-1 text-sm text-[#6a7d96]">{message}</p>
-          </div>
-        ))}
-      </div>
-    </div>
+    <article className="rounded-[18px] border border-white/10 bg-white/[0.06] p-5">
+      <span className="flex size-10 items-center justify-center rounded-[12px] bg-white/10 text-[#8bb8ff]">
+        <Icon className="size-5" />
+      </span>
+      <h3 className="mt-4 text-lg font-bold text-white">{title}</h3>
+      <p className="mt-2 text-sm leading-6 text-[#c8d7ec]">{copy}</p>
+    </article>
   );
 }
 
@@ -738,22 +612,19 @@ function PlanCard({
   highlighted?: boolean;
 }) {
   return (
-    <article className={highlighted ? "rounded-[10px] border border-[#3b82f6] bg-white p-6 shadow-[0_24px_80px_rgba(59,130,246,0.15)]" : "rounded-[10px] border border-[#dbe6f4] bg-white p-6 shadow-[0_24px_80px_rgba(16,24,32,0.06)]"}>
+    <article className={highlighted ? "rounded-[24px] border border-[#3b82f6] bg-white p-6 shadow-[0_24px_80px_rgba(59,130,246,0.15)]" : "rounded-[24px] border border-[#dfe8f6] bg-white p-6 shadow-[0_24px_80px_rgba(20,32,51,0.06)]"}>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold text-[#111827]">{name}</h2>
-          <p className="mt-2 max-w-md text-sm leading-6 text-[#62748b]">{description}</p>
+          <h2 className="text-2xl font-semibold text-[#07162b]">{name}</h2>
+          <p className="mt-2 max-w-md text-sm leading-6 text-[#64748b]">{description}</p>
         </div>
         {highlighted ? <span className="rounded-full bg-[#eef4ff] px-3 py-1 text-xs font-bold text-[#3b82f6]">Most popular</span> : null}
       </div>
       <div className="mt-8 flex items-end gap-2">
-        <span className="text-5xl font-semibold tracking-[-0.04em] text-[#07162b]">{price}</span>
-        <span className="pb-2 text-sm font-semibold text-[#62748b]">/month</span>
+        <span className="text-5xl font-semibold text-[#07162b]">{price}</span>
+        <span className="pb-2 text-sm font-semibold text-[#64748b]">/month</span>
       </div>
-      <Link
-        href="/sign-up"
-        className="mt-8 inline-flex h-12 w-full items-center justify-center rounded-[8px] bg-[#3b82f6] text-sm font-bold text-white shadow-[0_18px_36px_rgba(59,130,246,0.22)] transition hover:bg-[#2563eb]"
-      >
+      <Link href="/sign-up" className="mt-8 inline-flex h-12 w-full items-center justify-center rounded-[10px] bg-[#3b82f6] text-sm font-bold text-white shadow-[0_18px_36px_rgba(59,130,246,0.22)] transition hover:bg-[#2563eb]">
         Get started
       </Link>
       <div className="mt-7 grid gap-3">
@@ -767,7 +638,7 @@ function PlanCard({
 
 function PricingTable() {
   return (
-    <div className="mx-auto mt-8 max-w-6xl overflow-hidden rounded-[10px] border border-[#dbe6f4] bg-white shadow-[0_24px_80px_rgba(16,24,32,0.06)]">
+    <div className="mx-auto mt-8 max-w-6xl overflow-hidden rounded-[20px] border border-[#dfe8f6] bg-white shadow-[0_24px_80px_rgba(20,32,51,0.06)]">
       <div className="grid grid-cols-[1.3fr_0.7fr_0.7fr] border-b border-[#e3ebf5] bg-[#f8fbff] px-4 py-3 text-xs font-bold uppercase tracking-[0.16em] text-[#63748c]">
         <span>Feature</span>
         <span>Basic</span>
@@ -787,15 +658,15 @@ function PricingTable() {
 function LegalPanel() {
   return (
     <section className="px-4 pb-16 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-7xl gap-4 rounded-[10px] border border-[#dbe6f4] bg-white p-5 shadow-[0_24px_80px_rgba(16,24,32,0.06)] sm:grid-cols-3">
+      <div className="mx-auto grid max-w-7xl gap-4 rounded-[24px] border border-[#dfe8f6] bg-white p-5 shadow-[0_24px_80px_rgba(20,32,51,0.06)] sm:grid-cols-3">
         {[
           ["Terms & Conditions", "/terms-and-conditions"],
           ["Privacy Policy", "/privacy"],
           ["Refund Policy", "/refund"],
         ].map(([label, href]) => (
-          <Link key={href} href={href} className="group flex items-center justify-between rounded-[8px] border border-[#e1e9f4] p-4 text-sm font-bold text-[#111827] transition hover:border-[#3b82f6] hover:text-[#3b82f6]">
+          <Link key={href} href={href} className="group flex items-center justify-between rounded-[14px] border border-[#e1e9f4] p-4 text-sm font-bold text-[#07162b] transition hover:border-[#3b82f6] hover:text-[#3b82f6]">
             {label}
-            <ChevronRight className="h-4 w-4 transition group-hover:translate-x-1" />
+            <ChevronRight className="size-4 transition group-hover:translate-x-1" />
           </Link>
         ))}
       </div>
@@ -806,16 +677,16 @@ function LegalPanel() {
 function CtaBand() {
   return (
     <section className="px-4 pb-14 sm:px-6 lg:px-8">
-      <div className="mx-auto flex max-w-7xl flex-col gap-5 rounded-[10px] bg-[#3b82f6] p-6 text-white shadow-[0_24px_80px_rgba(59,130,246,0.22)] sm:p-8 lg:flex-row lg:items-center lg:justify-between">
+      <div className="mx-auto flex max-w-7xl flex-col gap-5 rounded-[24px] bg-[#3b82f6] p-6 text-white shadow-[0_24px_80px_rgba(59,130,246,0.24)] sm:p-8 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h2 className="text-3xl font-semibold tracking-[-0.03em]">Start with one cleaner clinic workspace.</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-blue-50">Use Vela to centralize appointment, client, communication, media, payment, and reporting work.</p>
+          <h2 className="text-3xl font-semibold sm:text-4xl">Start with one clearer clinic workspace.</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-blue-50">Centralize appointment, client, communication, media, payment, and reporting work.</p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
-          <Link href="/sign-up" className="inline-flex h-11 items-center justify-center rounded-[8px] bg-white px-5 text-sm font-bold text-[#2563eb] transition hover:bg-blue-50">
+          <Link href="/sign-up" className="inline-flex h-11 items-center justify-center rounded-[10px] bg-white px-5 text-sm font-bold text-[#2563eb] transition hover:bg-blue-50">
             Get started
           </Link>
-          <Link href="/contact" className="inline-flex h-11 items-center justify-center rounded-[8px] border border-white/40 px-5 text-sm font-bold text-white transition hover:bg-white/10">
+          <Link href="/contact" className="inline-flex h-11 items-center justify-center rounded-[10px] border border-white/40 px-5 text-sm font-bold text-white transition hover:bg-white/10">
             Contact us
           </Link>
         </div>
@@ -824,27 +695,15 @@ function CtaBand() {
   );
 }
 
-function InfoCard({ title, icon: Icon, children }: { title: string; icon: ElementType; children: ReactNode }) {
-  return (
-    <article className="rounded-[10px] border border-[#dbe6f4] bg-white p-6 shadow-[0_24px_80px_rgba(16,24,32,0.06)]">
-      <span className="flex h-11 w-11 items-center justify-center rounded-[9px] bg-[#eef4ff] text-[#3b82f6]">
-        <Icon className="h-5 w-5" />
-      </span>
-      <h3 className="mt-5 text-xl font-bold tracking-[-0.01em] text-[#111827]">{title}</h3>
-      <p className="mt-3 text-sm leading-7 text-[#62748b]">{children}</p>
-    </article>
-  );
-}
-
 function ContactMethod({ icon: Icon, title, copy }: { icon: ElementType; title: string; copy: string }) {
   return (
     <div className="flex gap-3">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-white/10 text-[#74a7ff]">
-        <Icon className="h-5 w-5" />
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-[12px] bg-white/10 text-[#8bb8ff]">
+        <Icon className="size-5" />
       </span>
       <div>
         <p className="text-sm font-bold text-white">{title}</p>
-        <p className="mt-1 text-sm text-[#b8c7dc]">{copy}</p>
+        <p className="mt-1 text-sm text-[#c8d7ec]">{copy}</p>
       </div>
     </div>
   );
@@ -857,7 +716,7 @@ function FormField({ label, placeholder, type = "text" }: { label: string; place
       <input
         type={type}
         placeholder={placeholder}
-        className="h-12 rounded-[8px] border border-[#d7e2f0] bg-white px-4 text-sm font-semibold normal-case tracking-normal text-[#101820] outline-none transition placeholder:text-[#8da0b8] focus:border-[#3b82f6]"
+        className="h-12 rounded-[10px] border border-[#d7e2f0] bg-white px-4 text-sm font-semibold normal-case tracking-normal text-[#07162b] outline-none transition placeholder:text-[#8da0b8] focus:border-[#3b82f6]"
       />
     </label>
   );
@@ -865,35 +724,17 @@ function FormField({ label, placeholder, type = "text" }: { label: string; place
 
 function MetricPill({ value, label }: { value: string; label: string }) {
   return (
-    <div className="rounded-[8px] bg-[#f3f7fd] p-4">
+    <div className="rounded-[14px] bg-[#f1f6ff] p-4">
       <p className="text-2xl font-semibold text-[#3b82f6]">{value}</p>
       <p className="mt-1 text-xs uppercase tracking-[0.12em] text-[#63748c]">{label}</p>
     </div>
   );
 }
 
-function MiniFact({ label, value }: { label: string; value: string }) {
+function CheckLine({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-[8px] border border-[#dbe6f4] bg-white p-4">
-      <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#6a7d96]">{label}</p>
-      <p className="mt-2 text-lg font-semibold text-[#111827]">{value}</p>
-    </div>
-  );
-}
-
-function DarkMetric({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="rounded-[8px] border border-white/12 bg-white/8 p-4">
-      <p className="text-xl font-semibold text-white">{value}</p>
-      <p className="mt-1 text-xs uppercase tracking-[0.14em] text-[#b8c7dc]">{label}</p>
-    </div>
-  );
-}
-
-function CheckLine({ children, dark = false }: { children: ReactNode; dark?: boolean }) {
-  return (
-    <div className={dark ? "flex items-center gap-2 text-sm font-semibold text-[#d8e5f6]" : "flex items-center gap-2 text-sm font-semibold text-[#304158]"}>
-      <CheckCircle2 className={dark ? "h-4 w-4 shrink-0 text-[#74a7ff]" : "h-4 w-4 shrink-0 text-[#3b82f6]"} />
+    <div className="flex items-center gap-2 text-sm font-semibold text-[#304158]">
+      <CheckCircle2 className="size-4 shrink-0 text-[#3b82f6]" />
       <span>{children}</span>
     </div>
   );
@@ -901,13 +742,13 @@ function CheckLine({ children, dark = false }: { children: ReactNode; dark?: boo
 
 function MarketingFooter() {
   return (
-    <footer className="border-t border-[#dbe6f4] bg-white px-4 py-10 sm:px-6 lg:px-8">
+    <footer className="border-t border-[#dfe8f6] bg-white px-4 py-10 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-7xl flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <BrandMark href="/" includeSubtitle={false} />
-          <p className="mt-4 max-w-sm text-sm leading-6 text-[#6a7d96]">Modern clinic operations for appointments, clients, communication, payments, and AI-assisted reports.</p>
+          <p className="mt-4 max-w-sm text-sm leading-6 text-[#64748b]">Modern clinic operations for appointments, clients, communication, payments, and AI-assisted reports.</p>
         </div>
-        <div className="flex flex-wrap gap-x-6 gap-y-3 text-sm font-semibold text-[#5e6f87]">
+        <div className="flex flex-wrap gap-x-6 gap-y-3 text-sm font-semibold text-[#64748b]">
           {footerLinks.map((item) => (
             <Link key={item.href} href={item.href} className="transition hover:text-[#3b82f6]">
               {item.label}
