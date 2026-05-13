@@ -180,18 +180,32 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
     view === "month"
       ? format(activeDate, "MMMM yyyy")
       : `${format(currentWeek[0], "MMMM yyyy")}`;
+  const selectedDayAppointments = appointments.filter(
+    (appointment) => appointment.date === selectedDateKey
+  );
+  const selectedDayBlocks = scheduleBlocks.filter((block) => block.date === selectedDateKey);
+  const upcomingAppointments = appointments
+    .filter((appointment) => appointment.date >= selectedDateKey)
+    .sort((left, right) => `${left.date}${left.startTime}`.localeCompare(`${right.date}${right.startTime}`))
+    .slice(0, 5);
+  const bookedMinutes = visibleAppointments.reduce(
+    (sum, appointment) =>
+      sum + Math.max(timeToMinutes(appointment.endTime) - timeToMinutes(appointment.startTime), 0),
+    0
+  );
+  const utilization = Math.min(Math.round((bookedMinutes / Math.max(8 * 60 * 5, 1)) * 100), 100);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="section-reveal space-y-3">
-          <p className="text-[12px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-            Booking timeline
+        <div className="section-reveal">
+          <h1 className="text-4xl font-semibold tracking-tight text-foreground">
+            Calendar
+          </h1>
+          <p className="mt-2 text-[15px] leading-7 text-muted-foreground">
+            Manage the clinic schedule, appointments, and blocked time.
           </p>
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-[2.4rem]">
-              {dayLabel}
-            </h1>
+          <div className="mt-5 flex flex-wrap items-center gap-3">
             <div className="inline-flex rounded-[1rem] border border-border/80 bg-white/70 p-1 shadow-[0_16px_32px_rgba(20,32,51,0.05)]">
               {views.map((option) => (
                 <button
@@ -208,6 +222,9 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
                 </button>
               ))}
             </div>
+            <span className="rounded-[0.9rem] border border-border/80 bg-white/80 px-4 py-2 text-sm font-semibold text-foreground shadow-[0_10px_24px_rgba(20,32,51,0.03)]">
+              {dayLabel}
+            </span>
           </div>
         </div>
 
@@ -258,6 +275,8 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
         </div>
       </div>
 
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-5">
       {!hasClients ? (
         <section className="section-reveal overflow-hidden rounded-[1.25rem] border border-dashed border-primary/25 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),var(--primary-soft))] p-8 shadow-[0_18px_44px_rgba(20,32,51,0.055)]">
           <div className="mx-auto max-w-xl space-y-5 text-center">
@@ -429,8 +448,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
               </Link>
             </div>
             <div className="mt-4 space-y-3">
-              {appointments
-                .filter((appointment) => appointment.date === selectedDateKey)
+              {selectedDayAppointments
                 .sort((left, right) => left.startTime.localeCompare(right.startTime))
                 .map((appointment) => (
                   <Link
@@ -449,8 +467,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
                     <ChevronRight className="mt-0.5 size-4 text-muted-foreground" />
                   </Link>
                 ))}
-              {scheduleBlocks
-                .filter((block) => block.date === selectedDateKey)
+              {selectedDayBlocks
                 .sort((left, right) => left.startTime.localeCompare(right.startTime))
                 .map((block) => (
                   <div
@@ -466,8 +483,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
                     <CalendarX2 className="mt-0.5 size-4 text-slate-500" />
                   </div>
                 ))}
-              {appointments.filter((appointment) => appointment.date === selectedDateKey).length === 0 &&
-              scheduleBlocks.filter((block) => block.date === selectedDateKey).length === 0 ? (
+              {selectedDayAppointments.length === 0 && selectedDayBlocks.length === 0 ? (
                 <div className="rounded-[0.95rem] border border-dashed border-border/90 bg-white/54 px-4 py-4 text-sm text-muted-foreground">
                   No bookings for the selected day yet.
                 </div>
@@ -498,6 +514,131 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
           </div>
         </div>
       ) : null}
+        </div>
+
+        <aside className="section-reveal-delayed space-y-5">
+          <CalendarRailPanel title="Upcoming appointments" actionHref="/calendar" actionLabel="View all">
+            <div className="space-y-4">
+              {upcomingAppointments.length > 0 ? (
+                upcomingAppointments.map((appointment, index) => (
+                  <Link key={appointment.id} href={`/calendar/${appointment.id}/edit`} className="flex gap-3 text-sm">
+                    <span className={cn(
+                      "mt-1 size-2.5 rounded-full",
+                      index % 3 === 0 && "bg-primary",
+                      index % 3 === 1 && "bg-[#67a5ee]",
+                      index % 3 === 2 && "bg-[#c084fc]"
+                    )} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold text-foreground">
+                        {appointment.clientName}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {appointment.startTime} - {appointment.service}
+                      </span>
+                    </span>
+                  </Link>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">No upcoming appointments in view.</p>
+              )}
+            </div>
+          </CalendarRailPanel>
+
+          <CalendarRailPanel title="Today's utilization">
+            <div className="flex items-center gap-4">
+              <div className="grid size-24 place-items-center rounded-full border-[7px] border-primary/85 bg-white text-center">
+                <span>
+                  <span className="block text-xl font-semibold text-foreground">{utilization}%</span>
+                  <span className="text-[10px] text-muted-foreground">Utilization</span>
+                </span>
+              </div>
+              <div className="space-y-2 text-sm">
+                <RailMetric label="Scheduled" value={`${Math.round(bookedMinutes / 60)}h ${bookedMinutes % 60}m`} />
+                <RailMetric label="Available" value={`${Math.max(40 - Math.round(bookedMinutes / 60), 0)}h`} />
+                <RailMetric label="Blocks" value={visibleBlocks.length.toString()} />
+              </div>
+            </div>
+          </CalendarRailPanel>
+
+          <CalendarRailPanel title="Quick actions">
+            <div className="grid gap-2">
+              <Link href={`/calendar/new?date=${selectedDateKey}`} className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 justify-start rounded-[0.85rem] bg-white")}>
+                <Plus className="size-4" />
+                New appointment
+              </Link>
+              <Link href="/clients/new?next=calendar" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 justify-start rounded-[0.85rem] bg-white")}>
+                <UsersRound className="size-4" />
+                New client
+              </Link>
+              <Link href="/staff" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 justify-start rounded-[0.85rem] bg-white")}>
+                <CalendarX2 className="size-4" />
+                Manage shifts
+              </Link>
+            </div>
+          </CalendarRailPanel>
+
+          <CalendarRailPanel title="Schedule summary">
+            <div className="space-y-3 text-sm">
+              <RailMetric label="Appointments" value={selectedDayAppointments.length.toString()} />
+              <RailMetric label="Completed" value={selectedDayAppointments.filter((appointment) => appointment.status === "completed").length.toString()} />
+              <RailMetric label="Upcoming" value={selectedDayAppointments.filter((appointment) => appointment.status === "confirmed" || appointment.status === "pending").length.toString()} />
+              <RailMetric label="Blocked time" value={selectedDayBlocks.length.toString()} />
+            </div>
+          </CalendarRailPanel>
+
+          <CalendarRailPanel title="Service legend">
+            <div className="grid gap-2 text-sm text-muted-foreground">
+              <LegendDot color="bg-primary" label="Confirmed / completed" />
+              <LegendDot color="bg-[#67a5ee]" label="Pending" />
+              <LegendDot color="bg-slate-400" label="Blocked time" />
+            </div>
+          </CalendarRailPanel>
+        </aside>
+      </div>
     </div>
+  );
+}
+
+function CalendarRailPanel({
+  title,
+  actionHref,
+  actionLabel,
+  children,
+}: {
+  title: string;
+  actionHref?: string;
+  actionLabel?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-foreground">{title}</h2>
+        {actionHref && actionLabel ? (
+          <Link href={actionHref} className="text-xs font-semibold text-primary">
+            {actionLabel}
+          </Link>
+        ) : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function RailMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-border/70 pb-2 last:border-b-0 last:pb-0">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-semibold text-foreground">{value}</span>
+    </div>
+  );
+}
+
+function LegendDot({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="flex items-center gap-2">
+      <span className={cn("size-2.5 rounded-full", color)} />
+      {label}
+    </span>
   );
 }

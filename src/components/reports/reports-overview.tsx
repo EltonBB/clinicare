@@ -105,15 +105,15 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
 
   return (
     <div className="space-y-6">
-      <section className="section-reveal surface-card overflow-hidden rounded-[0.9rem]">
-        <div className="flex flex-col gap-4 border-b border-border/80 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+      <section className="section-reveal space-y-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-              Clinic intelligence
-            </p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
-              Performance reports
+            <h1 className="text-4xl font-semibold tracking-tight text-foreground">
+              Reports
             </h1>
+            <p className="mt-2 text-[15px] leading-7 text-muted-foreground">
+              Track performance, utilization, and opportunities to grow the clinic.
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -152,24 +152,25 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
           </div>
         </div>
 
-        <div className="border-b border-border/80 px-5 py-3">
-          <div className="inline-flex items-center gap-2 rounded-md bg-primary/8 px-3 py-2 text-sm text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border border-border/80 bg-white/94 px-5 py-3 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+          <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
             <Brain className="size-4 text-primary" />
             Refresh reviews today, this week, and this month together.
           </div>
+          <span className="text-sm font-semibold text-foreground">{period.rangeLabel}</span>
         </div>
 
-        <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           {topMetrics.map((metric) => (
             <div
               key={metric.label}
-              className="rounded-[0.75rem] border border-border/75 bg-white px-5 py-4"
+              className="rounded-[1rem] border border-border/80 bg-white/94 px-5 py-4 shadow-[0_14px_32px_rgba(20,32,51,0.04)]"
             >
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                 {metric.label}
               </p>
               <div className="mt-4 flex items-end justify-between gap-3">
-                <p className="text-4xl font-semibold tracking-tight text-foreground">
+                <p className="text-2xl font-semibold tracking-tight text-foreground">
                   {metric.value}
                 </p>
                 <p

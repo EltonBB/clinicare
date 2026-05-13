@@ -340,7 +340,27 @@ export function InboxWorkspace({
         </DialogContent>
       </Dialog>
 
-      <div className="overflow-hidden rounded-[1.2rem] border border-border/80 bg-white/94 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
+      <div className="space-y-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="text-4xl font-semibold tracking-tight text-foreground">
+              Inbox
+            </h1>
+            <p className="mt-2 text-[15px] leading-7 text-muted-foreground">
+              Manage client conversations, replies, and unknown contacts.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <InboxMetric label="Conversations" value={conversations.length.toString()} />
+            <InboxMetric
+              label="Unread"
+              value={conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0).toString()}
+            />
+            <InboxMetric label="Clients" value={clientCount.toString()} />
+          </div>
+        </div>
+
+      <div className="overflow-hidden rounded-[1rem] border border-border/80 bg-white/94 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
         <div className="grid min-h-[780px] grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="border-b border-border/80 lg:border-b-0 lg:border-r">
           <div className="glass-divider px-5 py-4">
@@ -624,6 +644,18 @@ export function InboxWorkspace({
         </section>
       </div>
       </div>
+      </div>
     </>
+  );
+}
+
+function InboxMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-32 rounded-[1rem] border border-border/80 bg-white/94 px-4 py-3 shadow-[0_10px_24px_rgba(20,32,51,0.035)]">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
+    </div>
   );
 }

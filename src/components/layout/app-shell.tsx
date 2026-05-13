@@ -174,9 +174,9 @@ export function AppShell({
       }
     >
       <div className="relative flex min-h-screen">
-        <aside className="hidden w-[268px] shrink-0 border-r border-sidebar-border/80 bg-white/94 lg:flex">
+        <aside className="hidden w-[236px] shrink-0 border-r border-sidebar-border/80 bg-white lg:flex">
           <div
-            className="sticky top-0 flex h-screen w-full flex-col bg-white/94 p-4"
+            className="sticky top-0 flex h-screen w-full flex-col bg-white p-4"
             data-tour="sidebar-shell"
           >
             <div className="px-2 pb-5 pt-2">
@@ -212,9 +212,9 @@ export function AppShell({
               const isActive =
                 pathname === item.href || pathname.startsWith(`${item.href}/`);
               const navClasses = cn(
-                "interactive-lift flex items-center gap-3 rounded-[1rem] px-4 py-3 text-sm font-medium text-muted-foreground transition-[background-color,color,box-shadow,transform] duration-200 hover:bg-white hover:text-foreground hover:shadow-[0_8px_18px_rgba(20,32,51,0.035)]",
+                "interactive-lift flex items-center gap-3 rounded-[0.85rem] px-4 py-3 text-sm font-medium text-muted-foreground transition-[background-color,color,box-shadow,transform] duration-200 hover:bg-secondary/60 hover:text-foreground",
                 isActive &&
-                  "bg-primary/8 text-foreground shadow-[0_10px_22px_rgba(20,32,51,0.04)] ring-1 ring-primary/25"
+                  "bg-primary/10 text-primary shadow-none ring-0"
               );
 
               return (
@@ -235,7 +235,7 @@ export function AppShell({
             </nav>
 
             <div className="mt-4 space-y-4 border-t border-sidebar-border/70 px-1 pt-5">
-              <div className="surface-soft rounded-[1.05rem] px-4 py-4 text-sm">
+              <div className="rounded-[0.9rem] border border-border/80 bg-white px-4 py-4 text-sm shadow-[0_10px_24px_rgba(20,32,51,0.035)]">
                 <div className="flex items-center gap-2">
                   <BadgeCheck className="size-4 text-primary" />
                   <p className="font-semibold text-foreground">
@@ -250,7 +250,7 @@ export function AppShell({
                 </div>
               </div>
 
-              <div className="glass-divider rounded-[1.05rem] px-3 py-3">
+              <div className="rounded-[0.9rem] px-1 py-2">
                 <OwnerAccountDialog
                   ownerName={ownerName}
                   ownerEmail={ownerEmail}
@@ -269,7 +269,7 @@ export function AppShell({
         </aside>
 
         <div className="relative flex min-h-screen min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-20 border-b border-border/80 bg-white/94 px-4 py-3 sm:px-6 lg:px-8 lg:py-0">
+          <header className="sticky top-0 z-20 border-b border-border/80 bg-white px-4 py-3 sm:px-6 lg:px-8 lg:py-0">
             <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-5 lg:h-16">
               <div className="flex min-w-[88px] items-center gap-3">
                 <div className="lg:hidden">
@@ -300,7 +300,7 @@ export function AppShell({
             <GlobalSearch className="mx-auto mt-3 w-full max-w-[1600px] md:hidden" />
           </header>
 
-          <main className="page-gutter relative flex-1 py-6 pb-28 lg:pb-10 lg:pt-8">
+          <main className="page-gutter relative flex-1 bg-[#fbfcff] py-6 pb-28 lg:pb-10 lg:pt-8">
             {children}
           </main>
         </div>
