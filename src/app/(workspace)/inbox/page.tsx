@@ -11,13 +11,13 @@ import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 export default async function InboxPage({
   searchParams,
 }: {
-  searchParams: Promise<{ client?: string }>;
+  searchParams: Promise<{ client?: string; conversation?: string }>;
 }) {
   const { user, business } = await requireCurrentWorkspace("/inbox", {
     missingBusinessRedirect: "/onboarding",
   });
   const { ownerName } = toBusinessIdentity(business, user);
-  const { client } = await searchParams;
+  const { client, conversation } = await searchParams;
 
   const ensuredConversation =
     typeof client === "string" && client.length > 0
@@ -101,13 +101,20 @@ export default async function InboxPage({
     conversations,
     clients,
   });
+  const requestedConversationId =
+    typeof conversation === "string" &&
+    inboxView.conversations.some((entry) => entry.id === conversation)
+      ? conversation
+      : undefined;
 
   return (
     <InboxWorkspace
       initialView={{
         ...inboxView,
         initialConversationId:
-          ensuredConversation?.id ?? inboxView.initialConversationId,
+          requestedConversationId ??
+          ensuredConversation?.id ??
+          inboxView.initialConversationId,
       }}
       ownerName={ownerName}
       connection={buildWhatsAppConnectionSummary(

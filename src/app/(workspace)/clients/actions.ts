@@ -58,6 +58,11 @@ export type AddClientDocumentPayload = {
   fileName: string;
   fileType: string;
   fileUrl: string;
+  storageUrl?: string;
+  category?: string;
+  mimeType?: string;
+  fileSize?: number;
+  uploadedBy?: string;
   notes: string;
 };
 
@@ -68,6 +73,43 @@ export type AddClientPaymentPayload = {
   description: string;
   receiptUrl: string;
   paidAt: string;
+  invoiceNumber?: string;
+  receiptNumber?: string;
+  paymentMethod?: string;
+  billingNote?: string;
+};
+
+export type AddClientHealthItemPayload = {
+  clientId: string;
+  type: string;
+  label: string;
+  value?: string;
+  severity?: string;
+  notes?: string;
+};
+
+export type AddClientCareNotePayload = {
+  clientId: string;
+  title?: string;
+  body: string;
+  staffMemberId?: string;
+};
+
+export type AddClientTreatmentPlanItemPayload = {
+  clientId: string;
+  title: string;
+  description?: string;
+  status?: string;
+  dueAt?: string;
+};
+
+export type AddClientFollowUpReminderPayload = {
+  clientId: string;
+  title: string;
+  channel?: string;
+  status?: string;
+  remindAt: string;
+  notes?: string;
 };
 
 export type ClientRecordMutationResult = {
@@ -159,7 +201,12 @@ async function fetchClientRecord(clientId: string) {
           id: true,
           fileName: true,
           fileType: true,
+          category: true,
+          mimeType: true,
+          fileSize: true,
           fileUrl: true,
+          storageUrl: true,
+          uploadedBy: true,
           notes: true,
           createdAt: true,
         },
@@ -175,6 +222,10 @@ async function fetchClientRecord(clientId: string) {
           amountCents: true,
           status: true,
           description: true,
+          invoiceNumber: true,
+          receiptNumber: true,
+          paymentMethod: true,
+          billingNote: true,
           receiptUrl: true,
           paidAt: true,
           createdAt: true,
@@ -183,6 +234,70 @@ async function fetchClientRecord(clientId: string) {
           createdAt: "desc",
         },
         take: 60,
+      },
+      healthItems: {
+        select: {
+          id: true,
+          type: true,
+          label: true,
+          value: true,
+          severity: true,
+          notes: true,
+          recordedAt: true,
+        },
+        orderBy: {
+          recordedAt: "desc",
+        },
+        take: 80,
+      },
+      careNotes: {
+        select: {
+          id: true,
+          title: true,
+          body: true,
+          notedAt: true,
+          staffMember: {
+            select: {
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          notedAt: "desc",
+        },
+        take: 50,
+      },
+      treatmentPlanItems: {
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          status: true,
+          dueAt: true,
+        },
+        orderBy: [
+          {
+            dueAt: "asc",
+          },
+          {
+            createdAt: "desc",
+          },
+        ],
+        take: 50,
+      },
+      followUpReminders: {
+        select: {
+          id: true,
+          title: true,
+          channel: true,
+          status: true,
+          remindAt: true,
+          notes: true,
+        },
+        orderBy: {
+          remindAt: "asc",
+        },
+        take: 50,
       },
       _count: {
         select: {
@@ -496,7 +611,14 @@ export async function addClientDocumentAction(
       clientId: payload.clientId,
       fileName,
       fileType: payload.fileType.trim() || "Other",
+      category: payload.category?.trim() || payload.fileType.trim() || "Other",
+      mimeType: payload.mimeType?.trim() || null,
+      fileSize: Number.isFinite(payload.fileSize) ? payload.fileSize : null,
       fileUrl: normalizeStorageReference(payload.fileUrl.trim()) || null,
+      storageUrl: payload.storageUrl
+        ? normalizeStorageReference(payload.storageUrl.trim())
+        : normalizeStorageReference(payload.fileUrl.trim()) || null,
+      uploadedBy: payload.uploadedBy?.trim() || "Workspace staff",
       notes: payload.notes.trim() || null,
     },
   });
@@ -535,8 +657,155 @@ export async function addClientPaymentAction(
       amountCents,
       status: payload.status.trim() || "Unpaid",
       description: payload.description.trim() || null,
+      invoiceNumber: payload.invoiceNumber?.trim() || null,
+      receiptNumber: payload.receiptNumber?.trim() || null,
+      paymentMethod: payload.paymentMethod?.trim() || null,
+      billingNote: payload.billingNote?.trim() || null,
       receiptUrl: payload.receiptUrl.trim() || null,
       paidAt: parseOptionalDate(payload.paidAt),
+    },
+  });
+
+  return {
+    ok: true,
+    client: await fetchClientRecord(payload.clientId),
+  };
+}
+
+export async function addClientHealthItemAction(
+  payload: AddClientHealthItemPayload
+): Promise<ClientRecordMutationResult> {
+  const context = await requireOwnedClient(payload.clientId);
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  const label = payload.label.trim();
+
+  if (!label) {
+    return { ok: false, error: "Health item label is required." };
+  }
+
+  await prisma.clientHealthItem.create({
+    data: {
+      businessId: context.business.id,
+      clientId: payload.clientId,
+      type: payload.type.trim() || "Care fact",
+      label,
+      value: payload.value?.trim() || null,
+      severity: payload.severity?.trim() || null,
+      notes: payload.notes?.trim() || null,
+    },
+  });
+
+  return {
+    ok: true,
+    client: await fetchClientRecord(payload.clientId),
+  };
+}
+
+export async function addClientCareNoteAction(
+  payload: AddClientCareNotePayload
+): Promise<ClientRecordMutationResult> {
+  const context = await requireOwnedClient(payload.clientId);
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  const body = payload.body.trim();
+
+  if (!body) {
+    return { ok: false, error: "Care note text is required." };
+  }
+
+  const staffMemberId = payload.staffMemberId?.trim();
+  const validStaffMember = staffMemberId
+    ? await prisma.staffMember.findFirst({
+        where: {
+          id: staffMemberId,
+          businessId: context.business.id,
+        },
+        select: {
+          id: true,
+        },
+      })
+    : null;
+
+  await prisma.clientCareNote.create({
+    data: {
+      businessId: context.business.id,
+      clientId: payload.clientId,
+      staffMemberId: validStaffMember?.id ?? null,
+      title: payload.title?.trim() || null,
+      body,
+    },
+  });
+
+  return {
+    ok: true,
+    client: await fetchClientRecord(payload.clientId),
+  };
+}
+
+export async function addClientTreatmentPlanItemAction(
+  payload: AddClientTreatmentPlanItemPayload
+): Promise<ClientRecordMutationResult> {
+  const context = await requireOwnedClient(payload.clientId);
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  const title = payload.title.trim();
+
+  if (!title) {
+    return { ok: false, error: "Treatment plan item title is required." };
+  }
+
+  await prisma.clientTreatmentPlanItem.create({
+    data: {
+      businessId: context.business.id,
+      clientId: payload.clientId,
+      title,
+      description: payload.description?.trim() || null,
+      status: payload.status?.trim() || "Pending",
+      dueAt: parseOptionalDate(payload.dueAt ?? ""),
+    },
+  });
+
+  return {
+    ok: true,
+    client: await fetchClientRecord(payload.clientId),
+  };
+}
+
+export async function addClientFollowUpReminderAction(
+  payload: AddClientFollowUpReminderPayload
+): Promise<ClientRecordMutationResult> {
+  const context = await requireOwnedClient(payload.clientId);
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  const title = payload.title.trim();
+  const remindAt = parseOptionalDate(payload.remindAt);
+
+  if (!title || !remindAt) {
+    return { ok: false, error: "Reminder title and date are required." };
+  }
+
+  await prisma.clientFollowUpReminder.create({
+    data: {
+      businessId: context.business.id,
+      clientId: payload.clientId,
+      title,
+      channel: payload.channel?.trim() || "WhatsApp",
+      status: payload.status?.trim() || "Scheduled",
+      remindAt,
+      notes: payload.notes?.trim() || null,
     },
   });
 

@@ -18,11 +18,11 @@ import {
   subWeeks,
 } from "date-fns";
 import { startTransition, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Plus, UsersRound } from "lucide-react";
+import { CalendarX2, ChevronLeft, ChevronRight, Plus, UsersRound } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { CalendarAppointment, CalendarViewModel } from "@/lib/calendar";
+import type { CalendarAppointment, CalendarScheduleBlock, CalendarViewModel } from "@/lib/calendar";
 
 type CalendarView = "day" | "week" | "month";
 
@@ -102,10 +102,30 @@ function AppointmentCard({ appointment }: { appointment: CalendarAppointment }) 
   );
 }
 
+function BlockCard({ block }: { block: CalendarScheduleBlock }) {
+  return (
+    <div
+      className="absolute inset-x-1 overflow-hidden rounded-[0.65rem] border border-slate-300/70 bg-slate-100/90 px-3 py-2 text-left text-slate-700 shadow-[0_10px_20px_rgba(20,32,51,0.06)]"
+      style={{
+        top: appointmentOffset(block.startTime),
+        height: appointmentHeight(block.startTime, block.endTime),
+      }}
+    >
+      <span className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.12em]">
+        <CalendarX2 className="size-3" />
+        {block.startTime} - {block.endTime}
+      </span>
+      <span className="mt-1 block truncate text-sm font-semibold">{block.title}</span>
+      {block.notes ? <span className="mt-1 block truncate text-xs opacity-80">{block.notes}</span> : null}
+    </div>
+  );
+}
+
 export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceProps) {
   const [view, setView] = useState<CalendarView>("week");
   const [activeDate, setActiveDate] = useState(() => parseISO(initialView.initialDate));
   const appointments = initialView.appointments;
+  const scheduleBlocks = initialView.scheduleBlocks;
   const hasClients = initialView.clients.length > 0;
 
   const currentWeek = useMemo(() => weekDays(activeDate), [activeDate]);
@@ -125,6 +145,20 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
     const visibleKeys = new Set(currentMonth.map((day) => format(day, "yyyy-MM-dd")));
     return appointments.filter((appointment) => visibleKeys.has(appointment.date));
   }, [appointments, currentMonth, currentWeek, selectedDateKey, view]);
+
+  const visibleBlocks = useMemo(() => {
+    if (view === "day") {
+      return scheduleBlocks.filter((block) => block.date === selectedDateKey);
+    }
+
+    if (view === "week") {
+      const visibleKeys = new Set(currentWeek.map((day) => format(day, "yyyy-MM-dd")));
+      return scheduleBlocks.filter((block) => visibleKeys.has(block.date));
+    }
+
+    const visibleKeys = new Set(currentMonth.map((day) => format(day, "yyyy-MM-dd")));
+    return scheduleBlocks.filter((block) => visibleKeys.has(block.date));
+  }, [currentMonth, currentWeek, scheduleBlocks, selectedDateKey, view]);
 
   function shiftRange(direction: "prev" | "next") {
     startTransition(() => {
@@ -261,6 +295,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
             {currentMonth.map((day) => {
               const key = format(day, "yyyy-MM-dd");
               const items = appointments.filter((appointment) => appointment.date === key);
+              const blocks = scheduleBlocks.filter((block) => block.date === key);
 
               return (
                 <button
@@ -278,17 +313,21 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
                 >
                   <p className="text-sm font-medium">{format(day, "d")}</p>
                   <div className="mt-3 space-y-2">
-                    {items.slice(0, 2).map((appointment) => (
+                    {[...items.slice(0, 2), ...blocks.slice(0, 1)].map((entry) => (
                       <div
-                        key={appointment.id}
+                        key={entry.id}
                         className={cn(
                           "truncate rounded-[0.55rem] px-2 py-1 text-xs font-medium",
-                          appointment.tone === "primary" && "bg-primary/12 text-primary",
-                          appointment.tone === "secondary" && "bg-[#e8eefc] text-[#36588f]",
-                          appointment.tone === "muted" && "bg-destructive/10 text-destructive"
+                          "tone" in entry
+                            ? [
+                                entry.tone === "primary" && "bg-primary/12 text-primary",
+                                entry.tone === "secondary" && "bg-[#e8eefc] text-[#36588f]",
+                                entry.tone === "muted" && "bg-destructive/10 text-destructive",
+                              ]
+                            : "bg-slate-100 text-slate-700"
                         )}
                       >
-                        {appointment.startTime} {appointment.service}
+                        {entry.startTime} {"service" in entry ? entry.service : entry.title}
                       </div>
                     ))}
                   </div>
@@ -340,6 +379,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
                 {(view === "day" ? [activeDate] : currentWeek).map((day) => {
                   const key = format(day, "yyyy-MM-dd");
                   const items = visibleAppointments.filter((appointment) => appointment.date === key);
+                  const blocks = visibleBlocks.filter((block) => block.date === key);
 
                   return (
                     <div
@@ -354,6 +394,9 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
                       ))}
                       {items.map((appointment) => (
                         <AppointmentCard key={appointment.id} appointment={appointment} />
+                      ))}
+                      {blocks.map((block) => (
+                        <BlockCard key={block.id} block={block} />
                       ))}
                     </div>
                   );
@@ -406,7 +449,25 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
                     <ChevronRight className="mt-0.5 size-4 text-muted-foreground" />
                   </Link>
                 ))}
-              {appointments.filter((appointment) => appointment.date === selectedDateKey).length === 0 ? (
+              {scheduleBlocks
+                .filter((block) => block.date === selectedDateKey)
+                .sort((left, right) => left.startTime.localeCompare(right.startTime))
+                .map((block) => (
+                  <div
+                    key={block.id}
+                    className="flex w-full items-start justify-between rounded-[0.95rem] border border-slate-200 bg-slate-50 px-4 py-3 text-left"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">{block.title}</p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        Blocked time - {block.startTime}
+                      </p>
+                    </div>
+                    <CalendarX2 className="mt-0.5 size-4 text-slate-500" />
+                  </div>
+                ))}
+              {appointments.filter((appointment) => appointment.date === selectedDateKey).length === 0 &&
+              scheduleBlocks.filter((block) => block.date === selectedDateKey).length === 0 ? (
                 <div className="rounded-[0.95rem] border border-dashed border-border/90 bg-white/54 px-4 py-4 text-sm text-muted-foreground">
                   No bookings for the selected day yet.
                 </div>

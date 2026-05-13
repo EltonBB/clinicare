@@ -40,7 +40,7 @@ export default async function CalendarPage({
     redirect(`/calendar/new${params.size ? `?${params.toString()}` : ""}`);
   }
 
-  const [appointments, clients, staffMembers, businessHours] = await Promise.all([
+  const [appointments, scheduleBlocks, clients, staffMembers, businessHours] = await Promise.all([
     prisma.appointment.findMany({
       where: {
         businessId: business.id,
@@ -68,6 +68,18 @@ export default async function CalendarPage({
       },
       orderBy: {
         startAt: "asc",
+      },
+    }),
+    prisma.scheduleBlock.findMany({
+      where: {
+        businessId: business.id,
+        startsAt: {
+          gte: rangeStart,
+          lte: rangeEnd,
+        },
+      },
+      orderBy: {
+        startsAt: "asc",
       },
     }),
     prisma.client.findMany({
@@ -112,6 +124,7 @@ export default async function CalendarPage({
 
   const initialView = buildCalendarViewFromRecords({
     appointments,
+    scheduleBlocks,
     clients,
     staffMembers,
     businessHours,

@@ -26,6 +26,8 @@ model Business {
   staffMembers       StaffMember[]
   clients            Client[]
   appointments       Appointment[]
+  scheduleBlocks     ScheduleBlock[]
+  staffShifts        StaffShift[]
   businessHours      BusinessHours[]
   conversations      Conversation[]
   reminderSettings   ReminderSettings?
@@ -63,6 +65,8 @@ model StaffMember {
   updatedAt    DateTime         @updatedAt
   appointments Appointment[]
   timeEntries  StaffTimeEntry[]
+  shifts       StaffShift[]
+  careNotes    ClientCareNote[]
 
   @@index([businessId])
 }
@@ -113,6 +117,10 @@ model Client {
   medications          ClientMedication[]
   documents            ClientDocument[]
   payments             ClientPayment[]
+  healthItems          ClientHealthItem[]
+  careNotes            ClientCareNote[]
+  treatmentPlanItems   ClientTreatmentPlanItem[]
+  followUpReminders    ClientFollowUpReminder[]
 
   @@unique([businessId, phone])
   @@index([businessId, isArchived])
@@ -142,12 +150,18 @@ model ClientDocument {
   client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   fileName   String
   fileType   String
+  category   String?
+  mimeType   String?
+  fileSize   Int?
   fileUrl    String?
+  storageUrl String?
+  uploadedBy String?
   notes      String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   @@index([businessId, clientId, createdAt])
+  @@index([businessId, category])
 }
 
 model ClientPayment {
@@ -160,6 +174,10 @@ model ClientPayment {
   amountCents   Int
   status        String
   description   String?
+  invoiceNumber String?
+  receiptNumber String?
+  paymentMethod String?
+  billingNote   String?
   receiptUrl    String?
   paidAt        DateTime?
   createdAt     DateTime     @default(now())
@@ -167,7 +185,110 @@ model ClientPayment {
 
   @@index([businessId, clientId, status])
   @@index([businessId, clientId, createdAt])
+  @@index([businessId, invoiceNumber])
   @@index([appointmentId])
+}
+
+model ClientHealthItem {
+  id         String   @id @default(cuid())
+  businessId String
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  type       String
+  label      String
+  value      String?
+  severity   String?
+  notes      String?
+  recordedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([businessId, clientId, type])
+  @@index([businessId, clientId, recordedAt])
+}
+
+model ClientCareNote {
+  id            String       @id @default(cuid())
+  businessId    String
+  clientId      String
+  client        Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  staffMemberId String?
+  staffMember   StaffMember? @relation(fields: [staffMemberId], references: [id], onDelete: SetNull)
+  title         String?
+  body          String
+  notedAt       DateTime     @default(now())
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([businessId, clientId, notedAt])
+  @@index([staffMemberId])
+}
+
+model ClientTreatmentPlanItem {
+  id            String       @id @default(cuid())
+  businessId    String
+  clientId      String
+  client        Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  title         String
+  description   String?
+  status        String       @default("Pending")
+  dueAt         DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([businessId, clientId, status])
+  @@index([appointmentId])
+}
+
+model ClientFollowUpReminder {
+  id         String   @id @default(cuid())
+  businessId String
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  title      String
+  channel    String   @default("WhatsApp")
+  status     String   @default("Scheduled")
+  remindAt   DateTime
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([businessId, clientId, remindAt])
+  @@index([businessId, status])
+}
+
+model StaffShift {
+  id            String      @id @default(cuid())
+  businessId    String
+  business      Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  staffMemberId String
+  staffMember   StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+  startsAt      DateTime
+  endsAt        DateTime
+  status        String      @default("Scheduled")
+  notes         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([businessId, startsAt])
+  @@index([staffMemberId, startsAt])
+}
+
+model ScheduleBlock {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  title      String
+  startsAt   DateTime
+  endsAt     DateTime
+  reason     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([businessId, startsAt])
 }
 
 model ClientGalleryItem {
@@ -201,6 +322,7 @@ model Appointment {
   updatedAt     DateTime              @updatedAt
   reminders     AppointmentReminder[]
   payments      ClientPayment[]
+  treatmentPlanItems ClientTreatmentPlanItem[]
 
   @@index([businessId, startAt])
   @@index([businessId, status, startAt])

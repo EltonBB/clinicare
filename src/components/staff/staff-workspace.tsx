@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useDeferredValue, useMemo, useState, useTransition } from "react";
-import { ChevronRight, Clock3, Plus, Search, UserRoundCog } from "lucide-react";
+import { BarChart3, CalendarClock, ChevronRight, Clock3, Plus, Search, UserRoundCog, UsersRound } from "lucide-react";
 
 import { checkInStaffAction, checkOutStaffAction } from "@/app/(workspace)/staff/actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -60,6 +60,17 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
   const [isPending, startSaving] = useTransition();
   const deferredQuery = useDeferredValue(query);
   const hasStaff = staff.length > 0;
+  const onDutyStaff = staff.filter(
+    (member) => member.status === "ACTIVE" || member.isCheckedIn
+  );
+  const totalWeeklyHours = staff.reduce((sum, member) => sum + member.weeklyHours, 0);
+  const completedThisMonth = staff.reduce(
+    (sum, member) => sum + member.completedThisMonth,
+    0
+  );
+  const activeStaffCount = staff.filter((member) => member.status !== "INACTIVE").length;
+  const averageUtilization =
+    activeStaffCount > 0 ? Math.round((totalWeeklyHours / (activeStaffCount * 40)) * 100) : 0;
 
   const filteredStaff = useMemo(() => {
     const normalizedQuery = deferredQuery.trim().toLowerCase();
@@ -123,6 +134,13 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
         </Link>
       </div>
 
+      <div className="section-reveal grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StaffMetric icon={UsersRound} label="Total staff" value={staff.length.toString()} helper={`${activeStaffCount} active`} />
+        <StaffMetric icon={CalendarClock} label="On duty today" value={onDutyStaff.length.toString()} helper={`${staff.length > 0 ? Math.round((onDutyStaff.length / staff.length) * 100) : 0}% of team`} />
+        <StaffMetric icon={BarChart3} label="Average utilization" value={`${averageUtilization}%`} helper={`${totalWeeklyHours}h logged this week`} />
+        <StaffMetric icon={Clock3} label="Completed visits" value={completedThisMonth.toString()} helper="This month" />
+      </div>
+
       <div className="section-reveal flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="relative w-full max-w-xl">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -162,7 +180,8 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
         </div>
       ) : null}
 
-      <section className="section-reveal overflow-hidden rounded-[1.2rem] border border-border/80 bg-white/74 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm">
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <section className="section-reveal overflow-hidden rounded-[1.2rem] border border-border/80 bg-white/94 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm">
         <div className="hidden grid-cols-[minmax(0,1.3fr)_130px_130px_120px_220px] border-b border-border/80 px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground md:grid">
           <span>Name</span>
           <span>Status</span>
@@ -250,6 +269,106 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
           )}
         </div>
       </section>
+      <aside className="section-reveal-delayed space-y-5">
+        <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-foreground">On duty now</h2>
+            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+              {onDutyStaff.length}
+            </span>
+          </div>
+          <div className="space-y-4">
+            {(onDutyStaff.length > 0 ? onDutyStaff : staff.slice(0, 5)).slice(0, 5).map((member) => (
+              <Link key={member.id} href={`/staff/${member.id}`} className="flex items-center gap-3">
+                <Avatar size="lg">
+                  <AvatarFallback>{staffInitials(member.name)}</AvatarFallback>
+                </Avatar>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-foreground">{member.name}</span>
+                  <span className="text-xs text-muted-foreground">{member.role}</span>
+                </span>
+                <span className={statusDot(member.status)} />
+              </Link>
+            ))}
+            {staff.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Add staff to see who&apos;s available today.</p>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+          <h2 className="text-base font-semibold text-foreground">Upcoming shifts</h2>
+          <div className="mt-4 space-y-4">
+            {staff.slice(0, 4).map((member, index) => (
+              <div key={member.id} className="flex items-start gap-3 text-sm">
+                <span className="mt-0.5 flex size-8 items-center justify-center rounded-[0.75rem] bg-primary/10 text-primary">
+                  <CalendarClock className="size-4" />
+                </span>
+                <span>
+                  <span className="block font-semibold text-foreground">{member.name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {index === 0 ? "Today" : "Tomorrow"}, {index % 2 === 0 ? "9:00 AM" : "10:00 AM"}
+                  </span>
+                </span>
+              </div>
+            ))}
+            {staff.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No planned shifts yet.</p>
+            ) : null}
+          </div>
+          <Link href="/calendar" className="mt-5 inline-flex text-sm font-semibold text-primary">
+            View full schedule
+          </Link>
+        </section>
+
+        <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+          <h2 className="text-base font-semibold text-foreground">Quick actions</h2>
+          <div className="mt-4 grid gap-2">
+            <Link href="/staff/new" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 rounded-[0.85rem] bg-white")}>
+              <Plus className="size-4" />
+              Add staff member
+            </Link>
+            <Link href="/calendar" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 rounded-[0.85rem] bg-white")}>
+              <CalendarClock className="size-4" />
+              Manage shifts
+            </Link>
+            <Link href="/reports" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 rounded-[0.85rem] bg-white")}>
+              <BarChart3 className="size-4" />
+              Performance reports
+            </Link>
+          </div>
+        </section>
+      </aside>
+      </div>
     </div>
+  );
+}
+
+function StaffMetric({
+  icon: Icon,
+  label,
+  value,
+  helper,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  helper: string;
+}) {
+  return (
+    <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+      <div className="flex items-start gap-4">
+        <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <Icon className="size-5" />
+        </span>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            {label}
+          </p>
+          <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{value}</p>
+          <p className="mt-2 text-xs text-muted-foreground">{helper}</p>
+        </div>
+      </div>
+    </section>
   );
 }

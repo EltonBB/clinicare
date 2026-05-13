@@ -2,10 +2,14 @@ import type {
   Appointment,
   AppointmentStatus,
   Client,
+  ClientCareNote,
   ClientDocument,
   ClientGalleryItem,
+  ClientFollowUpReminder,
+  ClientHealthItem,
   ClientMedication,
   ClientPayment,
+  ClientTreatmentPlanItem,
   Message,
 } from "@prisma/client";
 import { format } from "date-fns";
@@ -50,7 +54,12 @@ export type ClientDocumentEntry = {
   id: string;
   fileName: string;
   fileType: string;
+  category: string;
+  mimeType: string;
+  fileSize: string;
   fileUrl: string;
+  storageUrl: string;
+  uploadedBy: string;
   notes: string;
   createdAt: string;
 };
@@ -62,9 +71,48 @@ export type ClientPaymentEntry = {
   amountDisplay: string;
   status: string;
   description: string;
+  invoiceNumber: string;
+  receiptNumber: string;
+  paymentMethod: string;
+  billingNote: string;
   receiptUrl: string;
   paidAt: string;
   createdAt: string;
+};
+
+export type ClientHealthItemEntry = {
+  id: string;
+  type: string;
+  label: string;
+  value: string;
+  severity: string;
+  notes: string;
+  recordedAt: string;
+};
+
+export type ClientCareNoteEntry = {
+  id: string;
+  title: string;
+  body: string;
+  providerName: string;
+  notedAt: string;
+};
+
+export type ClientTreatmentPlanEntry = {
+  id: string;
+  title: string;
+  description: string;
+  status: string;
+  dueAt: string;
+};
+
+export type ClientFollowUpReminderEntry = {
+  id: string;
+  title: string;
+  channel: string;
+  status: string;
+  remindAt: string;
+  notes: string;
 };
 
 export type ClientRecord = {
@@ -100,6 +148,10 @@ export type ClientRecord = {
   documents: ClientDocumentEntry[];
   payments: ClientPaymentEntry[];
   messages: ClientMessageEntry[];
+  healthItems: ClientHealthItemEntry[];
+  careNotes: ClientCareNoteEntry[];
+  treatmentPlanItems: ClientTreatmentPlanEntry[];
+  followUpReminders: ClientFollowUpReminderEntry[];
   appointmentStats: {
     completed: number;
     cancelled: number;
@@ -159,8 +211,16 @@ type ClientWithRelations = Client & {
   messages: Pick<Message, "id" | "body" | "direction" | "sentAt">[];
   galleryItems: Pick<ClientGalleryItem, "id" | "type" | "imageUrl" | "caption" | "createdAt">[];
   medications: Pick<ClientMedication, "id" | "name" | "dosage" | "frequency" | "notes" | "isActive" | "createdAt">[];
-  documents: Pick<ClientDocument, "id" | "fileName" | "fileType" | "fileUrl" | "notes" | "createdAt">[];
-  payments: Pick<ClientPayment, "id" | "appointmentId" | "amountCents" | "status" | "description" | "receiptUrl" | "paidAt" | "createdAt">[];
+  documents: Pick<ClientDocument, "id" | "fileName" | "fileType" | "category" | "mimeType" | "fileSize" | "fileUrl" | "storageUrl" | "uploadedBy" | "notes" | "createdAt">[];
+  payments: Pick<ClientPayment, "id" | "appointmentId" | "amountCents" | "status" | "description" | "invoiceNumber" | "receiptNumber" | "paymentMethod" | "billingNote" | "receiptUrl" | "paidAt" | "createdAt">[];
+  healthItems: Pick<ClientHealthItem, "id" | "type" | "label" | "value" | "severity" | "notes" | "recordedAt">[];
+  careNotes: Array<
+    Pick<ClientCareNote, "id" | "title" | "body" | "notedAt"> & {
+      staffMember: { name: string } | null;
+    }
+  >;
+  treatmentPlanItems: Pick<ClientTreatmentPlanItem, "id" | "title" | "description" | "status" | "dueAt">[];
+  followUpReminders: Pick<ClientFollowUpReminder, "id" | "title" | "channel" | "status" | "remindAt" | "notes">[];
   _count?: {
     appointments: number;
   };
@@ -260,6 +320,18 @@ function formatMoney(cents: number) {
   }).format(cents / 100);
 }
 
+function formatFileSize(bytes: number | null) {
+  if (!bytes || bytes <= 0) {
+    return "Size not recorded";
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${Math.max(Math.round(bytes / 1024), 1)} KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function buildAppointments(client: ClientWithRelations): ClientAppointmentEntry[] {
   return client.appointments.map((appointment) => ({
     id: appointment.id,
@@ -288,7 +360,12 @@ async function buildDocuments(client: ClientWithRelations): Promise<ClientDocume
       id: document.id,
       fileName: document.fileName,
       fileType: document.fileType,
-      fileUrl: await resolveMediaDisplayUrl(document.fileUrl),
+      category: document.category ?? document.fileType,
+      mimeType: document.mimeType ?? "",
+      fileSize: formatFileSize(document.fileSize ?? null),
+      fileUrl: await resolveMediaDisplayUrl(document.storageUrl ?? document.fileUrl),
+      storageUrl: document.storageUrl ?? document.fileUrl ?? "",
+      uploadedBy: document.uploadedBy ?? "Workspace staff",
       notes: document.notes ?? "No notes.",
       createdAt: format(document.createdAt, "MMM d, yyyy"),
     }))
@@ -303,9 +380,60 @@ function buildPayments(client: ClientWithRelations): ClientPaymentEntry[] {
     amountDisplay: formatMoney(payment.amountCents),
     status: payment.status,
     description: payment.description ?? "Payment record",
+    invoiceNumber: payment.invoiceNumber ?? "",
+    receiptNumber: payment.receiptNumber ?? "",
+    paymentMethod: payment.paymentMethod ?? "Manual entry",
+    billingNote: payment.billingNote ?? "",
     receiptUrl: payment.receiptUrl ?? "",
     paidAt: payment.paidAt ? format(payment.paidAt, "MMM d, yyyy") : "Not paid yet",
     createdAt: format(payment.createdAt, "MMM d, yyyy"),
+  }));
+}
+
+function buildHealthItems(client: ClientWithRelations): ClientHealthItemEntry[] {
+  return client.healthItems.map((item) => ({
+    id: item.id,
+    type: item.type,
+    label: item.label,
+    value: item.value ?? "",
+    severity: item.severity ?? "",
+    notes: item.notes ?? "",
+    recordedAt: format(item.recordedAt, "MMM d, yyyy"),
+  }));
+}
+
+function buildCareNotes(client: ClientWithRelations): ClientCareNoteEntry[] {
+  return client.careNotes.map((note) => ({
+    id: note.id,
+    title: note.title ?? "Provider note",
+    body: note.body,
+    providerName: note.staffMember?.name ?? "Workspace staff",
+    notedAt: format(note.notedAt, "MMM d, yyyy"),
+  }));
+}
+
+function buildTreatmentPlanItems(
+  client: ClientWithRelations
+): ClientTreatmentPlanEntry[] {
+  return client.treatmentPlanItems.map((item) => ({
+    id: item.id,
+    title: item.title,
+    description: item.description ?? "",
+    status: item.status,
+    dueAt: item.dueAt ? format(item.dueAt, "MMM d, yyyy") : "TBD",
+  }));
+}
+
+function buildFollowUpReminders(
+  client: ClientWithRelations
+): ClientFollowUpReminderEntry[] {
+  return client.followUpReminders.map((reminder) => ({
+    id: reminder.id,
+    title: reminder.title,
+    channel: reminder.channel,
+    status: reminder.status,
+    remindAt: format(reminder.remindAt, "MMM d, yyyy"),
+    notes: reminder.notes ?? "",
   }));
 }
 
@@ -373,6 +501,10 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
     documents: await buildDocuments(client),
     payments: buildPayments(client),
     messages: buildMessages(client),
+    healthItems: buildHealthItems(client),
+    careNotes: buildCareNotes(client),
+    treatmentPlanItems: buildTreatmentPlanItems(client),
+    followUpReminders: buildFollowUpReminders(client),
     appointmentStats: {
       completed,
       cancelled,

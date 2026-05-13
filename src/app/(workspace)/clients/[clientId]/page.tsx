@@ -79,7 +79,12 @@ export default async function ClientDetailsRoute({
           id: true,
           fileName: true,
           fileType: true,
+          category: true,
+          mimeType: true,
+          fileSize: true,
           fileUrl: true,
+          storageUrl: true,
+          uploadedBy: true,
           notes: true,
           createdAt: true,
         },
@@ -95,6 +100,10 @@ export default async function ClientDetailsRoute({
           amountCents: true,
           status: true,
           description: true,
+          invoiceNumber: true,
+          receiptNumber: true,
+          paymentMethod: true,
+          billingNote: true,
           receiptUrl: true,
           paidAt: true,
           createdAt: true,
@@ -103,6 +112,70 @@ export default async function ClientDetailsRoute({
           createdAt: "desc",
         },
         take: 60,
+      },
+      healthItems: {
+        select: {
+          id: true,
+          type: true,
+          label: true,
+          value: true,
+          severity: true,
+          notes: true,
+          recordedAt: true,
+        },
+        orderBy: {
+          recordedAt: "desc",
+        },
+        take: 80,
+      },
+      careNotes: {
+        select: {
+          id: true,
+          title: true,
+          body: true,
+          notedAt: true,
+          staffMember: {
+            select: {
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          notedAt: "desc",
+        },
+        take: 50,
+      },
+      treatmentPlanItems: {
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          status: true,
+          dueAt: true,
+        },
+        orderBy: [
+          {
+            dueAt: "asc",
+          },
+          {
+            createdAt: "desc",
+          },
+        ],
+        take: 50,
+      },
+      followUpReminders: {
+        select: {
+          id: true,
+          title: true,
+          channel: true,
+          status: true,
+          remindAt: true,
+          notes: true,
+        },
+        orderBy: {
+          remindAt: "asc",
+        },
+        take: 50,
       },
       _count: {
         select: {

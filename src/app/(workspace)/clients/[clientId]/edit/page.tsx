@@ -81,6 +81,11 @@ export default async function EditClientPage({
           fileName: true,
           fileType: true,
           fileUrl: true,
+          category: true,
+          mimeType: true,
+          fileSize: true,
+          storageUrl: true,
+          uploadedBy: true,
           notes: true,
           createdAt: true,
         },
@@ -98,12 +103,51 @@ export default async function EditClientPage({
           description: true,
           receiptUrl: true,
           paidAt: true,
+          invoiceNumber: true,
+          receiptNumber: true,
+          paymentMethod: true,
+          billingNote: true,
           createdAt: true,
         },
         orderBy: {
           createdAt: "desc",
         },
         take: 60,
+      },
+      healthItems: {
+        orderBy: {
+          createdAt: "desc",
+        },
+      },
+      careNotes: {
+        include: {
+          staffMember: {
+            select: {
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          notedAt: "desc",
+        },
+        take: 50,
+      },
+      treatmentPlanItems: {
+        orderBy: [
+          {
+            status: "asc",
+          },
+          {
+            dueAt: "asc",
+          },
+        ],
+        take: 50,
+      },
+      followUpReminders: {
+        orderBy: {
+          remindAt: "asc",
+        },
+        take: 50,
       },
       _count: {
         select: {

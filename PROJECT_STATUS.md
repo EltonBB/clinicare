@@ -48,6 +48,8 @@ The core product direction is customer-first: clinics should not need to underst
 - Workspace navigation performance pass completed: dynamic workspace routes now have an instant loading shell, all sidebar/mobile nav items use client-side prefetched links, workspace auth/business lookups are request-deduped, non-critical maintenance work runs after the response, and inbox/settings data loads are capped for faster page opens.
 - Workspace performance cleanup pass completed: the shared shell no longer blocks navigation on notification preview queries, first-user tour code only loads when needed, Clients and Staff directory pages use lightweight list queries, Settings no longer loads or saves staff records, Calendar loads a bounded appointment window, Inbox polling and lookup data are capped, Dashboard unread messages use an aggregate query, stale drawer-era links were replaced with dedicated detail/edit routes, unused UI wrappers/global providers were removed, and unused dependency packages were pruned.
 - Workspace shell refinement completed: the authenticated app keeps the existing card-based page designs while using a straighter desktop sidebar and top toolbar, a real global search bar that searches clients, appointments, staff, and message conversations, flatter clinic/account identity chips without tinted avatar shadows, and slightly straighter shared card radius across the app.
+- Workspace depth redesign implementation pass completed: dashboard, clients directory, staff, calendar schedule blocks, mobile/global search, inbox deep links, and client detail tabs now use denser screenshot-aligned workspace structures with KPI rows, operational tables, right-side rails, compact panels, and working database-backed patient depth.
+- Prisma schema now includes structured client health records, provider care notes, treatment plan items, client follow-up reminders, staff shifts, and schedule blocks. Client documents now support private PDF/image storage metadata, and client payments now support manual ledger metadata such as invoice number, receipt number, payment method, billing note, and payment date.
 - Public marketing landing page at `/` now uses a simplified animated product-led design inspired by the Dribbble reference, with the default Vela blue accent color, a large hero, floating clinic workspace mockups on desktop, a cleaner stacked mobile preview, compact workflow blocks, AI reporting, privacy messaging, and signup/login CTAs into the auth flow.
 - Public marketing site expanded from a single landing page into a five-page static route structure: `/`, `/product`, `/pricing`, `/about`, and `/contact`. The pages now share a reusable marketing shell, Vela-blue product-led design system, responsive header/footer, richer Vela workspace screenshot-style product media, pricing cards, About/legal links, and contact/demo form layout.
 - Public marketing site redesigned again with the supplied Vela brand-scene assets instead of flat screenshots or generated replacements. The Home/Product pages now use a Cal.com-inspired minimal hero, large branded monitor visuals, workflow steps, feature image sections for scheduling, clients, and reports, stronger CTAs, improved motion, and mobile-safe responsive structure.
@@ -75,6 +77,10 @@ The core product direction is customer-first: clinics should not need to underst
 - Marketing pages use supplied Vela-styled product scene imagery with sample names and data so prospects see realistic Vela workflows without exposing live customer information.
 - Patient detail tabs now align correctly above the Overview, Appointments, Medical Info, Documents, Messages, and Payments content instead of splitting the tabs and content into separate columns.
 - The top workspace toolbar now includes an authenticated global search API at `/api/search`; the desktop search box returns app records without exposing cross-clinic data.
+- Global search now supports keyboard result selection, client-side navigation, mobile search access, and message-result deep links to the matching inbox conversation.
+- Patient records can now store structured health items, provider notes, treatment plan rows, follow-up reminders, private PDF/image documents, and manual ledger entries from the client details page.
+- Calendar schedule blocks are stored in the database through server actions and rendered into calendar day/week/month views as blocked time.
+- Staff shift server actions now exist for business-scoped shift create/update/delete; the Staff page currently derives the visible on-duty rail from current staff status/time tracking.
 
 ## Known Issues / Blockers
 
@@ -86,13 +92,15 @@ The core product direction is customer-first: clinics should not need to underst
 - Supabase database tables use RLS with no public table policies; app data access is intentionally server-side through Prisma. Newly added patient medication, document, and payment tables also have RLS enabled.
 - Dependency audit is currently clean after updating Next.js to 16.2.6, refreshing transitive dependencies, and overriding PostCSS to a patched version.
 - Billing/plan enforcement is partially represented in UI; full paid upgrade/payment flow still needs production implementation.
+- The workspace depth Prisma schema has been applied to the configured Supabase Postgres database with `npx prisma db push`, and the RLS enablement SQL has been run for the new public application tables.
+- Browser-render verification of authenticated workspace pages was limited by the Playwright context redirecting to `/login` without a signed-in workspace session. Static/type/build verification passed; signed-in visual QA should be run with a real test account after the database schema is applied.
 
 ## Next Priorities
 
-1. Stabilize and test the full first-user flow on a clean account: signup, confirm email, onboarding, dashboard, tour, client, booking, staff, reports.
-2. Verify completed appointment automation end-to-end: completed appointments leave active calendar views and appear in staff/client records.
-3. Add full PDF/document binary upload support if clinics need files beyond image/scan uploads.
-4. Smoke-test signed logo/gallery upload, display, logo replacement cleanup, and client-delete media cleanup against the live production app.
+1. Run signed-in desktop/mobile visual QA against dashboard, calendar, reports, staff, clients, inbox, settings, create/edit forms, and all client detail tabs with a real test workspace.
+2. Stabilize and test the full first-user flow on a clean account: signup, confirm email, onboarding, dashboard, tour, client, booking, staff, reports.
+3. Verify completed appointment automation end-to-end: completed appointments leave active calendar views and appear in staff/client records.
+4. Smoke-test private signed logo/gallery/document upload, display, download/preview, replacement cleanup, and client-delete media cleanup against the live production app.
 5. Continue hardening reports with any launch-specific wording, prompt evaluation, or plan-gating requirements that come out of user testing.
 6. Continue WhatsApp provider work only after business/provider requirements are ready; keep Settings flow customer-friendly in the meantime.
 7. Implement real billing/plan upgrade flow when pricing and payment provider decisions are final.
@@ -103,6 +111,7 @@ The core product direction is customer-first: clinics should not need to underst
 - `npm run lint`
 - `npm audit --omit=dev`
 - `npm run build`
+- Signed-in browser visual QA for workspace depth redesign pages after schema apply.
 - New account signup and email confirmation.
 - Onboarding from owner step through completion.
 - Dashboard loads with correct local date and selected widgets.
@@ -126,4 +135,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Added the focused workspace shell/search update while preserving the deployed dashboard card design: desktop sidebar and toolbar are straighter, the top search queries clients, appointments, staff, and message conversations through authenticated workspace-scoped `/api/search`, clinic/account avatar tinting was removed, and shared card radius was reduced. Verified with `npm run lint` and `npm run build`. Deployment should continue through GitHub push only, not direct Vercel CLI deploy.
+- Implemented the workspace depth redesign pass across schema, client records, documents/payments, search, dashboard, calendar blocks, clients directory, and staff surfaces. Applied the Prisma schema to the configured Supabase Postgres database with `npx prisma db push`, ran the RLS enablement SQL, and verified with `npm run lint`, `npm audit --omit=dev`, and `npm run build`; Playwright route access redirected to login without an authenticated test session, so signed-in visual QA remains the next required verification step. Deployment should continue through GitHub push only, not direct Vercel CLI deploy.

@@ -126,7 +126,7 @@ export async function GET(request: Request) {
       id: `appointment-${appointment.id}`,
       type: "Appointment",
       title: appointment.title,
-      detail: `${appointment.client.name} · ${formatDate(appointment.startAt)} · ${appointment.status.toLowerCase()}`,
+      detail: `${appointment.client.name} - ${formatDate(appointment.startAt)} - ${appointment.status.toLowerCase()}`,
       href: `/calendar/${appointment.id}/edit`,
     })),
     ...staff.map((member) => ({
@@ -140,8 +140,8 @@ export async function GET(request: Request) {
       id: `conversation-${conversation.id}`,
       type: "Message",
       title: conversation.contactName,
-      detail: `${conversation.phoneNumber}${conversation.unreadCount > 0 ? ` · ${conversation.unreadCount} unread` : ""}`,
-      href: "/inbox",
+      detail: `${conversation.phoneNumber}${conversation.unreadCount > 0 ? ` - ${conversation.unreadCount} unread` : ""}`,
+      href: `/inbox?conversation=${conversation.id}`,
     })),
   ].slice(0, 12);
 

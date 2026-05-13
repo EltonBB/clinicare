@@ -2,7 +2,7 @@ import {
   differenceInMinutes,
   format,
 } from "date-fns";
-import type { Appointment, BusinessHours, Client, StaffMember } from "@prisma/client";
+import type { Appointment, BusinessHours, Client, ScheduleBlock, StaffMember } from "@prisma/client";
 
 export type CalendarAppointmentStatus = "confirmed" | "pending" | "cancelled" | "completed";
 export type CalendarAppointmentTone = "primary" | "secondary" | "muted";
@@ -22,6 +22,15 @@ export type CalendarAppointment = {
   tone: CalendarAppointmentTone;
 };
 
+export type CalendarScheduleBlock = {
+  id: string;
+  title: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  notes: string;
+};
+
 export type CalendarSelectOption = {
   id: string;
   name: string;
@@ -38,6 +47,7 @@ export type CalendarBusinessHours = {
 export type CalendarViewModel = {
   initialDate: string;
   appointments: CalendarAppointment[];
+  scheduleBlocks: CalendarScheduleBlock[];
   clients: CalendarSelectOption[];
   staffMembers: CalendarSelectOption[];
   businessHours: CalendarBusinessHours[];
@@ -47,6 +57,8 @@ type AppointmentWithRelations = Appointment & {
   client: Pick<Client, "id" | "name">;
   staffMember: Pick<StaffMember, "id" | "name"> | null;
 };
+
+type ScheduleBlockWithRelations = ScheduleBlock;
 
 function toCalendarStatus(status: Appointment["status"]): CalendarAppointmentStatus {
   if (status === "CANCELLED") {
@@ -98,13 +110,22 @@ export function toPrismaAppointmentStatus(status: CalendarAppointmentStatus) {
 
 export function buildCalendarViewFromRecords(args: {
   appointments: AppointmentWithRelations[];
+  scheduleBlocks?: ScheduleBlockWithRelations[];
   clients: Pick<Client, "id" | "name" | "phone">[];
   staffMembers: Pick<StaffMember, "id" | "name">[];
   businessHours: Pick<BusinessHours, "weekday" | "isOpen" | "startTime" | "endTime">[];
   ownerName: string;
   initialDate?: string;
 }): CalendarViewModel {
-  const { appointments, clients, staffMembers, businessHours, ownerName, initialDate } = args;
+  const {
+    appointments,
+    scheduleBlocks = [],
+    clients,
+    staffMembers,
+    businessHours,
+    ownerName,
+    initialDate,
+  } = args;
   const initialDateValue = initialDate ?? format(appointments[0]?.startAt ?? new Date(), "yyyy-MM-dd");
 
   return {
@@ -122,6 +143,14 @@ export function buildCalendarViewFromRecords(args: {
       notes: appointment.notes ?? "",
       status: toCalendarStatus(appointment.status),
       tone: toCalendarTone(appointment.status),
+    })),
+    scheduleBlocks: scheduleBlocks.map((block) => ({
+      id: block.id,
+      title: block.title,
+      date: format(block.startsAt, "yyyy-MM-dd"),
+      startTime: format(block.startsAt, "HH:mm"),
+      endTime: format(block.endsAt, "HH:mm"),
+      notes: block.reason ?? "",
     })),
     clients: clients.map((client) => ({
       id: client.id,

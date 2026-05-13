@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { useDeferredValue, useMemo, useState } from "react";
 import {
+  CalendarPlus2,
   ChevronRight,
+  FileText,
+  MessageSquareText,
   Plus,
   Search,
   UsersRound,
@@ -59,6 +62,9 @@ export function ClientsWorkspace({
   const [filter, setFilter] = useState<"all" | ClientStatus>("all");
   const deferredQuery = useDeferredValue(query);
   const hasClients = clients.length > 0;
+  const activeClients = clients.filter((client) => client.status === "active");
+  const atRiskClients = clients.filter((client) => client.status === "at-risk");
+  const totalVisits = clients.reduce((sum, client) => sum + client.totalVisits, 0);
 
   const filteredClients = useMemo(() => {
     const normalizedQuery = deferredQuery.trim().toLowerCase();
@@ -106,6 +112,13 @@ export function ClientsWorkspace({
         </Link>
       </div>
 
+      <div className="section-reveal grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <ClientMetric icon={UsersRound} label="Total clients" value={clients.length.toString()} helper={`${activeClients.length} active`} />
+        <ClientMetric icon={CalendarPlus2} label="Recorded visits" value={totalVisits.toString()} helper="Across client records" />
+        <ClientMetric icon={MessageSquareText} label="Needs attention" value={atRiskClients.length.toString()} helper="At-risk status" />
+        <ClientMetric icon={FileText} label="Recent updates" value={clients.slice(0, 5).length.toString()} helper="Latest records ready" />
+      </div>
+
       <div className="section-reveal flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="relative w-full max-w-3xl">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -134,7 +147,8 @@ export function ClientsWorkspace({
         </div>
       </div>
 
-      <section className="section-reveal overflow-hidden rounded-[1.2rem] border border-border/80 bg-white/74 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm">
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <section className="section-reveal overflow-hidden rounded-[1.2rem] border border-border/80 bg-white/94 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm">
         <div className="hidden grid-cols-[minmax(260px,1.8fr)_180px_130px_130px_120px] border-b border-border/80 px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground lg:grid">
           <span>Name</span>
           <span>Last visit</span>
@@ -184,6 +198,9 @@ export function ClientsWorkspace({
                   </Avatar>
                   <div className="min-w-0">
                     <p className="truncate font-semibold text-foreground">{client.name}</p>
+                    <p className="truncate text-sm text-muted-foreground">
+                      {client.phone || client.email || "No contact added"}
+                    </p>
                   </div>
                 </Link>
                 <p className="text-sm text-muted-foreground lg:block">
@@ -215,6 +232,110 @@ export function ClientsWorkspace({
           )}
         </div>
       </section>
+      <aside className="section-reveal-delayed space-y-5">
+        <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+          <h2 className="text-base font-semibold text-foreground">Client segments</h2>
+          <div className="mt-4 space-y-3 text-sm">
+            <SegmentRow label="Active" value={activeClients.length} tone="primary" />
+            <SegmentRow label="At risk" value={atRiskClients.length} tone="danger" />
+            <SegmentRow label="Inactive" value={clients.filter((client) => client.status === "inactive").length} />
+            <SegmentRow label="Archived" value={clients.filter((client) => client.status === "archived").length} />
+          </div>
+        </section>
+
+        <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+          <h2 className="text-base font-semibold text-foreground">Quick actions</h2>
+          <div className="mt-4 grid gap-2">
+            <Link href="/clients/new" className={cn(buttonVariants({ size: "lg" }), "h-11 rounded-[0.85rem]")}>
+              <Plus className="size-4" />
+              New client
+            </Link>
+            <Link href="/calendar/new" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 rounded-[0.85rem] bg-white")}>
+              <CalendarPlus2 className="size-4" />
+              Book appointment
+            </Link>
+            <Link href="/inbox" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 rounded-[0.85rem] bg-white")}>
+              <MessageSquareText className="size-4" />
+              Open inbox
+            </Link>
+          </div>
+        </section>
+
+        <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+          <h2 className="text-base font-semibold text-foreground">Recently updated</h2>
+          <div className="mt-4 space-y-3">
+            {clients.slice(0, 5).map((client) => (
+              <Link key={client.id} href={`/clients/${client.id}`} className="flex items-center gap-3 text-sm">
+                <Avatar size="lg">
+                  <AvatarFallback>{clientInitials(client.name)}</AvatarFallback>
+                </Avatar>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold text-foreground">{client.name}</span>
+                  <span className="text-xs text-muted-foreground">{client.lastVisit}</span>
+                </span>
+              </Link>
+            ))}
+            {clients.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No client records yet.</p>
+            ) : null}
+          </div>
+        </section>
+      </aside>
+      </div>
+    </div>
+  );
+}
+
+function ClientMetric({
+  icon: Icon,
+  label,
+  value,
+  helper,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  helper: string;
+}) {
+  return (
+    <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+      <div className="flex items-start gap-4">
+        <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <Icon className="size-5" />
+        </span>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            {label}
+          </p>
+          <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{value}</p>
+          <p className="mt-2 text-xs text-muted-foreground">{helper}</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SegmentRow({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: number;
+  tone?: "default" | "primary" | "danger";
+}) {
+  return (
+    <div className="flex items-center justify-between border-b border-border/70 pb-3 last:border-b-0 last:pb-0">
+      <span className="text-muted-foreground">{label}</span>
+      <span
+        className={cn(
+          "font-semibold text-foreground",
+          tone === "primary" && "text-primary",
+          tone === "danger" && "text-destructive"
+        )}
+      >
+        {value}
+      </span>
     </div>
   );
 }

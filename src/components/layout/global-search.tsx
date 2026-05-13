@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   CalendarDays,
@@ -29,10 +30,12 @@ const resultIcons = {
 };
 
 export function GlobalSearch({ className }: { className?: string }) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -76,6 +79,7 @@ export function GlobalSearch({ className }: { className?: string }) {
 
         const payload = (await response.json()) as { results?: SearchResult[] };
         setResults(payload.results ?? []);
+        setActiveIndex(0);
         setIsOpen(true);
       } catch {
         if (!controller.signal.aborted) {
@@ -98,6 +102,12 @@ export function GlobalSearch({ className }: { className?: string }) {
     setIsOpen(false);
     setQuery("");
     setResults([]);
+    setActiveIndex(0);
+  }
+
+  function navigateToResult(result: SearchResult) {
+    closeSearch();
+    router.push(result.href);
   }
 
   return (
@@ -112,8 +122,19 @@ export function GlobalSearch({ className }: { className?: string }) {
           }}
           onFocus={() => setIsOpen(true)}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && results[0]) {
-              window.location.href = results[0].href;
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              setActiveIndex((current) => Math.min(current + 1, results.length - 1));
+            }
+
+            if (event.key === "ArrowUp") {
+              event.preventDefault();
+              setActiveIndex((current) => Math.max(current - 1, 0));
+            }
+
+            if (event.key === "Enter" && results[activeIndex]) {
+              event.preventDefault();
+              navigateToResult(results[activeIndex]);
             }
 
             if (event.key === "Escape") {
@@ -121,6 +142,11 @@ export function GlobalSearch({ className }: { className?: string }) {
             }
           }}
           placeholder="Search clients, appointments, staff, messages..."
+          aria-label="Search clients, appointments, staff, and messages"
+          aria-controls="global-search-results"
+          aria-activedescendant={
+            isOpen && results[activeIndex] ? `global-search-result-${results[activeIndex].id}` : undefined
+          }
           className="h-full min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
           type="search"
         />
@@ -132,15 +158,22 @@ export function GlobalSearch({ className }: { className?: string }) {
       {isOpen && query.trim().length >= 2 ? (
         <div className="absolute left-0 right-0 top-13 z-50 overflow-hidden rounded-[1rem] border border-border bg-white shadow-[0_20px_50px_rgba(20,32,51,0.12)]">
           {results.length > 0 ? (
-            <div className="max-h-[420px] overflow-y-auto p-2">
-              {results.map((result) => {
+            <div id="global-search-results" className="max-h-[420px] overflow-y-auto p-2" role="listbox">
+              {results.map((result, index) => {
                 const Icon = resultIcons[result.type];
 
                 return (
                   <Link
                     key={result.id}
+                    id={`global-search-result-${result.id}`}
                     href={result.href}
-                    className="flex items-start gap-3 rounded-[0.8rem] px-3 py-3 transition-colors hover:bg-primary/8"
+                    role="option"
+                    aria-selected={index === activeIndex}
+                    className={cn(
+                      "flex items-start gap-3 rounded-[0.8rem] px-3 py-3 transition-colors hover:bg-primary/8",
+                      index === activeIndex && "bg-primary/8"
+                    )}
+                    onMouseEnter={() => setActiveIndex(index)}
                     onClick={closeSearch}
                   >
                     <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-[0.75rem] bg-primary/10 text-primary">

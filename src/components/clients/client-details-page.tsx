@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   CalendarPlus2,
   CreditCard,
+  Download,
   FileText,
   HeartPulse,
   ImagePlus,
@@ -20,8 +21,13 @@ import {
 } from "lucide-react";
 
 import {
+  addClientCareNoteAction,
   addClientDocumentAction,
+  addClientFollowUpReminderAction,
+  addClientHealthItemAction,
   addClientMedicationAction,
+  addClientPaymentAction,
+  addClientTreatmentPlanItemAction,
   archiveClientAction,
 } from "@/app/(workspace)/clients/actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -29,7 +35,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { uploadWorkspaceImage } from "@/lib/media-storage-client";
+import { uploadWorkspaceDocument } from "@/lib/media-storage-client";
 import { cn } from "@/lib/utils";
 import type { ClientRecord, ClientStatus } from "@/lib/clients";
 
@@ -115,9 +121,47 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   });
   const [documentDraft, setDocumentDraft] = useState({
     fileName: "",
-    fileType: "Image / Scan",
+    fileType: "Medical",
     fileUrl: "",
+    storageUrl: "",
+    mimeType: "",
+    fileSize: 0,
     notes: "",
+  });
+  const [healthDraft, setHealthDraft] = useState({
+    type: "Allergy",
+    label: "",
+    value: "",
+    severity: "",
+    notes: "",
+  });
+  const [careNoteDraft, setCareNoteDraft] = useState({
+    title: "",
+    body: "",
+  });
+  const [treatmentDraft, setTreatmentDraft] = useState({
+    title: "",
+    description: "",
+    status: "Pending",
+    dueAt: "",
+  });
+  const [reminderDraft, setReminderDraft] = useState({
+    title: "",
+    remindAt: "",
+    channel: "WhatsApp",
+    status: "Scheduled",
+    notes: "",
+  });
+  const [paymentDraft, setPaymentDraft] = useState({
+    amount: "",
+    status: "Paid",
+    description: "",
+    receiptUrl: "",
+    paidAt: "",
+    invoiceNumber: "",
+    receiptNumber: "",
+    paymentMethod: "Manual",
+    billingNote: "",
   });
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
@@ -138,6 +182,16 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   const latestAppointment = client.appointments[0];
   const currentMedications = client.medications.filter((medication) => medication.isActive);
   const latestPayment = client.payments[0];
+  const allergies = client.healthItems.filter((item) =>
+    item.type.toLowerCase().includes("allerg")
+  );
+  const alerts = client.healthItems.filter((item) =>
+    item.type.toLowerCase().includes("alert")
+  );
+  const careFacts = client.healthItems.filter(
+    (item) => !allergies.some((allergy) => allergy.id === item.id) &&
+      !alerts.some((alert) => alert.id === item.id)
+  );
 
   function archiveClient() {
     startSaving(async () => {
@@ -197,8 +251,11 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
       setClient(result.client);
       setDocumentDraft({
         fileName: "",
-        fileType: "Image / Scan",
+        fileType: "Medical",
         fileUrl: "",
+        storageUrl: "",
+        mimeType: "",
+        fileSize: 0,
         notes: "",
       });
       setErrorMessage("");
@@ -214,15 +271,18 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
     setIsGalleryUploading(true);
 
     try {
-      const uploadedImage = await uploadWorkspaceImage(file, {
-        folder: "client-gallery",
-        maxBytes: 5_000_000,
+      const uploadedDocument = await uploadWorkspaceDocument(file, {
+        folder: "client-documents",
+        maxBytes: 10_000_000,
       });
       setDocumentDraft((current) => ({
         ...current,
         fileName: current.fileName || file.name,
-        fileType: "Image / Scan",
-        fileUrl: uploadedImage.storageUrl,
+        fileType: file.type === "application/pdf" ? "Document" : "Image / Scan",
+        fileUrl: uploadedDocument.storageUrl,
+        storageUrl: uploadedDocument.storageUrl,
+        mimeType: uploadedDocument.mimeType,
+        fileSize: uploadedDocument.fileSize,
       }));
       setErrorMessage("");
       setStatusMessage("File uploaded. Add it to save it to this patient.");
@@ -232,6 +292,133 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
     } finally {
       setIsGalleryUploading(false);
     }
+  }
+
+  function addHealthItem() {
+    startSaving(async () => {
+      const result = await addClientHealthItemAction({
+        clientId: client.id,
+        ...healthDraft,
+      });
+
+      if (!result.ok || !result.client) {
+        setErrorMessage(result.error ?? "We couldn't add this health item.");
+        setStatusMessage("");
+        return;
+      }
+
+      setClient(result.client);
+      setHealthDraft({
+        type: "Allergy",
+        label: "",
+        value: "",
+        severity: "",
+        notes: "",
+      });
+      setErrorMessage("");
+      setStatusMessage("Health item added.");
+    });
+  }
+
+  function addCareNote() {
+    startSaving(async () => {
+      const result = await addClientCareNoteAction({
+        clientId: client.id,
+        ...careNoteDraft,
+      });
+
+      if (!result.ok || !result.client) {
+        setErrorMessage(result.error ?? "We couldn't add this care note.");
+        setStatusMessage("");
+        return;
+      }
+
+      setClient(result.client);
+      setCareNoteDraft({ title: "", body: "" });
+      setErrorMessage("");
+      setStatusMessage("Care note added.");
+    });
+  }
+
+  function addTreatmentItem() {
+    startSaving(async () => {
+      const result = await addClientTreatmentPlanItemAction({
+        clientId: client.id,
+        ...treatmentDraft,
+      });
+
+      if (!result.ok || !result.client) {
+        setErrorMessage(result.error ?? "We couldn't add this treatment item.");
+        setStatusMessage("");
+        return;
+      }
+
+      setClient(result.client);
+      setTreatmentDraft({
+        title: "",
+        description: "",
+        status: "Pending",
+        dueAt: "",
+      });
+      setErrorMessage("");
+      setStatusMessage("Treatment plan item added.");
+    });
+  }
+
+  function addFollowUpReminder() {
+    startSaving(async () => {
+      const result = await addClientFollowUpReminderAction({
+        clientId: client.id,
+        ...reminderDraft,
+      });
+
+      if (!result.ok || !result.client) {
+        setErrorMessage(result.error ?? "We couldn't add this reminder.");
+        setStatusMessage("");
+        return;
+      }
+
+      setClient(result.client);
+      setReminderDraft({
+        title: "",
+        remindAt: "",
+        channel: "WhatsApp",
+        status: "Scheduled",
+        notes: "",
+      });
+      setErrorMessage("");
+      setStatusMessage("Follow-up reminder added.");
+    });
+  }
+
+  function addPayment() {
+    startSaving(async () => {
+      const result = await addClientPaymentAction({
+        clientId: client.id,
+        ...paymentDraft,
+      });
+
+      if (!result.ok || !result.client) {
+        setErrorMessage(result.error ?? "We couldn't add this payment.");
+        setStatusMessage("");
+        return;
+      }
+
+      setClient(result.client);
+      setPaymentDraft({
+        amount: "",
+        status: "Paid",
+        description: "",
+        receiptUrl: "",
+        paidAt: "",
+        invoiceNumber: "",
+        receiptNumber: "",
+        paymentMethod: "Manual",
+        billingNote: "",
+      });
+      setErrorMessage("");
+      setStatusMessage("Payment ledger entry added.");
+    });
   }
 
   return (
@@ -425,7 +612,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                     <div key={medication.id} className="rounded-[0.95rem] border border-border/80 bg-white/76 px-4 py-3">
                       <p className="font-semibold text-foreground">{medication.name}</p>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        {medication.dosage} · {medication.frequency}
+                        {medication.dosage} - {medication.frequency}
                       </p>
                     </div>
                   ))
@@ -550,6 +737,251 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               )}
             </div>
           </section>
+
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+              <h2 className="text-lg font-semibold text-foreground">Structured health record</h2>
+              <div className="mt-4 grid gap-3 lg:grid-cols-[160px_minmax(0,1fr)_160px]">
+                <NativeSelect
+                  value={healthDraft.type}
+                  options={["Allergy", "Medical alert", "Chronic condition", "Vital detail", "Care fact"]}
+                  onChange={(value) =>
+                    setHealthDraft((current) => ({ ...current, type: value }))
+                  }
+                />
+                <Input
+                  value={healthDraft.label}
+                  onChange={(event) =>
+                    setHealthDraft((current) => ({ ...current, label: event.target.value }))
+                  }
+                  placeholder="Label, condition, or vital"
+                  className="h-11 rounded-[0.9rem] bg-white/84"
+                />
+                <Input
+                  value={healthDraft.value}
+                  onChange={(event) =>
+                    setHealthDraft((current) => ({ ...current, value: event.target.value }))
+                  }
+                  placeholder="Value"
+                  className="h-11 rounded-[0.9rem] bg-white/84"
+                />
+                <Input
+                  value={healthDraft.severity}
+                  onChange={(event) =>
+                    setHealthDraft((current) => ({ ...current, severity: event.target.value }))
+                  }
+                  placeholder="Severity"
+                  className="h-11 rounded-[0.9rem] bg-white/84"
+                />
+                <Input
+                  value={healthDraft.notes}
+                  onChange={(event) =>
+                    setHealthDraft((current) => ({ ...current, notes: event.target.value }))
+                  }
+                  placeholder="Notes"
+                  className="h-11 rounded-[0.9rem] bg-white/84"
+                />
+                <Button
+                  onClick={addHealthItem}
+                  disabled={isPending || !healthDraft.label.trim()}
+                  className="h-11 rounded-[0.9rem]"
+                >
+                  Add health item
+                </Button>
+              </div>
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                {client.healthItems.length > 0 ? (
+                  client.healthItems.map((item) => (
+                    <div key={item.id} className="rounded-[0.95rem] border border-border/80 bg-white/78 px-4 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                            {item.type}
+                          </p>
+                          <p className="mt-1 font-semibold text-foreground">{item.label}</p>
+                        </div>
+                        {item.severity ? (
+                          <span className="rounded-full bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground">
+                            {item.severity}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        {[item.value, item.notes].filter(Boolean).join(" - ") || "No extra detail."}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyPanel icon={HeartPulse} title="No structured health items" text="Add allergies, alerts, conditions, vitals, or care facts." />
+                )}
+              </div>
+            </section>
+
+            <aside className="space-y-4">
+              <section className="rounded-[1.15rem] border border-border/80 bg-primary/5 p-5">
+                <h2 className="text-lg font-semibold text-foreground">Care overview</h2>
+                <dl className="mt-4 space-y-3">
+                  <OverviewLine label="Preferred contact" value={client.details.preferredChannel} />
+                  <OverviewLine label="Assigned provider" value={client.details.assignedStaff} />
+                  <OverviewLine label="Allergies" value={allergies.length ? `${allergies.length} recorded` : client.medical.allergies} />
+                  <OverviewLine label="Alerts" value={alerts.length ? `${alerts.length} recorded` : client.medical.importantHealthNotes} />
+                  <OverviewLine label="Care facts" value={`${careFacts.length} recorded`} />
+                </dl>
+              </section>
+
+              <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+                <h2 className="text-lg font-semibold text-foreground">Follow-up reminders</h2>
+                <div className="mt-4 grid gap-3">
+                  <Input
+                    value={reminderDraft.title}
+                    onChange={(event) =>
+                      setReminderDraft((current) => ({ ...current, title: event.target.value }))
+                    }
+                    placeholder="Reminder title"
+                    className="h-11 rounded-[0.9rem] bg-white/84"
+                  />
+                  <Input
+                    value={reminderDraft.remindAt}
+                    onChange={(event) =>
+                      setReminderDraft((current) => ({ ...current, remindAt: event.target.value }))
+                    }
+                    type="date"
+                    className="h-11 rounded-[0.9rem] bg-white/84"
+                  />
+                  <Button
+                    onClick={addFollowUpReminder}
+                    disabled={isPending || !reminderDraft.title.trim() || !reminderDraft.remindAt}
+                    className="h-11 rounded-[0.9rem]"
+                  >
+                    Add reminder
+                  </Button>
+                </div>
+                <div className="mt-4 space-y-3">
+                  {client.followUpReminders.slice(0, 4).map((reminder) => (
+                    <div key={reminder.id} className="rounded-[0.9rem] border border-border/80 bg-white/78 px-3 py-3">
+                      <p className="font-semibold text-foreground">{reminder.title}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {reminder.remindAt} - {reminder.channel} - {reminder.status}
+                      </p>
+                    </div>
+                  ))}
+                  {client.followUpReminders.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No follow-up reminders yet.</p>
+                  ) : null}
+                </div>
+              </section>
+            </aside>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-2">
+            <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+              <h2 className="text-lg font-semibold text-foreground">Treatment plan summary</h2>
+              <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
+                <Input
+                  value={treatmentDraft.title}
+                  onChange={(event) =>
+                    setTreatmentDraft((current) => ({ ...current, title: event.target.value }))
+                  }
+                  placeholder="Plan item"
+                  className="h-11 rounded-[0.9rem] bg-white/84"
+                />
+                <NativeSelect
+                  value={treatmentDraft.status}
+                  options={["Pending", "Upcoming", "Completed", "On hold"]}
+                  onChange={(value) =>
+                    setTreatmentDraft((current) => ({ ...current, status: value }))
+                  }
+                />
+                <Textarea
+                  value={treatmentDraft.description}
+                  onChange={(event) =>
+                    setTreatmentDraft((current) => ({ ...current, description: event.target.value }))
+                  }
+                  placeholder="Plan details"
+                  className="min-h-20 rounded-[0.9rem] bg-white/84 px-3 py-3"
+                />
+                <div className="grid gap-3">
+                  <Input
+                    value={treatmentDraft.dueAt}
+                    onChange={(event) =>
+                      setTreatmentDraft((current) => ({ ...current, dueAt: event.target.value }))
+                    }
+                    type="date"
+                    className="h-11 rounded-[0.9rem] bg-white/84"
+                  />
+                  <Button
+                    onClick={addTreatmentItem}
+                    disabled={isPending || !treatmentDraft.title.trim()}
+                    className="h-11 rounded-[0.9rem]"
+                  >
+                    Add item
+                  </Button>
+                </div>
+              </div>
+              <div className="mt-5 space-y-3">
+                {client.treatmentPlanItems.length > 0 ? (
+                  client.treatmentPlanItems.map((item) => (
+                    <div key={item.id} className="rounded-[0.95rem] border border-border/80 bg-white/78 px-4 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="font-semibold text-foreground">{item.title}</p>
+                        <span className="rounded-full bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground">
+                          {item.status}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">{item.description || "No details."}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Due: {item.dueAt}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">No structured treatment plan items yet.</p>
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+              <h2 className="text-lg font-semibold text-foreground">Notes from provider</h2>
+              <div className="mt-4 grid gap-3">
+                <Input
+                  value={careNoteDraft.title}
+                  onChange={(event) =>
+                    setCareNoteDraft((current) => ({ ...current, title: event.target.value }))
+                  }
+                  placeholder="Note title"
+                  className="h-11 rounded-[0.9rem] bg-white/84"
+                />
+                <Textarea
+                  value={careNoteDraft.body}
+                  onChange={(event) =>
+                    setCareNoteDraft((current) => ({ ...current, body: event.target.value }))
+                  }
+                  placeholder="Write a provider note"
+                  className="min-h-24 rounded-[0.9rem] bg-white/84 px-3 py-3"
+                />
+                <Button
+                  onClick={addCareNote}
+                  disabled={isPending || !careNoteDraft.body.trim()}
+                  className="h-11 rounded-[0.9rem]"
+                >
+                  Add note
+                </Button>
+              </div>
+              <div className="mt-5 space-y-3">
+                {client.careNotes.length > 0 ? (
+                  client.careNotes.map((note) => (
+                    <div key={note.id} className="rounded-[0.95rem] border border-border/80 bg-white/78 px-4 py-3">
+                      <p className="font-semibold text-foreground">{note.title}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {note.notedAt} - {note.providerName}
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">{note.body}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">No provider notes yet.</p>
+                )}
+              </div>
+            </section>
+          </div>
         </TabsContent>
 
         <TabsContent value="documents" className="space-y-4">
@@ -562,12 +994,12 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 <h2 className="text-lg font-semibold text-foreground">Documents & images</h2>
                 <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
                   Use simple upload types: ID, Consent, Medical History, Report, Image / Scan, and Other.
-                  Image/scan uploads and document records are live now. PDF binary upload can be added next.
+                  PDF, image, and scan uploads are stored privately and opened with signed links.
                 </p>
               </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              {["ID", "Consent", "Medical History", "Report", "Image / Scan", "Other"].map((type) => (
+              {["Insurance", "Consent", "Medical History", "Report", "Image / Scan", "Invoice", "Other"].map((type) => (
                 <span key={type} className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-foreground">
                   {type}
                 </span>
@@ -584,7 +1016,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               />
               <NativeSelect
                 value={documentDraft.fileType}
-                options={["ID", "Consent", "Medical History", "Report", "Image / Scan", "Other"]}
+                options={["Insurance", "Consent", "Medical History", "Report", "Image / Scan", "Invoice", "Other"]}
                 onChange={(value) =>
                   setDocumentDraft((current) => ({ ...current, fileType: value }))
                 }
@@ -600,14 +1032,13 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-[0.9rem] border border-border bg-white/78 px-4 text-sm font-medium text-foreground transition-colors hover:bg-white">
                 <input
                   type="file"
-                  accept="image/*"
-                  capture="environment"
+                  accept="application/pdf,image/*"
                   className="sr-only"
                   onChange={(event) => handleDocumentFile(event.target.files?.[0])}
                   disabled={isGalleryUploading}
                 />
                 <ImagePlus className="size-4" />
-                {isGalleryUploading ? "Uploading..." : documentDraft.fileUrl ? "File ready" : "Attach image/scan"}
+                {isGalleryUploading ? "Uploading..." : documentDraft.fileUrl ? "File ready" : "Attach PDF/image"}
               </label>
               <Button
                 className="h-11 rounded-[0.9rem]"
@@ -624,18 +1055,21 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               {client.documents.map((document) => (
                 <div key={document.id} className="rounded-[1rem] border border-border/80 bg-white/78 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                    {document.fileType}
+                    {document.category || document.fileType}
                   </p>
                   <p className="mt-2 font-semibold text-foreground">{document.fileName}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Upload date: {document.createdAt}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {document.fileSize} - Uploaded {document.createdAt} by {document.uploadedBy}
+                  </p>
                   <p className="mt-3 text-sm leading-6 text-muted-foreground">{document.notes}</p>
                   {document.fileUrl ? (
                     <a
                       href={document.fileUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="mt-3 inline-flex text-sm font-semibold text-primary"
+                      className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-primary"
                     >
+                      <Download className="size-4" />
                       Open file
                     </a>
                   ) : null}
@@ -726,6 +1160,97 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             <InfoCard icon={CreditCard} title="Payment status" value={client.paymentStats.paymentStatus} />
           </div>
 
+          <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+            <h2 className="text-lg font-semibold text-foreground">Manual ledger entry</h2>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <Input
+                value={paymentDraft.amount}
+                onChange={(event) =>
+                  setPaymentDraft((current) => ({ ...current, amount: event.target.value }))
+                }
+                placeholder="Amount"
+                className="h-11 rounded-[0.9rem] bg-white/84"
+              />
+              <NativeSelect
+                value={paymentDraft.status}
+                options={["Paid", "Unpaid", "Partial", "Refunded"]}
+                onChange={(value) =>
+                  setPaymentDraft((current) => ({ ...current, status: value }))
+                }
+              />
+              <Input
+                value={paymentDraft.invoiceNumber}
+                onChange={(event) =>
+                  setPaymentDraft((current) => ({
+                    ...current,
+                    invoiceNumber: event.target.value,
+                  }))
+                }
+                placeholder="Invoice number"
+                className="h-11 rounded-[0.9rem] bg-white/84"
+              />
+              <Input
+                value={paymentDraft.receiptNumber}
+                onChange={(event) =>
+                  setPaymentDraft((current) => ({
+                    ...current,
+                    receiptNumber: event.target.value,
+                  }))
+                }
+                placeholder="Receipt number"
+                className="h-11 rounded-[0.9rem] bg-white/84"
+              />
+              <Input
+                value={paymentDraft.description}
+                onChange={(event) =>
+                  setPaymentDraft((current) => ({
+                    ...current,
+                    description: event.target.value,
+                  }))
+                }
+                placeholder="Description"
+                className="h-11 rounded-[0.9rem] bg-white/84 md:col-span-2"
+              />
+              <Input
+                value={paymentDraft.paymentMethod}
+                onChange={(event) =>
+                  setPaymentDraft((current) => ({
+                    ...current,
+                    paymentMethod: event.target.value,
+                  }))
+                }
+                placeholder="Payment method"
+                className="h-11 rounded-[0.9rem] bg-white/84"
+              />
+              <Input
+                value={paymentDraft.paidAt}
+                onChange={(event) =>
+                  setPaymentDraft((current) => ({ ...current, paidAt: event.target.value }))
+                }
+                type="date"
+                className="h-11 rounded-[0.9rem] bg-white/84"
+              />
+              <Textarea
+                value={paymentDraft.billingNote}
+                onChange={(event) =>
+                  setPaymentDraft((current) => ({
+                    ...current,
+                    billingNote: event.target.value,
+                  }))
+                }
+                placeholder="Billing note"
+                className="min-h-20 rounded-[0.9rem] bg-white/84 px-3 py-3 md:col-span-2 xl:col-span-3"
+              />
+              <Button
+                onClick={addPayment}
+                disabled={isPending || !paymentDraft.amount.trim()}
+                className="h-11 rounded-[0.9rem]"
+              >
+                Add ledger entry
+              </Button>
+            </div>
+          </section>
+
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {client.payments.length > 0 ? (
               client.payments.map((payment) => (
@@ -738,6 +1263,17 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   </div>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">{payment.description}</p>
                   <p className="mt-1 text-xs text-muted-foreground">Paid at: {payment.paidAt}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Invoice: {payment.invoiceNumber} - Receipt: {payment.receiptNumber}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Method: {payment.paymentMethod}
+                  </p>
+                  {payment.billingNote ? (
+                    <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                      {payment.billingNote}
+                    </p>
+                  ) : null}
                   {payment.appointmentId ? (
                     <p className="mt-1 text-xs text-muted-foreground">Linked to booked service</p>
                   ) : null}

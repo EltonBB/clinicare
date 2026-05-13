@@ -4,6 +4,7 @@ import {
   createStorageReference,
   mediaBucket,
   parseStorageReference,
+  type WorkspaceMediaFolder,
   type WorkspaceImageFolder,
 } from "@/lib/media-storage";
 import { createClient } from "@/utils/supabase/client";
@@ -17,6 +18,13 @@ const extensionByMimeType: Record<string, string> = {
 
 const allowedImageTypes = new Set(Object.keys(extensionByMimeType));
 
+const extensionByDocumentMimeType: Record<string, string> = {
+  ...extensionByMimeType,
+  "application/pdf": "pdf",
+};
+
+const allowedDocumentTypes = new Set(Object.keys(extensionByDocumentMimeType));
+
 export type UploadWorkspaceImageOptions = {
   folder: WorkspaceImageFolder;
   maxBytes: number;
@@ -27,6 +35,24 @@ function createStoragePath(userId: string, folder: WorkspaceImageFolder, file: F
     extensionByMimeType[file.type] ||
     file.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") ||
     "jpg";
+  const id =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  return `${userId}/${folder}/${id}.${extension}`;
+}
+
+function createMediaStoragePath(
+  userId: string,
+  folder: WorkspaceMediaFolder,
+  file: File,
+  extensions: Record<string, string>
+) {
+  const extension =
+    extensions[file.type] ||
+    file.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") ||
+    "bin";
   const id =
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
@@ -99,4 +125,62 @@ export async function createSignedImageUrl(storageUrl: string) {
   }
 
   return data.signedUrl;
+}
+
+export async function uploadWorkspaceDocument(
+  file: File,
+  options: {
+    folder?: Extract<WorkspaceMediaFolder, "client-documents">;
+    maxBytes: number;
+  }
+) {
+  if (!allowedDocumentTypes.has(file.type)) {
+    throw new Error("Upload a PDF, JPG, PNG, WebP, or GIF file.");
+  }
+
+  if (file.size > options.maxBytes) {
+    throw new Error("This file is too large.");
+  }
+
+  const supabase = createClient();
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error("Your session expired. Log in again to upload files.");
+  }
+
+  const folder = options.folder ?? "client-documents";
+  const path = createMediaStoragePath(
+    user.id,
+    folder,
+    file,
+    extensionByDocumentMimeType
+  );
+  const { error } = await supabase.storage.from(mediaBucket).upload(path, file, {
+    cacheControl: "31536000",
+    contentType: file.type,
+    upsert: false,
+  });
+
+  if (error) {
+    throw new Error("We couldn't upload this file. Try again.");
+  }
+
+  const { data, error: signedUrlError } = await supabase.storage
+    .from(mediaBucket)
+    .createSignedUrl(path, 60 * 60);
+
+  if (signedUrlError) {
+    throw new Error("We couldn't prepare this file for preview. Try again.");
+  }
+
+  return {
+    storageUrl: createStorageReference(mediaBucket, path),
+    signedUrl: data.signedUrl,
+    fileSize: file.size,
+    mimeType: file.type,
+  };
 }

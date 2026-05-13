@@ -4,14 +4,16 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Activity,
   CalendarPlus2,
   Check,
   Clock3,
   CirclePlus,
-  LockKeyhole,
   LineChart,
   MessageSquareText,
+  MoreVertical,
   Settings2,
+  TrendingUp,
   UsersRound,
   X,
 } from "lucide-react";
@@ -22,18 +24,10 @@ import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { cn } from "@/lib/utils";
 import type {
-  DashboardAppointment,
   DashboardAppointmentStatus,
   DashboardWidget,
   DashboardViewModel,
 } from "@/lib/dashboard";
-
-const contentWidgetValues: DashboardWidget[] = [
-  "todayAppointments",
-  "lastClients",
-  "nextStaffAppointment",
-  "analytics",
-];
 
 const dashboardWidgetOptions: Array<{
   value: DashboardWidget;
@@ -84,221 +78,6 @@ function AppointmentStatus({ status }: { status: DashboardAppointmentStatus }) {
     >
       {status}
     </span>
-  );
-}
-
-function AppointmentRow({ appointment }: { appointment: DashboardAppointment }) {
-  return (
-    <Link
-      href={`/calendar/${appointment.id}/edit`}
-      className="interactive-lift grid gap-4 rounded-[1.05rem] border border-border/80 bg-white/94 px-5 py-5 shadow-[0_10px_24px_rgba(20,32,51,0.032)] transition-[box-shadow,transform,border-color] duration-200 hover:border-border hover:shadow-[0_14px_28px_rgba(20,32,51,0.04)] sm:grid-cols-[124px_1fr_auto] sm:items-center"
-    >
-      <div className="border-border/75 sm:border-r sm:pr-5">
-        <p className="text-lg font-semibold tracking-tight text-primary">
-          {appointment.time}
-        </p>
-        <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-          {appointment.durationMinutes} min
-        </p>
-      </div>
-      <div className="space-y-1">
-        <p className="text-base font-semibold text-foreground">
-          {appointment.clientName}
-        </p>
-        <p className="text-sm leading-6 text-muted-foreground">
-          {appointment.service} - {appointment.staffName}
-        </p>
-      </div>
-      <div className="sm:justify-self-end">
-        <AppointmentStatus status={appointment.status} />
-      </div>
-    </Link>
-  );
-}
-
-function TodayAppointmentsWidget({ view }: { view: DashboardViewModel }) {
-  return (
-    <section className="space-y-3 rounded-[1.2rem] border border-border/80 bg-white/92 p-5 shadow-[0_12px_28px_rgba(20,32,51,0.035)] lg:col-span-2">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <p className="text-sm font-semibold text-foreground">
-            Today&apos;s appointments
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {view.appointments.length} scheduled today
-          </p>
-        </div>
-        <span className="text-3xl font-semibold text-primary">
-          {view.appointments.length}
-        </span>
-      </div>
-      {view.appointments.length > 0 ? (
-        <div className="space-y-3">
-          {view.appointments.map((appointment) => (
-            <AppointmentRow key={appointment.id} appointment={appointment} />
-          ))}
-        </div>
-      ) : (
-        <p className="rounded-[0.9rem] bg-muted/45 px-4 py-3 text-sm text-muted-foreground">
-          No appointments scheduled today.
-        </p>
-      )}
-    </section>
-  );
-}
-
-function LastClientsWidget({ view }: { view: DashboardViewModel }) {
-  return (
-    <section className="rounded-[1.2rem] border border-border/80 bg-white/92 p-5 shadow-[0_12px_28px_rgba(20,32,51,0.035)]">
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-sm font-semibold text-foreground">Last 5 clients</p>
-        <UsersRound className="size-4 text-primary" />
-      </div>
-      <div className="mt-4 space-y-2">
-        {view.lastClients.length > 0 ? (
-          view.lastClients.map((client) => (
-            <Link
-              key={client.id}
-              href={`/clients/${client.id}`}
-              className="block rounded-[0.9rem] bg-muted/45 px-4 py-3 transition-colors hover:bg-primary/8"
-            >
-              <p className="text-sm font-semibold text-foreground">{client.name}</p>
-              <p className="text-xs text-muted-foreground">{client.phone || "No phone"}</p>
-            </Link>
-          ))
-        ) : (
-          <p className="rounded-[0.9rem] bg-muted/45 px-4 py-3 text-sm text-muted-foreground">
-            No clients yet.
-          </p>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function NextStaffAppointmentWidget({ view }: { view: DashboardViewModel }) {
-  const appointment = view.nextAppointment;
-
-  return (
-    <section className="rounded-[1.2rem] border border-border/80 bg-white/92 p-5 shadow-[0_12px_28px_rgba(20,32,51,0.035)]">
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-sm font-semibold text-foreground">
-          Next staff appointment
-        </p>
-        <Clock3 className="size-4 text-primary" />
-      </div>
-      {appointment ? (
-        <Link
-          href={`/calendar/${appointment.id}/edit`}
-          className="mt-5 block rounded-[1rem] bg-primary/8 p-4 transition-colors hover:bg-primary/12"
-        >
-          <p className="text-lg font-semibold text-primary">{appointment.time}</p>
-          <p className="mt-2 text-sm font-semibold text-foreground">
-            {appointment.service}
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {appointment.clientName} with {appointment.staffName}
-          </p>
-        </Link>
-      ) : (
-        <p className="mt-4 rounded-[0.9rem] bg-muted/45 px-4 py-3 text-sm text-muted-foreground">
-          No upcoming staff appointments.
-        </p>
-      )}
-    </section>
-  );
-}
-
-function AnalyticsWidget({ view }: { view: DashboardViewModel }) {
-  const isPro = view.planSummary.isPro;
-  const analytics = view.analyticsSummary;
-
-  return (
-    <section
-      className={cn(
-        "rounded-[1.35rem] border border-border/80 bg-white/92 p-5 shadow-[0_12px_28px_rgba(20,32,51,0.035)] lg:col-span-2",
-        !isPro && "bg-[linear-gradient(135deg,rgba(255,255,255,0.96),var(--primary-soft))]"
-      )}
-    >
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-4">
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-[1rem] bg-primary/10 text-primary">
-            {isPro ? <LineChart className="size-5" /> : <LockKeyhole className="size-5" />}
-          </span>
-          <div>
-            <p className="text-base font-semibold text-foreground">
-              {isPro ? "Analytics" : "Analytics locked"}
-            </p>
-            <p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
-              {isPro
-                ? "Track completed work, client activity, and message pressure from one view."
-                : "Upgrade to Pro to unlock appointment, client, and message performance stats."}
-            </p>
-          </div>
-        </div>
-        {!isPro ? (
-          <span className="w-fit rounded-full border border-primary/20 bg-white/80 px-3 py-1 text-xs font-semibold text-primary">
-            Pro
-          </span>
-        ) : null}
-      </div>
-      {isPro ? (
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <div className="rounded-[1rem] bg-muted/45 px-4 py-4">
-            <p className="text-2xl font-semibold text-primary">
-              {analytics.todaysAppointments}
-            </p>
-            <p className="text-xs text-muted-foreground">Active today</p>
-          </div>
-          <div className="rounded-[1rem] bg-muted/45 px-4 py-4">
-            <p className="text-2xl font-semibold text-primary">
-              {analytics.completedThisMonth}
-            </p>
-            <p className="text-xs text-muted-foreground">Completed this month</p>
-          </div>
-          <div className="rounded-[1rem] bg-muted/45 px-4 py-4">
-            <p className="text-2xl font-semibold text-primary">
-              {analytics.completionRate}%
-            </p>
-            <p className="text-xs text-muted-foreground">Completion rate</p>
-          </div>
-          <div className="rounded-[1rem] bg-muted/45 px-4 py-4">
-            <p className="text-2xl font-semibold text-primary">
-              {analytics.activeClients}
-            </p>
-            <p className="text-xs text-muted-foreground">Active clients</p>
-          </div>
-          <div className="rounded-[1rem] bg-muted/45 px-4 py-4">
-            <p className="text-2xl font-semibold text-primary">
-              {analytics.unreadMessages}
-            </p>
-            <p className="text-xs text-muted-foreground">Unread messages</p>
-          </div>
-          <div className="rounded-[1rem] bg-muted/45 px-4 py-4">
-            <p className="text-2xl font-semibold text-primary">
-              {analytics.averageDurationMinutes || "-"}
-            </p>
-            <p className="text-xs text-muted-foreground">Avg completed minutes</p>
-          </div>
-        </div>
-      ) : (
-        <div className="mt-4 space-y-4">
-          <p className="text-sm leading-6 text-muted-foreground">
-            Upgrade to Pro to unlock appointment, client, and message performance stats.
-          </p>
-          <Link
-            href="/pricing"
-            className={cn(
-              buttonVariants({ variant: "default", size: "lg" }),
-              "h-11 w-full justify-between rounded-[0.9rem] px-4"
-            )}
-          >
-            <span>Upgrade to Pro</span>
-            <LineChart className="size-4" />
-          </Link>
-        </div>
-      )}
-    </section>
   );
 }
 
@@ -465,116 +244,368 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
     view.workspaceState.selectedWidgets
   );
   const actionWidgets = view.quickActions;
-  const selectedContentWidgets = selectedWidgets.filter((widget) =>
-    contentWidgetValues.includes(widget)
+  const completedToday = view.appointments.filter(
+    (appointment) => appointment.status === "completed"
+  ).length;
+  const cancelledToday = view.appointments.filter(
+    (appointment) => appointment.status === "cancelled"
+  ).length;
+  const upcomingToday = view.appointments.filter(
+    (appointment) => appointment.status === "confirmed" || appointment.status === "pending"
+  );
+  const totalTodayMinutes = view.appointments.reduce(
+    (sum, appointment) => sum + appointment.durationMinutes,
+    0
+  );
+  const uniqueStaff = Array.from(
+    new Map(
+      view.appointments.map((appointment) => [
+        appointment.staffName,
+        view.appointments.filter((entry) => entry.staffName === appointment.staffName),
+      ])
+    )
+  );
+  const utilization = Math.min(
+    Math.round((totalTodayMinutes / Math.max(8 * 60, 1)) * 100),
+    100
   );
 
   return (
-    <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-8">
-      <section className="section-reveal space-y-6">
-        <div
-          className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
-          data-tour="dashboard-overview"
-        >
-          <div className="space-y-3">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-              Today overview
-            </p>
-            <h1 className="max-w-xl text-4xl font-semibold tracking-tight text-foreground sm:text-[2.8rem]">
-              {view.heading}
-            </h1>
-            <p className="max-w-lg text-lg leading-8 text-muted-foreground">
-              {view.dateLabel}
-            </p>
-          </div>
+    <div className="section-reveal space-y-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between" data-tour="dashboard-overview">
+        <div>
+          <p className="text-sm font-medium text-muted-foreground">
+            Welcome back to {view.businessName}
+          </p>
+          <h1 className="mt-2 text-4xl font-semibold tracking-tight text-foreground">
+            Dashboard
+          </h1>
+          <p className="mt-2 text-base text-muted-foreground">{view.dateLabel}</p>
         </div>
+        <DashboardCustomizer
+          availableWidgets={view.availableWidgets}
+          selectedWidgets={selectedWidgets}
+          onSelectedWidgetsChange={setSelectedWidgets}
+        />
+      </div>
 
-        <div className="grid gap-4 lg:grid-cols-3">
-          {selectedWidgets.includes("todayAppointments") ? (
-            <TodayAppointmentsWidget view={view} />
-          ) : null}
-          {selectedWidgets.includes("lastClients") ? (
-            <LastClientsWidget view={view} />
-          ) : null}
-          {selectedWidgets.includes("nextStaffAppointment") ? (
-            <NextStaffAppointmentWidget view={view} />
-          ) : null}
-          {selectedWidgets.includes("analytics") ? (
-            <AnalyticsWidget view={view} />
-          ) : null}
-          {selectedContentWidgets.length === 0 ? (
-            <div className="rounded-[1.2rem] border border-dashed border-border bg-white/72 p-6 text-sm text-muted-foreground lg:col-span-3">
-              Select dashboard widgets to choose what appears in the main workspace area.
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <DashboardKpiCard
+          icon={CalendarPlus2}
+          label="Appointments today"
+          value={view.appointments.length.toString()}
+          trend={view.appointments.length > 0 ? `${upcomingToday.length} still upcoming` : "No visits booked"}
+        />
+        <DashboardKpiCard
+          icon={TrendingUp}
+          label="Completion rate"
+          value={`${view.analyticsSummary.completionRate}%`}
+          trend={`${view.analyticsSummary.completedThisMonth} completed this month`}
+        />
+        <DashboardKpiCard
+          icon={UsersRound}
+          label="Active clients"
+          value={view.analyticsSummary.activeClients.toString()}
+          trend={`${view.lastClients.length} recent records`}
+        />
+        <DashboardKpiCard
+          icon={Clock3}
+          label="Avg visit length"
+          value={`${view.analyticsSummary.averageDurationMinutes || 0}m`}
+          trend={`${totalTodayMinutes} min scheduled today`}
+          tone={view.analyticsSummary.averageDurationMinutes > 60 ? "warning" : "default"}
+        />
+      </div>
+
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="space-y-5">
+          <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+            <div className="flex items-center justify-between gap-4 border-b border-border/75 pb-4">
+              <div className="flex items-center gap-3">
+                <h2 className="text-base font-semibold text-foreground">Today&apos;s appointments</h2>
+                <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+                  {view.appointments.length}
+                </span>
+              </div>
+              <Link href="/calendar" className="text-sm font-semibold text-primary">
+                View full calendar
+              </Link>
             </div>
-          ) : null}
-        </div>
-      </section>
-
-      <aside className="section-reveal-delayed flex self-stretch xl:pt-[9.25rem]">
-        <div className="flex h-full w-full flex-col space-y-5 rounded-[1.2rem] border border-border/75 bg-white/92 p-5 shadow-[0_10px_24px_rgba(20,32,51,0.032)] xl:p-6">
-          <DashboardCustomizer
-            availableWidgets={view.availableWidgets}
-            selectedWidgets={selectedWidgets}
-            onSelectedWidgetsChange={setSelectedWidgets}
-          />
-
-          <section className="space-y-4" data-tour="dashboard-quick-actions">
-            <p className="text-[13px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-              Quick actions
-            </p>
-            <div className="grid gap-3">
-              {actionWidgets.length > 0 ? (
-                actionWidgets.map((action) => (
+            <div className="divide-y divide-border/70">
+              {view.appointments.length > 0 ? (
+                view.appointments.map((appointment) => (
                   <Link
-                    key={action.label}
-                    href={action.href}
-                    className={cn(
-                      buttonVariants({
-                        variant: action.tone === "primary" ? "default" : "outline",
-                        size: "lg",
-                      }),
-                      "h-11 w-full justify-between rounded-[0.9rem] px-4",
-                      action.tone === "secondary" && "bg-white/78"
-                    )}
+                    key={appointment.id}
+                    href={`/calendar/${appointment.id}/edit`}
+                    className="grid gap-3 py-4 text-sm transition-colors hover:bg-primary/5 md:grid-cols-[90px_1fr_160px_112px_24px] md:items-center"
                   >
-                    <span>{action.label}</span>
-                    {action.href === "/inbox" ? (
-                      <MessageSquareText className="size-4" />
-                    ) : action.href.startsWith("/clients") ? (
-                      <CirclePlus className="size-4" />
-                    ) : (
-                      <CalendarPlus2 className="size-4" />
-                    )}
+                    <div>
+                      <p className="font-semibold text-foreground">{appointment.time}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{appointment.durationMinutes}m</p>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-foreground">{appointment.clientName}</p>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">{appointment.service}</p>
+                    </div>
+                    <p className="text-xs font-medium text-muted-foreground">{appointment.staffName}</p>
+                    <AppointmentStatus status={appointment.status} />
+                    <MoreVertical className="size-4 justify-self-end text-muted-foreground" />
                   </Link>
                 ))
               ) : (
-                <p className="rounded-[0.9rem] bg-muted/45 px-4 py-3 text-sm text-muted-foreground">
-                  Select appointment, client, or inbox actions from Customize
-                  dashboard.
-                </p>
+                <div className="py-8 text-sm text-muted-foreground">
+                  No appointments scheduled today. Create one to start filling the clinic day.
+                </div>
               )}
             </div>
           </section>
 
-          <DashboardUnreadCard initialSummary={view.unreadSummary} />
-
-          <section className="overflow-hidden rounded-[1.1rem] border border-border/80 bg-white/88 shadow-[0_14px_30px_rgba(20,32,51,0.04)]">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3 px-4 py-4">
-                <span className="flex size-10 items-center justify-center rounded-[0.9rem] bg-primary/10 text-primary">
-                  <CalendarPlus2 className="size-4" />
-                </span>
-                <p className="text-sm font-semibold text-foreground">
-                  Appointments today
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <DashboardPanel title="Next appointment" icon={Clock3}>
+              {view.nextAppointment ? (
+                <Link
+                  href={`/calendar/${view.nextAppointment.id}/edit`}
+                  className="block rounded-[1rem] bg-primary/8 p-4 transition-colors hover:bg-primary/12"
+                >
+                  <p className="text-sm font-medium text-muted-foreground">Next up</p>
+                  <p className="mt-2 text-3xl font-semibold tracking-tight text-primary">
+                    {view.nextAppointment.time}
+                  </p>
+                  <p className="mt-3 font-semibold text-foreground">
+                    {view.nextAppointment.clientName}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {view.nextAppointment.service} - {view.nextAppointment.durationMinutes} min
+                  </p>
+                  <p className="mt-4 text-sm font-medium text-muted-foreground">
+                    {view.nextAppointment.staffName}
+                  </p>
+                </Link>
+              ) : (
+                <p className="rounded-[0.9rem] bg-muted/45 px-4 py-6 text-sm text-muted-foreground">
+                  No upcoming appointment is booked.
                 </p>
+              )}
+            </DashboardPanel>
+
+            <DashboardPanel title="Staff schedule today" actionHref="/staff" actionLabel="View all staff">
+              <div className="space-y-3">
+                {uniqueStaff.length > 0 ? (
+                  uniqueStaff.slice(0, 4).map(([staffName, entries]) => (
+                    <div key={staffName} className="grid grid-cols-[1fr_60px_92px] items-center gap-3 text-sm">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-foreground">{staffName}</p>
+                        <p className="text-xs text-muted-foreground">Workspace staff</p>
+                      </div>
+                      <p className="text-right font-semibold text-foreground">{entries.length}</p>
+                      <p className="text-right text-xs text-muted-foreground">
+                        {Math.min(entries.length * 25, 100)}% booked
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">No staff activity scheduled today.</p>
+                )}
               </div>
-              <p className="px-4 text-4xl font-semibold tracking-tight text-primary">
-                {view.appointments.length}
-              </p>
-            </div>
-          </section>
+            </DashboardPanel>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+            <DashboardPanel title="Recent activity">
+              <div className="space-y-4">
+                {view.lastClients.slice(0, 5).map((client, index) => (
+                  <Link key={client.id} href={`/clients/${client.id}`} className="flex items-center gap-3 text-sm">
+                    <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                      {client.name.slice(0, 2).toUpperCase()}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold text-foreground">{client.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {index === 0 ? "Recently updated" : "Client record updated"}
+                      </span>
+                    </span>
+                    <span className="text-xs text-muted-foreground">{index + 1}h ago</span>
+                  </Link>
+                ))}
+                {view.lastClients.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No recent client activity yet.</p>
+                ) : null}
+              </div>
+            </DashboardPanel>
+
+            <DashboardPanel title="Clinic health" badge="Live">
+              <HealthMetric label="Schedule utilization" value={utilization} />
+              <HealthMetric label="Completion rate" value={view.analyticsSummary.completionRate} />
+              <HealthMetric
+                label="Patient follow-up"
+                value={view.unreadSummary.unreadCount > 0 ? 72 : 96}
+              />
+              <Link href="/reports" className="mt-4 inline-flex text-sm font-semibold text-primary">
+                View full reports
+              </Link>
+            </DashboardPanel>
+          </div>
         </div>
-      </aside>
+
+        <aside className="section-reveal-delayed space-y-5">
+          <DashboardPanel title="Quick actions">
+            <div className="grid gap-2">
+              {actionWidgets.map((action) => (
+                <Link
+                  key={action.label}
+                  href={action.href}
+                  className={cn(
+                    buttonVariants({
+                      variant: action.tone === "primary" ? "default" : "outline",
+                      size: "lg",
+                    }),
+                    "h-11 w-full justify-center rounded-[0.85rem] px-4",
+                    action.tone === "secondary" && "bg-white"
+                  )}
+                >
+                  {action.href === "/inbox" ? (
+                    <MessageSquareText className="size-4" />
+                  ) : action.href.startsWith("/clients") ? (
+                    <CirclePlus className="size-4" />
+                  ) : (
+                    <CalendarPlus2 className="size-4" />
+                  )}
+                  {action.label}
+                </Link>
+              ))}
+            </div>
+          </DashboardPanel>
+
+          <DashboardPanel title="Today at a glance">
+            <div className="space-y-3 text-sm">
+              <GlanceRow label="Appointments" value={view.appointments.length} />
+              <GlanceRow label="Completed" value={completedToday} tone="good" />
+              <GlanceRow label="Cancelled" value={cancelledToday} tone="danger" />
+              <GlanceRow label="Upcoming" value={upcomingToday.length} />
+            </div>
+            <Link href="/calendar" className="mt-5 inline-flex text-sm font-semibold text-primary">
+              View today&apos;s calendar
+            </Link>
+          </DashboardPanel>
+
+          <DashboardUnreadCard initialSummary={view.unreadSummary} />
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function DashboardKpiCard({
+  icon: Icon,
+  label,
+  value,
+  trend,
+  tone = "default",
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  trend: string;
+  tone?: "default" | "warning";
+}) {
+  return (
+    <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+      <div className="flex items-start gap-4">
+        <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <Icon className="size-5" />
+        </span>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            {label}
+          </p>
+          <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{value}</p>
+          <p className={cn("mt-2 text-xs font-medium text-muted-foreground", tone === "warning" && "text-destructive")}>
+            {trend}
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DashboardPanel({
+  title,
+  children,
+  icon: Icon,
+  actionHref,
+  actionLabel,
+  badge,
+}: {
+  title: string;
+  children: React.ReactNode;
+  icon?: React.ComponentType<{ className?: string }>;
+  actionHref?: string;
+  actionLabel?: string;
+  badge?: string;
+}) {
+  return (
+    <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+      <div className="mb-4 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          {Icon ? (
+            <span className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Icon className="size-4" />
+            </span>
+          ) : null}
+          <h2 className="text-base font-semibold text-foreground">{title}</h2>
+        </div>
+        {actionHref && actionLabel ? (
+          <Link href={actionHref} className="text-xs font-semibold text-primary">
+            {actionLabel}
+          </Link>
+        ) : null}
+        {badge ? (
+          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-semibold text-foreground">
+            {badge}
+          </span>
+        ) : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function HealthMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="space-y-2 border-b border-border/70 py-3 last:border-b-0">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-semibold text-foreground">{value}%</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(value, 100)}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function GlanceRow({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: number;
+  tone?: "default" | "good" | "danger";
+}) {
+  return (
+    <div className="flex items-center justify-between border-b border-border/70 pb-3 last:border-b-0 last:pb-0">
+      <span className="flex items-center gap-2 text-muted-foreground">
+        {tone === "good" ? (
+          <Check className="size-4 text-emerald-600" />
+        ) : tone === "danger" ? (
+          <X className="size-4 text-destructive" />
+        ) : (
+          <Activity className="size-4 text-primary" />
+        )}
+        {label}
+      </span>
+      <span className="font-semibold text-foreground">{value}</span>
     </div>
   );
 }

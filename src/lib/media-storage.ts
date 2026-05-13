@@ -3,7 +3,11 @@ const storageReferencePrefix = "supabase-storage://";
 export const mediaBucket =
   process.env.NEXT_PUBLIC_SUPABASE_MEDIA_BUCKET?.trim() || "clinic-media";
 
-export type WorkspaceImageFolder = "logos" | "client-gallery";
+export type WorkspaceMediaFolder = "logos" | "client-gallery" | "client-documents";
+export type WorkspaceImageFolder = Extract<
+  WorkspaceMediaFolder,
+  "logos" | "client-gallery"
+>;
 
 export type StorageReference = {
   bucket: string;
