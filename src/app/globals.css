@@ -71,7 +71,7 @@
   --chart-3: #9cc5cf;
   --chart-4: #d8e8f0;
   --chart-5: #f1f7fb;
-  --radius: 0.68rem;
+  --radius: 0.52rem;
   --sidebar: rgba(255, 255, 255, 0.92);
   --sidebar-foreground: #142033;
   --sidebar-primary: #3b82f6;
@@ -130,21 +130,21 @@
 
 @layer utilities {
   .surface-card {
-    @apply rounded-[1.35rem] border border-border/90 bg-card;
+    @apply rounded-[0.95rem] border border-border/90 bg-card;
     box-shadow:
       0 12px 28px rgba(20, 32, 51, 0.04),
       inset 0 1px 0 rgba(255, 255, 255, 0.72);
   }
 
   .surface-panel {
-    @apply rounded-[0.95rem] border border-border bg-card;
+    @apply rounded-[0.75rem] border border-border bg-card;
     box-shadow:
       0 10px 22px rgba(20, 32, 51, 0.035),
       inset 0 1px 0 rgba(255, 255, 255, 0.65);
   }
 
   .surface-soft {
-    @apply rounded-[1rem] border border-border/80 bg-white/86;
+    @apply rounded-[0.8rem] border border-border/80 bg-white/86;
     box-shadow: 0 10px 24px rgba(20, 32, 51, 0.032);
   }
 

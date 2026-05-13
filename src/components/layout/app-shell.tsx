@@ -9,6 +9,7 @@ import { BadgeCheck } from "lucide-react";
 import { refreshWorkspaceNotificationsAction } from "@/app/(workspace)/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { GlobalSearch } from "@/components/layout/global-search";
 import { NotificationsMenu } from "@/components/layout/notifications-menu";
 import { OwnerAccountDialog } from "@/components/layout/owner-account-dialog";
 import { resolveBrandAccentPreset } from "@/lib/branding";
@@ -173,9 +174,9 @@ export function AppShell({
       }
     >
       <div className="relative flex min-h-screen">
-        <aside className="hidden w-[284px] shrink-0 px-4 py-4 lg:flex">
+        <aside className="hidden w-[268px] shrink-0 border-r border-sidebar-border/80 bg-white/94 lg:flex">
           <div
-            className="sticky top-4 flex h-[calc(100vh-3rem)] w-full flex-col rounded-[1.45rem] border border-sidebar-border/80 bg-white/92 p-4 shadow-[0_12px_28px_rgba(20,32,51,0.04)]"
+            className="sticky top-0 flex h-screen w-full flex-col bg-white/94 p-4"
             data-tour="sidebar-shell"
           >
             <div className="px-2 pb-5 pt-2">
@@ -183,11 +184,11 @@ export function AppShell({
                 href="/dashboard"
                 className="group flex items-center gap-3 rounded-[1.1rem] px-1 py-1"
               >
-                <span className="flex size-11 shrink-0 items-center justify-center rounded-[1rem] bg-primary text-sm font-semibold uppercase text-primary-foreground shadow-[0_12px_24px_var(--primary-shadow)]">
+                <span className="flex size-11 shrink-0 items-center justify-center rounded-[0.75rem] bg-transparent text-sm font-semibold uppercase text-primary shadow-none">
                   {logoUrl ? (
                     <span
                       aria-hidden="true"
-                      className="size-full rounded-[1rem] bg-cover bg-center"
+                      className="size-full rounded-[0.75rem] bg-contain bg-center bg-no-repeat"
                       style={{ backgroundImage: `url("${logoUrl}")` }}
                     />
                   ) : (
@@ -268,19 +269,20 @@ export function AppShell({
         </aside>
 
         <div className="relative flex min-h-screen min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-20 px-4 pt-4 sm:px-6 lg:px-8">
-            <div className="mx-auto flex h-[4.5rem] w-full max-w-[1600px] items-center justify-between gap-4 rounded-[1.2rem] border border-border/80 bg-white/92 px-5 shadow-[0_10px_24px_rgba(20,32,51,0.035)]">
-              <div className="flex min-w-0 items-center gap-3">
+          <header className="sticky top-0 z-20 border-b border-border/80 bg-white/94 px-4 sm:px-6 lg:px-8">
+            <div className="mx-auto flex h-16 w-full max-w-[1600px] items-center justify-between gap-5">
+              <div className="flex min-w-[88px] items-center gap-3">
                 <div className="lg:hidden">
                   <BrandMark compact href="/dashboard" />
                 </div>
                 <Link
                   href="/dashboard"
-                  className="hidden text-lg font-semibold tracking-[0.08em] text-foreground transition-colors hover:text-primary lg:block"
+                  className="hidden text-lg font-semibold text-foreground transition-colors hover:text-primary lg:block"
                 >
                   Vela
                 </Link>
               </div>
+              <GlobalSearch className="hidden min-w-0 max-w-3xl flex-1 md:block" />
               <div className="flex items-center gap-2">
                 <NotificationsMenu unreadCount={liveUnreadCount} items={liveNotifications} />
                 <div className="hidden items-center gap-3 sm:flex">
