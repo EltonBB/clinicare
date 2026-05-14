@@ -1,5 +1,6 @@
 import { format } from "date-fns";
-import type { Appointment, StaffMember, StaffTimeEntry } from "@prisma/client";
+import { isSameDay } from "date-fns";
+import type { Appointment, StaffMember, StaffShift, StaffTimeEntry } from "@prisma/client";
 
 export const staffRoles = [
   "Specialist",
@@ -23,6 +24,10 @@ export type StaffRecord = {
   status: StaffStatus;
   isCheckedIn: boolean;
   weeklyHours: number;
+  appointmentsToday: number;
+  completionRate: number;
+  shiftLabel: string;
+  nextShift: string;
   completedThisMonth: number;
   recentAppointments: Array<{
     id: string;
@@ -51,8 +56,9 @@ export type SaveStaffPayload = {
 
 type StaffWithRelations = StaffMember & {
   timeEntries: Pick<StaffTimeEntry, "checkedInAt" | "checkedOutAt">[];
+  shifts: Pick<StaffShift, "startsAt" | "endsAt" | "status">[];
   appointments: Array<
-    Pick<Appointment, "id" | "title" | "startAt" | "status"> & {
+    Pick<Appointment, "id" | "title" | "startAt" | "endAt" | "status"> & {
       client: {
         name: string;
       };
@@ -62,7 +68,8 @@ type StaffWithRelations = StaffMember & {
 
 type StaffDirectoryWithRelations = StaffMember & {
   timeEntries: Pick<StaffTimeEntry, "checkedInAt" | "checkedOutAt">[];
-  appointments: Pick<Appointment, "startAt" | "status">[];
+  shifts: Pick<StaffShift, "startsAt" | "endsAt" | "status">[];
+  appointments: Pick<Appointment, "startAt" | "endAt" | "status">[];
 };
 
 function normalizeStaffStatus(value: StaffMember["status"]): StaffStatus {
@@ -93,10 +100,47 @@ function isThisMonth(date: Date) {
   return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
 }
 
+function formatShift(startsAt?: Date, endsAt?: Date) {
+  if (!startsAt || !endsAt) {
+    return "-";
+  }
+
+  return `${format(startsAt, "h:mm a")} - ${format(endsAt, "h:mm a")}`;
+}
+
+function nextShiftLabel(shifts: Pick<StaffShift, "startsAt" | "endsAt" | "status">[]) {
+  const now = new Date();
+  const nextShift = shifts
+    .filter((shift) => shift.endsAt >= now)
+    .sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime())[0];
+
+  if (!nextShift) {
+    return "-";
+  }
+
+  const dayLabel = isSameDay(nextShift.startsAt, now) ? "Today" : format(nextShift.startsAt, "MMM d");
+  return `${dayLabel}, ${format(nextShift.startsAt, "h:mm a")}`;
+}
+
+function calculateCompletionRate(appointments: Pick<Appointment, "status">[]) {
+  const finalized = appointments.filter(
+    (appointment) => appointment.status === "COMPLETED" || appointment.status === "CANCELLED"
+  );
+
+  if (finalized.length === 0) {
+    return 0;
+  }
+
+  const completed = finalized.filter((appointment) => appointment.status === "COMPLETED").length;
+  return Math.round((completed / finalized.length) * 1000) / 10;
+}
+
 export function buildStaffRecord(member: StaffWithRelations): StaffRecord {
   const completedAppointments = member.appointments.filter(
     (appointment) => appointment.status === "COMPLETED"
   );
+  const today = new Date();
+  const todayShift = member.shifts.find((shift) => isSameDay(shift.startsAt, today));
 
   return {
     id: member.id,
@@ -108,6 +152,12 @@ export function buildStaffRecord(member: StaffWithRelations): StaffRecord {
     status: normalizeStaffStatus(member.status),
     isCheckedIn: member.timeEntries.some((entry) => !entry.checkedOutAt),
     weeklyHours: calculateWeeklyHours(member.timeEntries),
+    appointmentsToday: member.appointments.filter((appointment) =>
+      isSameDay(appointment.startAt, today)
+    ).length,
+    completionRate: calculateCompletionRate(member.appointments),
+    shiftLabel: todayShift ? formatShift(todayShift.startsAt, todayShift.endsAt) : "-",
+    nextShift: nextShiftLabel(member.shifts),
     completedThisMonth: completedAppointments.filter((appointment) =>
       isThisMonth(appointment.startAt)
     ).length,
@@ -128,6 +178,8 @@ export function buildStaffDirectoryRecord(
     (appointment) =>
       appointment.status === "COMPLETED" && isThisMonth(appointment.startAt)
   ).length;
+  const today = new Date();
+  const todayShift = member.shifts.find((shift) => isSameDay(shift.startsAt, today));
 
   return {
     id: member.id,
@@ -139,6 +191,12 @@ export function buildStaffDirectoryRecord(
     status: normalizeStaffStatus(member.status),
     isCheckedIn: member.timeEntries.some((entry) => !entry.checkedOutAt),
     weeklyHours: calculateWeeklyHours(member.timeEntries),
+    appointmentsToday: member.appointments.filter((appointment) =>
+      isSameDay(appointment.startAt, today)
+    ).length,
+    completionRate: calculateCompletionRate(member.appointments),
+    shiftLabel: todayShift ? formatShift(todayShift.startsAt, todayShift.endsAt) : "-",
+    nextShift: nextShiftLabel(member.shifts),
     completedThisMonth,
   };
 }

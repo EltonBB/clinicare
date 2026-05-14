@@ -293,7 +293,7 @@ export function AppShell({
             <GlobalSearch className="mx-auto mt-3 w-full max-w-[1600px] md:hidden" />
           </header>
 
-          <main className="page-gutter relative flex-1 bg-[#fbfcff] py-6 pb-28 lg:pb-10 lg:pt-8">
+          <main className="page-gutter relative flex-1 bg-[#fbfcff] py-5 pb-28 lg:pb-8 lg:pt-6">
             {children}
           </main>
         </div>

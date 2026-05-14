@@ -316,7 +316,7 @@ export function SettingsWorkspace({
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)]">
+    <div className="mx-auto grid w-full max-w-[1536px] gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
       <aside className="hidden xl:block">
         <div className="sticky top-24 space-y-2 rounded-[1.05rem] border border-border/80 bg-white/94 p-4 shadow-[0_10px_22px_rgba(20,32,51,0.03)]">
           {sectionLinks.map((item) => (
@@ -331,17 +331,14 @@ export function SettingsWorkspace({
         </div>
       </aside>
 
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="section-reveal space-y-2">
-            <p className="text-[13px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-              Settings
-            </p>
             <div className="space-y-2">
-              <h1 className="text-4xl font-semibold tracking-tight text-foreground">
-                Business configuration
+              <h1 className="text-[34px] font-semibold leading-tight tracking-tight text-foreground">
+                Settings
               </h1>
-              <p className="max-w-2xl text-[15px] leading-7 text-muted-foreground">
+              <p className="max-w-2xl text-[15px] text-muted-foreground">
                 Manage workspace identity, hours, WhatsApp behavior, reminders,
                 and billing from one focused control panel.
               </p>

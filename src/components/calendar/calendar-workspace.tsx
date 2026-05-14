@@ -196,24 +196,24 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
   const utilization = Math.min(Math.round((bookedMinutes / Math.max(8 * 60 * 5, 1)) * 100), 100);
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-[1536px] space-y-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="section-reveal">
-          <h1 className="text-4xl font-semibold tracking-tight text-foreground">
+          <h1 className="text-[34px] font-semibold leading-tight tracking-tight text-foreground">
             Calendar
           </h1>
-          <p className="mt-2 text-[15px] leading-7 text-muted-foreground">
+          <p className="mt-2 text-[15px] text-muted-foreground">
             Manage the clinic schedule, appointments, and blocked time.
           </p>
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <div className="inline-flex rounded-[1rem] border border-border/80 bg-white/70 p-1 shadow-[0_16px_32px_rgba(20,32,51,0.05)]">
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <div className="inline-flex rounded-[0.7rem] border border-border/80 bg-white p-1 shadow-[0_16px_32px_rgba(20,32,51,0.04)]">
               {views.map((option) => (
                 <button
                   key={option}
                   type="button"
                   onClick={() => startTransition(() => setView(option))}
                   className={cn(
-                    "rounded-[0.8rem] px-3 py-1.5 text-sm font-medium capitalize text-muted-foreground transition-[background-color,color,transform] duration-200 hover:text-foreground",
+                    "rounded-[0.55rem] px-3 py-1.5 text-sm font-medium capitalize text-muted-foreground transition-[background-color,color,transform] duration-200 hover:text-foreground",
                     view === option &&
                       "bg-white text-foreground shadow-[0_12px_28px_rgba(20,32,51,0.06)]"
                   )}
@@ -275,8 +275,8 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
         </div>
       </div>
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-5">
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-4">
       {!hasClients ? (
         <section className="section-reveal overflow-hidden rounded-[1.25rem] border border-dashed border-primary/25 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),var(--primary-soft))] p-8 shadow-[0_18px_44px_rgba(20,32,51,0.055)]">
           <div className="mx-auto max-w-xl space-y-5 text-center">

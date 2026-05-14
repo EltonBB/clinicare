@@ -55,6 +55,11 @@ function completedAppointmentCutoff() {
   return new Date(now.getFullYear(), now.getMonth(), 1);
 }
 
+function staffShiftCutoff() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+}
+
 function parseDateTime(date: string, time: string) {
   const parsed = new Date(`${date}T${time}:00`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
@@ -96,9 +101,24 @@ async function fetchStaffRecord(staffId: string, businessId: string) {
           checkedInAt: "desc",
         },
       },
+      shifts: {
+        where: {
+          startsAt: {
+            gte: staffShiftCutoff(),
+          },
+        },
+        select: {
+          startsAt: true,
+          endsAt: true,
+          status: true,
+        },
+        orderBy: {
+          startsAt: "asc",
+        },
+        take: 8,
+      },
       appointments: {
         where: {
-          status: "COMPLETED",
           startAt: {
             gte: completedAppointmentCutoff(),
           },

@@ -15,6 +15,11 @@ function staffTimeEntryCutoff() {
   return new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
 }
 
+function staffShiftCutoff() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+}
+
 export default async function EditStaffPage({
   params,
 }: {
@@ -41,9 +46,24 @@ export default async function EditStaffPage({
           checkedInAt: "desc",
         },
       },
+      shifts: {
+        where: {
+          startsAt: {
+            gte: staffShiftCutoff(),
+          },
+        },
+        select: {
+          startsAt: true,
+          endsAt: true,
+          status: true,
+        },
+        orderBy: {
+          startsAt: "asc",
+        },
+        take: 8,
+      },
       appointments: {
         where: {
-          status: "COMPLETED",
           startAt: {
             gte: completedAppointmentCutoff(),
           },

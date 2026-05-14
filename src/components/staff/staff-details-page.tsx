@@ -57,7 +57,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-[1536px] space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/staff"
@@ -97,7 +97,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
         </div>
       ) : null}
 
-      <section className="rounded-[1.2rem] border border-border/80 bg-white/78 px-5 py-5 shadow-[0_24px_52px_rgba(20,32,51,0.05)]">
+      <section className="rounded-[1rem] border border-border/80 bg-white px-5 py-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-center gap-4">
             <Avatar size="lg" className="size-14">
@@ -117,15 +117,15 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
-            <Summary label="This week" value={`${staff.weeklyHours}h`} />
-            <Summary label="This month" value={staff.completedThisMonth} />
-            <Summary label="Clock" value={staff.isCheckedIn ? "Checked in" : "Checked out"} />
+            <Summary label="Appointments today" value={staff.appointmentsToday} />
+            <Summary label="Completion rate" value={`${staff.completionRate}%`} />
+            <Summary label="Shift" value={staff.shiftLabel} />
           </div>
         </div>
       </section>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-        <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+        <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
           <h2 className="text-lg font-semibold text-foreground">Staff information</h2>
           <dl className="mt-5 space-y-3">
             <Detail label="Name" value={staff.name} />
@@ -136,7 +136,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
           </dl>
         </section>
 
-        <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+        <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
           <h2 className="text-lg font-semibold text-foreground">Operational note</h2>
           <p className="mt-4 text-sm leading-7 text-muted-foreground">
             {staff.profileNote || "No staff note yet."}
@@ -144,7 +144,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
         </section>
       </div>
 
-      <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+      <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
         <div className="flex items-center gap-3">
           <div className="flex size-10 items-center justify-center rounded-[0.9rem] bg-primary/10 text-primary">
             <CalendarCheck2 className="size-5" />

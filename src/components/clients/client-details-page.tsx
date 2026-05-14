@@ -4,7 +4,6 @@ import Link from "next/link";
 import type { ComponentType } from "react";
 import { useState, useTransition } from "react";
 import {
-  Archive,
   ArrowLeft,
   CalendarDays,
   CalendarPlus2,
@@ -15,7 +14,6 @@ import {
   FileText,
   HeartPulse,
   ImagePlus,
-  Images,
   Inbox,
   Mail,
   MessageSquare,
@@ -33,7 +31,6 @@ import {
   addClientMedicationAction,
   addClientPaymentAction,
   addClientTreatmentPlanItemAction,
-  archiveClientAction,
 } from "@/app/(workspace)/clients/actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -179,9 +176,6 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   const pastAppointments = client.appointments.filter(
     (appointment) => appointment.status === "COMPLETED"
   );
-  const cancelledAppointments = client.appointments.filter(
-    (appointment) => appointment.status === "CANCELLED"
-  );
   const firstVisit = client.appointments.at(-1)?.date ?? "No visits yet";
   const nextAppointment = upcomingAppointments[0]?.date ?? "No appointment booked";
   const lastMessage = client.messages[0]?.timestamp ?? "No messages yet";
@@ -198,22 +192,6 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
     (item) => !allergies.some((allergy) => allergy.id === item.id) &&
       !alerts.some((alert) => alert.id === item.id)
   );
-
-  function archiveClient() {
-    startSaving(async () => {
-      const result = await archiveClientAction(client.id);
-
-      if (!result.ok) {
-        setErrorMessage(result.error ?? "We couldn't archive the client.");
-        setStatusMessage("");
-        return;
-      }
-
-      setClient((current) => ({ ...current, status: "archived" }));
-      setErrorMessage("");
-      setStatusMessage("Client archived.");
-    });
-  }
 
   function addMedication() {
     startSaving(async () => {
@@ -428,8 +406,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1536px] space-y-5">
-      <section className="space-y-6 pb-1">
+    <div className="mx-auto w-full max-w-[1536px] space-y-4">
+      <section className="space-y-4 pb-1">
         <Link
           href="/clients"
           className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -438,10 +416,10 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           Back to clients
         </Link>
 
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div className="flex min-w-0 items-start gap-5">
-            <Avatar className="size-[88px] rounded-full bg-primary/10 text-primary">
-              <AvatarFallback className="bg-primary/10 text-4xl font-semibold text-primary">
+            <Avatar className="size-20 rounded-full bg-primary/10 text-primary">
+              <AvatarFallback className="bg-primary/10 text-3xl font-semibold text-primary">
                 {clientInitials(client.name)}
               </AvatarFallback>
             </Avatar>
@@ -473,55 +451,47 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
 
               <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
                 <span>Last visit: {client.lastVisit}</span>
-                <span className="hidden text-border sm:inline">•</span>
+                <span className="hidden text-border sm:inline">/</span>
                 <span>Preferred contact: {client.details.preferredChannel}</span>
               </div>
             </div>
           </div>
 
-          <div className="grid w-full gap-3 sm:grid-cols-2 xl:w-[620px] xl:grid-cols-4">
-            <StatCard label="Visits" value={client.totalVisits} />
-            <StatCard label="Completed" value={client.appointmentStats.completed} tone="primary" />
-            <StatCard label="Pending" value={client.appointmentStats.pending} />
-            <StatCard
-              label="Balance"
-              value={client.paymentStats.unpaidBalanceDisplay}
-              tone={client.paymentStats.unpaidBalanceCents > 0 ? "danger" : "default"}
-            />
+          <div className="w-full space-y-4 xl:w-[620px]">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <StatCard label="Visits" value={client.totalVisits} />
+              <StatCard label="Completed" value={client.appointmentStats.completed} tone="primary" />
+              <StatCard label="Pending" value={client.appointmentStats.pending} />
+              <StatCard
+                label="Balance"
+                value={client.paymentStats.unpaidBalanceDisplay}
+                tone={client.paymentStats.unpaidBalanceCents > 0 ? "danger" : "default"}
+              />
+            </div>
+            <div className="flex flex-wrap justify-end gap-3">
+              <Link
+                href={`/calendar/new?client=${client.id}`}
+                className={cn(buttonVariants({ variant: "outline" }), "h-10 rounded-[0.65rem] px-4")}
+              >
+                <CalendarPlus2 className="size-4" />
+                Book appointment
+              </Link>
+              <Link
+                href={`/inbox?client=${client.id}`}
+                className={cn(buttonVariants({ variant: "outline" }), "h-10 rounded-[0.65rem] px-4")}
+              >
+                <MessageSquare className="size-4" />
+                Send message
+              </Link>
+              <Link
+                href={`/clients/${client.id}/edit`}
+                className={cn(buttonVariants({ variant: "outline" }), "h-10 rounded-[0.65rem] px-4")}
+              >
+                <MoreHorizontal className="size-4" />
+                More actions
+              </Link>
+            </div>
           </div>
-        </div>
-
-        <div className="flex flex-wrap justify-end gap-3">
-          <Link
-            href={`/calendar/new?client=${client.id}`}
-            className={cn(buttonVariants({ variant: "outline" }), "h-10 rounded-[0.65rem] px-4")}
-          >
-            <CalendarPlus2 className="size-4" />
-            Book appointment
-          </Link>
-          <Link
-            href={`/inbox?client=${client.id}`}
-            className={cn(buttonVariants({ variant: "outline" }), "h-10 rounded-[0.65rem] px-4")}
-          >
-            <MessageSquare className="size-4" />
-            Send message
-          </Link>
-          <Link
-            href={`/clients/${client.id}/edit`}
-            className={cn(buttonVariants({ variant: "outline" }), "h-10 rounded-[0.65rem] px-4")}
-          >
-            <UserRoundPen className="size-4" />
-            Edit
-          </Link>
-          <Button
-            variant="outline"
-            className="h-10 rounded-[0.65rem] px-4"
-            onClick={archiveClient}
-            disabled={isPending || client.status === "archived"}
-          >
-            <Archive className="size-4" />
-            Archive
-          </Button>
         </div>
       </section>
 
@@ -543,14 +513,14 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
       >
         <TabsList
           variant="line"
-          className="w-full justify-start gap-6 rounded-none border-b border-border/80 p-0"
+          className="w-full justify-start gap-7 rounded-none border-b border-border/80 p-0"
         >
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="appointments">Appointments</TabsTrigger>
-          <TabsTrigger value="medical">Medical Info</TabsTrigger>
-          <TabsTrigger value="documents">Documents</TabsTrigger>
-          <TabsTrigger value="messages">Messages</TabsTrigger>
-          <TabsTrigger value="payments">Payments</TabsTrigger>
+          <TabsTrigger className="flex-none px-0 pb-3" value="overview">Overview</TabsTrigger>
+          <TabsTrigger className="flex-none px-0 pb-3" value="appointments">Appointments</TabsTrigger>
+          <TabsTrigger className="flex-none px-0 pb-3" value="medical">Medical Info</TabsTrigger>
+          <TabsTrigger className="flex-none px-0 pb-3" value="documents">Documents</TabsTrigger>
+          <TabsTrigger className="flex-none px-0 pb-3" value="messages">Messages</TabsTrigger>
+          <TabsTrigger className="flex-none px-0 pb-3" value="payments">Payments</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
@@ -821,40 +791,152 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 <OverviewLine label="Unpaid balance" value={client.paymentStats.unpaidBalanceDisplay} />
                 <OverviewLine
                   label="Latest payment"
-                  value={latestPayment ? `${latestPayment.paidAt} • ${latestPayment.amountDisplay}` : "No payments yet"}
+                  value={latestPayment ? `${latestPayment.paidAt} / ${latestPayment.amountDisplay}` : "No payments yet"}
                 />
               </dl>
             </section>
           </aside>
         </TabsContent>
 
-        <TabsContent value="appointments" className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-foreground">Appointments</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Upcoming, past, cancelled, no-show, and appointment-note context for this patient.
-              </p>
-            </div>
-            <Link
-              href={`/calendar/new?client=${client.id}`}
-              className={cn(buttonVariants({ size: "sm" }), "rounded-[0.8rem]")}
-            >
-              <CalendarPlus2 className="size-4" />
-              Book appointment
-            </Link>
+        <TabsContent value="appointments" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
+          <div className="space-y-4">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-base font-semibold text-foreground">Upcoming appointment</h2>
+                <Link
+                  href="/calendar"
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-[0.65rem]")}
+                >
+                  <CalendarDays className="size-4" />
+                  View in calendar
+                </Link>
+              </div>
+              {upcomingAppointments[0] ? (
+                <div className="mt-4 grid gap-4 rounded-[0.9rem] bg-primary/5 p-4 lg:grid-cols-[96px_minmax(0,1fr)_minmax(220px,0.8fr)]">
+                  <div className="flex h-20 flex-col items-center justify-center rounded-[0.75rem] bg-white text-center text-primary">
+                    <span className="text-xs font-semibold uppercase">{upcomingAppointments[0].date.split(" ")[0]}</span>
+                    <span className="text-2xl font-semibold text-foreground">{upcomingAppointments[0].date.match(/\d+/)?.[0] ?? ""}</span>
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <p className="text-lg font-semibold text-foreground">{upcomingAppointments[0].title}</p>
+                      <span className="rounded-md bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">
+                        {upcomingAppointments[0].status.toLowerCase()}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">{upcomingAppointments[0].date}</p>
+                    <p className="mt-2 text-sm text-muted-foreground">{upcomingAppointments[0].notes || "No appointment notes."}</p>
+                  </div>
+                  <dl className="grid gap-3 text-sm">
+                    <OverviewLine label="Provider" value={client.details.assignedStaff} />
+                    <OverviewLine label="Visit type" value="In-person" />
+                    <OverviewLine label="Reminder" value={client.details.preferredChannel} />
+                  </dl>
+                </div>
+              ) : (
+                <p className="mt-4 rounded-[0.9rem] border border-dashed border-border/90 p-4 text-sm text-muted-foreground">
+                  No upcoming appointment booked.
+                </p>
+              )}
+            </section>
+
+            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-base font-semibold text-foreground">Appointment history</h2>
+                <Link
+                  href={`/calendar/new?client=${client.id}`}
+                  className={cn(buttonVariants({ size: "sm" }), "rounded-[0.65rem]")}
+                >
+                  <CalendarPlus2 className="size-4" />
+                  Book appointment
+                </Link>
+              </div>
+              <div className="mt-4 overflow-hidden rounded-[0.85rem] border border-border/75">
+                <table className="w-full text-sm">
+                  <thead className="bg-secondary/40 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3 text-left">Date & time</th>
+                      <th className="px-4 py-3 text-left">Appointment</th>
+                      <th className="px-4 py-3 text-left">Provider</th>
+                      <th className="px-4 py-3 text-left">Status</th>
+                      <th className="px-4 py-3 text-left">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/70 bg-white">
+                    {client.appointments.map((appointment) => (
+                      <tr key={appointment.id}>
+                        <td className="px-4 py-3 font-medium text-foreground">{appointment.date}</td>
+                        <td className="px-4 py-3 text-foreground">{appointment.title}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{client.details.assignedStaff}</td>
+                        <td className="px-4 py-3">
+                          <StatusBadge status={appointment.status.toLowerCase()} />
+                        </td>
+                        <td className="max-w-[260px] px-4 py-3 text-muted-foreground">{appointment.notes || "-"}</td>
+                      </tr>
+                    ))}
+                    {client.appointments.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-6 text-sm text-muted-foreground">No appointment history yet.</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </section>
           </div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-4">
-            <StatCard label="Upcoming" value={client.appointmentStats.upcoming} />
-            <StatCard label="Completed" value={client.appointmentStats.completed} tone="primary" />
-            <StatCard label="Cancelled" value={client.appointmentStats.cancelled} tone="danger" />
-            <StatCard label="No-shows" value={client.appointmentStats.noShows} />
-          </div>
-          <div className="mt-5 grid gap-4 xl:grid-cols-3">
-            <AppointmentList title="Upcoming appointments" entries={upcomingAppointments} emptyText="No upcoming appointments." />
-            <AppointmentList title="Past appointments" entries={pastAppointments} emptyText="No completed appointments yet." />
-            <AppointmentList title="Cancelled appointments" entries={cancelledAppointments} emptyText="No cancelled appointments." />
-          </div>
+
+          <aside className="space-y-4">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-base font-semibold text-foreground">Upcoming reminders</h2>
+                <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+                  {client.followUpReminders.length} upcoming
+                </span>
+              </div>
+              <div className="mt-4 space-y-3">
+                {client.followUpReminders.slice(0, 3).map((reminder) => (
+                  <div key={reminder.id} className="rounded-[0.8rem] border border-border/75 px-3 py-3 text-sm">
+                    <p className="font-semibold text-foreground">{reminder.title}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{reminder.remindAt} - {reminder.channel} - {reminder.status}</p>
+                  </div>
+                ))}
+                {client.followUpReminders.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No follow-up reminders scheduled.</p>
+                ) : null}
+              </div>
+            </section>
+
+            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-base font-semibold text-foreground">Recent visits</h2>
+                <span className="text-sm font-medium text-primary">{pastAppointments.length}</span>
+              </div>
+              <div className="mt-4 space-y-3">
+                {pastAppointments.slice(0, 4).map((appointment) => (
+                  <div key={appointment.id} className="flex items-start justify-between gap-3 text-sm">
+                    <div>
+                      <p className="font-semibold text-foreground">{appointment.title}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{appointment.date}</p>
+                    </div>
+                    <StatusBadge status={appointment.status.toLowerCase()} />
+                  </div>
+                ))}
+                {pastAppointments.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No completed visits yet.</p>
+                ) : null}
+              </div>
+            </section>
+
+            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <h2 className="text-base font-semibold text-foreground">Quick actions</h2>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <Link href={`/calendar/new?client=${client.id}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-10 rounded-[0.65rem] bg-white")}>Book new</Link>
+                <button type="button" onClick={() => setSelectedTab("medical")} className="h-10 rounded-[0.65rem] border border-border bg-white text-sm font-medium text-foreground">Add note</button>
+                <Link href="/calendar" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-10 rounded-[0.65rem] bg-white")}>Availability</Link>
+                <button type="button" onClick={() => setSelectedTab("messages")} className="h-10 rounded-[0.65rem] border border-border bg-white text-sm font-medium text-foreground">Messages</button>
+              </div>
+            </section>
+          </aside>
         </TabsContent>
 
         <TabsContent value="medical" className="space-y-4">
@@ -1176,123 +1258,166 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           </div>
         </TabsContent>
 
-        <TabsContent value="documents" className="space-y-4">
-          <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
-            <div className="flex items-start gap-3">
-              <div className="flex size-10 items-center justify-center rounded-[0.9rem] bg-primary/10 text-primary">
-                <FileText className="size-5" />
+        <TabsContent value="documents" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="space-y-4">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-semibold text-foreground">Documents</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">Manage private PDF and image records for this client.</p>
+                </div>
+                <label className={cn(buttonVariants({ size: "sm" }), "h-10 cursor-pointer rounded-[0.65rem]")}>
+                  <input
+                    type="file"
+                    accept="application/pdf,image/*"
+                    className="sr-only"
+                    onChange={(event) => handleDocumentFile(event.target.files?.[0])}
+                    disabled={isGalleryUploading}
+                  />
+                  <ImagePlus className="size-4" />
+                  {isGalleryUploading ? "Uploading..." : "Upload document"}
+                </label>
               </div>
-              <div>
-                <h2 className="text-lg font-semibold text-foreground">Documents & images</h2>
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-                  Use simple upload types: ID, Consent, Medical History, Report, Image / Scan, and Other.
-                  PDF, image, and scan uploads are stored privately and opened with signed links.
-                </p>
+              <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_190px_auto]">
+                <Input
+                  value={documentDraft.fileName}
+                  onChange={(event) =>
+                    setDocumentDraft((current) => ({ ...current, fileName: event.target.value }))
+                  }
+                  placeholder="File name"
+                  className="h-10 rounded-[0.7rem] bg-white"
+                />
+                <NativeSelect
+                  value={documentDraft.fileType}
+                  options={["Insurance", "Consent", "Medical History", "Report", "Image / Scan", "Invoice", "Other"]}
+                  onChange={(value) =>
+                    setDocumentDraft((current) => ({ ...current, fileType: value }))
+                  }
+                />
+                <Button
+                  className="h-10 rounded-[0.7rem]"
+                  onClick={addDocument}
+                  disabled={isPending || !documentDraft.fileName.trim()}
+                >
+                  Add
+                </Button>
               </div>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {["Insurance", "Consent", "Medical History", "Report", "Image / Scan", "Invoice", "Other"].map((type) => (
-                <span key={type} className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-foreground">
-                  {type}
-                </span>
-              ))}
-            </div>
-            <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_190px]">
-              <Input
-                value={documentDraft.fileName}
-                onChange={(event) =>
-                  setDocumentDraft((current) => ({ ...current, fileName: event.target.value }))
-                }
-                placeholder="File name"
-                className="h-11 rounded-[0.9rem] bg-white/84"
-              />
-              <NativeSelect
-                value={documentDraft.fileType}
-                options={["Insurance", "Consent", "Medical History", "Report", "Image / Scan", "Invoice", "Other"]}
-                onChange={(value) =>
-                  setDocumentDraft((current) => ({ ...current, fileType: value }))
-                }
-              />
               <Textarea
                 value={documentDraft.notes}
                 onChange={(event) =>
                   setDocumentDraft((current) => ({ ...current, notes: event.target.value }))
                 }
                 placeholder="File notes"
-                className="min-h-20 rounded-[0.9rem] bg-white/84 px-3 py-3 lg:col-span-2"
+                className="mt-3 min-h-16 rounded-[0.7rem] bg-white px-3 py-3"
               />
-              <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-[0.9rem] border border-border bg-white/78 px-4 text-sm font-medium text-foreground transition-colors hover:bg-white">
-                <input
-                  type="file"
-                  accept="application/pdf,image/*"
-                  className="sr-only"
-                  onChange={(event) => handleDocumentFile(event.target.files?.[0])}
-                  disabled={isGalleryUploading}
-                />
-                <ImagePlus className="size-4" />
-                {isGalleryUploading ? "Uploading..." : documentDraft.fileUrl ? "File ready" : "Attach PDF/image"}
-              </label>
-              <Button
-                className="h-11 rounded-[0.9rem]"
-                onClick={addDocument}
-                disabled={isPending || !documentDraft.fileName.trim()}
-              >
-                Add document
-              </Button>
-            </div>
-          </section>
+            </section>
 
-          {client.documents.length > 0 ? (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {client.documents.map((document) => (
-                <div key={document.id} className="rounded-[1rem] border border-border/80 bg-white/78 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                    {document.category || document.fileType}
-                  </p>
-                  <p className="mt-2 font-semibold text-foreground">{document.fileName}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {document.fileSize} - Uploaded {document.createdAt} by {document.uploadedBy}
-                  </p>
-                  <p className="mt-3 text-sm leading-6 text-muted-foreground">{document.notes}</p>
-                  {document.fileUrl ? (
-                    <a
-                      href={document.fileUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-primary"
-                    >
+            <section className="overflow-hidden rounded-[1rem] border border-border/80 bg-white shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-secondary/40 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3 text-left">Document name</th>
+                      <th className="px-4 py-3 text-left">Category</th>
+                      <th className="px-4 py-3 text-left">Uploaded on</th>
+                      <th className="px-4 py-3 text-left">Uploaded by</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/70">
+                    {client.documents.map((document) => (
+                      <tr key={document.id}>
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-foreground">{document.fileName}</p>
+                          <p className="text-xs text-muted-foreground">{document.fileSize}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="rounded-md bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
+                            {document.category || document.fileType}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{document.createdAt}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{document.uploadedBy || "Workspace staff"}</td>
+                        <td className="px-4 py-3 text-right">
+                          {document.fileUrl ? (
+                            <a href={document.fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm font-semibold text-primary">
+                              <Download className="size-4" />
+                              Open
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {client.documents.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-8 text-sm text-muted-foreground">No documents uploaded yet.</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            {client.gallery.length > 0 ? (
+              <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {client.gallery.map((item) => (
+                  <figure key={item.id} className="overflow-hidden rounded-[1rem] border border-border/80 bg-white">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={item.imageUrl}
+                      alt={item.caption || "Client clinical image"}
+                      className="aspect-[4/3] w-full object-cover"
+                    />
+                    <figcaption className="px-4 py-3">
+                      <p className="text-sm font-medium text-foreground">{item.caption || "No note"}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Upload date: {item.createdAt}</p>
+                    </figcaption>
+                  </figure>
+                ))}
+              </section>
+            ) : null}
+          </div>
+
+          <aside className="space-y-4">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <h2 className="text-base font-semibold text-foreground">Documents summary</h2>
+              <div className="mt-4 space-y-3 text-sm">
+                {["Insurance", "Consent", "Medical History", "Report", "Image / Scan", "Invoice", "Other"].map((type) => {
+                  const count = client.documents.filter((document) => (document.category || document.fileType) === type).length;
+                  return <SummaryRow key={type} label={type} value={count} />;
+                })}
+                <div className="border-t border-border/70 pt-3">
+                  <SummaryRow label="Total documents" value={client.documents.length} strong />
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <h2 className="text-base font-semibold text-foreground">Selected document</h2>
+              {client.documents[0] ? (
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-[0.85rem] border border-border/80 p-4">
+                    <p className="font-semibold text-foreground">{client.documents[0].fileName}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {client.documents[0].category || client.documents[0].fileType} - {client.documents[0].fileSize}
+                    </p>
+                  </div>
+                  <OverviewLine label="Uploaded on" value={client.documents[0].createdAt} />
+                  <OverviewLine label="Uploaded by" value={client.documents[0].uploadedBy || "Workspace staff"} />
+                  {client.documents[0].fileUrl ? (
+                    <a href={client.documents[0].fileUrl} target="_blank" rel="noreferrer" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-10 w-full rounded-[0.7rem] bg-white")}>
                       <Download className="size-4" />
-                      Open file
+                      Download document
                     </a>
                   ) : null}
                 </div>
-              ))}
-            </div>
-          ) : null}
-
-          {client.gallery.length > 0 ? (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {client.gallery.map((item) => (
-                <figure key={item.id} className="overflow-hidden rounded-[1rem] border border-border/80 bg-white/78">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={item.imageUrl}
-                    alt={item.caption || "Client clinical image"}
-                    className="aspect-[4/3] w-full object-cover"
-                  />
-                  <figcaption className="px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                      Image / Scan
-                    </p>
-                    <p className="text-sm font-medium text-foreground">{item.caption || "No note"}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Upload date: {item.createdAt}</p>
-                  </figcaption>
-                </figure>
-              ))}
-            </div>
-          ) : (
-            <EmptyPanel icon={Images} title="No images yet" text="Upload the first clinical image for this client." />
-          )}
+              ) : (
+                <p className="mt-4 text-sm text-muted-foreground">Upload a document to preview its metadata.</p>
+              )}
+            </section>
+          </aside>
         </TabsContent>
 
         <TabsContent value="messages" className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
@@ -1345,150 +1470,117 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           </div>
         </TabsContent>
 
-        <TabsContent value="payments" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
-            <InfoCard icon={CreditCard} title="Total paid" value={client.paymentStats.totalPaidDisplay} />
-            <InfoCard icon={CreditCard} title="Unpaid balance" value={client.paymentStats.unpaidBalanceDisplay} />
-            <InfoCard icon={CreditCard} title="Payment status" value={client.paymentStats.paymentStatus} />
+        <TabsContent value="payments" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="space-y-4">
+            <section className="grid gap-3 rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)] md:grid-cols-4">
+              <PaymentMetric label="Total billed" value={client.paymentStats.totalPaidDisplay} helper={`${client.payments.length} ledger entries`} />
+              <PaymentMetric label="Total paid" value={client.paymentStats.totalPaidDisplay} helper={`${client.payments.filter((payment) => payment.status.toLowerCase() === "paid").length} paid entries`} tone="good" />
+              <PaymentMetric label="Outstanding" value={client.paymentStats.unpaidBalanceDisplay} helper="Open balance" tone={client.paymentStats.unpaidBalanceCents > 0 ? "danger" : "default"} />
+              <PaymentMetric label="Last payment" value={latestPayment?.paidAt ?? "-"} helper={latestPayment?.amountDisplay ?? "No payments yet"} />
+            </section>
+
+            <section className="overflow-hidden rounded-[1rem] border border-border/80 bg-white shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/75 px-5 py-4">
+                <h2 className="text-base font-semibold text-foreground">Invoice & payment history</h2>
+                <button type="button" className="text-sm font-medium text-primary">Download statement</button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-secondary/40 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3 text-left">Date</th>
+                      <th className="px-4 py-3 text-left">Invoice #</th>
+                      <th className="px-4 py-3 text-left">Description</th>
+                      <th className="px-4 py-3 text-left">Billed</th>
+                      <th className="px-4 py-3 text-left">Paid</th>
+                      <th className="px-4 py-3 text-left">Status</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/70 bg-white">
+                    {client.payments.map((payment) => (
+                      <tr key={payment.id}>
+                        <td className="px-4 py-3 font-medium text-foreground">{payment.paidAt || payment.createdAt}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{payment.invoiceNumber || "-"}</td>
+                        <td className="px-4 py-3 text-foreground">{payment.description || "Manual ledger entry"}</td>
+                        <td className="px-4 py-3 text-foreground">{payment.amountDisplay}</td>
+                        <td className="px-4 py-3 text-foreground">{payment.status.toLowerCase() === "paid" ? payment.amountDisplay : "-"}</td>
+                        <td className="px-4 py-3"><StatusBadge status={payment.status.toLowerCase()} /></td>
+                        <td className="px-4 py-3 text-right">
+                          {payment.receiptUrl ? (
+                            <a href={payment.receiptUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-primary">Receipt</a>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {client.payments.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-8 text-sm text-muted-foreground">No payments yet.</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <h2 className="text-base font-semibold text-foreground">Manual ledger entry</h2>
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <Input value={paymentDraft.amount} onChange={(event) => setPaymentDraft((current) => ({ ...current, amount: event.target.value }))} placeholder="Amount" className="h-10 rounded-[0.7rem] bg-white" />
+                <NativeSelect value={paymentDraft.status} options={["Paid", "Unpaid", "Partial", "Refunded"]} onChange={(value) => setPaymentDraft((current) => ({ ...current, status: value }))} />
+                <Input value={paymentDraft.invoiceNumber} onChange={(event) => setPaymentDraft((current) => ({ ...current, invoiceNumber: event.target.value }))} placeholder="Invoice number" className="h-10 rounded-[0.7rem] bg-white" />
+                <Input value={paymentDraft.receiptNumber} onChange={(event) => setPaymentDraft((current) => ({ ...current, receiptNumber: event.target.value }))} placeholder="Receipt number" className="h-10 rounded-[0.7rem] bg-white" />
+                <Input value={paymentDraft.description} onChange={(event) => setPaymentDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Description" className="h-10 rounded-[0.7rem] bg-white md:col-span-2" />
+                <Input value={paymentDraft.paymentMethod} onChange={(event) => setPaymentDraft((current) => ({ ...current, paymentMethod: event.target.value }))} placeholder="Payment method" className="h-10 rounded-[0.7rem] bg-white" />
+                <Input value={paymentDraft.paidAt} onChange={(event) => setPaymentDraft((current) => ({ ...current, paidAt: event.target.value }))} type="date" className="h-10 rounded-[0.7rem] bg-white" />
+                <Textarea value={paymentDraft.billingNote} onChange={(event) => setPaymentDraft((current) => ({ ...current, billingNote: event.target.value }))} placeholder="Billing note" className="min-h-16 rounded-[0.7rem] bg-white px-3 py-3 md:col-span-2 xl:col-span-3" />
+                <Button onClick={addPayment} disabled={isPending || !paymentDraft.amount.trim()} className="h-10 rounded-[0.7rem]">Add entry</Button>
+              </div>
+            </section>
           </div>
 
-          <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
-            <h2 className="text-lg font-semibold text-foreground">Manual ledger entry</h2>
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <Input
-                value={paymentDraft.amount}
-                onChange={(event) =>
-                  setPaymentDraft((current) => ({ ...current, amount: event.target.value }))
-                }
-                placeholder="Amount"
-                className="h-11 rounded-[0.9rem] bg-white/84"
-              />
-              <NativeSelect
-                value={paymentDraft.status}
-                options={["Paid", "Unpaid", "Partial", "Refunded"]}
-                onChange={(value) =>
-                  setPaymentDraft((current) => ({ ...current, status: value }))
-                }
-              />
-              <Input
-                value={paymentDraft.invoiceNumber}
-                onChange={(event) =>
-                  setPaymentDraft((current) => ({
-                    ...current,
-                    invoiceNumber: event.target.value,
-                  }))
-                }
-                placeholder="Invoice number"
-                className="h-11 rounded-[0.9rem] bg-white/84"
-              />
-              <Input
-                value={paymentDraft.receiptNumber}
-                onChange={(event) =>
-                  setPaymentDraft((current) => ({
-                    ...current,
-                    receiptNumber: event.target.value,
-                  }))
-                }
-                placeholder="Receipt number"
-                className="h-11 rounded-[0.9rem] bg-white/84"
-              />
-              <Input
-                value={paymentDraft.description}
-                onChange={(event) =>
-                  setPaymentDraft((current) => ({
-                    ...current,
-                    description: event.target.value,
-                  }))
-                }
-                placeholder="Description"
-                className="h-11 rounded-[0.9rem] bg-white/84 md:col-span-2"
-              />
-              <Input
-                value={paymentDraft.paymentMethod}
-                onChange={(event) =>
-                  setPaymentDraft((current) => ({
-                    ...current,
-                    paymentMethod: event.target.value,
-                  }))
-                }
-                placeholder="Payment method"
-                className="h-11 rounded-[0.9rem] bg-white/84"
-              />
-              <Input
-                value={paymentDraft.paidAt}
-                onChange={(event) =>
-                  setPaymentDraft((current) => ({ ...current, paidAt: event.target.value }))
-                }
-                type="date"
-                className="h-11 rounded-[0.9rem] bg-white/84"
-              />
-              <Textarea
-                value={paymentDraft.billingNote}
-                onChange={(event) =>
-                  setPaymentDraft((current) => ({
-                    ...current,
-                    billingNote: event.target.value,
-                  }))
-                }
-                placeholder="Billing note"
-                className="min-h-20 rounded-[0.9rem] bg-white/84 px-3 py-3 md:col-span-2 xl:col-span-3"
-              />
-              <Button
-                onClick={addPayment}
-                disabled={isPending || !paymentDraft.amount.trim()}
-                className="h-11 rounded-[0.9rem]"
-              >
-                Add ledger entry
-              </Button>
-            </div>
-          </section>
-
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {client.payments.length > 0 ? (
-              client.payments.map((payment) => (
-                <div key={payment.id} className="rounded-[0.95rem] border border-border/80 bg-white/78 px-4 py-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-xl font-semibold text-foreground">{payment.amountDisplay}</p>
-                    <span className="rounded-full bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground">
-                      {payment.status}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{payment.description}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Paid at: {payment.paidAt}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Invoice: {payment.invoiceNumber} - Receipt: {payment.receiptNumber}
+          <aside className="space-y-4">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <h2 className="text-base font-semibold text-foreground">Payment status</h2>
+              <div className="mt-4 flex items-start gap-3">
+                <span className="flex size-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                  <CheckCircle2 className="size-5" />
+                </span>
+                <div>
+                  <p className="font-semibold text-foreground">{client.paymentStats.paymentStatus}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Current balance {client.paymentStats.unpaidBalanceDisplay}.
                   </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Method: {payment.paymentMethod}
-                  </p>
-                  {payment.billingNote ? (
-                    <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                      {payment.billingNote}
-                    </p>
-                  ) : null}
-                  {payment.appointmentId ? (
-                    <p className="mt-1 text-xs text-muted-foreground">Linked to booked service</p>
-                  ) : null}
-                  {payment.receiptUrl ? (
-                    <a
-                      href={payment.receiptUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-3 inline-flex text-sm font-semibold text-primary"
-                    >
-                      Open invoice / receipt
-                    </a>
-                  ) : null}
                 </div>
-              ))
-            ) : (
-              <EmptyPanel
-                icon={CreditCard}
-                title="No payments yet"
-                text="Payments registered from bookings or appointment sessions will appear here as this patient's payment history."
-              />
-            )}
-          </div>
+              </div>
+              <dl className="mt-5 space-y-3">
+                <OverviewLine label="Current balance" value={client.paymentStats.unpaidBalanceDisplay} />
+                <OverviewLine label="Status" value={client.paymentStats.paymentStatus} />
+                <OverviewLine label="Credit limit" value="$0.00" />
+              </dl>
+            </section>
+
+            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <h2 className="text-base font-semibold text-foreground">Billing notes</h2>
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                {latestPayment?.billingNote || client.notes || "No billing notes recorded."}
+              </p>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Last updated: {latestPayment?.createdAt ?? "No payments yet"}
+              </p>
+            </section>
+
+            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <h2 className="text-base font-semibold text-foreground">Quick actions</h2>
+              <div className="mt-4 grid gap-2">
+                <button type="button" className="h-10 rounded-[0.7rem] bg-primary text-sm font-semibold text-primary-foreground">Create invoice</button>
+                <button type="button" className="h-10 rounded-[0.7rem] border border-border bg-white text-sm font-semibold text-foreground">Record payment</button>
+                <button type="button" className="h-10 rounded-[0.7rem] border border-border bg-white text-sm font-semibold text-foreground">Send receipt</button>
+              </div>
+            </section>
+          </aside>
         </TabsContent>
       </Tabs>
     </div>
@@ -1503,46 +1595,6 @@ function Detail({ label, value }: { label: string; value: string }) {
       </dt>
       <dd className="mt-2 text-sm font-medium text-foreground">{value}</dd>
     </div>
-  );
-}
-
-function AppointmentList({
-  title,
-  entries,
-  emptyText,
-}: {
-  title: string;
-  entries: ClientRecord["appointments"];
-  emptyText: string;
-}) {
-  return (
-    <section className="rounded-[1rem] border border-border/80 bg-white/72 p-4">
-      <h3 className="font-semibold text-foreground">{title}</h3>
-      <div className="mt-4 space-y-3">
-        {entries.length > 0 ? (
-          entries.map((entry) => (
-            <div key={entry.id} className="rounded-[0.9rem] border border-border/80 bg-white/78 px-3 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <p className="font-medium text-foreground">{entry.title}</p>
-                <span className="rounded-full bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground">
-                  {entry.status.toLowerCase()}
-                </span>
-              </div>
-              <p className="mt-1 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                {entry.date}
-              </p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                {entry.notes}
-              </p>
-            </div>
-          ))
-        ) : (
-          <p className="rounded-[0.9rem] border border-dashed border-border/90 bg-white/54 px-3 py-4 text-sm text-muted-foreground">
-            {emptyText}
-          </p>
-        )}
-      </div>
-    </section>
   );
 }
 
@@ -1567,6 +1619,75 @@ function InfoCard({
         </div>
       </div>
     </section>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const normalized = status.toLowerCase();
+  return (
+    <span
+      className={cn(
+        "inline-flex rounded-md px-2 py-1 text-[11px] font-semibold capitalize",
+        (normalized === "paid" || normalized === "completed" || normalized === "confirmed") &&
+          "bg-emerald-100 text-emerald-700",
+        (normalized === "cancelled" || normalized === "refunded") &&
+          "bg-destructive/10 text-destructive",
+        (normalized === "pending" || normalized === "partial" || normalized === "unpaid") &&
+          "bg-primary/10 text-primary",
+        normalized === "scheduled" && "bg-secondary text-muted-foreground"
+      )}
+    >
+      {normalized}
+    </span>
+  );
+}
+
+function SummaryRow({
+  label,
+  value,
+  strong,
+}: {
+  label: string;
+  value: number | string;
+  strong?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className={cn("text-muted-foreground", strong && "font-semibold text-foreground")}>
+        {label}
+      </span>
+      <span className="font-semibold text-foreground">{value}</span>
+    </div>
+  );
+}
+
+function PaymentMetric({
+  label,
+  value,
+  helper,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  helper: string;
+  tone?: "default" | "good" | "danger";
+}) {
+  return (
+    <div className="border-border/70 px-2 py-1 md:border-r md:last:border-r-0">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
+      </p>
+      <p
+        className={cn(
+          "mt-2 text-2xl font-semibold text-foreground",
+          tone === "good" && "text-emerald-700",
+          tone === "danger" && "text-destructive"
+        )}
+      >
+        {value}
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
+    </div>
   );
 }
 

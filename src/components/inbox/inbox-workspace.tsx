@@ -340,13 +340,13 @@ export function InboxWorkspace({
         </DialogContent>
       </Dialog>
 
-      <div className="space-y-5">
+      <div className="mx-auto w-full max-w-[1536px] space-y-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h1 className="text-4xl font-semibold tracking-tight text-foreground">
+            <h1 className="text-[34px] font-semibold leading-tight tracking-tight text-foreground">
               Inbox
             </h1>
-            <p className="mt-2 text-[15px] leading-7 text-muted-foreground">
+            <p className="mt-2 text-[15px] text-muted-foreground">
               Manage client conversations, replies, and unknown contacts.
             </p>
           </div>
@@ -360,8 +360,8 @@ export function InboxWorkspace({
           </div>
         </div>
 
-      <div className="overflow-hidden rounded-[1rem] border border-border/80 bg-white/94 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
-        <div className="grid min-h-[780px] grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="overflow-hidden rounded-[1rem] border border-border/80 bg-white shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+        <div className="grid min-h-[700px] grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="border-b border-border/80 lg:border-b-0 lg:border-r">
           <div className="glass-divider px-5 py-4">
             <div className="relative">
