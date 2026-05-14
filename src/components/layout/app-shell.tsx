@@ -179,11 +179,7 @@ export function AppShell({
             className="sticky top-0 flex h-screen w-full flex-col bg-white p-4"
             data-tour="sidebar-shell"
           >
-            <div className="px-2 pb-5 pt-2">
-              <BrandMark href="/dashboard" includeSubtitle={false} />
-            </div>
-
-            <div className="mb-4 flex items-center gap-3 px-2">
+            <div className="mb-5 flex items-center gap-3 px-2 pt-4">
               <span className="flex size-9 shrink-0 items-center justify-center rounded-[0.85rem] bg-primary/10 text-primary">
                 {logoUrl ? (
                   <span
@@ -269,13 +265,12 @@ export function AppShell({
 
         <div className="relative flex min-h-screen min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-20 border-b border-border/80 bg-white px-4 py-3 sm:px-6 lg:px-8 lg:py-0">
-            <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-5 lg:h-16">
-              <div className="flex min-w-[88px] items-center gap-3">
-                <div className="lg:hidden">
-                  <BrandMark compact href="/dashboard" />
-                </div>
+            <div className="mx-auto grid w-full max-w-[1600px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 lg:h-16 lg:gap-6">
+              <div className="flex min-w-[148px] items-center">
+                <BrandMark href="/dashboard" includeSubtitle={false} className="hidden lg:flex" />
+                <BrandMark compact href="/dashboard" className="lg:hidden" />
               </div>
-              <GlobalSearch className="hidden min-w-0 max-w-3xl flex-1 md:block" />
+              <GlobalSearch className="hidden min-w-0 w-full max-w-3xl justify-self-center md:block" />
               <div className="flex items-center gap-2">
                 <NotificationsMenu unreadCount={liveUnreadCount} items={liveNotifications} />
                 <div className="hidden items-center gap-3 sm:flex">

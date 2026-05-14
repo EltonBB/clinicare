@@ -412,7 +412,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
             </DashboardPanel>
           </div>
 
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px] 2xl:grid-cols-[minmax(0,1fr)_280px_280px]">
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
             <DashboardPanel title="Recent activity">
               <div className="space-y-4">
                 {view.lastClients.slice(0, 5).map((client, index) => (
@@ -446,8 +446,6 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                 View full reports
               </Link>
             </DashboardPanel>
-
-            <DashboardUnreadCard initialSummary={view.unreadSummary} />
           </div>
         </div>
 
@@ -492,6 +490,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
             </Link>
           </DashboardPanel>
 
+          <DashboardUnreadCard initialSummary={view.unreadSummary} />
         </aside>
       </div>
     </div>

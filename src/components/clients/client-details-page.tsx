@@ -795,6 +795,48 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 />
               </dl>
             </section>
+
+            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
+                  <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <NotebookText className="size-4" />
+                  </span>
+                  Follow-up reminders
+                </h2>
+                <button type="button" onClick={() => setSelectedTab("medical")} className="text-sm font-medium text-primary">
+                  Manage
+                </button>
+              </div>
+              <div className="mt-4 space-y-3">
+                {client.followUpReminders.slice(0, 3).map((reminder) => (
+                  <div key={reminder.id} className="rounded-[0.85rem] border border-border/75 px-3 py-3 text-sm">
+                    <p className="font-semibold text-foreground">{reminder.title}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {reminder.remindAt} - {reminder.channel} - {reminder.status}
+                    </p>
+                  </div>
+                ))}
+                {client.followUpReminders.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No follow-up reminders scheduled.</p>
+                ) : null}
+              </div>
+            </section>
+
+            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
+                <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <FileText className="size-4" />
+                </span>
+                Record activity
+              </h2>
+              <div className="mt-4 space-y-3 text-sm">
+                <SummaryRow label="Documents" value={client.documents.length} />
+                <SummaryRow label="Care notes" value={client.careNotes.length} />
+                <SummaryRow label="Messages" value={client.messages.length} />
+                <SummaryRow label="Treatment items" value={client.treatmentPlanItems.length} />
+              </div>
+            </section>
           </aside>
         </TabsContent>
 

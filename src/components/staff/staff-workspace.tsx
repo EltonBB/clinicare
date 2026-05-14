@@ -52,6 +52,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
   const staff = initialView.staff;
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | StaffStatus>("all");
+  const [roleFilter, setRoleFilter] = useState("all");
   const deferredQuery = useDeferredValue(query);
   const hasStaff = staff.length > 0;
   const onDutyStaff = staff.filter(
@@ -77,12 +78,20 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
   const upcomingShiftStaff = staff
     .filter((member) => member.nextShift !== "-")
     .slice(0, 5);
+  const roles = useMemo(
+    () => Array.from(new Set(staff.map((member) => member.role || "Staff"))).sort(),
+    [staff]
+  );
+  const scheduledStaff = staff
+    .filter((member) => member.shiftLabel !== "-" || member.nextShift !== "-" || member.appointmentsToday > 0)
+    .slice(0, 8);
 
   const filteredStaff = useMemo(() => {
     const normalizedQuery = deferredQuery.trim().toLowerCase();
 
     return staff.filter((member) => {
       const matchesFilter = filter === "all" ? true : member.status === filter;
+      const matchesRole = roleFilter === "all" ? true : (member.role || "Staff") === roleFilter;
       const matchesQuery =
         normalizedQuery.length === 0
           ? true
@@ -90,9 +99,9 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
               value.toLowerCase().includes(normalizedQuery)
             );
 
-      return matchesFilter && matchesQuery;
+      return matchesFilter && matchesRole && matchesQuery;
     });
-  }, [staff, deferredQuery, filter]);
+  }, [staff, deferredQuery, filter, roleFilter]);
 
   return (
     <div className="mx-auto w-full max-w-[1536px] space-y-4">
@@ -138,8 +147,8 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                 className="h-10 rounded-[0.7rem] bg-white pl-9"
           />
         </div>
+            <NativeRoleFilter value={roleFilter} roles={roles} onChange={setRoleFilter} />
             <NativeFilter value={filter} onChange={setFilter} />
-            <NativeRoleFilter />
             <button
               type="button"
               className="inline-flex h-10 items-center justify-center rounded-[0.7rem] border border-border bg-white text-muted-foreground"
@@ -149,12 +158,13 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
             </button>
           </div>
 
-          <div className="hidden grid-cols-[minmax(250px,1.5fr)_120px_120px_160px_150px_70px] border-b border-border/80 bg-secondary/25 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground lg:grid">
+          <div className="hidden grid-cols-[minmax(240px,1.45fr)_120px_120px_110px_150px_150px_54px] border-b border-border/80 bg-secondary/25 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground lg:grid">
             <span>Staff member</span>
             <span>Role</span>
             <span>Status</span>
             <span>Appts today</span>
             <span>Completion rate</span>
+            <span>Shift</span>
             <span className="text-right">Actions</span>
         </div>
 
@@ -190,7 +200,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
             filteredStaff.map((member) => (
               <div
                 key={member.id}
-                  className="grid gap-3 px-4 py-3 transition-colors duration-200 hover:bg-secondary/25 lg:grid-cols-[minmax(250px,1.5fr)_120px_120px_160px_150px_70px] lg:items-center"
+                  className="grid gap-3 px-4 py-3 transition-colors duration-200 hover:bg-secondary/25 lg:grid-cols-[minmax(240px,1.45fr)_120px_120px_110px_150px_150px_54px] lg:items-center"
               >
                 <Link href={`/staff/${member.id}`} className="flex min-w-0 items-center gap-3">
                     <Avatar className="size-10">
@@ -224,6 +234,10 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                       <span className="text-sm text-muted-foreground">-</span>
                     )}
                   </div>
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-medium text-foreground lg:hidden">Shift: </span>
+                    {member.shiftLabel !== "-" ? member.shiftLabel : member.nextShift}
+                  </p>
                   <div className="flex justify-end">
                     <Link
                       href={`/staff/${member.id}`}
@@ -245,7 +259,42 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
           </div>
         </div>
 
-        <aside className="section-reveal-delayed space-y-3">
+        <section className="section-reveal rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)] xl:col-start-1">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">Team schedule</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Today&apos;s shifts and the next planned coverage from staff records.</p>
+            </div>
+            <Link href="/calendar" className="text-sm font-semibold text-primary">Open schedule</Link>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {scheduledStaff.map((member) => (
+              <Link
+                key={member.id}
+                href={`/staff/${member.id}`}
+                className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-[0.85rem] border border-border/75 px-4 py-3 text-sm transition-colors hover:bg-secondary/25"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold text-foreground">{member.name}</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {member.shiftLabel !== "-" ? member.shiftLabel : member.nextShift}
+                  </span>
+                </span>
+                <span className="text-right">
+                  <span className="block font-semibold text-foreground">{member.appointmentsToday}</span>
+                  <span className="text-xs text-muted-foreground">appts</span>
+                </span>
+              </Link>
+            ))}
+            {scheduledStaff.length === 0 ? (
+              <p className="rounded-[0.85rem] border border-dashed border-border/90 px-4 py-5 text-sm text-muted-foreground md:col-span-2">
+                No staff shifts or appointments are scheduled for the visible period.
+              </p>
+            ) : null}
+          </div>
+        </section>
+
+        <aside className="section-reveal-delayed space-y-3 xl:col-start-2 xl:row-start-1 xl:row-span-2">
           <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="text-base font-semibold text-foreground">On duty now</h2>
@@ -340,14 +389,27 @@ function NativeFilter({
   );
 }
 
-function NativeRoleFilter() {
+function NativeRoleFilter({
+  value,
+  roles,
+  onChange,
+}: {
+  value: string;
+  roles: string[];
+  onChange: (value: string) => void;
+}) {
   return (
-    <select className="h-10 rounded-[0.7rem] border border-border bg-white px-3 text-sm font-medium text-foreground outline-none">
-      <option>All roles</option>
-      <option>Specialist</option>
-      <option>Receptionist</option>
-      <option>Manager</option>
-      <option>Assistant</option>
+    <select
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className="h-10 rounded-[0.7rem] border border-border bg-white px-3 text-sm font-medium text-foreground outline-none"
+    >
+      <option value="all">All roles</option>
+      {roles.map((role) => (
+        <option key={role} value={role}>
+          {role}
+        </option>
+      ))}
     </select>
   );
 }

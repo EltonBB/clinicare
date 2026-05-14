@@ -146,7 +146,8 @@ export function ClientsWorkspace({
       </div>
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
-      <section className="section-reveal overflow-hidden rounded-[1.2rem] border border-border/80 bg-white/94 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm">
+      <div className="section-reveal space-y-4">
+      <section className="overflow-hidden rounded-[1.2rem] border border-border/80 bg-white/94 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm">
         <div className="hidden grid-cols-[minmax(260px,1.8fr)_180px_130px_130px_120px] border-b border-border/80 px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground lg:grid">
           <span>Name</span>
           <span>Last visit</span>
@@ -230,6 +231,39 @@ export function ClientsWorkspace({
           )}
         </div>
       </section>
+      <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-base font-semibold text-foreground">Recent client activity</h2>
+          <span className="text-sm text-muted-foreground">{clients.slice(0, 4).length} latest records</span>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {clients.slice(0, 4).map((client) => (
+            <Link
+              key={client.id}
+              href={`/clients/${client.id}`}
+              className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 rounded-[0.85rem] border border-border/75 px-4 py-3 text-sm transition-colors hover:bg-secondary/25"
+            >
+              <Avatar>
+                <AvatarFallback>{clientInitials(client.name)}</AvatarFallback>
+              </Avatar>
+              <span className="min-w-0">
+                <span className="block truncate font-semibold text-foreground">{client.name}</span>
+                <span className="text-xs text-muted-foreground">Last visit {client.lastVisit}</span>
+              </span>
+              <span className={cn("flex items-center gap-2 text-xs font-medium", statusColors[client.status])}>
+                <span className={statusDot(client.status)} />
+                {client.status}
+              </span>
+            </Link>
+          ))}
+          {clients.length === 0 ? (
+            <p className="rounded-[0.85rem] border border-dashed border-border/90 px-4 py-5 text-sm text-muted-foreground md:col-span-2">
+              No recent client activity yet.
+            </p>
+          ) : null}
+        </div>
+      </section>
+      </div>
       <aside className="section-reveal-delayed space-y-5">
         <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
           <h2 className="text-base font-semibold text-foreground">Client segments</h2>
