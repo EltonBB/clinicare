@@ -271,7 +271,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
   );
 
   return (
-    <div className="section-reveal space-y-5">
+    <div className="section-reveal mx-auto w-full max-w-[1536px] space-y-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between" data-tour="dashboard-overview">
         <div>
           <p className="text-sm font-medium text-muted-foreground">
@@ -282,11 +282,13 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           </h1>
           <p className="mt-2 text-base text-muted-foreground">{view.dateLabel}</p>
         </div>
-        <DashboardCustomizer
-          availableWidgets={view.availableWidgets}
-          selectedWidgets={selectedWidgets}
-          onSelectedWidgetsChange={setSelectedWidgets}
-        />
+        <div className="hidden 2xl:block">
+          <DashboardCustomizer
+            availableWidgets={view.availableWidgets}
+            selectedWidgets={selectedWidgets}
+            onSelectedWidgetsChange={setSelectedWidgets}
+          />
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

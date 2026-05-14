@@ -83,19 +83,15 @@ export function ClientsWorkspace({
   }, [clients, deferredQuery, filter]);
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-[1536px] space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="section-reveal space-y-2">
-          <p className="text-[13px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-            Client directory
-          </p>
           <div className="space-y-2">
-            <h1 className="text-4xl font-semibold tracking-tight text-foreground">
-              Manage relationships
+            <h1 className="text-[34px] font-semibold leading-tight tracking-tight text-foreground">
+              Clients
             </h1>
-            <p className="max-w-2xl text-[15px] leading-7 text-muted-foreground">
-              Search clients, open their full record, and keep profile details ready for
-              bookings and follow-up.
+            <p className="max-w-2xl text-[15px] text-muted-foreground">
+              Manage client records, visit history, documents, messages, and follow-up.
             </p>
           </div>
         </div>
@@ -119,7 +115,8 @@ export function ClientsWorkspace({
         <ClientMetric icon={FileText} label="Recent updates" value={clients.slice(0, 5).length.toString()} helper="Latest records ready" />
       </div>
 
-      <div className="section-reveal flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="section-reveal rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="relative w-full max-w-3xl">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -145,6 +142,7 @@ export function ClientsWorkspace({
             </button>
           ))}
         </div>
+      </div>
       </div>
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">

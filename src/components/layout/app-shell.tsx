@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { BadgeCheck } from "lucide-react";
+import { BadgeCheck, ShieldCheck } from "lucide-react";
 
 import { refreshWorkspaceNotificationsAction } from "@/app/(workspace)/actions";
 import { BrandMark } from "@/components/brand-mark";
@@ -174,36 +174,35 @@ export function AppShell({
       }
     >
       <div className="relative flex min-h-screen">
-        <aside className="hidden w-[236px] shrink-0 border-r border-sidebar-border/80 bg-white lg:flex">
+        <aside className="hidden w-[232px] shrink-0 border-r border-sidebar-border/80 bg-white lg:flex">
           <div
             className="sticky top-0 flex h-screen w-full flex-col bg-white p-4"
             data-tour="sidebar-shell"
           >
             <div className="px-2 pb-5 pt-2">
-              <Link
-                href="/dashboard"
-                className="group flex items-center gap-3 rounded-[1.1rem] px-1 py-1"
-              >
-                <span className="flex size-11 shrink-0 items-center justify-center rounded-[0.75rem] bg-transparent text-sm font-semibold uppercase text-primary shadow-none">
-                  {logoUrl ? (
-                    <span
-                      aria-hidden="true"
-                      className="size-full rounded-[0.75rem] bg-contain bg-center bg-no-repeat"
-                      style={{ backgroundImage: `url("${logoUrl}")` }}
-                    />
-                  ) : (
-                    businessName.charAt(0)
-                  )}
+              <BrandMark href="/dashboard" includeSubtitle={false} />
+            </div>
+
+            <div className="mb-4 flex items-center gap-3 px-2">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-[0.85rem] bg-primary/10 text-primary">
+                {logoUrl ? (
+                  <span
+                    aria-hidden="true"
+                    className="size-full rounded-[0.85rem] bg-contain bg-center bg-no-repeat"
+                    style={{ backgroundImage: `url("${logoUrl}")` }}
+                  />
+                ) : (
+                  <ShieldCheck className="size-4" />
+                )}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold text-foreground">
+                  {businessName}
                 </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-lg font-semibold tracking-tight text-foreground">
-                    {businessName}
-                  </span>
-                  <span className="block truncate text-xs font-medium text-muted-foreground">
-                    {ownerName}
-                  </span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {ownerName.split(" ")[0] ?? ownerName}
                 </span>
-              </Link>
+              </span>
             </div>
 
             <nav className="flex-1 space-y-1.5 px-1 py-2">
@@ -275,12 +274,6 @@ export function AppShell({
                 <div className="lg:hidden">
                   <BrandMark compact href="/dashboard" />
                 </div>
-                <Link
-                  href="/dashboard"
-                  className="hidden text-lg font-semibold text-foreground transition-colors hover:text-primary lg:block"
-                >
-                  Vela
-                </Link>
               </div>
               <GlobalSearch className="hidden min-w-0 max-w-3xl flex-1 md:block" />
               <div className="flex items-center gap-2">

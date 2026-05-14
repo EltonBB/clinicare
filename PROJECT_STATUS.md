@@ -1,6 +1,6 @@
 # Project Status: Vela / Clinicare
 
-Last updated: 2026-05-13
+Last updated: 2026-05-14
 
 ## Product Overview
 
@@ -50,6 +50,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Workspace shell refinement completed: the authenticated app keeps the existing card-based page designs while using a straighter desktop sidebar and top toolbar, a real global search bar that searches clients, appointments, staff, and message conversations, flatter clinic/account identity chips without tinted avatar shadows, and slightly straighter shared card radius across the app.
 - Workspace depth redesign implementation pass completed: dashboard, clients directory, staff, calendar schedule blocks, mobile/global search, inbox deep links, and client detail tabs now use denser screenshot-aligned workspace structures with KPI rows, operational tables, right-side rails, compact panels, and working database-backed patient depth.
 - Corrective visual pass added after review feedback: Calendar now has the screenshot-style page header and right rail, Reports uses a flatter page-level header plus dense metric cards, Inbox has a page-level summary header, and the shared shell/background were tightened toward the supplied white/purple-blue workspace references.
+- Second corrective workspace redesign pass completed after screenshot mismatch review: the shared shell now uses the reference-style Vela brand block, separate clinic identity block, centered top search rhythm, and tighter sidebar width; Client detail now uses an open patient header with right-side KPI cards, action row, underline tabs, and screenshot-style Overview grid with dynamic profile/care/upcoming/treatment/health/document/message/payment panels; Reports now uses the reference-style six-card KPI row, performance chart, client mix donut, operational metrics, appointment status, detailed breakdown, demand windows, staff load, and right-side AI insights rail; Dashboard, Clients, and Staff were tightened to the same max-width, title, card, search/filter, and dense table rhythm.
 - Prisma schema now includes structured client health records, provider care notes, treatment plan items, client follow-up reminders, staff shifts, and schedule blocks. Client documents now support private PDF/image storage metadata, and client payments now support manual ledger metadata such as invoice number, receipt number, payment method, billing note, and payment date.
 - Public marketing landing page at `/` now uses a simplified animated product-led design inspired by the Dribbble reference, with the default Vela blue accent color, a large hero, floating clinic workspace mockups on desktop, a cleaner stacked mobile preview, compact workflow blocks, AI reporting, privacy messaging, and signup/login CTAs into the auth flow.
 - Public marketing site expanded from a single landing page into a five-page static route structure: `/`, `/product`, `/pricing`, `/about`, and `/contact`. The pages now share a reusable marketing shell, Vela-blue product-led design system, responsive header/footer, richer Vela workspace screenshot-style product media, pricing cards, About/legal links, and contact/demo form layout.
@@ -95,10 +96,11 @@ The core product direction is customer-first: clinics should not need to underst
 - Billing/plan enforcement is partially represented in UI; full paid upgrade/payment flow still needs production implementation.
 - The workspace depth Prisma schema has been applied to the configured Supabase Postgres database with `npx prisma db push`, and the RLS enablement SQL has been run for the new public application tables.
 - Browser-render verification of authenticated workspace pages was limited by the Playwright context redirecting to `/login` without a signed-in workspace session. Static/type/build verification passed; signed-in visual QA should be run with a real test account after the database schema is applied.
+- Latest browser verification still cannot inspect authenticated workspace visuals from Codex because protected routes redirect to `/login` without a reusable signed-in Supabase session. The app correctly enforces the auth boundary; signed-in visual QA remains the next required step using a real workspace account.
 
 ## Next Priorities
 
-1. Run signed-in desktop/mobile visual QA against dashboard, calendar, reports, staff, clients, inbox, settings, create/edit forms, and all client detail tabs with a real test workspace.
+1. Run signed-in desktop/mobile visual QA against dashboard, calendar, reports, staff, clients, inbox, settings, create/edit forms, and all client detail tabs with a real test workspace, comparing against the supplied reference screenshots.
 2. Stabilize and test the full first-user flow on a clean account: signup, confirm email, onboarding, dashboard, tour, client, booking, staff, reports.
 3. Verify completed appointment automation end-to-end: completed appointments leave active calendar views and appear in staff/client records.
 4. Smoke-test private signed logo/gallery/document upload, display, download/preview, replacement cleanup, and client-delete media cleanup against the live production app.
@@ -112,6 +114,7 @@ The core product direction is customer-first: clinics should not need to underst
 - `npm run lint`
 - `npm audit --omit=dev`
 - `npm run build`
+- `npm audit --omit=dev`
 - Signed-in browser visual QA for workspace depth redesign pages after schema apply.
 - New account signup and email confirmation.
 - Onboarding from owner step through completion.
@@ -136,4 +139,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Added a corrective visual pass for the screenshot alignment after the first redesign was too shallow outside Dashboard: Calendar received the right rail and reference-style header, Reports and Inbox received denser page headers/metrics, and the shared shell/background were tightened. Verified with `npm run lint` and `npm run build`; signed-in visual QA remains required with a real workspace session. Deployment should continue through GitHub push only, not direct Vercel CLI deploy.
+- Continued the screenshot-alignment redesign after the previous attempt was still too shallow: rebuilt the client detail Overview/header, replaced Reports with the reference-style KPI/chart/mix/AI-rail composition, tightened the shared shell, and aligned Dashboard/Clients/Staff containers and headings. Verified with `npm run lint`, `npm run build`, and `npm audit --omit=dev`; browser access to protected workspace pages still redirects to `/login` without a signed-in session, so signed-in visual QA remains required before calling the redesign complete.

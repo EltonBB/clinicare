@@ -6,7 +6,10 @@ import { useState, useTransition } from "react";
 import {
   Archive,
   ArrowLeft,
+  CalendarDays,
   CalendarPlus2,
+  CheckCircle2,
+  ClipboardList,
   CreditCard,
   Download,
   FileText,
@@ -15,6 +18,8 @@ import {
   Images,
   Inbox,
   Mail,
+  MessageSquare,
+  MoreHorizontal,
   NotebookText,
   Phone,
   UserRoundPen,
@@ -166,6 +171,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [isGalleryUploading, setIsGalleryUploading] = useState(false);
+  const [selectedTab, setSelectedTab] = useState("overview");
   const [isPending, startSaving] = useTransition();
   const upcomingAppointments = client.appointments.filter(
     (appointment) => appointment.status === "PENDING" || appointment.status === "CONFIRMED"
@@ -422,81 +428,100 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="mx-auto w-full max-w-[1536px] space-y-5">
+      <section className="space-y-6 pb-1">
         <Link
           href="/clients"
           className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
-          Clients
+          Back to clients
         </Link>
-        <div className="flex flex-wrap items-center gap-2">
+
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+          <div className="flex min-w-0 items-start gap-5">
+            <Avatar className="size-[88px] rounded-full bg-primary/10 text-primary">
+              <AvatarFallback className="bg-primary/10 text-4xl font-semibold text-primary">
+                {clientInitials(client.name)}
+              </AvatarFallback>
+            </Avatar>
+
+            <div className="min-w-0 pt-1">
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="truncate text-[28px] font-semibold leading-tight tracking-tight text-foreground">
+                  {client.name}
+                </h1>
+                <span className="rounded-md bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                  {statusLabels[client.status]}
+                </span>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
+                <span className="inline-flex items-center gap-2 font-medium text-foreground">
+                  <Phone className="size-4 text-muted-foreground" />
+                  {client.phone || "Not added"}
+                </span>
+                <span className="inline-flex items-center gap-2">
+                  <MessageSquare className="size-4 text-emerald-500" />
+                  {client.details.preferredChannel || "No preference"}
+                </span>
+                <span className="inline-flex items-center gap-2">
+                  <Mail className="size-4 text-muted-foreground" />
+                  {client.email || "Not added"}
+                </span>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                <span>Last visit: {client.lastVisit}</span>
+                <span className="hidden text-border sm:inline">•</span>
+                <span>Preferred contact: {client.details.preferredChannel}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid w-full gap-3 sm:grid-cols-2 xl:w-[620px] xl:grid-cols-4">
+            <StatCard label="Visits" value={client.totalVisits} />
+            <StatCard label="Completed" value={client.appointmentStats.completed} tone="primary" />
+            <StatCard label="Pending" value={client.appointmentStats.pending} />
+            <StatCard
+              label="Balance"
+              value={client.paymentStats.unpaidBalanceDisplay}
+              tone={client.paymentStats.unpaidBalanceCents > 0 ? "danger" : "default"}
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap justify-end gap-3">
           <Link
             href={`/calendar/new?client=${client.id}`}
-            className={cn(buttonVariants({ variant: "outline" }), "rounded-[0.85rem]")}
+            className={cn(buttonVariants({ variant: "outline" }), "h-10 rounded-[0.65rem] px-4")}
           >
             <CalendarPlus2 className="size-4" />
-            Book
+            Book appointment
+          </Link>
+          <Link
+            href={`/inbox?client=${client.id}`}
+            className={cn(buttonVariants({ variant: "outline" }), "h-10 rounded-[0.65rem] px-4")}
+          >
+            <MessageSquare className="size-4" />
+            Send message
           </Link>
           <Link
             href={`/clients/${client.id}/edit`}
-            className={cn(buttonVariants({ variant: "outline" }), "rounded-[0.85rem]")}
+            className={cn(buttonVariants({ variant: "outline" }), "h-10 rounded-[0.65rem] px-4")}
           >
             <UserRoundPen className="size-4" />
             Edit
           </Link>
           <Button
             variant="outline"
-            className="rounded-[0.85rem]"
+            className="h-10 rounded-[0.65rem] px-4"
             onClick={archiveClient}
             disabled={isPending || client.status === "archived"}
           >
             <Archive className="size-4" />
             Archive
           </Button>
-        </div>
-      </div>
-
-      <section className="section-reveal rounded-[1.2rem] border border-border/80 bg-white/78 px-5 py-5 shadow-[0_24px_52px_rgba(20,32,51,0.05)]">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 items-start gap-4">
-            <Avatar size="lg" className="size-14">
-              <AvatarFallback>{clientInitials(client.name)}</AvatarFallback>
-            </Avatar>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">
-                  {client.name}
-                </h1>
-                <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-semibold text-foreground">
-                  {statusLabels[client.status]}
-                </span>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                <span>{client.phone}</span>
-                {client.email ? <span>{client.email}</span> : null}
-                <span>Last visit: {client.lastVisit}</span>
-              </div>
-              {client.details.tags.length > 0 ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {client.details.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          </div>
-          <div className="grid min-w-[260px] gap-3 sm:grid-cols-3 lg:w-[460px]">
-            <StatCard label="Visits" value={client.totalVisits} />
-            <StatCard label="Completed" value={client.appointmentStats.completed} tone="primary" />
-            <StatCard label="Pending" value={client.appointmentStats.pending} />
-          </div>
         </div>
       </section>
 
@@ -511,8 +536,15 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
         </div>
       ) : null}
 
-      <Tabs defaultValue="overview" className="section-reveal-delayed gap-5">
-        <TabsList variant="line" className="flex-wrap rounded-none p-0">
+      <Tabs
+        value={selectedTab}
+        onValueChange={setSelectedTab}
+        className="section-reveal-delayed gap-5"
+      >
+        <TabsList
+          variant="line"
+          className="w-full justify-start gap-6 rounded-none border-b border-border/80 p-0"
+        >
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="appointments">Appointments</TabsTrigger>
           <TabsTrigger value="medical">Medical Info</TabsTrigger>
@@ -521,76 +553,63 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           <TabsTrigger value="payments">Payments</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-4">
-            <StatCard label="Upcoming" value={client.appointmentStats.upcoming} />
-            <StatCard label="Completed" value={client.appointmentStats.completed} tone="primary" />
-            <StatCard label="Cancelled" value={client.appointmentStats.cancelled} tone="danger" />
-            <StatCard label="Balance" value={client.paymentStats.unpaidBalanceDisplay} />
-          </div>
+        <TabsContent value="overview" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="grid gap-4">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
+                    <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <CheckCircle2 className="size-4" />
+                    </span>
+                    Profile summary
+                  </h2>
+                  <Link
+                    href={`/clients/${client.id}/edit`}
+                    className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-[0.65rem]")}
+                  >
+                    <UserRoundPen className="size-4" />
+                    Edit
+                  </Link>
+                </div>
+                <dl className="mt-5 space-y-4">
+                  <OverviewLine label="Full name" value={client.name} />
+                  <OverviewLine icon={Phone} label="Phone number" value={client.phone || "Not added"} />
+                  <OverviewLine icon={Mail} label="Email" value={client.email || "Not added"} />
+                  <OverviewLine label="Gender" value={client.gender} />
+                  <OverviewLine label="Date of birth" value={client.dateOfBirth} />
+                  <OverviewLine label="Address" value={client.address} />
+                  <OverviewLine label="Patient type" value={client.patientType} />
+                  <OverviewLine label="Status" value={statusLabels[client.status]} />
+                </dl>
+              </section>
 
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-          <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
-            <h2 className="text-lg font-semibold text-foreground">Basic information</h2>
-            <dl className="mt-5 space-y-3">
-              <OverviewLine label="Full name" value={client.name} />
-              <OverviewLine
-                icon={Phone}
-                label="Phone number"
-                value={client.phone || "Not added"}
-              />
-              <OverviewLine
-                icon={Mail}
-                label="Email"
-                value={client.email || "Not added"}
-              />
-              <OverviewLine label="Gender" value={client.gender} />
-              <OverviewLine label="Date of birth" value={client.dateOfBirth} />
-              <OverviewLine label="Address" value={client.address} />
-              <OverviewLine label="Patient type" value={client.patientType} />
-              <OverviewLine label="Status" value={statusLabels[client.status]} />
-            </dl>
-          </section>
+              <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+                <h2 className="text-base font-semibold text-foreground">Care summary</h2>
+                <dl className="mt-5 space-y-4">
+                  <OverviewLine label="Assigned doctor / staff" value={client.details.assignedStaff} />
+                  <OverviewLine label="First visit" value={firstVisit} />
+                  <OverviewLine label="Last visit" value={client.lastVisit} />
+                  <OverviewLine label="Next appointment" value={nextAppointment} />
+                  <OverviewLine label="Preferred contact" value={client.details.preferredChannel} />
+                  <OverviewLine label="Patient notes" value={client.notes} />
+                </dl>
+              </section>
+            </div>
 
-          <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
-            <h2 className="text-lg font-semibold text-foreground">Care summary</h2>
-            <dl className="mt-5 space-y-3">
-              <OverviewLine label="Assigned doctor / staff member" value={client.details.assignedStaff} />
-              <OverviewLine label="First visit date" value={firstVisit} />
-              <OverviewLine label="Last visit date" value={client.lastVisit} />
-              <OverviewLine label="Next appointment" value={nextAppointment} />
-              <OverviewLine label="Preferred contact" value={client.details.preferredChannel} />
-              <OverviewLine label="Patient notes" value={client.notes} />
-            </dl>
-          </section>
-          </div>
-
-          <div className="grid gap-4 xl:grid-cols-3">
-            <InfoCard
-              icon={HeartPulse}
-              title="Important health notes"
-              value={client.medical.importantHealthNotes}
-            />
-            <InfoCard
-              icon={HeartPulse}
-              title="Allergies"
-              value={client.medical.allergies}
-            />
-            <InfoCard
-              icon={NotebookText}
-              title="Treatment plan"
-              value={client.medical.treatmentPlan}
-            />
-          </div>
-
-          <div className="grid gap-4 xl:grid-cols-3">
-            <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
-              <h2 className="text-lg font-semibold text-foreground">Latest appointment</h2>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+                <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
+                  <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <CheckCircle2 className="size-4" />
+                  </span>
+                  Latest appointment
+                </h2>
               {latestAppointment ? (
-                <div className="mt-4 rounded-[0.95rem] border border-border/80 bg-white/76 px-4 py-4">
+                <div className="mt-4 rounded-[0.85rem] bg-primary/5 px-4 py-4">
                   <div className="flex items-start justify-between gap-3">
                     <p className="font-semibold text-foreground">{latestAppointment.title}</p>
-                    <span className="rounded-full bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground">
+                    <span className="rounded-md bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">
                       {latestAppointment.status.toLowerCase()}
                     </span>
                   </div>
@@ -604,36 +623,209 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               )}
             </section>
 
-            <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
-              <h2 className="text-lg font-semibold text-foreground">Current medication</h2>
-              <div className="mt-4 space-y-3">
-                {currentMedications.length > 0 ? (
-                  currentMedications.slice(0, 3).map((medication) => (
-                    <div key={medication.id} className="rounded-[0.95rem] border border-border/80 bg-white/76 px-4 py-3">
-                      <p className="font-semibold text-foreground">{medication.name}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {medication.dosage} - {medication.frequency}
-                      </p>
+              <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
+                    <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <HeartPulse className="size-4" />
+                    </span>
+                    Health notes
+                  </h2>
+                  <Link
+                    href={`/clients/${client.id}/edit`}
+                    className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-[0.65rem]")}
+                  >
+                    Edit
+                  </Link>
+                </div>
+                <div className="mt-4 divide-y divide-border/70">
+                  <HealthSummaryRow title="Important health notes" value={client.medical.importantHealthNotes} />
+                  <HealthSummaryRow
+                    title="Allergies"
+                    value={allergies[0]?.label ?? client.medical.allergies}
+                  />
+                  <HealthSummaryRow
+                    title="Current medication"
+                    value={
+                      currentMedications[0]
+                        ? `${currentMedications[0].name} ${currentMedications[0].dosage}`.trim()
+                        : "No active medications recorded."
+                    }
+                  />
+                </div>
+              </section>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+              <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
+                    <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <FileText className="size-4" />
+                    </span>
+                    Documents
+                  </h2>
+                  <button type="button" className="text-primary">
+                    <MoreHorizontal className="size-4" />
+                  </button>
+                </div>
+                <div className="mt-4 overflow-hidden rounded-[0.85rem] border border-border/75">
+                  <table className="w-full text-sm">
+                    <thead className="bg-secondary/45 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3 text-left">Name</th>
+                        <th className="px-4 py-3 text-left">Type</th>
+                        <th className="px-4 py-3 text-left">Uploaded on</th>
+                        <th className="px-4 py-3 text-left">Uploaded by</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/70 bg-white">
+                      {client.documents.slice(0, 3).map((document) => (
+                        <tr key={document.id}>
+                          <td className="px-4 py-3 font-medium text-foreground">{document.fileName}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{document.category || document.fileType}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{document.createdAt}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{document.uploadedBy || "Workspace staff"}</td>
+                        </tr>
+                      ))}
+                      {client.documents.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="px-4 py-6 text-sm text-muted-foreground">
+                            No documents uploaded yet.
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTab("documents")}
+                  className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-primary"
+                >
+                  View all documents
+                  <ArrowLeft className="size-4 rotate-180" />
+                </button>
+              </section>
+
+              <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
+                    <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <Inbox className="size-4" />
+                    </span>
+                    Messages
+                  </h2>
+                  <Link href={`/inbox?client=${client.id}`} className="text-sm font-medium text-primary">
+                    View messages
+                  </Link>
+                </div>
+                <div className="mt-4 space-y-3">
+                  {client.messages.slice(0, 3).map((message) => (
+                    <div key={message.id} className="rounded-[0.85rem] border border-border/75 px-3 py-3">
+                      <p className="line-clamp-2 text-sm text-foreground">{message.body}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{message.timestamp}</p>
                     </div>
-                  ))
-                ) : (
-                  <p className="text-sm leading-6 text-muted-foreground">
-                    No active medications recorded.
-                  </p>
-                )}
+                  ))}
+                  {client.messages.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No recent messages.</p>
+                  ) : null}
+                </div>
+                <Link
+                  href={`/inbox?client=${client.id}`}
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-5 rounded-[0.65rem]")}
+                >
+                  <MessageSquare className="size-4" />
+                  Send message
+                </Link>
+              </section>
+            </div>
+          </div>
+
+          <aside className="grid content-start gap-4">
+            <section className="rounded-[1rem] border border-primary/10 bg-primary/8 p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
+                <span className="flex size-9 items-center justify-center rounded-full bg-white text-primary">
+                  <CalendarDays className="size-4" />
+                </span>
+                Upcoming appointment
+              </h2>
+              {upcomingAppointments[0] ? (
+                <div className="mt-5 rounded-[0.9rem] bg-white px-4 py-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{upcomingAppointments[0].date}</p>
+                      <p className="mt-2 font-semibold text-foreground">{upcomingAppointments[0].title}</p>
+                      <p className="mt-2 text-sm text-muted-foreground">{upcomingAppointments[0].notes}</p>
+                    </div>
+                    <span className="rounded-md bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">
+                      {upcomingAppointments[0].status.toLowerCase()}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-4 text-sm text-muted-foreground">No upcoming appointment booked.</p>
+              )}
+              <Link href="/calendar" className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-primary">
+                View in calendar
+                <ArrowLeft className="size-4 rotate-180" />
+              </Link>
+            </section>
+
+            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
+                  <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <ClipboardList className="size-4" />
+                  </span>
+                  Treatment plan
+                </h2>
+              </div>
+              <div className="mt-4 space-y-3">
+                {client.treatmentPlanItems.slice(0, 3).map((item) => (
+                  <div key={item.id} className="flex items-start justify-between gap-3 border-b border-border/70 pb-3 last:border-0 last:pb-0">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{item.title}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{item.description || item.dueAt}</p>
+                    </div>
+                    <span className="rounded-md bg-secondary px-2 py-1 text-[11px] font-semibold text-muted-foreground">
+                      {item.status}
+                    </span>
+                  </div>
+                ))}
+                {client.treatmentPlanItems.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">{client.medical.treatmentPlan}</p>
+                ) : null}
               </div>
             </section>
 
-            <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
-              <h2 className="text-lg font-semibold text-foreground">Payment snapshot</h2>
-              <dl className="mt-4 space-y-3">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
+                  <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <CreditCard className="size-4" />
+                  </span>
+                  Payment snapshot
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTab("payments")}
+                  className="text-sm font-medium text-primary"
+                >
+                  View payments
+                </button>
+              </div>
+              <dl className="mt-5 space-y-4">
                 <OverviewLine label="Payment status" value={client.paymentStats.paymentStatus} />
                 <OverviewLine label="Total paid" value={client.paymentStats.totalPaidDisplay} />
                 <OverviewLine label="Unpaid balance" value={client.paymentStats.unpaidBalanceDisplay} />
-                <OverviewLine label="Latest payment" value={latestPayment?.amountDisplay ?? "No payments yet"} />
+                <OverviewLine
+                  label="Latest payment"
+                  value={latestPayment ? `${latestPayment.paidAt} • ${latestPayment.amountDisplay}` : "No payments yet"}
+                />
               </dl>
             </section>
-          </div>
+          </aside>
         </TabsContent>
 
         <TabsContent value="appointments" className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
@@ -1375,6 +1567,20 @@ function InfoCard({
         </div>
       </div>
     </section>
+  );
+}
+
+function HealthSummaryRow({ title, value }: { title: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[40px_minmax(0,1fr)] gap-3 py-3 first:pt-0 last:pb-0">
+      <div className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <HeartPulse className="size-4" />
+      </div>
+      <div>
+        <p className="text-sm font-semibold text-foreground">{title}</p>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">{value}</p>
+      </div>
+    </div>
   );
 }
 

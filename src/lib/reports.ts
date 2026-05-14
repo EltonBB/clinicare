@@ -107,6 +107,8 @@ export type ReportPeriodView = {
   highlightChange: string;
   highlightTrend: ReportMetricTrend;
   highlightSummary: string;
+  unreadMessages: number;
+  activeClients: number;
   metrics: ReportMetric[];
   diagnostics: ReportPeriodDiagnostics;
   chart: {
@@ -1767,6 +1769,8 @@ function buildPeriodView(args: {
       deltas.completion.trend === "flat" ? formatPercentShort(current.completionRate) : deltas.completion.delta,
     highlightTrend: deltas.completion.trend,
     highlightSummary: snapshot.summary,
+    unreadMessages: current.unreadMessages,
+    activeClients: diagnostics.clientMix.active,
     metrics,
     diagnostics,
     chart: {
