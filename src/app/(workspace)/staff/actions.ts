@@ -108,6 +108,7 @@ async function fetchStaffRecord(staffId: string, businessId: string) {
           },
         },
         select: {
+          id: true,
           startsAt: true,
           endsAt: true,
           status: true,
@@ -146,6 +147,65 @@ function revalidateStaffSurfaces() {
   revalidatePath("/calendar");
   revalidatePath("/dashboard");
   revalidatePath("/settings");
+}
+
+function weekScheduleWindow() {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 7);
+  return { start, end };
+}
+
+function isValidTime(value: string) {
+  return /^\d{2}:\d{2}$/.test(value);
+}
+
+async function replaceWeeklySchedule(args: {
+  businessId: string;
+  staffMemberId: string;
+  weeklySchedule: NonNullable<SaveStaffPayload["weeklySchedule"]>;
+}) {
+  const { start, end } = weekScheduleWindow();
+  const shifts = args.weeklySchedule
+    .filter((item) => item.enabled && item.date && isValidTime(item.startTime) && isValidTime(item.endTime))
+    .map((item) => {
+      const startsAt = parseDateTime(item.date, item.startTime);
+      const endsAt = parseDateTime(item.date, item.endTime);
+
+      if (!startsAt || !endsAt || endsAt <= startsAt) {
+        return null;
+      }
+
+      return {
+        businessId: args.businessId,
+        staffMemberId: args.staffMemberId,
+        startsAt,
+        endsAt,
+        status: "Scheduled",
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+
+  await prisma.$transaction([
+    prisma.staffShift.deleteMany({
+      where: {
+        businessId: args.businessId,
+        staffMemberId: args.staffMemberId,
+        startsAt: {
+          gte: start,
+          lt: end,
+        },
+      },
+    }),
+    ...(shifts.length > 0
+      ? [
+          prisma.staffShift.createMany({
+            data: shifts,
+          }),
+        ]
+      : []),
+  ]);
 }
 
 export async function saveStaffAction(payload: SaveStaffPayload): Promise<SaveStaffResult> {
@@ -213,6 +273,14 @@ export async function saveStaffAction(payload: SaveStaffPayload): Promise<SaveSt
       },
     });
     staffId = created.id;
+  }
+
+  if (payload.weeklySchedule) {
+    await replaceWeeklySchedule({
+      businessId: business.id,
+      staffMemberId: staffId!,
+      weeklySchedule: payload.weeklySchedule,
+    });
   }
 
   revalidateStaffSurfaces();
@@ -283,6 +351,26 @@ export async function checkInStaffAction(staffId: string): Promise<StaffClockRes
     },
     select: {
       id: true,
+      status: true,
+      shifts: {
+        where: {
+          startsAt: {
+            gte: (() => {
+              const start = new Date();
+              start.setHours(0, 0, 0, 0);
+              return start;
+            })(),
+          },
+        },
+        select: {
+          startsAt: true,
+          endsAt: true,
+        },
+        orderBy: {
+          startsAt: "asc",
+        },
+        take: 8,
+      },
     },
   });
 
@@ -290,6 +378,28 @@ export async function checkInStaffAction(staffId: string): Promise<StaffClockRes
     return {
       ok: false,
       error: "Staff member not found in this workspace.",
+    };
+  }
+
+  const now = new Date();
+  const todayShift = staff.shifts.find(
+    (shift) =>
+      shift.startsAt.toDateString() === now.toDateString() &&
+      now >= new Date(shift.startsAt.getTime() - 30 * 60 * 1000) &&
+      now <= shift.endsAt
+  );
+
+  if (staff.status === "INACTIVE") {
+    return {
+      ok: false,
+      error: "Inactive staff cannot check in.",
+    };
+  }
+
+  if (!todayShift) {
+    return {
+      ok: false,
+      error: "This staff member is not inside a scheduled shift window.",
     };
   }
 

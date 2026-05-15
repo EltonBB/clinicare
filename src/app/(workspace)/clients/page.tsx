@@ -51,7 +51,14 @@ export default async function ClientsPage({
       createdAt: true,
       appointments: {
         select: {
+          title: true,
           startAt: true,
+          notes: true,
+          staffMember: {
+            select: {
+              name: true,
+            },
+          },
         },
         orderBy: {
           startAt: "desc",

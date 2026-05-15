@@ -119,6 +119,9 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const router = useRouter();
   const period = view.periods[selectedPeriod];
+  const [dateInput, setDateInput] = useState(period.periodEnd.slice(0, 10));
+  const [fromInput, setFromInput] = useState(period.periodStart.slice(0, 10));
+  const [toInput, setToInput] = useState(period.periodEnd.slice(0, 10));
   const chartValues = period.chart.points.map((point) => point.value);
   const linePath = useMemo(() => buildLinePath(chartValues, 620, 190), [chartValues]);
   const completionMetric = getMetric(period.metrics, "Completion rate");
@@ -198,9 +201,19 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
     });
   }
 
+  function applySingleDate() {
+    if (!dateInput) return;
+    router.push(`/reports?date=${dateInput}`);
+  }
+
+  function applyRange() {
+    if (!fromInput || !toInput) return;
+    router.push(`/reports?from=${fromInput}&to=${toInput}`);
+  }
+
   return (
-    <div className="mx-auto w-full max-w-[1536px] space-y-6">
-      <section className="section-reveal space-y-5">
+    <div className="w-full space-y-4">
+      <section className="section-reveal space-y-4">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <h1 className="text-[34px] font-semibold leading-tight tracking-tight text-foreground">
@@ -211,7 +224,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <div className="inline-flex rounded-[0.65rem] border border-border bg-white p-1">
               {view.periodOrder.map((key) => {
                 const item = view.periods[key];
@@ -233,9 +246,44 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                 );
               })}
             </div>
-            <div className="inline-flex min-w-[250px] items-center justify-between rounded-[0.65rem] border border-border bg-white px-4 py-2.5 text-sm font-medium text-foreground">
-              <span>{period.rangeLabel}</span>
-              <CalendarDays className="size-4 text-muted-foreground" />
+            <div className="inline-grid gap-2 rounded-[0.65rem] border border-border bg-white p-1.5 sm:grid-cols-[140px_auto]">
+              <input
+                type="date"
+                value={dateInput}
+                onChange={(event) => setDateInput(event.target.value)}
+                className="h-8 rounded-[0.5rem] px-2 text-sm outline-none"
+                aria-label="Report date"
+              />
+              <button
+                type="button"
+                onClick={applySingleDate}
+                className="h-8 rounded-[0.5rem] px-3 text-sm font-semibold text-primary hover:bg-primary/8"
+              >
+                Analyse date
+              </button>
+            </div>
+            <div className="inline-grid gap-2 rounded-[0.65rem] border border-border bg-white p-1.5 sm:grid-cols-[140px_140px_auto]">
+              <input
+                type="date"
+                value={fromInput}
+                onChange={(event) => setFromInput(event.target.value)}
+                className="h-8 rounded-[0.5rem] px-2 text-sm outline-none"
+                aria-label="Report range start"
+              />
+              <input
+                type="date"
+                value={toInput}
+                onChange={(event) => setToInput(event.target.value)}
+                className="h-8 rounded-[0.5rem] px-2 text-sm outline-none"
+                aria-label="Report range end"
+              />
+              <button
+                type="button"
+                onClick={applyRange}
+                className="h-8 rounded-[0.5rem] px-3 text-sm font-semibold text-primary hover:bg-primary/8"
+              >
+                Analyse range
+              </button>
             </div>
             <button
               type="button"
@@ -259,20 +307,20 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
           {metricCards.map(({ icon: Icon, metric }) => (
             <div
               key={metric.label}
-              className="rounded-[1rem] border border-border/80 bg-white px-4 py-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]"
+              className="rounded-[0.9rem] border border-border/80 bg-white px-4 py-3 shadow-[0_12px_28px_rgba(20,32,51,0.035)]"
             >
               <div className="flex items-start gap-3">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <Icon className="size-5" />
                 </div>
                 <div className="min-w-0">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
                     {metric.label}
                   </p>
-                  <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
+                  <p className="mt-1.5 text-2xl font-semibold tracking-tight text-foreground">
                     {metric.value}
                   </p>
-                  <p className={cn("mt-2 inline-flex items-center gap-1 text-xs font-medium", metricTone[metric.trend])}>
+                  <p className={cn("mt-1.5 inline-flex items-center gap-1 text-xs font-medium", metricTone[metric.trend])}>
                     <TrendIcon trend={metric.trend} />
                     {metric.delta}
                   </p>
@@ -286,7 +334,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
         <div className="grid gap-4">
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.9fr)_minmax(280px,0.9fr)]">
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_12px_28px_rgba(20,32,51,0.035)]">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-base font-semibold text-foreground">Performance overview</h2>
@@ -306,7 +354,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                 </span>
               </div>
 
-              <svg viewBox="0 0 620 250" className="mt-5 h-[300px] w-full" role="img" aria-label={period.chart.title}>
+              <svg viewBox="0 0 620 250" className="mt-3 h-[230px] w-full" role="img" aria-label={period.chart.title}>
                 {[0, 1, 2, 3].map((line) => (
                   <line
                     key={line}
@@ -355,16 +403,16 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               </div>
             </section>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_12px_28px_rgba(20,32,51,0.035)]">
               <h2 className="text-base font-semibold text-foreground">Client status mix</h2>
-              <div className="mt-7 flex items-center justify-center gap-7">
+              <div className="mt-5 flex items-center justify-center gap-6">
                 <div
-                  className="grid size-40 place-items-center rounded-full"
+                  className="grid size-36 place-items-center rounded-full"
                   style={{
                     background: `conic-gradient(var(--primary) 0 ${clientActiveShare}%, #f59e0b ${clientActiveShare}% ${clientActiveShare + (clientTotal ? (period.diagnostics.clientMix.atRisk / clientTotal) * 100 : 0)}%, #cbd5e1 0 100%)`,
                   }}
                 >
-                  <div className="grid size-24 place-items-center rounded-full bg-white text-center shadow-inner">
+                    <div className="grid size-20 place-items-center rounded-full bg-white text-center shadow-inner">
                     <div>
                       <p className="text-2xl font-semibold text-foreground">{clientTotal}</p>
                       <p className="text-xs text-muted-foreground">Total</p>
@@ -378,11 +426,15 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                   <LegendRow color="bg-slate-400" label="Archived" value={String(period.diagnostics.clientMix.archived)} />
                 </div>
               </div>
+              <div className="mt-5 grid grid-cols-2 gap-2 text-sm">
+                <SimpleMetric label="Total records" value={clientTotal.toString()} />
+                <SimpleMetric label="Active share" value={`${clientActiveShare.toFixed(0)}%`} />
+              </div>
             </section>
           </div>
 
           <div className="grid gap-4 xl:grid-cols-3">
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_12px_28px_rgba(20,32,51,0.035)]">
               <h2 className="text-base font-semibold text-foreground">Operational metrics</h2>
               <div className="mt-4 space-y-3">
                 <SimpleMetric label="Repeat-visit rate" value={getMetric(period.metrics, "Repeat-visit rate")?.value ?? "-"} />
@@ -393,7 +445,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               </div>
             </section>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_12px_28px_rgba(20,32,51,0.035)]">
               <h2 className="text-base font-semibold text-foreground">Appointment status</h2>
               <div className="mt-5 flex items-center justify-center gap-6">
                 <div
@@ -415,7 +467,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               </div>
             </section>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_12px_28px_rgba(20,32,51,0.035)]">
               <h2 className="text-base font-semibold text-foreground">Detailed breakdown</h2>
               <div className="mt-4 space-y-3">
                 {period.metrics.slice(0, 6).map((metric) => (
@@ -433,7 +485,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_12px_28px_rgba(20,32,51,0.035)]">
               <h2 className="text-base font-semibold text-foreground">Demand windows</h2>
               <div className="mt-4 grid gap-5 sm:grid-cols-3">
                 <DemandList title="Busiest days" items={busiestDays} />
@@ -442,7 +494,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               </div>
             </section>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_12px_28px_rgba(20,32,51,0.035)]">
               <h2 className="text-base font-semibold text-foreground">Staff load</h2>
               <div className="mt-4 space-y-4">
                 {period.diagnostics.staffLoad.length > 0 ? (

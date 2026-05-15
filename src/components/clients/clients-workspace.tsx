@@ -83,7 +83,7 @@ export function ClientsWorkspace({
   }, [clients, deferredQuery, filter]);
 
   return (
-    <div className="mx-auto w-full max-w-[1536px] space-y-6">
+    <div className="w-full space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="section-reveal space-y-2">
           <div className="space-y-2">
@@ -117,7 +117,7 @@ export function ClientsWorkspace({
 
       <div className="section-reveal rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="relative w-full max-w-3xl">
+        <div className="relative w-full flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
@@ -148,9 +148,10 @@ export function ClientsWorkspace({
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
       <div className="section-reveal space-y-4">
       <section className="overflow-hidden rounded-[1.2rem] border border-border/80 bg-white/94 shadow-[0_24px_52px_rgba(20,32,51,0.05)] backdrop-blur-sm">
-        <div className="hidden grid-cols-[minmax(260px,1.8fr)_180px_130px_130px_120px] border-b border-border/80 px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground lg:grid">
+        <div className="hidden grid-cols-[minmax(230px,1.45fr)_130px_minmax(220px,1.15fr)_110px_110px_110px] border-b border-border/80 px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground lg:grid">
           <span>Name</span>
           <span>Last visit</span>
+          <span>Latest appointment</span>
           <span>Total visits</span>
           <span>Status</span>
           <span className="text-right">Actions</span>
@@ -189,7 +190,7 @@ export function ClientsWorkspace({
             filteredClients.map((client) => (
               <div
                 key={client.id}
-                className="grid gap-4 px-5 py-4 transition-colors duration-200 hover:bg-white/58 lg:grid-cols-[minmax(260px,1.8fr)_180px_130px_130px_120px] lg:items-center"
+                className="grid gap-4 px-5 py-4 transition-colors duration-200 hover:bg-white/58 lg:grid-cols-[minmax(230px,1.45fr)_130px_minmax(220px,1.15fr)_110px_110px_110px] lg:items-center"
               >
                 <Link href={`/clients/${client.id}`} className="flex min-w-0 items-center gap-3">
                   <Avatar size="lg">
@@ -206,6 +207,12 @@ export function ClientsWorkspace({
                   <span className="font-medium text-foreground lg:hidden">Last visit: </span>
                   {client.lastVisit}
                 </p>
+                <div className="min-w-0 text-sm">
+                  <p className="truncate font-medium text-foreground">{client.lastService}</p>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">
+                    {client.lastProvider} - {client.lastDiagnosis}
+                  </p>
+                </div>
                 <p className="text-sm text-foreground">
                   <span className="font-medium lg:hidden">Visits: </span>
                   {client.totalVisits}
@@ -236,19 +243,35 @@ export function ClientsWorkspace({
           <h2 className="text-base font-semibold text-foreground">Recent client activity</h2>
           <span className="text-sm text-muted-foreground">{clients.slice(0, 4).length} latest records</span>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="mt-4 overflow-hidden rounded-[0.85rem] border border-border/75">
+          <div className="hidden grid-cols-[minmax(180px,1fr)_130px_minmax(220px,1.4fr)_120px] bg-secondary/35 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground md:grid">
+            <span>Client</span>
+            <span>Last visit</span>
+            <span>Latest appointment</span>
+            <span>Status</span>
+          </div>
+          <div className="divide-y divide-border/70">
           {clients.slice(0, 4).map((client) => (
             <Link
               key={client.id}
               href={`/clients/${client.id}`}
-              className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 rounded-[0.85rem] border border-border/75 px-4 py-3 text-sm transition-colors hover:bg-secondary/25"
+              className="grid gap-3 px-4 py-3 text-sm transition-colors hover:bg-secondary/25 md:grid-cols-[minmax(180px,1fr)_130px_minmax(220px,1.4fr)_120px] md:items-center"
             >
-              <Avatar>
-                <AvatarFallback>{clientInitials(client.name)}</AvatarFallback>
-              </Avatar>
+              <span className="flex min-w-0 items-center gap-3">
+                <Avatar>
+                  <AvatarFallback>{clientInitials(client.name)}</AvatarFallback>
+                </Avatar>
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold text-foreground">{client.name}</span>
+                  <span className="text-xs text-muted-foreground">{client.phone || client.email || "No contact added"}</span>
+                </span>
+              </span>
+              <span className="text-muted-foreground">{client.lastVisit}</span>
               <span className="min-w-0">
-                <span className="block truncate font-semibold text-foreground">{client.name}</span>
-                <span className="text-xs text-muted-foreground">Last visit {client.lastVisit}</span>
+                <span className="block truncate font-medium text-foreground">{client.lastService}</span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {client.lastProvider} - {client.lastDiagnosis}
+                </span>
               </span>
               <span className={cn("flex items-center gap-2 text-xs font-medium", statusColors[client.status])}>
                 <span className={statusDot(client.status)} />
@@ -257,10 +280,11 @@ export function ClientsWorkspace({
             </Link>
           ))}
           {clients.length === 0 ? (
-            <p className="rounded-[0.85rem] border border-dashed border-border/90 px-4 py-5 text-sm text-muted-foreground md:col-span-2">
+            <p className="px-4 py-5 text-sm text-muted-foreground">
               No recent client activity yet.
             </p>
           ) : null}
+          </div>
         </div>
       </section>
       </div>

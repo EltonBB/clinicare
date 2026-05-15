@@ -3,11 +3,17 @@ import { subDays } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { getAppTimeZone, getZonedDayWindow } from "@/lib/time-zone";
 
-export async function getReportWorkspaceData(businessId: string) {
+export async function getReportWorkspaceData(
+  businessId: string,
+  range?: { start: Date; end: Date }
+) {
   const now = new Date();
   const timeZone = getAppTimeZone();
-  const reportStart = getZonedDayWindow(subDays(now, 209), timeZone).start;
-  const reportEnd = getZonedDayWindow(now, timeZone).end;
+  const defaultStart = getZonedDayWindow(subDays(now, 209), timeZone).start;
+  const defaultEnd = getZonedDayWindow(now, timeZone).end;
+  const reportStart =
+    range?.start && range.start < defaultStart ? range.start : defaultStart;
+  const reportEnd = range?.end && range.end > defaultEnd ? range.end : defaultEnd;
 
   const [
     business,

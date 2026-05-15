@@ -269,9 +269,15 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
     Math.round((totalTodayMinutes / Math.max(8 * 60, 1)) * 100),
     100
   );
+  const showTodayAppointments = selectedWidgets.includes("todayAppointments");
+  const showLastClients = selectedWidgets.includes("lastClients");
+  const showStaffAppointment = selectedWidgets.includes("nextStaffAppointment");
+  const showAnalytics = selectedWidgets.includes("analytics");
+  const hasVisibleWidgets =
+    showTodayAppointments || showLastClients || showStaffAppointment || showAnalytics;
 
   return (
-    <div className="section-reveal mx-auto w-full max-w-[1536px] space-y-5">
+    <div className="section-reveal w-full space-y-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between" data-tour="dashboard-overview">
         <div>
           <p className="text-sm font-medium text-muted-foreground">
@@ -321,6 +327,13 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-5">
+          {!hasVisibleWidgets ? (
+            <section className="rounded-[1rem] border border-dashed border-border/90 bg-white/78 p-6 text-sm text-muted-foreground">
+              No dashboard widgets are selected. Open Customize dashboard and choose the sections this workspace should show.
+            </section>
+          ) : null}
+
+          {showTodayAppointments ? (
           <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
             <div className="flex items-center justify-between gap-4 border-b border-border/75 pb-4">
               <div className="flex items-center gap-3">
@@ -361,7 +374,9 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
               )}
             </div>
           </section>
+          ) : null}
 
+          {showStaffAppointment ? (
           <div className="grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
             <DashboardPanel title="Next appointment" icon={Clock3}>
               {view.nextAppointment ? (
@@ -411,8 +426,11 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
               </div>
             </DashboardPanel>
           </div>
+          ) : null}
 
+          {(showLastClients || showAnalytics) ? (
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+            {showLastClients ? (
             <DashboardPanel title="Recent activity">
               <div className="space-y-4">
                 {view.lastClients.slice(0, 5).map((client, index) => (
@@ -434,7 +452,9 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                 ) : null}
               </div>
             </DashboardPanel>
+            ) : null}
 
+            {showAnalytics ? (
             <DashboardPanel title="Clinic health" badge="Live">
               <HealthMetric label="Schedule utilization" value={utilization} />
               <HealthMetric label="Completion rate" value={view.analyticsSummary.completionRate} />
@@ -446,7 +466,9 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                 View full reports
               </Link>
             </DashboardPanel>
+            ) : null}
           </div>
+          ) : null}
         </div>
 
         <aside className="section-reveal-delayed space-y-5">
@@ -490,7 +512,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
             </Link>
           </DashboardPanel>
 
-          <DashboardUnreadCard initialSummary={view.unreadSummary} />
+          {showAnalytics ? <DashboardUnreadCard initialSummary={view.unreadSummary} /> : null}
         </aside>
       </div>
     </div>

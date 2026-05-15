@@ -340,7 +340,7 @@ export function InboxWorkspace({
         </DialogContent>
       </Dialog>
 
-      <div className="mx-auto w-full max-w-[1536px] space-y-4">
+      <div className="w-full space-y-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h1 className="text-[34px] font-semibold leading-tight tracking-tight text-foreground">

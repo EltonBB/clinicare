@@ -222,7 +222,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
   const utilization = Math.min(Math.round((bookedMinutes / Math.max(capacityMinutes, 1)) * 100), 100);
 
   return (
-    <div className="mx-auto w-full max-w-[1536px] space-y-4">
+    <div className="w-full space-y-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="section-reveal">
           <h1 className="text-[34px] font-semibold leading-tight tracking-tight text-foreground">
@@ -251,6 +251,17 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
             <span className="rounded-[0.9rem] border border-border/80 bg-white/80 px-4 py-2 text-sm font-semibold text-foreground shadow-[0_10px_24px_rgba(20,32,51,0.03)]">
               {dayLabel}
             </span>
+            <input
+              type="date"
+              value={selectedDateKey}
+              onChange={(event) => {
+                if (event.target.value) {
+                  setActiveDate(parseISO(event.target.value));
+                }
+              }}
+              className="h-10 rounded-[0.8rem] border border-border/80 bg-white px-3 text-sm font-medium text-foreground shadow-[0_10px_24px_rgba(20,32,51,0.03)] outline-none"
+              aria-label="Jump to date"
+            />
           </div>
         </div>
 

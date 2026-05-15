@@ -53,6 +53,7 @@ export default async function EditStaffPage({
           },
         },
         select: {
+          id: true,
           startsAt: true,
           endsAt: true,
           status: true,

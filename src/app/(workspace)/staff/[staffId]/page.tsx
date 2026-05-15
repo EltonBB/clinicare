@@ -52,6 +52,7 @@ export default async function StaffDetailsRoute({
           },
         },
         select: {
+          id: true,
           startsAt: true,
           endsAt: true,
           status: true,

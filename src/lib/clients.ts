@@ -178,7 +178,11 @@ export type ClientRecord = {
 export type ClientDirectoryItem = Pick<
   ClientRecord,
   "id" | "name" | "email" | "phone" | "lastVisit" | "totalVisits" | "status"
->;
+> & {
+  lastService: string;
+  lastProvider: string;
+  lastDiagnosis: string;
+};
 
 export type ClientsViewModel = {
   clients: ClientDirectoryItem[];
@@ -237,7 +241,11 @@ type ClientDirectoryRow = Pick<
   | "lastVisitAt"
   | "createdAt"
 > & {
-  appointments: Pick<Appointment, "startAt">[];
+  appointments: Array<
+    Pick<Appointment, "title" | "startAt" | "notes"> & {
+      staffMember: { name: string } | null;
+    }
+  >;
   _count?: {
     appointments: number;
   };
@@ -534,15 +542,22 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
 export function buildClientDirectoryViewFromRecords(
   records: ClientDirectoryRow[]
 ): ClientsViewModel {
-  const clients = records.map((client) => ({
-    id: client.id,
-    name: client.name,
-    email: client.email ?? "",
-    phone: client.phone,
-    lastVisit: formatDirectoryLastVisit(client),
-    totalVisits: client._count?.appointments ?? 0,
-    status: formatStatus(client.status, client.isArchived),
-  }));
+  const clients = records.map((client) => {
+    const latestAppointment = client.appointments[0];
+
+    return {
+      id: client.id,
+      name: client.name,
+      email: client.email ?? "",
+      phone: client.phone,
+      lastVisit: formatDirectoryLastVisit(client),
+      totalVisits: client._count?.appointments ?? 0,
+      status: formatStatus(client.status, client.isArchived),
+      lastService: latestAppointment?.title ?? "No service recorded",
+      lastProvider: latestAppointment?.staffMember?.name ?? "Unassigned",
+      lastDiagnosis: latestAppointment?.notes ?? "No diagnosis or visit note recorded",
+    };
+  });
 
   return {
     clients,

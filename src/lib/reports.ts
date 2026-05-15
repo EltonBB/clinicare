@@ -27,7 +27,7 @@ import {
 
 export type ReportMetricTrend = "up" | "down" | "flat";
 export type ReportSnapshotTone = "strong" | "healthy" | "watch" | "attention";
-export type ReportPeriodKey = "daily" | "weekly" | "monthly";
+export type ReportPeriodKey = "daily" | "weekly" | "monthly" | "custom";
 export type ReportInsightSource = "ai" | "rules";
 export type ReportInsightStatus = "generated" | "fallback" | "errored" | "rules";
 
@@ -141,6 +141,7 @@ type ReportsWorkspaceArgs = {
   staffMembers: Array<Pick<StaffMember, "id" | "name" | "role" | "status" | "isActive">>;
   conversations: Array<Pick<Conversation, "unreadCount">>;
   aiSnapshots?: ReportAiSnapshotInput[];
+  customRange?: { start: Date; end: Date };
   now?: Date;
   timeZone?: string;
 };
@@ -218,9 +219,10 @@ export type ReportPeriodDiagnostics = {
 
 const periodOrder: ReportPeriodKey[] = ["daily", "weekly", "monthly"];
 
-function periodKeyToSnapshotType(period: ReportPeriodKey): ReportAiSnapshotInput["periodType"] {
+function periodKeyToSnapshotType(period: ReportPeriodKey): ReportAiSnapshotInput["periodType"] | null {
   if (period === "daily") return "DAILY";
   if (period === "weekly") return "WEEKLY";
+  if (period === "custom") return null;
   return "MONTHLY";
 }
 
@@ -283,6 +285,9 @@ function aiSnapshotForPeriod(
   window: PeriodWindow
 ) {
   const periodType = periodKeyToSnapshotType(period);
+  if (!periodType) {
+    return undefined;
+  }
 
   return snapshots
     .filter(
@@ -464,6 +469,10 @@ function formatComparisonLabel(period: ReportPeriodKey) {
     return "vs last week";
   }
 
+  if (period === "custom") {
+    return "vs previous range";
+  }
+
   return "vs last month";
 }
 
@@ -473,6 +482,13 @@ function formatRangeLabel(window: PeriodWindow, period: ReportPeriodKey, timeZon
   }
 
   if (period === "weekly") {
+    return `${formatZonedShortDate(window.start, timeZone)} - ${formatZonedShortDate(
+      window.end,
+      timeZone
+    )}`;
+  }
+
+  if (period === "custom") {
     return `${formatZonedShortDate(window.start, timeZone)} - ${formatZonedShortDate(
       window.end,
       timeZone
@@ -1202,7 +1218,13 @@ function buildSnapshot(
   const score = scorePeriod(stats);
   const tone = toneFromScore(score);
   const periodLabel =
-    period === "daily" ? "today" : period === "weekly" ? "this week" : "this month";
+    period === "daily"
+      ? "today"
+      : period === "weekly"
+        ? "this week"
+        : period === "custom"
+          ? "for this range"
+          : "this month";
 
   const headline =
     tone === "strong"
@@ -1721,6 +1743,46 @@ function buildMonthlyChart(
   });
 }
 
+function buildCustomChart(
+  appointments: ReportAppointment[],
+  window: PeriodWindow,
+  timeZone: string
+): ReportChartPoint[] {
+  const startParts = getZonedDateParts(window.start, timeZone);
+  const endParts = getZonedDateParts(window.end, timeZone);
+  const localStartDate = Date.UTC(startParts.year, startParts.month - 1, startParts.day);
+  const localEndDate = Date.UTC(endParts.year, endParts.month - 1, endParts.day);
+  const dayCount = Math.max(Math.floor((localEndDate - localStartDate) / 86_400_000) + 1, 1);
+  const step = Math.max(Math.ceil(dayCount / 12), 1);
+
+  return Array.from({ length: Math.ceil(dayCount / step) }, (_, index) => {
+    const chunkStartParts = addZonedDays(startParts, index * step);
+    const chunkEndParts = addZonedDays(startParts, Math.min((index + 1) * step, dayCount));
+    const chunkStart = getZonedDayWindowFromParts(
+      chunkStartParts.year,
+      chunkStartParts.month,
+      chunkStartParts.day,
+      timeZone
+    ).start;
+    const chunkEnd = new Date(
+      getZonedDayWindowFromParts(
+        chunkEndParts.year,
+        chunkEndParts.month,
+        chunkEndParts.day,
+        timeZone
+      ).start.getTime() - 1
+    );
+
+    return {
+      label:
+        step === 1
+          ? formatZonedShortDate(chunkStart, timeZone)
+          : `${formatZonedShortDate(chunkStart, timeZone)}+`,
+      value: filterAppointmentsInRange(appointments, chunkStart, chunkEnd).length,
+    };
+  });
+}
+
 function buildPeriodView(args: {
   key: ReportPeriodKey;
   label: string;
@@ -1779,13 +1841,17 @@ function buildPeriodView(args: {
           ? "Appointments per day"
           : key === "weekly"
             ? "Appointments per week"
-            : "Appointments per month",
+            : key === "custom"
+              ? "Appointments in range"
+              : "Appointments per month",
       periodLabel:
         key === "daily"
           ? "Last 7 days"
           : key === "weekly"
             ? "Last 8 weeks"
-            : "Last 6 months",
+            : key === "custom"
+              ? "Selected date range"
+              : "Last 6 months",
       points: chartPoints,
     },
     snapshot,
@@ -1801,6 +1867,7 @@ export function buildReportsViewFromWorkspace({
   staffMembers,
   conversations,
   aiSnapshots = [],
+  customRange,
   now = new Date(),
   timeZone = getAppTimeZone(),
 }: ReportsWorkspaceArgs): ReportsViewModel {
@@ -1862,6 +1929,18 @@ export function buildReportsViewFromWorkspace({
     previousStart: monthlyPreviousStart,
     previousEnd: monthlyPreviousEnd,
   };
+  const customWindow: PeriodWindow | undefined = customRange
+    ? {
+        start: customRange.start,
+        end: customRange.end,
+        previousStart: new Date(
+          customRange.start.getTime() -
+            Math.max(customRange.end.getTime() - customRange.start.getTime(), 86_400_000) -
+            1
+        ),
+        previousEnd: new Date(customRange.start.getTime() - 1),
+      }
+    : undefined;
 
   const dailyCurrent = buildPeriodStats({
     appointments,
@@ -1961,12 +2040,63 @@ export function buildReportsViewFromWorkspace({
     },
     timeZone,
   });
+  const customCurrent = customWindow
+    ? buildPeriodStats({
+        appointments,
+        clients,
+        messages,
+        businessHours,
+        activeStaffCount,
+        unreadMessages,
+        window: customWindow,
+        timeZone,
+      })
+    : weeklyCurrent;
+  const customDiagnostics = customWindow
+    ? buildPeriodDiagnostics({
+        appointments,
+        clients,
+        staffMembers,
+        window: customWindow,
+        timeZone,
+      })
+    : weeklyDiagnostics;
+  const customPrevious = customWindow
+    ? buildPeriodStats({
+        appointments,
+        clients,
+        messages,
+        businessHours,
+        activeStaffCount,
+        unreadMessages,
+        window: {
+          start: customWindow.previousStart,
+          end: customWindow.previousEnd,
+          previousStart: customWindow.previousStart,
+          previousEnd: customWindow.previousEnd,
+        },
+        timeZone,
+      })
+    : weeklyPrevious;
+  const customPeriod = buildPeriodView({
+    key: "custom",
+    label: "Custom range",
+    window: customWindow ?? weeklyWindow,
+    current: customCurrent,
+    previous: customPrevious,
+    diagnostics: customDiagnostics,
+    chartPoints: customWindow
+      ? buildCustomChart(appointments, customWindow, timeZone)
+      : buildWeeklyChart(appointments, now, timeZone),
+    aiSnapshots: [],
+    timeZone,
+  });
 
   return {
     heading: "Performance analytics",
     description: `${business.name} is now scored across demand, schedule quality, retention, and follow-up so the clinic can see what is healthy, what is leaking, and where the next operational improvement should happen.`,
-    defaultPeriod: "weekly",
-    periodOrder,
+    defaultPeriod: customRange ? "custom" : "weekly",
+    periodOrder: customRange ? [...periodOrder, "custom"] : periodOrder,
     periods: {
       daily: buildPeriodView({
         key: "daily",
@@ -2001,6 +2131,7 @@ export function buildReportsViewFromWorkspace({
         aiSnapshots,
         timeZone,
       }),
+      custom: customPeriod,
     },
   };
 }

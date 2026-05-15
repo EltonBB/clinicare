@@ -265,7 +265,7 @@ export function AppShell({
 
         <div className="relative flex min-h-screen min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-20 border-b border-border/80 bg-white px-4 py-3 sm:px-6 lg:px-8 lg:py-0">
-            <div className="mx-auto grid w-full max-w-[1600px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 lg:h-16 lg:gap-6">
+            <div className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 lg:h-16 lg:gap-6">
               <div className="flex min-w-[148px] items-center">
                 <BrandMark href="/dashboard" includeSubtitle={false} className="hidden lg:flex" />
                 <BrandMark compact href="/dashboard" className="lg:hidden" />
@@ -285,7 +285,7 @@ export function AppShell({
                 </div>
               </div>
             </div>
-            <GlobalSearch className="mx-auto mt-3 w-full max-w-[1600px] md:hidden" />
+            <GlobalSearch className="mt-3 w-full md:hidden" />
           </header>
 
           <main className="page-gutter relative flex-1 bg-[#fbfcff] py-5 pb-28 lg:pb-8 lg:pt-6">

@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState, useTransition } from "react";
 import {
   BarChart3,
   CalendarClock,
   CheckCircle2,
-  MoreVertical,
   Plus,
   Search,
   SlidersHorizontal,
@@ -14,7 +13,9 @@ import {
   UsersRound,
 } from "lucide-react";
 
+import { checkInStaffAction, checkOutStaffAction } from "@/app/(workspace)/staff/actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -49,10 +50,13 @@ function staffInitials(name: string) {
 }
 
 export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
-  const staff = initialView.staff;
+  const [staff, setStaff] = useState(initialView.staff);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | StaffStatus>("all");
   const [roleFilter, setRoleFilter] = useState("all");
+  const [clockingId, setClockingId] = useState("");
+  const [clockError, setClockError] = useState("");
+  const [isPending, startTransition] = useTransition();
   const deferredQuery = useDeferredValue(query);
   const hasStaff = staff.length > 0;
   const onDutyStaff = staff.filter(
@@ -103,8 +107,48 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
     });
   }, [staff, deferredQuery, filter, roleFilter]);
 
+  function toggleClock(staffId: string) {
+    const member = staff.find((item) => item.id === staffId);
+
+    if (!member) {
+      return;
+    }
+
+    setClockingId(staffId);
+    setClockError("");
+    startTransition(async () => {
+      const result = member.isCheckedIn
+        ? await checkOutStaffAction(staffId)
+        : await checkInStaffAction(staffId);
+
+      if (!result.ok || !result.staff) {
+        setClockError(result.error ?? "Could not update staff time.");
+        setClockingId("");
+        return;
+      }
+
+      setStaff((current) =>
+        current.map((item) =>
+          item.id === staffId
+            ? {
+                ...item,
+                status: result.staff!.status,
+                isCheckedIn: result.staff!.isCheckedIn,
+                weeklyHours: result.staff!.weeklyHours,
+                shiftLabel: result.staff!.shiftLabel,
+                canClock: result.staff!.canClock,
+                clockLabel: result.staff!.clockLabel,
+                clockDisabledReason: result.staff!.clockDisabledReason,
+              }
+            : item
+        )
+      );
+      setClockingId("");
+    });
+  }
+
   return (
-    <div className="mx-auto w-full max-w-[1536px] space-y-4">
+    <div className="w-full space-y-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="section-reveal space-y-2">
           <div className="space-y-2">
@@ -157,8 +201,13 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
               <SlidersHorizontal className="size-4" />
             </button>
           </div>
+          {clockError ? (
+            <div className="border-b border-border/75 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              {clockError}
+            </div>
+          ) : null}
 
-          <div className="hidden grid-cols-[minmax(240px,1.45fr)_120px_120px_110px_150px_150px_54px] border-b border-border/80 bg-secondary/25 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground lg:grid">
+          <div className="hidden grid-cols-[minmax(240px,1.45fr)_120px_120px_100px_140px_150px_210px] border-b border-border/80 bg-secondary/25 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground lg:grid">
             <span>Staff member</span>
             <span>Role</span>
             <span>Status</span>
@@ -200,7 +249,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
             filteredStaff.map((member) => (
               <div
                 key={member.id}
-                  className="grid gap-3 px-4 py-3 transition-colors duration-200 hover:bg-secondary/25 lg:grid-cols-[minmax(240px,1.45fr)_120px_120px_110px_150px_150px_54px] lg:items-center"
+                  className="grid gap-3 px-4 py-3 transition-colors duration-200 hover:bg-secondary/25 lg:grid-cols-[minmax(240px,1.45fr)_120px_120px_100px_140px_150px_210px] lg:items-center"
               >
                 <Link href={`/staff/${member.id}`} className="flex min-w-0 items-center gap-3">
                     <Avatar className="size-10">
@@ -238,13 +287,31 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                     <span className="font-medium text-foreground lg:hidden">Shift: </span>
                     {member.shiftLabel !== "-" ? member.shiftLabel : member.nextShift}
                   </p>
-                  <div className="flex justify-end">
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={member.isCheckedIn ? "outline" : "default"}
+                      className="h-8 rounded-[0.6rem] px-3 text-xs"
+                      onClick={() => toggleClock(member.id)}
+                      disabled={
+                        isPending ||
+                        clockingId === member.id ||
+                        (!member.isCheckedIn && !member.canClock)
+                      }
+                      title={!member.isCheckedIn ? member.clockDisabledReason : undefined}
+                    >
+                      {clockingId === member.id ? "Saving" : member.clockLabel}
+                    </Button>
                     <Link
                       href={`/staff/${member.id}`}
-                      className="inline-flex size-8 items-center justify-center rounded-[0.55rem] text-muted-foreground hover:bg-secondary hover:text-foreground"
+                      className={cn(
+                        buttonVariants({ variant: "outline", size: "sm" }),
+                        "h-8 rounded-[0.6rem] px-3 text-xs"
+                      )}
                       aria-label={`Open ${member.name}`}
                     >
-                      <MoreVertical className="size-4" />
+                      Details
                     </Link>
                 </div>
               </div>

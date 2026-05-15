@@ -439,7 +439,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1536px] space-y-4">
+    <div className="w-full space-y-4">
       <section className="space-y-4 pb-1">
         <Link
           href="/clients"
@@ -965,6 +965,33 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   {client.followUpReminders.length} upcoming
                 </span>
               </div>
+              <div className="mt-4 grid gap-2">
+                <Input
+                  value={reminderDraft.title}
+                  onChange={(event) =>
+                    setReminderDraft((current) => ({ ...current, title: event.target.value }))
+                  }
+                  placeholder="Reminder title"
+                  className="h-10 rounded-[0.7rem] bg-white"
+                />
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                  <Input
+                    value={reminderDraft.remindAt}
+                    onChange={(event) =>
+                      setReminderDraft((current) => ({ ...current, remindAt: event.target.value }))
+                    }
+                    type="date"
+                    className="h-10 rounded-[0.7rem] bg-white"
+                  />
+                  <Button
+                    onClick={addFollowUpReminder}
+                    disabled={isPending || !reminderDraft.title.trim() || !reminderDraft.remindAt}
+                    className="h-10 rounded-[0.7rem]"
+                  >
+                    Add
+                  </Button>
+                </div>
+              </div>
               <div className="mt-4 space-y-3">
                 {client.followUpReminders.slice(0, 3).map((reminder) => (
                   <div key={reminder.id} className="rounded-[0.8rem] border border-border/75 px-3 py-3 text-sm">
@@ -1165,54 +1192,28 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
 
             <aside className="space-y-4">
               <section className="rounded-[1.15rem] border border-border/80 bg-primary/5 p-5">
-                <h2 className="text-lg font-semibold text-foreground">Care overview</h2>
+                <h2 className="text-lg font-semibold text-foreground">Medical summary</h2>
                 <dl className="mt-4 space-y-3">
-                  <OverviewLine label="Preferred contact" value={client.details.preferredChannel} />
-                  <OverviewLine label="Assigned provider" value={client.details.assignedStaff} />
                   <OverviewLine label="Allergies" value={allergies.length ? `${allergies.length} recorded` : client.medical.allergies} />
                   <OverviewLine label="Alerts" value={alerts.length ? `${alerts.length} recorded` : client.medical.importantHealthNotes} />
+                  <OverviewLine label="Medications" value={`${currentMedications.length} active`} />
                   <OverviewLine label="Care facts" value={`${careFacts.length} recorded`} />
                 </dl>
               </section>
 
               <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
-                <h2 className="text-lg font-semibold text-foreground">Follow-up reminders</h2>
-                <div className="mt-4 grid gap-3">
-                  <Input
-                    value={reminderDraft.title}
-                    onChange={(event) =>
-                      setReminderDraft((current) => ({ ...current, title: event.target.value }))
-                    }
-                    placeholder="Reminder title"
-                    className="h-11 rounded-[0.9rem] bg-white/84"
-                  />
-                  <Input
-                    value={reminderDraft.remindAt}
-                    onChange={(event) =>
-                      setReminderDraft((current) => ({ ...current, remindAt: event.target.value }))
-                    }
-                    type="date"
-                    className="h-11 rounded-[0.9rem] bg-white/84"
-                  />
-                  <Button
-                    onClick={addFollowUpReminder}
-                    disabled={isPending || !reminderDraft.title.trim() || !reminderDraft.remindAt}
-                    className="h-11 rounded-[0.9rem]"
-                  >
-                    Add reminder
-                  </Button>
-                </div>
+                <h2 className="text-lg font-semibold text-foreground">Clinical alerts</h2>
                 <div className="mt-4 space-y-3">
-                  {client.followUpReminders.slice(0, 4).map((reminder) => (
-                    <div key={reminder.id} className="rounded-[0.9rem] border border-border/80 bg-white/78 px-3 py-3">
-                      <p className="font-semibold text-foreground">{reminder.title}</p>
+                  {[...alerts, ...allergies].slice(0, 5).map((item) => (
+                    <div key={item.id} className="rounded-[0.9rem] border border-border/80 bg-white/78 px-3 py-3">
+                      <p className="font-semibold text-foreground">{item.label}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {reminder.remindAt} - {reminder.channel} - {reminder.status}
+                        {[item.type, item.severity, item.value].filter(Boolean).join(" - ")}
                       </p>
                     </div>
                   ))}
-                  {client.followUpReminders.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No follow-up reminders yet.</p>
+                  {[...alerts, ...allergies].length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No allergy or medical alert records yet.</p>
                   ) : null}
                 </div>
               </section>

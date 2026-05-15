@@ -86,6 +86,7 @@ export default async function StaffPage({
           },
         },
         select: {
+          id: true,
           startsAt: true,
           endsAt: true,
           status: true,

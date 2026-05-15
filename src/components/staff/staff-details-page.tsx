@@ -75,7 +75,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1536px] space-y-4">
+    <div className="w-full space-y-4">
       <section className="space-y-4 pb-1">
         <Link
           href="/staff"
@@ -138,10 +138,11 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
                 className="h-10 rounded-[0.65rem] px-4"
                 variant={staff.isCheckedIn ? "outline" : "default"}
                 onClick={toggleClock}
-                disabled={isPending}
+                disabled={isPending || (!staff.isCheckedIn && !staff.canClock)}
+                title={!staff.isCheckedIn ? staff.clockDisabledReason : undefined}
               >
                 <Clock3 className="size-4" />
-                {staff.isCheckedIn ? "Check out" : "Check in"}
+                {staff.clockLabel}
               </Button>
               <Link
                 href={`/staff/${staff.id}/edit`}
@@ -266,6 +267,29 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
               <MiniMetric label="Today shift" value={staff.shiftLabel} />
               <MiniMetric label="Next shift" value={staff.nextShift} />
               <MiniMetric label="Weekly hours" value={`${staff.weeklyHours}h`} />
+            </div>
+            <div className="mt-5 overflow-hidden rounded-[0.85rem] border border-border/75">
+              <div className="grid grid-cols-[minmax(0,1fr)_100px_100px_100px] bg-secondary/35 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
+                <span>Day</span>
+                <span>Start</span>
+                <span>End</span>
+                <span>Status</span>
+              </div>
+              <div className="divide-y divide-border/70">
+                {staff.schedule.map((shift) => (
+                  <div key={shift.id} className="grid grid-cols-[minmax(0,1fr)_100px_100px_100px] px-4 py-3 text-sm">
+                    <span className="font-medium text-foreground">{shift.day}</span>
+                    <span className="text-muted-foreground">{shift.startTime}</span>
+                    <span className="text-muted-foreground">{shift.endTime}</span>
+                    <span className="font-medium text-emerald-700">{shift.status}</span>
+                  </div>
+                ))}
+                {staff.schedule.length === 0 ? (
+                  <div className="px-4 py-6 text-sm text-muted-foreground">
+                    No planned shifts. Add shifts from the staff edit page.
+                  </div>
+                ) : null}
+              </div>
             </div>
           </Panel>
           <Panel title="Shift status" icon={Clock3}>
