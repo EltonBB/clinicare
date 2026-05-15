@@ -83,6 +83,36 @@ function metricOrDerived(
   return metric ?? fallback;
 }
 
+function statusColor(label: string) {
+  const normalized = label.toLowerCase();
+
+  if (normalized.includes("completed")) return "#61c884";
+  if (normalized.includes("cancelled")) return "#ef4444";
+  if (normalized.includes("pending")) return "#f59e0b";
+  if (normalized.includes("confirmed")) return "#5b57d6";
+  return "#94a3b8";
+}
+
+function buildStatusConic(statusMix: ReportsViewModel["periods"][ReportPeriodKey]["diagnostics"]["statusMix"]) {
+  const total = statusMix.reduce((sum, item) => sum + item.count, 0);
+
+  if (total === 0) {
+    return "conic-gradient(#e5e7eb 0 100%)";
+  }
+
+  let cursor = 0;
+  const segments = statusMix
+    .filter((item) => item.count > 0)
+    .map((item) => {
+      const start = cursor;
+      const end = cursor + (item.count / total) * 100;
+      cursor = end;
+      return `${statusColor(item.label)} ${start}% ${end}%`;
+    });
+
+  return `conic-gradient(${segments.join(", ")})`;
+}
+
 export function ReportsOverview({ view }: { view: ReportsViewModel }) {
   const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriodKey>(view.defaultPeriod);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -113,6 +143,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
   const completedStatus =
     period.diagnostics.statusMix.find((item) => item.label === "Completed") ??
     period.diagnostics.statusMix[0];
+  const statusTotal = period.diagnostics.statusMix.reduce((sum, item) => sum + item.count, 0);
   const clientActiveShare = clientTotal > 0 ? (period.diagnostics.clientMix.active / clientTotal) * 100 : 0;
   const metricCards = [
     { icon: CalendarDays, metric: getMetric(period.metrics, "Appointments") },
@@ -365,17 +396,20 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
             <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
               <h2 className="text-base font-semibold text-foreground">Appointment status</h2>
               <div className="mt-5 flex items-center justify-center gap-6">
-                <div className="grid size-36 place-items-center rounded-full bg-[conic-gradient(#61c884_0_100%,#e5e7eb_0)]">
+                <div
+                  className="grid size-36 place-items-center rounded-full"
+                  style={{ background: buildStatusConic(period.diagnostics.statusMix) }}
+                >
                   <div className="grid size-20 place-items-center rounded-full bg-white text-center shadow-inner">
                     <div>
-                      <p className="text-2xl font-semibold text-foreground">{completedStatus?.count ?? 0}</p>
+                      <p className="text-2xl font-semibold text-foreground">{statusTotal}</p>
                       <p className="text-xs text-muted-foreground">Total</p>
                     </div>
                   </div>
                 </div>
                 <div className="space-y-3 text-sm">
                   {period.diagnostics.statusMix.map((item) => (
-                    <LegendRow key={item.label} color={item.label === "Completed" ? "bg-emerald-400" : item.label === "Cancelled" ? "bg-destructive" : "bg-primary/60"} label={item.label} value={`${item.count} (${item.share})`} />
+                    <LegendRow key={item.label} color={item.label === "Completed" ? "bg-emerald-400" : item.label === "Cancelled" ? "bg-destructive" : item.label === "Pending" ? "bg-amber-500" : "bg-primary/60"} label={item.label} value={`${item.count} (${item.share})`} />
                   ))}
                 </div>
               </div>

@@ -345,20 +345,12 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
         </section>
 
           <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
-          <h2 className="text-base font-semibold text-foreground">Quick actions</h2>
-          <div className="mt-4 grid gap-2">
-              <Link href="/staff/new" className={cn(buttonVariants({ size: "lg" }), "h-10 rounded-[0.7rem]")}>
-              <Plus className="size-4" />
-              Add staff member
-            </Link>
-              <Link href="/calendar" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-10 rounded-[0.7rem] bg-white")}>
-              <CalendarClock className="size-4" />
-              Manage shifts
-            </Link>
-              <Link href="/reports" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-10 rounded-[0.7rem] bg-white")}>
-              <BarChart3 className="size-4" />
-              Performance reports
-            </Link>
+          <h2 className="text-base font-semibold text-foreground">Coverage summary</h2>
+          <div className="mt-4 space-y-3 text-sm">
+            <CoverageRow label="Appointments today" value={totalAppointmentsToday.toString()} />
+            <CoverageRow label="On-duty coverage" value={`${onDutyStaff.length}/${staff.length}`} />
+            <CoverageRow label="Average completion" value={`${averageCompletion}%`} />
+            <CoverageRow label="Planned shifts" value={upcomingShiftStaff.length.toString()} />
           </div>
         </section>
       </aside>
@@ -440,5 +432,14 @@ function StaffMetric({
         </div>
       </div>
     </section>
+  );
+}
+
+function CoverageRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-border/70 pb-3 last:border-b-0 last:pb-0">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-semibold text-foreground">{value}</span>
+    </div>
   );
 }

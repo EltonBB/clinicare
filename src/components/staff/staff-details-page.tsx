@@ -250,20 +250,11 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
               </div>
             </Panel>
 
-            <Panel title="Quick actions">
-              <div className="mt-4 grid gap-2">
-                <Link href="/calendar/new" className={cn(buttonVariants({ size: "lg" }), "h-10 rounded-[0.7rem]")}>
-                  <CalendarCheck2 className="size-4" />
-                  Book appointment
-                </Link>
-                <Link href="/calendar" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-10 rounded-[0.7rem] bg-white")}>
-                  <CalendarClock className="size-4" />
-                  View schedule
-                </Link>
-                <Link href="/reports" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-10 rounded-[0.7rem] bg-white")}>
-                  <BarChart3 className="size-4" />
-                  Reports
-                </Link>
+            <Panel title="Record health">
+              <div className="mt-4 space-y-3 text-sm">
+                <Detail label="Completed this month" value={staff.completedThisMonth.toString()} />
+                <Detail label="Recent completed" value={staff.recentAppointments.length.toString()} />
+                <Detail label="Checked in" value={staff.isCheckedIn ? "Yes" : "No"} />
               </div>
             </Panel>
           </aside>

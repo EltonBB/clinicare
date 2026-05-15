@@ -74,6 +74,17 @@ function appointmentOffset(startTime: string) {
   return `${Math.max(((startMinute - firstMinute) / 60) * 72, 0)}px`;
 }
 
+function dayCapacityMinutes(date: Date, businessHours: CalendarViewModel["businessHours"]) {
+  const weekday = (date.getDay() + 6) % 7;
+  const hours = businessHours.find((item) => item.weekday === weekday);
+
+  if (!hours || !hours.enabled) {
+    return 0;
+  }
+
+  return Math.max(timeToMinutes(hours.end) - timeToMinutes(hours.start), 0);
+}
+
 function AppointmentCard({ appointment }: { appointment: CalendarAppointment }) {
   return (
     <Link
@@ -131,6 +142,17 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
   const currentWeek = useMemo(() => weekDays(activeDate), [activeDate]);
   const currentMonth = useMemo(() => monthDays(activeDate), [activeDate]);
   const selectedDateKey = format(activeDate, "yyyy-MM-dd");
+  const visibleDates = useMemo(() => {
+    if (view === "day") {
+      return [activeDate];
+    }
+
+    if (view === "week") {
+      return currentWeek;
+    }
+
+    return currentMonth.filter((day) => isSameMonth(day, activeDate));
+  }, [activeDate, currentMonth, currentWeek, view]);
 
   const visibleAppointments = useMemo(() => {
     if (view === "day") {
@@ -193,7 +215,11 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
       sum + Math.max(timeToMinutes(appointment.endTime) - timeToMinutes(appointment.startTime), 0),
     0
   );
-  const utilization = Math.min(Math.round((bookedMinutes / Math.max(8 * 60 * 5, 1)) * 100), 100);
+  const capacityMinutes = visibleDates.reduce(
+    (sum, day) => sum + dayCapacityMinutes(day, initialView.businessHours),
+    0
+  );
+  const utilization = Math.min(Math.round((bookedMinutes / Math.max(capacityMinutes, 1)) * 100), 100);
 
   return (
     <div className="mx-auto w-full max-w-[1536px] space-y-4">
@@ -560,29 +586,13 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
             </div>
           </CalendarRailPanel>
 
-          <CalendarRailPanel title="Quick actions">
-            <div className="grid gap-2">
-              <Link href={`/calendar/new?date=${selectedDateKey}`} className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 justify-start rounded-[0.85rem] bg-white")}>
-                <Plus className="size-4" />
-                New appointment
-              </Link>
-              <Link href="/clients/new?next=calendar" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 justify-start rounded-[0.85rem] bg-white")}>
-                <UsersRound className="size-4" />
-                New client
-              </Link>
-              <Link href="/staff" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 justify-start rounded-[0.85rem] bg-white")}>
-                <CalendarX2 className="size-4" />
-                Manage shifts
-              </Link>
-            </div>
-          </CalendarRailPanel>
-
           <CalendarRailPanel title="Schedule summary">
             <div className="space-y-3 text-sm">
               <RailMetric label="Appointments" value={selectedDayAppointments.length.toString()} />
               <RailMetric label="Completed" value={selectedDayAppointments.filter((appointment) => appointment.status === "completed").length.toString()} />
               <RailMetric label="Upcoming" value={selectedDayAppointments.filter((appointment) => appointment.status === "confirmed" || appointment.status === "pending").length.toString()} />
               <RailMetric label="Blocked time" value={selectedDayBlocks.length.toString()} />
+              <RailMetric label="Open capacity" value={`${Math.round(capacityMinutes / 60)}h`} />
             </div>
           </CalendarRailPanel>
 

@@ -182,6 +182,10 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   const latestAppointment = client.appointments[0];
   const currentMedications = client.medications.filter((medication) => medication.isActive);
   const latestPayment = client.payments[0];
+  const totalBilledDisplay = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(client.payments.reduce((sum, payment) => sum + payment.amountCents, 0) / 100);
   const allergies = client.healthItems.filter((item) =>
     item.type.toLowerCase().includes("allerg")
   );
@@ -403,6 +407,35 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
       setErrorMessage("");
       setStatusMessage("Payment ledger entry added.");
     });
+  }
+
+  function downloadPaymentStatement() {
+    const rows = [
+      ["Date", "Invoice", "Description", "Amount", "Status", "Payment method", "Receipt"],
+      ...client.payments.map((payment) => [
+        payment.paidAt || payment.createdAt,
+        payment.invoiceNumber || "",
+        payment.description || "Manual ledger entry",
+        payment.amountDisplay,
+        payment.status,
+        payment.paymentMethod || "Manual",
+        payment.receiptNumber || "",
+      ]),
+    ];
+    const csv = rows
+      .map((row) =>
+        row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")
+      )
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${client.name.replaceAll(" ", "-").toLowerCase()}-payment-statement.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -635,9 +668,6 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                     </span>
                     Documents
                   </h2>
-                  <button type="button" className="text-primary">
-                    <MoreHorizontal className="size-4" />
-                  </button>
                 </div>
                 <div className="mt-4 overflow-hidden rounded-[0.85rem] border border-border/75">
                   <table className="w-full text-sm">
@@ -970,12 +1000,12 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             </section>
 
             <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
-              <h2 className="text-base font-semibold text-foreground">Quick actions</h2>
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <Link href={`/calendar/new?client=${client.id}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-10 rounded-[0.65rem] bg-white")}>Book new</Link>
-                <button type="button" onClick={() => setSelectedTab("medical")} className="h-10 rounded-[0.65rem] border border-border bg-white text-sm font-medium text-foreground">Add note</button>
-                <Link href="/calendar" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-10 rounded-[0.65rem] bg-white")}>Availability</Link>
-                <button type="button" onClick={() => setSelectedTab("messages")} className="h-10 rounded-[0.65rem] border border-border bg-white text-sm font-medium text-foreground">Messages</button>
+              <h2 className="text-base font-semibold text-foreground">Appointment summary</h2>
+              <div className="mt-4 space-y-3 text-sm">
+                <SummaryRow label="Upcoming" value={upcomingAppointments.length} />
+                <SummaryRow label="Completed" value={pastAppointments.length} />
+                <SummaryRow label="Cancelled" value={client.appointmentStats.cancelled} />
+                <SummaryRow label="Total recorded" value={client.appointments.length} strong />
               </div>
             </section>
           </aside>
@@ -1515,7 +1545,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
         <TabsContent value="payments" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-4">
             <section className="grid gap-3 rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)] md:grid-cols-4">
-              <PaymentMetric label="Total billed" value={client.paymentStats.totalPaidDisplay} helper={`${client.payments.length} ledger entries`} />
+              <PaymentMetric label="Total billed" value={totalBilledDisplay} helper={`${client.payments.length} ledger entries`} />
               <PaymentMetric label="Total paid" value={client.paymentStats.totalPaidDisplay} helper={`${client.payments.filter((payment) => payment.status.toLowerCase() === "paid").length} paid entries`} tone="good" />
               <PaymentMetric label="Outstanding" value={client.paymentStats.unpaidBalanceDisplay} helper="Open balance" tone={client.paymentStats.unpaidBalanceCents > 0 ? "danger" : "default"} />
               <PaymentMetric label="Last payment" value={latestPayment?.paidAt ?? "-"} helper={latestPayment?.amountDisplay ?? "No payments yet"} />
@@ -1524,7 +1554,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             <section className="overflow-hidden rounded-[1rem] border border-border/80 bg-white shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/75 px-5 py-4">
                 <h2 className="text-base font-semibold text-foreground">Invoice & payment history</h2>
-                <button type="button" className="text-sm font-medium text-primary">Download statement</button>
+                <button type="button" onClick={downloadPaymentStatement} className="text-sm font-medium text-primary">Download statement</button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -1600,7 +1630,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               <dl className="mt-5 space-y-3">
                 <OverviewLine label="Current balance" value={client.paymentStats.unpaidBalanceDisplay} />
                 <OverviewLine label="Status" value={client.paymentStats.paymentStatus} />
-                <OverviewLine label="Credit limit" value="$0.00" />
+                <OverviewLine label="Ledger entries" value={client.payments.length.toString()} />
               </dl>
             </section>
 
@@ -1615,11 +1645,12 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             </section>
 
             <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
-              <h2 className="text-base font-semibold text-foreground">Quick actions</h2>
-              <div className="mt-4 grid gap-2">
-                <button type="button" className="h-10 rounded-[0.7rem] bg-primary text-sm font-semibold text-primary-foreground">Create invoice</button>
-                <button type="button" className="h-10 rounded-[0.7rem] border border-border bg-white text-sm font-semibold text-foreground">Record payment</button>
-                <button type="button" className="h-10 rounded-[0.7rem] border border-border bg-white text-sm font-semibold text-foreground">Send receipt</button>
+              <h2 className="text-base font-semibold text-foreground">Ledger summary</h2>
+              <div className="mt-4 space-y-3 text-sm">
+                <SummaryRow label="Paid entries" value={client.payments.filter((payment) => payment.status.toLowerCase() === "paid").length} />
+                <SummaryRow label="Open entries" value={client.payments.filter((payment) => payment.status.toLowerCase() !== "paid").length} />
+                <SummaryRow label="Receipts linked" value={client.payments.filter((payment) => Boolean(payment.receiptUrl)).length} />
+                <SummaryRow label="Last update" value={latestPayment?.createdAt ?? "No payments yet"} strong />
               </div>
             </section>
           </aside>

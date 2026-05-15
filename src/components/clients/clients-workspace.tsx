@@ -276,20 +276,11 @@ export function ClientsWorkspace({
         </section>
 
         <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
-          <h2 className="text-base font-semibold text-foreground">Quick actions</h2>
-          <div className="mt-4 grid gap-2">
-            <Link href="/clients/new" className={cn(buttonVariants({ size: "lg" }), "h-11 rounded-[0.85rem]")}>
-              <Plus className="size-4" />
-              New client
-            </Link>
-            <Link href="/calendar/new" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 rounded-[0.85rem] bg-white")}>
-              <CalendarPlus2 className="size-4" />
-              Book appointment
-            </Link>
-            <Link href="/inbox" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 rounded-[0.85rem] bg-white")}>
-              <MessageSquareText className="size-4" />
-              Open inbox
-            </Link>
+          <h2 className="text-base font-semibold text-foreground">Directory health</h2>
+          <div className="mt-4 space-y-3 text-sm">
+            <SegmentRow label="Average visits" value={clients.length > 0 ? Math.round(totalVisits / clients.length) : 0} />
+            <SegmentRow label="With visits" value={clients.filter((client) => client.totalVisits > 0).length} />
+            <SegmentRow label="No visits yet" value={clients.filter((client) => client.totalVisits === 0).length} />
           </div>
         </section>
 
