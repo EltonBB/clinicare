@@ -1,7 +1,27 @@
 import { NewStaffForm } from "@/components/staff/new-staff-form";
 import { CreatePageShell } from "@/components/workspace/create-page-shell";
+import { requireCurrentWorkspace } from "@/lib/business";
+import { prisma } from "@/lib/prisma";
 
-export default function NewStaffPage() {
+export default async function NewStaffPage() {
+  const { business } = await requireCurrentWorkspace("/staff/new", {
+    missingBusinessRedirect: "/onboarding",
+  });
+  const businessHours = await prisma.businessHours.findMany({
+    where: {
+      businessId: business.id,
+    },
+    select: {
+      weekday: true,
+      isOpen: true,
+      startTime: true,
+      endTime: true,
+    },
+    orderBy: {
+      weekday: "asc",
+    },
+  });
+
   return (
     <CreatePageShell
       eyebrow="Staff workspace"
@@ -10,8 +30,7 @@ export default function NewStaffPage() {
       backHref="/staff"
       backLabel="staff"
     >
-      <NewStaffForm />
+      <NewStaffForm businessHours={businessHours} />
     </CreatePageShell>
   );
 }
-

@@ -22,13 +22,12 @@ function parseDateParam(value?: string) {
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ from?: string; to?: string }>;
 }) {
   const { business } = await requireCurrentWorkspace("/reports", {
     missingBusinessRedirect: "/onboarding",
   });
-  const { date, from, to } = await searchParams;
-  const selectedDate = parseDateParam(date);
+  const { from, to } = await searchParams;
   const selectedFrom = parseDateParam(from);
   const selectedTo = parseDateParam(to);
   const selectedRange =
@@ -38,9 +37,6 @@ export default async function ReportsPage({
           end: getZonedDayWindow(selectedTo).end,
         }
       : undefined;
-  const selectedDayRange = selectedDate
-    ? getZonedDayWindow(selectedDate)
-    : undefined;
 
   if (!isProBusinessPlan(business.plan)) {
     return (
@@ -52,7 +48,7 @@ export default async function ReportsPage({
   }
 
   const [workspaceData, aiSnapshots] = await Promise.all([
-    getReportWorkspaceData(business.id, selectedRange ?? selectedDayRange),
+    getReportWorkspaceData(business.id, selectedRange),
     prisma.analyticsSnapshot.findMany({
       where: {
         businessId: business.id,
@@ -67,7 +63,7 @@ export default async function ReportsPage({
   const view = buildReportsViewFromWorkspace({
     ...workspaceData,
     aiSnapshots,
-    now: selectedDate ?? selectedRange?.end,
+    now: selectedRange?.end,
     customRange: selectedRange,
   });
 

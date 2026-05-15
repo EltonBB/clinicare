@@ -30,59 +30,75 @@ export default async function EditStaffPage({
   });
   const { staffId } = await params;
 
-  const staff = await prisma.staffMember.findFirst({
-    where: {
-      id: staffId,
-      businessId: business.id,
-    },
-    include: {
-      timeEntries: {
-        where: {
-          checkedInAt: {
-            gte: staffTimeEntryCutoff(),
-          },
-        },
-        orderBy: {
-          checkedInAt: "desc",
-        },
+  const [staff, businessHours] = await Promise.all([
+    prisma.staffMember.findFirst({
+      where: {
+        id: staffId,
+        businessId: business.id,
       },
-      shifts: {
-        where: {
-          startsAt: {
-            gte: staffShiftCutoff(),
-          },
-        },
-        select: {
-          id: true,
-          startsAt: true,
-          endsAt: true,
-          status: true,
-        },
-        orderBy: {
-          startsAt: "asc",
-        },
-        take: 8,
-      },
-      appointments: {
-        where: {
-          startAt: {
-            gte: completedAppointmentCutoff(),
-          },
-        },
-        include: {
-          client: {
-            select: {
-              name: true,
+      include: {
+        timeEntries: {
+          where: {
+            checkedInAt: {
+              gte: staffTimeEntryCutoff(),
             },
           },
+          orderBy: {
+            checkedInAt: "desc",
+          },
         },
-        orderBy: {
-          startAt: "desc",
+        shifts: {
+          where: {
+            startsAt: {
+              gte: staffShiftCutoff(),
+            },
+          },
+          select: {
+            id: true,
+            startsAt: true,
+            endsAt: true,
+            status: true,
+          },
+          orderBy: {
+            startsAt: "asc",
+          },
+          take: 8,
         },
-        take: 50,
+        appointments: {
+          where: {
+            startAt: {
+              gte: completedAppointmentCutoff(),
+            },
+          },
+          include: {
+            client: {
+              select: {
+                name: true,
+              },
+            },
+          },
+          orderBy: {
+            startAt: "desc",
+          },
+          take: 50,
+        },
       },
-    },
-  });
+    }),
+    prisma.businessHours.findMany({
+      where: {
+        businessId: business.id,
+      },
+      select: {
+        weekday: true,
+        isOpen: true,
+        startTime: true,
+        endTime: true,
+      },
+      orderBy: {
+        weekday: "asc",
+      },
+    }),
+  ]);
 
   if (!staff) {
     notFound();
@@ -98,7 +114,7 @@ export default async function EditStaffPage({
       backHref={`/staff/${record.id}`}
       backLabel="staff details"
     >
-      <NewStaffForm staff={record} />
+      <NewStaffForm staff={record} businessHours={businessHours} />
     </CreatePageShell>
   );
 }

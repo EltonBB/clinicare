@@ -117,9 +117,9 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
   const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriodKey>(view.defaultPeriod);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+  const [rangeError, setRangeError] = useState("");
   const router = useRouter();
   const period = view.periods[selectedPeriod];
-  const [dateInput, setDateInput] = useState(period.periodEnd.slice(0, 10));
   const [fromInput, setFromInput] = useState(period.periodStart.slice(0, 10));
   const [toInput, setToInput] = useState(period.periodEnd.slice(0, 10));
   const chartValues = period.chart.points.map((point) => point.value);
@@ -201,13 +201,22 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
     });
   }
 
-  function applySingleDate() {
-    if (!dateInput) return;
-    router.push(`/reports?date=${dateInput}`);
+  function selectPeriod(key: ReportPeriodKey) {
+    const item = view.periods[key];
+    setSelectedPeriod(key);
+    setFromInput(item.periodStart.slice(0, 10));
+    setToInput(item.periodEnd.slice(0, 10));
+    setRangeError("");
   }
 
   function applyRange() {
     if (!fromInput || !toInput) return;
+    if (toInput < fromInput) {
+      setRangeError("End date must be after the start date.");
+      return;
+    }
+
+    setRangeError("");
     router.push(`/reports?from=${fromInput}&to=${toInput}`);
   }
 
@@ -235,7 +244,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                     key={item.key}
                     type="button"
                     aria-pressed={selected}
-                    onClick={() => setSelectedPeriod(item.key)}
+                    onClick={() => selectPeriod(item.key)}
                     className={cn(
                       "rounded-[0.5rem] px-3.5 py-2 text-sm font-medium transition-colors",
                       selected ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-secondary"
@@ -246,44 +255,39 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                 );
               })}
             </div>
-            <div className="inline-grid gap-2 rounded-[0.65rem] border border-border bg-white p-1.5 sm:grid-cols-[140px_auto]">
-              <input
-                type="date"
-                value={dateInput}
-                onChange={(event) => setDateInput(event.target.value)}
-                className="h-8 rounded-[0.5rem] px-2 text-sm outline-none"
-                aria-label="Report date"
-              />
-              <button
-                type="button"
-                onClick={applySingleDate}
-                className="h-8 rounded-[0.5rem] px-3 text-sm font-semibold text-primary hover:bg-primary/8"
-              >
-                Analyse date
-              </button>
-            </div>
-            <div className="inline-grid gap-2 rounded-[0.65rem] border border-border bg-white p-1.5 sm:grid-cols-[140px_140px_auto]">
-              <input
-                type="date"
-                value={fromInput}
-                onChange={(event) => setFromInput(event.target.value)}
-                className="h-8 rounded-[0.5rem] px-2 text-sm outline-none"
-                aria-label="Report range start"
-              />
-              <input
-                type="date"
-                value={toInput}
-                onChange={(event) => setToInput(event.target.value)}
-                className="h-8 rounded-[0.5rem] px-2 text-sm outline-none"
-                aria-label="Report range end"
-              />
-              <button
-                type="button"
-                onClick={applyRange}
-                className="h-8 rounded-[0.5rem] px-3 text-sm font-semibold text-primary hover:bg-primary/8"
-              >
-                Analyse range
-              </button>
+            <div className="inline-flex flex-col gap-1">
+              <div className="inline-grid gap-2 rounded-[0.65rem] border border-border bg-white p-1.5 sm:grid-cols-[140px_140px_auto]">
+                <input
+                  type="date"
+                  value={fromInput}
+                  onChange={(event) => {
+                    setFromInput(event.target.value);
+                    setRangeError("");
+                  }}
+                  className="h-8 rounded-[0.5rem] px-2 text-sm outline-none"
+                  aria-label="Report start date"
+                />
+                <input
+                  type="date"
+                  value={toInput}
+                  onChange={(event) => {
+                    setToInput(event.target.value);
+                    setRangeError("");
+                  }}
+                  className="h-8 rounded-[0.5rem] px-2 text-sm outline-none"
+                  aria-label="Report end date"
+                />
+                <button
+                  type="button"
+                  onClick={applyRange}
+                  className="h-8 rounded-[0.5rem] px-3 text-sm font-semibold text-primary hover:bg-primary/8"
+                >
+                  Analyse range
+                </button>
+              </div>
+              {rangeError ? (
+                <span className="px-1 text-xs font-medium text-destructive">{rangeError}</span>
+              ) : null}
             </div>
             <button
               type="button"

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { format } from "date-fns";
 import { ArrowLeft, CalendarClock, Save, Trash2, UserRoundPlus } from "lucide-react";
 
 import { deleteStaffAction, saveStaffAction } from "@/app/(workspace)/staff/actions";
@@ -14,17 +15,50 @@ import { cn } from "@/lib/utils";
 
 type NewStaffFormProps = {
   staff?: StaffRecord;
+  businessHours?: StaffBusinessHour[];
 };
 
 type ScheduleDraft = {
   date: string;
   day: string;
+  clinicStart: string;
+  clinicEnd: string;
   enabled: boolean;
   startTime: string;
   endTime: string;
 };
 
-function buildInitialSchedule(staff?: StaffRecord): ScheduleDraft[] {
+type StaffBusinessHour = {
+  weekday: number;
+  isOpen: boolean;
+  startTime: string;
+  endTime: string;
+};
+
+function businessWeekdayIndex(date: Date) {
+  return (date.getDay() + 6) % 7;
+}
+
+function getBusinessHoursForDate(date: Date, businessHours: StaffBusinessHour[]) {
+  const weekday = businessWeekdayIndex(date);
+  const configured = businessHours.find((item) => item.weekday === weekday);
+
+  if (configured) {
+    return configured;
+  }
+
+  return {
+    weekday,
+    isOpen: weekday < 5,
+    startTime: "09:00",
+    endTime: "17:00",
+  };
+}
+
+function buildInitialSchedule(
+  staff?: StaffRecord,
+  businessHours: StaffBusinessHour[] = []
+): ScheduleDraft[] {
   const existingByDate = new Map(staff?.schedule.map((shift) => [shift.date, shift]) ?? []);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -32,8 +66,13 @@ function buildInitialSchedule(staff?: StaffRecord): ScheduleDraft[] {
   return Array.from({ length: 7 }, (_, index) => {
     const date = new Date(today);
     date.setDate(today.getDate() + index);
-    const dateKey = date.toISOString().slice(0, 10);
+    const dateKey = format(date, "yyyy-MM-dd");
+    const clinicHours = getBusinessHoursForDate(date, businessHours);
     const existing = existingByDate.get(dateKey);
+
+    if (!clinicHours.isOpen && !existing) {
+      return null;
+    }
 
     return {
       date: dateKey,
@@ -42,11 +81,13 @@ function buildInitialSchedule(staff?: StaffRecord): ScheduleDraft[] {
         month: "short",
         day: "numeric",
       }),
+      clinicStart: clinicHours.startTime,
+      clinicEnd: clinicHours.endTime,
       enabled: Boolean(existing),
-      startTime: existing?.startTime ?? "09:00",
-      endTime: existing?.endTime ?? "17:00",
+      startTime: existing?.startTime ?? clinicHours.startTime,
+      endTime: existing?.endTime ?? clinicHours.endTime,
     };
-  });
+  }).filter((item): item is ScheduleDraft => Boolean(item));
 }
 
 function SelectField({
@@ -81,13 +122,15 @@ function SelectField({
   );
 }
 
-export function NewStaffForm({ staff }: NewStaffFormProps) {
+export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
   const [role, setRole] = useState(staff?.role ?? "Specialist");
   const [status, setStatus] = useState<StaffStatus>(staff?.status ?? "ACTIVE");
-  const [schedule, setSchedule] = useState<ScheduleDraft[]>(() => buildInitialSchedule(staff));
+  const [schedule, setSchedule] = useState<ScheduleDraft[]>(() =>
+    buildInitialSchedule(staff, businessHours)
+  );
   const isEditing = Boolean(staff);
 
   function updateSchedule(index: number, patch: Partial<ScheduleDraft>) {
@@ -199,7 +242,7 @@ export function NewStaffForm({ staff }: NewStaffFormProps) {
               Weekly schedule
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Set the staff member&apos;s working shifts for the next seven days. Check-in is allowed only during the scheduled shift window.
+              Set the staff member&apos;s shifts only on clinic working days. Check-in is allowed only during the scheduled shift window.
             </p>
           </div>
           <button
@@ -209,16 +252,21 @@ export function NewStaffForm({ staff }: NewStaffFormProps) {
                 current.map((item) => ({
                   ...item,
                   enabled: true,
-                  startTime: item.startTime || "09:00",
-                  endTime: item.endTime || "17:00",
+                  startTime: item.clinicStart,
+                  endTime: item.clinicEnd,
                 }))
               )
             }
             className="text-sm font-semibold text-primary"
           >
-            Use 9-5 all week
+            Use clinic hours
           </button>
         </div>
+        {schedule.length === 0 ? (
+          <p className="mt-5 rounded-[0.9rem] border border-border/75 bg-secondary/30 px-4 py-4 text-sm text-muted-foreground">
+            No clinic working days are configured for the next seven days.
+          </p>
+        ) : (
         <div className="mt-5 overflow-hidden rounded-[0.9rem] border border-border/75">
           <div className="hidden grid-cols-[minmax(120px,1fr)_110px_110px_110px] bg-secondary/35 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground sm:grid">
             <span>Day</span>
@@ -264,6 +312,7 @@ export function NewStaffForm({ staff }: NewStaffFormProps) {
             ))}
           </div>
         </div>
+        )}
       </section>
 
       {error ? (
