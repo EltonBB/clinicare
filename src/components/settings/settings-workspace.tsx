@@ -926,7 +926,7 @@ export function SettingsWorkspace({
         <SettingsSection
           id="billing"
           title="Billing"
-          description="Review the current plan and open pricing if you want to upgrade."
+          description="Review the current plan and open checkout when you want to change it."
         >
           <div className="flex flex-col gap-4 rounded-[1rem] border border-border/80 bg-white/88 px-5 py-5 shadow-[0_16px_34px_rgba(20,32,51,0.04)] sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -941,13 +941,13 @@ export function SettingsWorkspace({
               </div>
             </div>
             <Link
-              href="/pricing"
+              href={state.billing.checkoutHref}
               className={cn(
                 buttonVariants({ variant: "outline", size: "lg" }),
                 "h-11 rounded-[0.95rem] justify-center bg-white/76 px-5"
               )}
             >
-              View pricing
+              {state.billing.ctaLabel}
               <ArrowUpRight className="size-4" />
             </Link>
           </div>

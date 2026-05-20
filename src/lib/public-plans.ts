@@ -1,7 +1,10 @@
+import type { BusinessPlan, BusinessPlanStatus } from "@prisma/client";
+
 export type PublicPlanKey = "basic" | "pro";
 
 export type PublicPlan = {
   key: PublicPlanKey;
+  rank: number;
   name: string;
   price: string;
   cadence: string;
@@ -14,6 +17,7 @@ export type PublicPlan = {
 export const publicPlans: PublicPlan[] = [
   {
     key: "basic",
+    rank: 1,
     name: "Basic",
     price: "$39",
     cadence: "per month",
@@ -31,6 +35,7 @@ export const publicPlans: PublicPlan[] = [
   },
   {
     key: "pro",
+    rank: 2,
     name: "Pro",
     price: "$79",
     cadence: "per month",
@@ -52,4 +57,183 @@ export const publicPlans: PublicPlan[] = [
 export function getPublicPlan(plan?: string | string[]) {
   const value = Array.isArray(plan) ? plan[0] : plan;
   return publicPlans.find((item) => item.key === value) ?? publicPlans[1];
+}
+
+export function publicPlanKeyFromBusinessPlan(plan: BusinessPlan): PublicPlanKey {
+  return plan === "PRO" || plan === "ADVANCED" ? "pro" : "basic";
+}
+
+export function publicPlanDisplayFromBusinessPlan(plan: BusinessPlan) {
+  return publicPlanKeyFromBusinessPlan(plan) === "pro" ? "Pro" : "Basic";
+}
+
+export function getPublicPlanRank(planKey: PublicPlanKey) {
+  return publicPlans.find((plan) => plan.key === planKey)?.rank ?? 0;
+}
+
+export function isBillablePlanStatus(status?: BusinessPlanStatus | null) {
+  return status === "ACTIVE" || status === "TRIALING";
+}
+
+export type CheckoutPlanIntent =
+  | "first_purchase"
+  | "upgrade"
+  | "downgrade"
+  | "current_plan"
+  | "reactivate";
+
+export type CheckoutPlanState = {
+  currentPlanKey: PublicPlanKey | null;
+  currentPlanName: string | null;
+  status: BusinessPlanStatus | null;
+  statusLabel: string;
+  workspaceName: string | null;
+  intent: CheckoutPlanIntent;
+  badge: string;
+  headline: string;
+  description: string;
+  summaryTitle: string;
+  primaryActionLabel: string;
+  secondaryActionLabel: string;
+  secondaryActionHref: string;
+};
+
+export function resolveCheckoutPlanState({
+  selectedPlan,
+  currentPlan,
+  currentPlanStatus,
+  workspaceName,
+  isAuthenticated,
+}: {
+  selectedPlan: PublicPlan;
+  currentPlan?: BusinessPlan | null;
+  currentPlanStatus?: BusinessPlanStatus | null;
+  workspaceName?: string | null;
+  isAuthenticated: boolean;
+}): CheckoutPlanState {
+  const currentPlanKey = currentPlan ? publicPlanKeyFromBusinessPlan(currentPlan) : null;
+  const currentPlanName = currentPlan ? publicPlanDisplayFromBusinessPlan(currentPlan) : null;
+  const hasBillableWorkspace = currentPlanKey && isBillablePlanStatus(currentPlanStatus);
+  const selectedRank = getPublicPlanRank(selectedPlan.key);
+  const currentRank = currentPlanKey ? getPublicPlanRank(currentPlanKey) : 0;
+  const statusLabel = formatCheckoutPlanStatus(currentPlanStatus);
+
+  if (!isAuthenticated || !currentPlanKey) {
+    return {
+      currentPlanKey,
+      currentPlanName,
+      status: currentPlanStatus ?? null,
+      statusLabel,
+      workspaceName: workspaceName ?? null,
+      intent: "first_purchase",
+      badge: "New subscription",
+      headline: "Start your Vela subscription",
+      description:
+        "No active workspace plan is attached to this checkout yet. Create or sign in to an account before payment is collected.",
+      summaryTitle: "First purchase",
+      primaryActionLabel: "Create account before payment",
+      secondaryActionLabel: isAuthenticated ? "Go to onboarding" : "Create account first",
+      secondaryActionHref: isAuthenticated ? "/onboarding" : "/sign-up",
+    };
+  }
+
+  if (!hasBillableWorkspace) {
+    return {
+      currentPlanKey,
+      currentPlanName,
+      status: currentPlanStatus ?? null,
+      statusLabel,
+      workspaceName: workspaceName ?? null,
+      intent: "reactivate",
+      badge: "Reactivate plan",
+      headline: `Reactivate ${workspaceName ?? "this workspace"}`,
+      description: `This workspace has a ${currentPlanName} plan marked ${statusLabel}. The selected ${selectedPlan.name} plan will restart billing when Paddle is connected.`,
+      summaryTitle: "Reactivation",
+      primaryActionLabel: `Reactivate on ${selectedPlan.name}`,
+      secondaryActionLabel: "Back to settings",
+      secondaryActionHref: "/settings#billing",
+    };
+  }
+
+  if (selectedPlan.key === currentPlanKey) {
+    return {
+      currentPlanKey,
+      currentPlanName,
+      status: currentPlanStatus ?? null,
+      statusLabel,
+      workspaceName: workspaceName ?? null,
+      intent: "current_plan",
+      badge: "Current plan",
+      headline: `You are already on Vela ${selectedPlan.name}`,
+      description:
+        "This checkout matches the workspace's current plan. When Paddle is connected, this path should open billing management instead of creating a duplicate subscription.",
+      summaryTitle: "Current subscription",
+      primaryActionLabel: "Manage current plan",
+      secondaryActionLabel: "Back to settings",
+      secondaryActionHref: "/settings#billing",
+    };
+  }
+
+  if (selectedRank > currentRank) {
+    return {
+      currentPlanKey,
+      currentPlanName,
+      status: currentPlanStatus ?? null,
+      statusLabel,
+      workspaceName: workspaceName ?? null,
+      intent: "upgrade",
+      badge: "Upgrade",
+      headline: `Upgrade from ${currentPlanName} to ${selectedPlan.name}`,
+      description:
+        "The account is already subscribed to a lower plan. Paddle should treat this as a plan change, not a new first-time purchase.",
+      summaryTitle: "Plan upgrade",
+      primaryActionLabel: `Upgrade to ${selectedPlan.name}`,
+      secondaryActionLabel: "Back to settings",
+      secondaryActionHref: "/settings#billing",
+    };
+  }
+
+  return {
+    currentPlanKey,
+    currentPlanName,
+    status: currentPlanStatus ?? null,
+    statusLabel,
+    workspaceName: workspaceName ?? null,
+    intent: "downgrade",
+    badge: "Downgrade",
+    headline: `Downgrade from ${currentPlanName} to ${selectedPlan.name}`,
+    description:
+      "The account is already subscribed to a higher plan. Paddle should treat this as a downgrade or scheduled plan change according to the billing rules.",
+    summaryTitle: "Plan downgrade",
+    primaryActionLabel: `Downgrade to ${selectedPlan.name}`,
+    secondaryActionLabel: "Back to settings",
+    secondaryActionHref: "/settings#billing",
+  };
+}
+
+export function checkoutPlanOptionLabel(plan: PublicPlan, state: CheckoutPlanState) {
+  if (state.currentPlanKey === plan.key && isBillablePlanStatus(state.status)) {
+    return "Current plan";
+  }
+
+  if (!state.currentPlanKey || !isBillablePlanStatus(state.status)) {
+    return "Select plan";
+  }
+
+  return plan.rank > getPublicPlanRank(state.currentPlanKey) ? "Upgrade" : "Downgrade";
+}
+
+function formatCheckoutPlanStatus(status?: BusinessPlanStatus | null) {
+  switch (status) {
+    case "ACTIVE":
+      return "active";
+    case "TRIALING":
+      return "trialing";
+    case "CANCELED":
+      return "canceled";
+    case "INACTIVE":
+      return "inactive";
+    default:
+      return "not started";
+  }
 }

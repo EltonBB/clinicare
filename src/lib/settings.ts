@@ -95,6 +95,7 @@ export type SettingsState = {
     note: string;
     nextStep: string;
     ctaLabel: string;
+    checkoutHref: string;
     lockedFeatures: string[];
   };
 };
@@ -147,6 +148,7 @@ function buildBillingSummary(business: Business): SettingsState["billing"] {
         ? "Live billing is not connected yet. When payments are enabled, this workspace will manage plan changes here."
         : "Upgrade flow is prepared, but payment collection goes live later. For now, Pro can be unlocked manually during testing.",
     ctaLabel: planName === "Pro" ? "Manage plan" : "Unlock Pro",
+    checkoutHref: "/checkout?plan=pro",
     lockedFeatures:
       planName === "Pro"
         ? ["Reports", "Premium workflow surfaces", "Future automation tools"]

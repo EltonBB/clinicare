@@ -18,7 +18,7 @@ export function UpgradeModalTrigger({
 }: UpgradeModalTriggerProps) {
   return (
     <Link
-      href="/pricing"
+      href="/checkout?plan=pro"
       className={cn(
         "inline-flex text-sm font-medium text-primary",
         triggerClassName,

@@ -14,7 +14,16 @@ import {
 } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
-import { getPublicPlan, publicPlans, type PublicPlan } from "@/lib/public-plans";
+import { getCurrentUser } from "@/lib/auth";
+import { getCurrentBusiness } from "@/lib/business";
+import {
+  checkoutPlanOptionLabel,
+  getPublicPlan,
+  publicPlans,
+  resolveCheckoutPlanState,
+  type CheckoutPlanState,
+  type PublicPlan,
+} from "@/lib/public-plans";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -31,6 +40,15 @@ type CheckoutPageProps = {
 export default async function CheckoutPage({ searchParams }: CheckoutPageProps) {
   const params = await searchParams;
   const selectedPlan = getPublicPlan(params?.plan);
+  const user = await getCurrentUser();
+  const business = user ? await getCurrentBusiness(user.id) : null;
+  const planState = resolveCheckoutPlanState({
+    selectedPlan,
+    currentPlan: business?.plan,
+    currentPlanStatus: business?.planStatus,
+    workspaceName: business?.name,
+    isAuthenticated: Boolean(user),
+  });
 
   return (
     <main className="min-h-screen bg-[#f7faff] text-[#07162b]">
@@ -55,13 +73,13 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
                 <span className="inline-flex size-10 items-center justify-center rounded-[12px] bg-[#eef4ff]">
                   <CreditCard className="size-5" />
                 </span>
-                Plan checkout
+                {planState.badge}
               </div>
               <h1 className="mt-6 max-w-2xl text-4xl font-semibold leading-[0.98] text-[#07162b] sm:text-6xl">
-                Review your Vela {selectedPlan.name} plan.
+                {planState.headline}
               </h1>
               <p className="mt-5 max-w-2xl text-base leading-8 text-[#53667f]">
-                Confirm the selected plan details now. The secure payment handoff will connect here when Paddle checkout is wired in.
+                {planState.description}
               </p>
 
               <div className="mt-8 grid gap-3 sm:grid-cols-3">
@@ -92,6 +110,7 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
                     key={plan.key}
                     plan={plan}
                     selected={plan.key === selectedPlan.key}
+                    planState={planState}
                   />
                 ))}
               </div>
@@ -104,11 +123,15 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#9fb8d8]">
-                      Selected plan
+                      {planState.summaryTitle}
                     </p>
                     <h2 className="mt-3 text-3xl font-semibold">{selectedPlan.name}</h2>
                   </div>
-                  {selectedPlan.highlighted ? (
+                  {planState.intent === "current_plan" ? (
+                    <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-[#cfe2ff]">
+                      Active now
+                    </span>
+                  ) : selectedPlan.highlighted ? (
                     <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-[#cfe2ff]">
                       Most popular
                     </span>
@@ -133,6 +156,28 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
                   </span>
                 </div>
 
+                <div className="mt-5 rounded-[16px] border border-[#dfe8f6] bg-[#f8fbff] p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#63748c]">
+                    Account status
+                  </p>
+                  <div className="mt-3 grid gap-3 text-sm">
+                    <SummaryLine
+                      label="Workspace"
+                      value={planState.workspaceName ?? "No workspace connected"}
+                    />
+                    <SummaryLine
+                      label="Current plan"
+                      value={
+                        planState.currentPlanName
+                          ? `Vela ${planState.currentPlanName}`
+                          : "No current plan"
+                      }
+                    />
+                    <SummaryLine label="Plan status" value={planState.statusLabel} />
+                    <SummaryLine label="Checkout type" value={planState.badge} />
+                  </div>
+                </div>
+
                 <div className="mt-5 grid gap-3">
                   {selectedPlan.features.map((feature) => (
                     <div key={feature} className="flex items-start gap-3 text-sm font-semibold text-[#304158]">
@@ -148,7 +193,7 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
                   className="mt-7 inline-flex h-12 w-full cursor-not-allowed items-center justify-center gap-2 rounded-[10px] bg-[#3b82f6]/65 px-5 text-sm font-bold text-white shadow-[0_18px_36px_rgba(59,130,246,0.18)]"
                   title="Paddle checkout will be connected here next."
                 >
-                  Continue to secure payment
+                  {planState.primaryActionLabel}
                   <LockKeyhole className="size-4" />
                 </button>
                 <p className="mt-3 text-center text-xs font-semibold text-[#64748b]">
@@ -161,17 +206,17 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
                     <div>
                       <p className="text-sm font-bold text-[#07162b]">What happens next</p>
                       <p className="mt-1 text-sm leading-6 text-[#64748b]">
-                        When payment is connected, this page will create the Paddle checkout for the selected plan and return the clinic to onboarding or the workspace.
+                        When Paddle is connected, this page will pass the account, workspace, selected plan, and checkout type so Paddle can handle the right purchase or plan-change flow.
                       </p>
                     </div>
                   </div>
                 </div>
 
                 <Link
-                  href="/sign-up"
+                  href={planState.secondaryActionHref}
                   className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-[10px] border border-[#d8e3f1] bg-white px-5 text-sm font-bold text-[#07162b] transition hover:border-[#a8bdd8]"
                 >
-                  Create account first
+                  {planState.secondaryActionLabel}
                   <ArrowRight className="size-4" />
                 </Link>
               </div>
@@ -180,6 +225,15 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
         </div>
       </section>
     </main>
+  );
+}
+
+function SummaryLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-[#64748b]">{label}</span>
+      <span className="text-right font-bold text-[#07162b]">{value}</span>
+    </div>
   );
 }
 
@@ -203,7 +257,17 @@ function TrustCard({
   );
 }
 
-function PlanOption({ plan, selected }: { plan: PublicPlan; selected: boolean }) {
+function PlanOption({
+  plan,
+  selected,
+  planState,
+}: {
+  plan: PublicPlan;
+  selected: boolean;
+  planState: CheckoutPlanState;
+}) {
+  const optionLabel = checkoutPlanOptionLabel(plan, planState);
+
   return (
     <Link
       href={`/checkout?plan=${plan.key}`}
@@ -234,7 +298,7 @@ function PlanOption({ plan, selected }: { plan: PublicPlan; selected: boolean })
         <span className="pb-1 text-sm font-bold text-[#64748b]">/{plan.cadence}</span>
       </div>
       <span className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[#3b82f6]">
-        {selected ? "Selected" : "Select plan"}
+        {selected ? "Selected" : optionLabel}
         <Sparkles className="size-4 transition group-hover:rotate-6" />
       </span>
     </Link>
