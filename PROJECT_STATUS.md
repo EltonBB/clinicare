@@ -1,6 +1,6 @@
 # Project Status: Vela / Clinicare
 
-Last updated: 2026-05-15
+Last updated: 2026-05-20
 
 ## Product Overview
 
@@ -59,6 +59,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Public marketing landing page at `/` now uses a simplified animated product-led design inspired by the Dribbble reference, with the default Vela blue accent color, a large hero, floating clinic workspace mockups on desktop, a cleaner stacked mobile preview, compact workflow blocks, AI reporting, privacy messaging, and signup/login CTAs into the auth flow.
 - Public marketing site expanded from a single landing page into a five-page static route structure: `/`, `/product`, `/pricing`, `/about`, and `/contact`. The pages now share a reusable marketing shell, Vela-blue product-led design system, responsive header/footer, richer Vela workspace screenshot-style product media, pricing cards, About/legal links, and contact/demo form layout.
 - Public marketing site redesigned again with the supplied Vela brand-scene assets instead of flat screenshots or generated replacements. The Home/Product pages now use a Cal.com-inspired minimal hero, large branded monitor visuals, workflow steps, feature image sections for scheduling, clients, and reports, stronger CTAs, improved motion, and mobile-safe responsive structure.
+- Public checkout preparation page now exists at `/checkout`. Pricing plan buttons route to `/checkout?plan=basic` or `/checkout?plan=pro`, the page renders the selected plan summary and feature list, and the final payment button is intentionally reserved for the future Paddle checkout handoff.
 - Fixed the shared Tabs primitive so horizontal tabs explicitly render as a vertical stack of tab list above tab content. This resolves the client details page issue where the tab list appeared in a left empty column and the overview content was pushed to the right.
 - Dedicated create pages now exist for `/calendar/new`, `/clients/new`, and `/staff/new`, replacing the main add flows for bookings, clients, and staff with centered single-page forms while preserving edit sheets for existing records.
 - Dedicated patient details pages now exist at `/clients/[clientId]`, replacing the old right-side client panel with a full patient record view covering Overview, Appointments, Medical Info, Documents, Messages, Payments, edit/archive actions, real medication/document creation, and payment ledger records generated from bookings.
@@ -97,7 +98,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Supabase media storage uses a private `clinic-media` bucket with authenticated per-user folder policies applied.
 - Supabase database tables use RLS with no public table policies; app data access is intentionally server-side through Prisma. Newly added patient medication, document, and payment tables also have RLS enabled.
 - Dependency audit is currently clean after updating Next.js to 16.2.6, refreshing transitive dependencies, and overriding PostCSS to a patched version.
-- Billing/plan enforcement is partially represented in UI; full paid upgrade/payment flow still needs production implementation.
+- Billing/plan enforcement is partially represented in UI; `/checkout` now provides the public plan review step, but the full Paddle payment session creation, webhook handling, and plan activation flow still need production implementation.
 - The workspace depth Prisma schema has been applied to the configured Supabase Postgres database with `npx prisma db push`, and the RLS enablement SQL has been run for the new public application tables.
 - Browser-render verification of authenticated workspace pages was limited by the Playwright context redirecting to `/login` without a signed-in workspace session. Static/type/build verification passed; signed-in visual QA should be run with a real test account after the database schema is applied.
 - Latest browser verification still cannot inspect authenticated workspace visuals from Codex because protected routes redirect to `/login` without a reusable signed-in Supabase session. The app correctly enforces the auth boundary; signed-in visual QA remains the next required step using a real workspace account. Static verification for the latest product-finish pass passed with `npm run lint`, `npm run build`, and `npm audit --omit=dev`; Playwright verified the protected `/reports` route redirects to `/login` when unauthenticated.
@@ -110,7 +111,7 @@ The core product direction is customer-first: clinics should not need to underst
 4. Smoke-test private signed logo/gallery/document upload, display, download/preview, replacement cleanup, and client-delete media cleanup against the live production app.
 5. Continue hardening reports with any launch-specific wording, prompt evaluation, or plan-gating requirements that come out of user testing.
 6. Continue WhatsApp provider work only after business/provider requirements are ready; keep Settings flow customer-friendly in the meantime.
-7. Implement real billing/plan upgrade flow when pricing and payment provider decisions are final.
+7. Implement the Paddle billing flow behind `/checkout`: product/price IDs, checkout session creation, success/cancel handling, webhook verification, subscription state sync, and plan activation.
 8. Keep production deployment to the GitHub integration path only; avoid direct Vercel CLI deploys so each pushed commit creates one deployment.
 
 ## Testing Checklist
@@ -138,9 +139,10 @@ The core product direction is customer-first: clinics should not need to underst
 - Public policies: `/terms-and-conditions`, `/privacy`, and `/refund` load without authentication and match the current Vela product scope.
 - Public homepage: `/` loads without authentication, shows the landing page, and routes `Start free` to `/sign-up` and `Log in` to `/login`.
 - Public marketing site: `/`, `/product`, `/pricing`, `/about`, and `/contact` load without authentication, render correctly at desktop and narrow viewport sizes, display generated product imagery from `public/marketing`, and keep CTAs routed to `/sign-up`, `/login`, `/pricing`, `/product`, `/contact`, and the legal pages.
+- Public checkout: `/checkout?plan=basic` and `/checkout?plan=pro` load without authentication, show the selected plan details, and keep the payment button disabled until Paddle checkout is wired.
 - Supabase security: public Prisma tables report RLS enabled and anon REST table access returns no rows.
 - Route protection: `/dashboard`, `/calendar`, `/clients`, `/staff`, `/inbox`, `/reports`, and `/settings` redirect unauthenticated users to login.
 
 ## Last Completed Task
 
-- Completed a follow-up workspace cleanup: removed the duplicated Clients "Recent client activity" table because it repeated the directory rows, simplified Reports to one start/end range analysis control, kept legacy date URL handling out of the visible UI, and made staff add/edit schedules derive visible days and default times from the clinic's configured BusinessHours so closed days such as Saturday/Sunday are not shown or saved. Verified with `npm run lint`, `npm run build`, and `npm audit --omit=dev`.
+- Added the public `/checkout` plan review page for Paddle preparation, moved pricing plan CTAs to `/checkout?plan=basic` and `/checkout?plan=pro`, centralized public plan data, and refreshed `package-lock.json` via `npm audit fix` to resolve the current `ws` advisory. Verified with `npm run lint`, `npm run build`, `npm audit --omit=dev`, and local HTTP smoke checks for `/checkout?plan=pro` and `/pricing`.

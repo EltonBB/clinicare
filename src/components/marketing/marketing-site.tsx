@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
+import { publicPlans } from "@/lib/public-plans";
 
 const navItems = [
   { label: "Product", href: "/product" },
@@ -61,24 +62,6 @@ const workflowSteps = [
   "Record service, payment, notes, and files",
   "Follow up with context",
   "Review what needs attention",
-];
-
-const basicFeatures = [
-  "Calendar and appointment pages",
-  "Client records and notes",
-  "Documents, images, and scans",
-  "Payments and invoice tracking",
-  "WhatsApp-ready inbox context",
-  "Basic operational reports",
-];
-
-const proFeatures = [
-  "Everything in Basic",
-  "Advanced AI reports and diagnosis",
-  "Staff activity and utilization",
-  "More workflow automation",
-  "Priority setup support",
-  "Launch-ready clinic operations",
 ];
 
 const comparisonRows = [
@@ -208,19 +191,17 @@ export function PricingPageContent() {
       />
       <section className="px-4 pb-16 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-2">
-          <PlanCard
-            name="Basic"
-            price="$39"
-            description="For solo practitioners and small clinics that need one clean daily workspace."
-            features={basicFeatures}
-          />
-          <PlanCard
-            name="Pro"
-            price="$79"
-            description="For growing clinics that need deeper intelligence, team visibility, and stronger support."
-            features={proFeatures}
-            highlighted
-          />
+          {publicPlans.map((plan) => (
+            <PlanCard
+              key={plan.key}
+              name={plan.name}
+              price={plan.price}
+              description={plan.description}
+              features={plan.features}
+              checkoutHref={`/checkout?plan=${plan.key}`}
+              highlighted={plan.highlighted}
+            />
+          ))}
         </div>
         <PricingTable />
       </section>
@@ -603,12 +584,14 @@ function PlanCard({
   price,
   description,
   features,
+  checkoutHref,
   highlighted = false,
 }: {
   name: string;
   price: string;
   description: string;
   features: string[];
+  checkoutHref: string;
   highlighted?: boolean;
 }) {
   return (
@@ -624,8 +607,8 @@ function PlanCard({
         <span className="text-5xl font-semibold text-[#07162b]">{price}</span>
         <span className="pb-2 text-sm font-semibold text-[#64748b]">/month</span>
       </div>
-      <Link href="/sign-up" className="mt-8 inline-flex h-12 w-full items-center justify-center rounded-[10px] bg-[#3b82f6] text-sm font-bold text-white shadow-[0_18px_36px_rgba(59,130,246,0.22)] transition hover:bg-[#2563eb]">
-        Get started
+      <Link href={checkoutHref} className="mt-8 inline-flex h-12 w-full items-center justify-center rounded-[10px] bg-[#3b82f6] text-sm font-bold text-white shadow-[0_18px_36px_rgba(59,130,246,0.22)] transition hover:bg-[#2563eb]">
+        Continue to checkout
       </Link>
       <div className="mt-7 grid gap-3">
         {features.map((feature) => (
