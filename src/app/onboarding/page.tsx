@@ -59,12 +59,12 @@ export default async function OnboardingPage() {
         initialState.clinic.accentColor ||
         (typeof metadata.business_brand_accent === "string"
           ? metadata.business_brand_accent
-          : "blue"),
+          : "vela"),
       accentHex:
         initialState.clinic.accentHex ||
         (typeof metadata.business_brand_hex === "string"
           ? metadata.business_brand_hex
-          : "#3b82f6"),
+          : "#9676f7"),
     },
   };
 

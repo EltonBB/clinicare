@@ -296,9 +296,9 @@ function ClientMetric({
   helper: string;
 }) {
   return (
-    <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+    <section className="surface-card p-5">
       <div className="flex items-start gap-4">
-        <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <span className="vela-icon-tile">
           <Icon className="size-5" />
         </span>
         <div>

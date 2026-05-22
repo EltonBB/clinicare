@@ -35,7 +35,7 @@ const filters: Array<{ label: string; value: "all" | StaffStatus }> = [
 function statusDot(status: StaffStatus) {
   return cn(
     "inline-block size-2 rounded-full",
-    status === "ACTIVE" && "bg-emerald-500",
+    status === "ACTIVE" && "bg-primary",
     status === "AWAY" && "bg-amber-500",
     status === "INACTIVE" && "bg-border"
   );
@@ -276,7 +276,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                       <>
                         <p className="text-sm font-semibold text-foreground">{member.completionRate}%</p>
                         <div className="mt-1 h-1.5 w-28 rounded-full bg-secondary">
-                          <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(member.completionRate, 100)}%` }} />
+                          <div className="vela-gradient h-full rounded-full" style={{ width: `${Math.min(member.completionRate, 100)}%` }} />
                         </div>
                       </>
                     ) : (
@@ -485,9 +485,9 @@ function StaffMetric({
   helper: string;
 }) {
   return (
-    <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+    <section className="surface-card p-5">
       <div className="flex items-start gap-4">
-        <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <span className="vela-icon-tile">
           <Icon className="size-5" />
         </span>
         <div>

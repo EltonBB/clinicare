@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
  
 import { cn } from "@/lib/utils";
 
@@ -19,19 +20,29 @@ export function BrandMark({
     <Link
       href={href}
       className={cn(
-        "inline-flex items-center gap-3 rounded-xl text-foreground",
+        "inline-flex items-center gap-3 rounded-[1rem] text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/40",
         className
       )}
+      aria-label="Vela home"
     >
-      <span className="flex size-10 items-center justify-center rounded-[0.95rem] bg-primary text-sm font-semibold text-primary-foreground shadow-[0_12px_24px_var(--primary-shadow)]">
-        V
+      <span className="vela-icon-tile size-10 p-2.5">
+        <Image
+          src="/brand/vela-icon.svg"
+          alt=""
+          width={28}
+          height={28}
+          className="size-full object-contain"
+          aria-hidden="true"
+        />
       </span>
       {!compact ? (
         <span className="flex flex-col">
-          <span className="text-xl font-semibold tracking-tight">Vela</span>
+          <span className="text-xl font-semibold leading-none tracking-tight text-[var(--brand-ink)]">
+            Vela
+          </span>
           {includeSubtitle ? (
-            <span className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-              Service management
+            <span className="mt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Clinic OS
             </span>
           ) : null}
         </span>

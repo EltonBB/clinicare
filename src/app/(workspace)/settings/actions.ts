@@ -91,7 +91,7 @@ export async function saveSettingsAction(
   if (payload.appearance.accentColor === "custom" && !customAccentHex) {
     return {
       ok: false,
-      error: "Enter a valid HEX color, for example #3b82f6.",
+      error: "Enter a valid HEX color, for example #9676F7.",
     };
   }
 

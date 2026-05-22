@@ -43,7 +43,7 @@ function statusLabel(status: StaffRecord["status"]) {
 function statusDot(status: StaffRecord["status"]) {
   return cn(
     "inline-block size-2 rounded-full",
-    status === "ACTIVE" && "bg-emerald-500",
+    status === "ACTIVE" && "bg-primary",
     status === "AWAY" && "bg-amber-500",
     status === "INACTIVE" && "bg-border"
   );
@@ -97,7 +97,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
                 <h1 className="truncate text-[28px] font-semibold leading-tight tracking-tight text-foreground">
                   {staff.name}
                 </h1>
-                <span className="rounded-md bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                <span className="rounded-md bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
                   {statusLabel(staff.status)}
                 </span>
               </div>
@@ -281,7 +281,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
                     <span className="font-medium text-foreground">{shift.day}</span>
                     <span className="text-muted-foreground">{shift.startTime}</span>
                     <span className="text-muted-foreground">{shift.endTime}</span>
-                    <span className="font-medium text-emerald-700">{shift.status}</span>
+                    <span className="font-medium text-primary">{shift.status}</span>
                   </div>
                 ))}
                 {staff.schedule.length === 0 ? (
@@ -379,11 +379,11 @@ function Panel({
   actionLabel?: string;
 }) {
   return (
-    <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+    <section className="surface-card p-5">
       <div className="flex items-center justify-between gap-3">
         <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
           {Icon ? (
-            <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <span className="vela-icon-tile size-9">
               <Icon className="size-4" />
             </span>
           ) : null}
@@ -441,7 +441,7 @@ function ProgressRow({ label, value }: { label: string; value: number }) {
         <span className="font-semibold text-foreground">{value}%</span>
       </div>
       <div className="h-1.5 rounded-full bg-muted">
-        <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(value, 100)}%` }} />
+        <div className="vela-gradient h-full rounded-full" style={{ width: `${Math.min(value, 100)}%` }} />
       </div>
     </div>
   );

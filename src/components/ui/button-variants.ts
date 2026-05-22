@@ -1,18 +1,18 @@
 import { cva } from "class-variance-authority";
 
 export const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-[0.85rem] border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap shadow-[0_10px_30px_rgba(20,32,51,0.04)] outline-none select-none transition-[background-color,border-color,color,box-shadow,transform,opacity] duration-200 ease-out focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center rounded-[0.95rem] border border-transparent bg-clip-padding text-sm font-semibold whitespace-nowrap shadow-[0_12px_30px_rgba(20,21,47,0.05)] outline-none select-none transition-[background-color,border-color,color,box-shadow,transform,opacity] duration-200 ease-out focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground hover:-translate-y-0.5 hover:bg-[color-mix(in_oklab,var(--primary)_90%,white)] hover:shadow-[0_16px_36px_var(--primary-shadow)]",
+          "vela-gradient text-primary-foreground hover:-translate-y-0.5 hover:shadow-[0_18px_38px_var(--primary-shadow)]",
         outline:
-          "border-border bg-white/72 text-foreground hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_14px_30px_rgba(20,32,51,0.08)] aria-expanded:bg-muted aria-expanded:text-foreground",
+          "border-border/80 bg-white/82 text-foreground hover:-translate-y-0.5 hover:border-primary/28 hover:bg-white hover:shadow-[0_14px_30px_rgba(20,21,47,0.08)] aria-expanded:bg-muted aria-expanded:text-foreground",
         secondary:
-          "bg-secondary text-secondary-foreground hover:-translate-y-0.5 hover:bg-white/90 hover:shadow-[0_14px_28px_rgba(20,32,51,0.06)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+          "bg-secondary text-secondary-foreground hover:-translate-y-0.5 hover:bg-white/92 hover:shadow-[0_14px_28px_rgba(20,21,47,0.06)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
         ghost:
-          "bg-transparent shadow-none hover:bg-white/80 hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
+          "bg-transparent shadow-none hover:bg-white/82 hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
         destructive:
           "bg-destructive/12 text-destructive hover:-translate-y-0.5 hover:bg-destructive/16 hover:shadow-[0_12px_28px_rgba(213,101,101,0.14)] focus-visible:border-destructive/40 focus-visible:ring-destructive/20",
         link: "text-primary underline-offset-4 hover:underline",

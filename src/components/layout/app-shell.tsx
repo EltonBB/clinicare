@@ -70,15 +70,9 @@ export function AppShell({
   useEffect(() => {
     const root = document.documentElement;
     const vars = {
-      "--primary": accent.value,
-      "--primary-soft": accent.soft,
-      "--primary-shadow": accent.shadow,
-      "--ring": accent.shadow,
-      "--accent": accent.soft,
-      "--accent-foreground": accent.value,
-      "--sidebar-primary": accent.value,
-      "--sidebar-ring": accent.shadow,
-      "--chart-1": accent.value,
+      "--workspace-accent": accent.value,
+      "--workspace-accent-soft": accent.soft,
+      "--workspace-accent-shadow": accent.shadow,
     };
 
     for (const [key, value] of Object.entries(vars)) {
@@ -158,33 +152,28 @@ export function AppShell({
 
   return (
     <div
-      className="relative min-h-screen overflow-hidden bg-background"
+      className="app-shell-bg relative min-h-screen overflow-hidden bg-background"
       style={
         {
-          "--primary": accent.value,
-          "--primary-soft": accent.soft,
-          "--primary-shadow": accent.shadow,
-          "--ring": accent.shadow,
-          "--accent": accent.soft,
-          "--accent-foreground": accent.value,
-          "--sidebar-primary": accent.value,
-          "--sidebar-ring": accent.shadow,
-          "--chart-1": accent.value,
+          "--workspace-accent": accent.value,
+          "--workspace-accent-soft": accent.soft,
+          "--workspace-accent-shadow": accent.shadow,
         } as CSSProperties
       }
     >
       <div className="relative flex min-h-screen">
-        <aside className="hidden w-[232px] shrink-0 border-r border-sidebar-border/80 bg-white lg:flex">
+        <aside className="hidden w-[244px] shrink-0 border-r border-sidebar-border/80 bg-white/82 backdrop-blur-xl lg:flex">
           <div
-            className="sticky top-0 flex h-screen w-full flex-col bg-white p-4"
+            className="sticky top-0 flex h-screen w-full flex-col bg-white/70 p-4"
             data-tour="sidebar-shell"
           >
-            <div className="mb-5 flex items-center gap-3 px-2 pt-4">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-[0.85rem] bg-primary/10 text-primary">
+            <div className="mb-5 rounded-[1.15rem] border border-border/70 bg-white/84 p-3 shadow-[0_16px_36px_rgba(20,21,47,0.045)]">
+              <div className="flex items-center gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-[0.95rem] bg-[linear-gradient(135deg,rgba(150,118,247,0.12),rgba(109,195,213,0.14))] text-primary">
                 {logoUrl ? (
                   <span
                     aria-hidden="true"
-                    className="size-full rounded-[0.85rem] bg-contain bg-center bg-no-repeat"
+                    className="size-full rounded-[0.95rem] bg-contain bg-center bg-no-repeat"
                     style={{ backgroundImage: `url("${logoUrl}")` }}
                   />
                 ) : (
@@ -192,13 +181,14 @@ export function AppShell({
                 )}
               </span>
               <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold text-foreground">
+                <span className="block truncate text-sm font-semibold text-[var(--brand-ink)]">
                   {businessName}
                 </span>
                 <span className="block truncate text-xs text-muted-foreground">
                   {ownerName.split(" ")[0] ?? ownerName}
                 </span>
               </span>
+              </div>
             </div>
 
             <nav className="flex-1 space-y-1.5 px-1 py-2">
@@ -207,9 +197,9 @@ export function AppShell({
               const isActive =
                 pathname === item.href || pathname.startsWith(`${item.href}/`);
               const navClasses = cn(
-                "interactive-lift flex items-center gap-3 rounded-[0.85rem] px-4 py-3 text-sm font-medium text-muted-foreground transition-[background-color,color,box-shadow,transform] duration-200 hover:bg-secondary/60 hover:text-foreground",
+                "interactive-lift flex items-center gap-3 rounded-[0.95rem] px-4 py-3 text-sm font-semibold text-muted-foreground transition-[background-color,color,box-shadow,transform] duration-200 hover:bg-white/86 hover:text-foreground",
                 isActive &&
-                  "bg-primary/10 text-primary shadow-none ring-0"
+                  "vela-gradient text-white shadow-[0_16px_34px_rgba(150,118,247,0.23)] ring-0"
               );
 
               return (
@@ -230,10 +220,12 @@ export function AppShell({
             </nav>
 
             <div className="mt-4 space-y-4 border-t border-sidebar-border/70 px-1 pt-5">
-              <div className="rounded-[0.9rem] border border-border/80 bg-white px-4 py-4 text-sm shadow-[0_10px_24px_rgba(20,32,51,0.035)]">
+              <div className="rounded-[1.05rem] border border-border/80 bg-white/88 px-4 py-4 text-sm shadow-[0_14px_30px_rgba(20,21,47,0.045)]">
                 <div className="flex items-center gap-2">
-                  <BadgeCheck className="size-4 text-primary" />
-                  <p className="font-semibold text-foreground">
+                  <span className="vela-icon-tile size-7">
+                    <BadgeCheck className="size-3.5" />
+                  </span>
+                  <p className="font-semibold text-[var(--brand-ink)]">
                     Vela {planName} plan
                   </p>
                 </div>
@@ -264,7 +256,7 @@ export function AppShell({
         </aside>
 
         <div className="relative flex min-h-screen min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-20 border-b border-border/80 bg-white px-4 py-3 sm:px-6 lg:px-8 lg:py-0">
+          <header className="sticky top-0 z-20 border-b border-border/70 bg-white/86 px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-8 lg:py-0">
             <div className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 lg:h-16 lg:gap-6">
               <div className="flex min-w-[148px] items-center">
                 <BrandMark href="/dashboard" includeSubtitle={false} className="hidden lg:flex" />
@@ -288,13 +280,13 @@ export function AppShell({
             <GlobalSearch className="mt-3 w-full md:hidden" />
           </header>
 
-          <main className="page-gutter relative flex-1 bg-[#fbfcff] py-5 pb-28 lg:pb-8 lg:pt-6">
+          <main className="page-gutter relative flex-1 py-5 pb-28 lg:pb-8 lg:pt-6">
             {children}
           </main>
         </div>
       </div>
 
-      <nav className="fixed inset-x-3 bottom-3 z-30 rounded-[1.25rem] border border-border/80 bg-white/94 px-2 py-2 shadow-[0_12px_28px_rgba(20,32,51,0.06)] lg:hidden">
+      <nav className="fixed inset-x-3 bottom-3 z-30 rounded-[1.25rem] border border-border/80 bg-white/94 px-2 py-2 shadow-[0_16px_38px_rgba(20,21,47,0.09)] backdrop-blur-xl lg:hidden">
         <div className="grid grid-cols-7 gap-1">
           {navigationItems.map((item) => {
             const Icon = item.icon;
@@ -302,7 +294,7 @@ export function AppShell({
               pathname === item.href || pathname.startsWith(`${item.href}/`);
             const mobileNavClasses = cn(
               "flex flex-col items-center gap-1 rounded-[1rem] px-2 py-2 text-[11px] font-medium text-muted-foreground transition-[background-color,color,transform] duration-200",
-              isActive && "bg-primary/8 text-foreground shadow-[0_8px_18px_rgba(20,32,51,0.035)] ring-1 ring-primary/20"
+              isActive && "vela-gradient text-white shadow-[0_10px_22px_rgba(150,118,247,0.2)]"
             );
 
             return (

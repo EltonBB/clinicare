@@ -1,5 +1,12 @@
 export const brandAccentPresets = [
   {
+    id: "vela",
+    name: "Vela",
+    value: "#9676f7",
+    soft: "#f0edff",
+    shadow: "rgba(150,118,247,0.25)",
+  },
+  {
     id: "blue",
     name: "Blue",
     value: "#3b82f6",

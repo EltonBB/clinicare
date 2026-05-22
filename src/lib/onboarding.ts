@@ -107,8 +107,8 @@ export function createDefaultOnboardingState(): OnboardingState {
       name: "",
       type: "Clinic",
       logoUrl: "",
-      accentColor: "blue",
-      accentHex: "#3b82f6",
+      accentColor: "vela",
+      accentHex: "#9676F7",
     },
     workingHours: defaultWorkingHours,
     staffMember: {

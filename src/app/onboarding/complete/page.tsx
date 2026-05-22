@@ -41,7 +41,7 @@ export default async function OnboardingCompletePage() {
 
   return (
     <div
-      className="min-h-screen bg-background"
+      className="app-shell-bg min-h-screen"
       style={
         {
           "--primary": accent.value,
@@ -54,15 +54,15 @@ export default async function OnboardingCompletePage() {
       }
     >
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 sm:px-6 lg:px-8">
-        <div className="border-b border-border pb-6">
+        <div className="border-b border-border/70 pb-6">
           <BrandMark href="/dashboard" includeSubtitle={false} />
         </div>
         <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col items-center justify-center py-12 text-center">
-          <div className="flex size-24 items-center justify-center rounded-[1.75rem] bg-primary/14 text-primary">
+          <div className="vela-icon-tile flex size-24 items-center justify-center rounded-[1.75rem]">
             <CheckCircle2 className="size-12" />
           </div>
           <div className="mt-8 space-y-4">
-            <h1 className="text-5xl font-semibold tracking-tight text-foreground">
+            <h1 className="text-5xl font-semibold tracking-tight text-[var(--brand-ink)]">
               You are ready.
             </h1>
             <p className="mx-auto max-w-2xl text-lg leading-8 text-muted-foreground">
@@ -75,7 +75,7 @@ export default async function OnboardingCompletePage() {
           <div className="mt-12 grid w-full gap-4 md:grid-cols-2">
             <Card className="surface-card">
               <CardContent className="flex gap-4 p-6">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-[1rem] bg-[linear-gradient(135deg,rgba(150,118,247,0.12),rgba(109,195,213,0.14))] text-primary">
                   <CalendarDays className="size-5" />
                 </div>
                 <div className="space-y-2 text-left">
@@ -89,7 +89,7 @@ export default async function OnboardingCompletePage() {
             </Card>
             <Card className="surface-card">
               <CardContent className="flex gap-4 p-6">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-[1rem] bg-[linear-gradient(135deg,rgba(150,118,247,0.12),rgba(109,195,213,0.14))] text-primary">
                   <ShieldCheck className="size-5" />
                 </div>
                 <div className="space-y-2 text-left">

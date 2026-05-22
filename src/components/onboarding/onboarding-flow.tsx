@@ -162,7 +162,7 @@ function getStepError(state: OnboardingState) {
         state.clinic.accentColor === "custom" &&
         !normalizeBrandHexColor(state.clinic.accentHex)
       ) {
-        return "Enter a valid brand HEX color, for example #3b82f6.";
+        return "Enter a valid brand HEX color, for example #9676F7.";
       }
       return null;
     case 4:
@@ -720,7 +720,7 @@ export function OnboardingFlow({
                       },
                     }))
                   }
-                  placeholder="#3b82f6"
+                  placeholder="#9676F7"
                   className="mt-3 h-10 rounded-[0.75rem] bg-white/88 font-mono text-xs uppercase tracking-[0.08em]"
                 />
               </div>
@@ -944,7 +944,7 @@ export function OnboardingFlow({
 
   return (
     <div
-      className="min-h-screen bg-background"
+      className="app-shell-bg min-h-screen"
       style={
         {
           "--primary": selectedAccent.value,
@@ -957,7 +957,7 @@ export function OnboardingFlow({
       }
     >
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between gap-4 border-b border-border pb-6">
+        <div className="flex items-center justify-between gap-4 border-b border-border/70 pb-6">
           <div className="flex min-w-0 items-center gap-4">
             <BrandMark href="/dashboard" includeSubtitle={false} />
             <div className="hidden min-w-0 sm:block">
@@ -982,7 +982,7 @@ export function OnboardingFlow({
         </div>
 
         <div className="py-6">
-          <div className="mx-auto max-w-3xl px-8 py-7">
+          <div className="mx-auto max-w-3xl rounded-[1.35rem] border border-white/70 bg-white/60 px-8 py-7 shadow-[0_18px_46px_rgba(20,21,47,0.045)] backdrop-blur-xl">
             <div
               className="relative grid"
               style={{

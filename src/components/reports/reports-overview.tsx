@@ -32,7 +32,7 @@ import type {
 } from "@/lib/reports";
 
 const metricTone: Record<ReportMetricTrend, string> = {
-  up: "text-emerald-600",
+  up: "text-primary",
   down: "text-destructive",
   flat: "text-muted-foreground",
 };
@@ -86,7 +86,7 @@ function metricOrDerived(
 function statusColor(label: string) {
   const normalized = label.toLowerCase();
 
-  if (normalized.includes("completed")) return "#61c884";
+  if (normalized.includes("completed")) return "#9676f7";
   if (normalized.includes("cancelled")) return "#ef4444";
   if (normalized.includes("pending")) return "#f59e0b";
   if (normalized.includes("confirmed")) return "#5b57d6";
@@ -234,7 +234,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <div className="inline-flex rounded-[0.65rem] border border-border bg-white p-1">
+            <div className="inline-flex rounded-[0.75rem] border border-border/80 bg-white p-1 shadow-[0_12px_28px_rgba(20,21,47,0.04)]">
               {view.periodOrder.map((key) => {
                 const item = view.periods[key];
                 const selected = selectedPeriod === key;
@@ -247,7 +247,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                     onClick={() => selectPeriod(item.key)}
                     className={cn(
                       "rounded-[0.5rem] px-3.5 py-2 text-sm font-medium transition-colors",
-                      selected ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-secondary"
+                      selected ? "vela-gradient text-white shadow-sm" : "text-muted-foreground hover:bg-secondary"
                     )}
                   >
                     {item.label}
@@ -256,7 +256,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               })}
             </div>
             <div className="inline-flex flex-col gap-1">
-              <div className="inline-grid gap-2 rounded-[0.65rem] border border-border bg-white p-1.5 sm:grid-cols-[140px_140px_auto]">
+              <div className="inline-grid gap-2 rounded-[0.75rem] border border-border/80 bg-white p-1.5 shadow-[0_12px_28px_rgba(20,21,47,0.04)] sm:grid-cols-[140px_140px_auto]">
                 <input
                   type="date"
                   value={fromInput}
@@ -264,7 +264,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                     setFromInput(event.target.value);
                     setRangeError("");
                   }}
-                  className="h-8 rounded-[0.5rem] px-2 text-sm outline-none"
+                  className="h-8 rounded-[0.55rem] px-2 text-sm outline-none focus:ring-2 focus:ring-primary/15"
                   aria-label="Report start date"
                 />
                 <input
@@ -274,13 +274,13 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                     setToInput(event.target.value);
                     setRangeError("");
                   }}
-                  className="h-8 rounded-[0.5rem] px-2 text-sm outline-none"
+                  className="h-8 rounded-[0.55rem] px-2 text-sm outline-none focus:ring-2 focus:ring-primary/15"
                   aria-label="Report end date"
                 />
                 <button
                   type="button"
                   onClick={applyRange}
-                  className="h-8 rounded-[0.5rem] px-3 text-sm font-semibold text-primary hover:bg-primary/8"
+                  className="h-8 rounded-[0.55rem] px-3 text-sm font-semibold text-primary hover:bg-primary/8"
                 >
                   Analyse range
                 </button>
@@ -293,7 +293,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               type="button"
               onClick={refreshInsights}
               disabled={isRefreshing}
-              className="inline-flex h-10 items-center gap-2 rounded-[0.65rem] border border-border bg-white px-3 text-sm font-medium text-foreground shadow-sm hover:border-primary/30 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-10 items-center gap-2 rounded-[0.75rem] border border-border/80 bg-white px-3 text-sm font-medium text-foreground shadow-[0_12px_28px_rgba(20,21,47,0.04)] hover:border-primary/30 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <RefreshCw className={cn("size-4", isRefreshing && "animate-spin")} />
               Refresh AI analysis
@@ -309,12 +309,9 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
           {metricCards.map(({ icon: Icon, metric }) => (
-            <div
-              key={metric.label}
-              className="rounded-[0.9rem] border border-border/80 bg-white px-4 py-3 shadow-[0_12px_28px_rgba(20,32,51,0.035)]"
-            >
+            <div key={metric.label} className="surface-card px-4 py-3">
               <div className="flex items-start gap-3">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <div className="vela-icon-tile size-10">
                   <Icon className="size-5" />
                 </div>
                 <div className="min-w-0">
@@ -338,7 +335,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
         <div className="grid gap-4">
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.9fr)_minmax(280px,0.9fr)]">
-            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_12px_28px_rgba(20,32,51,0.035)]">
+            <section className="surface-card p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-base font-semibold text-foreground">Performance overview</h2>
@@ -366,11 +363,11 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                     x2="620"
                     y1={25 + line * 50}
                     y2={25 + line * 50}
-                    stroke="rgba(20,32,51,0.08)"
+                    stroke="rgba(20,21,47,0.08)"
                     strokeWidth="1"
                   />
                 ))}
-                <path d={`${linePath} L 620 190 L 0 190 Z`} fill="rgba(92,82,210,0.08)" transform="translate(0 18)" />
+                <path d={`${linePath} L 620 190 L 0 190 Z`} fill="rgba(150,118,247,0.10)" transform="translate(0 18)" />
                 <path d={linePath} fill="none" stroke="var(--primary)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" transform="translate(0 18)" />
                 <path d={completedLinePath} fill="none" stroke="var(--primary)" strokeDasharray="7 7" strokeWidth="2" strokeLinecap="round" transform="translate(0 18)" />
                 {period.chart.points.map((point, index) => {
@@ -407,7 +404,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               </div>
             </section>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_12px_28px_rgba(20,32,51,0.035)]">
+            <section className="surface-card p-4">
               <h2 className="text-base font-semibold text-foreground">Client status mix</h2>
               <div className="mt-5 flex items-center justify-center gap-6">
                 <div
@@ -438,7 +435,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
           </div>
 
           <div className="grid gap-4 xl:grid-cols-3">
-            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_12px_28px_rgba(20,32,51,0.035)]">
+            <section className="surface-card p-4">
               <h2 className="text-base font-semibold text-foreground">Operational metrics</h2>
               <div className="mt-4 space-y-3">
                 <SimpleMetric label="Repeat-visit rate" value={getMetric(period.metrics, "Repeat-visit rate")?.value ?? "-"} />
@@ -449,7 +446,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               </div>
             </section>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_12px_28px_rgba(20,32,51,0.035)]">
+            <section className="surface-card p-4">
               <h2 className="text-base font-semibold text-foreground">Appointment status</h2>
               <div className="mt-5 flex items-center justify-center gap-6">
                 <div
@@ -465,13 +462,13 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                 </div>
                 <div className="space-y-3 text-sm">
                   {period.diagnostics.statusMix.map((item) => (
-                    <LegendRow key={item.label} color={item.label === "Completed" ? "bg-emerald-400" : item.label === "Cancelled" ? "bg-destructive" : item.label === "Pending" ? "bg-amber-500" : "bg-primary/60"} label={item.label} value={`${item.count} (${item.share})`} />
+                    <LegendRow key={item.label} color={item.label === "Completed" ? "bg-primary" : item.label === "Cancelled" ? "bg-destructive" : item.label === "Pending" ? "bg-amber-500" : "bg-primary/60"} label={item.label} value={`${item.count} (${item.share})`} />
                   ))}
                 </div>
               </div>
             </section>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_12px_28px_rgba(20,32,51,0.035)]">
+            <section className="surface-card p-4">
               <h2 className="text-base font-semibold text-foreground">Detailed breakdown</h2>
               <div className="mt-4 space-y-3">
                 {period.metrics.slice(0, 6).map((metric) => (
@@ -489,7 +486,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_12px_28px_rgba(20,32,51,0.035)]">
+            <section className="surface-card p-4">
               <h2 className="text-base font-semibold text-foreground">Demand windows</h2>
               <div className="mt-4 grid gap-5 sm:grid-cols-3">
                 <DemandList title="Busiest days" items={busiestDays} />
@@ -515,7 +512,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                         </p>
                       </div>
                       <div className="mt-2 h-2 rounded-full bg-secondary">
-                        <div className="h-2 rounded-full bg-primary" style={{ width: staff.utilizationShare }} />
+                        <div className="vela-gradient h-2 rounded-full" style={{ width: staff.utilizationShare }} />
                       </div>
                     </div>
                   ))

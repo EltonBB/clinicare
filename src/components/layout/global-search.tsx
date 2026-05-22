@@ -112,8 +112,8 @@ export function GlobalSearch({ className }: { className?: string }) {
 
   return (
     <div ref={containerRef} className={cn("relative", className)}>
-      <div className="flex h-11 items-center gap-3 rounded-[0.9rem] border border-input bg-white/82 px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/30">
-        <Search className="size-4 shrink-0 text-muted-foreground" />
+      <div className="flex h-11 items-center gap-3 rounded-[1rem] border border-input bg-white/88 px-4 shadow-[0_12px_30px_rgba(20,21,47,0.04),inset_0_1px_0_rgba(255,255,255,0.78)] focus-within:border-primary/45 focus-within:ring-3 focus-within:ring-ring/30">
+        <Search className="size-4 shrink-0 text-primary" />
         <input
           value={query}
           onChange={(event) => {
@@ -156,7 +156,7 @@ export function GlobalSearch({ className }: { className?: string }) {
       </div>
 
       {isOpen && query.trim().length >= 2 ? (
-        <div className="absolute left-0 right-0 top-13 z-50 overflow-hidden rounded-[1rem] border border-border bg-white shadow-[0_20px_50px_rgba(20,32,51,0.12)]">
+        <div className="absolute left-0 right-0 top-13 z-50 overflow-hidden rounded-[1.1rem] border border-border/80 bg-white/96 shadow-[0_24px_60px_rgba(20,21,47,0.14)] backdrop-blur-xl">
           {results.length > 0 ? (
             <div id="global-search-results" className="max-h-[420px] overflow-y-auto p-2" role="listbox">
               {results.map((result, index) => {
@@ -170,13 +170,13 @@ export function GlobalSearch({ className }: { className?: string }) {
                     role="option"
                     aria-selected={index === activeIndex}
                     className={cn(
-                      "flex items-start gap-3 rounded-[0.8rem] px-3 py-3 transition-colors hover:bg-primary/8",
+                      "flex items-start gap-3 rounded-[0.9rem] px-3 py-3 transition-colors hover:bg-primary/8",
                       index === activeIndex && "bg-primary/8"
                     )}
                     onMouseEnter={() => setActiveIndex(index)}
                     onClick={closeSearch}
                   >
-                    <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-[0.75rem] bg-primary/10 text-primary">
+                    <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-[0.85rem] bg-[linear-gradient(135deg,rgba(150,118,247,0.14),rgba(109,195,213,0.14))] text-primary">
                       <Icon className="size-4" />
                     </span>
                     <span className="min-w-0 flex-1">

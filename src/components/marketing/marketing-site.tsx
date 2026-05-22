@@ -76,7 +76,7 @@ const comparisonRows = [
 
 export function MarketingShell({ children }: { children: ReactNode }) {
   return (
-    <main className="min-h-screen w-screen max-w-[100vw] overflow-x-hidden bg-[#f7faff] text-[#07162b]">
+    <main className="app-shell-bg min-h-screen w-screen max-w-[100vw] overflow-x-hidden text-foreground">
       <MarketingHeader />
       {children}
       <MarketingFooter />
@@ -86,12 +86,12 @@ export function MarketingShell({ children }: { children: ReactNode }) {
 
 export function MarketingHeader() {
   return (
-    <header className="sticky top-0 z-40 border-b border-[#e2eaf6] bg-white/86 backdrop-blur-xl">
+    <header className="sticky top-0 z-40 border-b border-border/70 bg-white/86 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <BrandMark href="/" includeSubtitle={false} />
-        <nav className="hidden items-center gap-9 text-sm font-semibold text-[#64748b] lg:flex">
+        <nav className="hidden items-center gap-9 text-sm font-semibold text-muted-foreground lg:flex">
           {navItems.map((item) => (
-            <Link key={item.href} href={item.href} className="transition hover:text-[#3b82f6]">
+            <Link key={item.href} href={item.href} className="transition hover:text-primary">
               {item.label}
             </Link>
           ))}
@@ -99,13 +99,13 @@ export function MarketingHeader() {
         <div className="flex items-center gap-2">
           <Link
             href="/login"
-            className="hidden h-10 items-center rounded-[9px] border border-[#d8e3f1] bg-white px-4 text-sm font-semibold text-[#07162b] transition hover:border-[#a8bdd8] sm:inline-flex"
+            className="hidden h-10 items-center rounded-[0.75rem] border border-border/80 bg-white px-4 text-sm font-semibold text-foreground shadow-[0_10px_24px_rgba(20,21,47,0.04)] transition hover:border-primary/40 hover:text-primary sm:inline-flex"
           >
             Login
           </Link>
           <Link
             href="/sign-up"
-            className="inline-flex h-10 items-center rounded-[9px] bg-[#3b82f6] px-3 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(59,130,246,0.26)] transition hover:bg-[#2563eb] sm:px-4"
+            className="vela-gradient inline-flex h-10 items-center rounded-[0.75rem] px-3 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(150,118,247,0.26)] transition hover:-translate-y-0.5 sm:px-4"
           >
             <span className="sm:hidden">Start</span>
             <span className="hidden sm:inline">Get started</span>
@@ -223,11 +223,11 @@ export function AboutPage() {
       />
       <section className="px-4 pb-16 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
-          <div className="rounded-[20px] border border-[#dfe8f6] bg-white p-6 shadow-[0_24px_80px_rgba(20,32,51,0.07)] sm:p-8">
-            <h2 className="text-3xl font-semibold text-[#07162b] sm:text-5xl">
+          <div className="surface-card p-6 sm:p-8">
+            <h2 className="text-3xl font-semibold text-[var(--brand-ink)] sm:text-5xl">
               A workspace that gives the clinic its focus back.
             </h2>
-            <p className="mt-5 text-base leading-8 text-[#53667f]">
+            <p className="mt-5 text-base leading-8 text-muted-foreground">
               The product hides provider complexity and keeps the customer experience simple: configure the clinic, book care, manage relationships, follow up, and understand performance.
             </p>
             <div className="mt-8 grid gap-3 sm:grid-cols-3">
@@ -250,11 +250,11 @@ export function ContactPage() {
     <MarketingShell>
       <section className="px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[0.78fr_1.22fr]">
-          <div className="rounded-[24px] bg-[#07162b] p-6 text-white shadow-[0_28px_90px_rgba(7,22,43,0.20)] sm:p-8">
+          <div className="rounded-[1.5rem] bg-[var(--brand-ink)] p-6 text-white shadow-[0_28px_90px_rgba(20,21,47,0.20)] sm:p-8">
             <h1 className="max-w-md text-4xl font-semibold leading-[0.98] sm:text-6xl">
               See how Vela fits your clinic.
             </h1>
-            <p className="mt-5 max-w-md text-base leading-8 text-[#c8d7ec]">
+            <p className="mt-5 max-w-md text-base leading-8 text-white/72">
               Ask about setup, workflows, WhatsApp readiness, reporting, pricing, or moving your current process into Vela.
             </p>
             <div className="mt-8 grid gap-4">
@@ -264,7 +264,7 @@ export function ContactPage() {
               <ContactMethod icon={MessageCircle} title="Live chat" copy="Available during weekday business hours." />
             </div>
           </div>
-          <div className="rounded-[24px] border border-[#dfe8f6] bg-white p-5 shadow-[0_24px_80px_rgba(20,32,51,0.07)] sm:p-8">
+          <div className="surface-card p-5 sm:p-8">
             <form className="grid gap-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <FormField label="Full name" placeholder="Your name" />
@@ -272,26 +272,26 @@ export function ContactPage() {
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <FormField label="Clinic / business name" placeholder="Your clinic name" />
-                <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#63748c]">
+                <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
                   How can we help?
-                  <select className="h-12 rounded-[10px] border border-[#d7e2f0] bg-white px-4 text-sm font-semibold normal-case tracking-normal text-[#07162b] outline-none transition focus:border-[#3b82f6]">
+                  <select className="h-12 rounded-[0.75rem] border border-border/80 bg-white px-4 text-sm font-semibold normal-case tracking-normal text-foreground outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10">
                     <option>I want to book a demo</option>
                     <option>I have a pricing question</option>
                     <option>I need help with setup</option>
                   </select>
                 </label>
               </div>
-              <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#63748c]">
+              <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
                 Message
                 <textarea
                   rows={7}
                   placeholder="Tell us about your clinic and what you need..."
-                  className="resize-none rounded-[10px] border border-[#d7e2f0] bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-[#07162b] outline-none transition placeholder:text-[#8da0b8] focus:border-[#3b82f6]"
+                  className="resize-none rounded-[0.75rem] border border-border/80 bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-foreground outline-none transition placeholder:text-muted-foreground/70 focus:border-primary focus:ring-4 focus:ring-primary/10"
                 />
               </label>
               <button
                 type="button"
-                className="inline-flex h-12 items-center justify-center rounded-[10px] bg-[#3b82f6] px-5 text-sm font-bold text-white shadow-[0_18px_36px_rgba(59,130,246,0.24)] transition hover:bg-[#2563eb]"
+                className="vela-gradient inline-flex h-12 items-center justify-center rounded-[0.85rem] px-5 text-sm font-bold text-white shadow-[0_18px_36px_rgba(150,118,247,0.24)] transition hover:-translate-y-0.5"
               >
                 Send message
               </button>
@@ -306,26 +306,26 @@ export function ContactPage() {
 function HeroSection() {
   return (
     <section className="relative overflow-hidden px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.15),transparent_36%),linear-gradient(180deg,#ffffff_0%,#eef6ff_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(150,118,247,0.16),transparent_36%),radial-gradient(circle_at_82%_14%,rgba(109,195,213,0.16),transparent_32%),linear-gradient(180deg,#ffffff_0%,#f2f7ff_100%)]" />
       <div className="absolute left-1/2 top-24 h-40 w-[34rem] -translate-x-1/2 rounded-full bg-[#8b5cf6]/18 blur-3xl" />
       <div className="relative mx-auto max-w-7xl text-center">
-        <h1 className="mx-auto max-w-5xl text-[3.05rem] font-semibold leading-[0.92] text-[#07162b] sm:text-7xl lg:text-8xl">
-          Run your clinic with <span className="bg-gradient-to-r from-[#3b82f6] to-[#6d4dff] bg-clip-text text-transparent">clarity</span>.
+        <h1 className="mx-auto max-w-5xl text-[3.05rem] font-semibold leading-[0.92] text-[var(--brand-ink)] sm:text-7xl lg:text-8xl">
+          Run your clinic with <span className="vela-gradient-text">clarity</span>.
         </h1>
-        <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-[#53667f] sm:text-lg">
+        <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-muted-foreground sm:text-lg">
           Vela keeps appointments, clients, staff, messages, payments, documents, and reports organized for better care and calmer operations.
         </p>
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
           <Link
             href="/sign-up"
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-[10px] bg-[#3b82f6] px-6 text-sm font-bold text-white shadow-[0_18px_44px_rgba(59,130,246,0.28)] transition hover:-translate-y-0.5 hover:bg-[#2563eb]"
+            className="vela-gradient inline-flex h-12 items-center justify-center gap-2 rounded-[0.85rem] px-6 text-sm font-bold text-white shadow-[0_18px_44px_rgba(150,118,247,0.28)] transition hover:-translate-y-0.5"
           >
             Get started
             <ArrowRight className="size-4" />
           </Link>
           <Link
             href="/product"
-            className="inline-flex h-12 items-center justify-center rounded-[10px] border border-[#cddcf0] bg-white px-6 text-sm font-bold text-[#07162b] transition hover:-translate-y-0.5 hover:border-[#9fb7d4]"
+            className="inline-flex h-12 items-center justify-center rounded-[0.85rem] border border-border/80 bg-white px-6 text-sm font-bold text-foreground shadow-[0_14px_36px_rgba(20,21,47,0.05)] transition hover:-translate-y-0.5 hover:border-primary/40 hover:text-primary"
           >
             See product
           </Link>
@@ -341,7 +341,7 @@ function HeroSection() {
 function LogoStrip() {
   return (
     <section className="px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-7xl gap-3 rounded-[18px] border border-[#dfe8f6] bg-white/82 p-4 shadow-[0_24px_70px_rgba(20,32,51,0.06)] sm:grid-cols-3">
+      <div className="mx-auto grid max-w-7xl gap-3 rounded-[1.1rem] border border-border/80 bg-white/82 p-4 shadow-[0_24px_70px_rgba(20,21,47,0.06)] sm:grid-cols-3">
         {productPillars.map((pillar) => (
           <PillarCard key={pillar.title} {...pillar} compact />
         ))}
@@ -356,21 +356,21 @@ function WorkflowSection({ compact = false }: { compact?: boolean }) {
       <div className="mx-auto max-w-7xl">
         <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr] lg:items-end">
           <div>
-            <h2 className="text-4xl font-semibold leading-[0.98] text-[#07162b] sm:text-6xl">
+            <h2 className="text-4xl font-semibold leading-[0.98] text-[var(--brand-ink)] sm:text-6xl">
               From booking to follow-up in one flow.
             </h2>
-            <p className="mt-5 max-w-xl text-base leading-8 text-[#53667f]">
+            <p className="mt-5 max-w-xl text-base leading-8 text-muted-foreground">
               Every step updates the same clinic workspace, so records stay complete and the team knows what to do next.
             </p>
           </div>
           <div className="grid gap-3">
             {workflowSteps.map((step, index) => (
-              <div key={step} className="group flex items-center gap-4 rounded-[14px] border border-[#dfe8f6] bg-white p-4 shadow-[0_16px_48px_rgba(20,32,51,0.045)] transition hover:-translate-y-0.5 hover:border-[#b9cef0]">
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-[#eef4ff] text-sm font-bold text-[#3b82f6]">
+              <div key={step} className="group flex items-center gap-4 rounded-[0.95rem] border border-border/80 bg-white p-4 shadow-[0_16px_48px_rgba(20,21,47,0.045)] transition hover:-translate-y-0.5 hover:border-primary/35">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-[0.65rem] bg-primary/10 text-sm font-bold text-primary">
                   {index + 1}
                 </span>
-                <p className="text-sm font-semibold text-[#24344d]">{step}</p>
-                <ChevronRight className="ml-auto size-4 text-[#8aa0bd] transition group-hover:translate-x-1 group-hover:text-[#3b82f6]" />
+                <p className="text-sm font-semibold text-foreground">{step}</p>
+                <ChevronRight className="ml-auto size-4 text-muted-foreground transition group-hover:translate-x-1 group-hover:text-primary" />
               </div>
             ))}
           </div>
@@ -401,10 +401,10 @@ function FeatureImageSection({
     <section className="px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
       <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
         <div className={imageFirst ? "lg:order-2" : ""}>
-          <h2 className="text-4xl font-semibold leading-[0.98] text-[#07162b] sm:text-6xl">
+          <h2 className="text-4xl font-semibold leading-[0.98] text-[var(--brand-ink)] sm:text-6xl">
             {title}
           </h2>
-          <p className="mt-5 max-w-xl text-base leading-8 text-[#53667f]">{copy}</p>
+          <p className="mt-5 max-w-xl text-base leading-8 text-muted-foreground">{copy}</p>
           <div className="mt-7 grid gap-3">
             {points.map((point) => (
               <CheckLine key={point}>{point}</CheckLine>
@@ -412,7 +412,7 @@ function FeatureImageSection({
           </div>
           <Link
             href={ctaHref}
-            className="mt-8 inline-flex h-11 items-center gap-2 rounded-[10px] bg-white px-5 text-sm font-bold text-[#3b82f6] shadow-[inset_0_0_0_1px_#cddcf0,0_16px_40px_rgba(20,32,51,0.06)] transition hover:-translate-y-0.5 hover:shadow-[inset_0_0_0_1px_#3b82f6,0_18px_48px_rgba(59,130,246,0.12)]"
+            className="mt-8 inline-flex h-11 items-center gap-2 rounded-[0.85rem] bg-white px-5 text-sm font-bold text-primary shadow-[inset_0_0_0_1px_hsl(var(--border)),0_16px_40px_rgba(20,21,47,0.06)] transition hover:-translate-y-0.5 hover:shadow-[inset_0_0_0_1px_rgba(150,118,247,0.55),0_18px_48px_rgba(150,118,247,0.12)]"
           >
             {ctaLabel}
             <ArrowRight className="size-4" />
@@ -429,13 +429,13 @@ function FeatureImageSection({
 function PlatformSection() {
   return (
     <section className="px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
-      <div className="mx-auto max-w-7xl rounded-[28px] bg-[#07162b] p-6 text-white shadow-[0_30px_100px_rgba(7,22,43,0.22)] sm:p-8 lg:p-10">
+      <div className="mx-auto max-w-7xl rounded-[1.75rem] bg-[var(--brand-ink)] p-6 text-white shadow-[0_30px_100px_rgba(20,21,47,0.22)] sm:p-8 lg:p-10">
         <div className="grid gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
           <div>
             <h2 className="text-4xl font-semibold leading-[0.98] sm:text-6xl">
               One workspace. Every clinic signal.
             </h2>
-            <p className="mt-5 max-w-xl text-base leading-8 text-[#c8d7ec]">
+            <p className="mt-5 max-w-xl text-base leading-8 text-white/72">
               Vela connects care delivery with operational awareness: what is booked, who needs follow-up, where capacity is open, and what improved.
             </p>
           </div>
@@ -474,10 +474,10 @@ function ProductShowcase() {
     <section className="px-4 pb-16 sm:px-6 lg:px-8">
       <div className="mx-auto grid max-w-7xl gap-6">
         {items.map((item, index) => (
-          <div key={item.title} className="grid gap-5 rounded-[24px] border border-[#dfe8f6] bg-white p-4 shadow-[0_24px_80px_rgba(20,32,51,0.06)] lg:grid-cols-[0.82fr_1.18fr] lg:items-center lg:p-6">
+          <div key={item.title} className="grid gap-5 rounded-[1.5rem] border border-border/80 bg-white p-4 shadow-[0_24px_80px_rgba(20,21,47,0.06)] lg:grid-cols-[0.82fr_1.18fr] lg:items-center lg:p-6">
             <div className={index % 2 === 1 ? "lg:order-2" : ""}>
-              <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#3b82f6]">{item.title}</p>
-              <h2 className="mt-3 text-3xl font-semibold text-[#07162b] sm:text-5xl">{item.copy}</h2>
+              <p className="text-sm font-bold uppercase tracking-[0.18em] text-primary">{item.title}</p>
+              <h2 className="mt-3 text-3xl font-semibold text-[var(--brand-ink)] sm:text-5xl">{item.copy}</h2>
             </div>
             <ImageCard src={item.image} alt={`${item.title} Vela product visual`} compact />
           </div>
@@ -505,14 +505,14 @@ function PageHero({
   return (
     <section className="px-4 py-12 text-center sm:px-6 sm:py-16 lg:px-8">
       <div className="mx-auto max-w-4xl">
-        <h1 className="text-[2.8rem] font-semibold leading-[0.96] text-[#07162b] sm:text-7xl">{title}</h1>
-        <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-[#53667f] sm:text-lg">{copy}</p>
+        <h1 className="text-[2.8rem] font-semibold leading-[0.96] text-[var(--brand-ink)] sm:text-7xl">{title}</h1>
+        <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-muted-foreground sm:text-lg">{copy}</p>
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <Link href={primaryHref} className="inline-flex h-12 items-center justify-center gap-2 rounded-[10px] bg-[#3b82f6] px-6 text-sm font-bold text-white shadow-[0_18px_44px_rgba(59,130,246,0.24)] transition hover:-translate-y-0.5 hover:bg-[#2563eb]">
+          <Link href={primaryHref} className="vela-gradient inline-flex h-12 items-center justify-center gap-2 rounded-[0.85rem] px-6 text-sm font-bold text-white shadow-[0_18px_44px_rgba(150,118,247,0.24)] transition hover:-translate-y-0.5">
             {primaryLabel}
             <ArrowRight className="size-4" />
           </Link>
-          <Link href={secondaryHref} className="inline-flex h-12 items-center justify-center rounded-[10px] border border-[#cddcf0] bg-white px-6 text-sm font-bold text-[#07162b] transition hover:-translate-y-0.5 hover:border-[#9fb7d4]">
+          <Link href={secondaryHref} className="inline-flex h-12 items-center justify-center rounded-[0.85rem] border border-border/80 bg-white px-6 text-sm font-bold text-foreground transition hover:-translate-y-0.5 hover:border-primary/40 hover:text-primary">
             {secondaryLabel}
           </Link>
         </div>
@@ -535,7 +535,7 @@ function ImageCard({
   compact?: boolean;
 }) {
   return (
-    <div className="group relative min-w-0 overflow-hidden rounded-[24px] border border-white/70 bg-white shadow-[0_30px_90px_rgba(74,99,138,0.16)]">
+    <div className="group relative min-w-0 overflow-hidden rounded-[1.5rem] border border-white/70 bg-white shadow-[0_30px_90px_rgba(74,99,138,0.16)]">
       <Image
         src={src}
         alt={alt}
@@ -548,20 +548,20 @@ function ImageCard({
           compact ? "aspect-[1.78]" : "aspect-video",
         ].join(" ")}
       />
-      <div className="pointer-events-none absolute inset-0 rounded-[24px] ring-1 ring-inset ring-white/70" />
+      <div className="pointer-events-none absolute inset-0 rounded-[1.5rem] ring-1 ring-inset ring-white/70" />
     </div>
   );
 }
 
 function PillarCard({ icon: Icon, title, copy, compact = false }: { icon: ElementType; title: string; copy: string; compact?: boolean }) {
   return (
-    <article className={compact ? "flex gap-3 rounded-[14px] p-4" : "rounded-[18px] border border-[#dfe8f6] bg-white p-5 shadow-[0_18px_54px_rgba(20,32,51,0.05)]"}>
-      <span className="flex size-11 shrink-0 items-center justify-center rounded-[12px] bg-[#eef4ff] text-[#3b82f6]">
+    <article className={compact ? "flex gap-3 rounded-[0.9rem] p-4" : "rounded-[1.1rem] border border-border/80 bg-white p-5 shadow-[0_18px_54px_rgba(20,21,47,0.05)]"}>
+      <span className="vela-icon-tile">
         <Icon className="size-5" />
       </span>
       <div className={compact ? "" : "mt-5"}>
-        <h3 className="text-base font-bold text-[#07162b]">{title}</h3>
-        <p className="mt-2 text-sm leading-6 text-[#64748b]">{copy}</p>
+        <h3 className="text-base font-bold text-[var(--brand-ink)]">{title}</h3>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">{copy}</p>
       </div>
     </article>
   );
@@ -570,11 +570,11 @@ function PillarCard({ icon: Icon, title, copy, compact = false }: { icon: Elemen
 function DarkCard({ icon: Icon, title, copy }: { icon: ElementType; title: string; copy: string }) {
   return (
     <article className="rounded-[18px] border border-white/10 bg-white/[0.06] p-5">
-      <span className="flex size-10 items-center justify-center rounded-[12px] bg-white/10 text-[#8bb8ff]">
+      <span className="flex size-10 items-center justify-center rounded-[0.85rem] bg-white/10 text-white">
         <Icon className="size-5" />
       </span>
       <h3 className="mt-4 text-lg font-bold text-white">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-[#c8d7ec]">{copy}</p>
+      <p className="mt-2 text-sm leading-6 text-white/72">{copy}</p>
     </article>
   );
 }
@@ -595,19 +595,19 @@ function PlanCard({
   highlighted?: boolean;
 }) {
   return (
-    <article className={highlighted ? "rounded-[24px] border border-[#3b82f6] bg-white p-6 shadow-[0_24px_80px_rgba(59,130,246,0.15)]" : "rounded-[24px] border border-[#dfe8f6] bg-white p-6 shadow-[0_24px_80px_rgba(20,32,51,0.06)]"}>
+    <article className={highlighted ? "rounded-[1.5rem] border border-primary/60 bg-white p-6 shadow-[0_24px_80px_rgba(150,118,247,0.15)]" : "rounded-[1.5rem] border border-border/80 bg-white p-6 shadow-[0_24px_80px_rgba(20,21,47,0.06)]"}>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold text-[#07162b]">{name}</h2>
-          <p className="mt-2 max-w-md text-sm leading-6 text-[#64748b]">{description}</p>
+          <h2 className="text-2xl font-semibold text-[var(--brand-ink)]">{name}</h2>
+          <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">{description}</p>
         </div>
-        {highlighted ? <span className="rounded-full bg-[#eef4ff] px-3 py-1 text-xs font-bold text-[#3b82f6]">Most popular</span> : null}
+        {highlighted ? <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">Most popular</span> : null}
       </div>
       <div className="mt-8 flex items-end gap-2">
-        <span className="text-5xl font-semibold text-[#07162b]">{price}</span>
-        <span className="pb-2 text-sm font-semibold text-[#64748b]">/month</span>
+        <span className="text-5xl font-semibold text-[var(--brand-ink)]">{price}</span>
+        <span className="pb-2 text-sm font-semibold text-muted-foreground">/month</span>
       </div>
-      <Link href={checkoutHref} className="mt-8 inline-flex h-12 w-full items-center justify-center rounded-[10px] bg-[#3b82f6] text-sm font-bold text-white shadow-[0_18px_36px_rgba(59,130,246,0.22)] transition hover:bg-[#2563eb]">
+      <Link href={checkoutHref} className="vela-gradient mt-8 inline-flex h-12 w-full items-center justify-center rounded-[0.85rem] text-sm font-bold text-white shadow-[0_18px_36px_rgba(150,118,247,0.22)] transition hover:-translate-y-0.5">
         Continue to checkout
       </Link>
       <div className="mt-7 grid gap-3">
@@ -621,14 +621,14 @@ function PlanCard({
 
 function PricingTable() {
   return (
-    <div className="mx-auto mt-8 max-w-6xl overflow-hidden rounded-[20px] border border-[#dfe8f6] bg-white shadow-[0_24px_80px_rgba(20,32,51,0.06)]">
-      <div className="grid grid-cols-[1.3fr_0.7fr_0.7fr] border-b border-[#e3ebf5] bg-[#f8fbff] px-4 py-3 text-xs font-bold uppercase tracking-[0.16em] text-[#63748c]">
+    <div className="mx-auto mt-8 max-w-6xl overflow-hidden rounded-[1.25rem] border border-border/80 bg-white shadow-[0_24px_80px_rgba(20,21,47,0.06)]">
+      <div className="grid grid-cols-[1.3fr_0.7fr_0.7fr] border-b border-border/70 bg-[var(--brand-wash)]/55 px-4 py-3 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
         <span>Feature</span>
         <span>Basic</span>
         <span>Pro</span>
       </div>
       {comparisonRows.map(([feature, basic, pro]) => (
-        <div key={feature} className="grid grid-cols-[1.3fr_0.7fr_0.7fr] border-b border-[#eef3f9] px-4 py-4 text-sm font-semibold text-[#304158] last:border-b-0">
+        <div key={feature} className="grid grid-cols-[1.3fr_0.7fr_0.7fr] border-b border-border/70 px-4 py-4 text-sm font-semibold text-foreground last:border-b-0">
           <span>{feature}</span>
           <span>{basic}</span>
           <span>{pro}</span>
@@ -641,13 +641,13 @@ function PricingTable() {
 function LegalPanel() {
   return (
     <section className="px-4 pb-16 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-7xl gap-4 rounded-[24px] border border-[#dfe8f6] bg-white p-5 shadow-[0_24px_80px_rgba(20,32,51,0.06)] sm:grid-cols-3">
+      <div className="mx-auto grid max-w-7xl gap-4 rounded-[1.5rem] border border-border/80 bg-white p-5 shadow-[0_24px_80px_rgba(20,21,47,0.06)] sm:grid-cols-3">
         {[
           ["Terms & Conditions", "/terms-and-conditions"],
           ["Privacy Policy", "/privacy"],
           ["Refund Policy", "/refund"],
         ].map(([label, href]) => (
-          <Link key={href} href={href} className="group flex items-center justify-between rounded-[14px] border border-[#e1e9f4] p-4 text-sm font-bold text-[#07162b] transition hover:border-[#3b82f6] hover:text-[#3b82f6]">
+          <Link key={href} href={href} className="group flex items-center justify-between rounded-[0.95rem] border border-border/80 p-4 text-sm font-bold text-foreground transition hover:border-primary/40 hover:text-primary">
             {label}
             <ChevronRight className="size-4 transition group-hover:translate-x-1" />
           </Link>
@@ -660,16 +660,16 @@ function LegalPanel() {
 function CtaBand() {
   return (
     <section className="px-4 pb-14 sm:px-6 lg:px-8">
-      <div className="mx-auto flex max-w-7xl flex-col gap-5 rounded-[24px] bg-[#3b82f6] p-6 text-white shadow-[0_24px_80px_rgba(59,130,246,0.24)] sm:p-8 lg:flex-row lg:items-center lg:justify-between">
+      <div className="vela-gradient mx-auto flex max-w-7xl flex-col gap-5 rounded-[1.5rem] p-6 text-white shadow-[0_24px_80px_rgba(150,118,247,0.24)] sm:p-8 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="text-3xl font-semibold sm:text-4xl">Start with one clearer clinic workspace.</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-blue-50">Centralize appointment, client, communication, media, payment, and reporting work.</p>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-white/80">Centralize appointment, client, communication, media, payment, and reporting work.</p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
-          <Link href="/sign-up" className="inline-flex h-11 items-center justify-center rounded-[10px] bg-white px-5 text-sm font-bold text-[#2563eb] transition hover:bg-blue-50">
+          <Link href="/sign-up" className="inline-flex h-11 items-center justify-center rounded-[0.85rem] bg-white px-5 text-sm font-bold text-primary transition hover:bg-white/90">
             Get started
           </Link>
-          <Link href="/contact" className="inline-flex h-11 items-center justify-center rounded-[10px] border border-white/40 px-5 text-sm font-bold text-white transition hover:bg-white/10">
+          <Link href="/contact" className="inline-flex h-11 items-center justify-center rounded-[0.85rem] border border-white/40 px-5 text-sm font-bold text-white transition hover:bg-white/10">
             Contact us
           </Link>
         </div>
@@ -681,12 +681,12 @@ function CtaBand() {
 function ContactMethod({ icon: Icon, title, copy }: { icon: ElementType; title: string; copy: string }) {
   return (
     <div className="flex gap-3">
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-[12px] bg-white/10 text-[#8bb8ff]">
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-[0.85rem] bg-white/10 text-white">
         <Icon className="size-5" />
       </span>
       <div>
         <p className="text-sm font-bold text-white">{title}</p>
-        <p className="mt-1 text-sm text-[#c8d7ec]">{copy}</p>
+        <p className="mt-1 text-sm text-white/72">{copy}</p>
       </div>
     </div>
   );
@@ -694,12 +694,12 @@ function ContactMethod({ icon: Icon, title, copy }: { icon: ElementType; title: 
 
 function FormField({ label, placeholder, type = "text" }: { label: string; placeholder: string; type?: string }) {
   return (
-    <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#63748c]">
+    <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
       {label}
       <input
         type={type}
         placeholder={placeholder}
-        className="h-12 rounded-[10px] border border-[#d7e2f0] bg-white px-4 text-sm font-semibold normal-case tracking-normal text-[#07162b] outline-none transition placeholder:text-[#8da0b8] focus:border-[#3b82f6]"
+        className="h-12 rounded-[0.75rem] border border-border/80 bg-white px-4 text-sm font-semibold normal-case tracking-normal text-foreground outline-none transition placeholder:text-muted-foreground/70 focus:border-primary focus:ring-4 focus:ring-primary/10"
       />
     </label>
   );
@@ -707,17 +707,17 @@ function FormField({ label, placeholder, type = "text" }: { label: string; place
 
 function MetricPill({ value, label }: { value: string; label: string }) {
   return (
-    <div className="rounded-[14px] bg-[#f1f6ff] p-4">
-      <p className="text-2xl font-semibold text-[#3b82f6]">{value}</p>
-      <p className="mt-1 text-xs uppercase tracking-[0.12em] text-[#63748c]">{label}</p>
+    <div className="rounded-[0.95rem] bg-[var(--brand-wash)] p-4">
+      <p className="text-2xl font-semibold text-primary">{value}</p>
+      <p className="mt-1 text-xs uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
     </div>
   );
 }
 
 function CheckLine({ children }: { children: ReactNode }) {
   return (
-    <div className="flex items-center gap-2 text-sm font-semibold text-[#304158]">
-      <CheckCircle2 className="size-4 shrink-0 text-[#3b82f6]" />
+    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+      <CheckCircle2 className="size-4 shrink-0 text-primary" />
       <span>{children}</span>
     </div>
   );
@@ -725,21 +725,21 @@ function CheckLine({ children }: { children: ReactNode }) {
 
 function MarketingFooter() {
   return (
-    <footer className="border-t border-[#dfe8f6] bg-white px-4 py-10 sm:px-6 lg:px-8">
+    <footer className="border-t border-border/70 bg-white px-4 py-10 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-7xl flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <BrandMark href="/" includeSubtitle={false} />
-          <p className="mt-4 max-w-sm text-sm leading-6 text-[#64748b]">Modern clinic operations for appointments, clients, communication, payments, and AI-assisted reports.</p>
+          <p className="mt-4 max-w-sm text-sm leading-6 text-muted-foreground">Modern clinic operations for appointments, clients, communication, payments, and AI-assisted reports.</p>
         </div>
-        <div className="flex flex-wrap gap-x-6 gap-y-3 text-sm font-semibold text-[#64748b]">
+        <div className="flex flex-wrap gap-x-6 gap-y-3 text-sm font-semibold text-muted-foreground">
           {footerLinks.map((item) => (
-            <Link key={item.href} href={item.href} className="transition hover:text-[#3b82f6]">
+            <Link key={item.href} href={item.href} className="transition hover:text-primary">
               {item.label}
             </Link>
           ))}
         </div>
       </div>
-      <div className="mx-auto mt-8 max-w-7xl text-xs font-semibold text-[#8b9ab0]">© 2026 Vela. All rights reserved.</div>
+      <div className="mx-auto mt-8 max-w-7xl text-xs font-semibold text-muted-foreground">© 2026 Vela. All rights reserved.</div>
     </footer>
   );
 }

@@ -146,7 +146,7 @@ function DashboardCustomizer({
         Customize dashboard
       </Button>
       {open ? (
-        <div className="absolute right-0 top-12 z-50 w-[min(760px,calc(100vw-2rem))] rounded-[1.35rem] border border-border bg-white p-5 shadow-[0_18px_48px_rgba(20,32,51,0.13)]">
+        <div className="absolute right-0 top-12 z-50 w-[min(760px,calc(100vw-2rem))] rounded-[1.35rem] border border-border/80 bg-white/96 p-5 shadow-[0_24px_70px_rgba(20,21,47,0.14)] backdrop-blur-xl">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-lg font-semibold text-foreground">
@@ -179,14 +179,14 @@ function DashboardCustomizer({
                     type="button"
                     onClick={() => toggleWidget(option.value)}
                     className={cn(
-                      "rounded-[1rem] border bg-white p-4 text-left transition-[border-color,background-color] duration-150",
+                      "rounded-[1rem] border bg-white p-4 text-left transition-[border-color,background-color,box-shadow] duration-150",
                       selected
-                        ? "border-primary/45 bg-primary/6"
+                        ? "border-primary/45 bg-[linear-gradient(135deg,rgba(150,118,247,0.08),rgba(109,195,213,0.08))] shadow-[0_14px_30px_rgba(150,118,247,0.1)]"
                         : "border-border hover:border-primary/25"
                     )}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <span className="flex size-10 items-center justify-center rounded-[0.9rem] bg-primary/10 text-primary">
+                      <span className="flex size-10 items-center justify-center rounded-[0.9rem] bg-[linear-gradient(135deg,rgba(150,118,247,0.12),rgba(109,195,213,0.14))] text-primary">
                         {option.icon}
                       </span>
                       <span
@@ -283,7 +283,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           <p className="text-sm font-medium text-muted-foreground">
             Welcome back to {view.businessName}
           </p>
-          <h1 className="mt-2 text-4xl font-semibold tracking-tight text-foreground">
+          <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--brand-ink)]">
             Dashboard
           </h1>
           <p className="mt-2 text-base text-muted-foreground">{view.dateLabel}</p>
@@ -328,13 +328,13 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-5">
           {!hasVisibleWidgets ? (
-            <section className="rounded-[1rem] border border-dashed border-border/90 bg-white/78 p-6 text-sm text-muted-foreground">
+            <section className="surface-soft border-dashed p-6 text-sm text-muted-foreground">
               No dashboard widgets are selected. Open Customize dashboard and choose the sections this workspace should show.
             </section>
           ) : null}
 
           {showTodayAppointments ? (
-          <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+          <section className="surface-card p-5">
             <div className="flex items-center justify-between gap-4 border-b border-border/75 pb-4">
               <div className="flex items-center gap-3">
                 <h2 className="text-base font-semibold text-foreground">Today&apos;s appointments</h2>
@@ -352,7 +352,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                   <Link
                     key={appointment.id}
                     href={`/calendar/${appointment.id}/edit`}
-                    className="grid gap-3 py-4 text-sm transition-colors hover:bg-primary/5 md:grid-cols-[90px_1fr_160px_112px_24px] md:items-center"
+                    className="grid gap-3 rounded-[0.9rem] px-2 py-4 text-sm transition-colors hover:bg-primary/5 md:grid-cols-[90px_1fr_160px_112px_24px] md:items-center"
                   >
                     <div>
                       <p className="font-semibold text-foreground">{appointment.time}</p>
@@ -382,10 +382,10 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
               {view.nextAppointment ? (
                 <Link
                   href={`/calendar/${view.nextAppointment.id}/edit`}
-                  className="block rounded-[1rem] bg-primary/8 p-4 transition-colors hover:bg-primary/12"
+                  className="block rounded-[1.05rem] bg-[linear-gradient(135deg,rgba(150,118,247,0.1),rgba(109,195,213,0.12))] p-4 transition-colors hover:bg-primary/12"
                 >
                   <p className="text-sm font-medium text-muted-foreground">Next up</p>
-                  <p className="mt-2 text-3xl font-semibold tracking-tight text-primary">
+                  <p className="vela-gradient-text mt-2 text-3xl font-semibold tracking-tight">
                     {view.nextAppointment.time}
                   </p>
                   <p className="mt-3 font-semibold text-foreground">
@@ -435,7 +435,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
               <div className="space-y-4">
                 {view.lastClients.slice(0, 5).map((client, index) => (
                   <Link key={client.id} href={`/clients/${client.id}`} className="flex items-center gap-3 text-sm">
-                    <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                    <span className="flex size-9 items-center justify-center rounded-[0.9rem] bg-[linear-gradient(135deg,rgba(150,118,247,0.12),rgba(109,195,213,0.14))] text-xs font-semibold text-primary">
                       {client.name.slice(0, 2).toUpperCase()}
                     </span>
                     <span className="min-w-0 flex-1">
@@ -533,9 +533,9 @@ function DashboardKpiCard({
   tone?: "default" | "warning";
 }) {
   return (
-    <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+    <section className="surface-card p-5">
       <div className="flex items-start gap-4">
-        <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <span className="vela-icon-tile size-12">
           <Icon className="size-5" />
         </span>
         <div>
@@ -568,11 +568,11 @@ function DashboardPanel({
   badge?: string;
 }) {
   return (
-    <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+    <section className="surface-card p-5">
       <div className="mb-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           {Icon ? (
-            <span className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <span className="flex size-8 items-center justify-center rounded-[0.85rem] bg-[linear-gradient(135deg,rgba(150,118,247,0.12),rgba(109,195,213,0.14))] text-primary">
               <Icon className="size-4" />
             </span>
           ) : null}
@@ -602,7 +602,7 @@ function HealthMetric({ label, value }: { label: string; value: number }) {
         <span className="font-semibold text-foreground">{value}%</span>
       </div>
       <div className="h-1.5 rounded-full bg-muted">
-        <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(value, 100)}%` }} />
+        <div className="h-full rounded-full bg-[linear-gradient(90deg,var(--brand-start),var(--brand-end))]" style={{ width: `${Math.min(value, 100)}%` }} />
       </div>
     </div>
   );

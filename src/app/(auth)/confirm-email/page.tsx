@@ -39,18 +39,19 @@ export default async function ConfirmEmailPage({
     return (
       <div className="space-y-6">
         <AuthConfirmationBridge />
-        <Card className="surface-card overflow-hidden">
+        <Card className="surface-card overflow-hidden border-white/75 bg-white/90 shadow-[0_30px_90px_rgba(20,21,47,0.12)]">
+          <div className="h-1.5 bg-[linear-gradient(90deg,var(--brand-start),var(--brand-end))]" />
           <CardHeader className="space-y-6 px-8 pt-9 text-center sm:px-10 sm:pt-10">
             <BrandMark
               href="/login"
               includeSubtitle={false}
               className="justify-center"
             />
-            <div className="mx-auto flex size-[4.75rem] items-center justify-center rounded-full bg-primary/10">
-              <Mail className="size-7 text-primary" />
+            <div className="vela-icon-tile mx-auto size-[4.75rem] rounded-[1.5rem]">
+              <Mail className="size-7" />
             </div>
             <div className="space-y-3">
-              <CardTitle className="text-[2rem] font-semibold tracking-tight">
+              <CardTitle className="text-[2rem] font-semibold tracking-tight text-[var(--brand-ink)]">
                 Congratulations.
               </CardTitle>
               <p className="mx-auto max-w-sm text-[15px] leading-7 text-muted-foreground">
@@ -59,7 +60,7 @@ export default async function ConfirmEmailPage({
             </div>
           </CardHeader>
           <CardContent className="space-y-4 px-8 pb-9 text-center sm:px-10 sm:pb-10">
-            <Link href="/login" className="font-medium text-primary">
+            <Link href="/login" className="font-semibold text-primary">
               Continue to login
             </Link>
           </CardContent>
@@ -72,18 +73,19 @@ export default async function ConfirmEmailPage({
     <div className="space-y-6">
       <AuthConfirmationBridge />
       {sent && ticket ? <EmailVerificationWatcher ticket={ticket} /> : null}
-      <Card className="surface-card overflow-hidden">
+      <Card className="surface-card overflow-hidden border-white/75 bg-white/90 shadow-[0_30px_90px_rgba(20,21,47,0.12)]">
+        <div className="h-1.5 bg-[linear-gradient(90deg,var(--brand-start),var(--brand-end))]" />
         <CardHeader className="space-y-6 px-8 pt-9 text-center sm:px-10 sm:pt-10">
           <BrandMark
             href="/sign-up"
             includeSubtitle={false}
             className="justify-center"
           />
-          <div className="mx-auto flex size-[4.75rem] items-center justify-center rounded-full bg-secondary">
+          <div className="mx-auto flex size-[4.75rem] items-center justify-center rounded-[1.5rem] bg-[linear-gradient(135deg,rgba(150,118,247,0.12),rgba(109,195,213,0.14))]">
             <Mail className="size-7 text-primary" />
           </div>
           <div className="space-y-3">
-            <CardTitle className="text-[2rem] font-semibold tracking-tight">
+            <CardTitle className="text-[2rem] font-semibold tracking-tight text-[var(--brand-ink)]">
               Check your email.
             </CardTitle>
             <p className="mx-auto max-w-sm text-[15px] leading-7 text-muted-foreground">
@@ -95,13 +97,13 @@ export default async function ConfirmEmailPage({
         </CardHeader>
         <CardContent className="space-y-6 px-8 pb-9 sm:px-10 sm:pb-10">
           {already ? (
-            <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
+            <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm font-medium text-primary">
               That link was already used or the email was already confirmed. If you already verified on another device, continue to login.
             </div>
           ) : null}
 
           {pending ? (
-            <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
+            <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm font-medium text-primary">
               Your account exists, but the email still needs verification.
             </div>
           ) : null}
@@ -113,7 +115,7 @@ export default async function ConfirmEmailPage({
           ) : null}
 
           {sent && !already ? (
-            <div className="rounded-[1rem] border border-border bg-card px-4 py-4 text-sm text-muted-foreground">
+            <div className="rounded-[1rem] border border-border/75 bg-[linear-gradient(135deg,rgba(150,118,247,0.06),rgba(109,195,213,0.06))] px-4 py-4 text-sm text-muted-foreground">
               Once the email is confirmed, this page will redirect you to login automatically.
             </div>
           ) : null}
@@ -121,11 +123,11 @@ export default async function ConfirmEmailPage({
           <ResendConfirmationForm email={email} ticket={ticket} />
 
           <div className="space-y-3 border-t border-border pt-5 text-center text-sm">
-            <Link href="/sign-up" className="font-medium text-foreground">
+            <Link href="/sign-up" className="font-semibold text-foreground">
               Back to sign up
             </Link>
             <div>
-              <Link href="/forgot-password" className="font-medium text-primary">
+              <Link href="/forgot-password" className="font-semibold text-primary">
                 Need to reset your password?
               </Link>
             </div>
@@ -134,7 +136,7 @@ export default async function ConfirmEmailPage({
       </Card>
       <p className="text-center text-sm text-muted-foreground">
         Can&apos;t find the email? Check your spam folder or contact{" "}
-        <span className="font-medium text-primary">Support</span>.
+        <span className="font-semibold text-primary">Support</span>.
       </p>
     </div>
   );
