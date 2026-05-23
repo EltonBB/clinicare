@@ -186,7 +186,7 @@ function DashboardCustomizer({
                     )}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <span className="flex size-10 items-center justify-center rounded-[0.9rem] bg-[linear-gradient(135deg,rgba(10,34,255,0.12),rgba(100,182,255,0.14))] text-primary">
+                      <span className="flex size-10 items-center justify-center rounded-[0.9rem] border border-border/80 bg-white text-primary">
                         {option.icon}
                       </span>
                       <span
@@ -435,7 +435,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
               <div className="space-y-4">
                 {view.lastClients.slice(0, 5).map((client, index) => (
                   <Link key={client.id} href={`/clients/${client.id}`} className="flex items-center gap-3 text-sm">
-                    <span className="flex size-9 items-center justify-center rounded-[0.9rem] bg-[linear-gradient(135deg,rgba(10,34,255,0.12),rgba(100,182,255,0.14))] text-xs font-semibold text-primary">
+                    <span className="flex size-9 items-center justify-center rounded-[0.9rem] border border-border/80 bg-white text-xs font-semibold text-primary">
                       {client.name.slice(0, 2).toUpperCase()}
                     </span>
                     <span className="min-w-0 flex-1">
@@ -572,7 +572,7 @@ function DashboardPanel({
       <div className="mb-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           {Icon ? (
-            <span className="flex size-8 items-center justify-center rounded-[0.85rem] bg-[linear-gradient(135deg,rgba(10,34,255,0.12),rgba(100,182,255,0.14))] text-primary">
+            <span className="flex size-8 items-center justify-center rounded-[0.85rem] border border-border/80 bg-white text-primary">
               <Icon className="size-4" />
             </span>
           ) : null}

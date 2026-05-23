@@ -247,7 +247,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                     onClick={() => selectPeriod(item.key)}
                     className={cn(
                       "rounded-[0.5rem] px-3.5 py-2 text-sm font-medium transition-colors",
-                      selected ? "vela-gradient text-white shadow-sm" : "text-muted-foreground hover:bg-secondary"
+                      selected ? "border border-primary/20 bg-white text-primary shadow-none" : "text-muted-foreground hover:bg-secondary"
                     )}
                   >
                     {item.label}

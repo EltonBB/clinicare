@@ -81,7 +81,7 @@ export default async function ConfirmEmailPage({
             includeSubtitle={false}
             className="justify-center"
           />
-          <div className="mx-auto flex size-[4.75rem] items-center justify-center rounded-[1.5rem] bg-[linear-gradient(135deg,rgba(10,34,255,0.12),rgba(100,182,255,0.14))]">
+          <div className="mx-auto flex size-[4.75rem] items-center justify-center rounded-[1.5rem] border border-border/80 bg-white">
             <Mail className="size-7 text-primary" />
           </div>
           <div className="space-y-3">
