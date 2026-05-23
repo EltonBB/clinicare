@@ -1,6 +1,6 @@
 # Project Status: Vela / Clinicare
 
-Last updated: 2026-05-20
+Last updated: 2026-05-23
 
 ## Product Overview
 
@@ -61,6 +61,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Public marketing site redesigned again with the supplied Vela brand-scene assets instead of flat screenshots or generated replacements. The Home/Product pages now use a Cal.com-inspired minimal hero, large branded monitor visuals, workflow steps, feature image sections for scheduling, clients, and reports, stronger CTAs, improved motion, and mobile-safe responsive structure.
 - Public checkout preparation page now exists at `/checkout`. Pricing plan buttons route to `/checkout?plan=basic` or `/checkout?plan=pro`, the page renders the selected plan summary and feature list, detects the signed-in workspace's current plan/status, labels the checkout as first purchase, current plan, upgrade, downgrade, or reactivation, and keeps the final payment button reserved for the future Paddle checkout handoff.
 - Vela brand rework completed as a visual-only pass using the uploaded Vela icon/PDF brand files. The app now ships `public/brand/vela-icon.svg` and `public/brand/vela-logo.pdf`, global Vela design tokens, purple-to-cyan gradient accents, refreshed shared shell/sidebar/topbar/search styling, updated UI primitives, reworked auth/onboarding/loading states, refreshed checkout/pricing/marketing pages, and Vela-aligned dashboard, calendar, reports, clients, staff, and staff-detail surfaces without changing business logic or data flows.
+- Public homepage redesign completed as a product-command-center landing page for Vela. The new homepage uses code-native Vela workspace mockups, clearer clinic workflow storytelling, clinic-type targeting, problem/solution sections, five product deep dives, safe AI-assisted operational insight copy, privacy-conscious trust messaging, pricing preview, stronger CTAs, shared marketing shell copy cleanup, and customer-safe checkout preparation wording without changing auth, database, API, billing, or protected workspace behavior.
 - Fixed the shared Tabs primitive so horizontal tabs explicitly render as a vertical stack of tab list above tab content. This resolves the client details page issue where the tab list appeared in a left empty column and the overview content was pushed to the right.
 - Dedicated create pages now exist for `/calendar/new`, `/clients/new`, and `/staff/new`, replacing the main add flows for bookings, clients, and staff with centered single-page forms while preserving edit sheets for existing records.
 - Dedicated patient details pages now exist at `/clients/[clientId]`, replacing the old right-side client panel with a full patient record view covering Overview, Appointments, Medical Info, Documents, Messages, Payments, edit/archive actions, real medication/document creation, and payment ledger records generated from bookings.
@@ -146,4 +147,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Completed the visual-only Vela rebrand pass. Added the uploaded brand assets under `public/brand`, updated global tokens and reusable UI primitives, refreshed the authenticated shell/search/navigation, auth/onboarding/loading states, public marketing/pricing/checkout pages, and key workspace surfaces for dashboard, calendar, reports, clients, staff, and staff detail. No database, auth, API, routing, form validation, or business logic behavior was intentionally changed. Verified with `npm run lint`, `npm run build`, `npm audit --omit=dev`, and Playwright checks for checkout, pricing, login, and unauthenticated workspace redirect behavior.
+- Completed the public Vela landing page redesign. The homepage now presents Vela as a premium clinic management workspace through code-native product mockups and clearer conversion sections, while shared marketing copy was cleaned up and checkout preparation wording was made customer-safe. Verified with `npm run lint`, `npm run build`, and Playwright checks for the public marketing/auth/legal/checkout routes plus unauthenticated workspace redirect behavior.

@@ -14,7 +14,7 @@ export const termsSections: LegalSection[] = [
     title: "2. What Vela provides",
     body: [
       "Vela is clinic operations software. It helps clinics manage clients, appointments, staff, clinic branding, messages, reminders, media, and performance reporting from one workspace.",
-      "Vela is not a medical device, emergency service, clinical diagnosis tool, legal service, accounting service, or substitute for professional judgment. Clinics are responsible for the services they provide to their own clients and patients.",
+      "Vela is not a medical device, emergency service, clinical decision-support tool, legal service, accounting service, or substitute for professional judgment. Clinics are responsible for the services they provide to their own clients and patients.",
     ],
   },
   {
@@ -122,7 +122,7 @@ export const privacySections: LegalSection[] = [
   {
     title: "5. AI-assisted reports",
     body: [
-      "Reports may use clinic operational metrics to generate AI-assisted analysis, diagnosis, recommendations, or rule-based fallback guidance. These features are designed to support operational decision-making, not clinical decisions.",
+      "Reports may use clinic operational metrics to generate AI-assisted analysis, operational recommendations, or rule-based fallback guidance. These features are designed to support operational decision-making, not clinical decisions.",
       "We limit report prompts to the information needed to produce the feature. Clinics should avoid entering unnecessary sensitive details into free-text fields when they are not needed for operations.",
     ],
   },

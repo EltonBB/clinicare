@@ -44,7 +44,7 @@ export const publicPlans: PublicPlan[] = [
     audience: "Best for clinics that want reporting, staff visibility, and launch support.",
     features: [
       "Everything in Basic",
-      "Advanced AI reports and diagnosis",
+      "Advanced AI-assisted operational insights",
       "Staff activity and utilization",
       "More workflow automation",
       "Priority setup support",
@@ -147,7 +147,7 @@ export function resolveCheckoutPlanState({
       intent: "reactivate",
       badge: "Reactivate plan",
       headline: `Reactivate ${workspaceName ?? "this workspace"}`,
-      description: `This workspace has a ${currentPlanName} plan marked ${statusLabel}. The selected ${selectedPlan.name} plan will restart billing when Paddle is connected.`,
+      description: `This workspace has a ${currentPlanName} plan marked ${statusLabel}. The selected ${selectedPlan.name} plan can be reactivated during setup.`,
       summaryTitle: "Reactivation",
       primaryActionLabel: `Reactivate on ${selectedPlan.name}`,
       secondaryActionLabel: "Back to settings",
@@ -166,7 +166,7 @@ export function resolveCheckoutPlanState({
       badge: "Current plan",
       headline: `You are already on Vela ${selectedPlan.name}`,
       description:
-        "This checkout matches the workspace's current plan. When Paddle is connected, this path should open billing management instead of creating a duplicate subscription.",
+        "This checkout matches the workspace's current plan. Contact support if you need help reviewing or changing billing details.",
       summaryTitle: "Current subscription",
       primaryActionLabel: "Manage current plan",
       secondaryActionLabel: "Back to settings",
@@ -185,7 +185,7 @@ export function resolveCheckoutPlanState({
       badge: "Upgrade",
       headline: `Upgrade from ${currentPlanName} to ${selectedPlan.name}`,
       description:
-        "The account is already subscribed to a lower plan. Paddle should treat this as a plan change, not a new first-time purchase.",
+        "The account is already subscribed to a lower plan. Plan activation is currently handled during setup so the workspace keeps the right context.",
       summaryTitle: "Plan upgrade",
       primaryActionLabel: `Upgrade to ${selectedPlan.name}`,
       secondaryActionLabel: "Back to settings",
@@ -203,7 +203,7 @@ export function resolveCheckoutPlanState({
     badge: "Downgrade",
     headline: `Downgrade from ${currentPlanName} to ${selectedPlan.name}`,
     description:
-      "The account is already subscribed to a higher plan. Paddle should treat this as a downgrade or scheduled plan change according to the billing rules.",
+      "The account is already subscribed to a higher plan. Contact support to review the downgrade timing and keep the workspace configured correctly.",
     summaryTitle: "Plan downgrade",
     primaryActionLabel: `Downgrade to ${selectedPlan.name}`,
     secondaryActionLabel: "Back to settings",
