@@ -86,7 +86,7 @@ function metricOrDerived(
 function statusColor(label: string) {
   const normalized = label.toLowerCase();
 
-  if (normalized.includes("completed")) return "#9676f7";
+  if (normalized.includes("completed")) return "#0A22FF";
   if (normalized.includes("cancelled")) return "#ef4444";
   if (normalized.includes("pending")) return "#f59e0b";
   if (normalized.includes("confirmed")) return "#5b57d6";
@@ -367,7 +367,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                     strokeWidth="1"
                   />
                 ))}
-                <path d={`${linePath} L 620 190 L 0 190 Z`} fill="rgba(150,118,247,0.10)" transform="translate(0 18)" />
+                <path d={`${linePath} L 620 190 L 0 190 Z`} fill="rgba(10,34,255,0.10)" transform="translate(0 18)" />
                 <path d={linePath} fill="none" stroke="var(--primary)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" transform="translate(0 18)" />
                 <path d={completedLinePath} fill="none" stroke="var(--primary)" strokeDasharray="7 7" strokeWidth="2" strokeLinecap="round" transform="translate(0 18)" />
                 {period.chart.points.map((point, index) => {

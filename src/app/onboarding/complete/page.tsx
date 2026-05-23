@@ -75,7 +75,7 @@ export default async function OnboardingCompletePage() {
           <div className="mt-12 grid w-full gap-4 md:grid-cols-2">
             <Card className="surface-card">
               <CardContent className="flex gap-4 p-6">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-[1rem] bg-[linear-gradient(135deg,rgba(150,118,247,0.12),rgba(109,195,213,0.14))] text-primary">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-[1rem] bg-[linear-gradient(135deg,rgba(10,34,255,0.12),rgba(100,182,255,0.14))] text-primary">
                   <CalendarDays className="size-5" />
                 </div>
                 <div className="space-y-2 text-left">
@@ -89,7 +89,7 @@ export default async function OnboardingCompletePage() {
             </Card>
             <Card className="surface-card">
               <CardContent className="flex gap-4 p-6">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-[1rem] bg-[linear-gradient(135deg,rgba(150,118,247,0.12),rgba(109,195,213,0.14))] text-primary">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-[1rem] bg-[linear-gradient(135deg,rgba(10,34,255,0.12),rgba(100,182,255,0.14))] text-primary">
                   <ShieldCheck className="size-5" />
                 </div>
                 <div className="space-y-2 text-left">

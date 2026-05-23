@@ -169,7 +169,7 @@ export function AppShell({
           >
             <div className="mb-5 rounded-[1.15rem] border border-border/70 bg-white/84 p-3 shadow-[0_16px_36px_rgba(20,21,47,0.045)]">
               <div className="flex items-center gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-[0.95rem] bg-[linear-gradient(135deg,rgba(150,118,247,0.12),rgba(109,195,213,0.14))] text-primary">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-[0.95rem] bg-[linear-gradient(135deg,rgba(10,34,255,0.12),rgba(100,182,255,0.14))] text-primary">
                 {logoUrl ? (
                   <span
                     aria-hidden="true"
@@ -199,7 +199,7 @@ export function AppShell({
               const navClasses = cn(
                 "interactive-lift flex items-center gap-3 rounded-[0.95rem] px-4 py-3 text-sm font-semibold text-muted-foreground transition-[background-color,color,box-shadow,transform] duration-200 hover:bg-white/86 hover:text-foreground",
                 isActive &&
-                  "vela-gradient text-white shadow-[0_16px_34px_rgba(150,118,247,0.23)] ring-0"
+                  "vela-gradient text-white shadow-[0_16px_34px_rgba(10,34,255,0.23)] ring-0"
               );
 
               return (
@@ -294,7 +294,7 @@ export function AppShell({
               pathname === item.href || pathname.startsWith(`${item.href}/`);
             const mobileNavClasses = cn(
               "flex flex-col items-center gap-1 rounded-[1rem] px-2 py-2 text-[11px] font-medium text-muted-foreground transition-[background-color,color,transform] duration-200",
-              isActive && "vela-gradient text-white shadow-[0_10px_22px_rgba(150,118,247,0.2)]"
+              isActive && "vela-gradient text-white shadow-[0_10px_22px_rgba(10,34,255,0.2)]"
             );
 
             return (

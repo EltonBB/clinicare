@@ -176,7 +176,7 @@ export function GlobalSearch({ className }: { className?: string }) {
                     onMouseEnter={() => setActiveIndex(index)}
                     onClick={closeSearch}
                   >
-                    <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-[0.85rem] bg-[linear-gradient(135deg,rgba(150,118,247,0.14),rgba(109,195,213,0.14))] text-primary">
+                    <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-[0.85rem] bg-[linear-gradient(135deg,rgba(10,34,255,0.14),rgba(100,182,255,0.14))] text-primary">
                       <Icon className="size-4" />
                     </span>
                     <span className="min-w-0 flex-1">

@@ -181,12 +181,12 @@ function DashboardCustomizer({
                     className={cn(
                       "rounded-[1rem] border bg-white p-4 text-left transition-[border-color,background-color,box-shadow] duration-150",
                       selected
-                        ? "border-primary/45 bg-[linear-gradient(135deg,rgba(150,118,247,0.08),rgba(109,195,213,0.08))] shadow-[0_14px_30px_rgba(150,118,247,0.1)]"
+                        ? "border-primary/45 bg-[linear-gradient(135deg,rgba(10,34,255,0.08),rgba(100,182,255,0.08))] shadow-[0_14px_30px_rgba(10,34,255,0.1)]"
                         : "border-border hover:border-primary/25"
                     )}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <span className="flex size-10 items-center justify-center rounded-[0.9rem] bg-[linear-gradient(135deg,rgba(150,118,247,0.12),rgba(109,195,213,0.14))] text-primary">
+                      <span className="flex size-10 items-center justify-center rounded-[0.9rem] bg-[linear-gradient(135deg,rgba(10,34,255,0.12),rgba(100,182,255,0.14))] text-primary">
                         {option.icon}
                       </span>
                       <span
@@ -382,7 +382,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
               {view.nextAppointment ? (
                 <Link
                   href={`/calendar/${view.nextAppointment.id}/edit`}
-                  className="block rounded-[1.05rem] bg-[linear-gradient(135deg,rgba(150,118,247,0.1),rgba(109,195,213,0.12))] p-4 transition-colors hover:bg-primary/12"
+                  className="block rounded-[1.05rem] bg-[linear-gradient(135deg,rgba(10,34,255,0.1),rgba(100,182,255,0.12))] p-4 transition-colors hover:bg-primary/12"
                 >
                   <p className="text-sm font-medium text-muted-foreground">Next up</p>
                   <p className="vela-gradient-text mt-2 text-3xl font-semibold tracking-tight">
@@ -435,7 +435,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
               <div className="space-y-4">
                 {view.lastClients.slice(0, 5).map((client, index) => (
                   <Link key={client.id} href={`/clients/${client.id}`} className="flex items-center gap-3 text-sm">
-                    <span className="flex size-9 items-center justify-center rounded-[0.9rem] bg-[linear-gradient(135deg,rgba(150,118,247,0.12),rgba(109,195,213,0.14))] text-xs font-semibold text-primary">
+                    <span className="flex size-9 items-center justify-center rounded-[0.9rem] bg-[linear-gradient(135deg,rgba(10,34,255,0.12),rgba(100,182,255,0.14))] text-xs font-semibold text-primary">
                       {client.name.slice(0, 2).toUpperCase()}
                     </span>
                     <span className="min-w-0 flex-1">
@@ -572,7 +572,7 @@ function DashboardPanel({
       <div className="mb-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           {Icon ? (
-            <span className="flex size-8 items-center justify-center rounded-[0.85rem] bg-[linear-gradient(135deg,rgba(150,118,247,0.12),rgba(109,195,213,0.14))] text-primary">
+            <span className="flex size-8 items-center justify-center rounded-[0.85rem] bg-[linear-gradient(135deg,rgba(10,34,255,0.12),rgba(100,182,255,0.14))] text-primary">
               <Icon className="size-4" />
             </span>
           ) : null}

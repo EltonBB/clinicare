@@ -190,7 +190,7 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
                 <button
                   type="button"
                   disabled
-                  className="mt-7 inline-flex h-12 w-full cursor-not-allowed items-center justify-center gap-2 rounded-[0.85rem] bg-primary/65 px-5 text-sm font-bold text-white shadow-[0_18px_36px_rgba(150,118,247,0.18)]"
+                  className="mt-7 inline-flex h-12 w-full cursor-not-allowed items-center justify-center gap-2 rounded-[0.85rem] bg-primary/65 px-5 text-sm font-bold text-white shadow-[0_18px_36px_rgba(10,34,255,0.18)]"
                   title="Online card checkout is being prepared."
                 >
                   {planState.primaryActionLabel}
@@ -272,9 +272,9 @@ function PlanOption({
     <Link
       href={`/checkout?plan=${plan.key}`}
       className={cn(
-        "group rounded-[1.1rem] border bg-white p-5 transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-[0_20px_54px_rgba(150,118,247,0.12)]",
+        "group rounded-[1.1rem] border bg-white p-5 transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-[0_20px_54px_rgba(10,34,255,0.12)]",
         selected
-          ? "border-primary/70 shadow-[0_18px_54px_rgba(150,118,247,0.14)]"
+          ? "border-primary/70 shadow-[0_18px_54px_rgba(10,34,255,0.14)]"
           : "border-border/80 shadow-[0_14px_40px_rgba(20,21,47,0.045)]"
       )}
       aria-current={selected ? "page" : undefined}

@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import type { ElementType, ReactNode } from "react";
 import {
@@ -38,12 +37,6 @@ const footerLinks = [
   { label: "Privacy", href: "/privacy" },
   { label: "Refund", href: "/refund" },
 ];
-
-const marketingImages = {
-  calendar: "/marketing/vela-calendar-clarity.png",
-  clients: "/marketing/vela-clients-confidence.png",
-  reports: "/marketing/vela-reports-action.png",
-};
 
 const clinicTypes = [
   "Dental clinics",
@@ -127,6 +120,56 @@ const productFeatures = [
   visual: "dashboard" | "calendar" | "patients" | "inbox" | "reports";
 }>;
 
+const productTourFeatures = [
+  {
+    title: "Dashboard",
+    heading: "Start each day with the work that needs attention.",
+    copy: "See appointments, unread conversations, payment follow-up, recent patients, and the operational signal that matters before the clinic gets busy.",
+    visual: "dashboard",
+  },
+  {
+    title: "Calendar",
+    heading: "Keep every appointment and blocked hour easy to read.",
+    copy: "Plan the day or week, protect preparation time, assign staff, and keep status changes visible without turning the schedule into a spreadsheet.",
+    visual: "calendar",
+  },
+  {
+    title: "Patients and clients",
+    heading: "Open the full relationship from one record.",
+    copy: "Profile details, visit history, notes, documents, images, payments, and messages stay connected to the same patient or client.",
+    visual: "patients",
+  },
+  {
+    title: "Staff",
+    heading: "Coordinate coverage before gaps become problems.",
+    copy: "Understand who is available, where they are assigned, what is complete, and where the clinic may need more coverage.",
+    visual: "staff",
+  },
+  {
+    title: "Inbox and WhatsApp",
+    heading: "Keep clinic conversations attached to real context.",
+    copy: "Manage unread messages, unknown contacts, patient-linked threads, and follow-up without losing the appointment or record behind the conversation.",
+    visual: "inbox",
+  },
+  {
+    title: "Documents and payments",
+    heading: "Keep files and payment status beside the patient journey.",
+    copy: "Attach scans, images, notes, invoices, payment records, and outstanding balances to the same operational context your team uses every day.",
+    visual: "documents",
+  },
+  {
+    title: "Reports and insights",
+    heading: "Understand performance without building another spreadsheet.",
+    copy: "Review appointment trends, completion rate, revenue context, staff utilization, and AI-assisted operational recommendations that stay away from medical claims.",
+    visual: "reports",
+  },
+] satisfies Array<{
+  title: string;
+  heading: string;
+  copy: string;
+  visual: "dashboard" | "calendar" | "patients" | "staff" | "inbox" | "documents" | "reports";
+}>;
+
 export function MarketingShell({ children }: { children: ReactNode }) {
   return (
     <main className="app-shell-bg min-h-screen w-screen max-w-[100vw] overflow-x-hidden text-foreground">
@@ -158,7 +201,7 @@ export function MarketingHeader() {
           </Link>
           <Link
             href="/sign-up"
-            className="vela-gradient inline-flex h-10 min-w-24 items-center justify-center whitespace-nowrap rounded-[0.75rem] px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(150,118,247,0.26)] transition hover:-translate-y-0.5"
+            className="vela-gradient inline-flex h-10 min-w-24 items-center justify-center whitespace-nowrap rounded-[0.75rem] px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(10,34,255,0.26)] transition hover:-translate-y-0.5"
           >
             Start free
           </Link>
@@ -221,9 +264,9 @@ export function PricingPageContent() {
         secondaryLabel="Talk to us"
       />
       <section className="px-4 pb-16 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.92fr_1.08fr] lg:items-start">
+        <div className="mx-auto grid max-w-7xl gap-6">
           <PricingOperationsMockup />
-          <div className="grid gap-5">
+          <div className="grid gap-5 lg:grid-cols-2 lg:items-stretch">
             {publicPlans.map((plan) => (
               <PlanCard
                 key={plan.key}
@@ -236,8 +279,8 @@ export function PricingPageContent() {
               />
             ))}
           </div>
+          <PricingTable />
         </div>
-        <PricingTable />
       </section>
       <CtaBand />
     </MarketingShell>
@@ -274,6 +317,7 @@ export function AboutPage() {
         </div>
       </section>
       <AboutContextSection />
+      <AboutPrinciplesSection />
       <LegalPanel />
       <CtaBand />
     </MarketingShell>
@@ -326,7 +370,7 @@ export function ContactPage() {
               </label>
               <button
                 type="button"
-                className="vela-gradient inline-flex h-12 items-center justify-center rounded-[0.85rem] px-5 text-sm font-bold text-white shadow-[0_18px_36px_rgba(150,118,247,0.24)] transition hover:-translate-y-0.5"
+                className="vela-gradient inline-flex h-12 items-center justify-center rounded-[0.85rem] px-5 text-sm font-bold text-white shadow-[0_18px_36px_rgba(10,34,255,0.24)] transition hover:-translate-y-0.5"
               >
                 Send message
               </button>
@@ -341,7 +385,7 @@ export function ContactPage() {
 function HeroSection() {
   return (
     <section className="relative overflow-hidden px-4 pb-14 pt-12 sm:px-6 sm:pb-20 sm:pt-16 lg:px-8">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(150,118,247,0.16),transparent_34%),radial-gradient(circle_at_82%_16%,rgba(109,195,213,0.16),transparent_30%),linear-gradient(180deg,#ffffff_0%,#f8faff_54%,#ffffff_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(10,34,255,0.16),transparent_34%),radial-gradient(circle_at_82%_16%,rgba(100,182,255,0.16),transparent_30%),linear-gradient(180deg,#ffffff_0%,#f8faff_54%,#ffffff_100%)]" />
       <div className="landing-gradient-glow absolute left-1/2 top-20 h-48 w-[36rem] -translate-x-1/2 rounded-full opacity-70 blur-3xl" />
       <div className="relative mx-auto max-w-7xl">
         <div className="mx-auto max-w-5xl text-center section-reveal">
@@ -354,7 +398,7 @@ function HeroSection() {
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
             <Link
               href="/sign-up"
-              className="vela-gradient inline-flex h-12 min-w-32 items-center justify-center gap-2 whitespace-nowrap rounded-[0.85rem] px-6 text-sm font-bold text-white shadow-[0_18px_44px_rgba(150,118,247,0.28)] transition hover:-translate-y-0.5"
+              className="vela-gradient inline-flex h-12 min-w-32 items-center justify-center gap-2 whitespace-nowrap rounded-[0.85rem] px-6 text-sm font-bold text-white shadow-[0_18px_44px_rgba(10,34,255,0.28)] transition hover:-translate-y-0.5"
             >
               Start free
               <ArrowRight className="size-4" />
@@ -453,7 +497,7 @@ function AppointmentsPanel() {
 
 function InsightMiniPanel() {
   return (
-    <div className="rounded-[0.95rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-[#6dc3d5]/10 p-4">
+    <div className="rounded-[0.95rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-[#64B6FF]/10 p-4">
       <div className="flex items-center gap-2 text-sm font-bold text-primary">
         <Sparkles className="size-4" />
         Operational insight
@@ -480,7 +524,7 @@ function PatientProfilePanel() {
             <p className="mt-1 text-xs font-semibold text-muted-foreground">Last visit 14 days ago</p>
           </div>
         </div>
-        <span className="rounded-full bg-[#6dc3d5]/12 px-3 py-1 text-xs font-bold text-[#297f91]">Profile linked</span>
+        <span className="rounded-full bg-[#64B6FF]/12 px-3 py-1 text-xs font-bold text-[#0A22FF]">Profile linked</span>
       </div>
       <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs font-bold text-muted-foreground">
         <span className="rounded-[0.75rem] bg-[var(--brand-wash)] p-2">6 visits</span>
@@ -549,8 +593,7 @@ function ProblemSection() {
     <section className="px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
       <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.82fr_1.18fr] lg:items-center">
         <div>
-          <p className="text-sm font-bold uppercase tracking-[0.18em] text-primary">The daily friction</p>
-          <h2 className="mt-4 text-4xl font-semibold leading-[0.98] text-[var(--brand-ink)] sm:text-6xl">
+          <h2 className="text-4xl font-semibold leading-[0.98] text-[var(--brand-ink)] sm:text-6xl">
             Clinic work breaks down when every task lives somewhere else.
           </h2>
           <p className="mt-5 max-w-xl text-base leading-8 text-muted-foreground">
@@ -567,7 +610,7 @@ function ProblemSection() {
                 <p className="mt-4 text-sm font-bold text-[var(--brand-ink)]">{step}</p>
               </div>
             ))}
-            <div className="rounded-[0.95rem] border border-primary/30 bg-gradient-to-br from-primary/12 to-[#6dc3d5]/12 p-4 md:col-span-2">
+            <div className="rounded-[0.95rem] border border-primary/30 bg-gradient-to-br from-primary/12 to-[#64B6FF]/12 p-4 md:col-span-2">
               <p className="text-sm font-bold text-primary">Vela organizes the same work into one operating view.</p>
             </div>
           </div>
@@ -609,8 +652,7 @@ function ProductDeepDive() {
             className="grid gap-8 rounded-[1.45rem] border border-border/80 bg-white p-5 shadow-[0_24px_84px_rgba(20,21,47,0.06)] lg:grid-cols-[0.78fr_1.22fr] lg:items-center lg:p-7"
           >
             <div className={index % 2 === 1 ? "lg:order-2" : ""}>
-              <p className="text-sm font-bold uppercase tracking-[0.18em] text-primary">Product</p>
-              <h2 className="mt-4 text-4xl font-semibold leading-[0.98] text-[var(--brand-ink)] sm:text-5xl">
+              <h2 className="text-4xl font-semibold leading-[0.98] text-[var(--brand-ink)] sm:text-5xl">
                 {feature.title}
               </h2>
               <p className="mt-5 max-w-xl text-base leading-8 text-muted-foreground">{feature.copy}</p>
@@ -723,7 +765,7 @@ function ReportsMockup() {
         <MiniMetric label="Revenue" value="$12.8k" icon={CreditCard} />
         <MiniMetric label="Growth" value="+18%" icon={TrendingUp} />
       </div>
-      <div className="mt-4 rounded-[0.95rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-[#6dc3d5]/10 p-4">
+      <div className="mt-4 rounded-[0.95rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-[#64B6FF]/10 p-4">
         <p className="text-sm font-bold text-primary">Recommended next action</p>
         <p className="mt-2 text-sm font-semibold leading-6 text-[var(--brand-ink)]">
           Bookings are strongest on Tuesday and Thursday afternoons. Consider moving more staff availability into these periods.
@@ -733,17 +775,271 @@ function ReportsMockup() {
   );
 }
 
+function ProductTourMockup({ visual }: { visual: "dashboard" | "calendar" | "patients" | "staff" | "inbox" | "documents" | "reports" }) {
+  if (visual === "calendar") return <CalendarTourMockup />;
+  if (visual === "patients") return <PatientsTourMockup />;
+  if (visual === "staff") return <StaffTourMockup />;
+  if (visual === "inbox") return <InboxTourMockup />;
+  if (visual === "documents") return <DocumentsPaymentsTourMockup />;
+  if (visual === "reports") return <ReportsTourMockup />;
+  return <DashboardTourMockup />;
+}
+
+function DashboardTourMockup() {
+  return (
+    <div className="mockup-frame">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <MiniMetric label="Due now" value="3" icon={Clock3} />
+        <MiniMetric label="Unread" value="12" icon={MessageCircle} />
+        <MiniMetric label="At risk" value="2" icon={Activity} />
+      </div>
+      <div className="mt-4 grid gap-3 lg:grid-cols-[1.05fr_0.95fr]">
+        <div className="rounded-[1rem] border border-border/70 bg-white p-4">
+          <h4 className="text-sm font-bold text-[var(--brand-ink)]">Today&apos;s attention queue</h4>
+          <div className="mt-4 grid gap-2">
+            {[
+              ["09:30", "Maya N. checked in", "Ready for room"],
+              ["11:00", "Daniel K. confirmed", "Form complete"],
+              ["14:30", "Anna R. payment due", "Follow up"],
+            ].map(([time, title, status]) => (
+              <div key={title} className="grid grid-cols-[3.5rem_1fr_auto] gap-3 rounded-[0.8rem] bg-[var(--brand-wash)]/55 p-3 text-sm">
+                <span className="font-bold text-primary">{time}</span>
+                <span className="font-bold text-[var(--brand-ink)]">{title}</span>
+                <span className="hidden text-xs font-semibold text-muted-foreground sm:inline">{status}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-[1rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-[#64B6FF]/10 p-4">
+          <div className="flex items-center gap-2 text-sm font-bold text-primary">
+            <Sparkles className="size-4" />
+            Needs attention
+          </div>
+          <p className="mt-4 text-sm font-semibold leading-6 text-[var(--brand-ink)]">
+            Two follow-ups and one payment status need action before the afternoon block starts.
+          </p>
+          <div className="mt-4 rounded-[0.8rem] bg-white/75 px-3 py-2 text-xs font-bold text-muted-foreground">Next best action: front desk review</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CalendarTourMockup() {
+  const slots = [
+    ["09:00", "Blocked prep", "Room 1", "bg-primary/10 text-primary"],
+    ["10:30", "Consultation", "Dr. Kim", "bg-[#64B6FF]/12 text-[#0A22FF]"],
+    ["13:00", "Follow-up", "Nora Bell", "bg-[var(--brand-wash)] text-muted-foreground"],
+    ["15:30", "New booking", "Open slot", "bg-primary/10 text-primary"],
+  ];
+
+  return (
+    <div className="mockup-frame">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h4 className="text-sm font-bold text-[var(--brand-ink)]">Thursday schedule</h4>
+        <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">Create appointment</span>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-[4.5rem_1fr]">
+        <div className="grid gap-2 text-xs font-bold text-muted-foreground">
+          {["09", "10", "11", "12", "13", "14", "15"].map((hour) => (
+            <span key={hour} className="flex h-9 items-center">{hour}:00</span>
+          ))}
+        </div>
+        <div className="grid gap-2">
+          {slots.map(([time, event, staff, tone]) => (
+            <div key={event} className="grid grid-cols-[4rem_1fr_auto] gap-3 rounded-[0.9rem] border border-border/70 bg-white p-3 text-sm shadow-[0_10px_30px_rgba(20,21,47,0.035)]">
+              <span className="font-bold text-primary">{time}</span>
+              <span className="font-bold text-[var(--brand-ink)]">{event}</span>
+              <span className={`rounded-full px-2 py-1 text-xs font-bold ${tone}`}>{staff}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PatientsTourMockup() {
+  return (
+    <div className="mockup-frame">
+      <PatientProfilePanel />
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        {[
+          ["Visits", "6 completed / 1 upcoming"],
+          ["Notes", "Treatment plan updated"],
+          ["Media", "4 files attached"],
+          ["Messages", "Last reply 18 min ago"],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-[0.95rem] border border-border/70 bg-white p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
+            <p className="mt-2 text-sm font-bold text-[var(--brand-ink)]">{value}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StaffTourMockup() {
+  const staff = [
+    ["Dr. Kim", "Room 2", "4 appointments", "On schedule"],
+    ["Nora Bell", "Front desk", "12 messages", "Active"],
+    ["Alex Reed", "Room 1", "Prep block", "Available"],
+  ];
+
+  return (
+    <div className="mockup-frame">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <MiniMetric label="On duty" value="5" icon={UsersRound} />
+        <MiniMetric label="Coverage" value="82%" icon={Activity} />
+        <MiniMetric label="Open gaps" value="1" icon={Clock3} />
+      </div>
+      <div className="mt-4 grid gap-3">
+        {staff.map(([name, role, load, status]) => (
+          <div key={name} className="grid gap-3 rounded-[0.95rem] border border-border/70 bg-white p-4 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+            <div>
+              <p className="text-sm font-bold text-[var(--brand-ink)]">{name}</p>
+              <p className="mt-1 text-xs font-semibold text-muted-foreground">{role}</p>
+            </div>
+            <span className="text-sm font-bold text-primary">{load}</span>
+            <span className="rounded-full bg-[#64B6FF]/12 px-3 py-1 text-xs font-bold text-[#0A22FF]">{status}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function InboxTourMockup() {
+  return (
+    <div className="mockup-frame">
+      <div className="grid gap-3 lg:grid-cols-[0.82fr_1.18fr]">
+        <div className="grid gap-2">
+          {[
+            ["Maya Novak", "Move to 11:00?", "2 unread"],
+            ["Unknown contact", "First visit booking", "New"],
+            ["Daniel Kiss", "See you Thursday", "Linked"],
+          ].map(([name, message, status]) => (
+            <div key={name} className="rounded-[0.9rem] border border-border/70 bg-white p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-bold text-[var(--brand-ink)]">{name}</p>
+                <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-bold text-primary">{status}</span>
+              </div>
+              <p className="mt-2 text-xs font-semibold text-muted-foreground">{message}</p>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-[1rem] border border-border/70 bg-white p-4">
+          <h4 className="text-sm font-bold text-[var(--brand-ink)]">Maya Novak</h4>
+          <div className="mt-4 grid gap-3 text-sm font-semibold">
+            <p className="mr-10 rounded-[0.9rem] bg-[var(--brand-wash)] p-3 text-muted-foreground">Can I move my appointment to 11:00?</p>
+            <p className="ml-10 rounded-[0.9rem] bg-primary/10 p-3 text-primary">Yes, you are confirmed for 11:00 with Dr. Kim.</p>
+          </div>
+          <div className="mt-4 rounded-[0.85rem] border border-[#64B6FF]/20 bg-[#effafc] p-3 text-xs font-bold text-[#0A22FF]">Linked to appointment and patient record</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DocumentsPaymentsTourMockup() {
+  return (
+    <div className="mockup-frame">
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="rounded-[1rem] border border-border/70 bg-white p-4">
+          <div className="flex items-center gap-2 text-sm font-bold text-[var(--brand-ink)]">
+            <FileImage className="size-4 text-primary" />
+            Documents
+          </div>
+          <div className="mt-4 grid gap-2">
+            {["Intake form.pdf", "Before image.jpg", "Treatment note.pdf"].map((file) => (
+              <div key={file} className="flex items-center justify-between rounded-[0.8rem] bg-[var(--brand-wash)]/55 px-3 py-2 text-sm font-semibold">
+                <span>{file}</span>
+                <span className="text-xs text-muted-foreground">Private</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-[1rem] border border-border/70 bg-white p-4">
+          <div className="flex items-center gap-2 text-sm font-bold text-[var(--brand-ink)]">
+            <CreditCard className="size-4 text-primary" />
+            Payments
+          </div>
+          <div className="mt-4 grid gap-2">
+            {[
+              ["Consultation", "$120", "Paid"],
+              ["Follow-up", "$80", "Due"],
+              ["Products", "$45", "Recorded"],
+            ].map(([item, amount, status]) => (
+              <div key={item} className="grid grid-cols-[1fr_auto_auto] gap-3 rounded-[0.8rem] bg-[var(--brand-wash)]/55 px-3 py-2 text-sm font-semibold">
+                <span>{item}</span>
+                <span>{amount}</span>
+                <span className="text-xs text-primary">{status}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 rounded-[0.95rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-[#64B6FF]/10 p-4 text-sm font-bold text-[var(--brand-ink)]">
+        Patient record, files, and payment status stay in the same operational view.
+      </div>
+    </div>
+  );
+}
+
+function ReportsTourMockup() {
+  return (
+    <div className="mockup-frame">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <MiniMetric label="Completion" value="84%" icon={CheckCircle2} />
+        <MiniMetric label="Revenue" value="$12.8k" icon={CreditCard} />
+        <MiniMetric label="Utilization" value="76%" icon={BarChart3} />
+      </div>
+      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_0.95fr]">
+        <div className="rounded-[1rem] border border-border/70 bg-white p-4">
+          <h4 className="text-sm font-bold text-[var(--brand-ink)]">Appointment trend</h4>
+          <div className="mt-5 flex h-32 items-end gap-2">
+            {[46, 64, 54, 78, 68, 84, 72].map((height, index) => (
+              <span
+                key={index}
+                className="flex-1 rounded-t-[0.6rem] bg-gradient-to-t from-primary to-[#64B6FF]"
+                style={{ height: `${height}%` }}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="rounded-[1rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-[#64B6FF]/10 p-4">
+          <div className="flex items-center gap-2 text-sm font-bold text-primary">
+            <Sparkles className="size-4" />
+            AI-assisted operational insight
+          </div>
+          <p className="mt-4 text-sm font-semibold leading-6 text-[var(--brand-ink)]">
+            Tuesday and Thursday afternoons are strongest. Move one more staff block into those windows before adding new capacity.
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-2 text-xs font-bold text-muted-foreground">
+            <span className="rounded-full bg-white/80 px-3 py-1">Demand +18%</span>
+            <span className="rounded-full bg-white/80 px-3 py-1">Confidence 82%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PricingOperationsMockup() {
   return (
-    <div className="mockup-frame lg:sticky lg:top-24">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="mockup-frame">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Plan fit</p>
           <h2 className="mt-2 text-2xl font-semibold text-[var(--brand-ink)]">Choose by operating depth.</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+            Basic covers the clean daily workspace. Pro adds deeper visibility for clinics that manage growth, utilization, and weekly operating decisions.
+          </p>
         </div>
         <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">Basic / Pro</span>
       </div>
-      <div className="mt-5 grid gap-3">
+      <div className="mt-5 grid gap-3 lg:grid-cols-3">
         {[
           ["Daily foundation", "Appointments, client records, staff, inbox context, and basic reporting."],
           ["Growth visibility", "Advanced reports, AI-assisted operational insights, utilization, and setup support."],
@@ -760,9 +1056,9 @@ function PricingOperationsMockup() {
           </div>
         ))}
       </div>
-      <div className="mt-5 rounded-[1rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-[#6dc3d5]/10 p-4">
+      <div className="mt-5 rounded-[1rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-[#64B6FF]/10 p-4">
         <p className="text-sm font-bold text-primary">Usage example</p>
-        <p className="mt-2 text-sm font-semibold leading-6 text-[var(--brand-ink)]">
+        <p className="mt-2 max-w-4xl text-sm font-semibold leading-6 text-[var(--brand-ink)]">
           A two-provider clinic can start with Basic for scheduling and records, then move to Pro when reports, staff utilization, and operational recommendations become part of weekly management.
         </p>
       </div>
@@ -820,13 +1116,60 @@ function AboutContextSection() {
   );
 }
 
+function AboutPrinciplesSection() {
+  const principles = [
+    {
+      title: "Built around the clinic day",
+      copy: "The product starts from the work clinics repeat every day: bookings, arrivals, follow-ups, staff coverage, payments, documents, and the records patients expect to be easy to find.",
+    },
+    {
+      title: "Operational clarity, not medical claims",
+      copy: "Vela keeps recommendations focused on clinic operations: demand patterns, completion rates, message workload, staff availability, and reporting habits.",
+    },
+    {
+      title: "Simple surfaces over provider setup",
+      copy: "Messaging, storage, reports, and workspace access should feel like one product. Technical provider details stay behind support-ready states instead of customer-facing complexity.",
+    },
+    {
+      title: "Designed to grow carefully",
+      copy: "Clinics can begin with the essentials and add deeper reporting, messaging, automation, and operational insight as their team and process mature.",
+    },
+  ];
+
+  return (
+    <section className="px-4 pb-16 sm:px-6 lg:px-8">
+      <div className="mx-auto grid max-w-7xl gap-6 rounded-[1.5rem] border border-border/80 bg-white p-5 shadow-[0_24px_80px_rgba(20,21,47,0.06)] lg:grid-cols-[0.85fr_1.15fr] lg:p-6">
+        <div className="rounded-[1.1rem] bg-[var(--brand-ink)] p-6 text-white sm:p-7">
+          <p className="text-sm font-bold uppercase tracking-[0.18em] text-white/55">How Vela thinks</p>
+          <h2 className="mt-4 text-3xl font-semibold leading-[1] sm:text-5xl">
+            Calm software for busy appointment teams.
+          </h2>
+          <p className="mt-5 text-sm leading-7 text-white/72">
+            Vela is shaped for owners, managers, providers, and front-desk teams who need a shared source of truth without turning the clinic into a technical project.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {principles.map((principle) => (
+            <article key={principle.title} className="rounded-[1rem] border border-border/70 bg-[var(--brand-wash)]/45 p-5">
+              <span className="vela-icon-tile">
+                <CheckCircle2 className="size-5" />
+              </span>
+              <h3 className="mt-4 text-base font-bold text-[var(--brand-ink)]">{principle.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{principle.copy}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AiInsightsSection() {
   return (
     <section className="px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
       <div className="mx-auto grid max-w-7xl gap-8 rounded-[1.6rem] bg-[var(--brand-ink)] p-6 text-white shadow-[0_30px_100px_rgba(20,21,47,0.22)] sm:p-8 lg:grid-cols-[0.82fr_1.18fr] lg:items-center lg:p-10">
         <div>
-          <p className="text-sm font-bold uppercase tracking-[0.18em] text-white/55">AI-assisted operations</p>
-          <h2 className="mt-4 text-4xl font-semibold leading-[0.98] sm:text-6xl">
+          <h2 className="text-4xl font-semibold leading-[0.98] sm:text-6xl">
             Understand what changed, why it matters, and what to improve next.
           </h2>
           <p className="mt-5 max-w-xl text-base leading-8 text-white/72">
@@ -835,7 +1178,7 @@ function AiInsightsSection() {
         </div>
         <div className="rounded-[1.25rem] border border-white/12 bg-white/[0.07] p-5">
           <div className="flex items-center gap-2 text-sm font-bold text-white">
-            <Sparkles className="size-5 text-[#6dc3d5]" />
+            <Sparkles className="size-5 text-[#64B6FF]" />
             Insight summary
           </div>
           <p className="mt-5 text-xl font-semibold leading-8">
@@ -947,7 +1290,7 @@ function PricingPreviewSection() {
 function FinalCtaSection() {
   return (
     <section className="px-4 pb-14 sm:px-6 lg:px-8">
-      <div className="vela-gradient mx-auto flex max-w-7xl flex-col gap-5 rounded-[1.5rem] p-6 text-white shadow-[0_24px_80px_rgba(150,118,247,0.24)] sm:p-8 lg:flex-row lg:items-center lg:justify-between">
+      <div className="vela-gradient mx-auto flex max-w-7xl flex-col gap-5 rounded-[1.5rem] p-6 text-white shadow-[0_24px_80px_rgba(10,34,255,0.24)] sm:p-8 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="text-3xl font-semibold sm:text-5xl">Bring your clinic into one organized workspace.</h2>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-white/82">
@@ -998,36 +1341,41 @@ function WorkflowSection({ compact = false }: { compact?: boolean }) {
 }
 
 function ProductShowcase() {
-  const items = [
-    {
-      image: marketingImages.calendar,
-      title: "Calendar",
-      copy: "Keep the whole week visible and make changes without breaking the clinic rhythm.",
-    },
-    {
-      image: marketingImages.clients,
-      title: "Clients",
-      copy: "Open the full patient relationship from one clean directory.",
-    },
-    {
-      image: marketingImages.reports,
-      title: "Reports",
-      copy: "See performance insights and next actions in one readout.",
-    },
-  ];
-
   return (
     <section className="px-4 pb-16 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-7xl gap-6">
-        {items.map((item, index) => (
-          <div key={item.title} className="grid gap-5 rounded-[1.5rem] border border-border/80 bg-white p-4 shadow-[0_24px_80px_rgba(20,21,47,0.06)] lg:grid-cols-[0.82fr_1.18fr] lg:items-center lg:p-6">
-            <div className={index % 2 === 1 ? "lg:order-2" : ""}>
-              <p className="text-sm font-bold uppercase tracking-[0.18em] text-primary">{item.title}</p>
-              <h2 className="mt-3 text-3xl font-semibold text-[var(--brand-ink)] sm:text-5xl">{item.copy}</h2>
-            </div>
-            <ImageCard src={item.image} alt={`${item.title} Vela product visual`} compact />
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-8 grid gap-4 lg:grid-cols-[0.86fr_1.14fr] lg:items-end">
+          <div>
+            <h2 className="text-4xl font-semibold leading-[0.98] text-[var(--brand-ink)] sm:text-6xl">
+              A guided tour of the clinic modules.
+            </h2>
           </div>
-        ))}
+          <p className="max-w-2xl text-base leading-8 text-muted-foreground">
+            The landing page explains the full Vela story. This page breaks the product into the individual surfaces a clinic uses throughout the day.
+          </p>
+        </div>
+        <div className="grid gap-6">
+          {productTourFeatures.map((feature, index) => (
+            <div
+              key={feature.title}
+              className="group grid gap-6 rounded-[1.5rem] border border-border/80 bg-white p-5 shadow-[0_24px_80px_rgba(20,21,47,0.06)] transition hover:-translate-y-0.5 hover:border-primary/35 lg:grid-cols-[0.82fr_1.18fr] lg:items-center lg:p-6"
+            >
+              <div className={index % 2 === 1 ? "lg:order-2" : ""}>
+                <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-3 py-1 text-sm font-bold text-primary">
+                  <span className="size-1.5 rounded-full bg-[#64B6FF]" />
+                  {feature.title}
+                </div>
+                <h3 className="mt-4 text-3xl font-semibold leading-[1] text-[var(--brand-ink)] sm:text-5xl">
+                  {feature.heading}
+                </h3>
+                <p className="mt-5 max-w-xl text-base leading-8 text-muted-foreground">{feature.copy}</p>
+              </div>
+              <div className={index % 2 === 1 ? "lg:order-1" : ""}>
+                <ProductTourMockup visual={feature.visual} />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -1054,7 +1402,7 @@ function PageHero({
         <h1 className="text-[2.8rem] font-semibold leading-[0.96] text-[var(--brand-ink)] sm:text-7xl">{title}</h1>
         <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-muted-foreground sm:text-lg">{copy}</p>
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <Link href={primaryHref} className="vela-gradient inline-flex h-12 min-w-32 items-center justify-center gap-2 whitespace-nowrap rounded-[0.85rem] px-6 text-sm font-bold text-white shadow-[0_18px_44px_rgba(150,118,247,0.24)] transition hover:-translate-y-0.5">
+          <Link href={primaryHref} className="vela-gradient inline-flex h-12 min-w-32 items-center justify-center gap-2 whitespace-nowrap rounded-[0.85rem] px-6 text-sm font-bold text-white shadow-[0_18px_44px_rgba(10,34,255,0.24)] transition hover:-translate-y-0.5">
             {primaryLabel}
             <ArrowRight className="size-4" />
           </Link>
@@ -1064,38 +1412,6 @@ function PageHero({
         </div>
       </div>
     </section>
-  );
-}
-
-function ImageCard({
-  src,
-  alt,
-  priority = false,
-  hero = false,
-  compact = false,
-}: {
-  src: string;
-  alt: string;
-  priority?: boolean;
-  hero?: boolean;
-  compact?: boolean;
-}) {
-  return (
-    <div className="group relative min-w-0 overflow-hidden rounded-[1.5rem] border border-white/70 bg-white shadow-[0_30px_90px_rgba(74,99,138,0.16)]">
-      <Image
-        src={src}
-        alt={alt}
-        width={1680}
-        height={945}
-        priority={priority}
-        sizes={hero ? "(min-width: 1024px) 80vw, 100vw" : "(min-width: 1024px) 52vw, 100vw"}
-        className={[
-          "w-full object-cover transition duration-700 group-hover:scale-[1.015]",
-          compact ? "aspect-[1.78]" : "aspect-video",
-        ].join(" ")}
-      />
-      <div className="pointer-events-none absolute inset-0 rounded-[1.5rem] ring-1 ring-inset ring-white/70" />
-    </div>
   );
 }
 
@@ -1129,7 +1445,7 @@ function PlanCard({
   highlighted?: boolean;
 }) {
   return (
-    <article className={highlighted ? "rounded-[1.5rem] border border-primary/60 bg-white p-6 shadow-[0_24px_80px_rgba(150,118,247,0.15)]" : "rounded-[1.5rem] border border-border/80 bg-white p-6 shadow-[0_24px_80px_rgba(20,21,47,0.06)]"}>
+    <article className={highlighted ? "flex h-full flex-col rounded-[1.5rem] border border-primary/60 bg-white p-6 shadow-[0_24px_80px_rgba(10,34,255,0.15)]" : "flex h-full flex-col rounded-[1.5rem] border border-border/80 bg-white p-6 shadow-[0_24px_80px_rgba(20,21,47,0.06)]"}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-semibold text-[var(--brand-ink)]">{name}</h2>
@@ -1141,7 +1457,7 @@ function PlanCard({
         <span className="text-5xl font-semibold text-[var(--brand-ink)]">{price}</span>
         <span className="pb-2 text-sm font-semibold text-muted-foreground">/month</span>
       </div>
-      <Link href={checkoutHref} className="vela-gradient mt-8 inline-flex h-12 w-full items-center justify-center rounded-[0.85rem] text-sm font-bold text-white shadow-[0_18px_36px_rgba(150,118,247,0.22)] transition hover:-translate-y-0.5">
+      <Link href={checkoutHref} className="vela-gradient mt-8 inline-flex h-12 w-full items-center justify-center whitespace-nowrap rounded-[0.85rem] px-4 text-sm font-bold text-white shadow-[0_18px_36px_rgba(10,34,255,0.22)] transition hover:-translate-y-0.5">
         Continue to checkout
       </Link>
       <div className="mt-7 grid gap-3">
@@ -1155,17 +1471,17 @@ function PlanCard({
 
 function PricingTable() {
   return (
-    <div className="mx-auto mt-8 max-w-6xl overflow-hidden rounded-[1.25rem] border border-border/80 bg-white shadow-[0_24px_80px_rgba(20,21,47,0.06)]">
-      <div className="grid grid-cols-[1.3fr_0.7fr_0.7fr] border-b border-border/70 bg-[var(--brand-wash)]/55 px-4 py-3 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
+    <div className="w-full overflow-x-auto overflow-y-hidden rounded-[1.25rem] border border-border/80 bg-white shadow-[0_24px_80px_rgba(20,21,47,0.06)]">
+      <div className="grid min-w-[38rem] grid-cols-[1.3fr_0.7fr_0.7fr] border-b border-border/70 bg-[var(--brand-wash)]/55 px-4 py-3 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
         <span>Feature</span>
-        <span>Basic</span>
-        <span>Pro</span>
+        <span className="text-center">Basic</span>
+        <span className="text-center">Pro</span>
       </div>
       {comparisonRows.map(([feature, basic, pro]) => (
-        <div key={feature} className="grid grid-cols-[1.3fr_0.7fr_0.7fr] border-b border-border/70 px-4 py-4 text-sm font-semibold text-foreground last:border-b-0">
+        <div key={feature} className="grid min-w-[38rem] grid-cols-[1.3fr_0.7fr_0.7fr] border-b border-border/70 px-4 py-4 text-sm font-semibold text-foreground last:border-b-0">
           <span>{feature}</span>
-          <span>{basic}</span>
-          <span>{pro}</span>
+          <span className="text-center">{basic}</span>
+          <span className="text-center">{pro}</span>
         </div>
       ))}
     </div>
@@ -1194,7 +1510,7 @@ function LegalPanel() {
 function CtaBand() {
   return (
     <section className="px-4 pb-14 sm:px-6 lg:px-8">
-      <div className="vela-gradient mx-auto flex max-w-7xl flex-col gap-5 rounded-[1.5rem] p-6 text-white shadow-[0_24px_80px_rgba(150,118,247,0.24)] sm:p-8 lg:flex-row lg:items-center lg:justify-between">
+      <div className="vela-gradient mx-auto flex max-w-7xl flex-col gap-5 rounded-[1.5rem] p-6 text-white shadow-[0_24px_80px_rgba(10,34,255,0.24)] sm:p-8 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="text-3xl font-semibold sm:text-4xl">Start with one clearer clinic workspace.</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-white/80">Centralize appointment, patient, communication, media, payment, and reporting work.</p>

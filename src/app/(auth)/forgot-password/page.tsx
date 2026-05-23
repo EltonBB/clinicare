@@ -36,7 +36,7 @@ export default async function ForgotPasswordPage({
           </div>
         ) : null}
         <ForgotPasswordForm />
-        <div className="-mx-8 border-t border-border/70 bg-[linear-gradient(135deg,rgba(150,118,247,0.06),rgba(109,195,213,0.06))] px-8 py-6 text-center text-sm text-muted-foreground sm:-mx-10 sm:px-10">
+        <div className="-mx-8 border-t border-border/70 bg-[linear-gradient(135deg,rgba(10,34,255,0.06),rgba(100,182,255,0.06))] px-8 py-6 text-center text-sm text-muted-foreground sm:-mx-10 sm:px-10">
           Remembered your password?{" "}
           <Link href="/login" className="font-semibold text-primary">
             Back to login

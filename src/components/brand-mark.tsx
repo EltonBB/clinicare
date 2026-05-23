@@ -31,7 +31,7 @@ export function BrandMark({
           alt=""
           width={28}
           height={28}
-          className="size-7 object-contain"
+          className="object-contain"
           aria-hidden="true"
         />
       </span>
