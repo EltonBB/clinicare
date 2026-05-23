@@ -152,13 +152,13 @@ export function MarketingHeader() {
         <div className="flex items-center gap-2">
           <Link
             href="/login"
-            className="hidden h-10 items-center rounded-[0.75rem] border border-border/80 bg-white px-4 text-sm font-semibold text-foreground shadow-[0_10px_24px_rgba(20,21,47,0.04)] transition hover:border-primary/40 hover:text-primary sm:inline-flex"
+            className="hidden h-10 min-w-20 items-center justify-center whitespace-nowrap rounded-[0.75rem] border border-border/80 bg-white px-4 text-sm font-semibold text-foreground shadow-[0_10px_24px_rgba(20,21,47,0.04)] transition hover:border-primary/40 hover:text-primary sm:inline-flex"
           >
             Log in
           </Link>
           <Link
             href="/sign-up"
-            className="vela-gradient inline-flex h-10 items-center rounded-[0.75rem] px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(150,118,247,0.26)] transition hover:-translate-y-0.5"
+            className="vela-gradient inline-flex h-10 min-w-24 items-center justify-center whitespace-nowrap rounded-[0.75rem] px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(150,118,247,0.26)] transition hover:-translate-y-0.5"
           >
             Start free
           </Link>
@@ -221,18 +221,21 @@ export function PricingPageContent() {
         secondaryLabel="Talk to us"
       />
       <section className="px-4 pb-16 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-2">
-          {publicPlans.map((plan) => (
-            <PlanCard
-              key={plan.key}
-              name={plan.name}
-              price={plan.price}
-              description={plan.description}
-              features={plan.features}
-              checkoutHref={`/checkout?plan=${plan.key}`}
-              highlighted={plan.highlighted}
-            />
-          ))}
+        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.92fr_1.08fr] lg:items-start">
+          <PricingOperationsMockup />
+          <div className="grid gap-5">
+            {publicPlans.map((plan) => (
+              <PlanCard
+                key={plan.key}
+                name={plan.name}
+                price={plan.price}
+                description={plan.description}
+                features={plan.features}
+                checkoutHref={`/checkout?plan=${plan.key}`}
+                highlighted={plan.highlighted}
+              />
+            ))}
+          </div>
         </div>
         <PricingTable />
       </section>
@@ -267,9 +270,10 @@ export function AboutPage() {
               <MetricPill value="3" label="report windows" />
             </div>
           </div>
-          <ImageCard src={marketingImages.reports} alt="Vela reporting product scene" />
+          <AboutOperatingModel />
         </div>
       </section>
+      <AboutContextSection />
       <LegalPanel />
       <CtaBand />
     </MarketingShell>
@@ -350,14 +354,14 @@ function HeroSection() {
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
             <Link
               href="/sign-up"
-              className="vela-gradient inline-flex h-12 items-center justify-center gap-2 rounded-[0.85rem] px-6 text-sm font-bold text-white shadow-[0_18px_44px_rgba(150,118,247,0.28)] transition hover:-translate-y-0.5"
+              className="vela-gradient inline-flex h-12 min-w-32 items-center justify-center gap-2 whitespace-nowrap rounded-[0.85rem] px-6 text-sm font-bold text-white shadow-[0_18px_44px_rgba(150,118,247,0.28)] transition hover:-translate-y-0.5"
             >
               Start free
               <ArrowRight className="size-4" />
             </Link>
             <Link
               href="/product"
-              className="inline-flex h-12 items-center justify-center rounded-[0.85rem] border border-border/80 bg-white px-6 text-sm font-bold text-foreground shadow-[0_14px_36px_rgba(20,21,47,0.05)] transition hover:-translate-y-0.5 hover:border-primary/40 hover:text-primary"
+              className="inline-flex h-12 min-w-32 items-center justify-center whitespace-nowrap rounded-[0.85rem] border border-border/80 bg-white px-6 text-sm font-bold text-foreground shadow-[0_14px_36px_rgba(20,21,47,0.05)] transition hover:-translate-y-0.5 hover:border-primary/40 hover:text-primary"
             >
               View product
             </Link>
@@ -729,6 +733,93 @@ function ReportsMockup() {
   );
 }
 
+function PricingOperationsMockup() {
+  return (
+    <div className="mockup-frame lg:sticky lg:top-24">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Plan fit</p>
+          <h2 className="mt-2 text-2xl font-semibold text-[var(--brand-ink)]">Choose by operating depth.</h2>
+        </div>
+        <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">Basic / Pro</span>
+      </div>
+      <div className="mt-5 grid gap-3">
+        {[
+          ["Daily foundation", "Appointments, client records, staff, inbox context, and basic reporting."],
+          ["Growth visibility", "Advanced reports, AI-assisted operational insights, utilization, and setup support."],
+          ["Activation path", "Review the selected plan, create or connect a workspace, then activate during setup."],
+        ].map(([title, copy], index) => (
+          <div key={title} className="grid grid-cols-[2.75rem_1fr] gap-3 rounded-[0.95rem] border border-border/70 bg-white p-4">
+            <span className="flex size-10 items-center justify-center rounded-[0.85rem] bg-primary/10 text-sm font-bold text-primary">
+              {index + 1}
+            </span>
+            <span>
+              <span className="block text-sm font-bold text-[var(--brand-ink)]">{title}</span>
+              <span className="mt-1 block text-sm leading-6 text-muted-foreground">{copy}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-5 rounded-[1rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-[#6dc3d5]/10 p-4">
+        <p className="text-sm font-bold text-primary">Usage example</p>
+        <p className="mt-2 text-sm font-semibold leading-6 text-[var(--brand-ink)]">
+          A two-provider clinic can start with Basic for scheduling and records, then move to Pro when reports, staff utilization, and operational recommendations become part of weekly management.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function AboutOperatingModel() {
+  return (
+    <div className="mockup-frame">
+      <div className="grid gap-3 sm:grid-cols-2">
+        {[
+          ["Configure", "Set clinic identity, hours, staff, and workspace preferences."],
+          ["Operate", "Run appointments, patient records, messages, documents, and payments."],
+          ["Understand", "Read performance trends and AI-assisted operational insights."],
+          ["Improve", "Adjust availability, follow-up, and reporting habits with clearer context."],
+        ].map(([title, copy]) => (
+          <div key={title} className="rounded-[0.95rem] border border-border/70 bg-white p-4">
+            <span className="vela-icon-tile">
+              <CheckCircle2 className="size-5" />
+            </span>
+            <h3 className="mt-4 text-base font-bold text-[var(--brand-ink)]">{title}</h3>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">{copy}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AboutContextSection() {
+  return (
+    <section className="px-4 pb-16 sm:px-6 lg:px-8">
+      <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-3">
+        <article className="surface-card p-6">
+          <h2 className="text-2xl font-semibold text-[var(--brand-ink)]">Why Vela exists</h2>
+          <p className="mt-4 text-sm leading-7 text-muted-foreground">
+            Appointment-based clinics often grow by adding disconnected tools. Vela is designed to bring the daily work back into one calm place: schedule, records, communication, payments, and reporting.
+          </p>
+        </article>
+        <article className="surface-card p-6">
+          <h2 className="text-2xl font-semibold text-[var(--brand-ink)]">What stays simple</h2>
+          <p className="mt-4 text-sm leading-7 text-muted-foreground">
+            Clinic users should see product language, not provider setup. Vela keeps technical services behind clear customer-safe states and support-ready flows.
+          </p>
+        </article>
+        <article className="surface-card p-6">
+          <h2 className="text-2xl font-semibold text-[var(--brand-ink)]">How it grows</h2>
+          <p className="mt-4 text-sm leading-7 text-muted-foreground">
+            Clinics can begin with appointments, patients, and staff, then expand into messaging, document workflows, payments, advanced reports, and operational recommendations.
+          </p>
+        </article>
+      </div>
+    </section>
+  );
+}
+
 function AiInsightsSection() {
   return (
     <section className="px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
@@ -830,7 +921,7 @@ function PricingPreviewSection() {
               The homepage gives a quick plan preview. The pricing page keeps the full comparison.
             </p>
           </div>
-          <Link href="/pricing" className="inline-flex h-11 items-center justify-center gap-2 rounded-[0.85rem] border border-border/80 bg-white px-5 text-sm font-bold text-primary shadow-[0_14px_34px_rgba(20,21,47,0.05)] transition hover:-translate-y-0.5 hover:border-primary/40">
+          <Link href="/pricing" className="inline-flex h-11 min-w-36 items-center justify-center gap-2 self-start whitespace-nowrap rounded-[0.85rem] border border-border/80 bg-white px-5 text-sm font-bold text-primary shadow-[0_14px_34px_rgba(20,21,47,0.05)] transition hover:-translate-y-0.5 hover:border-primary/40">
             View pricing
             <ArrowRight className="size-4" />
           </Link>
@@ -864,10 +955,10 @@ function FinalCtaSection() {
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
-          <Link href="/sign-up" className="inline-flex h-11 items-center justify-center rounded-[0.85rem] bg-white px-5 text-sm font-bold text-primary transition hover:bg-white/90">
+          <Link href="/sign-up" className="inline-flex h-11 min-w-28 items-center justify-center whitespace-nowrap rounded-[0.85rem] bg-white px-5 text-sm font-bold text-primary transition hover:bg-white/90">
             Start free
           </Link>
-          <Link href="/contact" className="inline-flex h-11 items-center justify-center rounded-[0.85rem] border border-white/40 px-5 text-sm font-bold text-white transition hover:bg-white/10">
+          <Link href="/contact" className="inline-flex h-11 min-w-28 items-center justify-center whitespace-nowrap rounded-[0.85rem] border border-white/40 px-5 text-sm font-bold text-white transition hover:bg-white/10">
             Contact us
           </Link>
         </div>
@@ -963,11 +1054,11 @@ function PageHero({
         <h1 className="text-[2.8rem] font-semibold leading-[0.96] text-[var(--brand-ink)] sm:text-7xl">{title}</h1>
         <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-muted-foreground sm:text-lg">{copy}</p>
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <Link href={primaryHref} className="vela-gradient inline-flex h-12 items-center justify-center gap-2 rounded-[0.85rem] px-6 text-sm font-bold text-white shadow-[0_18px_44px_rgba(150,118,247,0.24)] transition hover:-translate-y-0.5">
+          <Link href={primaryHref} className="vela-gradient inline-flex h-12 min-w-32 items-center justify-center gap-2 whitespace-nowrap rounded-[0.85rem] px-6 text-sm font-bold text-white shadow-[0_18px_44px_rgba(150,118,247,0.24)] transition hover:-translate-y-0.5">
             {primaryLabel}
             <ArrowRight className="size-4" />
           </Link>
-          <Link href={secondaryHref} className="inline-flex h-12 items-center justify-center rounded-[0.85rem] border border-border/80 bg-white px-6 text-sm font-bold text-foreground transition hover:-translate-y-0.5 hover:border-primary/40 hover:text-primary">
+          <Link href={secondaryHref} className="inline-flex h-12 min-w-32 items-center justify-center whitespace-nowrap rounded-[0.85rem] border border-border/80 bg-white px-6 text-sm font-bold text-foreground transition hover:-translate-y-0.5 hover:border-primary/40 hover:text-primary">
             {secondaryLabel}
           </Link>
         </div>
@@ -1109,10 +1200,10 @@ function CtaBand() {
           <p className="mt-2 max-w-2xl text-sm leading-6 text-white/80">Centralize appointment, patient, communication, media, payment, and reporting work.</p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
-          <Link href="/sign-up" className="inline-flex h-11 items-center justify-center rounded-[0.85rem] bg-white px-5 text-sm font-bold text-primary transition hover:bg-white/90">
+          <Link href="/sign-up" className="inline-flex h-11 min-w-28 items-center justify-center whitespace-nowrap rounded-[0.85rem] bg-white px-5 text-sm font-bold text-primary transition hover:bg-white/90">
             Start free
           </Link>
-          <Link href="/contact" className="inline-flex h-11 items-center justify-center rounded-[0.85rem] border border-white/40 px-5 text-sm font-bold text-white transition hover:bg-white/10">
+          <Link href="/contact" className="inline-flex h-11 min-w-28 items-center justify-center whitespace-nowrap rounded-[0.85rem] border border-white/40 px-5 text-sm font-bold text-white transition hover:bg-white/10">
             Contact us
           </Link>
         </div>

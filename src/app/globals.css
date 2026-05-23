@@ -4,7 +4,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-plus-jakarta), "Aptos", "Segoe UI Variable", "Segoe UI", sans-serif;
+  --font-sans: "Metal Reg-2", "Metal Reg", "Metal", var(--font-plus-jakarta), "Aptos", "Segoe UI Variable", "Segoe UI", sans-serif;
   --font-mono: "SFMono-Regular", "Consolas", monospace;
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -153,9 +153,16 @@
   }
 
   .vela-icon-tile {
-    @apply inline-flex shrink-0 items-center justify-center rounded-[1rem] text-white;
+    @apply inline-flex size-11 shrink-0 items-center justify-center rounded-[1rem] p-2.5 text-white;
     background-image: linear-gradient(135deg, var(--brand-start), var(--brand-end));
     box-shadow: 0 16px 34px rgba(150, 118, 247, 0.22);
+  }
+
+  .vela-brand-icon-tile {
+    @apply inline-flex size-11 shrink-0 items-center justify-center rounded-[1rem] border border-border/80 bg-white p-2 text-white;
+    box-shadow:
+      0 14px 34px rgba(20, 21, 47, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.92);
   }
 
   .app-shell-bg {
