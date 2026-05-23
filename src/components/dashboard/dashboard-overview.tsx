@@ -277,7 +277,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
     showTodayAppointments || showLastClients || showStaffAppointment || showAnalytics;
 
   return (
-    <div className="section-reveal w-full space-y-5">
+    <div className="section-reveal w-full space-y-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between" data-tour="dashboard-overview">
         <div>
           <p className="text-sm font-medium text-muted-foreground">
@@ -297,7 +297,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3.5 md:grid-cols-2 xl:grid-cols-4">
         <DashboardKpiCard
           icon={CalendarPlus2}
           label="Appointments today"
@@ -325,17 +325,17 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
         />
       </div>
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="space-y-5">
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-4">
           {!hasVisibleWidgets ? (
-            <section className="surface-soft border-dashed p-6 text-sm text-muted-foreground">
+            <section className="surface-soft border-dashed p-4 text-sm text-muted-foreground">
               No dashboard widgets are selected. Open Customize dashboard and choose the sections this workspace should show.
             </section>
           ) : null}
 
           {showTodayAppointments ? (
-          <section className="surface-card p-5">
-            <div className="flex items-center justify-between gap-4 border-b border-border/75 pb-4">
+          <section className="surface-card p-4">
+            <div className="flex items-center justify-between gap-4 border-b border-border/75 pb-3">
               <div className="flex items-center gap-3">
                 <h2 className="text-base font-semibold text-foreground">Today&apos;s appointments</h2>
                 <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
@@ -352,7 +352,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                   <Link
                     key={appointment.id}
                     href={`/calendar/${appointment.id}/edit`}
-                    className="grid gap-3 rounded-[0.9rem] px-2 py-4 text-sm transition-colors hover:bg-primary/5 md:grid-cols-[90px_1fr_160px_112px_24px] md:items-center"
+                    className="grid gap-3 rounded-[0.85rem] px-2 py-3 text-sm transition-colors hover:bg-primary/5 md:grid-cols-[82px_1fr_150px_104px_24px] md:items-center"
                   >
                     <div>
                       <p className="font-semibold text-foreground">{appointment.time}</p>
@@ -368,7 +368,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                   </Link>
                 ))
               ) : (
-                <div className="py-8 text-sm text-muted-foreground">
+                <div className="py-5 text-sm text-muted-foreground">
                   No appointments scheduled today. Create one to start filling the clinic day.
                 </div>
               )}
@@ -377,7 +377,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           ) : null}
 
           {showStaffAppointment ? (
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
             <DashboardPanel title="Next appointment" icon={Clock3}>
               {view.nextAppointment ? (
                 <Link
@@ -429,7 +429,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           ) : null}
 
           {(showLastClients || showAnalytics) ? (
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_270px]">
             {showLastClients ? (
             <DashboardPanel title="Recent activity">
               <div className="space-y-4">
@@ -471,7 +471,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           ) : null}
         </div>
 
-        <aside className="section-reveal-delayed space-y-5">
+        <aside className="section-reveal-delayed grid content-start gap-4">
           <DashboardPanel title="Quick actions">
             <div className="grid gap-2">
               {actionWidgets.map((action) => (
@@ -533,17 +533,17 @@ function DashboardKpiCard({
   tone?: "default" | "warning";
 }) {
   return (
-    <section className="surface-card p-5">
-      <div className="flex items-start gap-4">
-        <span className="vela-icon-tile size-12">
+    <section className="surface-card p-4">
+      <div className="flex items-start gap-3">
+        <span className="vela-icon-tile size-10">
           <Icon className="size-5" />
         </span>
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             {label}
           </p>
-          <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{value}</p>
-          <p className={cn("mt-2 text-xs font-medium text-muted-foreground", tone === "warning" && "text-destructive")}>
+          <p className="mt-1.5 text-2xl font-semibold tracking-tight text-foreground">{value}</p>
+          <p className={cn("mt-1.5 text-xs font-medium text-muted-foreground", tone === "warning" && "text-destructive")}>
             {trend}
           </p>
         </div>
@@ -568,8 +568,8 @@ function DashboardPanel({
   badge?: string;
 }) {
   return (
-    <section className="surface-card p-5">
-      <div className="mb-4 flex items-center justify-between gap-4">
+    <section className="surface-card p-4">
+      <div className="mb-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           {Icon ? (
             <span className="flex size-8 items-center justify-center rounded-[0.85rem] border border-border/80 bg-white text-primary">

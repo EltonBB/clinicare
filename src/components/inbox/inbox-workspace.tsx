@@ -340,7 +340,7 @@ export function InboxWorkspace({
         </DialogContent>
       </Dialog>
 
-      <div className="w-full space-y-4">
+      <div className="w-full space-y-3.5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h1 className="text-[34px] font-semibold leading-tight tracking-tight text-foreground">
@@ -361,9 +361,9 @@ export function InboxWorkspace({
         </div>
 
       <div className="overflow-hidden rounded-[1rem] border border-border/80 bg-white shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
-        <div className="grid min-h-[700px] grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 lg:min-h-[520px] lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="border-b border-border/80 lg:border-b-0 lg:border-r">
-          <div className="glass-divider px-5 py-4">
+          <div className="glass-divider px-4 py-3.5">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -375,7 +375,7 @@ export function InboxWorkspace({
             </div>
           </div>
 
-          <div className="flex items-center justify-between px-5 py-4">
+          <div className="flex items-center justify-between px-4 py-3.5">
             <div>
               <p className="text-lg font-semibold text-foreground">Messages</p>
               <p className="text-sm text-muted-foreground">
@@ -385,7 +385,7 @@ export function InboxWorkspace({
             </div>
           </div>
 
-          <div className="max-h-[640px] overflow-y-auto">
+          <div className="max-h-[520px] overflow-y-auto">
             {errorMessage ? (
               <div className="px-5 pb-3">
                 <div className="rounded-[0.8rem] border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
@@ -399,7 +399,7 @@ export function InboxWorkspace({
                 type="button"
                 onClick={() => openConversation(conversation.id)}
                 className={cn(
-                  "flex w-full items-start gap-3 border-l-2 border-transparent px-5 py-4 text-left transition-[background-color,transform] duration-200 hover:bg-white/54",
+                  "flex w-full items-start gap-3 border-l-2 border-transparent px-4 py-3.5 text-left transition-[background-color,transform] duration-200 hover:bg-white/54",
                   activeConversation?.id === conversation.id &&
                     "border-primary bg-secondary/40"
                 )}
@@ -448,7 +448,7 @@ export function InboxWorkspace({
         <section className="flex min-w-0 flex-col bg-white/92">
           {activeConversation ? (
             <>
-              <div className="glass-divider flex items-center justify-between gap-4 px-5 py-4">
+              <div className="glass-divider flex items-center justify-between gap-4 px-4 py-3.5">
                 <div className="flex min-w-0 items-center gap-3">
                   <Avatar size="lg">
                     <AvatarFallback>
@@ -514,7 +514,7 @@ export function InboxWorkspace({
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto bg-muted/22 px-5 py-5">
+              <div className="flex-1 overflow-y-auto bg-muted/22 px-4 py-4">
                 <div className="mx-auto max-w-3xl space-y-4">
                   {activeConversation.messages.map((message) => (
                     <div key={message.id}>
@@ -564,7 +564,7 @@ export function InboxWorkspace({
                 </div>
               </div>
 
-              <div className="glass-divider px-5 py-4">
+              <div className="glass-divider px-4 py-3.5">
                 <div className="mx-auto flex max-w-3xl items-end gap-3 rounded-[1rem] border border-border/80 bg-white/84 px-3 py-3 shadow-[0_18px_36px_rgba(20,32,51,0.05)]">
                   <Input
                     value={draftMessage}

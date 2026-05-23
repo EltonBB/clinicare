@@ -179,9 +179,9 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
         <StaffMetric icon={CheckCircle2} label="Avg completion rate" value={`${averageCompletion}%`} helper="Finalized appointments" />
       </div>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_290px]">
         <div className="section-reveal overflow-hidden rounded-[1rem] border border-border/80 bg-white shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
-          <div className="grid gap-3 border-b border-border/75 p-4 lg:grid-cols-[minmax(260px,1fr)_180px_180px_48px]">
+          <div className="grid gap-3 border-b border-border/75 p-3.5 lg:grid-cols-[minmax(260px,1fr)_180px_180px_48px]">
             <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -219,8 +219,8 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
 
         <div className="divide-y divide-border/75">
           {!hasStaff ? (
-            <div className="px-6 py-14">
-              <div className="mx-auto max-w-md space-y-5 text-center">
+            <div className="px-6 py-8">
+              <div className="mx-auto max-w-md space-y-4 text-center">
                 <div className="mx-auto flex size-12 items-center justify-center rounded-[1.05rem] bg-primary/12 text-primary">
                   <UserRoundCog className="size-5" />
                 </div>
@@ -228,7 +228,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                   <h2 className="text-xl font-semibold tracking-tight text-foreground">
                     Add the first staff member
                   </h2>
-                  <p className="text-sm leading-7 text-muted-foreground">
+                  <p className="text-sm leading-6 text-muted-foreground">
                     Staff records connect bookings, time tracking, and completed work.
                   </p>
                 </div>
@@ -242,14 +242,14 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
               </div>
             </div>
           ) : filteredStaff.length === 0 ? (
-            <div className="px-6 py-12 text-center text-sm text-muted-foreground">
+            <div className="px-6 py-8 text-center text-sm text-muted-foreground">
               No staff members match this search or filter.
             </div>
           ) : (
             filteredStaff.map((member) => (
               <div
                 key={member.id}
-                  className="grid gap-3 px-4 py-3 transition-colors duration-200 hover:bg-secondary/25 lg:grid-cols-[minmax(240px,1.45fr)_120px_120px_100px_140px_150px_210px] lg:items-center"
+                  className="grid gap-3 px-4 py-2.5 transition-colors duration-200 hover:bg-secondary/25 lg:grid-cols-[minmax(240px,1.45fr)_120px_120px_100px_140px_150px_210px] lg:items-center"
               >
                 <Link href={`/staff/${member.id}`} className="flex min-w-0 items-center gap-3">
                     <Avatar className="size-10">
@@ -334,7 +334,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
             </div>
             <Link href="/calendar" className="text-sm font-semibold text-primary">Open schedule</Link>
           </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
             {scheduledStaff.map((member) => (
               <Link
                 key={member.id}
@@ -361,7 +361,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
           </div>
         </section>
 
-        <aside className="section-reveal-delayed space-y-3 xl:col-start-2 xl:row-start-1 xl:row-span-2">
+        <aside className="section-reveal-delayed grid content-start gap-3 xl:col-start-2 xl:row-start-1 xl:row-span-2">
           <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="text-base font-semibold text-foreground">On duty now</h2>
@@ -406,7 +406,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
               <p className="text-sm text-muted-foreground">No planned shifts yet.</p>
             ) : null}
           </div>
-          <Link href="/calendar" className="mt-5 inline-flex text-sm font-semibold text-primary">
+          <Link href="/calendar" className="mt-4 inline-flex text-sm font-semibold text-primary">
             View full schedule
           </Link>
         </section>
@@ -485,17 +485,17 @@ function StaffMetric({
   helper: string;
 }) {
   return (
-    <section className="surface-card p-5">
-      <div className="flex items-start gap-4">
-        <span className="vela-icon-tile">
+    <section className="surface-card p-4">
+      <div className="flex items-start gap-3">
+        <span className="vela-icon-tile size-10">
           <Icon className="size-5" />
         </span>
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             {label}
           </p>
-          <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{value}</p>
-          <p className="mt-2 text-xs text-muted-foreground">{helper}</p>
+          <p className="mt-1.5 text-2xl font-semibold tracking-tight text-foreground">{value}</p>
+          <p className="mt-1.5 text-xs text-muted-foreground">{helper}</p>
         </div>
       </div>
     </section>

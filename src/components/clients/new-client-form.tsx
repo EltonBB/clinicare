@@ -90,10 +90,10 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
   }
 
   return (
-    <form action={handleSubmit} className="space-y-5">
-      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-5 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
+    <form action={handleSubmit} className="space-y-4">
+      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-4 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
         <h2 className="text-base font-semibold text-foreground">Basic information</h2>
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Full name</span>
             <Input name="name" required placeholder="Patient name" className="h-11 rounded-[0.9rem] bg-white" />
@@ -135,9 +135,9 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
         </div>
       </section>
 
-      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-5 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
+      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-4 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
         <h2 className="text-base font-semibold text-foreground">Clinic information</h2>
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Clinic type</span>
             <Input name="clinicType" placeholder="Dental, aesthetic, medical..." className="h-11 rounded-[0.9rem] bg-white" />
@@ -155,7 +155,7 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
           </label>
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-foreground">Patient notes</span>
-            <Textarea name="notes" placeholder="Registration notes, communication preferences, or immediate booking context" className="min-h-28 rounded-[0.9rem] bg-white px-3 py-3" />
+            <Textarea name="notes" placeholder="Registration notes, communication preferences, or immediate booking context" className="min-h-24 rounded-[0.9rem] bg-white px-3 py-3" />
           </label>
         </div>
       </section>

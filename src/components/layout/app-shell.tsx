@@ -280,7 +280,7 @@ export function AppShell({
             <GlobalSearch className="mt-3 w-full md:hidden" />
           </header>
 
-          <main className="page-gutter relative flex-1 py-5 pb-28 lg:pb-8 lg:pt-6">
+          <main className="page-gutter relative flex-1 py-4 pb-28 lg:pb-7 lg:pt-5">
             {children}
           </main>
         </div>

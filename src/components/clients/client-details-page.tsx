@@ -449,8 +449,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           Back to clients
         </Link>
 
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-          <div className="flex min-w-0 items-start gap-5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
             <Avatar className="size-20 rounded-full bg-primary/10 text-primary">
               <AvatarFallback className="bg-primary/10 text-3xl font-semibold text-primary">
                 {clientInitials(client.name)}
@@ -490,7 +490,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             </div>
           </div>
 
-          <div className="w-full space-y-4 xl:w-[620px]">
+          <div className="w-full space-y-3.5 xl:w-[560px]">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <StatCard label="Visits" value={client.totalVisits} />
               <StatCard label="Completed" value={client.appointmentStats.completed} tone="primary" />
@@ -542,11 +542,11 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
       <Tabs
         value={selectedTab}
         onValueChange={setSelectedTab}
-        className="section-reveal-delayed gap-5"
+        className="section-reveal-delayed gap-4"
       >
         <TabsList
           variant="line"
-          className="w-full justify-start gap-7 rounded-none border-b border-border/80 p-0"
+          className="w-full justify-start gap-6 overflow-x-auto rounded-none border-b border-border/80 p-0"
         >
           <TabsTrigger className="flex-none px-0 pb-3" value="overview">Overview</TabsTrigger>
           <TabsTrigger className="flex-none px-0 pb-3" value="appointments">Appointments</TabsTrigger>
@@ -556,10 +556,10 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           <TabsTrigger className="flex-none px-0 pb-3" value="payments">Payments</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <TabsContent value="overview" className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
           <div className="grid gap-4">
             <div className="grid gap-4 lg:grid-cols-2">
-              <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                     <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -587,7 +587,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 </dl>
               </section>
 
-              <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
                 <h2 className="text-base font-semibold text-foreground">Care summary</h2>
                 <dl className="mt-5 space-y-4">
                   <OverviewLine label="Assigned doctor / staff" value={client.details.assignedStaff} />
@@ -601,7 +601,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
-              <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
                 <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                   <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
                     <CheckCircle2 className="size-4" />
@@ -626,7 +626,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               )}
             </section>
 
-              <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                     <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -660,7 +660,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             </div>
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-              <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                     <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -708,7 +708,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 </button>
               </section>
 
-              <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+              <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                     <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -742,8 +742,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             </div>
           </div>
 
-          <aside className="grid content-start gap-4">
-            <section className="rounded-[1rem] border border-primary/10 bg-primary/8 p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+          <aside className="grid content-start gap-3.5">
+            <section className="rounded-[1rem] border border-primary/10 bg-primary/8 p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
               <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                 <span className="flex size-9 items-center justify-center rounded-full bg-white text-primary">
                   <CalendarDays className="size-4" />
@@ -772,7 +772,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </Link>
             </section>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                   <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -799,7 +799,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
             </section>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                   <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -826,7 +826,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </dl>
             </section>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                   <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -853,7 +853,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
             </section>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
               <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                 <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <FileText className="size-4" />
@@ -870,9 +870,9 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           </aside>
         </TabsContent>
 
-        <TabsContent value="appointments" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
+        <TabsContent value="appointments" className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-4">
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-base font-semibold text-foreground">Upcoming appointment</h2>
                 <Link
@@ -912,7 +912,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               )}
             </section>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-base font-semibold text-foreground">Appointment history</h2>
                 <Link
@@ -957,8 +957,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             </section>
           </div>
 
-          <aside className="space-y-4">
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+          <aside className="grid content-start gap-3.5">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-base font-semibold text-foreground">Upcoming reminders</h2>
                 <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
@@ -1005,7 +1005,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
             </section>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-base font-semibold text-foreground">Recent visits</h2>
                 <span className="text-sm font-medium text-primary">{pastAppointments.length}</span>
@@ -1026,7 +1026,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
             </section>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
               <h2 className="text-base font-semibold text-foreground">Appointment summary</h2>
               <div className="mt-4 space-y-3 text-sm">
                 <SummaryRow label="Upcoming" value={upcomingAppointments.length} />
@@ -1047,7 +1047,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             <InfoCard icon={NotebookText} title="Treatment plan" value={client.medical.treatmentPlan} />
           </div>
 
-          <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+          <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-4">
             <h2 className="text-lg font-semibold text-foreground">Current medication</h2>
             <div className="mt-4 grid gap-3 lg:grid-cols-4">
               <Input
@@ -1111,8 +1111,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             </div>
           </section>
 
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+          <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+            <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-4">
               <h2 className="text-lg font-semibold text-foreground">Structured health record</h2>
               <div className="mt-4 grid gap-3 lg:grid-cols-[160px_minmax(0,1fr)_160px]">
                 <NativeSelect
@@ -1190,8 +1190,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
             </section>
 
-            <aside className="space-y-4">
-              <section className="rounded-[1.15rem] border border-border/80 bg-primary/5 p-5">
+            <aside className="grid content-start gap-3.5">
+              <section className="rounded-[1.15rem] border border-border/80 bg-primary/5 p-4">
                 <h2 className="text-lg font-semibold text-foreground">Medical summary</h2>
                 <dl className="mt-4 space-y-3">
                   <OverviewLine label="Allergies" value={allergies.length ? `${allergies.length} recorded` : client.medical.allergies} />
@@ -1201,7 +1201,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 </dl>
               </section>
 
-              <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+              <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-4">
                 <h2 className="text-lg font-semibold text-foreground">Clinical alerts</h2>
                 <div className="mt-4 space-y-3">
                   {[...alerts, ...allergies].slice(0, 5).map((item) => (
@@ -1221,7 +1221,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           </div>
 
           <div className="grid gap-4 xl:grid-cols-2">
-            <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+            <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-4">
               <h2 className="text-lg font-semibold text-foreground">Treatment plan summary</h2>
               <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
                 <Input
@@ -1285,7 +1285,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
             </section>
 
-            <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+            <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-4">
               <h2 className="text-lg font-semibold text-foreground">Notes from provider</h2>
               <div className="mt-4 grid gap-3">
                 <Input
@@ -1331,9 +1331,9 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           </div>
         </TabsContent>
 
-        <TabsContent value="documents" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <TabsContent value="documents" className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="space-y-4">
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-base font-semibold text-foreground">Documents</h2>
@@ -1425,7 +1425,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                     ))}
                     {client.documents.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-4 py-8 text-sm text-muted-foreground">No documents uploaded yet.</td>
+                        <td colSpan={5} className="px-4 py-6 text-sm text-muted-foreground">No documents uploaded yet.</td>
                       </tr>
                     ) : null}
                   </tbody>
@@ -1453,8 +1453,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             ) : null}
           </div>
 
-          <aside className="space-y-4">
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+          <aside className="grid content-start gap-3.5">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
               <h2 className="text-base font-semibold text-foreground">Documents summary</h2>
               <div className="mt-4 space-y-3 text-sm">
                 {["Insurance", "Consent", "Medical History", "Report", "Image / Scan", "Invoice", "Other"].map((type) => {
@@ -1467,7 +1467,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
             </section>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
               <h2 className="text-base font-semibold text-foreground">Selected document</h2>
               {client.documents[0] ? (
                 <div className="mt-4 space-y-3">
@@ -1493,7 +1493,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           </aside>
         </TabsContent>
 
-        <TabsContent value="messages" className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+        <TabsContent value="messages" className="rounded-[1.15rem] border border-border/80 bg-white/74 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-foreground">Messages</h2>
@@ -1543,9 +1543,9 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           </div>
         </TabsContent>
 
-        <TabsContent value="payments" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <TabsContent value="payments" className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="space-y-4">
-            <section className="grid gap-3 rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)] md:grid-cols-4">
+            <section className="grid gap-3 rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)] md:grid-cols-4">
               <PaymentMetric label="Total billed" value={totalBilledDisplay} helper={`${client.payments.length} ledger entries`} />
               <PaymentMetric label="Total paid" value={client.paymentStats.totalPaidDisplay} helper={`${client.payments.filter((payment) => payment.status.toLowerCase() === "paid").length} paid entries`} tone="good" />
               <PaymentMetric label="Outstanding" value={client.paymentStats.unpaidBalanceDisplay} helper="Open balance" tone={client.paymentStats.unpaidBalanceCents > 0 ? "danger" : "default"} />
@@ -1590,7 +1590,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                     ))}
                     {client.payments.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-4 py-8 text-sm text-muted-foreground">No payments yet.</td>
+                        <td colSpan={7} className="px-4 py-6 text-sm text-muted-foreground">No payments yet.</td>
                       </tr>
                     ) : null}
                   </tbody>
@@ -1598,7 +1598,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
             </section>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
               <h2 className="text-base font-semibold text-foreground">Manual ledger entry</h2>
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <Input value={paymentDraft.amount} onChange={(event) => setPaymentDraft((current) => ({ ...current, amount: event.target.value }))} placeholder="Amount" className="h-10 rounded-[0.7rem] bg-white" />
@@ -1614,8 +1614,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             </section>
           </div>
 
-          <aside className="space-y-4">
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+          <aside className="grid content-start gap-3.5">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
               <h2 className="text-base font-semibold text-foreground">Payment status</h2>
               <div className="mt-4 flex items-start gap-3">
                 <span className="flex size-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
@@ -1635,7 +1635,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </dl>
             </section>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
               <h2 className="text-base font-semibold text-foreground">Billing notes</h2>
               <p className="mt-3 text-sm leading-6 text-muted-foreground">
                 {latestPayment?.billingNote || client.notes || "No billing notes recorded."}
@@ -1645,7 +1645,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </p>
             </section>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
               <h2 className="text-base font-semibold text-foreground">Ledger summary</h2>
               <div className="mt-4 space-y-3 text-sm">
                 <SummaryRow label="Paid entries" value={client.payments.filter((payment) => payment.status.toLowerCase() === "paid").length} />
@@ -1682,7 +1682,7 @@ function InfoCard({
   value: string;
 }) {
   return (
-    <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-5">
+    <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-4">
       <div className="flex items-start gap-3">
         <div className="flex size-10 items-center justify-center rounded-[0.9rem] bg-primary/10 text-primary">
           <Icon className="size-5" />
@@ -1811,7 +1811,7 @@ function EmptyPanel({
   text: string;
 }) {
   return (
-    <div className="rounded-[1rem] border border-dashed border-border/90 bg-white/54 px-5 py-8 text-center">
+    <div className="rounded-[1rem] border border-dashed border-border/90 bg-white/54 px-5 py-6 text-center">
       <div className="mx-auto flex size-11 items-center justify-center rounded-[0.95rem] bg-primary/10 text-primary">
         <Icon className="size-5" />
       </div>

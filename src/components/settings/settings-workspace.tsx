@@ -131,17 +131,17 @@ function SettingsSection({
     <section
       id={id}
       data-tour={tourTarget}
-      className="scroll-mt-24 rounded-[1.05rem] border border-border/80 bg-white/94 px-5 py-5 shadow-[0_10px_24px_rgba(20,32,51,0.032)]"
+      className="scroll-mt-24 rounded-[1.05rem] border border-border/80 bg-white/94 px-4 py-4 shadow-[0_10px_24px_rgba(20,32,51,0.032)]"
     >
       <div className="space-y-1">
         <h2 className="text-xl font-semibold text-foreground">{title}</h2>
         {description ? (
-          <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
+          <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
             {description}
           </p>
         ) : null}
       </div>
-      <div className="mt-6">{children}</div>
+      <div className="mt-4">{children}</div>
     </section>
   );
 }
@@ -316,9 +316,9 @@ export function SettingsWorkspace({
   }
 
   return (
-    <div className="grid w-full gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
+    <div className="grid w-full gap-4 xl:grid-cols-[210px_minmax(0,1fr)]">
       <aside className="hidden xl:block">
-        <div className="sticky top-24 space-y-2 rounded-[1.05rem] border border-border/80 bg-white/94 p-4 shadow-[0_10px_22px_rgba(20,32,51,0.03)]">
+        <div className="sticky top-24 space-y-1.5 rounded-[1.05rem] border border-border/80 bg-white/94 p-3.5 shadow-[0_10px_22px_rgba(20,32,51,0.03)]">
           {sectionLinks.map((item) => (
             <Link
               key={item.href}
@@ -331,7 +331,7 @@ export function SettingsWorkspace({
         </div>
       </aside>
 
-      <div className="space-y-4">
+      <div className="space-y-3.5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="section-reveal space-y-2">
             <div className="space-y-2">
@@ -371,7 +371,7 @@ export function SettingsWorkspace({
           title="Business details"
           description="Keep your workspace identity current so appointments, messages, and reminders reflect the right business context."
         >
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-3.5 md:grid-cols-2">
             <div className="space-y-2">
               <FieldLabel>Business name</FieldLabel>
               <Input
@@ -406,7 +406,7 @@ export function SettingsWorkspace({
             </div>
             <div className="space-y-2 md:col-span-2">
               <FieldLabel>Clinic logo</FieldLabel>
-              <div className="grid gap-3 rounded-[1rem] border border-border/80 bg-white/72 p-3 sm:grid-cols-[76px_minmax(0,1fr)_auto] sm:items-center">
+              <div className="grid gap-3 rounded-[1rem] border border-border/80 bg-white/72 p-3 sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center">
                 <div className="flex size-16 items-center justify-center overflow-hidden rounded-[1rem] bg-primary/10 text-lg font-semibold text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]">
                   {logoDisplayUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -483,7 +483,7 @@ export function SettingsWorkspace({
           title="Appearance"
           description="Choose the accent color used for primary actions, active states, highlights, and workspace feedback."
         >
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {visibleAccentPresets.map((preset) => {
                 const selected = state.appearance.accentColor === preset.id;
@@ -625,7 +625,7 @@ export function SettingsWorkspace({
             </div>
 
             <div
-              className="rounded-[1.05rem] border border-border/80 bg-white/88 p-4 shadow-[0_16px_34px_rgba(20,32,51,0.04)]"
+              className="rounded-[1.05rem] border border-border/80 bg-white/88 p-3.5 shadow-[0_16px_34px_rgba(20,32,51,0.04)]"
               style={
                 {
                   "--preview-accent": previewAccent,
@@ -658,14 +658,14 @@ export function SettingsWorkspace({
           title="Working hours"
           description="These hours drive booking availability and shape the default calendar behavior across the workspace."
         >
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {weekdayOrder.map((day) => {
               const item = state.workingHours[day];
 
               return (
                 <div
                   key={day}
-                  className="grid gap-4 rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4 md:grid-cols-[1.5fr_1fr]"
+                  className="grid gap-3 rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-3.5 md:grid-cols-[1.5fr_1fr]"
                 >
                   <div className="flex items-center gap-4">
                     <Toggle
@@ -710,7 +710,7 @@ export function SettingsWorkspace({
           title="Staff"
           description="Staff profiles, work time, and completed appointment records are managed from the dedicated staff workspace."
         >
-          <div className="flex flex-col gap-4 rounded-[1rem] border border-border/80 bg-white/88 px-5 py-5 shadow-[0_16px_34px_rgba(20,32,51,0.04)] sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-4 rounded-[1rem] border border-border/80 bg-white/88 px-4 py-4 shadow-[0_16px_34px_rgba(20,32,51,0.04)] sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
               <span className="flex size-11 shrink-0 items-center justify-center rounded-[0.95rem] bg-primary/10 text-primary">
                 <UserRoundCog className="size-5" />
@@ -744,7 +744,7 @@ export function SettingsWorkspace({
           description="Connect the clinic WhatsApp number used for inbox messages and reminders."
           tourTarget="settings-whatsapp"
         >
-          <div className="rounded-[1rem] border border-border/80 bg-muted/35 p-4">
+          <div className="rounded-[1rem] border border-border/80 bg-muted/35 p-3.5">
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-end">
               <div className="space-y-2 lg:pb-0">
                 <FieldLabel>WhatsApp number</FieldLabel>
@@ -817,9 +817,9 @@ export function SettingsWorkspace({
           title="Reminders"
           description=""
         >
-          <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
+          <div className="space-y-3.5">
+            <div className="grid gap-3.5 md:grid-cols-2">
+              <div className="rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-3.5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-sm font-medium text-foreground">
@@ -859,7 +859,7 @@ export function SettingsWorkspace({
                 </div>
               </div>
 
-              <div className="rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-4">
+              <div className="rounded-[0.95rem] border border-border/80 bg-muted/45 px-4 py-3.5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-sm font-medium text-foreground">
@@ -917,7 +917,7 @@ export function SettingsWorkspace({
                     },
                   }))
                 }
-                className="min-h-32 rounded-[0.95rem] bg-white/84 px-4 py-3"
+                className="min-h-24 rounded-[0.95rem] bg-white/84 px-4 py-3"
               />
             </div>
           </div>
@@ -928,7 +928,7 @@ export function SettingsWorkspace({
           title="Billing"
           description="Review the current plan and open checkout when you want to change it."
         >
-          <div className="flex flex-col gap-4 rounded-[1rem] border border-border/80 bg-white/88 px-5 py-5 shadow-[0_16px_34px_rgba(20,32,51,0.04)] sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-4 rounded-[1rem] border border-border/80 bg-white/88 px-4 py-4 shadow-[0_16px_34px_rgba(20,32,51,0.04)] sm:flex-row sm:items-center sm:justify-between">
             <div>
               <FieldLabel>Current plan</FieldLabel>
               <div className="mt-2 flex items-center gap-3">

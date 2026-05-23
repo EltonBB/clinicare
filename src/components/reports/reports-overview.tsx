@@ -221,9 +221,9 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
   }
 
   return (
-    <div className="w-full space-y-4">
-      <section className="section-reveal space-y-4">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+    <div className="w-full space-y-3.5">
+      <section className="section-reveal space-y-3.5">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <h1 className="text-[34px] font-semibold leading-tight tracking-tight text-foreground">
               Reports
@@ -233,7 +233,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
             <div className="inline-flex rounded-[0.75rem] border border-border/80 bg-white p-1 shadow-[0_12px_28px_rgba(20,21,47,0.04)]">
               {view.periodOrder.map((key) => {
                 const item = view.periods[key];
@@ -309,19 +309,19 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
           {metricCards.map(({ icon: Icon, metric }) => (
-            <div key={metric.label} className="surface-card px-4 py-3">
-              <div className="flex items-start gap-3">
-                <div className="vela-icon-tile size-10">
-                  <Icon className="size-5" />
+            <div key={metric.label} className="surface-card px-3.5 py-3">
+              <div className="flex items-start gap-2.5">
+                <div className="vela-icon-tile size-9 rounded-[0.85rem]">
+                  <Icon className="size-4" />
                 </div>
                 <div className="min-w-0">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
                     {metric.label}
                   </p>
-                  <p className="mt-1.5 text-2xl font-semibold tracking-tight text-foreground">
+                  <p className="mt-1 text-[22px] font-semibold tracking-tight text-foreground">
                     {metric.value}
                   </p>
-                  <p className={cn("mt-1.5 inline-flex items-center gap-1 text-xs font-medium", metricTone[metric.trend])}>
+                  <p className={cn("mt-1 inline-flex items-center gap-1 text-xs font-medium", metricTone[metric.trend])}>
                     <TrendIcon trend={metric.trend} />
                     {metric.delta}
                   </p>
@@ -332,10 +332,10 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
         </div>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
-        <div className="grid gap-4">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.9fr)_minmax(280px,0.9fr)]">
-            <section className="surface-card p-4">
+      <section className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_310px]">
+        <div className="grid gap-3.5">
+          <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1.9fr)_minmax(260px,0.9fr)]">
+            <section className="surface-card p-3.5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-base font-semibold text-foreground">Performance overview</h2>
@@ -355,7 +355,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                 </span>
               </div>
 
-              <svg viewBox="0 0 620 250" className="mt-3 h-[230px] w-full" role="img" aria-label={period.chart.title}>
+              <svg viewBox="0 0 620 250" className="mt-2 h-[190px] w-full" role="img" aria-label={period.chart.title}>
                 {[0, 1, 2, 3].map((line) => (
                   <line
                     key={line}
@@ -393,7 +393,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                 })}
               </svg>
 
-              <div className="grid border-t border-border/70 pt-3 text-sm sm:grid-cols-4">
+              <div className="grid border-t border-border/70 pt-2.5 text-sm sm:grid-cols-4">
                 <BreakdownCell label="Total appointments" value={getMetric(period.metrics, "Appointments")?.value ?? "-"} />
                 <BreakdownCell label="Completed" value={String(completedStatus?.count ?? 0)} />
                 <BreakdownCell label="Cancelled" value={String(period.diagnostics.statusMix.find((item) => item.label === "Cancelled")?.count ?? 0)} />
@@ -404,40 +404,40 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               </div>
             </section>
 
-            <section className="surface-card p-4">
+            <section className="surface-card p-3.5">
               <h2 className="text-base font-semibold text-foreground">Client status mix</h2>
-              <div className="mt-5 flex items-center justify-center gap-6">
+              <div className="mt-4 grid items-center gap-4 sm:grid-cols-[auto_minmax(0,1fr)]">
                 <div
-                  className="grid size-36 place-items-center rounded-full"
+                  className="mx-auto grid size-28 place-items-center rounded-full"
                   style={{
                     background: `conic-gradient(var(--primary) 0 ${clientActiveShare}%, #f59e0b ${clientActiveShare}% ${clientActiveShare + (clientTotal ? (period.diagnostics.clientMix.atRisk / clientTotal) * 100 : 0)}%, #cbd5e1 0 100%)`,
                   }}
                 >
-                    <div className="grid size-20 place-items-center rounded-full bg-white text-center shadow-inner">
+                    <div className="grid size-16 place-items-center rounded-full bg-white text-center shadow-inner">
                     <div>
-                      <p className="text-2xl font-semibold text-foreground">{clientTotal}</p>
+                      <p className="text-xl font-semibold text-foreground">{clientTotal}</p>
                       <p className="text-xs text-muted-foreground">Total</p>
                     </div>
                   </div>
                 </div>
-                <div className="space-y-3 text-sm">
+                <div className="space-y-2.5 text-sm">
                   <LegendRow color="bg-primary" label="Active" value={`${period.diagnostics.clientMix.active} (${clientActiveShare.toFixed(0)}%)`} />
                   <LegendRow color="bg-amber-500" label="At risk" value={String(period.diagnostics.clientMix.atRisk)} />
                   <LegendRow color="bg-slate-300" label="Inactive" value={String(period.diagnostics.clientMix.inactive)} />
                   <LegendRow color="bg-slate-400" label="Archived" value={String(period.diagnostics.clientMix.archived)} />
                 </div>
               </div>
-              <div className="mt-5 grid grid-cols-2 gap-2 text-sm">
+              <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
                 <SimpleMetric label="Total records" value={clientTotal.toString()} />
                 <SimpleMetric label="Active share" value={`${clientActiveShare.toFixed(0)}%`} />
               </div>
             </section>
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-3">
-            <section className="surface-card p-4">
+          <div className="grid items-start gap-3.5 xl:grid-cols-3">
+            <section className="surface-card p-3.5">
               <h2 className="text-base font-semibold text-foreground">Operational metrics</h2>
-              <div className="mt-4 space-y-3">
+              <div className="mt-3 space-y-2.5">
                 <SimpleMetric label="Repeat-visit rate" value={getMetric(period.metrics, "Repeat-visit rate")?.value ?? "-"} />
                 <SimpleMetric label="Lost-slot rate" value={getMetric(period.metrics, "Lost-slot rate")?.value ?? "-"} />
                 <SimpleMetric label="Follow-up coverage" value={getMetric(period.metrics, "Follow-up coverage")?.value ?? "-"} />
@@ -446,21 +446,21 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               </div>
             </section>
 
-            <section className="surface-card p-4">
+            <section className="surface-card p-3.5">
               <h2 className="text-base font-semibold text-foreground">Appointment status</h2>
-              <div className="mt-5 flex items-center justify-center gap-6">
+              <div className="mt-4 grid items-center gap-4 sm:grid-cols-[auto_minmax(0,1fr)]">
                 <div
-                  className="grid size-36 place-items-center rounded-full"
+                  className="mx-auto grid size-28 place-items-center rounded-full"
                   style={{ background: buildStatusConic(period.diagnostics.statusMix) }}
                 >
-                  <div className="grid size-20 place-items-center rounded-full bg-white text-center shadow-inner">
+                  <div className="grid size-16 place-items-center rounded-full bg-white text-center shadow-inner">
                     <div>
-                      <p className="text-2xl font-semibold text-foreground">{statusTotal}</p>
+                      <p className="text-xl font-semibold text-foreground">{statusTotal}</p>
                       <p className="text-xs text-muted-foreground">Total</p>
                     </div>
                   </div>
                 </div>
-                <div className="space-y-3 text-sm">
+                <div className="space-y-2.5 text-sm">
                   {period.diagnostics.statusMix.map((item) => (
                     <LegendRow key={item.label} color={item.label === "Completed" ? "bg-primary" : item.label === "Cancelled" ? "bg-destructive" : item.label === "Pending" ? "bg-amber-500" : "bg-primary/60"} label={item.label} value={`${item.count} (${item.share})`} />
                   ))}
@@ -468,9 +468,9 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               </div>
             </section>
 
-            <section className="surface-card p-4">
+            <section className="surface-card p-3.5">
               <h2 className="text-base font-semibold text-foreground">Detailed breakdown</h2>
-              <div className="mt-4 space-y-3">
+              <div className="mt-3 space-y-2.5">
                 {period.metrics.slice(0, 6).map((metric) => (
                   <div key={metric.label} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 text-sm">
                     <span className="text-muted-foreground">{metric.label}</span>
@@ -485,19 +485,19 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
             </section>
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <section className="surface-card p-4">
+          <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <section className="surface-card p-3.5">
               <h2 className="text-base font-semibold text-foreground">Demand windows</h2>
-              <div className="mt-4 grid gap-5 sm:grid-cols-3">
+              <div className="mt-3 grid gap-4 sm:grid-cols-3">
                 <DemandList title="Busiest days" items={busiestDays} />
                 <DemandList title="Quietest days" items={quietestDays} />
                 <DemandList title="Busiest hours" items={busiestHours} />
               </div>
             </section>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_12px_28px_rgba(20,32,51,0.035)]">
+            <section className="rounded-[1rem] border border-border/80 bg-white p-3.5 shadow-[0_12px_28px_rgba(20,32,51,0.035)]">
               <h2 className="text-base font-semibold text-foreground">Staff load</h2>
-              <div className="mt-4 space-y-4">
+              <div className="mt-3 space-y-3">
                 {period.diagnostics.staffLoad.length > 0 ? (
                   period.diagnostics.staffLoad.slice(0, 4).map((staff) => (
                     <div key={staff.name}>
@@ -524,7 +524,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
           </div>
         </div>
 
-        <aside className={cn("rounded-[1rem] border p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]", snapshotToneStyles[period.snapshot.tone])}>
+        <aside className={cn("rounded-[1rem] border p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]", snapshotToneStyles[period.snapshot.tone])}>
           <div className="flex items-start justify-between gap-4">
             <h2 className="inline-flex items-center gap-2 text-base font-semibold text-foreground">
               <Sparkles className="size-4 text-primary" />
@@ -536,7 +536,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
             </span>
           </div>
 
-          <div className="mt-5 space-y-3">
+          <div className="mt-4 space-y-2.5">
             <InsightCard title="Snapshot" emphasis>
               <h3 className="text-xl font-semibold tracking-tight text-foreground">
                 {period.label} readout
@@ -587,7 +587,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
 
 function BreakdownCell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-border/70 px-3 py-2 first:pl-0 sm:border-r sm:last:border-r-0">
+    <div className="border-border/70 px-2 py-1.5 first:pl-0 sm:border-r sm:last:border-r-0">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-1 font-semibold text-foreground">{value}</p>
     </div>
@@ -606,7 +606,7 @@ function LegendRow({ color, label, value }: { color: string; label: string; valu
 
 function SimpleMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-3 text-sm">
+    <div className="flex items-center justify-between gap-3 rounded-[0.7rem] border border-border/60 bg-white/60 px-3 py-2 text-sm">
       <span className="text-muted-foreground">{label}</span>
       <span className="font-semibold text-foreground">{value}</span>
     </div>
@@ -617,7 +617,7 @@ function DemandList({ title, items }: { title: string; items: Array<{ label: str
   return (
     <div>
       <p className="text-sm font-semibold text-foreground">{title}</p>
-      <div className="mt-3 space-y-2">
+      <div className="mt-2.5 space-y-2">
         {items.length > 0 ? (
           items.slice(0, 3).map((item) => (
             <div key={item.label} className="flex items-center justify-between gap-3 text-sm">
@@ -645,8 +645,8 @@ function InsightCard({
   children: ReactNode;
 }) {
   return (
-    <div className={cn("rounded-[0.85rem] border p-4", emphasis ? "border-amber-300/70 bg-amber-50/50" : "border-border/80 bg-white")}>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+    <div className={cn("rounded-[0.85rem] border p-3.5", emphasis ? "border-amber-300/70 bg-amber-50/50" : "border-border/80 bg-white")}>
+      <div className="mb-2.5 flex flex-wrap items-center gap-2">
         <p className="text-sm font-semibold text-foreground">{title}</p>
         {badge ? (
           <span className={cn("rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]", priorityStyles[badge.startsWith("high") ? "high" : badge.startsWith("low") ? "low" : "medium"])}>
@@ -669,12 +669,12 @@ function InsightIconBlock({
   text: string;
 }) {
   return (
-    <div className="rounded-[0.85rem] border border-border/80 bg-white p-4">
+    <div className="rounded-[0.85rem] border border-border/80 bg-white p-3.5">
       <div className="flex gap-3">
         <Icon className="mt-0.5 size-4 shrink-0 text-primary" />
         <div>
           <p className="text-sm font-semibold text-foreground">{title}</p>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">{text}</p>
+          <p className="mt-1.5 text-sm leading-6 text-muted-foreground">{text}</p>
         </div>
       </div>
     </div>

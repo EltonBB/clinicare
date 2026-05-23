@@ -33,6 +33,7 @@ type CalendarWorkspaceProps = {
 
 const views: CalendarView[] = ["day", "week", "month"];
 const slotHours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
+const hourRowHeight = 64;
 
 const toneClasses: Record<CalendarAppointment["tone"], string> = {
   primary:
@@ -65,13 +66,13 @@ function monthDays(activeDate: Date) {
 
 function appointmentHeight(startTime: string, endTime: string) {
   const duration = Math.max(timeToMinutes(endTime) - timeToMinutes(startTime), 30);
-  return `${Math.max((duration / 60) * 72, 46)}px`;
+  return `${Math.max((duration / 60) * hourRowHeight, 42)}px`;
 }
 
 function appointmentOffset(startTime: string) {
   const firstMinute = slotHours[0] * 60;
   const startMinute = timeToMinutes(startTime);
-  return `${Math.max(((startMinute - firstMinute) / 60) * 72, 0)}px`;
+  return `${Math.max(((startMinute - firstMinute) / 60) * hourRowHeight, 0)}px`;
 }
 
 function dayCapacityMinutes(date: Date, businessHours: CalendarViewModel["businessHours"]) {
@@ -222,7 +223,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
   const utilization = Math.min(Math.round((bookedMinutes / Math.max(capacityMinutes, 1)) * 100), 100);
 
   return (
-    <div className="w-full space-y-4">
+    <div className="w-full space-y-3.5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="section-reveal">
           <h1 className="text-[34px] font-semibold leading-tight tracking-tight text-foreground">
@@ -312,11 +313,11 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
         </div>
       </div>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-4">
+      <div className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_310px]">
+        <div className="space-y-3.5">
       {!hasClients ? (
-        <section className="section-reveal overflow-hidden rounded-[1.25rem] border border-dashed border-primary/25 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),var(--primary-soft))] p-8 shadow-[0_18px_44px_rgba(20,32,51,0.055)]">
-          <div className="mx-auto max-w-xl space-y-5 text-center">
+        <section className="section-reveal overflow-hidden rounded-[1.25rem] border border-dashed border-primary/25 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),var(--primary-soft))] p-6 shadow-[0_18px_44px_rgba(20,32,51,0.055)]">
+          <div className="mx-auto max-w-xl space-y-4 text-center">
             <div className="mx-auto flex size-12 items-center justify-center rounded-[1.05rem] bg-primary/12 text-primary">
               <UsersRound className="size-5" />
             </div>
@@ -362,7 +363,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
                     startTransition(() => setView("day"));
                   }}
                   className={cn(
-                    "min-h-32 border-b border-r border-border/80 px-3 py-3 text-left transition-[background-color,color] duration-200",
+                    "min-h-28 border-b border-r border-border/80 px-3 py-3 text-left transition-[background-color,color] duration-200",
                     !isSameMonth(day, activeDate) && "bg-muted/35 text-muted-foreground",
                     isSameDay(day, activeDate) && "bg-secondary/38"
                   )}
@@ -425,7 +426,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
                   {slotHours.map((hour) => (
                     <div
                       key={hour}
-                      className="flex h-[72px] items-start justify-end pr-3 pt-2 text-xs text-muted-foreground"
+                      className="flex h-16 items-start justify-end pr-3 pt-2 text-xs text-muted-foreground"
                     >
                       {format(new Date(2026, 3, 3, hour), "h a")}
                     </div>
@@ -446,7 +447,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
                       )}
                     >
                       {slotHours.map((hour) => (
-                        <div key={hour} className="h-[72px] border-b border-border/75" />
+                        <div key={hour} className="h-16 border-b border-border/75" />
                       ))}
                       {items.map((appointment) => (
                         <AppointmentCard key={appointment.id} appointment={appointment} />
@@ -464,8 +465,8 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
       )}
 
       {hasClients ? (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_250px]">
-          <div className="section-reveal rounded-[1.05rem] border border-border/80 bg-white/94 px-4 py-4 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
+        <div className="grid gap-3.5 lg:grid-cols-[minmax(0,1fr)_240px]">
+          <div className="section-reveal rounded-[1.05rem] border border-border/80 bg-white/94 px-4 py-3.5 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-foreground">Selected day</p>
@@ -484,7 +485,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
                 Add booking
               </Link>
             </div>
-            <div className="mt-4 space-y-3">
+            <div className="mt-3 space-y-2.5">
               {selectedDayAppointments
                 .sort((left, right) => left.startTime.localeCompare(right.startTime))
                 .map((appointment) => (
@@ -528,7 +529,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
             </div>
           </div>
 
-          <div className="section-reveal-delayed rounded-[1.05rem] border border-border/80 bg-white/94 px-4 py-4 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
+          <div className="section-reveal-delayed rounded-[1.05rem] border border-border/80 bg-white/94 px-4 py-3.5 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
             <p className="text-sm font-semibold text-foreground">Team assignment</p>
             <div className="mt-4 space-y-3">
               {(initialView.staffMembers.length > 0
@@ -553,7 +554,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
       ) : null}
         </div>
 
-        <aside className="section-reveal-delayed space-y-5">
+        <aside className="section-reveal-delayed grid content-start gap-3.5">
           <CalendarRailPanel title="Upcoming appointments" actionHref="/calendar" actionLabel="View all">
             <div className="space-y-4">
               {upcomingAppointments.length > 0 ? (
@@ -632,8 +633,8 @@ function CalendarRailPanel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-[1rem] border border-border/80 bg-white/94 p-5 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <section className="rounded-[1rem] border border-border/80 bg-white/94 p-4 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
+      <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="text-base font-semibold text-foreground">{title}</h2>
         {actionHref && actionLabel ? (
           <Link href={actionHref} className="text-xs font-semibold text-primary">

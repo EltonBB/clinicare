@@ -85,8 +85,8 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
           Back to staff
         </Link>
 
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-          <div className="flex min-w-0 items-start gap-5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
             <Avatar className="size-20 rounded-full bg-primary/10 text-primary">
               <AvatarFallback className="bg-primary/10 text-3xl font-semibold text-primary">
                 {staffInitials(staff.name)}
@@ -126,7 +126,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
             </div>
           </div>
 
-          <div className="w-full space-y-4 xl:w-[620px]">
+          <div className="w-full space-y-3.5 xl:w-[560px]">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <StaffStat label="Appts today" value={staff.appointmentsToday} tone="primary" />
               <StaffStat label="Completion" value={`${staff.completionRate}%`} />
@@ -167,15 +167,15 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
         </div>
       ) : null}
 
-      <Tabs value={selectedTab} onValueChange={setSelectedTab} className="section-reveal-delayed gap-5">
-        <TabsList variant="line" className="w-full justify-start gap-7 rounded-none border-b border-border/80 p-0">
+      <Tabs value={selectedTab} onValueChange={setSelectedTab} className="section-reveal-delayed gap-4">
+        <TabsList variant="line" className="w-full justify-start gap-6 overflow-x-auto rounded-none border-b border-border/80 p-0">
           <TabsTrigger className="flex-none px-0 pb-3" value="overview">Overview</TabsTrigger>
           <TabsTrigger className="flex-none px-0 pb-3" value="schedule">Schedule</TabsTrigger>
           <TabsTrigger className="flex-none px-0 pb-3" value="appointments">Appointments</TabsTrigger>
           <TabsTrigger className="flex-none px-0 pb-3" value="profile">Profile</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
+        <TabsContent value="overview" className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="grid gap-4">
             <div className="grid gap-4 lg:grid-cols-2">
               <Panel title="Staff information" icon={CheckCircle2} actionHref={`/staff/${staff.id}/edit`} actionLabel="Edit">
@@ -221,7 +221,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
                     ))}
                     {staff.recentAppointments.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="px-4 py-8 text-sm text-muted-foreground">
+                        <td colSpan={4} className="px-4 py-6 text-sm text-muted-foreground">
                           No completed appointments yet.
                         </td>
                       </tr>
@@ -232,7 +232,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
             </Panel>
           </div>
 
-          <aside className="grid content-start gap-4">
+          <aside className="grid content-start gap-3.5">
             <Panel title="Today schedule" icon={CalendarClock}>
               <div className="mt-4 rounded-[0.9rem] bg-primary/6 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.13em] text-muted-foreground">Shift</p>
@@ -261,7 +261,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
           </aside>
         </TabsContent>
 
-        <TabsContent value="schedule" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <TabsContent value="schedule" className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
           <Panel title="Schedule coverage" icon={CalendarClock}>
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               <MiniMetric label="Today shift" value={staff.shiftLabel} />
@@ -301,7 +301,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
           </Panel>
         </TabsContent>
 
-        <TabsContent value="appointments" className="rounded-[1rem] border border-border/80 bg-white p-5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+        <TabsContent value="appointments" className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-base font-semibold text-foreground">Completed work</h2>
             <Link href="/calendar" className="text-sm font-semibold text-primary">Open calendar</Link>
@@ -317,7 +317,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
               </div>
             ))}
             {staff.recentAppointments.length === 0 ? (
-              <p className="rounded-[0.9rem] border border-dashed border-border/90 px-4 py-8 text-center text-sm text-muted-foreground md:col-span-2 xl:col-span-3">
+              <p className="rounded-[0.9rem] border border-dashed border-border/90 px-4 py-6 text-center text-sm text-muted-foreground md:col-span-2 xl:col-span-3">
                 No completed appointments yet.
               </p>
             ) : null}
@@ -354,7 +354,7 @@ function StaffStat({
   tone?: "default" | "primary";
 }) {
   return (
-    <div className="rounded-[1rem] border border-border/80 bg-white/72 px-4 py-3">
+    <div className="rounded-[0.9rem] border border-border/80 bg-white/72 px-3.5 py-3">
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         {label}
       </p>
@@ -379,7 +379,7 @@ function Panel({
   actionLabel?: string;
 }) {
   return (
-    <section className="surface-card p-5">
+    <section className="surface-card p-4">
       <div className="flex items-center justify-between gap-3">
         <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
           {Icon ? (

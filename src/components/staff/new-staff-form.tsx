@@ -188,10 +188,10 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
   }
 
   return (
-    <form action={handleSubmit} className="space-y-5">
-      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-5 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
+    <form action={handleSubmit} className="space-y-4">
+      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-4 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
         <h2 className="text-base font-semibold text-foreground">Staff profile</h2>
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Name</span>
             <Input name="name" required defaultValue={staff?.name} placeholder="Staff member name" className="h-11 rounded-[0.9rem] bg-white" />
@@ -221,20 +221,20 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
         </div>
       </section>
 
-      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-5 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
+      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-4 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
         <h2 className="text-base font-semibold text-foreground">Operational note</h2>
-        <label className="mt-5 block space-y-2">
+        <label className="mt-4 block space-y-2">
           <span className="text-sm font-semibold text-foreground">Profile note</span>
           <Textarea
             name="profileNote"
             defaultValue={staff?.profileNote}
             placeholder="Working preferences, specialties, or scheduling notes"
-            className="min-h-32 rounded-[0.9rem] bg-white px-3 py-3"
+            className="min-h-24 rounded-[0.9rem] bg-white px-3 py-3"
           />
         </label>
       </section>
 
-      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-5 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
+      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-4 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="inline-flex items-center gap-2 text-base font-semibold text-foreground">
@@ -263,11 +263,11 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
           </button>
         </div>
         {schedule.length === 0 ? (
-          <p className="mt-5 rounded-[0.9rem] border border-border/75 bg-secondary/30 px-4 py-4 text-sm text-muted-foreground">
+          <p className="mt-4 rounded-[0.9rem] border border-border/75 bg-secondary/30 px-4 py-4 text-sm text-muted-foreground">
             No clinic working days are configured for the next seven days.
           </p>
         ) : (
-        <div className="mt-5 overflow-hidden rounded-[0.9rem] border border-border/75">
+        <div className="mt-4 overflow-hidden rounded-[0.9rem] border border-border/75">
           <div className="hidden grid-cols-[minmax(120px,1fr)_110px_110px_110px] bg-secondary/35 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground sm:grid">
             <span>Day</span>
             <span>Start</span>
