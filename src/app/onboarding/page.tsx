@@ -64,7 +64,7 @@ export default async function OnboardingPage() {
         initialState.clinic.accentHex ||
         (typeof metadata.business_brand_hex === "string"
           ? metadata.business_brand_hex
-          : "#9676f7"),
+          : "#0A22FF"),
     },
   };
 

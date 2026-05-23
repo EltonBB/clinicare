@@ -3,9 +3,9 @@ import type { Metadata } from "next";
 import { HomePage } from "@/components/marketing/marketing-site";
 
 export const metadata: Metadata = {
-  title: "Vela | Clinic operating system",
+  title: "Vela | Clinic management workspace",
   description:
-    "Run appointments, patients, staff, payments, reminders, documents, and AI reports from one fast clinic workspace.",
+    "Run appointments, patients, staff, WhatsApp messages, payments, documents, reports, and AI-assisted operational insights from one calm clinic workspace.",
 };
 
 export default function Page() {

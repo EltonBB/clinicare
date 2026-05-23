@@ -81,7 +81,7 @@ export default async function ConfirmEmailPage({
             includeSubtitle={false}
             className="justify-center"
           />
-          <div className="mx-auto flex size-[4.75rem] items-center justify-center rounded-[1.5rem] bg-[linear-gradient(135deg,rgba(150,118,247,0.12),rgba(109,195,213,0.14))]">
+          <div className="mx-auto flex size-[4.75rem] items-center justify-center rounded-[1.5rem] bg-[linear-gradient(135deg,rgba(10,34,255,0.12),rgba(100,182,255,0.14))]">
             <Mail className="size-7 text-primary" />
           </div>
           <div className="space-y-3">
@@ -115,7 +115,7 @@ export default async function ConfirmEmailPage({
           ) : null}
 
           {sent && !already ? (
-            <div className="rounded-[1rem] border border-border/75 bg-[linear-gradient(135deg,rgba(150,118,247,0.06),rgba(109,195,213,0.06))] px-4 py-4 text-sm text-muted-foreground">
+            <div className="rounded-[1rem] border border-border/75 bg-[linear-gradient(135deg,rgba(10,34,255,0.06),rgba(100,182,255,0.06))] px-4 py-4 text-sm text-muted-foreground">
               Once the email is confirmed, this page will redirect you to login automatically.
             </div>
           ) : null}

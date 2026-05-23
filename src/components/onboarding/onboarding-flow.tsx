@@ -162,7 +162,7 @@ function getStepError(state: OnboardingState) {
         state.clinic.accentColor === "custom" &&
         !normalizeBrandHexColor(state.clinic.accentHex)
       ) {
-        return "Enter a valid brand HEX color, for example #9676F7.";
+        return "Enter a valid brand HEX color, for example #0A22FF.";
       }
       return null;
     case 4:
@@ -720,7 +720,7 @@ export function OnboardingFlow({
                       },
                     }))
                   }
-                  placeholder="#9676F7"
+                  placeholder="#0A22FF"
                   className="mt-3 h-10 rounded-[0.75rem] bg-white/88 font-mono text-xs uppercase tracking-[0.08em]"
                 />
               </div>

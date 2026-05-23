@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Checkout | Vela",
-  description: "Review your selected Vela plan before secure payment.",
+  description: "Review your selected Vela plan and activation options.",
 };
 
 type CheckoutPageProps = {
@@ -83,9 +83,9 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
               </p>
 
               <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                <TrustCard icon={ShieldCheck} title="Secure billing" copy="Payment provider integration ready." />
-                <TrustCard icon={CalendarDays} title="Monthly plan" copy="Start with predictable billing." />
-                <TrustCard icon={MessageCircle} title="Clinic support" copy="Help available during setup." />
+                <TrustCard icon={ShieldCheck} title="Plan review" copy="Confirm the plan that fits your clinic." />
+                <TrustCard icon={CalendarDays} title="Monthly plan" copy="Start with predictable monthly pricing." />
+                <TrustCard icon={MessageCircle} title="Setup support" copy="We can help activate the right workspace plan." />
               </div>
             </div>
 
@@ -190,14 +190,14 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
                 <button
                   type="button"
                   disabled
-                  className="mt-7 inline-flex h-12 w-full cursor-not-allowed items-center justify-center gap-2 rounded-[0.85rem] bg-primary/65 px-5 text-sm font-bold text-white shadow-[0_18px_36px_rgba(150,118,247,0.18)]"
-                  title="Paddle checkout will be connected here next."
+                  className="mt-7 inline-flex h-12 w-full cursor-not-allowed items-center justify-center gap-2 rounded-[0.85rem] bg-primary/65 px-5 text-sm font-bold text-white shadow-[0_18px_36px_rgba(10,34,255,0.18)]"
+                  title="Online card checkout is being prepared."
                 >
                   {planState.primaryActionLabel}
                   <LockKeyhole className="size-4" />
                 </button>
                 <p className="mt-3 text-center text-xs font-semibold text-muted-foreground">
-                  Payment connection pending. This button is reserved for Paddle checkout.
+                  Online card checkout is being prepared. Plan activation is currently handled during setup.
                 </p>
 
                 <div className="mt-6 rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_12px_30px_rgba(20,21,47,0.035)]">
@@ -206,7 +206,7 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
                     <div>
                       <p className="text-sm font-bold text-[var(--brand-ink)]">What happens next</p>
                       <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                        When Paddle is connected, this page will pass the account, workspace, selected plan, and checkout type so Paddle can handle the right purchase or plan-change flow.
+                        Contact us and we will help activate this plan for your workspace. The selected plan and account context are already reflected in this review.
                       </p>
                     </div>
                   </div>
@@ -272,9 +272,9 @@ function PlanOption({
     <Link
       href={`/checkout?plan=${plan.key}`}
       className={cn(
-        "group rounded-[1.1rem] border bg-white p-5 transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-[0_20px_54px_rgba(150,118,247,0.12)]",
+        "group rounded-[1.1rem] border bg-white p-5 transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-[0_20px_54px_rgba(10,34,255,0.12)]",
         selected
-          ? "border-primary/70 shadow-[0_18px_54px_rgba(150,118,247,0.14)]"
+          ? "border-primary/70 shadow-[0_18px_54px_rgba(10,34,255,0.14)]"
           : "border-border/80 shadow-[0_14px_40px_rgba(20,21,47,0.045)]"
       )}
       aria-current={selected ? "page" : undefined}

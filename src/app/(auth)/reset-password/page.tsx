@@ -41,7 +41,7 @@ export default async function ResetPasswordPage({
       </CardHeader>
       <CardContent className="space-y-9 px-8 pb-0 sm:px-10">
         <ResetPasswordForm />
-        <div className="-mx-8 border-t border-border/70 bg-[linear-gradient(135deg,rgba(150,118,247,0.06),rgba(109,195,213,0.06))] px-8 py-6 text-center text-sm text-muted-foreground sm:-mx-10 sm:px-10">
+        <div className="-mx-8 border-t border-border/70 bg-[linear-gradient(135deg,rgba(10,34,255,0.06),rgba(100,182,255,0.06))] px-8 py-6 text-center text-sm text-muted-foreground sm:-mx-10 sm:px-10">
           Need a new recovery link?{" "}
           <Link href="/forgot-password" className="font-semibold text-primary">
             Request again

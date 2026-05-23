@@ -25,13 +25,13 @@ export function BrandMark({
       )}
       aria-label="Vela home"
     >
-      <span className="vela-icon-tile size-10 p-2.5">
+      <span className="vela-brand-icon-tile">
         <Image
           src="/brand/vela-icon.svg"
           alt=""
           width={28}
           height={28}
-          className="size-full object-contain"
+          className="object-contain"
           aria-hidden="true"
         />
       </span>
