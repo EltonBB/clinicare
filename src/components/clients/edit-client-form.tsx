@@ -111,7 +111,7 @@ export function EditClientForm({ client }: EditClientFormProps) {
 
   return (
     <form action={handleSubmit} className="space-y-4">
-      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-4 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
+      <section className="surface-card p-4">
         <h2 className="text-base font-semibold text-foreground">Basic information</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <Field name="name" label="Full name" defaultValue={client.name} required />
@@ -135,7 +135,7 @@ export function EditClientForm({ client }: EditClientFormProps) {
         </div>
       </section>
 
-      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-4 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
+      <section className="surface-card p-4">
         <h2 className="text-base font-semibold text-foreground">Clinic information</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <Field name="clinicType" label="Clinic type" defaultValue={clean(client.clinicType)} />
@@ -151,7 +151,7 @@ export function EditClientForm({ client }: EditClientFormProps) {
         </div>
       </section>
 
-      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-4 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
+      <section className="surface-card p-4">
         <h2 className="text-base font-semibold text-foreground">Medical information</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <TextField name="medicalHistory" label="Medical history" defaultValue={clean(client.medical.medicalHistory)} className="sm:col-span-2" />

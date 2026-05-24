@@ -453,7 +453,7 @@ export function InboxWorkspace({
                   icon={Search}
                   title="No conversations found"
                   description="Try a different search term or wait for the next client message."
-                  className="py-5"
+                  compact
                 />
               </div>
             ) : null}

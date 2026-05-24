@@ -28,6 +28,7 @@ type WorkspaceKpiCardProps = {
   helper?: ReactNode;
   tone?: "default" | "good" | "warning" | "danger";
   className?: string;
+  compact?: boolean;
 };
 
 type WorkspaceCardProps = {
@@ -56,6 +57,7 @@ type WorkspaceTableProps = {
   children: ReactNode;
   className?: string;
   headerClassName?: string;
+  bodyClassName?: string;
 };
 
 type WorkspaceEmptyStateProps = {
@@ -66,6 +68,7 @@ type WorkspaceEmptyStateProps = {
   actionLabel?: string;
   action?: ReactNode;
   className?: string;
+  compact?: boolean;
 };
 
 const pageSizes = {
@@ -172,9 +175,16 @@ export function WorkspaceKpiCard({
   helper,
   tone = "default",
   className,
+  compact = false,
 }: WorkspaceKpiCardProps) {
   return (
-    <section className={cn("surface-card flex h-full min-h-[116px] flex-col justify-between p-4", className)}>
+    <section
+      className={cn(
+        "surface-card flex h-full flex-col justify-between",
+        compact ? "min-h-[96px] p-3.5" : "min-h-[116px] p-4",
+        className
+      )}
+    >
       <div className="flex items-start gap-3">
         {Icon ? (
           <span className="vela-icon-tile size-10 rounded-[0.85rem]">
@@ -185,13 +195,18 @@ export function WorkspaceKpiCard({
           <p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
             {label}
           </p>
-          <p className="mt-1.5 text-2xl font-semibold leading-none tracking-tight text-foreground">
+          <p
+            className={cn(
+              "mt-1.5 font-semibold leading-none tracking-tight text-foreground",
+              compact ? "text-xl" : "text-2xl"
+            )}
+          >
             {value}
           </p>
         </div>
       </div>
       {helper ? (
-        <p className={cn("mt-3 text-xs font-medium", toneStyles[tone])}>{helper}</p>
+        <p className={cn(compact ? "mt-2 text-[11px]" : "mt-3 text-xs", "font-medium", toneStyles[tone])}>{helper}</p>
       ) : null}
     </section>
   );
@@ -249,6 +264,7 @@ export function WorkspaceTable({
   children,
   className,
   headerClassName,
+  bodyClassName,
 }: WorkspaceTableProps) {
   return (
     <section className={cn("overflow-hidden rounded-[1rem] border border-border/80 bg-white/94 shadow-[0_14px_32px_rgba(20,32,51,0.04)]", className)}>
@@ -262,7 +278,7 @@ export function WorkspaceTable({
           {headers}
         </div>
       ) : null}
-      <div className="divide-y divide-border/70">{children}</div>
+      <div className={cn("divide-y divide-border/70", bodyClassName)}>{children}</div>
     </section>
   );
 }
@@ -275,25 +291,37 @@ export function WorkspaceEmptyState({
   actionLabel,
   action,
   className,
+  compact = false,
 }: WorkspaceEmptyStateProps) {
   return (
-    <div className={cn("rounded-[0.95rem] border border-dashed border-border/90 bg-white/62 px-4 py-5 text-center", className)}>
+    <div
+      className={cn(
+        "rounded-[0.95rem] border border-dashed border-border/90 bg-white/62 px-4 text-center",
+        compact ? "py-3.5" : "py-5",
+        className
+      )}
+    >
       {Icon ? (
-        <span className="mx-auto flex size-10 items-center justify-center rounded-[0.85rem] border border-border/80 bg-white text-primary">
-          <Icon className="size-4" />
+        <span
+          className={cn(
+            "mx-auto flex items-center justify-center rounded-[0.85rem] border border-border/80 bg-white text-primary",
+            compact ? "size-8" : "size-10"
+          )}
+        >
+          <Icon className={cn(compact ? "size-3.5" : "size-4")} />
         </span>
       ) : null}
-      <p className={cn("text-sm font-semibold text-foreground", Icon && "mt-3")}>{title}</p>
+      <p className={cn("text-sm font-semibold text-foreground", Icon && (compact ? "mt-2" : "mt-3"))}>{title}</p>
       {description ? (
-        <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-muted-foreground">
+        <p className={cn("mx-auto mt-1 max-w-md text-sm text-muted-foreground", compact ? "leading-5" : "leading-6")}>
           {description}
         </p>
       ) : null}
-      {action ? <div className="mt-4">{action}</div> : null}
+      {action ? <div className={cn(compact ? "mt-3" : "mt-4")}>{action}</div> : null}
       {actionHref && actionLabel ? (
         <Link
           href={actionHref}
-          className={cn(buttonVariants({ size: "sm" }), "mt-4 rounded-[0.75rem]")}
+          className={cn(buttonVariants({ size: "sm" }), compact ? "mt-3" : "mt-4", "rounded-[0.75rem]")}
         >
           {actionLabel}
         </Link>

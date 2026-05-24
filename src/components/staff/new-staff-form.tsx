@@ -189,7 +189,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
 
   return (
     <form action={handleSubmit} className="space-y-4">
-      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-4 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
+      <section className="surface-card p-4">
         <h2 className="text-base font-semibold text-foreground">Staff profile</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="space-y-2">
@@ -221,7 +221,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
         </div>
       </section>
 
-      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-4 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
+      <section className="surface-card p-4">
         <h2 className="text-base font-semibold text-foreground">Operational note</h2>
         <label className="mt-4 block space-y-2">
           <span className="text-sm font-semibold text-foreground">Profile note</span>
@@ -234,7 +234,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
         </label>
       </section>
 
-      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-4 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
+      <section className="surface-card p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="inline-flex items-center gap-2 text-base font-semibold text-foreground">

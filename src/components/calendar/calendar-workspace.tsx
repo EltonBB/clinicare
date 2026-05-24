@@ -328,6 +328,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
             description="Appointments need a client record so reminders, inbox threads, and visit history stay attached to the right person."
             actionHref="/clients/new?next=calendar"
             actionLabel="Add first client"
+            compact
           />
         </section>
       ) : view === "month" ? (
@@ -517,7 +518,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
                   icon={CalendarX2}
                   title="No bookings for this day"
                   description="Add a booking or blocked time to fill the selected day."
-                  className="py-5"
+                  compact
                 />
               ) : null}
             </div>
@@ -548,7 +549,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
       ) : null}
         </div>
 
-        <WorkspaceRail className="section-reveal-delayed">
+        <WorkspaceRail className="section-reveal-delayed gap-3">
           <CalendarRailPanel title="Upcoming appointments" actionHref="/calendar" actionLabel="View all">
             <div className="space-y-4">
               {upcomingAppointments.length > 0 ? (

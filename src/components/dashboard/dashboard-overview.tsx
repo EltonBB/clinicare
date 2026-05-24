@@ -335,6 +335,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
         <div className="space-y-4">
           {!hasVisibleWidgets ? (
             <WorkspaceEmptyState
+              compact
               icon={Settings2}
               title="No dashboard widgets selected"
               description="Open Customize dashboard and choose the sections this workspace should show."
@@ -383,7 +384,8 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                   description="Create one to start filling the clinic day."
                   actionHref="/calendar/new"
                   actionLabel="New appointment"
-                  className="border-0 bg-transparent py-5"
+                  compact
+                  className="border-0 bg-transparent"
                 />
               )}
             </div>
@@ -417,7 +419,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                   icon={Clock3}
                   title="No upcoming appointment"
                   description="The next appointment will appear here when it is booked."
-                  className="py-5"
+                  compact
                 />
               )}
             </WorkspaceCard>
@@ -445,7 +447,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                     icon={UsersRound}
                     title="No staff activity scheduled"
                     description="Assigned staff activity will appear here."
-                    className="py-5"
+                    compact
                   />
                 )}
               </div>
@@ -477,7 +479,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                     icon={UsersRound}
                     title="No recent client activity"
                     description="Client record updates will appear here."
-                    className="py-5"
+                    compact
                   />
                 ) : null}
               </div>
@@ -504,8 +506,8 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           ) : null}
         </div>
 
-        <WorkspaceRail>
-          <WorkspaceCard title="Quick actions">
+        <WorkspaceRail className="gap-3">
+          <WorkspaceCard title="Quick actions" compact>
             <div className="grid gap-2">
               {actionWidgets.map((action) => (
                 <Link
@@ -533,14 +535,14 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
             </div>
           </WorkspaceCard>
 
-          <WorkspaceCard title="Today at a glance">
+          <WorkspaceCard title="Today at a glance" compact>
             <div className="space-y-3 text-sm">
               <GlanceRow label="Appointments" value={view.appointments.length} />
               <GlanceRow label="Completed" value={completedToday} tone="good" />
               <GlanceRow label="Cancelled" value={cancelledToday} tone="danger" />
               <GlanceRow label="Upcoming" value={upcomingToday.length} />
             </div>
-            <Link href="/calendar" className="mt-5 inline-flex text-sm font-semibold text-primary">
+            <Link href="/calendar" className="mt-4 inline-flex text-sm font-semibold text-primary">
               View today&apos;s calendar
             </Link>
           </WorkspaceCard>

@@ -206,7 +206,7 @@ export function NewAppointmentForm({
 
   return (
     <form action={handleSubmit} className="space-y-4">
-      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-4 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
+      <section className="surface-card p-4">
         <h2 className="text-base font-semibold text-foreground">Client</h2>
         <label className="mt-4 block space-y-2">
           <span className="text-sm font-semibold text-foreground">Client</span>
@@ -225,7 +225,7 @@ export function NewAppointmentForm({
         </label>
       </section>
 
-      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-4 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
+      <section className="surface-card p-4">
         <h2 className="text-base font-semibold text-foreground">Service and schedule</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="space-y-2">
@@ -325,7 +325,7 @@ export function NewAppointmentForm({
       </section>
 
       {!isEditing ? (
-      <section className="rounded-[1.15rem] border border-border/80 bg-white/86 p-4 shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
+      <section className="surface-card p-4">
         <h2 className="text-base font-semibold text-foreground">Payment</h2>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">
           Add the expected or collected payment for this booked service. Leave amount blank if payment will be handled later.

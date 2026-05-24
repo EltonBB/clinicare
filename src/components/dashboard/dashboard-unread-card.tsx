@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight, MessageSquareMore } from "lucide-react";
 
 import { refreshWorkspaceNotificationsAction } from "@/app/(workspace)/actions";
+import { WorkspaceCard } from "@/components/workspace/workspace-layout";
 import type { DashboardMessageSummary } from "@/lib/dashboard";
 
 type DashboardUnreadCardProps = {
@@ -46,21 +47,21 @@ export function DashboardUnreadCard({
   }, []);
 
   return (
-    <section className="overflow-hidden rounded-[1.1rem] border border-border/80 bg-white/88 shadow-[0_14px_30px_rgba(20,32,51,0.04)]">
-      <div className="flex items-center justify-between gap-4 px-4 py-4">
+    <WorkspaceCard compact>
+      <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <span className="flex size-10 items-center justify-center rounded-[0.9rem] bg-primary/10 text-primary">
+          <span className="flex size-9 items-center justify-center rounded-[0.85rem] border border-border/80 bg-white text-primary">
             <MessageSquareMore className="size-4" />
           </span>
           <p className="text-sm font-semibold text-foreground">
             {initialSummary.title}
           </p>
         </div>
-        <p className="text-3xl font-semibold tracking-tight text-primary">
+        <p className="text-2xl font-semibold tracking-tight text-primary">
           {unreadCount}
         </p>
       </div>
-      <div className="border-t border-border/70 px-4 py-3">
+      <div className="mt-3 border-t border-border/70 pt-3">
         <Link
           href="/inbox"
           className="inline-flex w-full items-center justify-between rounded-[0.85rem] px-1 py-1 text-sm font-medium text-primary transition-transform duration-200 hover:translate-x-0.5"
@@ -69,6 +70,6 @@ export function DashboardUnreadCard({
           <ArrowRight className="size-4" />
         </Link>
       </div>
-    </section>
+    </WorkspaceCard>
   );
 }

@@ -4,8 +4,6 @@ import { startTransition, useMemo, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Activity,
-  AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
   Brain,
@@ -24,6 +22,8 @@ import {
 import { refreshAnalyticsInsightsAction } from "@/app/(workspace)/reports/actions";
 import {
   WorkspaceHeader,
+  WorkspaceCard,
+  WorkspaceEmptyState,
   WorkspaceKpiCard,
   WorkspaceKpiGrid,
   WorkspaceMainGrid,
@@ -131,6 +131,9 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
   const [fromInput, setFromInput] = useState(period.periodStart.slice(0, 10));
   const [toInput, setToInput] = useState(period.periodEnd.slice(0, 10));
   const chartValues = period.chart.points.map((point) => point.value);
+  const appointmentMetric = getMetric(period.metrics, "Appointments");
+  const appointmentCount = Number(appointmentMetric?.value.replace(/,/g, "") ?? 0);
+  const hasChartData = appointmentCount > 0;
   const linePath = useMemo(() => buildLinePath(chartValues, 620, 190), [chartValues]);
   const completionMetric = getMetric(period.metrics, "Completion rate");
   const completionValue = completionMetric?.value.endsWith("%")
@@ -142,7 +145,6 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
   );
   const topCause = period.snapshot.rootCauses?.[0];
   const primaryAction = period.snapshot.actions?.[0];
-  const primaryOpportunity = period.snapshot.opportunities?.[0];
   const busiestDays = period.diagnostics.demandWindows.busiestDays;
   const quietestDays = period.diagnostics.demandWindows.quietestDays.filter((item) => item.count > 0);
   const busiestHours = period.diagnostics.demandWindows.busiestHours;
@@ -155,9 +157,10 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
     period.diagnostics.statusMix.find((item) => item.label === "Completed") ??
     period.diagnostics.statusMix[0];
   const statusTotal = period.diagnostics.statusMix.reduce((sum, item) => sum + item.count, 0);
+  const hasStatusData = statusTotal > 0;
   const clientActiveShare = clientTotal > 0 ? (period.diagnostics.clientMix.active / clientTotal) * 100 : 0;
   const metricCards = [
-    { icon: CalendarDays, metric: getMetric(period.metrics, "Appointments") },
+    { icon: CalendarDays, metric: appointmentMetric },
     { icon: CheckCircle2, metric: completionMetric },
     { icon: Clock3, metric: getMetric(period.metrics, "Avg visit length") },
     {
@@ -323,7 +326,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                   {metric.delta}
                 </span>
               }
-              className="min-h-[108px]"
+              compact
             />
           ))}
         </WorkspaceKpiGrid>
@@ -331,10 +334,9 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
       <WorkspaceMainGrid railWidth="md" className="gap-3.5">
         <div className="grid gap-3.5">
           <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1.9fr)_minmax(260px,0.9fr)]">
-            <section className="surface-card p-3.5">
+            <WorkspaceCard compact title="Performance overview" action={<span className="rounded-[0.55rem] border border-border bg-white px-3 py-2 text-xs font-medium text-muted-foreground">{period.comparisonLabel}</span>}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-base font-semibold text-foreground">Performance overview</h2>
                   <div className="mt-3 flex flex-wrap gap-5 text-xs font-medium text-muted-foreground">
                     <span className="inline-flex items-center gap-2">
                       <span className="h-0.5 w-4 rounded-full bg-primary" />
@@ -346,48 +348,53 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                     </span>
                   </div>
                 </div>
-                <span className="rounded-[0.55rem] border border-border bg-white px-3 py-2 text-xs font-medium text-muted-foreground">
-                  {period.comparisonLabel}
-                </span>
               </div>
+              {hasChartData ? (
+                <svg viewBox="0 0 620 250" className="mt-2 h-[176px] w-full" role="img" aria-label={period.chart.title}>
+                  {[0, 1, 2, 3].map((line) => (
+                    <line
+                      key={line}
+                      x1="0"
+                      x2="620"
+                      y1={25 + line * 50}
+                      y2={25 + line * 50}
+                      stroke="rgba(20,21,47,0.08)"
+                      strokeWidth="1"
+                    />
+                  ))}
+                  <path d={`${linePath} L 620 190 L 0 190 Z`} fill="rgba(10,34,255,0.10)" transform="translate(0 18)" />
+                  <path d={linePath} fill="none" stroke="var(--primary)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" transform="translate(0 18)" />
+                  <path d={completedLinePath} fill="none" stroke="var(--primary)" strokeDasharray="7 7" strokeWidth="2" strokeLinecap="round" transform="translate(0 18)" />
+                  {period.chart.points.map((point, index) => {
+                    const max = Math.max(...chartValues, 1);
+                    const min = Math.min(...chartValues, 0);
+                    const range = Math.max(max - min, 1);
+                    const x = (index / Math.max(period.chart.points.length - 1, 1)) * 620;
+                    const y = 208 - ((point.value - min) / range) * 190;
 
-              <svg viewBox="0 0 620 250" className="mt-2 h-[190px] w-full" role="img" aria-label={period.chart.title}>
-                {[0, 1, 2, 3].map((line) => (
-                  <line
-                    key={line}
-                    x1="0"
-                    x2="620"
-                    y1={25 + line * 50}
-                    y2={25 + line * 50}
-                    stroke="rgba(20,21,47,0.08)"
-                    strokeWidth="1"
-                  />
-                ))}
-                <path d={`${linePath} L 620 190 L 0 190 Z`} fill="rgba(10,34,255,0.10)" transform="translate(0 18)" />
-                <path d={linePath} fill="none" stroke="var(--primary)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" transform="translate(0 18)" />
-                <path d={completedLinePath} fill="none" stroke="var(--primary)" strokeDasharray="7 7" strokeWidth="2" strokeLinecap="round" transform="translate(0 18)" />
-                {period.chart.points.map((point, index) => {
-                  const max = Math.max(...chartValues, 1);
-                  const min = Math.min(...chartValues, 0);
-                  const range = Math.max(max - min, 1);
-                  const x = (index / Math.max(period.chart.points.length - 1, 1)) * 620;
-                  const y = 208 - ((point.value - min) / range) * 190;
-
-                  return (
-                    <g key={`${point.label}-${index}`}>
-                      <circle cx={x} cy={y} r="4.5" fill="var(--primary)" />
-                      <text
-                        x={x}
-                        y="238"
-                        textAnchor={index === 0 ? "start" : index === period.chart.points.length - 1 ? "end" : "middle"}
-                        className="fill-muted-foreground text-[11px]"
-                      >
-                        {point.label}
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
+                    return (
+                      <g key={`${point.label}-${index}`}>
+                        <circle cx={x} cy={y} r="4.5" fill="var(--primary)" />
+                        <text
+                          x={x}
+                          y="238"
+                          textAnchor={index === 0 ? "start" : index === period.chart.points.length - 1 ? "end" : "middle"}
+                          className="fill-muted-foreground text-[11px]"
+                        >
+                          {point.label}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              ) : (
+                <WorkspaceEmptyState
+                  icon={CalendarDays}
+                  title="No appointment trend yet"
+                  description="There are no booked appointments in this report period, so trend lines and completion comparisons are hidden."
+                  className="mt-3 py-8"
+                />
+              )}
 
               <div className="grid border-t border-border/70 pt-2.5 text-sm sm:grid-cols-4">
                 <BreakdownCell label="Total appointments" value={getMetric(period.metrics, "Appointments")?.value ?? "-"} />
@@ -398,74 +405,92 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                   value={String(period.diagnostics.statusMix.find((item) => item.label === "Pending")?.count ?? 0)}
                 />
               </div>
-            </section>
+            </WorkspaceCard>
 
-            <section className="surface-card p-3.5">
-              <h2 className="text-base font-semibold text-foreground">Client status mix</h2>
-              <div className="mt-4 grid items-center gap-4 sm:grid-cols-[auto_minmax(0,1fr)]">
-                <div
-                  className="mx-auto grid size-28 place-items-center rounded-full"
-                  style={{
-                    background: `conic-gradient(var(--primary) 0 ${clientActiveShare}%, #f59e0b ${clientActiveShare}% ${clientActiveShare + (clientTotal ? (period.diagnostics.clientMix.atRisk / clientTotal) * 100 : 0)}%, #cbd5e1 0 100%)`,
-                  }}
-                >
+            <WorkspaceCard compact title="Client status mix">
+              {clientTotal > 0 ? (
+                <>
+                  <div className="mt-4 grid items-center gap-4 sm:grid-cols-[auto_minmax(0,1fr)]">
+                    <div
+                      className="mx-auto grid size-28 place-items-center rounded-full"
+                      style={{
+                        background: `conic-gradient(var(--primary) 0 ${clientActiveShare}%, #f59e0b ${clientActiveShare}% ${clientActiveShare + (clientTotal ? (period.diagnostics.clientMix.atRisk / clientTotal) * 100 : 0)}%, #cbd5e1 0 100%)`,
+                      }}
+                    >
                     <div className="grid size-16 place-items-center rounded-full bg-white text-center shadow-inner">
-                    <div>
-                      <p className="text-xl font-semibold text-foreground">{clientTotal}</p>
-                      <p className="text-xs text-muted-foreground">Total</p>
+                      <div>
+                        <p className="text-xl font-semibold text-foreground">{clientTotal}</p>
+                        <p className="text-xs text-muted-foreground">Total</p>
+                      </div>
                     </div>
                   </div>
+                  <div className="space-y-2.5 text-sm">
+                    <LegendRow color="bg-primary" label="Active" value={`${period.diagnostics.clientMix.active} (${clientActiveShare.toFixed(0)}%)`} />
+                    <LegendRow color="bg-amber-500" label="At risk" value={String(period.diagnostics.clientMix.atRisk)} />
+                    <LegendRow color="bg-slate-300" label="Inactive" value={String(period.diagnostics.clientMix.inactive)} />
+                    <LegendRow color="bg-slate-400" label="Archived" value={String(period.diagnostics.clientMix.archived)} />
+                  </div>
                 </div>
-                <div className="space-y-2.5 text-sm">
-                  <LegendRow color="bg-primary" label="Active" value={`${period.diagnostics.clientMix.active} (${clientActiveShare.toFixed(0)}%)`} />
-                  <LegendRow color="bg-amber-500" label="At risk" value={String(period.diagnostics.clientMix.atRisk)} />
-                  <LegendRow color="bg-slate-300" label="Inactive" value={String(period.diagnostics.clientMix.inactive)} />
-                  <LegendRow color="bg-slate-400" label="Archived" value={String(period.diagnostics.clientMix.archived)} />
+                <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+                  <SimpleMetric label="Total records" value={clientTotal.toString()} />
+                  <SimpleMetric label="Active share" value={`${clientActiveShare.toFixed(0)}%`} />
                 </div>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
-                <SimpleMetric label="Total records" value={clientTotal.toString()} />
-                <SimpleMetric label="Active share" value={`${clientActiveShare.toFixed(0)}%`} />
-              </div>
-            </section>
+              </>
+              ) : (
+                <WorkspaceEmptyState
+                  compact
+                  icon={UsersRound}
+                  title="No client mix yet"
+                  description="Client status mix appears after client records are created."
+                />
+              )}
+            </WorkspaceCard>
           </div>
 
-          <div className="grid items-start gap-3.5 xl:grid-cols-3">
-            <section className="surface-card p-3.5">
-              <h2 className="text-base font-semibold text-foreground">Operational metrics</h2>
-              <div className="mt-3 space-y-2.5">
-                <SimpleMetric label="Repeat-visit rate" value={getMetric(period.metrics, "Repeat-visit rate")?.value ?? "-"} />
-                <SimpleMetric label="Lost-slot rate" value={getMetric(period.metrics, "Lost-slot rate")?.value ?? "-"} />
-                <SimpleMetric label="Follow-up coverage" value={getMetric(period.metrics, "Follow-up coverage")?.value ?? "-"} />
-                <SimpleMetric label="Same-day bookings" value={String(period.diagnostics.bookingBehavior.sameDayBookings)} />
-                <SimpleMetric label="Unassigned visits" value={String(period.diagnostics.bookingBehavior.unassignedAppointments)} />
-              </div>
-            </section>
+          <div className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+            <div className="grid gap-3.5">
+              <WorkspaceCard compact title="Operational metrics">
+                <div className="mt-3 space-y-2.5">
+                  <SimpleMetric label="Repeat-visit rate" value={getMetric(period.metrics, "Repeat-visit rate")?.value ?? "-"} />
+                  <SimpleMetric label="Lost-slot rate" value={getMetric(period.metrics, "Lost-slot rate")?.value ?? "-"} />
+                  <SimpleMetric label="Follow-up coverage" value={getMetric(period.metrics, "Follow-up coverage")?.value ?? "-"} />
+                  <SimpleMetric label="Same-day bookings" value={String(period.diagnostics.bookingBehavior.sameDayBookings)} />
+                  <SimpleMetric label="Unassigned visits" value={String(period.diagnostics.bookingBehavior.unassignedAppointments)} />
+                </div>
+              </WorkspaceCard>
 
-            <section className="surface-card p-3.5">
-              <h2 className="text-base font-semibold text-foreground">Appointment status</h2>
-              <div className="mt-4 grid items-center gap-4 sm:grid-cols-[auto_minmax(0,1fr)]">
-                <div
-                  className="mx-auto grid size-28 place-items-center rounded-full"
-                  style={{ background: buildStatusConic(period.diagnostics.statusMix) }}
-                >
-                  <div className="grid size-16 place-items-center rounded-full bg-white text-center shadow-inner">
-                    <div>
-                      <p className="text-xl font-semibold text-foreground">{statusTotal}</p>
-                      <p className="text-xs text-muted-foreground">Total</p>
+              <WorkspaceCard compact title="Appointment status">
+                {hasStatusData ? (
+                <div className="mt-3 grid items-center gap-4 sm:grid-cols-[auto_minmax(0,1fr)]">
+                  <div
+                    className="mx-auto grid size-24 place-items-center rounded-full"
+                    style={{ background: buildStatusConic(period.diagnostics.statusMix) }}
+                  >
+                    <div className="grid size-14 place-items-center rounded-full bg-white text-center shadow-inner">
+                      <div>
+                        <p className="text-lg font-semibold text-foreground">{statusTotal}</p>
+                        <p className="text-[10px] text-muted-foreground">Total</p>
+                      </div>
                     </div>
                   </div>
+                  <div className="space-y-2 text-sm">
+                    {period.diagnostics.statusMix.map((item) => (
+                      <LegendRow key={item.label} color={item.label === "Completed" ? "bg-primary" : item.label === "Cancelled" ? "bg-destructive" : item.label === "Pending" ? "bg-amber-500" : "bg-primary/60"} label={item.label} value={`${item.count} (${item.share})`} />
+                    ))}
+                  </div>
                 </div>
-                <div className="space-y-2.5 text-sm">
-                  {period.diagnostics.statusMix.map((item) => (
-                    <LegendRow key={item.label} color={item.label === "Completed" ? "bg-primary" : item.label === "Cancelled" ? "bg-destructive" : item.label === "Pending" ? "bg-amber-500" : "bg-primary/60"} label={item.label} value={`${item.count} (${item.share})`} />
-                  ))}
-                </div>
-              </div>
-            </section>
+                ) : (
+                  <WorkspaceEmptyState
+                    compact
+                    icon={CheckCircle2}
+                    title="No status mix yet"
+                    description="Appointment statuses will appear after visits are booked."
+                  />
+                )}
+              </WorkspaceCard>
+            </div>
 
-            <section className="surface-card p-3.5">
-              <h2 className="text-base font-semibold text-foreground">Detailed breakdown</h2>
+            <WorkspaceCard compact title="Detailed breakdown">
               <div className="mt-3 space-y-2.5">
                 {period.metrics.slice(0, 6).map((metric) => (
                   <div key={metric.label} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 text-sm">
@@ -478,21 +503,19 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                   </div>
                 ))}
               </div>
-            </section>
+            </WorkspaceCard>
           </div>
 
           <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <section className="surface-card p-3.5">
-              <h2 className="text-base font-semibold text-foreground">Demand windows</h2>
+            <WorkspaceCard compact title="Demand windows">
               <div className="mt-3 grid gap-4 sm:grid-cols-3">
                 <DemandList title="Busiest days" items={busiestDays} />
                 <DemandList title="Quietest days" items={quietestDays} />
                 <DemandList title="Busiest hours" items={busiestHours} />
               </div>
-            </section>
+            </WorkspaceCard>
 
-            <section className="rounded-[1rem] border border-border/80 bg-white p-3.5 shadow-[0_12px_28px_rgba(20,32,51,0.035)]">
-              <h2 className="text-base font-semibold text-foreground">Staff load</h2>
+            <WorkspaceCard compact title="Staff load">
               <div className="mt-3 space-y-3">
                 {period.diagnostics.staffLoad.length > 0 ? (
                   period.diagnostics.staffLoad.slice(0, 4).map((staff) => (
@@ -513,15 +536,20 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-muted-foreground">No active staff load yet.</p>
+                  <WorkspaceEmptyState
+                    compact
+                    icon={UsersRound}
+                    title="No active staff load"
+                    description="Staff utilization appears once appointments are assigned."
+                  />
                 )}
               </div>
-            </section>
+            </WorkspaceCard>
           </div>
         </div>
 
-        <WorkspaceRail>
-        <aside className={cn("rounded-[1rem] border p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]", snapshotToneStyles[period.snapshot.tone])}>
+        <WorkspaceRail className="gap-3">
+        <aside className={cn("rounded-[1rem] border p-3.5 shadow-[0_12px_28px_rgba(20,32,51,0.035)]", snapshotToneStyles[period.snapshot.tone])}>
           <div className="flex items-start justify-between gap-4">
             <h2 className="inline-flex items-center gap-2 text-base font-semibold text-foreground">
               <Sparkles className="size-4 text-primary" />
@@ -533,13 +561,10 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
             </span>
           </div>
 
-          <div className="mt-4 space-y-2.5">
-            <InsightCard title="Snapshot" emphasis>
-              <h3 className="text-xl font-semibold tracking-tight text-foreground">
-                {period.label} readout
-              </h3>
+          <div className="mt-3 space-y-2.5">
+            <InsightCard title={`${period.label} readout`} emphasis>
               <p className="mt-3 text-sm font-semibold text-foreground">{period.snapshot.headline}</p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">{period.snapshot.summary}</p>
+              <p className="mt-2 line-clamp-4 text-sm leading-6 text-muted-foreground">{period.snapshot.summary}</p>
             </InsightCard>
 
             {topCause ? (
@@ -553,21 +578,14 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               </InsightCard>
             ) : null}
 
-            <InsightIconBlock icon={CheckCircle2} title="What is working" text={period.snapshot.strength} />
-            <InsightIconBlock icon={AlertTriangle} title="What needs attention" text={period.snapshot.watch} />
-
             {primaryAction ? (
               <InsightCard title="Next move" badge={`${primaryAction.priority} priority`}>
                 <p className="text-sm font-semibold text-foreground">{primaryAction.title}</p>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">{primaryAction.detail}</p>
+                <p className="mt-2 line-clamp-3 text-sm leading-6 text-muted-foreground">{primaryAction.detail}</p>
               </InsightCard>
             ) : (
               <InsightIconBlock icon={Target} title="Next move" text={period.snapshot.focus} />
             )}
-
-            {primaryOpportunity ? (
-              <InsightIconBlock icon={Activity} title={primaryOpportunity.title} text={primaryOpportunity.detail} />
-            ) : null}
 
             <div className="pt-2 text-xs text-muted-foreground">
               <div className="flex items-center justify-between gap-3">

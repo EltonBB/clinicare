@@ -150,6 +150,7 @@ export function ClientsWorkspace({
       <WorkspaceMainGrid railWidth="sm">
         <div className="section-reveal space-y-3.5">
           <WorkspaceTable
+            headerClassName="py-2.5"
             headers={
               <div className="hidden grid-cols-[minmax(230px,1.45fr)_130px_minmax(220px,1.15fr)_110px_110px_110px] lg:grid">
                 <span>Name</span>
@@ -169,6 +170,7 @@ export function ClientsWorkspace({
                 description="Clients are the base record for bookings, inbox threads, visit history, documents, and clinical media."
                 actionHref="/clients/new"
                 actionLabel="Add first client"
+                compact
               />
             </div>
           ) : filteredClients.length === 0 ? (
@@ -177,13 +179,14 @@ export function ClientsWorkspace({
                 icon={Search}
                 title="No clients match this view"
                 description="Try a different search term or filter."
+                compact
               />
             </div>
           ) : (
             filteredClients.map((client) => (
               <div
                 key={client.id}
-                className="grid gap-3 px-5 py-3.5 transition-colors duration-200 hover:bg-white/58 lg:grid-cols-[minmax(230px,1.45fr)_130px_minmax(220px,1.15fr)_110px_110px_110px] lg:items-center"
+                  className="grid gap-3 px-5 py-3 transition-colors duration-200 hover:bg-white/58 lg:min-h-[64px] lg:grid-cols-[minmax(230px,1.45fr)_130px_minmax(220px,1.15fr)_110px_110px_110px] lg:items-center"
               >
                 <Link href={`/clients/${client.id}`} className="flex min-w-0 items-center gap-3">
                   <Avatar size="lg">
@@ -232,7 +235,7 @@ export function ClientsWorkspace({
           </WorkspaceTable>
         </div>
         <WorkspaceRail>
-        <WorkspaceCard title="Client segments">
+        <WorkspaceCard compact title="Client segments">
           <div className="mt-4 space-y-3 text-sm">
             <SegmentRow label="Active" value={activeClients.length} tone="primary" />
             <SegmentRow label="At risk" value={atRiskClients.length} tone="danger" />
@@ -241,7 +244,7 @@ export function ClientsWorkspace({
           </div>
         </WorkspaceCard>
 
-        <WorkspaceCard title="Directory health">
+        <WorkspaceCard compact title="Directory health">
           <div className="mt-4 space-y-3 text-sm">
             <SegmentRow label="Average visits" value={clients.length > 0 ? Math.round(totalVisits / clients.length) : 0} />
             <SegmentRow label="With visits" value={clients.filter((client) => client.totalVisits > 0).length} />
@@ -249,7 +252,7 @@ export function ClientsWorkspace({
           </div>
         </WorkspaceCard>
 
-        <WorkspaceCard title="Recently updated">
+        <WorkspaceCard compact title="Recently updated">
           <div className="mt-4 space-y-3">
             {clients.slice(0, 5).map((client) => (
               <Link key={client.id} href={`/clients/${client.id}`} className="flex items-center gap-3 text-sm">
@@ -267,7 +270,7 @@ export function ClientsWorkspace({
                 icon={UsersRound}
                 title="No client records yet"
                 description="Recently updated clients will appear here."
-                className="py-5"
+                compact
               />
             ) : null}
           </div>

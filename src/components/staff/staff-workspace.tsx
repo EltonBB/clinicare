@@ -211,15 +211,13 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
 
           <WorkspaceTable
             className="rounded-none border-0 shadow-none"
-            headerClassName="border-b border-border/80 bg-secondary/25"
+            headerClassName="border-b border-border/80 bg-secondary/25 py-2.5"
             headers={
-              <div className="hidden grid-cols-[minmax(240px,1.45fr)_120px_120px_100px_140px_150px_210px] lg:grid">
+              <div className="hidden grid-cols-[minmax(220px,1.45fr)_150px_120px_130px_170px] lg:grid">
                 <span>Staff member</span>
-                <span>Role</span>
-                <span>Status</span>
+                <span>Role / status</span>
                 <span>Appts today</span>
                 <span>Completion rate</span>
-                <span>Shift</span>
                 <span className="text-right">Actions</span>
               </div>
             }
@@ -232,6 +230,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                 description="Staff records connect bookings, time tracking, and completed work."
                 actionHref="/staff/new"
                 actionLabel="Add staff member"
+                compact
               />
             </div>
           ) : filteredStaff.length === 0 ? (
@@ -240,13 +239,14 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                 icon={Search}
                 title="No staff match this view"
                 description="Try a different search term, role, or status filter."
+                compact
               />
             </div>
           ) : (
             filteredStaff.map((member) => (
               <div
                 key={member.id}
-                  className="grid gap-3 px-4 py-2.5 transition-colors duration-200 hover:bg-secondary/25 lg:grid-cols-[minmax(240px,1.45fr)_120px_120px_100px_140px_150px_210px] lg:items-center"
+                  className="grid gap-3 px-4 py-2.5 transition-colors duration-200 hover:bg-secondary/25 lg:min-h-[64px] lg:grid-cols-[minmax(220px,1.45fr)_150px_120px_130px_170px] lg:items-center"
               >
                 <Link href={`/staff/${member.id}`} className="flex min-w-0 items-center gap-3">
                     <Avatar className="size-10">
@@ -257,13 +257,16 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                       <p className="truncate text-xs text-muted-foreground">{member.email || member.phone || "No contact added"}</p>
                   </div>
                 </Link>
-                  <span className="w-fit rounded-md bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
-                    {member.role || "Staff"}
-                  </span>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <span className={statusDot(member.status)} />
-                    <span>{member.status === "ACTIVE" ? "On duty" : member.status === "AWAY" ? "Away" : "Off duty"}</span>
-                </div>
+                  <div className="min-w-0">
+                    <span className="w-fit rounded-md bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+                      {member.role || "Staff"}
+                    </span>
+                    <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className={statusDot(member.status)} />
+                      <span>{member.status === "ACTIVE" ? "On duty" : member.status === "AWAY" ? "Away" : "Off duty"}</span>
+                      <span className="truncate">/ {member.shiftLabel !== "-" ? member.shiftLabel : member.nextShift}</span>
+                    </div>
+                  </div>
                   <p className="text-sm font-semibold text-foreground">
                     <span className="font-medium lg:hidden">Appointments today: </span>
                     {member.appointmentsToday}
@@ -280,16 +283,12 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                       <span className="text-sm text-muted-foreground">-</span>
                     )}
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    <span className="font-medium text-foreground lg:hidden">Shift: </span>
-                    {member.shiftLabel !== "-" ? member.shiftLabel : member.nextShift}
-                  </p>
-                  <div className="flex flex-wrap justify-end gap-2">
+                  <div className="flex flex-nowrap justify-end gap-2">
                     <Button
                       type="button"
                       size="sm"
                       variant={member.isCheckedIn ? "outline" : "default"}
-                      className="h-8 rounded-[0.6rem] px-3 text-xs"
+                      className="h-8 min-w-[72px] rounded-[0.6rem] px-3 text-xs"
                       onClick={() => toggleClock(member.id)}
                       disabled={
                         isPending ||
@@ -304,7 +303,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                       href={`/staff/${member.id}`}
                       className={cn(
                         buttonVariants({ variant: "outline", size: "sm" }),
-                        "h-8 rounded-[0.6rem] px-3 text-xs"
+                        "h-8 min-w-[66px] rounded-[0.6rem] px-3 text-xs"
                       )}
                       aria-label={`Open ${member.name}`}
                     >
@@ -323,7 +322,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
           </div>
         </div>
 
-        <WorkspaceCard className="section-reveal xl:col-start-1" title="Team schedule" action={<Link href="/calendar" className="text-sm font-semibold text-primary">Open schedule</Link>}>
+        <WorkspaceCard compact className="section-reveal xl:col-start-1" title="Team schedule" action={<Link href="/calendar" className="text-sm font-semibold text-primary">Open schedule</Link>}>
           <p className="mt-1 text-sm text-muted-foreground">Today&apos;s shifts and the next planned coverage from staff records.</p>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             {scheduledStaff.map((member) => (
@@ -349,14 +348,15 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                 icon={CalendarClock}
                 title="No planned coverage"
                 description="No staff shifts or appointments are scheduled for the visible period."
-                className="py-5 md:col-span-2"
+                compact
+                className="md:col-span-2"
               />
             ) : null}
           </div>
         </WorkspaceCard>
 
         <WorkspaceRail className="section-reveal-delayed xl:col-start-2 xl:row-start-1 xl:row-span-2">
-          <WorkspaceCard title="On duty now" action={<span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">{onDutyStaff.length}</span>}>
+          <WorkspaceCard compact title="On duty now" action={<span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">{onDutyStaff.length}</span>}>
             <div className="space-y-3">
             {(onDutyStaff.length > 0 ? onDutyStaff : staff.slice(0, 5)).slice(0, 5).map((member) => (
               <Link key={member.id} href={`/staff/${member.id}`} className="flex items-center gap-3">
@@ -375,13 +375,13 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                 icon={UserRoundCog}
                 title="No staff yet"
                 description="Add staff to see who's available today."
-                className="py-4"
+                compact
               />
             ) : null}
           </div>
         </WorkspaceCard>
 
-          <WorkspaceCard title="Upcoming shifts">
+          <WorkspaceCard compact title="Upcoming shifts">
             <div className="mt-4 space-y-3">
               {upcomingShiftStaff.map((member) => (
               <div key={member.id} className="flex items-start gap-3 text-sm">
@@ -399,7 +399,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                 icon={CalendarClock}
                 title="No planned shifts"
                 description="Upcoming shifts will appear here."
-                className="py-4"
+                compact
               />
             ) : null}
           </div>
@@ -408,7 +408,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
           </Link>
         </WorkspaceCard>
 
-          <WorkspaceCard title="Coverage summary">
+          <WorkspaceCard compact title="Coverage summary">
           <div className="mt-4 space-y-3 text-sm">
             <CoverageRow label="Appointments today" value={totalAppointmentsToday.toString()} />
             <CoverageRow label="On-duty coverage" value={`${onDutyStaff.length}/${staff.length}`} />

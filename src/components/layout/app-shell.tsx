@@ -219,8 +219,8 @@ export function AppShell({
             })}
             </nav>
 
-            <div className="mt-3 space-y-3 border-t border-sidebar-border/70 px-1 pt-4">
-              <div className="rounded-[0.95rem] border border-border/80 bg-white/88 px-3.5 py-3.5 text-sm shadow-[0_12px_26px_rgba(20,21,47,0.04)]">
+            <div className="mt-2 space-y-2.5 border-t border-sidebar-border/70 px-1 pt-3">
+              <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-3 py-3 text-sm shadow-[0_10px_22px_rgba(20,21,47,0.035)]">
                 <div className="flex items-center gap-2">
                   <span className="vela-icon-tile size-7">
                     <BadgeCheck className="size-3.5" />
@@ -229,7 +229,7 @@ export function AppShell({
                     Vela {planName} plan
                   </p>
                 </div>
-                <div className="mt-3 flex items-center justify-between border-t border-border/70 pt-3">
+                <div className="mt-2.5 flex items-center justify-between border-t border-border/70 pt-2.5">
                   <span className="text-xs text-muted-foreground">Status</span>
                   <span className="text-xs font-semibold text-primary">
                     {planStatus}
@@ -237,7 +237,7 @@ export function AppShell({
                 </div>
               </div>
 
-              <div className="rounded-[0.9rem] px-1 py-2">
+              <div className="rounded-[0.9rem] px-1 py-1.5">
                 <OwnerAccountDialog
                   ownerName={ownerName}
                   ownerEmail={ownerEmail}
@@ -248,7 +248,7 @@ export function AppShell({
                 <LogoutButton
                   fullWidth
                   variant="outline"
-                  className="mt-3 justify-center rounded-[0.9rem] bg-white/70"
+                  className="mt-2.5 h-9 justify-center rounded-[0.85rem] bg-white/70"
                 />
               </div>
             </div>
