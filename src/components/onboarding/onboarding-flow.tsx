@@ -956,8 +956,8 @@ export function OnboardingFlow({
         } as CSSProperties
       }
     >
-      <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between gap-4 border-b border-border/70 pb-6">
+      <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-5 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between gap-4 border-b border-border/70 pb-5">
           <div className="flex min-w-0 items-center gap-4">
             <BrandMark href="/dashboard" includeSubtitle={false} />
             <div className="hidden min-w-0 sm:block">
@@ -981,8 +981,8 @@ export function OnboardingFlow({
           </Button>
         </div>
 
-        <div className="py-6">
-          <div className="mx-auto max-w-3xl rounded-[1.35rem] border border-white/70 bg-white/60 px-8 py-7 shadow-[0_18px_46px_rgba(20,21,47,0.045)] backdrop-blur-xl">
+        <div className="py-5">
+          <div className="mx-auto max-w-3xl rounded-[1.2rem] border border-white/70 bg-white/60 px-5 py-5 shadow-[0_18px_46px_rgba(20,21,47,0.045)] backdrop-blur-xl sm:px-7">
             <div
               className="relative grid"
               style={{
@@ -1030,12 +1030,12 @@ export function OnboardingFlow({
           </div>
         </div>
 
-        <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col py-4 sm:py-8">
-          <div className="space-y-8">
+        <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col py-3 sm:py-6">
+          <div className="space-y-6">
             {renderStepContent()}
           </div>
 
-          <div className="mt-auto space-y-5 pt-10">
+          <div className="mt-auto space-y-5 pt-8">
             {errorMessage ? (
               <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
                 {errorMessage}

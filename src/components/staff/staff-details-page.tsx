@@ -19,6 +19,12 @@ import { checkInStaffAction, checkOutStaffAction } from "@/app/(workspace)/staff
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  WorkspaceKpiCard,
+  WorkspaceKpiGrid,
+  WorkspacePage,
+  WorkspaceRail,
+} from "@/components/workspace/workspace-layout";
 import { cn } from "@/lib/utils";
 import type { StaffRecord } from "@/lib/staff";
 
@@ -75,7 +81,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
   }
 
   return (
-    <div className="w-full space-y-4">
+    <WorkspacePage>
       <section className="space-y-4 pb-1">
         <Link
           href="/staff"
@@ -127,12 +133,12 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
           </div>
 
           <div className="w-full space-y-3.5 xl:w-[560px]">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <StaffStat label="Appts today" value={staff.appointmentsToday} tone="primary" />
-              <StaffStat label="Completion" value={`${staff.completionRate}%`} />
-              <StaffStat label="This month" value={staff.completedThisMonth} />
-              <StaffStat label="Weekly hours" value={`${staff.weeklyHours}h`} />
-            </div>
+            <WorkspaceKpiGrid className="sm:grid-cols-2 xl:grid-cols-4">
+              <WorkspaceKpiCard className="min-h-[92px]" icon={CalendarClock} label="Appts today" value={staff.appointmentsToday.toString()} helper="Assigned today" />
+              <WorkspaceKpiCard className="min-h-[92px]" icon={CheckCircle2} label="Completion" value={`${staff.completionRate}%`} helper="Finalized work" />
+              <WorkspaceKpiCard className="min-h-[92px]" icon={CalendarCheck2} label="This month" value={staff.completedThisMonth.toString()} helper="Completed visits" />
+              <WorkspaceKpiCard className="min-h-[92px]" icon={Clock3} label="Weekly hours" value={`${staff.weeklyHours}h`} helper="Tracked time" />
+            </WorkspaceKpiGrid>
             <div className="flex flex-wrap justify-end gap-3">
               <Button
                 className="h-10 rounded-[0.65rem] px-4"
@@ -232,7 +238,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
             </Panel>
           </div>
 
-          <aside className="grid content-start gap-3.5">
+          <WorkspaceRail>
             <Panel title="Today schedule" icon={CalendarClock}>
               <div className="mt-4 rounded-[0.9rem] bg-primary/6 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.13em] text-muted-foreground">Shift</p>
@@ -258,7 +264,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
                 <Detail label="Checked in" value={staff.isCheckedIn ? "Yes" : "No"} />
               </div>
             </Panel>
-          </aside>
+          </WorkspaceRail>
         </TabsContent>
 
         <TabsContent value="schedule" className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -340,28 +346,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
           </Panel>
         </TabsContent>
       </Tabs>
-    </div>
-  );
-}
-
-function StaffStat({
-  label,
-  value,
-  tone = "default",
-}: {
-  label: string;
-  value: string | number;
-  tone?: "default" | "primary";
-}) {
-  return (
-    <div className="rounded-[0.9rem] border border-border/80 bg-white/72 px-3.5 py-3">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-        {label}
-      </p>
-      <p className={cn("mt-2 text-2xl font-semibold", tone === "primary" ? "text-primary" : "text-foreground")}>
-        {value}
-      </p>
-    </div>
+    </WorkspacePage>
   );
 }
 

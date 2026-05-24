@@ -18,6 +18,17 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  WorkspaceCard,
+  WorkspaceEmptyState,
+  WorkspaceHeader,
+  WorkspaceKpiCard,
+  WorkspaceKpiGrid,
+  WorkspaceMainGrid,
+  WorkspacePage,
+  WorkspaceRail,
+  WorkspaceTable,
+} from "@/components/workspace/workspace-layout";
 import { cn } from "@/lib/utils";
 import type { StaffStatus, StaffViewModel } from "@/lib/staff";
 
@@ -148,38 +159,29 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
   }
 
   return (
-    <div className="w-full space-y-4">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="section-reveal space-y-2">
-          <div className="space-y-2">
-            <h1 className="text-[34px] font-semibold leading-tight tracking-tight text-foreground">
-              Staff
-            </h1>
-            <p className="max-w-2xl text-[15px] text-muted-foreground">
-              Manage your team, shifts, time tracking, and performance.
-            </p>
-          </div>
-        </div>
-        <Link
-          href="/staff/new"
-          className={cn(
-            buttonVariants({ size: "lg" }),
-            "section-reveal-delayed h-11 rounded-[0.9rem] px-4"
-          )}
-        >
-          <Plus className="size-4" />
-          New staff member
-        </Link>
-      </div>
+    <WorkspacePage>
+      <WorkspaceHeader
+        title="Staff"
+        description="Manage your team, shifts, time tracking, and performance."
+        actions={
+          <Link
+            href="/staff/new"
+            className={cn(buttonVariants({ size: "lg" }), "h-11 rounded-[0.9rem] px-4")}
+          >
+            <Plus className="size-4" />
+            New staff member
+          </Link>
+        }
+      />
 
-      <div className="section-reveal grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <StaffMetric icon={UsersRound} label="Total staff" value={staff.length.toString()} helper={`${activeStaffCount} active team members`} />
-        <StaffMetric icon={CalendarClock} label="On duty today" value={onDutyStaff.length.toString()} helper={`${staff.length > 0 ? Math.round((onDutyStaff.length / staff.length) * 100) : 0}% of team`} />
-        <StaffMetric icon={BarChart3} label="Average utilization" value={`${averageUtilization}%`} helper={`${totalAppointmentsToday} appointments today`} />
-        <StaffMetric icon={CheckCircle2} label="Avg completion rate" value={`${averageCompletion}%`} helper="Finalized appointments" />
-      </div>
+      <WorkspaceKpiGrid>
+        <WorkspaceKpiCard icon={UsersRound} label="Total staff" value={staff.length.toString()} helper={`${activeStaffCount} active team members`} />
+        <WorkspaceKpiCard icon={CalendarClock} label="On duty today" value={onDutyStaff.length.toString()} helper={`${staff.length > 0 ? Math.round((onDutyStaff.length / staff.length) * 100) : 0}% of team`} />
+        <WorkspaceKpiCard icon={BarChart3} label="Average utilization" value={`${averageUtilization}%`} helper={`${totalAppointmentsToday} appointments today`} />
+        <WorkspaceKpiCard icon={CheckCircle2} label="Avg completion rate" value={`${averageCompletion}%`} helper="Finalized appointments" />
+      </WorkspaceKpiGrid>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_290px]">
+      <WorkspaceMainGrid railWidth="sm">
         <div className="section-reveal overflow-hidden rounded-[1rem] border border-border/80 bg-white shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
           <div className="grid gap-3 border-b border-border/75 p-3.5 lg:grid-cols-[minmax(260px,1fr)_180px_180px_48px]">
             <div className="relative">
@@ -207,43 +209,38 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
             </div>
           ) : null}
 
-          <div className="hidden grid-cols-[minmax(240px,1.45fr)_120px_120px_100px_140px_150px_210px] border-b border-border/80 bg-secondary/25 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground lg:grid">
-            <span>Staff member</span>
-            <span>Role</span>
-            <span>Status</span>
-            <span>Appts today</span>
-            <span>Completion rate</span>
-            <span>Shift</span>
-            <span className="text-right">Actions</span>
-        </div>
-
-        <div className="divide-y divide-border/75">
+          <WorkspaceTable
+            className="rounded-none border-0 shadow-none"
+            headerClassName="border-b border-border/80 bg-secondary/25"
+            headers={
+              <div className="hidden grid-cols-[minmax(240px,1.45fr)_120px_120px_100px_140px_150px_210px] lg:grid">
+                <span>Staff member</span>
+                <span>Role</span>
+                <span>Status</span>
+                <span>Appts today</span>
+                <span>Completion rate</span>
+                <span>Shift</span>
+                <span className="text-right">Actions</span>
+              </div>
+            }
+          >
           {!hasStaff ? (
             <div className="px-6 py-8">
-              <div className="mx-auto max-w-md space-y-4 text-center">
-                <div className="mx-auto flex size-12 items-center justify-center rounded-[1.05rem] bg-primary/12 text-primary">
-                  <UserRoundCog className="size-5" />
-                </div>
-                <div className="space-y-2">
-                  <h2 className="text-xl font-semibold tracking-tight text-foreground">
-                    Add the first staff member
-                  </h2>
-                  <p className="text-sm leading-6 text-muted-foreground">
-                    Staff records connect bookings, time tracking, and completed work.
-                  </p>
-                </div>
-                <Link
-                  href="/staff/new"
-                  className={cn(buttonVariants({ size: "lg" }), "rounded-[0.95rem]")}
-                >
-                  <Plus className="size-4" />
-                  Add staff member
-                </Link>
-              </div>
+              <WorkspaceEmptyState
+                icon={UserRoundCog}
+                title="Add the first staff member"
+                description="Staff records connect bookings, time tracking, and completed work."
+                actionHref="/staff/new"
+                actionLabel="Add staff member"
+              />
             </div>
           ) : filteredStaff.length === 0 ? (
-            <div className="px-6 py-8 text-center text-sm text-muted-foreground">
-              No staff members match this search or filter.
+            <div className="px-6 py-8">
+              <WorkspaceEmptyState
+                icon={Search}
+                title="No staff match this view"
+                description="Try a different search term, role, or status filter."
+              />
             </div>
           ) : (
             filteredStaff.map((member) => (
@@ -317,7 +314,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
               </div>
             ))
           )}
-        </div>
+          </WorkspaceTable>
           <div className="flex items-center justify-between border-t border-border/75 px-4 py-3 text-sm text-muted-foreground">
             <span>
               Showing 1 to {filteredStaff.length} of {staff.length} staff members
@@ -326,14 +323,8 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
           </div>
         </div>
 
-        <section className="section-reveal rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)] xl:col-start-1">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-foreground">Team schedule</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Today&apos;s shifts and the next planned coverage from staff records.</p>
-            </div>
-            <Link href="/calendar" className="text-sm font-semibold text-primary">Open schedule</Link>
-          </div>
+        <WorkspaceCard className="section-reveal xl:col-start-1" title="Team schedule" action={<Link href="/calendar" className="text-sm font-semibold text-primary">Open schedule</Link>}>
+          <p className="mt-1 text-sm text-muted-foreground">Today&apos;s shifts and the next planned coverage from staff records.</p>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             {scheduledStaff.map((member) => (
               <Link
@@ -354,21 +345,18 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
               </Link>
             ))}
             {scheduledStaff.length === 0 ? (
-              <p className="rounded-[0.85rem] border border-dashed border-border/90 px-4 py-5 text-sm text-muted-foreground md:col-span-2">
-                No staff shifts or appointments are scheduled for the visible period.
-              </p>
+              <WorkspaceEmptyState
+                icon={CalendarClock}
+                title="No planned coverage"
+                description="No staff shifts or appointments are scheduled for the visible period."
+                className="py-5 md:col-span-2"
+              />
             ) : null}
           </div>
-        </section>
+        </WorkspaceCard>
 
-        <aside className="section-reveal-delayed grid content-start gap-3 xl:col-start-2 xl:row-start-1 xl:row-span-2">
-          <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-foreground">On duty now</h2>
-            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
-              {onDutyStaff.length}
-            </span>
-          </div>
+        <WorkspaceRail className="section-reveal-delayed xl:col-start-2 xl:row-start-1 xl:row-span-2">
+          <WorkspaceCard title="On duty now" action={<span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">{onDutyStaff.length}</span>}>
             <div className="space-y-3">
             {(onDutyStaff.length > 0 ? onDutyStaff : staff.slice(0, 5)).slice(0, 5).map((member) => (
               <Link key={member.id} href={`/staff/${member.id}`} className="flex items-center gap-3">
@@ -383,13 +371,17 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
               </Link>
             ))}
             {staff.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Add staff to see who&apos;s available today.</p>
+              <WorkspaceEmptyState
+                icon={UserRoundCog}
+                title="No staff yet"
+                description="Add staff to see who's available today."
+                className="py-4"
+              />
             ) : null}
           </div>
-        </section>
+        </WorkspaceCard>
 
-          <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
-          <h2 className="text-base font-semibold text-foreground">Upcoming shifts</h2>
+          <WorkspaceCard title="Upcoming shifts">
             <div className="mt-4 space-y-3">
               {upcomingShiftStaff.map((member) => (
               <div key={member.id} className="flex items-start gap-3 text-sm">
@@ -403,26 +395,30 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
               </div>
             ))}
               {upcomingShiftStaff.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No planned shifts yet.</p>
+              <WorkspaceEmptyState
+                icon={CalendarClock}
+                title="No planned shifts"
+                description="Upcoming shifts will appear here."
+                className="py-4"
+              />
             ) : null}
           </div>
           <Link href="/calendar" className="mt-4 inline-flex text-sm font-semibold text-primary">
             View full schedule
           </Link>
-        </section>
+        </WorkspaceCard>
 
-          <section className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
-          <h2 className="text-base font-semibold text-foreground">Coverage summary</h2>
+          <WorkspaceCard title="Coverage summary">
           <div className="mt-4 space-y-3 text-sm">
             <CoverageRow label="Appointments today" value={totalAppointmentsToday.toString()} />
             <CoverageRow label="On-duty coverage" value={`${onDutyStaff.length}/${staff.length}`} />
             <CoverageRow label="Average completion" value={`${averageCompletion}%`} />
             <CoverageRow label="Planned shifts" value={upcomingShiftStaff.length.toString()} />
           </div>
-        </section>
-      </aside>
-      </div>
-    </div>
+        </WorkspaceCard>
+      </WorkspaceRail>
+      </WorkspaceMainGrid>
+    </WorkspacePage>
   );
 }
 
@@ -470,35 +466,6 @@ function NativeRoleFilter({
         </option>
       ))}
     </select>
-  );
-}
-
-function StaffMetric({
-  icon: Icon,
-  label,
-  value,
-  helper,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  helper: string;
-}) {
-  return (
-    <section className="surface-card p-4">
-      <div className="flex items-start gap-3">
-        <span className="vela-icon-tile size-10">
-          <Icon className="size-5" />
-        </span>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            {label}
-          </p>
-          <p className="mt-1.5 text-2xl font-semibold tracking-tight text-foreground">{value}</p>
-          <p className="mt-1.5 text-xs text-muted-foreground">{helper}</p>
-        </div>
-      </div>
-    </section>
   );
 }
 

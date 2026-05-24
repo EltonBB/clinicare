@@ -21,6 +21,13 @@ import { startTransition, useMemo, useState } from "react";
 import { CalendarX2, ChevronLeft, ChevronRight, Plus, UsersRound } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
+import {
+  WorkspaceEmptyState,
+  WorkspaceHeader,
+  WorkspaceMainGrid,
+  WorkspacePage,
+  WorkspaceRail,
+} from "@/components/workspace/workspace-layout";
 import { cn } from "@/lib/utils";
 import type { CalendarAppointment, CalendarScheduleBlock, CalendarViewModel } from "@/lib/calendar";
 
@@ -223,16 +230,61 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
   const utilization = Math.min(Math.round((bookedMinutes / Math.max(capacityMinutes, 1)) * 100), 100);
 
   return (
-    <div className="w-full space-y-3.5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="section-reveal">
-          <h1 className="text-[34px] font-semibold leading-tight tracking-tight text-foreground">
-            Calendar
-          </h1>
-          <p className="mt-2 text-[15px] text-muted-foreground">
-            Manage the clinic schedule, appointments, and blocked time.
-          </p>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+    <WorkspacePage size="wide">
+      <WorkspaceHeader
+        title="Calendar"
+        description="Manage the clinic schedule, appointments, and blocked time."
+        actions={
+          <div className="section-reveal-delayed flex flex-wrap items-center gap-3">
+            <div className="inline-flex items-center rounded-[1rem] border border-border/80 bg-white/72 shadow-[0_16px_32px_rgba(20,32,51,0.05)]">
+              <button
+                type="button"
+                onClick={() => shiftRange("prev")}
+                className="px-3 py-2 text-muted-foreground transition-colors duration-200 hover:text-foreground"
+              >
+                <ChevronLeft className="size-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveDate(parseISO(initialView.initialDate))}
+                className="border-x border-border/80 px-4 py-2 text-sm font-medium text-foreground"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => shiftRange("next")}
+                className="px-3 py-2 text-muted-foreground transition-colors duration-200 hover:text-foreground"
+              >
+                <ChevronRight className="size-4" />
+              </button>
+            </div>
+
+            {hasClients ? (
+              <Link
+                href={`/calendar/new?date=${selectedDateKey}`}
+                data-tour="calendar-create"
+                className={cn(buttonVariants({ size: "lg" }), "h-11 rounded-[0.9rem] px-4")}
+              >
+                <Plus className="size-4" />
+                New appointment
+              </Link>
+            ) : (
+              <Link
+                href="/clients/new?next=calendar"
+                className={cn(buttonVariants({ size: "lg" }), "h-11 rounded-[0.9rem] px-4")}
+                data-tour="calendar-create"
+              >
+                <UsersRound className="size-4" />
+                Add first client
+              </Link>
+            )}
+          </div>
+        }
+      />
+
+      <div className="section-reveal rounded-[1rem] border border-border/80 bg-white p-3.5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+        <div className="flex flex-wrap items-center gap-3">
             <div className="inline-flex rounded-[0.7rem] border border-border/80 bg-white p-1 shadow-[0_16px_32px_rgba(20,32,51,0.04)]">
               {views.map((option) => (
                 <button
@@ -263,81 +315,20 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
               className="h-10 rounded-[0.8rem] border border-border/80 bg-white px-3 text-sm font-medium text-foreground shadow-[0_10px_24px_rgba(20,32,51,0.03)] outline-none"
               aria-label="Jump to date"
             />
-          </div>
-        </div>
-
-        <div className="section-reveal-delayed flex items-center gap-3">
-          <div className="inline-flex items-center rounded-[1rem] border border-border/80 bg-white/72 shadow-[0_16px_32px_rgba(20,32,51,0.05)]">
-            <button
-              type="button"
-              onClick={() => shiftRange("prev")}
-              className="px-3 py-2 text-muted-foreground transition-colors duration-200 hover:text-foreground"
-            >
-              <ChevronLeft className="size-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveDate(parseISO(initialView.initialDate))}
-              className="border-x border-border/80 px-4 py-2 text-sm font-medium text-foreground"
-            >
-              Today
-            </button>
-            <button
-              type="button"
-              onClick={() => shiftRange("next")}
-              className="px-3 py-2 text-muted-foreground transition-colors duration-200 hover:text-foreground"
-            >
-              <ChevronRight className="size-4" />
-            </button>
-          </div>
-
-          {hasClients ? (
-            <Link
-              href={`/calendar/new?date=${selectedDateKey}`}
-              data-tour="calendar-create"
-              className={cn(buttonVariants({ size: "lg" }), "h-11 rounded-[0.9rem] px-4")}
-            >
-              <Plus className="size-4" />
-              New appointment
-            </Link>
-          ) : (
-            <Link
-              href="/clients/new?next=calendar"
-              className={cn(buttonVariants({ size: "lg" }), "h-11 rounded-[0.9rem] px-4")}
-              data-tour="calendar-create"
-            >
-              <UsersRound className="size-4" />
-              Add first client
-            </Link>
-          )}
         </div>
       </div>
 
-      <div className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_310px]">
+      <WorkspaceMainGrid railWidth="md" className="gap-3.5">
         <div className="space-y-3.5">
       {!hasClients ? (
         <section className="section-reveal overflow-hidden rounded-[1.25rem] border border-dashed border-primary/25 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),var(--primary-soft))] p-6 shadow-[0_18px_44px_rgba(20,32,51,0.055)]">
-          <div className="mx-auto max-w-xl space-y-4 text-center">
-            <div className="mx-auto flex size-12 items-center justify-center rounded-[1.05rem] bg-primary/12 text-primary">
-              <UsersRound className="size-5" />
-            </div>
-            <div className="space-y-2">
-              <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-                Add a client before booking
-              </h2>
-              <p className="text-sm leading-7 text-muted-foreground">
-                Appointments need a client record so reminders, inbox threads,
-                and visit history stay attached to the right person.
-              </p>
-            </div>
-            <Link
-              href="/clients/new?next=calendar"
-              className={cn(buttonVariants({ size: "lg" }), "rounded-[0.95rem]")}
-            >
-              <Plus className="size-4" />
-              Add first client
-            </Link>
-          </div>
+          <WorkspaceEmptyState
+            icon={UsersRound}
+            title="Add a client before booking"
+            description="Appointments need a client record so reminders, inbox threads, and visit history stay attached to the right person."
+            actionHref="/clients/new?next=calendar"
+            actionLabel="Add first client"
+          />
         </section>
       ) : view === "month" ? (
         <div className="section-reveal overflow-hidden rounded-[1.15rem] border border-border/80 bg-white/94 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
@@ -522,9 +513,12 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
                   </div>
                 ))}
               {selectedDayAppointments.length === 0 && selectedDayBlocks.length === 0 ? (
-                <div className="rounded-[0.95rem] border border-dashed border-border/90 bg-white/54 px-4 py-4 text-sm text-muted-foreground">
-                  No bookings for the selected day yet.
-                </div>
+                <WorkspaceEmptyState
+                  icon={CalendarX2}
+                  title="No bookings for this day"
+                  description="Add a booking or blocked time to fill the selected day."
+                  className="py-5"
+                />
               ) : null}
             </div>
           </div>
@@ -554,7 +548,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
       ) : null}
         </div>
 
-        <aside className="section-reveal-delayed grid content-start gap-3.5">
+        <WorkspaceRail className="section-reveal-delayed">
           <CalendarRailPanel title="Upcoming appointments" actionHref="/calendar" actionLabel="View all">
             <div className="space-y-4">
               {upcomingAppointments.length > 0 ? (
@@ -615,9 +609,9 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
               <LegendDot color="bg-slate-400" label="Blocked time" />
             </div>
           </CalendarRailPanel>
-        </aside>
-      </div>
-    </div>
+        </WorkspaceRail>
+      </WorkspaceMainGrid>
+    </WorkspacePage>
   );
 }
 

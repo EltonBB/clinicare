@@ -22,6 +22,16 @@ import { saveDashboardWidgetsAction } from "@/app/(workspace)/dashboard/actions"
 import { DashboardUnreadCard } from "@/components/dashboard/dashboard-unread-card";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
+import {
+  WorkspaceCard,
+  WorkspaceEmptyState,
+  WorkspaceHeader,
+  WorkspaceKpiCard,
+  WorkspaceKpiGrid,
+  WorkspaceMainGrid,
+  WorkspacePage,
+  WorkspaceRail,
+} from "@/components/workspace/workspace-layout";
 import { cn } from "@/lib/utils";
 import type {
   DashboardAppointmentStatus,
@@ -277,75 +287,74 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
     showTodayAppointments || showLastClients || showStaffAppointment || showAnalytics;
 
   return (
-    <div className="section-reveal w-full space-y-4">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between" data-tour="dashboard-overview">
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">
-            Welcome back to {view.businessName}
-          </p>
-          <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--brand-ink)]">
-            Dashboard
-          </h1>
-          <p className="mt-2 text-base text-muted-foreground">{view.dateLabel}</p>
-        </div>
-        <div className="hidden 2xl:block">
-          <DashboardCustomizer
-            availableWidgets={view.availableWidgets}
-            selectedWidgets={selectedWidgets}
-            onSelectedWidgetsChange={setSelectedWidgets}
-          />
-        </div>
-      </div>
+    <WorkspacePage data-tour="dashboard-overview">
+      <WorkspaceHeader
+        eyebrow={`Welcome back to ${view.businessName}`}
+        title="Dashboard"
+        description={view.dateLabel}
+        actions={
+          <div className="hidden 2xl:block">
+            <DashboardCustomizer
+              availableWidgets={view.availableWidgets}
+              selectedWidgets={selectedWidgets}
+              onSelectedWidgetsChange={setSelectedWidgets}
+            />
+          </div>
+        }
+      />
 
-      <div className="grid gap-3.5 md:grid-cols-2 xl:grid-cols-4">
-        <DashboardKpiCard
+      <WorkspaceKpiGrid>
+        <WorkspaceKpiCard
           icon={CalendarPlus2}
           label="Appointments today"
           value={view.appointments.length.toString()}
-          trend={view.appointments.length > 0 ? `${upcomingToday.length} still upcoming` : "No visits booked"}
+          helper={view.appointments.length > 0 ? `${upcomingToday.length} still upcoming` : "No visits booked"}
         />
-        <DashboardKpiCard
+        <WorkspaceKpiCard
           icon={TrendingUp}
           label="Completion rate"
           value={`${view.analyticsSummary.completionRate}%`}
-          trend={`${view.analyticsSummary.completedThisMonth} completed this month`}
+          helper={`${view.analyticsSummary.completedThisMonth} completed this month`}
         />
-        <DashboardKpiCard
+        <WorkspaceKpiCard
           icon={UsersRound}
           label="Active clients"
           value={view.analyticsSummary.activeClients.toString()}
-          trend={`${view.lastClients.length} recent records`}
+          helper={`${view.lastClients.length} recent records`}
         />
-        <DashboardKpiCard
+        <WorkspaceKpiCard
           icon={Clock3}
           label="Avg visit length"
           value={`${view.analyticsSummary.averageDurationMinutes || 0}m`}
-          trend={`${totalTodayMinutes} min scheduled today`}
+          helper={`${totalTodayMinutes} min scheduled today`}
           tone={view.analyticsSummary.averageDurationMinutes > 60 ? "warning" : "default"}
         />
-      </div>
+      </WorkspaceKpiGrid>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <WorkspaceMainGrid>
         <div className="space-y-4">
           {!hasVisibleWidgets ? (
-            <section className="surface-soft border-dashed p-4 text-sm text-muted-foreground">
-              No dashboard widgets are selected. Open Customize dashboard and choose the sections this workspace should show.
-            </section>
+            <WorkspaceEmptyState
+              icon={Settings2}
+              title="No dashboard widgets selected"
+              description="Open Customize dashboard and choose the sections this workspace should show."
+            />
           ) : null}
 
           {showTodayAppointments ? (
-          <section className="surface-card p-4">
-            <div className="flex items-center justify-between gap-4 border-b border-border/75 pb-3">
-              <div className="flex items-center gap-3">
-                <h2 className="text-base font-semibold text-foreground">Today&apos;s appointments</h2>
+          <WorkspaceCard
+            title={
+              <span className="inline-flex items-center gap-3">
+                Today&apos;s appointments
                 <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
                   {view.appointments.length}
                 </span>
-              </div>
-              <Link href="/calendar" className="text-sm font-semibold text-primary">
+              </span>
+            }
+            action={<Link href="/calendar" className="text-sm font-semibold text-primary">
                 View full calendar
-              </Link>
-            </div>
+              </Link>}
+          >
             <div className="divide-y divide-border/70">
               {view.appointments.length > 0 ? (
                 view.appointments.map((appointment) => (
@@ -368,17 +377,22 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                   </Link>
                 ))
               ) : (
-                <div className="py-5 text-sm text-muted-foreground">
-                  No appointments scheduled today. Create one to start filling the clinic day.
-                </div>
+                <WorkspaceEmptyState
+                  icon={CalendarPlus2}
+                  title="No appointments scheduled today"
+                  description="Create one to start filling the clinic day."
+                  actionHref="/calendar/new"
+                  actionLabel="New appointment"
+                  className="border-0 bg-transparent py-5"
+                />
               )}
             </div>
-          </section>
+          </WorkspaceCard>
           ) : null}
 
           {showStaffAppointment ? (
           <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-            <DashboardPanel title="Next appointment" icon={Clock3}>
+            <WorkspaceCard title="Next appointment">
               {view.nextAppointment ? (
                 <Link
                   href={`/calendar/${view.nextAppointment.id}/edit`}
@@ -399,13 +413,19 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                   </p>
                 </Link>
               ) : (
-                <p className="rounded-[0.9rem] bg-muted/45 px-4 py-6 text-sm text-muted-foreground">
-                  No upcoming appointment is booked.
-                </p>
+                <WorkspaceEmptyState
+                  icon={Clock3}
+                  title="No upcoming appointment"
+                  description="The next appointment will appear here when it is booked."
+                  className="py-5"
+                />
               )}
-            </DashboardPanel>
+            </WorkspaceCard>
 
-            <DashboardPanel title="Staff schedule today" actionHref="/staff" actionLabel="View all staff">
+            <WorkspaceCard
+              title="Staff schedule today"
+              action={<Link href="/staff" className="text-xs font-semibold text-primary">View all staff</Link>}
+            >
               <div className="space-y-3">
                 {uniqueStaff.length > 0 ? (
                   uniqueStaff.slice(0, 4).map(([staffName, entries]) => (
@@ -421,17 +441,22 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-muted-foreground">No staff activity scheduled today.</p>
+                  <WorkspaceEmptyState
+                    icon={UsersRound}
+                    title="No staff activity scheduled"
+                    description="Assigned staff activity will appear here."
+                    className="py-5"
+                  />
                 )}
               </div>
-            </DashboardPanel>
+            </WorkspaceCard>
           </div>
           ) : null}
 
           {(showLastClients || showAnalytics) ? (
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_270px]">
             {showLastClients ? (
-            <DashboardPanel title="Recent activity">
+            <WorkspaceCard title="Recent activity">
               <div className="space-y-4">
                 {view.lastClients.slice(0, 5).map((client, index) => (
                   <Link key={client.id} href={`/clients/${client.id}`} className="flex items-center gap-3 text-sm">
@@ -448,14 +473,22 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                   </Link>
                 ))}
                 {view.lastClients.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No recent client activity yet.</p>
+                  <WorkspaceEmptyState
+                    icon={UsersRound}
+                    title="No recent client activity"
+                    description="Client record updates will appear here."
+                    className="py-5"
+                  />
                 ) : null}
               </div>
-            </DashboardPanel>
+            </WorkspaceCard>
             ) : null}
 
             {showAnalytics ? (
-            <DashboardPanel title="Clinic health" badge="Live">
+            <WorkspaceCard
+              title="Clinic health"
+              action={<span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-semibold text-foreground">Live</span>}
+            >
               <HealthMetric label="Schedule utilization" value={utilization} />
               <HealthMetric label="Completion rate" value={view.analyticsSummary.completionRate} />
               <HealthMetric
@@ -465,14 +498,14 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
               <Link href="/reports" className="mt-4 inline-flex text-sm font-semibold text-primary">
                 View full reports
               </Link>
-            </DashboardPanel>
+            </WorkspaceCard>
             ) : null}
           </div>
           ) : null}
         </div>
 
-        <aside className="section-reveal-delayed grid content-start gap-4">
-          <DashboardPanel title="Quick actions">
+        <WorkspaceRail>
+          <WorkspaceCard title="Quick actions">
             <div className="grid gap-2">
               {actionWidgets.map((action) => (
                 <Link
@@ -498,9 +531,9 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                 </Link>
               ))}
             </div>
-          </DashboardPanel>
+          </WorkspaceCard>
 
-          <DashboardPanel title="Today at a glance">
+          <WorkspaceCard title="Today at a glance">
             <div className="space-y-3 text-sm">
               <GlanceRow label="Appointments" value={view.appointments.length} />
               <GlanceRow label="Completed" value={completedToday} tone="good" />
@@ -510,87 +543,12 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
             <Link href="/calendar" className="mt-5 inline-flex text-sm font-semibold text-primary">
               View today&apos;s calendar
             </Link>
-          </DashboardPanel>
+          </WorkspaceCard>
 
           {showAnalytics ? <DashboardUnreadCard initialSummary={view.unreadSummary} /> : null}
-        </aside>
-      </div>
-    </div>
-  );
-}
-
-function DashboardKpiCard({
-  icon: Icon,
-  label,
-  value,
-  trend,
-  tone = "default",
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  trend: string;
-  tone?: "default" | "warning";
-}) {
-  return (
-    <section className="surface-card p-4">
-      <div className="flex items-start gap-3">
-        <span className="vela-icon-tile size-10">
-          <Icon className="size-5" />
-        </span>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            {label}
-          </p>
-          <p className="mt-1.5 text-2xl font-semibold tracking-tight text-foreground">{value}</p>
-          <p className={cn("mt-1.5 text-xs font-medium text-muted-foreground", tone === "warning" && "text-destructive")}>
-            {trend}
-          </p>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function DashboardPanel({
-  title,
-  children,
-  icon: Icon,
-  actionHref,
-  actionLabel,
-  badge,
-}: {
-  title: string;
-  children: React.ReactNode;
-  icon?: React.ComponentType<{ className?: string }>;
-  actionHref?: string;
-  actionLabel?: string;
-  badge?: string;
-}) {
-  return (
-    <section className="surface-card p-4">
-      <div className="mb-3 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          {Icon ? (
-            <span className="flex size-8 items-center justify-center rounded-[0.85rem] border border-border/80 bg-white text-primary">
-              <Icon className="size-4" />
-            </span>
-          ) : null}
-          <h2 className="text-base font-semibold text-foreground">{title}</h2>
-        </div>
-        {actionHref && actionLabel ? (
-          <Link href={actionHref} className="text-xs font-semibold text-primary">
-            {actionLabel}
-          </Link>
-        ) : null}
-        {badge ? (
-          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-semibold text-foreground">
-            {badge}
-          </span>
-        ) : null}
-      </div>
-      {children}
-    </section>
+        </WorkspaceRail>
+      </WorkspaceMainGrid>
+    </WorkspacePage>
   );
 }
 

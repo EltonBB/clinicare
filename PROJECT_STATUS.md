@@ -1,6 +1,6 @@
 # Project Status: Vela / Clinicare
 
-Last updated: 2026-05-23
+Last updated: 2026-05-24
 
 ## Product Overview
 
@@ -73,6 +73,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Dedicated patient edit pages now exist at `/clients/[clientId]/edit`, replacing the old right-side edit drawer with a full-page form for demographics, clinic information, and medical profile fields.
 - Dedicated staff details and edit pages now exist at `/staff/[staffId]` and `/staff/[staffId]/edit`, replacing the old right-side staff drawer with full-page staff records.
 - Authenticated workspace layout cleanup pass completed. Reports now uses tighter KPI cards, shorter chart/donut areas, compact Operational metrics / Appointment status / Detailed breakdown cards, and a narrower naturally aligned AI insight rail. Dashboard, Calendar, Clients, Client detail, Staff, Staff detail, Inbox, Settings, and create/edit forms were tightened with more consistent gaps, reduced fixed/min-height usage, compact empty states, smaller panel padding, and right rails that size to content while preserving the existing Vela brand and all functionality.
+- Shared workspace structure system added and applied across authenticated surfaces. `WorkspacePage`, `WorkspaceHeader`, `WorkspaceKpiGrid`, `WorkspaceKpiCard`, `WorkspaceMainGrid`, `WorkspaceCard`, `WorkspaceRail`, `WorkspaceTable`, and `WorkspaceEmptyState` now standardize page width, card rhythm, KPI sizing, table headers, compact empty states, and right-rail alignment across Dashboard, Reports, Calendar, Clients, Client detail, Staff, Staff detail, Inbox, Settings, create/edit shells, loading, placeholders, and onboarding.
 
 ## Current Working Flows
 
@@ -109,7 +110,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Billing/plan enforcement is partially represented in UI; `/checkout` now identifies whether the selected plan is a first purchase, current plan, upgrade, downgrade, or reactivation for signed-in workspaces, but the full Paddle payment session creation, webhook handling, and plan activation flow still need production implementation.
 - The workspace depth Prisma schema has been applied to the configured Supabase Postgres database with `npx prisma db push`, and the RLS enablement SQL has been run for the new public application tables.
 - Browser-render verification of authenticated workspace pages was limited by the Playwright context redirecting to `/login` without a signed-in workspace session. Static/type/build verification passed; signed-in visual QA should be run with a real test account after the database schema is applied.
-- Latest browser verification still cannot inspect authenticated workspace visuals from Codex because protected routes redirect to `/login` without a reusable signed-in Supabase session. The app correctly enforces the auth boundary; signed-in visual QA remains the next required step using a real workspace account. Static verification for the latest workspace layout cleanup passed with `npm run lint` and `npm run build`; Playwright verified desktop `/reports` and mobile `/dashboard` redirect to login when unauthenticated, and shell checks confirmed `/dashboard`, `/calendar`, `/calendar/new`, `/clients`, `/clients/new`, `/staff`, `/staff/new`, `/inbox`, `/reports`, and `/settings` redirect to the expected login `next` URLs.
+- Latest browser verification still cannot inspect authenticated workspace visuals from Codex because protected routes redirect to `/login` without a reusable signed-in Supabase session. The app correctly enforces the auth boundary; signed-in visual QA remains the next required step using a real workspace account. Static verification for the shared workspace structure system passed with `npm run lint` and `npm run build`; Playwright verified `/login` at desktop and mobile widths and confirmed `/dashboard` and `/reports` redirect to login when unauthenticated.
 
 ## Next Priorities
 
@@ -153,4 +154,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Completed an authenticated workspace layout cleanup pass across Reports, Dashboard, Calendar, Clients, Client detail, Staff, Staff detail, Inbox, Settings, and create/edit forms. The pass reduced unnecessary fixed/min-height whitespace, tightened cards/charts/rails/empty states, normalized gaps and panel padding, and kept the current Vela brand without changing auth, database, API, server actions, data fetching, form behavior, validation, or route structure. Verification: `npm run lint`, `npm run build`, Playwright unauthenticated desktop/mobile redirect checks, and shell redirect checks for protected workspace routes.
+- Completed a shared authenticated workspace structure system pass. The pass added reusable workspace page/header/KPI/grid/card/rail/table/empty-state primitives, applied them across Dashboard, Reports, Calendar, Clients, Client detail, Staff, Staff detail, Inbox, Settings, create/edit shells, loading, placeholders, and onboarding, and preserved auth, database, API, server action, data fetching, form, validation, and route behavior. Verification: `npm run lint`, `npm run build`, Playwright `/login` desktop/mobile screenshots, and unauthenticated redirect checks for protected workspace routes.

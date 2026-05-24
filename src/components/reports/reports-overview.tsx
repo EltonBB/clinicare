@@ -22,6 +22,14 @@ import {
 } from "lucide-react";
 
 import { refreshAnalyticsInsightsAction } from "@/app/(workspace)/reports/actions";
+import {
+  WorkspaceHeader,
+  WorkspaceKpiCard,
+  WorkspaceKpiGrid,
+  WorkspaceMainGrid,
+  WorkspacePage,
+  WorkspaceRail,
+} from "@/components/workspace/workspace-layout";
 import { cn } from "@/lib/utils";
 import type {
   ReportMetric,
@@ -221,19 +229,12 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
   }
 
   return (
-    <div className="w-full space-y-3.5">
-      <section className="section-reveal space-y-3.5">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <h1 className="text-[34px] font-semibold leading-tight tracking-tight text-foreground">
-              Reports
-            </h1>
-            <p className="mt-2 text-[15px] text-muted-foreground">
-              Track performance, utilization, and opportunities to grow the clinic.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
+    <WorkspacePage>
+      <WorkspaceHeader
+        title="Reports"
+        description="Track performance, utilization, and opportunities to grow the clinic."
+        actions={
+          <>
             <div className="inline-flex rounded-[0.75rem] border border-border/80 bg-white p-1 shadow-[0_12px_28px_rgba(20,21,47,0.04)]">
               {view.periodOrder.map((key) => {
                 const item = view.periods[key];
@@ -298,8 +299,9 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
               <RefreshCw className={cn("size-4", isRefreshing && "animate-spin")} />
               Refresh AI analysis
             </button>
-          </div>
-        </div>
+          </>
+        }
+      />
 
         {refreshMessage ? (
           <div className="rounded-[0.9rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
@@ -307,32 +309,26 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
           </div>
         ) : null}
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+        <WorkspaceKpiGrid className="xl:grid-cols-6">
           {metricCards.map(({ icon: Icon, metric }) => (
-            <div key={metric.label} className="surface-card px-3.5 py-3">
-              <div className="flex items-start gap-2.5">
-                <div className="vela-icon-tile size-9 rounded-[0.85rem]">
-                  <Icon className="size-4" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
-                    {metric.label}
-                  </p>
-                  <p className="mt-1 text-[22px] font-semibold tracking-tight text-foreground">
-                    {metric.value}
-                  </p>
-                  <p className={cn("mt-1 inline-flex items-center gap-1 text-xs font-medium", metricTone[metric.trend])}>
-                    <TrendIcon trend={metric.trend} />
-                    {metric.delta}
-                  </p>
-                </div>
-              </div>
-            </div>
+            <WorkspaceKpiCard
+              key={metric.label}
+              icon={Icon}
+              label={metric.label}
+              value={metric.value}
+              tone={metric.trend === "down" ? "danger" : metric.trend === "up" ? "good" : "default"}
+              helper={
+                <span className={cn("inline-flex items-center gap-1", metricTone[metric.trend])}>
+                  <TrendIcon trend={metric.trend} />
+                  {metric.delta}
+                </span>
+              }
+              className="min-h-[108px]"
+            />
           ))}
-        </div>
-      </section>
+        </WorkspaceKpiGrid>
 
-      <section className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_310px]">
+      <WorkspaceMainGrid railWidth="md" className="gap-3.5">
         <div className="grid gap-3.5">
           <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1.9fr)_minmax(260px,0.9fr)]">
             <section className="surface-card p-3.5">
@@ -524,6 +520,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
           </div>
         </div>
 
+        <WorkspaceRail>
         <aside className={cn("rounded-[1rem] border p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]", snapshotToneStyles[period.snapshot.tone])}>
           <div className="flex items-start justify-between gap-4">
             <h2 className="inline-flex items-center gap-2 text-base font-semibold text-foreground">
@@ -580,8 +577,9 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
             </div>
           </div>
         </aside>
-      </section>
-    </div>
+        </WorkspaceRail>
+      </WorkspaceMainGrid>
+    </WorkspacePage>
   );
 }
 

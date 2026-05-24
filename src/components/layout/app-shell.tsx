@@ -162,12 +162,12 @@ export function AppShell({
       }
     >
       <div className="relative flex min-h-screen">
-        <aside className="hidden w-[244px] shrink-0 border-r border-sidebar-border/80 bg-white/82 backdrop-blur-xl lg:flex">
+        <aside className="hidden w-[232px] shrink-0 border-r border-sidebar-border/80 bg-white/86 backdrop-blur-xl lg:flex">
           <div
-            className="sticky top-0 flex h-screen w-full flex-col bg-white/70 p-4"
+            className="sticky top-0 flex h-screen w-full flex-col bg-white/74 p-3.5"
             data-tour="sidebar-shell"
           >
-            <div className="mb-5 rounded-[1.15rem] border border-border/70 bg-white/84 p-3 shadow-[0_16px_36px_rgba(20,21,47,0.045)]">
+            <div className="mb-4 rounded-[1rem] border border-border/70 bg-white/88 p-3 shadow-[0_12px_26px_rgba(20,21,47,0.04)]">
               <div className="flex items-center gap-3">
               <span className="flex size-10 shrink-0 items-center justify-center rounded-[0.95rem] border border-border/80 bg-white text-primary">
                 {logoUrl ? (
@@ -191,13 +191,13 @@ export function AppShell({
               </div>
             </div>
 
-            <nav className="flex-1 space-y-1.5 px-1 py-2">
+            <nav className="flex-1 space-y-1 px-1 py-2">
             {navigationItems.map((item) => {
               const Icon = item.icon;
               const isActive =
                 pathname === item.href || pathname.startsWith(`${item.href}/`);
               const navClasses = cn(
-                "interactive-lift flex items-center gap-3 rounded-[0.95rem] border border-transparent px-4 py-3 text-sm font-semibold text-muted-foreground transition-[background-color,border-color,color,box-shadow,transform] duration-200 hover:bg-white/86 hover:text-foreground",
+                "interactive-lift flex items-center gap-3 rounded-[0.85rem] border border-transparent px-3.5 py-2.5 text-sm font-semibold text-muted-foreground transition-[background-color,border-color,color,box-shadow,transform] duration-200 hover:bg-white/86 hover:text-foreground",
                 isActive &&
                   "border-primary/20 bg-white text-primary shadow-none ring-0"
               );
@@ -219,8 +219,8 @@ export function AppShell({
             })}
             </nav>
 
-            <div className="mt-4 space-y-4 border-t border-sidebar-border/70 px-1 pt-5">
-              <div className="rounded-[1.05rem] border border-border/80 bg-white/88 px-4 py-4 text-sm shadow-[0_14px_30px_rgba(20,21,47,0.045)]">
+            <div className="mt-3 space-y-3 border-t border-sidebar-border/70 px-1 pt-4">
+              <div className="rounded-[0.95rem] border border-border/80 bg-white/88 px-3.5 py-3.5 text-sm shadow-[0_12px_26px_rgba(20,21,47,0.04)]">
                 <div className="flex items-center gap-2">
                   <span className="vela-icon-tile size-7">
                     <BadgeCheck className="size-3.5" />
@@ -256,8 +256,8 @@ export function AppShell({
         </aside>
 
         <div className="relative flex min-h-screen min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-20 border-b border-border/70 bg-white/86 px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-8 lg:py-0">
-            <div className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 lg:h-16 lg:gap-6">
+          <header className="sticky top-0 z-20 border-b border-border/70 bg-white/88 px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-7 lg:py-0">
+            <div className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 lg:h-[60px] lg:gap-5">
               <div className="flex min-w-[148px] items-center">
                 <BrandMark href="/dashboard" includeSubtitle={false} className="hidden lg:flex" />
                 <BrandMark compact href="/dashboard" className="lg:hidden" />

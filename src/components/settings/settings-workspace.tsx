@@ -24,6 +24,12 @@ import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  WorkspaceHeader,
+  WorkspaceMainGrid,
+  WorkspacePage,
+  WorkspaceRail,
+} from "@/components/workspace/workspace-layout";
 
 type SettingsWorkspaceProps = {
   initialState: SettingsState;
@@ -316,8 +322,9 @@ export function SettingsWorkspace({
   }
 
   return (
-    <div className="grid w-full gap-4 xl:grid-cols-[210px_minmax(0,1fr)]">
-      <aside className="hidden xl:block">
+    <WorkspacePage size="wide">
+      <WorkspaceMainGrid railWidth="sm" className="xl:grid-cols-[210px_minmax(0,1fr)]">
+      <WorkspaceRail className="order-2 hidden xl:order-1 xl:block">
         <div className="sticky top-24 space-y-1.5 rounded-[1.05rem] border border-border/80 bg-white/94 p-3.5 shadow-[0_10px_22px_rgba(20,32,51,0.03)]">
           {sectionLinks.map((item) => (
             <Link
@@ -329,31 +336,23 @@ export function SettingsWorkspace({
             </Link>
           ))}
         </div>
-      </aside>
+      </WorkspaceRail>
 
-      <div className="space-y-3.5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="section-reveal space-y-2">
-            <div className="space-y-2">
-              <h1 className="text-[34px] font-semibold leading-tight tracking-tight text-foreground">
-                Settings
-              </h1>
-              <p className="max-w-2xl text-[15px] text-muted-foreground">
-                Manage workspace identity, hours, WhatsApp behavior, reminders,
-                and billing from one focused control panel.
-              </p>
-            </div>
-          </div>
-
-          <Button
-            size="lg"
-            className="section-reveal-delayed h-11 rounded-[0.9rem] px-5"
-            disabled={isPending}
-            onClick={handleSave}
-          >
-            Save changes
-          </Button>
-        </div>
+      <div className="order-1 space-y-3.5 xl:order-2">
+        <WorkspaceHeader
+          title="Settings"
+          description="Manage workspace identity, hours, WhatsApp behavior, reminders, and billing from one focused control panel."
+          actions={
+            <Button
+              size="lg"
+              className="h-11 rounded-[0.9rem] px-5"
+              disabled={isPending}
+              onClick={handleSave}
+            >
+              Save changes
+            </Button>
+          }
+        />
 
         {errorMessage ? (
           <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
@@ -953,6 +952,7 @@ export function SettingsWorkspace({
           </div>
         </SettingsSection>
       </div>
-    </div>
+      </WorkspaceMainGrid>
+    </WorkspacePage>
   );
 }

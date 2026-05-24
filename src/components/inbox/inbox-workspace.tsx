@@ -35,6 +35,13 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  WorkspaceEmptyState,
+  WorkspaceHeader,
+  WorkspaceKpiCard,
+  WorkspaceKpiGrid,
+  WorkspacePage,
+} from "@/components/workspace/workspace-layout";
 import { cn } from "@/lib/utils";
 import type { InboxViewModel } from "@/lib/inbox";
 import type { SettingsState } from "@/lib/settings";
@@ -340,25 +347,23 @@ export function InboxWorkspace({
         </DialogContent>
       </Dialog>
 
-      <div className="w-full space-y-3.5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h1 className="text-[34px] font-semibold leading-tight tracking-tight text-foreground">
-              Inbox
-            </h1>
-            <p className="mt-2 text-[15px] text-muted-foreground">
-              Manage client conversations, replies, and unknown contacts.
-            </p>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <InboxMetric label="Conversations" value={conversations.length.toString()} />
-            <InboxMetric
-              label="Unread"
-              value={conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0).toString()}
-            />
-            <InboxMetric label="Clients" value={clientCount.toString()} />
-          </div>
-        </div>
+      <WorkspacePage size="wide">
+        <WorkspaceHeader
+          title="Inbox"
+          description="Manage client conversations, replies, and unknown contacts."
+        />
+
+        <WorkspaceKpiGrid className="sm:grid-cols-3 xl:grid-cols-3">
+          <WorkspaceKpiCard icon={SendHorizontal} label="Conversations" value={conversations.length.toString()} helper={`${connection.modeLabel} inbox`} />
+          <WorkspaceKpiCard
+            icon={Search}
+            label="Unread"
+            value={conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0).toString()}
+            helper="Needs review"
+            tone={conversations.some((conversation) => conversation.unreadCount > 0) ? "warning" : "default"}
+          />
+          <WorkspaceKpiCard icon={UserPlus} label="Clients" value={clientCount.toString()} helper="Linked profiles" />
+        </WorkspaceKpiGrid>
 
       <div className="overflow-hidden rounded-[1rem] border border-border/80 bg-white shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
         <div className="grid grid-cols-1 lg:min-h-[520px] lg:grid-cols-[300px_minmax(0,1fr)]">
@@ -442,6 +447,16 @@ export function InboxWorkspace({
                 ) : null}
               </button>
             ))}
+            {filteredConversations.length === 0 ? (
+              <div className="px-5 py-6">
+                <WorkspaceEmptyState
+                  icon={Search}
+                  title="No conversations found"
+                  description="Try a different search term or wait for the next client message."
+                  className="py-5"
+                />
+              </div>
+            ) : null}
           </div>
         </aside>
 
@@ -644,18 +659,7 @@ export function InboxWorkspace({
         </section>
       </div>
       </div>
-      </div>
+      </WorkspacePage>
     </>
-  );
-}
-
-function InboxMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-32 rounded-[1rem] border border-border/80 bg-white/94 px-4 py-3 shadow-[0_10px_24px_rgba(20,32,51,0.035)]">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-        {label}
-      </p>
-      <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
-    </div>
   );
 }

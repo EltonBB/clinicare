@@ -8,7 +8,7 @@ function SkeletonBlock({ className = "" }: { className?: string }) {
 
 export default function WorkspaceLoading() {
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-[1440px] space-y-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-3">
           <SkeletonBlock className="h-3 w-32" />
@@ -18,17 +18,17 @@ export default function WorkspaceLoading() {
         <SkeletonBlock className="h-11 w-36" />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-5">
-        {Array.from({ length: 5 }).map((_, index) => (
-          <SkeletonBlock key={index} className="h-28" />
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <SkeletonBlock key={index} className="h-[116px]" />
         ))}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <SkeletonBlock className="h-[24rem]" />
-        <div className="space-y-4">
-          <SkeletonBlock className="h-32" />
-          <SkeletonBlock className="h-44" />
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <SkeletonBlock className="h-[22rem]" />
+        <div className="space-y-3">
+          <SkeletonBlock className="h-28" />
+          <SkeletonBlock className="h-36" />
         </div>
       </div>
     </div>

@@ -37,6 +37,11 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  WorkspaceKpiCard,
+  WorkspaceKpiGrid,
+  WorkspacePage,
+} from "@/components/workspace/workspace-layout";
 import { uploadWorkspaceDocument } from "@/lib/media-storage-client";
 import { cn } from "@/lib/utils";
 import type { ClientRecord, ClientStatus } from "@/lib/clients";
@@ -81,34 +86,6 @@ function NativeSelect({
         </option>
       ))}
     </select>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  tone = "default",
-}: {
-  label: string;
-  value: number | string;
-  tone?: "default" | "primary" | "danger";
-}) {
-  return (
-    <div className="rounded-[1rem] border border-border/80 bg-white/72 px-4 py-3">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-        {label}
-      </p>
-      <p
-        className={cn(
-          "mt-2 text-2xl font-semibold",
-          tone === "primary" && "text-primary",
-          tone === "danger" && "text-destructive",
-          tone === "default" && "text-foreground"
-        )}
-      >
-        {value}
-      </p>
-    </div>
   );
 }
 
@@ -439,7 +416,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   }
 
   return (
-    <div className="w-full space-y-4">
+    <WorkspacePage>
       <section className="space-y-4 pb-1">
         <Link
           href="/clients"
@@ -491,16 +468,17 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           </div>
 
           <div className="w-full space-y-3.5 xl:w-[560px]">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <StatCard label="Visits" value={client.totalVisits} />
-              <StatCard label="Completed" value={client.appointmentStats.completed} tone="primary" />
-              <StatCard label="Pending" value={client.appointmentStats.pending} />
-              <StatCard
+            <WorkspaceKpiGrid className="sm:grid-cols-2 xl:grid-cols-4">
+              <WorkspaceKpiCard label="Visits" value={client.totalVisits} className="min-h-[92px]" />
+              <WorkspaceKpiCard label="Completed" value={client.appointmentStats.completed} tone="good" className="min-h-[92px]" />
+              <WorkspaceKpiCard label="Pending" value={client.appointmentStats.pending} className="min-h-[92px]" />
+              <WorkspaceKpiCard
                 label="Balance"
                 value={client.paymentStats.unpaidBalanceDisplay}
                 tone={client.paymentStats.unpaidBalanceCents > 0 ? "danger" : "default"}
+                className="min-h-[92px]"
               />
-            </div>
+            </WorkspaceKpiGrid>
             <div className="flex flex-wrap justify-end gap-3">
               <Link
                 href={`/calendar/new?client=${client.id}`}
@@ -1657,7 +1635,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           </aside>
         </TabsContent>
       </Tabs>
-    </div>
+    </WorkspacePage>
   );
 }
 
