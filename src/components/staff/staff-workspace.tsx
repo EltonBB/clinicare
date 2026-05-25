@@ -41,6 +41,9 @@ const filters: Array<{ label: string; value: "all" | StaffStatus }> = [
   { label: "Off duty", value: "INACTIVE" },
 ];
 
+const staffTableGrid =
+  "lg:grid-cols-[minmax(250px,1.45fr)_220px_110px_150px_170px]";
+
 function statusDot(status: StaffStatus) {
   return cn(
     "inline-block size-2 rounded-full",
@@ -205,7 +208,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
             className="rounded-none border-0 shadow-none"
             headerClassName="border-b border-border/80 bg-secondary/25 py-2.5"
             headers={
-              <div className="hidden grid-cols-[minmax(220px,1.45fr)_150px_120px_130px_170px] lg:grid">
+              <div className={cn("hidden w-full gap-3 lg:grid", staffTableGrid)}>
                 <span>Staff member</span>
                 <span>Role / status</span>
                 <span>Appts today</span>
@@ -238,7 +241,10 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
             filteredStaff.map((member) => (
               <div
                 key={member.id}
-                  className="grid gap-3 px-3.5 py-2 transition-colors duration-200 hover:bg-[#f7f9fc] lg:min-h-[54px] lg:grid-cols-[minmax(210px,1.45fr)_142px_104px_120px_158px] lg:items-center"
+                  className={cn(
+                    "grid gap-3 px-3.5 py-2 transition-colors duration-200 hover:bg-[#f7f9fc] lg:min-h-[54px] lg:items-center",
+                    staffTableGrid
+                  )}
               >
                 <Link href={`/staff/${member.id}`} className="flex min-w-0 items-center gap-3">
                     <Avatar className="size-10">
@@ -349,9 +355,13 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
 
       <div className="grid gap-3 lg:grid-cols-3">
         <WorkspaceCard fill compact title="On duty now" action={<span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">{onDutyStaff.length}</span>}>
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {(onDutyStaff.length > 0 ? onDutyStaff : staff.slice(0, 5)).slice(0, 5).map((member) => (
-              <Link key={member.id} href={`/staff/${member.id}`} className="flex items-center gap-3">
+          <div className="grid gap-2">
+            {(onDutyStaff.length > 0 ? onDutyStaff : staff.slice(0, 4)).slice(0, 4).map((member) => (
+              <Link
+                key={member.id}
+                href={`/staff/${member.id}`}
+                className="grid min-h-12 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[0.68rem] border border-border/70 px-3 py-2 transition-colors hover:bg-secondary/25"
+              >
                   <Avatar className="size-9">
                   <AvatarFallback>{staffInitials(member.name)}</AvatarFallback>
                 </Avatar>
@@ -374,9 +384,12 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
         </WorkspaceCard>
 
         <WorkspaceCard fill compact title="Upcoming shifts">
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {upcomingShiftStaff.map((member) => (
-              <div key={member.id} className="flex items-start gap-3 text-sm">
+          <div className="grid gap-2">
+              {upcomingShiftStaff.slice(0, 4).map((member) => (
+              <div
+                key={member.id}
+                className="grid min-h-12 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-[0.68rem] border border-border/70 px-3 py-2 text-sm"
+              >
                 <span className="mt-0.5 flex size-8 items-center justify-center rounded-[0.75rem] bg-primary/10 text-primary">
                   <CalendarClock className="size-4" />
                 </span>

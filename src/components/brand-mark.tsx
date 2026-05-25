@@ -20,7 +20,7 @@ export function BrandMark({
     <Link
       href={href}
       className={cn(
-        "inline-flex items-center gap-3 rounded-[1rem] text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/40",
+        "inline-flex items-center gap-2.5 rounded-[0.55rem] text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/40",
         className
       )}
       aria-label="Vela home"
@@ -29,8 +29,8 @@ export function BrandMark({
         <Image
           src="/brand/vela-icon.svg"
           alt=""
-          width={28}
-          height={28}
+          width={30}
+          height={30}
           className="object-contain"
           aria-hidden="true"
         />

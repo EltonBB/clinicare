@@ -373,9 +373,9 @@ export function InboxWorkspace({
           }
         />
 
-      <div className="surface-card overflow-hidden p-0">
-        <div className="grid grid-cols-1 lg:min-h-[500px] lg:grid-cols-[292px_minmax(0,1fr)_260px]">
-        <aside className="border-b border-border/80 lg:border-b-0 lg:border-r">
+      <div className="surface-card min-h-[640px] overflow-hidden p-0 lg:h-[calc(100vh-174px)]">
+        <div className="grid h-full grid-cols-1 lg:grid-cols-[292px_minmax(0,1fr)_260px]">
+        <aside className="flex min-h-0 flex-col border-b border-border/80 lg:border-b-0 lg:border-r">
           <div className="glass-divider px-3.5 py-3">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -398,7 +398,7 @@ export function InboxWorkspace({
             </div>
           </div>
 
-          <div className="max-h-[500px] overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto">
             {errorMessage ? (
               <div className="px-5 pb-3">
                 <div className="rounded-[0.8rem] border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
@@ -666,7 +666,7 @@ export function InboxWorkspace({
           )}
         </section>
 
-        <aside className="hidden border-l border-border/80 bg-white/90 p-3 lg:block">
+        <aside className="hidden min-h-0 overflow-y-auto border-l border-border/80 bg-white/90 p-3 lg:block">
           {activeConversation ? (
             <div className="space-y-3">
               <div className="rounded-[0.72rem] border border-border/75 bg-[#f8fafc] p-3">

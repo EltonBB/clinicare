@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   ClipboardList,
   CreditCard,
+  Bell,
   Download,
   FileText,
   HeartPulse,
@@ -535,9 +536,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           <TabsTrigger className="flex-none px-0 pb-3" value="payments">Payments</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="grid items-start gap-3 xl:grid-cols-[300px_minmax(0,1fr)]">
-          <div className="grid gap-3 xl:col-start-2">
-            <div className="grid gap-3 lg:grid-cols-2">
+        <TabsContent value="overview" className="grid items-start gap-3 xl:grid-cols-[340px_minmax(0,1fr)]">
+          <div className="grid auto-rows-fr gap-3 lg:grid-cols-2 xl:col-start-2">
               <section className="surface-card p-3.5 xl:hidden">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
@@ -566,10 +566,9 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 </dl>
               </section>
 
-              <section className="surface-card p-3.5">
+              <section className="surface-card flex h-[236px] flex-col overflow-hidden p-3.5">
                 <h2 className="text-base font-semibold text-foreground">Care summary</h2>
                 <dl className="mt-4 space-y-3">
-                  <OverviewLine label="Assigned doctor / staff" value={client.details.assignedStaff} />
                   <OverviewLine label="First visit" value={firstVisit} />
                   <OverviewLine label="Last visit" value={client.lastVisit} />
                   <OverviewLine label="Next appointment" value={nextAppointment} />
@@ -578,7 +577,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 </dl>
               </section>
 
-              <section className="surface-card p-3.5">
+              <section className="surface-card flex h-[236px] flex-col overflow-hidden p-3.5">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                     <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -604,10 +603,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   />
                 </dl>
               </section>
-            </div>
 
-            <div className="grid gap-3 lg:grid-cols-2">
-              <section className="surface-card p-3.5">
+              <section className="surface-card flex h-[236px] flex-col overflow-hidden p-3.5">
                 <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                   <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
                     <CheckCircle2 className="size-4" />
@@ -632,7 +629,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               )}
             </section>
 
-              <section className="surface-card p-3.5">
+              <section className="surface-card flex h-[236px] flex-col overflow-hidden p-3.5">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                     <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -650,10 +647,6 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 <div className="mt-4 divide-y divide-border/70">
                   <HealthSummaryRow title="Important health notes" value={client.medical.importantHealthNotes} />
                   <HealthSummaryRow
-                    title="Allergies"
-                    value={allergies[0]?.label ?? client.medical.allergies}
-                  />
-                  <HealthSummaryRow
                     title="Current medication"
                     value={
                       currentMedications[0]
@@ -663,10 +656,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   />
                 </div>
               </section>
-            </div>
 
-            <div className="grid gap-3 lg:grid-cols-2">
-              <section className="surface-card p-3.5">
+              <section className="surface-card flex h-[236px] flex-col overflow-hidden p-3.5">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                     <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -706,14 +697,14 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 <button
                   type="button"
                   onClick={() => setSelectedTab("documents")}
-                  className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-primary"
+                  className="mt-auto inline-flex items-center gap-2 pt-3 text-sm font-medium text-primary"
                 >
                   View all documents
                   <ArrowLeft className="size-4 rotate-180" />
                 </button>
               </section>
 
-              <section className="surface-card p-3.5">
+              <section className="surface-card flex h-[236px] flex-col overflow-hidden p-3.5">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                     <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -738,17 +729,16 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 </div>
                 <Link
                   href={`/inbox?client=${client.id}`}
-                  className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-5 rounded-[0.65rem]")}
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-auto w-fit rounded-[0.65rem]")}
                 >
                   <MessageSquare className="size-4" />
                   Send message
                 </Link>
               </section>
-            </div>
           </div>
 
-          <aside className="grid content-start gap-3 xl:col-start-1 xl:row-start-1">
-            <section className="surface-card hidden p-3.5 xl:block">
+          <aside className="xl:col-start-1 xl:row-start-1">
+            <section className="surface-card flex flex-col p-3.5 xl:sticky xl:top-[76px] xl:min-h-[732px]">
               <div className="flex items-center gap-3">
                 <Avatar size="lg">
                   <AvatarFallback>{clientInitials(client.name)}</AvatarFallback>
@@ -760,7 +750,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   </p>
                 </div>
               </div>
-              <dl className="mt-4 space-y-3">
+              <dl className="mt-4 space-y-3 border-b border-border/70 pb-4">
                 <OverviewLine icon={Phone} label="Phone" value={client.phone || "Not added"} />
                 <OverviewLine icon={Mail} label="Email" value={client.email || "Not added"} />
                 <OverviewLine label="Patient type" value={client.patientType} />
@@ -773,90 +763,73 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 <UserRoundPen className="size-4" />
                 Edit profile
               </Link>
-            </section>
-            <section className="rounded-[0.82rem] border border-primary/10 bg-primary/7 p-3.5 shadow-[0_8px_20px_rgba(20,32,51,0.026)]">
-              <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
-                <span className="flex size-9 items-center justify-center rounded-full bg-white text-primary">
-                  <CalendarDays className="size-4" />
-                </span>
-                Upcoming appointment
-              </h2>
-              {upcomingAppointments[0] ? (
-                <div className="mt-5 rounded-[0.7rem] bg-white px-3.5 py-3">
-                  <div className="flex items-start justify-between gap-3.5">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{upcomingAppointments[0].date}</p>
-                      <p className="mt-2 font-semibold text-foreground">{upcomingAppointments[0].title}</p>
-                      <p className="mt-2 text-sm text-muted-foreground">{upcomingAppointments[0].notes}</p>
+
+              <div className="mt-5 border-t border-border/70 pt-4">
+                <SidebarSectionHeader icon={CalendarDays} title="Upcoming appointment" />
+                {upcomingAppointments[0] ? (
+                  <div className="mt-3 rounded-[0.7rem] bg-primary/7 px-3.5 py-3">
+                    <div className="flex items-start justify-between gap-3.5">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{upcomingAppointments[0].date}</p>
+                        <p className="mt-2 font-semibold text-foreground">{upcomingAppointments[0].title}</p>
+                        <p className="mt-2 text-sm text-muted-foreground">{upcomingAppointments[0].notes}</p>
+                      </div>
+                      <span className="rounded-md bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">
+                        {upcomingAppointments[0].status.toLowerCase()}
+                      </span>
                     </div>
-                    <span className="rounded-md bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">
-                      {upcomingAppointments[0].status.toLowerCase()}
-                    </span>
                   </div>
+                ) : (
+                  <p className="mt-3 text-sm text-muted-foreground">No upcoming appointment booked.</p>
+                )}
+                <Link href="/calendar" className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-primary">
+                  View in calendar
+                  <ArrowLeft className="size-4 rotate-180" />
+                </Link>
+              </div>
+
+              <div className="mt-5 flex min-h-0 flex-1 flex-col border-t border-border/70 pt-4">
+                <SidebarSectionHeader icon={ClipboardList} title="Treatment plan" />
+                <div className="mt-3 space-y-3">
+                  {client.treatmentPlanItems.slice(0, 3).map((item) => (
+                    <div key={item.id} className="flex items-start justify-between gap-3 border-b border-border/70 pb-3 last:border-0 last:pb-0">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{item.title}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{item.description || item.dueAt}</p>
+                      </div>
+                      <span className="rounded-md bg-secondary px-2 py-1 text-[11px] font-semibold text-muted-foreground">
+                        {item.status}
+                      </span>
+                    </div>
+                  ))}
+                  {client.treatmentPlanItems.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">{client.medical.treatmentPlan}</p>
+                  ) : null}
                 </div>
-              ) : (
-                <p className="mt-4 text-sm text-muted-foreground">No upcoming appointment booked.</p>
-              )}
-              <Link href="/calendar" className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-primary">
-                View in calendar
-                <ArrowLeft className="size-4 rotate-180" />
-              </Link>
-            </section>
-
-            <section className="surface-card p-3.5">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
-                  <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    <ClipboardList className="size-4" />
-                  </span>
-                  Treatment plan
-                </h2>
               </div>
-              <div className="mt-4 space-y-3">
-                {client.treatmentPlanItems.slice(0, 3).map((item) => (
-                  <div key={item.id} className="flex items-start justify-between gap-3 border-b border-border/70 pb-3 last:border-0 last:pb-0">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{item.title}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{item.description || item.dueAt}</p>
+
+              <div className="mt-5 flex min-h-0 flex-1 flex-col border-t border-border/70 pt-4">
+                <div className="flex items-center justify-between gap-3">
+                  <SidebarSectionHeader icon={Bell} title="Follow-up reminders" />
+                  <button type="button" onClick={() => setSelectedTab("medical")} className="text-sm font-medium text-primary">
+                    Manage
+                  </button>
+                </div>
+                <div className="mt-3 space-y-3">
+                  {client.followUpReminders.slice(0, 3).map((reminder) => (
+                    <div key={reminder.id} className="rounded-[0.72rem] border border-border/75 px-3 py-2.5 text-sm">
+                      <p className="font-semibold text-foreground">{reminder.title}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {reminder.remindAt} - {reminder.channel} - {reminder.status}
+                      </p>
                     </div>
-                    <span className="rounded-md bg-secondary px-2 py-1 text-[11px] font-semibold text-muted-foreground">
-                      {item.status}
-                    </span>
-                  </div>
-                ))}
-                {client.treatmentPlanItems.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">{client.medical.treatmentPlan}</p>
-                ) : null}
+                  ))}
+                  {client.followUpReminders.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No follow-up reminders scheduled.</p>
+                  ) : null}
+                </div>
               </div>
             </section>
-
-            <section className="surface-card p-3.5">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
-                  <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    <NotebookText className="size-4" />
-                  </span>
-                  Follow-up reminders
-                </h2>
-                <button type="button" onClick={() => setSelectedTab("medical")} className="text-sm font-medium text-primary">
-                  Manage
-                </button>
-              </div>
-              <div className="mt-4 space-y-3">
-                {client.followUpReminders.slice(0, 3).map((reminder) => (
-                  <div key={reminder.id} className="rounded-[0.85rem] border border-border/75 px-3 py-3 text-sm">
-                    <p className="font-semibold text-foreground">{reminder.title}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {reminder.remindAt} - {reminder.channel} - {reminder.status}
-                    </p>
-                  </div>
-                ))}
-                {client.followUpReminders.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No follow-up reminders scheduled.</p>
-                ) : null}
-              </div>
-            </section>
-
           </aside>
         </TabsContent>
 
@@ -1029,12 +1002,47 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
         </TabsContent>
 
         <TabsContent value="medical" className="space-y-3.5">
-          <div className="grid gap-3.5 xl:grid-cols-2">
-            <InfoCard icon={HeartPulse} title="Medical history" value={client.medical.medicalHistory} />
-            <InfoCard icon={HeartPulse} title="Allergies" value={client.medical.allergies} />
-            <InfoCard icon={HeartPulse} title="Important health notes" value={client.medical.importantHealthNotes} />
-            <InfoCard icon={NotebookText} title="Previous treatments" value={client.medical.previousTreatments} />
-            <InfoCard icon={NotebookText} title="Treatment plan" value={client.medical.treatmentPlan} />
+          <div className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <section className="surface-card flex min-h-[292px] flex-col overflow-hidden p-0">
+              <div className="border-b border-border/70 px-3.5 py-3">
+                <h2 className="text-lg font-semibold text-foreground">Patient health info</h2>
+              </div>
+              <div className="grid flex-1 auto-rows-fr md:grid-cols-2">
+                <HealthInfoRow icon={HeartPulse} title="Medical history" value={client.medical.medicalHistory} />
+                <HealthInfoRow icon={HeartPulse} title="Allergies" value={client.medical.allergies} />
+                <HealthInfoRow icon={HeartPulse} title="Important health notes" value={client.medical.importantHealthNotes} />
+                <HealthInfoRow icon={NotebookText} title="Treatment plan" value={client.medical.treatmentPlan} />
+              </div>
+            </section>
+
+            <aside className="grid content-start gap-3">
+              <section className="rounded-[0.82rem] border border-primary/10 bg-primary/5 p-3.5 shadow-[0_8px_20px_rgba(20,32,51,0.026)]">
+                <h2 className="text-lg font-semibold text-foreground">Medical summary</h2>
+                <dl className="mt-4 space-y-3">
+                  <OverviewLine label="Allergies" value={allergies.length ? `${allergies.length} recorded` : client.medical.allergies} />
+                  <OverviewLine label="Alerts" value={alerts.length ? `${alerts.length} recorded` : client.medical.importantHealthNotes} />
+                  <OverviewLine label="Medications" value={`${currentMedications.length} active`} />
+                  <OverviewLine label="Care facts" value={`${careFacts.length} recorded`} />
+                </dl>
+              </section>
+
+              <section className="surface-card p-3.5">
+                <h2 className="text-lg font-semibold text-foreground">Clinical alerts</h2>
+                <div className="mt-4 space-y-3">
+                  {[...alerts, ...allergies].slice(0, 5).map((item) => (
+                    <div key={item.id} className="rounded-[0.7rem] border border-border/80 bg-white/78 px-3 py-3">
+                      <p className="font-semibold text-foreground">{item.label}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {[item.type, item.severity, item.value].filter(Boolean).join(" - ")}
+                      </p>
+                    </div>
+                  ))}
+                  {[...alerts, ...allergies].length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No allergy or medical alert records yet.</p>
+                  ) : null}
+                </div>
+              </section>
+            </aside>
           </div>
 
           <section className="surface-card p-3.5">
@@ -1101,7 +1109,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             </div>
           </section>
 
-          <div className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="grid items-start gap-3.5">
             <section className="surface-card p-3.5">
               <h2 className="text-lg font-semibold text-foreground">Structured health record</h2>
               <div className="mt-4 grid gap-3 lg:grid-cols-[160px_minmax(0,1fr)_160px]">
@@ -1180,34 +1188,6 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
             </section>
 
-            <aside className="grid content-start gap-3">
-              <section className="rounded-[0.82rem] border border-primary/10 bg-primary/5 p-3.5 shadow-[0_8px_20px_rgba(20,32,51,0.026)]">
-                <h2 className="text-lg font-semibold text-foreground">Medical summary</h2>
-                <dl className="mt-4 space-y-3">
-                  <OverviewLine label="Allergies" value={allergies.length ? `${allergies.length} recorded` : client.medical.allergies} />
-                  <OverviewLine label="Alerts" value={alerts.length ? `${alerts.length} recorded` : client.medical.importantHealthNotes} />
-                  <OverviewLine label="Medications" value={`${currentMedications.length} active`} />
-                  <OverviewLine label="Care facts" value={`${careFacts.length} recorded`} />
-                </dl>
-              </section>
-
-              <section className="surface-card p-3.5">
-                <h2 className="text-lg font-semibold text-foreground">Clinical alerts</h2>
-                <div className="mt-4 space-y-3">
-                  {[...alerts, ...allergies].slice(0, 5).map((item) => (
-                    <div key={item.id} className="rounded-[0.7rem] border border-border/80 bg-white/78 px-3 py-3">
-                      <p className="font-semibold text-foreground">{item.label}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {[item.type, item.severity, item.value].filter(Boolean).join(" - ")}
-                      </p>
-                    </div>
-                  ))}
-                  {[...alerts, ...allergies].length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No allergy or medical alert records yet.</p>
-                  ) : null}
-                </div>
-              </section>
-            </aside>
           </div>
 
           <div className="grid gap-3.5 xl:grid-cols-2">
@@ -1662,7 +1642,7 @@ function Detail({ label, value }: { label: string; value: string }) {
   );
 }
 
-function InfoCard({
+function HealthInfoRow({
   icon: Icon,
   title,
   value,
@@ -1672,17 +1652,15 @@ function InfoCard({
   value: string;
 }) {
   return (
-    <section className="surface-card p-3.5">
-      <div className="flex items-start gap-3">
-        <div className="flex size-10 items-center justify-center rounded-[0.7rem] bg-primary/10 text-primary">
-          <Icon className="size-5" />
-        </div>
-        <div>
-          <h2 className="font-semibold text-foreground">{title}</h2>
-          <p className="mt-2 text-sm leading-7 text-muted-foreground">{value}</p>
-        </div>
+    <div className="grid grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 border-b border-border/70 px-3.5 py-3 last:border-b-0 md:[&:nth-child(odd)]:border-r">
+      <div className="flex size-8 items-center justify-center rounded-[0.62rem] bg-primary/10 text-primary">
+        <Icon className="size-4" />
       </div>
-    </section>
+      <h3 className="font-semibold text-foreground">{title}</h3>
+      <p className="max-w-[220px] truncate text-right text-sm italic text-muted-foreground">
+        {value || "Not added yet."}
+      </p>
+    </div>
   );
 }
 
@@ -1766,6 +1744,23 @@ function HealthSummaryRow({ title, value }: { title: string; value: string }) {
         <p className="mt-1 text-sm leading-6 text-muted-foreground">{value}</p>
       </div>
     </div>
+  );
+}
+
+function SidebarSectionHeader({
+  icon: Icon,
+  title,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  title: string;
+}) {
+  return (
+    <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
+      <span className="flex size-8 items-center justify-center rounded-[0.68rem] bg-primary/10 text-primary">
+        <Icon className="size-4" />
+      </span>
+      {title}
+    </h2>
   );
 }
 

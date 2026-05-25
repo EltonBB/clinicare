@@ -1,6 +1,6 @@
 # Project Status: Vela / Clinicare
 
-Last updated: 2026-05-24
+Last updated: 2026-05-25
 
 ## Product Overview
 
@@ -82,6 +82,13 @@ The core product direction is customer-first: clinics should not need to underst
 - Quick authenticated layout correction pass completed after screenshot review. Dashboard is now constrained to a tighter content frame with a narrower command rail; Client detail fills the overview top row with payment context instead of an empty half-row and uses compact no-content treatments for documents/messages; Staff detail anchors the metric strip closer to the staff identity header with a bounded two-column header grid; Reports uses natural-height cards for sparse analytics, compact no-data chart/status states, and tighter Demand windows / Staff load summaries. No business logic, data fetching, auth, server actions, routes, or form behavior changed.
 - Workspace frame gutter correction completed after browser review. The authenticated shell now restores real side gutters around the workspace content, shared `WorkspacePage` defaults are centered again with sensible max widths instead of `max-w-none`, Dashboard no longer overrides itself to an over-wide 1660px frame, and Staff detail uses adjacent fixed header columns so the KPI strip does not float away from the staff identity.
 - Targeted browser-feedback UI fixes completed. Staff detail metric cards now have a wider right-aligned header strip and smaller wrapping KPI labels to avoid text clipping; Client detail no longer shows the Record activity card; Reports sparse cards use natural-height compact empty/status treatments to reduce blank space; and the Dashboard customizer popover now layers above the Command center rail. No business logic, data fetching, auth, server actions, routes, or form behavior changed.
+- Focused browser-feedback layout fixes completed. The shared Vela brand mark now sits directly beside the Vela text without a bordered icon tile on landing/auth/workspace surfaces; the workspace sidebar clinic and plan areas are less boxed; the Dashboard customizer now renders as a fixed top-layer popover above the command rail; Clients and Staff tables now use identical header/row grid templates so data aligns under the proper labels; Clients/Staff lower summary areas now use four clean row cards instead of cramped uneven mini-tiles; and Inbox now fills more of the viewport height. No business logic, data fetching, auth, server actions, routes, or form behavior changed.
+- Clients and Staff table header alignment corrected after browser review. The header grids now span the full table width and use the same column gaps as the data rows, so category labels sit directly over their corresponding data columns.
+- Dashboard customizer layering was corrected with a body-level React portal so the widget panel is no longer constrained by the dashboard grid stacking context and cannot render underneath the Command center rail.
+- Client detail Overview tab restructured into a fixed profile workspace: the left side is now one unified sidebar card containing profile context, upcoming appointment, treatment plan, and follow-up reminders, while the right side uses a strict two-column, three-row grid with fixed-height equal cards for Care summary, Payment snapshot, Latest appointment, Health notes, Documents, and Messages.
+- Client detail Overview received a follow-up cleanup: the left sidebar now extends downward to align better with the right-side overview grid, Assigned doctor/staff was removed from Care summary, and Allergies was removed from the Health notes card to avoid duplicating Important health notes.
+- Client detail sidebar spacing refined so the Treatment plan and Follow-up reminders sections share the remaining vertical sidebar space instead of leaving an empty bottom area.
+- Client detail Medical Info tab simplified: the top area now uses one compact Patient health info card plus a right-side Medical summary/Clinical alerts rail; Previous treatments was removed from that top grid and Treatment plan was moved into its place.
 
 ## Current Working Flows
 
@@ -162,4 +169,4 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Last Completed Task
 
-- Completed targeted browser-feedback UI fixes for Staff detail, Client detail, Reports, and the Dashboard customizer popover. Verification: UI UX Pro Max supporting UX query, `npm run lint`, `git diff --check`, and `npm run build`. The local preview server was restarted at `http://localhost:3000`.
+- Completed Client detail Medical Info simplification after browser review. Verification: `npm run lint` and `npm run build`. The local preview server is running at `http://localhost:3000`.

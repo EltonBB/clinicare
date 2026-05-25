@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   Activity,
@@ -156,8 +157,15 @@ function DashboardCustomizer({
         <Settings2 className="size-4" />
         Customize dashboard
       </Button>
-      {open ? (
-          <div className="absolute right-0 top-12 z-[120] w-[min(680px,calc(100vw-2rem))] rounded-[0.78rem] border border-border/80 bg-white p-3.5 shadow-[0_18px_42px_rgba(20,21,47,0.16)] backdrop-blur-xl">
+      {open ? createPortal((
+        <>
+          <button
+            type="button"
+            aria-label="Close dashboard customization"
+            className="fixed inset-0 z-[2147483000] cursor-default bg-transparent"
+            onClick={cancelChanges}
+          />
+          <div className="fixed right-4 top-24 z-[2147483010] max-h-[calc(100vh-7rem)] w-[min(680px,calc(100vw-2rem))] overflow-y-auto rounded-[0.78rem] border border-border/80 bg-white p-3.5 shadow-[0_24px_56px_rgba(20,21,47,0.18)] backdrop-blur-xl sm:right-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-lg font-semibold text-foreground">
@@ -244,8 +252,9 @@ function DashboardCustomizer({
                 {isPending ? "Saving..." : "Save widgets"}
               </Button>
             </div>
-        </div>
-      ) : null}
+          </div>
+        </>
+      ), document.body) : null}
     </div>
   );
 }

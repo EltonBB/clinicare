@@ -167,13 +167,13 @@ export function AppShell({
             className="sticky top-0 flex h-screen w-full flex-col bg-white p-3"
             data-tour="sidebar-shell"
           >
-            <div className="mb-4 rounded-[0.7rem] border border-border/70 bg-[#f8fafc] p-2.5">
+            <div className="mb-4 px-2 py-2">
               <div className="flex items-center gap-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-[0.72rem] border border-border/75 bg-white text-primary">
+              <span className="flex size-8 shrink-0 items-center justify-center text-primary">
                 {logoUrl ? (
                   <span
                     aria-hidden="true"
-                    className="size-full rounded-[0.72rem] bg-contain bg-center bg-no-repeat"
+                    className="size-full bg-contain bg-center bg-no-repeat"
                     style={{ backgroundImage: `url("${logoUrl}")` }}
                   />
                 ) : (
@@ -220,9 +220,9 @@ export function AppShell({
             </nav>
 
             <div className="mt-2 space-y-2 border-t border-sidebar-border/70 px-0.5 pt-2.5">
-              <div className="rounded-[0.62rem] border border-border/75 bg-[#f8fafc] px-2.5 py-2.5 text-sm">
+              <div className="px-2.5 py-2 text-sm">
                 <div className="flex items-center gap-2">
-                  <span className="vela-icon-tile size-7 rounded-[0.62rem]">
+                  <span className="vela-icon-tile size-7 rounded-[0.62rem] border-0 bg-transparent p-0">
                     <BadgeCheck className="size-3.5" />
                   </span>
                   <p className="truncate font-semibold text-[var(--brand-ink)]">

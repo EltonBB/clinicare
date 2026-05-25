@@ -47,6 +47,9 @@ const statusColors: Record<ClientStatus, string> = {
   archived: "text-muted-foreground",
 };
 
+const clientTableGrid =
+  "lg:grid-cols-[minmax(240px,1.45fr)_140px_minmax(280px,1.35fr)_110px_120px_110px]";
+
 function statusDot(status: ClientStatus) {
   return cn(
     "inline-block size-2 rounded-full",
@@ -148,7 +151,7 @@ export function ClientsWorkspace({
         <WorkspaceTable
             headerClassName="py-2.5"
             headers={
-              <div className="hidden grid-cols-[minmax(230px,1.45fr)_130px_minmax(220px,1.15fr)_110px_110px_110px] lg:grid">
+              <div className={cn("hidden w-full gap-3 lg:grid", clientTableGrid)}>
                 <span>Name</span>
                 <span>Last visit</span>
                 <span>Latest appointment</span>
@@ -182,7 +185,10 @@ export function ClientsWorkspace({
             filteredClients.map((client) => (
               <div
                 key={client.id}
-                  className="grid gap-3 px-3.5 py-2 transition-colors duration-200 hover:bg-[#f7f9fc] lg:min-h-[54px] lg:grid-cols-[minmax(220px,1.45fr)_118px_minmax(210px,1.15fr)_96px_96px_94px] lg:items-center"
+                  className={cn(
+                    "grid gap-3 px-3.5 py-2 transition-colors duration-200 hover:bg-[#f7f9fc] lg:min-h-[54px] lg:items-center",
+                    clientTableGrid
+                  )}
               >
                 <Link href={`/clients/${client.id}`} className="flex min-w-0 items-center gap-3">
                   <Avatar size="lg">
@@ -250,9 +256,13 @@ export function ClientsWorkspace({
         </WorkspaceCard>
 
         <WorkspaceCard fill compact title="Recently updated">
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {clients.slice(0, 5).map((client) => (
-              <Link key={client.id} href={`/clients/${client.id}`} className="flex items-center gap-3 text-sm">
+          <div className="grid gap-2">
+            {clients.slice(0, 4).map((client) => (
+              <Link
+                key={client.id}
+                href={`/clients/${client.id}`}
+                className="grid min-h-12 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[0.68rem] border border-border/70 px-3 py-2 text-sm transition-colors hover:bg-secondary/25"
+              >
                 <Avatar size="lg">
                   <AvatarFallback>{clientInitials(client.name)}</AvatarFallback>
                 </Avatar>
@@ -260,6 +270,7 @@ export function ClientsWorkspace({
                   <span className="block truncate font-semibold text-foreground">{client.name}</span>
                   <span className="text-xs text-muted-foreground">{client.lastVisit}</span>
                 </span>
+                <ChevronRight className="size-4 text-muted-foreground" />
               </Link>
             ))}
             {clients.length === 0 ? (
