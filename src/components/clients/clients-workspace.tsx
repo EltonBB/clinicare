@@ -21,10 +21,9 @@ import {
   WorkspaceHeader,
   WorkspaceKpiCard,
   WorkspaceKpiGrid,
-  WorkspaceMainGrid,
   WorkspacePage,
-  WorkspaceRail,
   WorkspaceTable,
+  WorkspaceToolbar,
 } from "@/components/workspace/workspace-layout";
 import { cn } from "@/lib/utils";
 import type { ClientStatus, ClientsViewModel } from "@/lib/clients";
@@ -117,15 +116,14 @@ export function ClientsWorkspace({
         <WorkspaceKpiCard icon={FileText} label="Recent updates" value={clients.slice(0, 5).length.toString()} helper="Latest records ready" />
       </WorkspaceKpiGrid>
 
-      <div className="section-reveal rounded-[1rem] border border-border/80 bg-white p-3.5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <WorkspaceToolbar>
         <div className="relative w-full flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search clients by name, email, or phone..."
-            className="h-11 rounded-[0.9rem] bg-white/78 pl-9"
+            className="h-10 rounded-[0.72rem] bg-white pl-9"
           />
         </div>
           <div className="flex flex-wrap gap-2">
@@ -135,21 +133,19 @@ export function ClientsWorkspace({
                 type="button"
                 onClick={() => setFilter(item.value)}
                 className={cn(
-                  "rounded-[0.9rem] border border-transparent bg-white/36 px-3 py-2 text-sm font-medium text-muted-foreground transition-[background-color,color,border-color,box-shadow] duration-200 hover:border-border/70 hover:bg-white/70 hover:text-foreground",
+                  "rounded-[0.7rem] border border-transparent bg-white/36 px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[background-color,color,border-color,box-shadow] duration-200 hover:border-border/70 hover:bg-white/70 hover:text-foreground",
                   filter === item.value &&
-                    "border-border/80 bg-white text-foreground shadow-[0_14px_28px_rgba(20,32,51,0.05)]"
+                    "border-border/80 bg-white text-foreground shadow-[0_6px_16px_rgba(20,32,51,0.04)]"
                 )}
               >
                 {item.label}
               </button>
             ))}
           </div>
-        </div>
-      </div>
+      </WorkspaceToolbar>
 
-      <WorkspaceMainGrid railWidth="sm">
-        <div className="section-reveal space-y-3.5">
-          <WorkspaceTable
+      <div className="section-reveal">
+        <WorkspaceTable
             headerClassName="py-2.5"
             headers={
               <div className="hidden grid-cols-[minmax(230px,1.45fr)_130px_minmax(220px,1.15fr)_110px_110px_110px] lg:grid">
@@ -186,7 +182,7 @@ export function ClientsWorkspace({
             filteredClients.map((client) => (
               <div
                 key={client.id}
-                  className="grid gap-3 px-5 py-3 transition-colors duration-200 hover:bg-white/58 lg:min-h-[64px] lg:grid-cols-[minmax(230px,1.45fr)_130px_minmax(220px,1.15fr)_110px_110px_110px] lg:items-center"
+                  className="grid gap-3 px-3.5 py-2 transition-colors duration-200 hover:bg-[#f7f9fc] lg:min-h-[54px] lg:grid-cols-[minmax(220px,1.45fr)_118px_minmax(210px,1.15fr)_96px_96px_94px] lg:items-center"
               >
                 <Link href={`/clients/${client.id}`} className="flex min-w-0 items-center gap-3">
                   <Avatar size="lg">
@@ -222,7 +218,7 @@ export function ClientsWorkspace({
                     href={`/clients/${client.id}`}
                     className={cn(
                       buttonVariants({ variant: "default", size: "sm" }),
-                      "rounded-[0.85rem]"
+                      "h-8 rounded-[0.62rem] px-3 text-xs"
                     )}
                   >
                     Details
@@ -232,11 +228,12 @@ export function ClientsWorkspace({
               </div>
             ))
           )}
-          </WorkspaceTable>
-        </div>
-        <WorkspaceRail>
-        <WorkspaceCard compact title="Client segments">
-          <div className="mt-4 space-y-3 text-sm">
+        </WorkspaceTable>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        <WorkspaceCard fill compact title="Client segments">
+          <div className="space-y-2.5 text-sm">
             <SegmentRow label="Active" value={activeClients.length} tone="primary" />
             <SegmentRow label="At risk" value={atRiskClients.length} tone="danger" />
             <SegmentRow label="Inactive" value={clients.filter((client) => client.status === "inactive").length} />
@@ -244,16 +241,16 @@ export function ClientsWorkspace({
           </div>
         </WorkspaceCard>
 
-        <WorkspaceCard compact title="Directory health">
-          <div className="mt-4 space-y-3 text-sm">
+        <WorkspaceCard fill compact title="Directory health">
+          <div className="space-y-2.5 text-sm">
             <SegmentRow label="Average visits" value={clients.length > 0 ? Math.round(totalVisits / clients.length) : 0} />
             <SegmentRow label="With visits" value={clients.filter((client) => client.totalVisits > 0).length} />
             <SegmentRow label="No visits yet" value={clients.filter((client) => client.totalVisits === 0).length} />
           </div>
         </WorkspaceCard>
 
-        <WorkspaceCard compact title="Recently updated">
-          <div className="mt-4 space-y-3">
+        <WorkspaceCard fill compact title="Recently updated">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {clients.slice(0, 5).map((client) => (
               <Link key={client.id} href={`/clients/${client.id}`} className="flex items-center gap-3 text-sm">
                 <Avatar size="lg">
@@ -275,8 +272,7 @@ export function ClientsWorkspace({
             ) : null}
           </div>
         </WorkspaceCard>
-        </WorkspaceRail>
-      </WorkspaceMainGrid>
+      </div>
     </WorkspacePage>
   );
 }

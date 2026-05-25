@@ -33,13 +33,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   WorkspaceEmptyState,
   WorkspaceHeader,
-  WorkspaceKpiCard,
-  WorkspaceKpiGrid,
   WorkspacePage,
 } from "@/components/workspace/workspace-layout";
 import { cn } from "@/lib/utils";
@@ -60,6 +58,15 @@ function isReminderMessage(body: string) {
     normalized.includes("this is a reminder for your appointment") ||
     normalized.includes("appointment is coming up") ||
     normalized.startsWith("reminder:")
+  );
+}
+
+function ContextRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-border/65 pb-2 last:border-b-0 last:pb-0">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="truncate text-right font-semibold text-foreground">{value}</span>
+    </div>
   );
 }
 
@@ -277,12 +284,12 @@ export function InboxWorkspace({
         <DialogContent className="max-w-[480px] p-0">
           <div className="relative overflow-hidden">
             <div className="pointer-events-none absolute inset-x-0 top-0 h-28 overflow-hidden">
-              <div className="dialog-accent-orb absolute -left-5 top-4 h-20 w-20 rounded-full bg-primary/10 blur-2xl" />
+              <div className="dialog-accent-orb absolute -left-5 top-3.5 h-20 w-20 rounded-full bg-primary/10 blur-2xl" />
               <div className="dialog-accent-orb absolute right-6 top-2 h-16 w-16 rounded-full bg-primary/8 blur-2xl [animation-delay:-2.1s]" />
             </div>
 
             <DialogHeader className="glass-divider relative rounded-t-[1.2rem] px-5 pb-4 pt-5">
-              <div className="mb-3 flex size-10 items-center justify-center rounded-[0.95rem] bg-primary/12 text-primary shadow-[0_14px_28px_var(--primary-shadow)]">
+        <div className="mb-3 flex size-10 items-center justify-center rounded-[0.7rem] bg-primary/12 text-primary shadow-[0_5px_14px_var(--primary-shadow)]">
                 <ArrowRightLeft className="size-4" />
               </div>
               <DialogTitle className="text-[1.15rem] font-semibold">
@@ -295,7 +302,7 @@ export function InboxWorkspace({
             </DialogHeader>
 
             <div className="space-y-4 px-5 py-5">
-              <div className="surface-soft section-reveal rounded-[1.05rem] p-4 transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_32px_rgba(20,32,51,0.06)]">
+              <div className="surface-soft section-reveal rounded-[0.75rem] p-3.5 transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_5px_14px_rgba(20,32,51,0.025)]">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Phone
                 </p>
@@ -304,7 +311,7 @@ export function InboxWorkspace({
                 </p>
               </div>
 
-              <div className="surface-soft section-reveal-delayed space-y-2 rounded-[1.05rem] p-4 transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_32px_rgba(20,32,51,0.06)]">
+              <div className="surface-soft section-reveal-delayed space-y-2 rounded-[0.75rem] p-3.5 transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_5px_14px_rgba(20,32,51,0.025)]">
                 <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Client name
                 </label>
@@ -312,11 +319,11 @@ export function InboxWorkspace({
                   value={convertName}
                   onChange={(event) => setConvertName(event.target.value)}
                   placeholder="Add the client name"
-                  className="h-11 rounded-[0.9rem] bg-white/84"
+                  className="h-11 rounded-[0.7rem] bg-white/84"
                 />
               </div>
 
-              <div className="surface-soft section-reveal-delayed space-y-2 rounded-[1.05rem] p-4 transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_32px_rgba(20,32,51,0.06)]">
+              <div className="surface-soft section-reveal-delayed space-y-2 rounded-[0.75rem] p-3.5 transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_5px_14px_rgba(20,32,51,0.025)]">
                 <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Email
                 </label>
@@ -324,7 +331,7 @@ export function InboxWorkspace({
                   value={convertEmail}
                   onChange={(event) => setConvertEmail(event.target.value)}
                   placeholder="Optional email"
-                  className="h-11 rounded-[0.9rem] bg-white/84"
+                  className="h-11 rounded-[0.7rem] bg-white/84"
                 />
               </div>
             </div>
@@ -332,7 +339,7 @@ export function InboxWorkspace({
             <DialogFooter className="items-stretch gap-3 sm:flex-col sm:items-stretch sm:justify-start">
               <div className="flex">
                 <Button
-                  className="h-11 w-full rounded-[0.9rem]"
+                  className="h-11 w-full rounded-[0.7rem]"
                   onClick={convertConversationToClient}
                   disabled={isPending}
                 >
@@ -351,36 +358,37 @@ export function InboxWorkspace({
         <WorkspaceHeader
           title="Inbox"
           description="Manage client conversations, replies, and unknown contacts."
+          meta={
+            <div className="flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
+              <span className="rounded-full border border-border/75 bg-white px-2.5 py-1">
+                {conversations.length} conversations
+              </span>
+              <span className="rounded-full border border-border/75 bg-white px-2.5 py-1">
+                {conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0)} unread
+              </span>
+              <span className="rounded-full border border-border/75 bg-white px-2.5 py-1">
+                {connection.modeLabel} inbox
+              </span>
+            </div>
+          }
         />
 
-        <WorkspaceKpiGrid className="sm:grid-cols-3 xl:grid-cols-3">
-          <WorkspaceKpiCard icon={SendHorizontal} label="Conversations" value={conversations.length.toString()} helper={`${connection.modeLabel} inbox`} />
-          <WorkspaceKpiCard
-            icon={Search}
-            label="Unread"
-            value={conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0).toString()}
-            helper="Needs review"
-            tone={conversations.some((conversation) => conversation.unreadCount > 0) ? "warning" : "default"}
-          />
-          <WorkspaceKpiCard icon={UserPlus} label="Clients" value={clientCount.toString()} helper="Linked profiles" />
-        </WorkspaceKpiGrid>
-
-      <div className="overflow-hidden rounded-[1rem] border border-border/80 bg-white shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
-        <div className="grid grid-cols-1 lg:min-h-[520px] lg:grid-cols-[300px_minmax(0,1fr)]">
+      <div className="surface-card overflow-hidden p-0">
+        <div className="grid grid-cols-1 lg:min-h-[500px] lg:grid-cols-[292px_minmax(0,1fr)_260px]">
         <aside className="border-b border-border/80 lg:border-b-0 lg:border-r">
-          <div className="glass-divider px-4 py-3.5">
+          <div className="glass-divider px-3.5 py-3">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search messages or clients..."
-                className="h-10 rounded-[0.9rem] bg-white/78 pl-9"
+                className="h-10 rounded-[0.72rem] bg-white pl-9"
               />
             </div>
           </div>
 
-          <div className="flex items-center justify-between px-4 py-3.5">
+          <div className="flex items-center justify-between px-3.5 py-3">
             <div>
               <p className="text-lg font-semibold text-foreground">Messages</p>
               <p className="text-sm text-muted-foreground">
@@ -390,7 +398,7 @@ export function InboxWorkspace({
             </div>
           </div>
 
-          <div className="max-h-[520px] overflow-y-auto">
+          <div className="max-h-[500px] overflow-y-auto">
             {errorMessage ? (
               <div className="px-5 pb-3">
                 <div className="rounded-[0.8rem] border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
@@ -404,7 +412,7 @@ export function InboxWorkspace({
                 type="button"
                 onClick={() => openConversation(conversation.id)}
                 className={cn(
-                  "flex w-full items-start gap-3 border-l-2 border-transparent px-4 py-3.5 text-left transition-[background-color,transform] duration-200 hover:bg-white/54",
+                  "flex w-full items-start gap-3 border-l-2 border-transparent px-3.5 py-3 text-left transition-[background-color] duration-200 hover:bg-secondary/24",
                   activeConversation?.id === conversation.id &&
                     "border-primary bg-secondary/40"
                 )}
@@ -463,7 +471,7 @@ export function InboxWorkspace({
         <section className="flex min-w-0 flex-col bg-white/92">
           {activeConversation ? (
             <>
-              <div className="glass-divider flex items-center justify-between gap-4 px-4 py-3.5">
+              <div className="glass-divider flex items-center justify-between gap-3.5 px-3.5 py-3">
                 <div className="flex min-w-0 items-center gap-3">
                   <Avatar size="lg">
                     <AvatarFallback>
@@ -529,8 +537,8 @@ export function InboxWorkspace({
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto bg-muted/22 px-4 py-4">
-                <div className="mx-auto max-w-3xl space-y-4">
+              <div className="flex-1 overflow-y-auto bg-muted/22 px-3.5 py-3.5">
+                <div className="mx-auto max-w-3xl space-y-3">
                   {activeConversation.messages.map((message) => (
                     <div key={message.id}>
                       {message.sender === "system" ? (
@@ -540,7 +548,7 @@ export function InboxWorkspace({
                       ) : (
                         <div
                           className={cn(
-                            "max-w-[75%] rounded-[1rem] px-4 py-3 text-sm leading-7 shadow-[0_14px_28px_rgba(20,32,51,0.04)]",
+                            "max-w-[75%] rounded-[0.85rem] px-3.5 py-2.5 text-sm leading-6 shadow-[0_8px_18px_rgba(20,32,51,0.025)]",
                             message.sender === "business"
                               ? "ml-auto bg-primary text-primary-foreground"
                               : "bg-white/86 text-foreground ring-1 ring-border/75"
@@ -579,8 +587,8 @@ export function InboxWorkspace({
                 </div>
               </div>
 
-              <div className="glass-divider px-4 py-3.5">
-                <div className="mx-auto flex max-w-3xl items-end gap-3 rounded-[1rem] border border-border/80 bg-white/84 px-3 py-3 shadow-[0_18px_36px_rgba(20,32,51,0.05)]">
+              <div className="glass-divider px-3.5 py-3">
+                <div className="mx-auto flex max-w-3xl items-end gap-3 rounded-[0.82rem] border border-border/75 bg-white px-3 py-2.5 shadow-[0_8px_18px_rgba(20,32,51,0.026)]">
                   <Input
                     value={draftMessage}
                     onChange={(event) => setDraftMessage(event.target.value)}
@@ -595,7 +603,7 @@ export function InboxWorkspace({
                   />
                   <Button
                     onClick={sendMessage}
-                    className="size-10 rounded-[0.9rem] px-0"
+                    className="size-10 rounded-[0.7rem] px-0"
                     aria-label="Send message"
                     disabled={isPending || draftMessage.trim().length === 0}
                   >
@@ -608,7 +616,7 @@ export function InboxWorkspace({
             <div className="flex flex-1 items-center justify-center px-6">
               <div className="max-w-md space-y-5 text-center">
                 {query.trim().length === 0 ? (
-                  <div className="mx-auto flex size-12 items-center justify-center rounded-[1.05rem] bg-primary/12 text-primary">
+                  <div className="mx-auto flex size-12 items-center justify-center rounded-[0.75rem] bg-primary/12 text-primary">
                     {hasClients ? (
                       <CalendarPlus2 className="size-5" />
                     ) : (
@@ -634,7 +642,7 @@ export function InboxWorkspace({
                   <div className="flex flex-col justify-center gap-2 sm:flex-row">
                     <Link
                       href={hasClients ? bookingHref : "/clients/new?next=calendar"}
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.9rem] bg-primary px-4 text-sm font-medium text-primary-foreground transition-[background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_32px_var(--primary-shadow)]"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.7rem] bg-primary px-4 text-sm font-medium text-primary-foreground transition-[background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_18px_var(--primary-shadow)]"
                     >
                       {hasClients ? (
                         <CalendarPlus2 className="size-4" />
@@ -646,7 +654,7 @@ export function InboxWorkspace({
                     {hasClients ? (
                       <Link
                         href="/clients"
-                        className="inline-flex h-10 items-center justify-center rounded-[0.9rem] border border-border/80 bg-white px-4 text-sm font-medium text-foreground transition-[background-color,border-color,transform] duration-200 hover:-translate-y-0.5 hover:bg-secondary/50"
+                        className="inline-flex h-10 items-center justify-center rounded-[0.7rem] border border-border/80 bg-white px-4 text-sm font-medium text-foreground transition-[background-color,border-color,transform] duration-200 hover:-translate-y-0.5 hover:bg-secondary/50"
                       >
                         Open clients
                       </Link>
@@ -657,6 +665,64 @@ export function InboxWorkspace({
             </div>
           )}
         </section>
+
+        <aside className="hidden border-l border-border/80 bg-white/90 p-3 lg:block">
+          {activeConversation ? (
+            <div className="space-y-3">
+              <div className="rounded-[0.72rem] border border-border/75 bg-[#f8fafc] p-3">
+                <Avatar size="lg">
+                  <AvatarFallback>
+                    {activeConversation.clientName
+                      .split(" ")
+                      .map((part) => part[0] ?? "")
+                      .join("")
+                      .slice(0, 2)}
+                  </AvatarFallback>
+                </Avatar>
+                <p className="mt-3 truncate text-sm font-semibold text-foreground">
+                  {activeConversation.displayName}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">{activeConversation.activeLabel}</p>
+              </div>
+
+              <div className="rounded-[0.72rem] border border-border/75 bg-white p-3 text-sm">
+                <p className="font-semibold text-foreground">Contact context</p>
+                <div className="mt-3 space-y-2.5">
+                  <ContextRow label="Status" value={activeConversation.contactStatusLabel} />
+                  <ContextRow label="Messages" value={activeConversation.messages.length.toString()} />
+                  <ContextRow label="Unread" value={activeConversation.unreadCount.toString()} />
+                </div>
+              </div>
+
+              {activeConversation.clientId ? (
+                <Link
+                  href={`/clients/${activeConversation.clientId}`}
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-full rounded-[0.68rem] bg-white")}
+                >
+                  View patient record
+                </Link>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full rounded-[0.68rem] bg-white"
+                  onClick={openConvertDialog}
+                  disabled={isPending}
+                >
+                  Convert to client
+                </Button>
+              )}
+            </div>
+          ) : (
+            <WorkspaceEmptyState
+              compact
+              icon={UserPlus}
+              title="No conversation selected"
+              description="Choose a message to see contact context."
+            />
+          )}
+        </aside>
       </div>
       </div>
       </WorkspacePage>

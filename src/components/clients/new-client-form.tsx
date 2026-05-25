@@ -9,6 +9,7 @@ import { saveClientAction } from "@/app/(workspace)/clients/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { WorkspaceFormSection } from "@/components/workspace/workspace-layout";
 import type { ClientStatus } from "@/lib/clients";
 import { cn } from "@/lib/utils";
 
@@ -90,10 +91,9 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
   }
 
   return (
-    <form action={handleSubmit} className="space-y-4">
-      <section className="surface-card p-4">
-        <h2 className="text-base font-semibold text-foreground">Basic information</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+    <form action={handleSubmit} className="space-y-3.5">
+      <WorkspaceFormSection title="Basic information">
+        <div className="grid gap-3.5 sm:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Full name</span>
             <Input name="name" required placeholder="Patient name" className="h-11 rounded-[0.9rem] bg-white" />
@@ -133,11 +133,10 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
             onChange={(value) => setStatus(value as ClientStatus)}
           />
         </div>
-      </section>
+      </WorkspaceFormSection>
 
-      <section className="surface-card p-4">
-        <h2 className="text-base font-semibold text-foreground">Clinic information</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      <WorkspaceFormSection title="Clinic information">
+        <div className="grid gap-3.5 sm:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Clinic type</span>
             <Input name="clinicType" placeholder="Dental, aesthetic, medical..." className="h-11 rounded-[0.9rem] bg-white" />
@@ -158,7 +157,7 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
             <Textarea name="notes" placeholder="Registration notes, communication preferences, or immediate booking context" className="min-h-24 rounded-[0.9rem] bg-white px-3 py-3" />
           </label>
         </div>
-      </section>
+      </WorkspaceFormSection>
 
       {error ? (
         <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">

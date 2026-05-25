@@ -186,7 +186,7 @@ export function NewAppointmentForm({
 
   if (clients.length === 0) {
     return (
-      <section className="rounded-[1.15rem] border border-dashed border-primary/25 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),var(--primary-soft))] p-6 text-center shadow-[0_18px_44px_rgba(20,32,51,0.045)]">
+      <section className="rounded-[0.82rem] border border-dashed border-primary/25 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),var(--primary-soft))] p-4 text-center shadow-[0_8px_20px_rgba(20,32,51,0.026)]">
         <div className="mx-auto flex size-12 items-center justify-center rounded-[1.05rem] bg-primary/12 text-primary">
           <UsersRound className="size-5" />
         </div>
@@ -205,8 +205,8 @@ export function NewAppointmentForm({
   }
 
   return (
-    <form action={handleSubmit} className="space-y-4">
-      <section className="surface-card p-4">
+    <form action={handleSubmit} className="space-y-3.5">
+      <section className="surface-card p-3.5">
         <h2 className="text-base font-semibold text-foreground">Client</h2>
         <label className="mt-4 block space-y-2">
           <span className="text-sm font-semibold text-foreground">Client</span>
@@ -225,9 +225,9 @@ export function NewAppointmentForm({
         </label>
       </section>
 
-      <section className="surface-card p-4">
+      <section className="surface-card p-3.5">
         <h2 className="text-base font-semibold text-foreground">Service and schedule</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <div className="mt-3.5 grid gap-3.5 sm:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Service</span>
             <Input
@@ -262,7 +262,7 @@ export function NewAppointmentForm({
               className="h-11 rounded-[0.9rem] bg-white"
             />
           </label>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-3.5 sm:grid-cols-2">
             <label className="space-y-2">
               <span className="text-sm font-semibold text-foreground">Start</span>
               <select
@@ -325,12 +325,12 @@ export function NewAppointmentForm({
       </section>
 
       {!isEditing ? (
-      <section className="surface-card p-4">
+      <section className="surface-card p-3.5">
         <h2 className="text-base font-semibold text-foreground">Payment</h2>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">
           Add the expected or collected payment for this booked service. Leave amount blank if payment will be handled later.
         </p>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <div className="mt-3.5 grid gap-3.5 sm:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Service amount</span>
             <Input name="paymentAmount" inputMode="decimal" placeholder="0.00" className="h-11 rounded-[0.9rem] bg-white" />

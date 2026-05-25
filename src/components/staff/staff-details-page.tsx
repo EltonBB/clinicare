@@ -82,7 +82,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
 
   return (
     <WorkspacePage>
-      <section className="space-y-4 pb-1">
+      <section className="space-y-3.5 pb-1">
         <Link
           href="/staff"
           className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -91,7 +91,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
           Back to staff
         </Link>
 
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_640px] xl:items-start">
           <div className="flex min-w-0 items-start gap-4">
             <Avatar className="size-20 rounded-full bg-primary/10 text-primary">
               <AvatarFallback className="bg-primary/10 text-3xl font-semibold text-primary">
@@ -107,7 +107,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
                   {statusLabel(staff.status)}
                 </span>
               </div>
-              <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
+              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
                 <span className="inline-flex items-center gap-2 font-medium text-foreground">
                   <CalendarClock className="size-4 text-muted-foreground" />
                   {staff.role || "Staff"}
@@ -132,14 +132,14 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
             </div>
           </div>
 
-          <div className="w-full space-y-3.5 xl:w-[560px]">
+          <div className="w-full space-y-3 xl:justify-self-end">
             <WorkspaceKpiGrid className="sm:grid-cols-2 xl:grid-cols-4">
-              <WorkspaceKpiCard className="min-h-[92px]" icon={CalendarClock} label="Appts today" value={staff.appointmentsToday.toString()} helper="Assigned today" />
-              <WorkspaceKpiCard className="min-h-[92px]" icon={CheckCircle2} label="Completion" value={`${staff.completionRate}%`} helper="Finalized work" />
-              <WorkspaceKpiCard className="min-h-[92px]" icon={CalendarCheck2} label="This month" value={staff.completedThisMonth.toString()} helper="Completed visits" />
-              <WorkspaceKpiCard className="min-h-[92px]" icon={Clock3} label="Weekly hours" value={`${staff.weeklyHours}h`} helper="Tracked time" />
+              <WorkspaceKpiCard compact icon={CalendarClock} label="Appts today" value={staff.appointmentsToday.toString()} helper="Assigned today" />
+              <WorkspaceKpiCard compact icon={CheckCircle2} label="Completion" value={`${staff.completionRate}%`} helper="Finalized work" />
+              <WorkspaceKpiCard compact icon={CalendarCheck2} label="This month" value={staff.completedThisMonth.toString()} helper="Completed visits" />
+              <WorkspaceKpiCard compact icon={Clock3} label="Weekly hours" value={`${staff.weeklyHours}h`} helper="Tracked time" />
             </WorkspaceKpiGrid>
-            <div className="flex flex-wrap justify-end gap-3">
+            <div className="flex flex-wrap justify-start gap-3 xl:justify-end">
               <Button
                 className="h-10 rounded-[0.65rem] px-4"
                 variant={staff.isCheckedIn ? "outline" : "default"}
@@ -173,7 +173,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
         </div>
       ) : null}
 
-      <Tabs value={selectedTab} onValueChange={setSelectedTab} className="section-reveal-delayed gap-4">
+      <Tabs value={selectedTab} onValueChange={setSelectedTab} className="section-reveal-delayed gap-3.5">
         <TabsList variant="line" className="w-full justify-start gap-6 overflow-x-auto rounded-none border-b border-border/80 p-0">
           <TabsTrigger className="flex-none px-0 pb-3" value="overview">Overview</TabsTrigger>
           <TabsTrigger className="flex-none px-0 pb-3" value="schedule">Schedule</TabsTrigger>
@@ -181,9 +181,9 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
           <TabsTrigger className="flex-none px-0 pb-3" value="profile">Profile</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="grid gap-4">
-            <div className="grid gap-4 lg:grid-cols-2">
+        <TabsContent value="overview" className="grid items-start gap-3 xl:grid-cols-[280px_minmax(0,1fr)]">
+          <div className="grid gap-3 xl:col-start-2">
+            <div className="grid gap-3.5 lg:grid-cols-2">
               <Panel title="Staff information" icon={CheckCircle2} actionHref={`/staff/${staff.id}/edit`} actionLabel="Edit">
                 <dl className="mt-5 space-y-4">
                   <Detail label="Name" value={staff.name} />
@@ -206,7 +206,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
             </div>
 
             <Panel title="Recent completed appointments" icon={CalendarCheck2}>
-              <div className="mt-4 overflow-hidden rounded-[0.85rem] border border-border/75">
+              <div className="mt-3 overflow-hidden rounded-[0.72rem] border border-border/75">
                 <table className="w-full text-sm">
                   <thead className="bg-secondary/40 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
                     <tr>
@@ -238,7 +238,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
             </Panel>
           </div>
 
-          <WorkspaceRail>
+          <WorkspaceRail className="xl:col-start-1 xl:row-start-1">
             <Panel title="Today schedule" icon={CalendarClock}>
               <div className="mt-4 rounded-[0.9rem] bg-primary/6 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.13em] text-muted-foreground">Shift</p>
@@ -267,14 +267,14 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
           </WorkspaceRail>
         </TabsContent>
 
-        <TabsContent value="schedule" className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <TabsContent value="schedule" className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_320px]">
           <Panel title="Schedule coverage" icon={CalendarClock}>
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               <MiniMetric label="Today shift" value={staff.shiftLabel} />
               <MiniMetric label="Next shift" value={staff.nextShift} />
               <MiniMetric label="Weekly hours" value={`${staff.weeklyHours}h`} />
             </div>
-            <div className="mt-5 overflow-hidden rounded-[0.85rem] border border-border/75">
+            <div className="mt-4 overflow-hidden rounded-[0.72rem] border border-border/75">
               <div className="grid grid-cols-[minmax(0,1fr)_100px_100px_100px] bg-secondary/35 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
                 <span>Day</span>
                 <span>Start</span>
@@ -307,14 +307,14 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
           </Panel>
         </TabsContent>
 
-        <TabsContent value="appointments" className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+        <TabsContent value="appointments" className="surface-card p-3.5">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-base font-semibold text-foreground">Completed work</h2>
             <Link href="/calendar" className="text-sm font-semibold text-primary">Open calendar</Link>
           </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {staff.recentAppointments.map((appointment) => (
-              <div key={appointment.id} className="rounded-[0.9rem] border border-border/75 px-4 py-4">
+              <div key={appointment.id} className="rounded-[0.72rem] border border-border/75 px-3.5 py-3">
                 <div className="flex items-start justify-between gap-3">
                   <p className="font-semibold text-foreground">{appointment.title}</p>
                   <p className="text-xs text-muted-foreground">{appointment.date}</p>
@@ -330,7 +330,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
           </div>
         </TabsContent>
 
-        <TabsContent value="profile" className="grid gap-4 lg:grid-cols-2">
+        <TabsContent value="profile" className="grid gap-3.5 lg:grid-cols-2">
           <Panel title="Contact profile" icon={UserRoundPen}>
             <dl className="mt-5 space-y-4">
               <Detail label="Name" value={staff.name} />
@@ -364,11 +364,11 @@ function Panel({
   actionLabel?: string;
 }) {
   return (
-    <section className="surface-card p-4">
+    <section className="surface-card p-3.5">
       <div className="flex items-center justify-between gap-3">
         <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
           {Icon ? (
-            <span className="vela-icon-tile size-9">
+            <span className="vela-icon-tile size-8 rounded-[0.68rem]">
               <Icon className="size-4" />
             </span>
           ) : null}

@@ -110,10 +110,10 @@ export function EditClientForm({ client }: EditClientFormProps) {
   }
 
   return (
-    <form action={handleSubmit} className="space-y-4">
-      <section className="surface-card p-4">
+    <form action={handleSubmit} className="space-y-3.5">
+      <section className="surface-card p-3.5">
         <h2 className="text-base font-semibold text-foreground">Basic information</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <div className="mt-3.5 grid gap-3.5 sm:grid-cols-2">
           <Field name="name" label="Full name" defaultValue={client.name} required />
           <Field name="phone" label="Phone number" defaultValue={client.phone} required />
           <Field name="email" label="Email" defaultValue={client.email} type="email" />
@@ -135,9 +135,9 @@ export function EditClientForm({ client }: EditClientFormProps) {
         </div>
       </section>
 
-      <section className="surface-card p-4">
+      <section className="surface-card p-3.5">
         <h2 className="text-base font-semibold text-foreground">Clinic information</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <div className="mt-3.5 grid gap-3.5 sm:grid-cols-2">
           <Field name="clinicType" label="Clinic type" defaultValue={clean(client.clinicType)} />
           <SelectField
             label="Preferred contact method"
@@ -151,9 +151,9 @@ export function EditClientForm({ client }: EditClientFormProps) {
         </div>
       </section>
 
-      <section className="surface-card p-4">
+      <section className="surface-card p-3.5">
         <h2 className="text-base font-semibold text-foreground">Medical information</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <div className="mt-3.5 grid gap-3.5 sm:grid-cols-2">
           <TextField name="medicalHistory" label="Medical history" defaultValue={clean(client.medical.medicalHistory)} className="sm:col-span-2" />
           <TextField name="allergies" label="Allergies" defaultValue={clean(client.medical.allergies)} />
           <TextField name="importantHealthNotes" label="Important health notes" defaultValue={clean(client.medical.importantHealthNotes)} />

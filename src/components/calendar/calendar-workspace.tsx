@@ -23,6 +23,7 @@ import { CalendarX2, ChevronLeft, ChevronRight, Plus, UsersRound } from "lucide-
 import { buttonVariants } from "@/components/ui/button";
 import {
   WorkspaceEmptyState,
+  WorkspaceCard,
   WorkspaceHeader,
   WorkspaceMainGrid,
   WorkspacePage,
@@ -44,7 +45,7 @@ const hourRowHeight = 64;
 
 const toneClasses: Record<CalendarAppointment["tone"], string> = {
   primary:
-    "border-primary/20 bg-primary text-primary-foreground shadow-[0_18px_32px_rgba(20,32,51,0.12)]",
+    "border-primary/20 bg-primary text-primary-foreground shadow-[0_8px_18px_rgba(20,32,51,0.08)]",
   secondary:
     "border-[#cfddf4] bg-[linear-gradient(135deg,rgba(240,245,255,0.95),rgba(224,238,255,0.98))] text-[#36588f]",
   muted:
@@ -140,7 +141,7 @@ function BlockCard({ block }: { block: CalendarScheduleBlock }) {
   );
 }
 
-export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceProps) {
+export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
   const [view, setView] = useState<CalendarView>("week");
   const [activeDate, setActiveDate] = useState(() => parseISO(initialView.initialDate));
   const appointments = initialView.appointments;
@@ -214,10 +215,6 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
     (appointment) => appointment.date === selectedDateKey
   );
   const selectedDayBlocks = scheduleBlocks.filter((block) => block.date === selectedDateKey);
-  const upcomingAppointments = appointments
-    .filter((appointment) => appointment.date >= selectedDateKey)
-    .sort((left, right) => `${left.date}${left.startTime}`.localeCompare(`${right.date}${right.startTime}`))
-    .slice(0, 5);
   const bookedMinutes = visibleAppointments.reduce(
     (sum, appointment) =>
       sum + Math.max(timeToMinutes(appointment.endTime) - timeToMinutes(appointment.startTime), 0),
@@ -236,7 +233,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
         description="Manage the clinic schedule, appointments, and blocked time."
         actions={
           <div className="section-reveal-delayed flex flex-wrap items-center gap-3">
-            <div className="inline-flex items-center rounded-[1rem] border border-border/80 bg-white/72 shadow-[0_16px_32px_rgba(20,32,51,0.05)]">
+            <div className="inline-flex items-center rounded-[0.75rem] border border-border/80 bg-white/82 shadow-[0_6px_16px_rgba(20,32,51,0.035)]">
               <button
                 type="button"
                 onClick={() => shiftRange("prev")}
@@ -283,9 +280,9 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
         }
       />
 
-      <div className="section-reveal rounded-[1rem] border border-border/80 bg-white p-3.5 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+      <div className="surface-card section-reveal p-3">
         <div className="flex flex-wrap items-center gap-3">
-            <div className="inline-flex rounded-[0.7rem] border border-border/80 bg-white p-1 shadow-[0_16px_32px_rgba(20,32,51,0.04)]">
+            <div className="inline-flex rounded-[0.7rem] border border-border/75 bg-white p-1 shadow-[0_8px_18px_rgba(20,32,51,0.026)]">
               {views.map((option) => (
                 <button
                   key={option}
@@ -318,10 +315,10 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
         </div>
       </div>
 
-      <WorkspaceMainGrid railWidth="md" className="gap-3.5">
+      <WorkspaceMainGrid railWidth="md">
         <div className="space-y-3.5">
       {!hasClients ? (
-        <section className="section-reveal overflow-hidden rounded-[1.25rem] border border-dashed border-primary/25 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),var(--primary-soft))] p-6 shadow-[0_18px_44px_rgba(20,32,51,0.055)]">
+        <section className="section-reveal overflow-hidden rounded-[0.75rem] border border-dashed border-primary/25 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),var(--primary-soft))] p-4 shadow-[0_5px_14px_rgba(20,32,51,0.02)]">
           <WorkspaceEmptyState
             icon={UsersRound}
             title="Add a client before booking"
@@ -332,7 +329,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
           />
         </section>
       ) : view === "month" ? (
-        <div className="section-reveal overflow-hidden rounded-[1.15rem] border border-border/80 bg-white/94 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
+        <div className="surface-card section-reveal overflow-hidden p-0">
           <div className="grid grid-cols-7 border-b border-border/80 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
               <div key={label} className="px-4 py-3">
@@ -355,7 +352,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
                     startTransition(() => setView("day"));
                   }}
                   className={cn(
-                    "min-h-28 border-b border-r border-border/80 px-3 py-3 text-left transition-[background-color,color] duration-200",
+                    "min-h-24 border-b border-r border-border/75 px-3 py-2.5 text-left transition-[background-color,color] duration-200",
                     !isSameMonth(day, activeDate) && "bg-muted/35 text-muted-foreground",
                     isSameDay(day, activeDate) && "bg-secondary/38"
                   )}
@@ -386,7 +383,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
           </div>
         </div>
       ) : (
-        <div className="section-reveal overflow-hidden rounded-[1.15rem] border border-border/80 bg-white/94 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
+        <div className="surface-card section-reveal overflow-hidden p-0">
           <div className="overflow-x-auto">
             <div className="min-w-[940px]">
               <div className={cn("grid border-b border-border/80", view === "day" ? "grid-cols-[76px_1fr]" : "grid-cols-[76px_repeat(7,minmax(0,1fr))]")}>
@@ -399,7 +396,7 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
                     type="button"
                     onClick={() => setActiveDate(day)}
                     className={cn(
-                      "border-l border-border/80 px-4 py-4 text-left transition-colors duration-200",
+                      "border-l border-border/80 px-3.5 py-3 text-left transition-colors duration-200",
                       isSameDay(day, activeDate) && "bg-secondary/65"
                     )}
                   >
@@ -456,104 +453,16 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
         </div>
       )}
 
-      {hasClients ? (
-        <div className="grid gap-3.5 lg:grid-cols-[minmax(0,1fr)_240px]">
-          <div className="section-reveal rounded-[1.05rem] border border-border/80 bg-white/94 px-4 py-3.5 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-foreground">Selected day</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {format(activeDate, "EEEE, MMMM d")}
-                </p>
-              </div>
-              <Link
-                href={`/calendar/new?date=${selectedDateKey}`}
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
-                  "rounded-[0.85rem] bg-white/72"
-                )}
-              >
-                <Plus className="size-4" />
-                Add booking
-              </Link>
-            </div>
-            <div className="mt-3 space-y-2.5">
-              {selectedDayAppointments
-                .sort((left, right) => left.startTime.localeCompare(right.startTime))
-                .map((appointment) => (
-                  <Link
-                    key={appointment.id}
-                    href={`/calendar/${appointment.id}/edit`}
-                    className="interactive-lift flex w-full items-start justify-between rounded-[0.95rem] border border-border/80 bg-white px-4 py-3 text-left transition-[background-color,border-color,box-shadow,transform] duration-200 hover:border-border hover:bg-white hover:shadow-[0_16px_30px_rgba(20,32,51,0.05)]"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">
-                        {appointment.clientName}
-                      </p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {appointment.service} - {appointment.startTime}
-                      </p>
-                    </div>
-                    <ChevronRight className="mt-0.5 size-4 text-muted-foreground" />
-                  </Link>
-                ))}
-              {selectedDayBlocks
-                .sort((left, right) => left.startTime.localeCompare(right.startTime))
-                .map((block) => (
-                  <div
-                    key={block.id}
-                    className="flex w-full items-start justify-between rounded-[0.95rem] border border-slate-200 bg-slate-50 px-4 py-3 text-left"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold text-slate-800">{block.title}</p>
-                      <p className="mt-1 text-sm text-slate-600">
-                        Blocked time - {block.startTime}
-                      </p>
-                    </div>
-                    <CalendarX2 className="mt-0.5 size-4 text-slate-500" />
-                  </div>
-                ))}
-              {selectedDayAppointments.length === 0 && selectedDayBlocks.length === 0 ? (
-                <WorkspaceEmptyState
-                  icon={CalendarX2}
-                  title="No bookings for this day"
-                  description="Add a booking or blocked time to fill the selected day."
-                  compact
-                />
-              ) : null}
-            </div>
-          </div>
-
-          <div className="section-reveal-delayed rounded-[1.05rem] border border-border/80 bg-white/94 px-4 py-3.5 shadow-[0_10px_24px_rgba(20,32,51,0.032)]">
-            <p className="text-sm font-semibold text-foreground">Team assignment</p>
-            <div className="mt-4 space-y-3">
-              {(initialView.staffMembers.length > 0
-                ? initialView.staffMembers
-                : [{ id: "owner-fallback", name: ownerName }]
-              ).map((member, index) => (
-                <div key={member.name} className="flex items-center gap-3 text-sm">
-                  <span
-                    className={cn(
-                      "size-2.5 rounded-full",
-                      index % 3 === 0 && "bg-primary",
-                      index % 3 === 1 && "bg-[#6e63d9]",
-                      index % 3 === 2 && "bg-[#b75d52]"
-                    )}
-                  />
-                  <span className="text-muted-foreground">{member.name}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : null}
         </div>
 
         <WorkspaceRail className="section-reveal-delayed gap-3">
-          <CalendarRailPanel title="Upcoming appointments" actionHref="/calendar" actionLabel="View all">
-            <div className="space-y-4">
-              {upcomingAppointments.length > 0 ? (
-                upcomingAppointments.map((appointment, index) => (
+          <CalendarRailPanel title="Selected day" actionHref={`/calendar/new?date=${selectedDateKey}`} actionLabel="Add">
+            <p className="mb-3 text-sm text-muted-foreground">{format(activeDate, "EEEE, MMMM d")}</p>
+            <div className="space-y-3">
+              {selectedDayAppointments.length > 0 ? (
+                selectedDayAppointments
+                  .sort((left, right) => left.startTime.localeCompare(right.startTime))
+                  .map((appointment, index) => (
                   <Link key={appointment.id} href={`/calendar/${appointment.id}/edit`} className="flex gap-3 text-sm">
                     <span className={cn(
                       "mt-1 size-2.5 rounded-full",
@@ -572,14 +481,28 @@ export function CalendarWorkspace({ initialView, ownerName }: CalendarWorkspaceP
                   </Link>
                 ))
               ) : (
-                <p className="text-sm text-muted-foreground">No upcoming appointments in view.</p>
+                <WorkspaceEmptyState
+                  icon={CalendarX2}
+                  title="No bookings"
+                  description="Add a booking or blocked time for this date."
+                  compact
+                />
               )}
+              {selectedDayBlocks.map((block) => (
+                <div key={block.id} className="flex gap-3 text-sm">
+                  <CalendarX2 className="mt-0.5 size-4 text-slate-500" />
+                  <span>
+                    <span className="block font-semibold text-foreground">{block.title}</span>
+                    <span className="text-xs text-muted-foreground">Blocked time - {block.startTime}</span>
+                  </span>
+                </div>
+              ))}
             </div>
           </CalendarRailPanel>
 
           <CalendarRailPanel title="Today's utilization">
-            <div className="flex items-center gap-4">
-              <div className="grid size-24 place-items-center rounded-full border-[7px] border-primary/85 bg-white text-center">
+            <div className="flex items-center gap-3">
+              <div className="grid size-20 place-items-center rounded-full border-[6px] border-primary/85 bg-white text-center">
                 <span>
                   <span className="block text-xl font-semibold text-foreground">{utilization}%</span>
                   <span className="text-[10px] text-muted-foreground">Utilization</span>
@@ -628,8 +551,8 @@ function CalendarRailPanel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-[1rem] border border-border/80 bg-white/94 p-4 shadow-[0_14px_32px_rgba(20,32,51,0.04)]">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <WorkspaceCard compact>
+      <div className="mb-2.5 flex items-center justify-between gap-3">
         <h2 className="text-base font-semibold text-foreground">{title}</h2>
         {actionHref && actionLabel ? (
           <Link href={actionHref} className="text-xs font-semibold text-primary">
@@ -638,7 +561,7 @@ function CalendarRailPanel({
         ) : null}
       </div>
       {children}
-    </section>
+    </WorkspaceCard>
   );
 }
 

@@ -79,7 +79,7 @@ function NativeSelect({
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="h-11 w-full rounded-[0.9rem] border border-border/80 bg-white/84 px-3 text-sm outline-none transition-[border-color,background-color,box-shadow] duration-200 focus:border-ring focus:bg-white focus-visible:ring-3 focus-visible:ring-ring/40"
+      className="h-11 w-full rounded-[0.7rem] border border-border/80 bg-white/84 px-3 text-sm outline-none transition-[border-color,background-color,box-shadow] duration-200 focus:border-ring focus:bg-white focus-visible:ring-3 focus-visible:ring-ring/40"
     >
       {options.map((option) => (
         <option key={option} value={option}>
@@ -418,7 +418,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
 
   return (
     <WorkspacePage>
-      <section className="space-y-4 pb-1">
+      <section className="space-y-3.5 pb-1">
         <Link
           href="/clients"
           className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -427,8 +427,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           Back to clients
         </Link>
 
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="flex min-w-0 items-start gap-4">
+        <div className="flex flex-col gap-3.5 xl:flex-row xl:items-start xl:justify-between">
+          <div className="flex min-w-0 items-start gap-3.5">
             <Avatar className="size-20 rounded-full bg-primary/10 text-primary">
               <AvatarFallback className="bg-primary/10 text-3xl font-semibold text-primary">
                 {clientInitials(client.name)}
@@ -508,12 +508,12 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
       </section>
 
       {errorMessage ? (
-        <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div className="rounded-[0.75rem] border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
           {errorMessage}
         </div>
       ) : null}
       {!errorMessage && statusMessage ? (
-        <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
+        <div className="rounded-[0.75rem] border border-primary/20 bg-primary/8 px-3 py-2.5 text-sm text-primary">
           {statusMessage}
         </div>
       ) : null}
@@ -521,11 +521,11 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
       <Tabs
         value={selectedTab}
         onValueChange={setSelectedTab}
-        className="section-reveal-delayed gap-4"
+        className="section-reveal-delayed gap-3.5"
       >
         <TabsList
           variant="line"
-          className="w-full justify-start gap-6 overflow-x-auto rounded-none border-b border-border/80 p-0"
+              className="w-full justify-start gap-4 overflow-x-auto rounded-none border-b border-border/80 p-0"
         >
           <TabsTrigger className="flex-none px-0 pb-3" value="overview">Overview</TabsTrigger>
           <TabsTrigger className="flex-none px-0 pb-3" value="appointments">Appointments</TabsTrigger>
@@ -535,10 +535,10 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           <TabsTrigger className="flex-none px-0 pb-3" value="payments">Payments</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-          <div className="grid gap-4">
-            <div className="grid gap-4 lg:grid-cols-2">
-              <section className="surface-card p-4">
+        <TabsContent value="overview" className="grid items-start gap-3 xl:grid-cols-[300px_minmax(0,1fr)]">
+          <div className="grid gap-3 xl:col-start-2">
+            <div className="grid gap-3 lg:grid-cols-2">
+              <section className="surface-card p-3.5 xl:hidden">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                     <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -554,7 +554,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                     Edit
                   </Link>
                 </div>
-                <dl className="mt-5 space-y-4">
+                <dl className="mt-4 space-y-3">
                   <OverviewLine label="Full name" value={client.name} />
                   <OverviewLine icon={Phone} label="Phone number" value={client.phone || "Not added"} />
                   <OverviewLine icon={Mail} label="Email" value={client.email || "Not added"} />
@@ -566,9 +566,9 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 </dl>
               </section>
 
-              <section className="surface-card p-4">
+              <section className="surface-card p-3.5">
                 <h2 className="text-base font-semibold text-foreground">Care summary</h2>
-                <dl className="mt-5 space-y-4">
+                <dl className="mt-4 space-y-3">
                   <OverviewLine label="Assigned doctor / staff" value={client.details.assignedStaff} />
                   <OverviewLine label="First visit" value={firstVisit} />
                   <OverviewLine label="Last visit" value={client.lastVisit} />
@@ -577,10 +577,37 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   <OverviewLine label="Patient notes" value={client.notes} />
                 </dl>
               </section>
+
+              <section className="surface-card p-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
+                    <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <CreditCard className="size-4" />
+                    </span>
+                    Payment snapshot
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTab("payments")}
+                    className="text-sm font-medium text-primary"
+                  >
+                    View payments
+                  </button>
+                </div>
+                <dl className="mt-4 space-y-3">
+                  <OverviewLine label="Payment status" value={client.paymentStats.paymentStatus} />
+                  <OverviewLine label="Total paid" value={client.paymentStats.totalPaidDisplay} />
+                  <OverviewLine label="Unpaid balance" value={client.paymentStats.unpaidBalanceDisplay} />
+                  <OverviewLine
+                    label="Latest payment"
+                    value={latestPayment ? `${latestPayment.paidAt} / ${latestPayment.amountDisplay}` : "No payments yet"}
+                  />
+                </dl>
+              </section>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-2">
-              <section className="surface-card p-4">
+            <div className="grid gap-3 lg:grid-cols-2">
+              <section className="surface-card p-3.5">
                 <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                   <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
                     <CheckCircle2 className="size-4" />
@@ -588,7 +615,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   Latest appointment
                 </h2>
               {latestAppointment ? (
-                <div className="mt-4 rounded-[0.85rem] bg-primary/5 px-4 py-4">
+                <div className="mt-4 rounded-[0.85rem] bg-primary/5 px-3.5 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <p className="font-semibold text-foreground">{latestAppointment.title}</p>
                     <span className="rounded-md bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">
@@ -605,7 +632,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               )}
             </section>
 
-              <section className="surface-card p-4">
+              <section className="surface-card p-3.5">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                     <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -638,8 +665,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </section>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-              <section className="surface-card p-4">
+            <div className="grid gap-3 lg:grid-cols-2">
+              <section className="surface-card p-3.5">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                     <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -652,31 +679,30 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   <table className="w-full text-sm">
                     <thead className="bg-secondary/45 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
                       <tr>
-                        <th className="px-4 py-3 text-left">Name</th>
-                        <th className="px-4 py-3 text-left">Type</th>
-                        <th className="px-4 py-3 text-left">Uploaded on</th>
-                        <th className="px-4 py-3 text-left">Uploaded by</th>
+                        <th className="px-3 py-2.5 text-left">Name</th>
+                        <th className="px-3 py-2.5 text-left">Type</th>
+                        <th className="px-3 py-2.5 text-left">Uploaded on</th>
+                        <th className="px-3 py-2.5 text-left">Uploaded by</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/70 bg-white">
                       {client.documents.slice(0, 3).map((document) => (
                         <tr key={document.id}>
-                          <td className="px-4 py-3 font-medium text-foreground">{document.fileName}</td>
-                          <td className="px-4 py-3 text-muted-foreground">{document.category || document.fileType}</td>
-                          <td className="px-4 py-3 text-muted-foreground">{document.createdAt}</td>
-                          <td className="px-4 py-3 text-muted-foreground">{document.uploadedBy || "Workspace staff"}</td>
+                          <td className="px-3 py-2.5 font-medium text-foreground">{document.fileName}</td>
+                          <td className="px-3 py-2.5 text-muted-foreground">{document.category || document.fileType}</td>
+                          <td className="px-3 py-2.5 text-muted-foreground">{document.createdAt}</td>
+                          <td className="px-3 py-2.5 text-muted-foreground">{document.uploadedBy || "Workspace staff"}</td>
                         </tr>
                       ))}
-                      {client.documents.length === 0 ? (
-                        <tr>
-                          <td colSpan={4} className="px-4 py-6 text-sm text-muted-foreground">
-                            No documents uploaded yet.
-                          </td>
-                        </tr>
-                      ) : null}
+                      {client.documents.length === 0 ? null : null}
                     </tbody>
                   </table>
                 </div>
+                {client.documents.length === 0 ? (
+                  <div className="mt-3 rounded-[0.72rem] border border-dashed border-border/80 bg-[#fbfcfe] px-3.5 py-2.5 text-sm text-muted-foreground">
+                    No documents uploaded yet.
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setSelectedTab("documents")}
@@ -687,7 +713,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 </button>
               </section>
 
-              <section className="surface-card p-4">
+              <section className="surface-card p-3.5">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                     <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -707,7 +733,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                     </div>
                   ))}
                   {client.messages.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No recent messages.</p>
+                    <p className="rounded-[0.72rem] border border-dashed border-border/80 bg-[#fbfcfe] px-3.5 py-2.5 text-sm text-muted-foreground">No recent messages.</p>
                   ) : null}
                 </div>
                 <Link
@@ -721,8 +747,34 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             </div>
           </div>
 
-          <aside className="grid content-start gap-3.5">
-            <section className="rounded-[1rem] border border-primary/10 bg-primary/8 p-4 shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+          <aside className="grid content-start gap-3 xl:col-start-1 xl:row-start-1">
+            <section className="surface-card hidden p-3.5 xl:block">
+              <div className="flex items-center gap-3">
+                <Avatar size="lg">
+                  <AvatarFallback>{clientInitials(client.name)}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <h2 className="truncate text-base font-semibold text-foreground">{client.name}</h2>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+                    {statusLabels[client.status]}
+                  </p>
+                </div>
+              </div>
+              <dl className="mt-4 space-y-3">
+                <OverviewLine icon={Phone} label="Phone" value={client.phone || "Not added"} />
+                <OverviewLine icon={Mail} label="Email" value={client.email || "Not added"} />
+                <OverviewLine label="Patient type" value={client.patientType} />
+                <OverviewLine label="Preferred contact" value={client.details.preferredChannel} />
+              </dl>
+              <Link
+                href={`/clients/${client.id}/edit`}
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-4 w-full rounded-[0.65rem] bg-white")}
+              >
+                <UserRoundPen className="size-4" />
+                Edit profile
+              </Link>
+            </section>
+            <section className="rounded-[0.82rem] border border-primary/10 bg-primary/7 p-3.5 shadow-[0_8px_20px_rgba(20,32,51,0.026)]">
               <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                 <span className="flex size-9 items-center justify-center rounded-full bg-white text-primary">
                   <CalendarDays className="size-4" />
@@ -730,8 +782,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 Upcoming appointment
               </h2>
               {upcomingAppointments[0] ? (
-                <div className="mt-5 rounded-[0.9rem] bg-white px-4 py-4">
-                  <div className="flex items-start justify-between gap-4">
+                <div className="mt-5 rounded-[0.7rem] bg-white px-3.5 py-3">
+                  <div className="flex items-start justify-between gap-3.5">
                     <div>
                       <p className="text-sm font-semibold text-foreground">{upcomingAppointments[0].date}</p>
                       <p className="mt-2 font-semibold text-foreground">{upcomingAppointments[0].title}</p>
@@ -751,7 +803,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </Link>
             </section>
 
-            <section className="surface-card p-4">
+            <section className="surface-card p-3.5">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                   <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -778,34 +830,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
             </section>
 
-            <section className="surface-card p-4">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
-                  <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    <CreditCard className="size-4" />
-                  </span>
-                  Payment snapshot
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => setSelectedTab("payments")}
-                  className="text-sm font-medium text-primary"
-                >
-                  View payments
-                </button>
-              </div>
-              <dl className="mt-5 space-y-4">
-                <OverviewLine label="Payment status" value={client.paymentStats.paymentStatus} />
-                <OverviewLine label="Total paid" value={client.paymentStats.totalPaidDisplay} />
-                <OverviewLine label="Unpaid balance" value={client.paymentStats.unpaidBalanceDisplay} />
-                <OverviewLine
-                  label="Latest payment"
-                  value={latestPayment ? `${latestPayment.paidAt} / ${latestPayment.amountDisplay}` : "No payments yet"}
-                />
-              </dl>
-            </section>
-
-            <section className="surface-card p-4">
+            <section className="surface-card p-3.5">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
                   <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -832,26 +857,12 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
             </section>
 
-            <section className="surface-card p-4">
-              <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
-                <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <FileText className="size-4" />
-                </span>
-                Record activity
-              </h2>
-              <div className="mt-4 space-y-3 text-sm">
-                <SummaryRow label="Documents" value={client.documents.length} />
-                <SummaryRow label="Care notes" value={client.careNotes.length} />
-                <SummaryRow label="Messages" value={client.messages.length} />
-                <SummaryRow label="Treatment items" value={client.treatmentPlanItems.length} />
-              </div>
-            </section>
           </aside>
         </TabsContent>
 
-        <TabsContent value="appointments" className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="space-y-4">
-            <section className="surface-card p-4">
+        <TabsContent value="appointments" className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_330px]">
+          <div className="space-y-3.5">
+            <section className="surface-card p-3.5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-base font-semibold text-foreground">Upcoming appointment</h2>
                 <Link
@@ -863,7 +874,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 </Link>
               </div>
               {upcomingAppointments[0] ? (
-                <div className="mt-4 grid gap-4 rounded-[0.9rem] bg-primary/5 p-4 lg:grid-cols-[96px_minmax(0,1fr)_minmax(220px,0.8fr)]">
+                <div className="mt-3 grid gap-3 rounded-[0.72rem] bg-primary/5 p-3.5 lg:grid-cols-[88px_minmax(0,1fr)_minmax(220px,0.8fr)]">
                   <div className="flex h-20 flex-col items-center justify-center rounded-[0.75rem] bg-white text-center text-primary">
                     <span className="text-xs font-semibold uppercase">{upcomingAppointments[0].date.split(" ")[0]}</span>
                     <span className="text-2xl font-semibold text-foreground">{upcomingAppointments[0].date.match(/\d+/)?.[0] ?? ""}</span>
@@ -885,13 +896,13 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   </dl>
                 </div>
               ) : (
-                <p className="mt-4 rounded-[0.9rem] border border-dashed border-border/90 p-4 text-sm text-muted-foreground">
+                <p className="mt-4 rounded-[0.7rem] border border-dashed border-border/90 p-3.5 text-sm text-muted-foreground">
                   No upcoming appointment booked.
                 </p>
               )}
             </section>
 
-            <section className="surface-card p-4">
+            <section className="surface-card p-3.5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-base font-semibold text-foreground">Appointment history</h2>
                 <Link
@@ -906,23 +917,23 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 <table className="w-full text-sm">
                   <thead className="bg-secondary/40 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
                     <tr>
-                      <th className="px-4 py-3 text-left">Date & time</th>
-                      <th className="px-4 py-3 text-left">Appointment</th>
-                      <th className="px-4 py-3 text-left">Provider</th>
-                      <th className="px-4 py-3 text-left">Status</th>
-                      <th className="px-4 py-3 text-left">Notes</th>
+                      <th className="px-3 py-2.5 text-left">Date & time</th>
+                      <th className="px-3 py-2.5 text-left">Appointment</th>
+                      <th className="px-3 py-2.5 text-left">Provider</th>
+                      <th className="px-3 py-2.5 text-left">Status</th>
+                      <th className="px-3 py-2.5 text-left">Notes</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/70 bg-white">
                     {client.appointments.map((appointment) => (
                       <tr key={appointment.id}>
-                        <td className="px-4 py-3 font-medium text-foreground">{appointment.date}</td>
-                        <td className="px-4 py-3 text-foreground">{appointment.title}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{client.details.assignedStaff}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-2.5 font-medium text-foreground">{appointment.date}</td>
+                        <td className="px-3 py-2.5 text-foreground">{appointment.title}</td>
+                        <td className="px-3 py-2.5 text-muted-foreground">{client.details.assignedStaff}</td>
+                        <td className="px-3 py-2.5">
                           <StatusBadge status={appointment.status.toLowerCase()} />
                         </td>
-                        <td className="max-w-[260px] px-4 py-3 text-muted-foreground">{appointment.notes || "-"}</td>
+                        <td className="max-w-[260px] px-3 py-2.5 text-muted-foreground">{appointment.notes || "-"}</td>
                       </tr>
                     ))}
                     {client.appointments.length === 0 ? (
@@ -936,8 +947,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             </section>
           </div>
 
-          <aside className="grid content-start gap-3.5">
-            <section className="surface-card p-4">
+          <aside className="grid content-start gap-3">
+            <section className="surface-card p-3.5">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-base font-semibold text-foreground">Upcoming reminders</h2>
                 <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
@@ -984,7 +995,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
             </section>
 
-            <section className="surface-card p-4">
+            <section className="surface-card p-3.5">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-base font-semibold text-foreground">Recent visits</h2>
                 <span className="text-sm font-medium text-primary">{pastAppointments.length}</span>
@@ -1005,7 +1016,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
             </section>
 
-            <section className="surface-card p-4">
+            <section className="surface-card p-3.5">
               <h2 className="text-base font-semibold text-foreground">Appointment summary</h2>
               <div className="mt-4 space-y-3 text-sm">
                 <SummaryRow label="Upcoming" value={upcomingAppointments.length} />
@@ -1017,8 +1028,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           </aside>
         </TabsContent>
 
-        <TabsContent value="medical" className="space-y-4">
-          <div className="grid gap-4 xl:grid-cols-2">
+        <TabsContent value="medical" className="space-y-3.5">
+          <div className="grid gap-3.5 xl:grid-cols-2">
             <InfoCard icon={HeartPulse} title="Medical history" value={client.medical.medicalHistory} />
             <InfoCard icon={HeartPulse} title="Allergies" value={client.medical.allergies} />
             <InfoCard icon={HeartPulse} title="Important health notes" value={client.medical.importantHealthNotes} />
@@ -1026,7 +1037,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             <InfoCard icon={NotebookText} title="Treatment plan" value={client.medical.treatmentPlan} />
           </div>
 
-          <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-4">
+          <section className="surface-card p-3.5">
             <h2 className="text-lg font-semibold text-foreground">Current medication</h2>
             <div className="mt-4 grid gap-3 lg:grid-cols-4">
               <Input
@@ -1035,7 +1046,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   setMedicationDraft((current) => ({ ...current, name: event.target.value }))
                 }
                 placeholder="Medication name"
-                className="h-11 rounded-[0.9rem] bg-white/84"
+                className="h-11 rounded-[0.7rem] bg-white/84"
               />
               <Input
                 value={medicationDraft.dosage}
@@ -1043,7 +1054,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   setMedicationDraft((current) => ({ ...current, dosage: event.target.value }))
                 }
                 placeholder="Dosage"
-                className="h-11 rounded-[0.9rem] bg-white/84"
+                className="h-11 rounded-[0.7rem] bg-white/84"
               />
               <Input
                 value={medicationDraft.frequency}
@@ -1051,10 +1062,10 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   setMedicationDraft((current) => ({ ...current, frequency: event.target.value }))
                 }
                 placeholder="Frequency"
-                className="h-11 rounded-[0.9rem] bg-white/84"
+                className="h-11 rounded-[0.7rem] bg-white/84"
               />
               <Button
-                className="h-11 rounded-[0.9rem]"
+                className="h-11 rounded-[0.7rem]"
                 onClick={addMedication}
                 disabled={isPending || !medicationDraft.name.trim()}
               >
@@ -1066,13 +1077,13 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   setMedicationDraft((current) => ({ ...current, notes: event.target.value }))
                 }
                 placeholder="Medication notes"
-                className="min-h-20 rounded-[0.9rem] bg-white/84 px-3 py-3 lg:col-span-4"
+                className="min-h-20 rounded-[0.7rem] bg-white/84 px-3 py-3 lg:col-span-4"
               />
             </div>
             <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {client.medications.length > 0 ? (
                 client.medications.map((medication) => (
-                  <div key={medication.id} className="rounded-[0.95rem] border border-border/80 bg-white/78 px-4 py-4">
+                  <div key={medication.id} className="rounded-[0.7rem] border border-border/80 bg-white/78 px-3.5 py-3">
                     <div className="flex items-start justify-between gap-3">
                       <p className="font-semibold text-foreground">{medication.name}</p>
                       <span className="rounded-full bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground">
@@ -1090,8 +1101,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             </div>
           </section>
 
-          <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-            <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-4">
+          <div className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <section className="surface-card p-3.5">
               <h2 className="text-lg font-semibold text-foreground">Structured health record</h2>
               <div className="mt-4 grid gap-3 lg:grid-cols-[160px_minmax(0,1fr)_160px]">
                 <NativeSelect
@@ -1107,7 +1118,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                     setHealthDraft((current) => ({ ...current, label: event.target.value }))
                   }
                   placeholder="Label, condition, or vital"
-                  className="h-11 rounded-[0.9rem] bg-white/84"
+                  className="h-11 rounded-[0.7rem] bg-white/84"
                 />
                 <Input
                   value={healthDraft.value}
@@ -1115,7 +1126,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                     setHealthDraft((current) => ({ ...current, value: event.target.value }))
                   }
                   placeholder="Value"
-                  className="h-11 rounded-[0.9rem] bg-white/84"
+                  className="h-11 rounded-[0.7rem] bg-white/84"
                 />
                 <Input
                   value={healthDraft.severity}
@@ -1123,7 +1134,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                     setHealthDraft((current) => ({ ...current, severity: event.target.value }))
                   }
                   placeholder="Severity"
-                  className="h-11 rounded-[0.9rem] bg-white/84"
+                  className="h-11 rounded-[0.7rem] bg-white/84"
                 />
                 <Input
                   value={healthDraft.notes}
@@ -1131,12 +1142,12 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                     setHealthDraft((current) => ({ ...current, notes: event.target.value }))
                   }
                   placeholder="Notes"
-                  className="h-11 rounded-[0.9rem] bg-white/84"
+                  className="h-11 rounded-[0.7rem] bg-white/84"
                 />
                 <Button
                   onClick={addHealthItem}
                   disabled={isPending || !healthDraft.label.trim()}
-                  className="h-11 rounded-[0.9rem]"
+                  className="h-11 rounded-[0.7rem]"
                 >
                   Add health item
                 </Button>
@@ -1144,7 +1155,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               <div className="mt-5 grid gap-3 md:grid-cols-2">
                 {client.healthItems.length > 0 ? (
                   client.healthItems.map((item) => (
-                    <div key={item.id} className="rounded-[0.95rem] border border-border/80 bg-white/78 px-4 py-3">
+                    <div key={item.id} className="rounded-[0.7rem] border border-border/80 bg-white/78 px-3 py-2.5">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
@@ -1169,8 +1180,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
             </section>
 
-            <aside className="grid content-start gap-3.5">
-              <section className="rounded-[1.15rem] border border-border/80 bg-primary/5 p-4">
+            <aside className="grid content-start gap-3">
+              <section className="rounded-[0.82rem] border border-primary/10 bg-primary/5 p-3.5 shadow-[0_8px_20px_rgba(20,32,51,0.026)]">
                 <h2 className="text-lg font-semibold text-foreground">Medical summary</h2>
                 <dl className="mt-4 space-y-3">
                   <OverviewLine label="Allergies" value={allergies.length ? `${allergies.length} recorded` : client.medical.allergies} />
@@ -1180,11 +1191,11 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 </dl>
               </section>
 
-              <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-4">
+              <section className="surface-card p-3.5">
                 <h2 className="text-lg font-semibold text-foreground">Clinical alerts</h2>
                 <div className="mt-4 space-y-3">
                   {[...alerts, ...allergies].slice(0, 5).map((item) => (
-                    <div key={item.id} className="rounded-[0.9rem] border border-border/80 bg-white/78 px-3 py-3">
+                    <div key={item.id} className="rounded-[0.7rem] border border-border/80 bg-white/78 px-3 py-3">
                       <p className="font-semibold text-foreground">{item.label}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {[item.type, item.severity, item.value].filter(Boolean).join(" - ")}
@@ -1199,8 +1210,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             </aside>
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-2">
-            <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-4">
+          <div className="grid gap-3.5 xl:grid-cols-2">
+            <section className="surface-card p-3.5">
               <h2 className="text-lg font-semibold text-foreground">Treatment plan summary</h2>
               <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
                 <Input
@@ -1209,7 +1220,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                     setTreatmentDraft((current) => ({ ...current, title: event.target.value }))
                   }
                   placeholder="Plan item"
-                  className="h-11 rounded-[0.9rem] bg-white/84"
+                  className="h-11 rounded-[0.7rem] bg-white/84"
                 />
                 <NativeSelect
                   value={treatmentDraft.status}
@@ -1224,7 +1235,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                     setTreatmentDraft((current) => ({ ...current, description: event.target.value }))
                   }
                   placeholder="Plan details"
-                  className="min-h-20 rounded-[0.9rem] bg-white/84 px-3 py-3"
+                  className="min-h-20 rounded-[0.7rem] bg-white/84 px-3 py-3"
                 />
                 <div className="grid gap-3">
                   <Input
@@ -1233,12 +1244,12 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                       setTreatmentDraft((current) => ({ ...current, dueAt: event.target.value }))
                     }
                     type="date"
-                    className="h-11 rounded-[0.9rem] bg-white/84"
+                    className="h-11 rounded-[0.7rem] bg-white/84"
                   />
                   <Button
                     onClick={addTreatmentItem}
                     disabled={isPending || !treatmentDraft.title.trim()}
-                    className="h-11 rounded-[0.9rem]"
+                    className="h-11 rounded-[0.7rem]"
                   >
                     Add item
                   </Button>
@@ -1247,7 +1258,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               <div className="mt-5 space-y-3">
                 {client.treatmentPlanItems.length > 0 ? (
                   client.treatmentPlanItems.map((item) => (
-                    <div key={item.id} className="rounded-[0.95rem] border border-border/80 bg-white/78 px-4 py-3">
+                    <div key={item.id} className="rounded-[0.7rem] border border-border/80 bg-white/78 px-3 py-2.5">
                       <div className="flex items-start justify-between gap-3">
                         <p className="font-semibold text-foreground">{item.title}</p>
                         <span className="rounded-full bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground">
@@ -1264,7 +1275,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
             </section>
 
-            <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-4">
+            <section className="surface-card p-3.5">
               <h2 className="text-lg font-semibold text-foreground">Notes from provider</h2>
               <div className="mt-4 grid gap-3">
                 <Input
@@ -1273,7 +1284,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                     setCareNoteDraft((current) => ({ ...current, title: event.target.value }))
                   }
                   placeholder="Note title"
-                  className="h-11 rounded-[0.9rem] bg-white/84"
+                  className="h-11 rounded-[0.7rem] bg-white/84"
                 />
                 <Textarea
                   value={careNoteDraft.body}
@@ -1281,12 +1292,12 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                     setCareNoteDraft((current) => ({ ...current, body: event.target.value }))
                   }
                   placeholder="Write a provider note"
-                  className="min-h-24 rounded-[0.9rem] bg-white/84 px-3 py-3"
+                  className="min-h-24 rounded-[0.7rem] bg-white/84 px-3 py-3"
                 />
                 <Button
                   onClick={addCareNote}
                   disabled={isPending || !careNoteDraft.body.trim()}
-                  className="h-11 rounded-[0.9rem]"
+                  className="h-11 rounded-[0.7rem]"
                 >
                   Add note
                 </Button>
@@ -1294,7 +1305,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               <div className="mt-5 space-y-3">
                 {client.careNotes.length > 0 ? (
                   client.careNotes.map((note) => (
-                    <div key={note.id} className="rounded-[0.95rem] border border-border/80 bg-white/78 px-4 py-3">
+                    <div key={note.id} className="rounded-[0.7rem] border border-border/80 bg-white/78 px-3 py-2.5">
                       <p className="font-semibold text-foreground">{note.title}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {note.notedAt} - {note.providerName}
@@ -1310,9 +1321,9 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           </div>
         </TabsContent>
 
-        <TabsContent value="documents" className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="space-y-4">
-            <section className="surface-card p-4">
+        <TabsContent value="documents" className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="space-y-3.5">
+            <section className="surface-card p-3.5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-base font-semibold text-foreground">Documents</h2>
@@ -1364,33 +1375,33 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               />
             </section>
 
-            <section className="overflow-hidden rounded-[1rem] border border-border/80 bg-white shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="overflow-hidden rounded-[0.75rem] border border-border/80 bg-white shadow-[0_5px_14px_rgba(20,32,51,0.02)]">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-secondary/40 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
                     <tr>
-                      <th className="px-4 py-3 text-left">Document name</th>
-                      <th className="px-4 py-3 text-left">Category</th>
-                      <th className="px-4 py-3 text-left">Uploaded on</th>
-                      <th className="px-4 py-3 text-left">Uploaded by</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
+                      <th className="px-3 py-2.5 text-left">Document name</th>
+                      <th className="px-3 py-2.5 text-left">Category</th>
+                      <th className="px-3 py-2.5 text-left">Uploaded on</th>
+                      <th className="px-3 py-2.5 text-left">Uploaded by</th>
+                      <th className="px-3 py-2.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/70">
                     {client.documents.map((document) => (
                       <tr key={document.id}>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-2.5">
                           <p className="font-semibold text-foreground">{document.fileName}</p>
                           <p className="text-xs text-muted-foreground">{document.fileSize}</p>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-2.5">
                           <span className="rounded-md bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
                             {document.category || document.fileType}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">{document.createdAt}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{document.uploadedBy || "Workspace staff"}</td>
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-3 py-2.5 text-muted-foreground">{document.createdAt}</td>
+                        <td className="px-3 py-2.5 text-muted-foreground">{document.uploadedBy || "Workspace staff"}</td>
+                        <td className="px-3 py-2.5 text-right">
                           {document.fileUrl ? (
                             <a href={document.fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm font-semibold text-primary">
                               <Download className="size-4" />
@@ -1415,14 +1426,14 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             {client.gallery.length > 0 ? (
               <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {client.gallery.map((item) => (
-                  <figure key={item.id} className="overflow-hidden rounded-[1rem] border border-border/80 bg-white">
+                  <figure key={item.id} className="overflow-hidden rounded-[0.75rem] border border-border/80 bg-white">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={item.imageUrl}
                       alt={item.caption || "Client clinical image"}
                       className="aspect-[4/3] w-full object-cover"
                     />
-                    <figcaption className="px-4 py-3">
+                    <figcaption className="px-3 py-2.5">
                       <p className="text-sm font-medium text-foreground">{item.caption || "No note"}</p>
                       <p className="mt-1 text-xs text-muted-foreground">Upload date: {item.createdAt}</p>
                     </figcaption>
@@ -1432,8 +1443,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             ) : null}
           </div>
 
-          <aside className="grid content-start gap-3.5">
-            <section className="surface-card p-4">
+          <aside className="grid content-start gap-3">
+            <section className="surface-card p-3.5">
               <h2 className="text-base font-semibold text-foreground">Documents summary</h2>
               <div className="mt-4 space-y-3 text-sm">
                 {["Insurance", "Consent", "Medical History", "Report", "Image / Scan", "Invoice", "Other"].map((type) => {
@@ -1446,11 +1457,11 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
             </section>
 
-            <section className="surface-card p-4">
+            <section className="surface-card p-3.5">
               <h2 className="text-base font-semibold text-foreground">Selected document</h2>
               {client.documents[0] ? (
                 <div className="mt-4 space-y-3">
-                  <div className="rounded-[0.85rem] border border-border/80 p-4">
+                  <div className="rounded-[0.85rem] border border-border/80 p-3.5">
                     <p className="font-semibold text-foreground">{client.documents[0].fileName}</p>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {client.documents[0].category || client.documents[0].fileType} - {client.documents[0].fileSize}
@@ -1472,7 +1483,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           </aside>
         </TabsContent>
 
-        <TabsContent value="messages" className="rounded-[1.15rem] border border-border/80 bg-white/74 p-4">
+        <TabsContent value="messages" className="surface-card p-3.5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-foreground">Messages</h2>
@@ -1497,7 +1508,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 <div
                   key={message.id}
                   className={cn(
-                    "max-w-[760px] rounded-[0.95rem] px-4 py-3 text-sm leading-6 shadow-[0_14px_28px_rgba(20,32,51,0.04)]",
+                    "max-w-[760px] rounded-[0.7rem] px-3 py-2.5 text-sm leading-6 shadow-[0_5px_14px_rgba(20,32,51,0.02)]",
                     message.sender === "business"
                       ? "ml-auto bg-primary text-primary-foreground"
                       : "bg-white/86 text-foreground ring-1 ring-border/75"
@@ -1522,16 +1533,16 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           </div>
         </TabsContent>
 
-        <TabsContent value="payments" className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="space-y-4">
-            <section className="grid gap-3 surface-card p-4 md:grid-cols-4">
+        <TabsContent value="payments" className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="space-y-3.5">
+            <section className="grid gap-3 surface-card p-3.5 md:grid-cols-4">
               <PaymentMetric label="Total billed" value={totalBilledDisplay} helper={`${client.payments.length} ledger entries`} />
               <PaymentMetric label="Total paid" value={client.paymentStats.totalPaidDisplay} helper={`${client.payments.filter((payment) => payment.status.toLowerCase() === "paid").length} paid entries`} tone="good" />
               <PaymentMetric label="Outstanding" value={client.paymentStats.unpaidBalanceDisplay} helper="Open balance" tone={client.paymentStats.unpaidBalanceCents > 0 ? "danger" : "default"} />
               <PaymentMetric label="Last payment" value={latestPayment?.paidAt ?? "-"} helper={latestPayment?.amountDisplay ?? "No payments yet"} />
             </section>
 
-            <section className="overflow-hidden rounded-[1rem] border border-border/80 bg-white shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
+            <section className="overflow-hidden rounded-[0.75rem] border border-border/80 bg-white shadow-[0_5px_14px_rgba(20,32,51,0.02)]">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/75 px-5 py-4">
                 <h2 className="text-base font-semibold text-foreground">Invoice & payment history</h2>
                 <button type="button" onClick={downloadPaymentStatement} className="text-sm font-medium text-primary">Download statement</button>
@@ -1540,25 +1551,25 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 <table className="w-full text-sm">
                   <thead className="bg-secondary/40 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
                     <tr>
-                      <th className="px-4 py-3 text-left">Date</th>
-                      <th className="px-4 py-3 text-left">Invoice #</th>
-                      <th className="px-4 py-3 text-left">Description</th>
-                      <th className="px-4 py-3 text-left">Billed</th>
-                      <th className="px-4 py-3 text-left">Paid</th>
-                      <th className="px-4 py-3 text-left">Status</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
+                      <th className="px-3 py-2.5 text-left">Date</th>
+                      <th className="px-3 py-2.5 text-left">Invoice #</th>
+                      <th className="px-3 py-2.5 text-left">Description</th>
+                      <th className="px-3 py-2.5 text-left">Billed</th>
+                      <th className="px-3 py-2.5 text-left">Paid</th>
+                      <th className="px-3 py-2.5 text-left">Status</th>
+                      <th className="px-3 py-2.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/70 bg-white">
                     {client.payments.map((payment) => (
                       <tr key={payment.id}>
-                        <td className="px-4 py-3 font-medium text-foreground">{payment.paidAt || payment.createdAt}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{payment.invoiceNumber || "-"}</td>
-                        <td className="px-4 py-3 text-foreground">{payment.description || "Manual ledger entry"}</td>
-                        <td className="px-4 py-3 text-foreground">{payment.amountDisplay}</td>
-                        <td className="px-4 py-3 text-foreground">{payment.status.toLowerCase() === "paid" ? payment.amountDisplay : "-"}</td>
-                        <td className="px-4 py-3"><StatusBadge status={payment.status.toLowerCase()} /></td>
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-3 py-2.5 font-medium text-foreground">{payment.paidAt || payment.createdAt}</td>
+                        <td className="px-3 py-2.5 text-muted-foreground">{payment.invoiceNumber || "-"}</td>
+                        <td className="px-3 py-2.5 text-foreground">{payment.description || "Manual ledger entry"}</td>
+                        <td className="px-3 py-2.5 text-foreground">{payment.amountDisplay}</td>
+                        <td className="px-3 py-2.5 text-foreground">{payment.status.toLowerCase() === "paid" ? payment.amountDisplay : "-"}</td>
+                        <td className="px-3 py-2.5"><StatusBadge status={payment.status.toLowerCase()} /></td>
+                        <td className="px-3 py-2.5 text-right">
                           {payment.receiptUrl ? (
                             <a href={payment.receiptUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-primary">Receipt</a>
                           ) : (
@@ -1577,7 +1588,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
             </section>
 
-            <section className="surface-card p-4">
+            <section className="surface-card p-3.5">
               <h2 className="text-base font-semibold text-foreground">Manual ledger entry</h2>
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <Input value={paymentDraft.amount} onChange={(event) => setPaymentDraft((current) => ({ ...current, amount: event.target.value }))} placeholder="Amount" className="h-10 rounded-[0.7rem] bg-white" />
@@ -1593,8 +1604,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             </section>
           </div>
 
-          <aside className="grid content-start gap-3.5">
-            <section className="surface-card p-4">
+          <aside className="grid content-start gap-3">
+            <section className="surface-card p-3.5">
               <h2 className="text-base font-semibold text-foreground">Payment status</h2>
               <div className="mt-4 flex items-start gap-3">
                 <span className="flex size-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
@@ -1614,7 +1625,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </dl>
             </section>
 
-            <section className="surface-card p-4">
+            <section className="surface-card p-3.5">
               <h2 className="text-base font-semibold text-foreground">Billing notes</h2>
               <p className="mt-3 text-sm leading-6 text-muted-foreground">
                 {latestPayment?.billingNote || client.notes || "No billing notes recorded."}
@@ -1624,7 +1635,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </p>
             </section>
 
-            <section className="surface-card p-4">
+            <section className="surface-card p-3.5">
               <h2 className="text-base font-semibold text-foreground">Ledger summary</h2>
               <div className="mt-4 space-y-3 text-sm">
                 <SummaryRow label="Paid entries" value={client.payments.filter((payment) => payment.status.toLowerCase() === "paid").length} />
@@ -1642,7 +1653,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
 
 function Detail({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[0.95rem] border border-border/80 bg-white/72 px-4 py-4">
+    <div className="rounded-[0.7rem] border border-border/80 bg-white/72 px-3.5 py-3">
       <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         {label}
       </dt>
@@ -1661,9 +1672,9 @@ function InfoCard({
   value: string;
 }) {
   return (
-    <section className="rounded-[1.15rem] border border-border/80 bg-white/74 p-4">
+    <section className="surface-card p-3.5">
       <div className="flex items-start gap-3">
-        <div className="flex size-10 items-center justify-center rounded-[0.9rem] bg-primary/10 text-primary">
+        <div className="flex size-10 items-center justify-center rounded-[0.7rem] bg-primary/10 text-primary">
           <Icon className="size-5" />
         </div>
         <div>
@@ -1768,7 +1779,7 @@ function OverviewLine({
   icon?: ComponentType<{ className?: string }>;
 }) {
   return (
-    <div className="grid grid-cols-[120px_minmax(0,1fr)] items-start gap-4 text-sm sm:grid-cols-[160px_minmax(0,1fr)]">
+    <div className="grid grid-cols-[120px_minmax(0,1fr)] items-start gap-3.5 text-sm sm:grid-cols-[160px_minmax(0,1fr)]">
       <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
         {label}
       </dt>

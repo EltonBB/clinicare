@@ -22,19 +22,19 @@ export function WorkspacePlaceholder({
       <WorkspaceMainGrid railWidth="md">
         <WorkspaceCard title="Foundation milestone ready">
           <div className="grid gap-3 text-sm text-muted-foreground">
-            <div className="rounded-[0.9rem] border border-dashed border-border bg-muted/45 p-4">
+            <div className="rounded-[0.72rem] border border-dashed border-border bg-muted/45 p-3.5">
               This workspace route and shell are active. The detailed feature
               surface for this section will be built in the next milestone.
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-[0.9rem] border border-border bg-background p-4">
+              <div className="rounded-[0.72rem] border border-border bg-background p-3.5">
                 <p className="font-medium text-foreground">Responsive shell</p>
                 <p className="mt-2 text-sm">
                   Desktop sidebar, top bar, and mobile bottom navigation are in
                   place.
                 </p>
               </div>
-              <div className="rounded-[0.9rem] border border-border bg-background p-4">
+              <div className="rounded-[0.72rem] border border-border bg-background p-3.5">
                 <p className="font-medium text-foreground">Design system</p>
                 <p className="mt-2 text-sm">
                   Vela tokens, shadcn primitives, and spacing foundations are
@@ -53,11 +53,11 @@ export function WorkspacePlaceholder({
           }
         >
           <div className="space-y-3 text-sm text-muted-foreground">
-            <div className="rounded-[0.9rem] bg-muted/45 p-4">
+            <div className="rounded-[0.72rem] bg-muted/45 p-3.5">
               The next milestone will turn this placeholder into a fully working
               screen with local state or Supabase-backed flows where needed.
             </div>
-            <div className="rounded-[0.9rem] border border-border bg-background p-4">
+            <div className="rounded-[0.72rem] border border-border bg-background p-3.5">
               <div className="flex items-center justify-between">
                 <p className="font-medium text-foreground">Build target</p>
                 <ArrowUpRight className="size-4 text-muted-foreground" />

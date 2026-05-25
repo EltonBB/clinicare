@@ -65,10 +65,10 @@ const timeOptions = [
 const staffRoles = ["Manager", "Specialist", "Reception"];
 
 const fieldInputClass =
-  "h-12 rounded-[0.95rem] border-border bg-card px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70";
+  "h-11 rounded-[0.78rem] border-border bg-white px-3.5 text-[15px] shadow-none placeholder:text-muted-foreground/70";
 
 const selectClass =
-  "h-12 w-full appearance-none rounded-[0.95rem] border border-border bg-card px-4 pr-10 text-[15px] text-foreground shadow-none outline-none transition-colors focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+  "h-11 w-full appearance-none rounded-[0.78rem] border border-border bg-white px-3.5 pr-10 text-[15px] text-foreground shadow-none outline-none transition-colors focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
 const onboardingDraftStorageKey = "vela:onboarding-draft";
 
@@ -465,7 +465,7 @@ export function OnboardingFlow({
   function renderStepContent() {
     if (step.id === "owner") {
       return (
-        <div className="mx-auto grid w-full max-w-xl gap-5">
+        <div className="mx-auto grid w-full max-w-xl gap-4">
           <div className="space-y-3 text-center">
             <p className="text-sm font-semibold uppercase tracking-[0.22em] text-primary">
               Welcome to Vela
@@ -478,7 +478,7 @@ export function OnboardingFlow({
               stay aligned.
             </p>
           </div>
-          <div className="rounded-[1.35rem] border border-border bg-card p-5 shadow-[0_14px_32px_rgba(20,32,51,0.035)]">
+          <div className="surface-card p-3.5">
             <div className="space-y-3">
               <FieldLabel>Owner name</FieldLabel>
               <Input
@@ -507,8 +507,8 @@ export function OnboardingFlow({
         (isStorageReference(state.clinic.logoUrl) ? "" : state.clinic.logoUrl);
 
       return (
-        <div className="grid gap-5">
-          <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4">
+          <div className="grid gap-3.5 md:grid-cols-2">
             <div className="space-y-3">
               <FieldLabel>Clinic name</FieldLabel>
               <Input
@@ -544,7 +544,7 @@ export function OnboardingFlow({
             </div>
             <div className="space-y-3 md:col-span-2">
               <FieldLabel>Logo optional</FieldLabel>
-              <div className="grid gap-3 rounded-[1.1rem] border border-border bg-card p-4 sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center">
+              <div className="grid gap-3 rounded-[0.78rem] border border-border bg-white p-3.5 sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center">
                 <div className="flex size-[72px] items-center justify-center overflow-hidden rounded-[1.15rem] bg-primary/10 text-xl font-semibold text-primary">
                   {logoDisplayUrl ? (
                     <span
@@ -616,7 +616,7 @@ export function OnboardingFlow({
             </div>
           </div>
 
-          <div className="rounded-[1.35rem] border border-border bg-card p-5">
+          <div className="surface-card p-3.5">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-sm font-semibold text-foreground">
@@ -759,7 +759,7 @@ export function OnboardingFlow({
             return (
               <div
                 key={day}
-                className="grid gap-4 rounded-[1.35rem] border border-border bg-card px-5 py-4 md:grid-cols-[1.4fr_1fr]"
+                className="grid gap-3.5 rounded-[0.82rem] border border-border bg-white px-3.5 py-3 md:grid-cols-[1.4fr_1fr]"
               >
                 <div className="flex items-center gap-4">
                   <Toggle
@@ -802,7 +802,7 @@ export function OnboardingFlow({
 
     if (step.id === "staff") {
       return (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3.5 md:grid-cols-2">
           <div className="space-y-3">
             <FieldLabel>Staff name</FieldLabel>
             <Input
@@ -836,7 +836,7 @@ export function OnboardingFlow({
               options={staffRoles}
             />
           </div>
-          <div className="rounded-[1.35rem] border border-border bg-card p-5 md:col-span-2">
+          <div className="surface-card p-3.5 md:col-span-2">
             <p className="text-sm font-semibold text-foreground">Staff preview</p>
             <div className="mt-4 flex items-center gap-4 rounded-[1rem] bg-muted/55 p-4">
               <div className="flex size-11 items-center justify-center rounded-full bg-primary/12 text-sm font-semibold text-primary">
@@ -862,8 +862,8 @@ export function OnboardingFlow({
 
     if (step.id === "dashboard") {
       return (
-        <div className="space-y-5">
-          <div className="grid gap-4 md:grid-cols-3">
+        <div className="space-y-4">
+          <div className="grid gap-3.5 md:grid-cols-3">
             {dashboardFocusOptions.map((option) => {
               const selected = state.dashboard.widgets.includes(option.value);
 
@@ -885,7 +885,7 @@ export function OnboardingFlow({
                     }))
                   }
                   className={cn(
-                    "group rounded-[1.35rem] border bg-card p-5 text-left transition-[border-color,transform,background-color] duration-200 hover:-translate-y-0.5 hover:border-primary/30",
+                    "group rounded-[0.82rem] border bg-white p-3.5 text-left transition-[border-color,background-color] duration-200 hover:border-primary/30",
                     selected
                       ? "border-primary/55 bg-primary/8 ring-1 ring-primary/15"
                       : "border-border"
@@ -923,7 +923,7 @@ export function OnboardingFlow({
           </div>
 
           {state.dashboard.widgets.length > 0 ? (
-            <div className="space-y-2 rounded-[1.2rem] border border-border bg-card p-4">
+            <div className="space-y-2 rounded-[0.82rem] border border-border bg-white p-3.5">
               {state.dashboard.widgets.map((widget) => (
                 <div
                   key={widget}
@@ -982,7 +982,7 @@ export function OnboardingFlow({
         </div>
 
         <div className="py-5">
-          <div className="mx-auto max-w-3xl rounded-[1.2rem] border border-white/70 bg-white/60 px-5 py-5 shadow-[0_18px_46px_rgba(20,21,47,0.045)] backdrop-blur-xl sm:px-7">
+          <div className="mx-auto max-w-3xl rounded-[0.9rem] border border-white/70 bg-white/70 px-4 py-4 shadow-[0_8px_22px_rgba(20,21,47,0.028)] backdrop-blur-xl sm:px-6">
             <div
               className="relative grid"
               style={{
@@ -1031,11 +1031,11 @@ export function OnboardingFlow({
         </div>
 
         <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col py-3 sm:py-6">
-          <div className="space-y-6">
+          <div className="space-y-4">
             {renderStepContent()}
           </div>
 
-          <div className="mt-auto space-y-5 pt-8">
+          <div className="mt-auto space-y-4 pt-6">
             {errorMessage ? (
               <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
                 {errorMessage}

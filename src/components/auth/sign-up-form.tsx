@@ -29,7 +29,7 @@ export function SignUpForm() {
   const [state, formAction] = useActionState(signUpAction, initialState);
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form action={formAction} className="space-y-5">
       {state.error ? (
         <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {state.error}
@@ -46,7 +46,7 @@ export function SignUpForm() {
           defaultValue={state.values?.email}
           aria-invalid={Boolean(state.fieldErrors?.email)}
           className={cn(
-            "h-12 rounded-[1rem] border-border/80 bg-white/84 px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70",
+            "h-11 rounded-[0.78rem] border-border/80 bg-white px-3.5 text-[15px] shadow-none placeholder:text-muted-foreground/70",
             state.fieldErrors?.email && "border-destructive"
           )}
         />
@@ -63,7 +63,7 @@ export function SignUpForm() {
           defaultValue={state.values?.password}
           aria-invalid={Boolean(state.fieldErrors?.password)}
           className={cn(
-            "h-12 rounded-[1rem] border-border/80 bg-white/84 px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70",
+            "h-11 rounded-[0.78rem] border-border/80 bg-white px-3.5 text-[15px] shadow-none placeholder:text-muted-foreground/70",
             state.fieldErrors?.password && "border-destructive"
           )}
         />
@@ -73,7 +73,7 @@ export function SignUpForm() {
       <div className="space-y-3 pt-3">
         <SubmitButton
           pendingLabel="Creating account..."
-          className="h-12 w-full rounded-[1rem] text-[15px] font-medium"
+          className="h-11 w-full rounded-[0.78rem] text-[15px] font-medium"
         >
           Create account
         </SubmitButton>

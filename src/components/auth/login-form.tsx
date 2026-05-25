@@ -30,7 +30,7 @@ export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
   const next = state.values?.next ?? nextPath;
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form action={formAction} className="space-y-5">
       <input type="hidden" name="next" value={next} />
 
       {state.error ? (
@@ -49,7 +49,7 @@ export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
           defaultValue={state.values?.email}
           aria-invalid={Boolean(state.fieldErrors?.email)}
           className={cn(
-            "h-12 rounded-[1rem] border-border/80 bg-white/84 px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70",
+            "h-11 rounded-[0.78rem] border-border/80 bg-white px-3.5 text-[15px] shadow-none placeholder:text-muted-foreground/70",
             state.fieldErrors?.email && "border-destructive"
           )}
         />
@@ -66,7 +66,7 @@ export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
           defaultValue={state.values?.password}
           aria-invalid={Boolean(state.fieldErrors?.password)}
           className={cn(
-            "h-12 rounded-[1rem] border-border/80 bg-white/84 px-4 text-[15px] shadow-none placeholder:text-muted-foreground/70",
+            "h-11 rounded-[0.78rem] border-border/80 bg-white px-3.5 text-[15px] shadow-none placeholder:text-muted-foreground/70",
             state.fieldErrors?.password && "border-destructive"
           )}
         />
@@ -75,7 +75,7 @@ export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
 
       <SubmitButton
         pendingLabel="Logging in..."
-        className="h-12 w-full rounded-[1rem] text-[15px] font-medium"
+        className="h-11 w-full rounded-[0.78rem] text-[15px] font-medium"
       >
         Log in
       </SubmitButton>

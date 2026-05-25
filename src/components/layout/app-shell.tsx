@@ -161,19 +161,19 @@ export function AppShell({
         } as CSSProperties
       }
     >
-      <div className="relative flex min-h-screen">
-        <aside className="hidden w-[232px] shrink-0 border-r border-sidebar-border/80 bg-white/86 backdrop-blur-xl lg:flex">
+      <div className="relative flex min-h-screen bg-background lg:min-h-screen lg:overflow-hidden lg:bg-[#f4f6fa]">
+        <aside className="hidden w-[216px] shrink-0 border-r border-sidebar-border/80 bg-white backdrop-blur-xl lg:flex">
           <div
-            className="sticky top-0 flex h-screen w-full flex-col bg-white/74 p-3.5"
+            className="sticky top-0 flex h-screen w-full flex-col bg-white p-3"
             data-tour="sidebar-shell"
           >
-            <div className="mb-4 rounded-[1rem] border border-border/70 bg-white/88 p-3 shadow-[0_12px_26px_rgba(20,21,47,0.04)]">
+            <div className="mb-4 rounded-[0.7rem] border border-border/70 bg-[#f8fafc] p-2.5">
               <div className="flex items-center gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-[0.95rem] border border-border/80 bg-white text-primary">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-[0.72rem] border border-border/75 bg-white text-primary">
                 {logoUrl ? (
                   <span
                     aria-hidden="true"
-                    className="size-full rounded-[0.95rem] bg-contain bg-center bg-no-repeat"
+                    className="size-full rounded-[0.72rem] bg-contain bg-center bg-no-repeat"
                     style={{ backgroundImage: `url("${logoUrl}")` }}
                   />
                 ) : (
@@ -191,15 +191,15 @@ export function AppShell({
               </div>
             </div>
 
-            <nav className="flex-1 space-y-1 px-1 py-2">
+            <nav className="flex-1 space-y-1.5 px-0.5 py-2">
             {navigationItems.map((item) => {
               const Icon = item.icon;
               const isActive =
                 pathname === item.href || pathname.startsWith(`${item.href}/`);
               const navClasses = cn(
-                "interactive-lift flex items-center gap-3 rounded-[0.85rem] border border-transparent px-3.5 py-2.5 text-sm font-semibold text-muted-foreground transition-[background-color,border-color,color,box-shadow,transform] duration-200 hover:bg-white/86 hover:text-foreground",
+                "flex h-10 items-center gap-3 rounded-[0.62rem] border border-transparent px-3 text-sm font-semibold text-muted-foreground transition-[background-color,border-color,color] duration-200 hover:bg-[#f7f9fc] hover:text-foreground",
                 isActive &&
-                  "border-primary/20 bg-white text-primary shadow-none ring-0"
+                  "border-border/80 bg-[#f3f6fb] text-primary shadow-none ring-0"
               );
 
               return (
@@ -219,17 +219,17 @@ export function AppShell({
             })}
             </nav>
 
-            <div className="mt-2 space-y-2.5 border-t border-sidebar-border/70 px-1 pt-3">
-              <div className="rounded-[0.9rem] border border-border/80 bg-white/88 px-3 py-3 text-sm shadow-[0_10px_22px_rgba(20,21,47,0.035)]">
+            <div className="mt-2 space-y-2 border-t border-sidebar-border/70 px-0.5 pt-2.5">
+              <div className="rounded-[0.62rem] border border-border/75 bg-[#f8fafc] px-2.5 py-2.5 text-sm">
                 <div className="flex items-center gap-2">
-                  <span className="vela-icon-tile size-7">
+                  <span className="vela-icon-tile size-7 rounded-[0.62rem]">
                     <BadgeCheck className="size-3.5" />
                   </span>
-                  <p className="font-semibold text-[var(--brand-ink)]">
+                  <p className="truncate font-semibold text-[var(--brand-ink)]">
                     Vela {planName} plan
                   </p>
                 </div>
-                <div className="mt-2.5 flex items-center justify-between border-t border-border/70 pt-2.5">
+                <div className="mt-2 flex items-center justify-between border-t border-border/65 pt-2">
                   <span className="text-xs text-muted-foreground">Status</span>
                   <span className="text-xs font-semibold text-primary">
                     {planStatus}
@@ -237,7 +237,7 @@ export function AppShell({
                 </div>
               </div>
 
-              <div className="rounded-[0.9rem] px-1 py-1.5">
+              <div className="rounded-[0.78rem] px-0.5 py-1">
                 <OwnerAccountDialog
                   ownerName={ownerName}
                   ownerEmail={ownerEmail}
@@ -248,7 +248,7 @@ export function AppShell({
                 <LogoutButton
                   fullWidth
                   variant="outline"
-                  className="mt-2.5 h-9 justify-center rounded-[0.85rem] bg-white/70"
+                  className="mt-2 h-9 justify-center rounded-[0.72rem] bg-white"
                 />
               </div>
             </div>
@@ -256,8 +256,8 @@ export function AppShell({
         </aside>
 
         <div className="relative flex min-h-screen min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-20 border-b border-border/70 bg-white/88 px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-7 lg:py-0">
-            <div className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 lg:h-[60px] lg:gap-5">
+          <header className="sticky top-0 z-20 border-b border-border/70 bg-white px-4 py-3 backdrop-blur-xl sm:px-5 lg:px-6 lg:py-0">
+            <div className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 lg:h-[56px] lg:gap-5">
               <div className="flex min-w-[148px] items-center">
                 <BrandMark href="/dashboard" includeSubtitle={false} className="hidden lg:flex" />
                 <BrandMark compact href="/dashboard" className="lg:hidden" />
@@ -280,13 +280,13 @@ export function AppShell({
             <GlobalSearch className="mt-3 w-full md:hidden" />
           </header>
 
-          <main className="page-gutter relative flex-1 py-4 pb-28 lg:pb-7 lg:pt-5">
+          <main className="relative flex-1 bg-[#f4f6fa] px-4 py-3 pb-28 sm:px-5 lg:px-6 lg:py-4 lg:pb-4">
             {children}
           </main>
         </div>
       </div>
 
-      <nav className="fixed inset-x-3 bottom-3 z-30 rounded-[1.25rem] border border-border/80 bg-white/94 px-2 py-2 shadow-[0_16px_38px_rgba(20,21,47,0.09)] backdrop-blur-xl lg:hidden">
+      <nav className="fixed inset-x-3 bottom-3 z-30 rounded-[1rem] border border-border/80 bg-white/96 px-2 py-2 shadow-[0_12px_28px_rgba(20,21,47,0.07)] backdrop-blur-xl lg:hidden">
         <div className="grid grid-cols-7 gap-1">
           {navigationItems.map((item) => {
             const Icon = item.icon;
@@ -294,7 +294,7 @@ export function AppShell({
               pathname === item.href || pathname.startsWith(`${item.href}/`);
             const mobileNavClasses = cn(
               "flex flex-col items-center gap-1 rounded-[1rem] border border-transparent px-2 py-2 text-[11px] font-medium text-muted-foreground transition-[background-color,border-color,color,transform] duration-200",
-              isActive && "border-primary/20 bg-white text-primary shadow-none"
+              isActive && "border-border/80 bg-white text-primary shadow-none"
             );
 
             return (

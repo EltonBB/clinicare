@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   Plus,
   Search,
-  SlidersHorizontal,
   UserRoundCog,
   UsersRound,
 } from "lucide-react";
@@ -24,10 +23,9 @@ import {
   WorkspaceHeader,
   WorkspaceKpiCard,
   WorkspaceKpiGrid,
-  WorkspaceMainGrid,
   WorkspacePage,
-  WorkspaceRail,
   WorkspaceTable,
+  WorkspaceToolbar,
 } from "@/components/workspace/workspace-layout";
 import { cn } from "@/lib/utils";
 import type { StaffStatus, StaffViewModel } from "@/lib/staff";
@@ -181,9 +179,9 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
         <WorkspaceKpiCard icon={CheckCircle2} label="Avg completion rate" value={`${averageCompletion}%`} helper="Finalized appointments" />
       </WorkspaceKpiGrid>
 
-      <WorkspaceMainGrid railWidth="sm">
-        <div className="section-reveal overflow-hidden rounded-[1rem] border border-border/80 bg-white shadow-[0_16px_36px_rgba(20,32,51,0.04)]">
-          <div className="grid gap-3 border-b border-border/75 p-3.5 lg:grid-cols-[minmax(260px,1fr)_180px_180px_48px]">
+      <div className="surface-card section-reveal overflow-hidden p-0">
+          <WorkspaceToolbar className="rounded-none border-0 border-b border-border/70 shadow-none">
+            <div className="grid w-full gap-3 lg:grid-cols-[minmax(260px,1fr)_180px_180px]">
             <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -195,14 +193,8 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
         </div>
             <NativeRoleFilter value={roleFilter} roles={roles} onChange={setRoleFilter} />
             <NativeFilter value={filter} onChange={setFilter} />
-            <button
-              type="button"
-              className="inline-flex h-10 items-center justify-center rounded-[0.7rem] border border-border bg-white text-muted-foreground"
-              aria-label="Filter staff"
-            >
-              <SlidersHorizontal className="size-4" />
-            </button>
-          </div>
+            </div>
+          </WorkspaceToolbar>
           {clockError ? (
             <div className="border-b border-border/75 bg-destructive/5 px-4 py-3 text-sm text-destructive">
               {clockError}
@@ -246,7 +238,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
             filteredStaff.map((member) => (
               <div
                 key={member.id}
-                  className="grid gap-3 px-4 py-2.5 transition-colors duration-200 hover:bg-secondary/25 lg:min-h-[64px] lg:grid-cols-[minmax(220px,1.45fr)_150px_120px_130px_170px] lg:items-center"
+                  className="grid gap-3 px-3.5 py-2 transition-colors duration-200 hover:bg-[#f7f9fc] lg:min-h-[54px] lg:grid-cols-[minmax(210px,1.45fr)_142px_104px_120px_158px] lg:items-center"
               >
                 <Link href={`/staff/${member.id}`} className="flex min-w-0 items-center gap-3">
                     <Avatar className="size-10">
@@ -314,22 +306,22 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
             ))
           )}
           </WorkspaceTable>
-          <div className="flex items-center justify-between border-t border-border/75 px-4 py-3 text-sm text-muted-foreground">
+          <div className="flex items-center justify-between border-t border-border/70 px-4 py-2.5 text-sm text-muted-foreground">
             <span>
               Showing 1 to {filteredStaff.length} of {staff.length} staff members
             </span>
             <span className="rounded-md bg-primary/10 px-3 py-1 font-semibold text-primary">1</span>
           </div>
-        </div>
+      </div>
 
-        <WorkspaceCard compact className="section-reveal xl:col-start-1" title="Team schedule" action={<Link href="/calendar" className="text-sm font-semibold text-primary">Open schedule</Link>}>
+      <WorkspaceCard compact className="section-reveal" title="Team schedule" action={<Link href="/calendar" className="text-sm font-semibold text-primary">Open schedule</Link>}>
           <p className="mt-1 text-sm text-muted-foreground">Today&apos;s shifts and the next planned coverage from staff records.</p>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             {scheduledStaff.map((member) => (
               <Link
                 key={member.id}
                 href={`/staff/${member.id}`}
-                className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-[0.85rem] border border-border/75 px-4 py-3 text-sm transition-colors hover:bg-secondary/25"
+                className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-[0.72rem] border border-border/70 px-3.5 py-2.5 text-sm transition-colors hover:bg-secondary/25"
               >
                 <span className="min-w-0">
                   <span className="block truncate font-semibold text-foreground">{member.name}</span>
@@ -353,11 +345,11 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
               />
             ) : null}
           </div>
-        </WorkspaceCard>
+      </WorkspaceCard>
 
-        <WorkspaceRail className="section-reveal-delayed xl:col-start-2 xl:row-start-1 xl:row-span-2">
-          <WorkspaceCard compact title="On duty now" action={<span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">{onDutyStaff.length}</span>}>
-            <div className="space-y-3">
+      <div className="grid gap-3 lg:grid-cols-3">
+        <WorkspaceCard fill compact title="On duty now" action={<span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">{onDutyStaff.length}</span>}>
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {(onDutyStaff.length > 0 ? onDutyStaff : staff.slice(0, 5)).slice(0, 5).map((member) => (
               <Link key={member.id} href={`/staff/${member.id}`} className="flex items-center gap-3">
                   <Avatar className="size-9">
@@ -381,8 +373,8 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
           </div>
         </WorkspaceCard>
 
-          <WorkspaceCard compact title="Upcoming shifts">
-            <div className="mt-4 space-y-3">
+        <WorkspaceCard fill compact title="Upcoming shifts">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
               {upcomingShiftStaff.map((member) => (
               <div key={member.id} className="flex items-start gap-3 text-sm">
                 <span className="mt-0.5 flex size-8 items-center justify-center rounded-[0.75rem] bg-primary/10 text-primary">
@@ -403,21 +395,20 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
               />
             ) : null}
           </div>
-          <Link href="/calendar" className="mt-4 inline-flex text-sm font-semibold text-primary">
+          <Link href="/calendar" className="mt-3 inline-flex text-sm font-semibold text-primary">
             View full schedule
           </Link>
         </WorkspaceCard>
 
-          <WorkspaceCard compact title="Coverage summary">
-          <div className="mt-4 space-y-3 text-sm">
+        <WorkspaceCard fill compact title="Coverage summary">
+          <div className="space-y-2.5 text-sm">
             <CoverageRow label="Appointments today" value={totalAppointmentsToday.toString()} />
             <CoverageRow label="On-duty coverage" value={`${onDutyStaff.length}/${staff.length}`} />
             <CoverageRow label="Average completion" value={`${averageCompletion}%`} />
             <CoverageRow label="Planned shifts" value={upcomingShiftStaff.length.toString()} />
           </div>
         </WorkspaceCard>
-      </WorkspaceRail>
-      </WorkspaceMainGrid>
+      </div>
     </WorkspacePage>
   );
 }

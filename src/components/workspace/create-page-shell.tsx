@@ -18,7 +18,7 @@ export function CreatePageShell({
   children,
 }: CreatePageShellProps) {
   return (
-    <WorkspacePage size="form" className="px-1 py-3 sm:py-5">
+    <WorkspacePage size="form" className="px-1 py-2 sm:py-3">
       <WorkspaceHeader
         eyebrow={eyebrow}
         title={title}

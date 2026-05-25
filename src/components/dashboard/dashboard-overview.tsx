@@ -31,6 +31,7 @@ import {
   WorkspaceMainGrid,
   WorkspacePage,
   WorkspaceRail,
+  WorkspaceSectionGrid,
 } from "@/components/workspace/workspace-layout";
 import { cn } from "@/lib/utils";
 import type {
@@ -144,11 +145,11 @@ function DashboardCustomizer({
   }
 
   return (
-    <div className="relative flex justify-end">
+    <div className="relative z-[90] flex justify-end">
       <Button
         type="button"
         variant="outline"
-        className="h-10 rounded-[0.9rem] bg-white/82 px-4"
+        className="h-10 rounded-[0.7rem] bg-white px-3.5"
         onClick={() => setOpen(true)}
         data-tour="dashboard-customize"
       >
@@ -156,7 +157,7 @@ function DashboardCustomizer({
         Customize dashboard
       </Button>
       {open ? (
-        <div className="absolute right-0 top-12 z-50 w-[min(760px,calc(100vw-2rem))] rounded-[1.35rem] border border-border/80 bg-white/96 p-5 shadow-[0_24px_70px_rgba(20,21,47,0.14)] backdrop-blur-xl">
+          <div className="absolute right-0 top-12 z-[120] w-[min(680px,calc(100vw-2rem))] rounded-[0.78rem] border border-border/80 bg-white p-3.5 shadow-[0_18px_42px_rgba(20,21,47,0.16)] backdrop-blur-xl">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-lg font-semibold text-foreground">
@@ -189,9 +190,9 @@ function DashboardCustomizer({
                     type="button"
                     onClick={() => toggleWidget(option.value)}
                     className={cn(
-                      "rounded-[1rem] border bg-white p-4 text-left transition-[border-color,background-color,box-shadow] duration-150",
+                      "rounded-[0.75rem] border bg-white p-3.5 text-left transition-[border-color,background-color,box-shadow] duration-150",
                       selected
-                        ? "border-primary/45 bg-[linear-gradient(135deg,rgba(10,34,255,0.08),rgba(100,182,255,0.08))] shadow-[0_14px_30px_rgba(10,34,255,0.1)]"
+                        ? "border-primary/45 bg-[linear-gradient(135deg,rgba(10,34,255,0.08),rgba(100,182,255,0.08))] shadow-[0_6px_16px_rgba(10,34,255,0.09)]"
                         : "border-border hover:border-primary/25"
                     )}
                   >
@@ -331,8 +332,8 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
         />
       </WorkspaceKpiGrid>
 
-      <WorkspaceMainGrid>
-        <div className="space-y-4">
+      <WorkspaceMainGrid railWidth="sm" className="gap-2.5 xl:grid-cols-[minmax(0,1fr)_248px]">
+        <div className="grid gap-3">
           {!hasVisibleWidgets ? (
             <WorkspaceEmptyState
               compact
@@ -344,6 +345,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
 
           {showTodayAppointments ? (
           <WorkspaceCard
+            fill
             title={
               <span className="inline-flex items-center gap-3">
                 Today&apos;s appointments
@@ -362,7 +364,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                   <Link
                     key={appointment.id}
                     href={`/calendar/${appointment.id}/edit`}
-                    className="grid gap-3 rounded-[0.85rem] px-2 py-3 text-sm transition-colors hover:bg-primary/5 md:grid-cols-[82px_1fr_150px_104px_24px] md:items-center"
+                    className="grid gap-3 rounded-[0.65rem] px-2.5 py-2 text-sm transition-colors hover:bg-[#f7f9fc] md:min-h-[56px] md:grid-cols-[72px_1fr_132px_96px_22px] md:items-center"
                   >
                     <div>
                       <p className="font-semibold text-foreground">{appointment.time}</p>
@@ -393,15 +395,15 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           ) : null}
 
           {showStaffAppointment ? (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-            <WorkspaceCard title="Next appointment">
+          <WorkspaceSectionGrid columns={2}>
+            <WorkspaceCard fill title="Next appointment">
               {view.nextAppointment ? (
                 <Link
                   href={`/calendar/${view.nextAppointment.id}/edit`}
-                  className="block rounded-[1.05rem] bg-[linear-gradient(135deg,rgba(10,34,255,0.1),rgba(100,182,255,0.12))] p-4 transition-colors hover:bg-primary/12"
+                  className="block rounded-[0.55rem] border border-primary/12 bg-[linear-gradient(135deg,rgba(10,34,255,0.08),rgba(100,182,255,0.1))] p-3 transition-colors hover:bg-primary/10"
                 >
                   <p className="text-sm font-medium text-muted-foreground">Next up</p>
-                  <p className="vela-gradient-text mt-2 text-3xl font-semibold tracking-tight">
+                  <p className="vela-gradient-text mt-1.5 text-2xl font-semibold tracking-tight">
                     {view.nextAppointment.time}
                   </p>
                   <p className="mt-3 font-semibold text-foreground">
@@ -425,6 +427,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
             </WorkspaceCard>
 
             <WorkspaceCard
+              fill
               title="Staff schedule today"
               action={<Link href="/staff" className="text-xs font-semibold text-primary">View all staff</Link>}
             >
@@ -452,14 +455,14 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                 )}
               </div>
             </WorkspaceCard>
-          </div>
+          </WorkspaceSectionGrid>
           ) : null}
 
           {(showLastClients || showAnalytics) ? (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_270px]">
+          <WorkspaceSectionGrid columns={2}>
             {showLastClients ? (
-            <WorkspaceCard title="Recent activity">
-              <div className="space-y-4">
+            <WorkspaceCard fill title="Recent activity">
+              <div className="space-y-3">
                 {view.lastClients.slice(0, 5).map((client, index) => (
                   <Link key={client.id} href={`/clients/${client.id}`} className="flex items-center gap-3 text-sm">
                     <span className="flex size-9 items-center justify-center rounded-[0.9rem] border border-border/80 bg-white text-xs font-semibold text-primary">
@@ -488,6 +491,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
 
             {showAnalytics ? (
             <WorkspaceCard
+              fill
               title="Clinic health"
               action={<span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-semibold text-foreground">Live</span>}
             >
@@ -502,12 +506,12 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
               </Link>
             </WorkspaceCard>
             ) : null}
-          </div>
+          </WorkspaceSectionGrid>
           ) : null}
         </div>
 
-        <WorkspaceRail className="gap-3">
-          <WorkspaceCard title="Quick actions" compact>
+        <WorkspaceRail className="gap-2.5">
+          <WorkspaceCard title="Command center" compact className="self-start">
             <div className="grid gap-2">
               {actionWidgets.map((action) => (
                 <Link
@@ -518,7 +522,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                       variant: action.tone === "primary" ? "default" : "outline",
                       size: "lg",
                     }),
-                    "h-11 w-full justify-center rounded-[0.85rem] px-4",
+                    "h-10 w-full justify-center rounded-[0.72rem] px-3",
                     action.tone === "secondary" && "bg-white"
                   )}
                 >
@@ -533,16 +537,13 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                 </Link>
               ))}
             </div>
-          </WorkspaceCard>
-
-          <WorkspaceCard title="Today at a glance" compact>
-            <div className="space-y-3 text-sm">
+            <div className="mt-3 space-y-2.5 border-t border-border/70 pt-3 text-sm">
               <GlanceRow label="Appointments" value={view.appointments.length} />
               <GlanceRow label="Completed" value={completedToday} tone="good" />
               <GlanceRow label="Cancelled" value={cancelledToday} tone="danger" />
               <GlanceRow label="Upcoming" value={upcomingToday.length} />
             </div>
-            <Link href="/calendar" className="mt-4 inline-flex text-sm font-semibold text-primary">
+            <Link href="/calendar" className="mt-3 inline-flex text-sm font-semibold text-primary">
               View today&apos;s calendar
             </Link>
           </WorkspaceCard>

@@ -46,7 +46,7 @@
 }
 
 :root {
-  --background: #f8faff;
+  --background: #eef2f7;
   --foreground: #111827;
   --card: rgba(255, 255, 255, 0.94);
   --card-foreground: #111827;
@@ -101,9 +101,7 @@
     min-height: 100vh;
     background-color: var(--background);
     background-image:
-      radial-gradient(circle at 18% 0%, rgba(10, 34, 255, 0.12), transparent 34rem),
-      radial-gradient(circle at 82% 8%, rgba(100, 182, 255, 0.12), transparent 32rem),
-      linear-gradient(180deg, #ffffff 0%, #f8faff 36%, #f6f8fd 100%);
+      linear-gradient(180deg, #eef2f7 0%, #e9eef6 100%);
   }
 
   h1,
@@ -164,32 +162,19 @@
 
   .app-shell-bg {
     background:
-      radial-gradient(circle at 12% 0%, rgba(10, 34, 255, 0.1), transparent 28rem),
-      radial-gradient(circle at 84% 0%, rgba(100, 182, 255, 0.1), transparent 30rem),
-      linear-gradient(180deg, #ffffff 0%, #f8faff 24%, #f6f8fd 100%);
+      linear-gradient(180deg, #dfe5ee 0%, #edf1f7 100%);
   }
 
   .surface-card {
-    @apply rounded-[1rem] border border-border/80 bg-card;
+    @apply rounded-[0.68rem] border border-border/80 bg-white;
     box-shadow:
-      0 16px 38px rgba(20, 21, 47, 0.05),
-      inset 0 1px 0 rgba(255, 255, 255, 0.82);
-  }
-
-  .surface-panel {
-    @apply rounded-[0.9rem] border border-border/80 bg-card;
-    box-shadow:
-      0 12px 30px rgba(20, 21, 47, 0.04),
-      inset 0 1px 0 rgba(255, 255, 255, 0.72);
+      0 3px 9px rgba(20, 21, 47, 0.018),
+      inset 0 1px 0 rgba(255, 255, 255, 0.78);
   }
 
   .surface-soft {
-    @apply rounded-[0.9rem] border border-border/70 bg-white/88;
-    box-shadow: 0 12px 28px rgba(20, 21, 47, 0.035);
-  }
-
-  .page-gutter {
-    @apply px-4 sm:px-6 lg:px-8;
+    @apply rounded-[0.68rem] border border-border/75 bg-white;
+    box-shadow: 0 2px 7px rgba(20, 21, 47, 0.014);
   }
 
   .section-reveal {

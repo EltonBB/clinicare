@@ -10,6 +10,7 @@ import { deleteStaffAction, saveStaffAction } from "@/app/(workspace)/staff/acti
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { WorkspaceFormSection } from "@/components/workspace/workspace-layout";
 import { staffRoles, staffStatuses, type StaffRecord, type StaffStatus } from "@/lib/staff";
 import { cn } from "@/lib/utils";
 
@@ -188,10 +189,9 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
   }
 
   return (
-    <form action={handleSubmit} className="space-y-4">
-      <section className="surface-card p-4">
-        <h2 className="text-base font-semibold text-foreground">Staff profile</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+    <form action={handleSubmit} className="space-y-3.5">
+      <WorkspaceFormSection title="Staff profile">
+        <div className="grid gap-3.5 sm:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Name</span>
             <Input name="name" required defaultValue={staff?.name} placeholder="Staff member name" className="h-11 rounded-[0.9rem] bg-white" />
@@ -219,11 +219,10 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
             <Input name="email" type="email" defaultValue={staff?.email} placeholder="staff@example.com" className="h-11 rounded-[0.9rem] bg-white" />
           </label>
         </div>
-      </section>
+      </WorkspaceFormSection>
 
-      <section className="surface-card p-4">
-        <h2 className="text-base font-semibold text-foreground">Operational note</h2>
-        <label className="mt-4 block space-y-2">
+      <WorkspaceFormSection title="Operational note">
+        <label className="block space-y-2">
           <span className="text-sm font-semibold text-foreground">Profile note</span>
           <Textarea
             name="profileNote"
@@ -232,19 +231,19 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
             className="min-h-24 rounded-[0.9rem] bg-white px-3 py-3"
           />
         </label>
-      </section>
+      </WorkspaceFormSection>
 
-      <section className="surface-card p-4">
+      <WorkspaceFormSection
+        title={
+          <span className="inline-flex items-center gap-2">
+            <CalendarClock className="size-4 text-primary" />
+            Weekly schedule
+          </span>
+        }
+        description="Set the staff member's shifts only on clinic working days. Check-in is allowed only during the scheduled shift window."
+      >
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="inline-flex items-center gap-2 text-base font-semibold text-foreground">
-              <CalendarClock className="size-4 text-primary" />
-              Weekly schedule
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Set the staff member&apos;s shifts only on clinic working days. Check-in is allowed only during the scheduled shift window.
-            </p>
-          </div>
+          <span className="text-sm text-muted-foreground">Next seven clinic days</span>
           <button
             type="button"
             onClick={() =>
@@ -263,11 +262,11 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
           </button>
         </div>
         {schedule.length === 0 ? (
-          <p className="mt-4 rounded-[0.9rem] border border-border/75 bg-secondary/30 px-4 py-4 text-sm text-muted-foreground">
+          <p className="mt-3.5 rounded-[0.72rem] border border-border/75 bg-secondary/30 px-3.5 py-3 text-sm text-muted-foreground">
             No clinic working days are configured for the next seven days.
           </p>
         ) : (
-        <div className="mt-4 overflow-hidden rounded-[0.9rem] border border-border/75">
+        <div className="mt-3.5 overflow-hidden rounded-[0.72rem] border border-border/75">
           <div className="hidden grid-cols-[minmax(120px,1fr)_110px_110px_110px] bg-secondary/35 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground sm:grid">
             <span>Day</span>
             <span>Start</span>
@@ -313,7 +312,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
           </div>
         </div>
         )}
-      </section>
+      </WorkspaceFormSection>
 
       {error ? (
         <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">

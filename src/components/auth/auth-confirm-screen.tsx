@@ -115,8 +115,8 @@ export function AuthConfirmScreen() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
-      <div className="surface-card w-full max-w-md overflow-hidden rounded-[1.6rem] border border-border bg-card px-8 py-10 text-center shadow-sm sm:px-10">
-        <div className="space-y-6">
+      <div className="surface-card w-full max-w-md overflow-hidden border border-border bg-white px-7 py-8 text-center sm:px-9">
+        <div className="space-y-5">
           <BrandMark href="/login" includeSubtitle={false} className="justify-center" />
           <div
             className={`mx-auto flex size-[5.25rem] items-center justify-center rounded-full ${
