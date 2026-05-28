@@ -16,6 +16,8 @@ function normalizeConnectionString(connectionString: string) {
   const [path, query = ""] = base.split("?", 2);
   const params = new URLSearchParams(query);
 
+  params.delete("schema");
+  params.delete("pgbouncer");
   // `pg` handles SSL settings from the explicit pool config below more reliably
   // than from Supabase's `sslmode=require` query parameter.
   params.delete("sslmode");
@@ -28,11 +30,10 @@ function normalizeConnectionString(connectionString: string) {
 
 function buildDatabaseSslConfig() {
   const ca = process.env.DATABASE_SSL_CA?.replace(/\\n/g, "\n");
-  const rejectUnauthorized =
-    process.env.NODE_ENV === "production"
-      ? true
-      : process.env.DATABASE_SSL_REJECT_UNAUTHORIZED?.trim().toLowerCase() !==
-        "false";
+  const rejectUnauthorized = ca
+    ? true
+    : process.env.DATABASE_SSL_REJECT_UNAUTHORIZED?.trim().toLowerCase() ===
+      "true";
 
   return {
     rejectUnauthorized,
