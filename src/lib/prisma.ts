@@ -30,10 +30,11 @@ function normalizeConnectionString(connectionString: string) {
 
 function buildDatabaseSslConfig() {
   const ca = process.env.DATABASE_SSL_CA?.replace(/\\n/g, "\n");
-  const rejectUnauthorized = ca
-    ? true
-    : process.env.DATABASE_SSL_REJECT_UNAUTHORIZED?.trim().toLowerCase() ===
-      "true";
+  const rejectUnauthorized =
+    process.env.NODE_ENV === "production"
+      ? true
+      : process.env.DATABASE_SSL_REJECT_UNAUTHORIZED?.trim().toLowerCase() ===
+        "true";
 
   return {
     rejectUnauthorized,
