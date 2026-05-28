@@ -6,7 +6,6 @@ import { AuthConfirmationBridge } from "@/components/auth/auth-confirmation-brid
 import { EmailVerificationWatcher } from "@/components/auth/email-verification-watcher";
 import { ResendConfirmationForm } from "@/components/auth/resend-confirmation-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { sanitizeOversizedAuthMetadataByEmail } from "@/lib/auth-metadata";
 import { createClient } from "@/utils/supabase/server";
 
 type ConfirmEmailPageProps = {
@@ -18,10 +17,6 @@ export default async function ConfirmEmailPage({
 }: ConfirmEmailPageProps) {
   const params = searchParams ? await searchParams : {};
   const emailFromSearch = typeof params.email === "string" ? params.email : "";
-
-  if (emailFromSearch) {
-    await sanitizeOversizedAuthMetadataByEmail(emailFromSearch);
-  }
 
   const supabase = await createClient();
   const {

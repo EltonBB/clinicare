@@ -5,6 +5,10 @@ import { requireCurrentBusiness } from "@/lib/business";
 import { ensureConversationForClient, normalizeConversationsForBusiness } from "@/lib/inbox-server";
 import { normalizePhone } from "@/lib/inbox";
 import {
+  hasUnsafePublicUrl,
+  normalizeOptionalPublicUrl,
+} from "@/lib/safe-url";
+import {
   buildClientRecord,
   toPrismaClientStatus,
   type ClientRecord,
@@ -605,6 +609,23 @@ export async function addClientDocumentAction(
     };
   }
 
+  if (
+    hasUnsafePublicUrl(payload.fileUrl) ||
+    hasUnsafePublicUrl(payload.storageUrl)
+  ) {
+    return {
+      ok: false,
+      error: "Use a safe HTTPS link or upload the document again.",
+    };
+  }
+
+  const normalizedFileUrl =
+    normalizeOptionalPublicUrl(normalizeStorageReference(payload.fileUrl.trim())) ||
+    null;
+  const normalizedStorageUrl = payload.storageUrl
+    ? normalizeOptionalPublicUrl(normalizeStorageReference(payload.storageUrl.trim()))
+    : normalizedFileUrl;
+
   await prisma.clientDocument.create({
     data: {
       businessId: context.business.id,
@@ -614,10 +635,8 @@ export async function addClientDocumentAction(
       category: payload.category?.trim() || payload.fileType.trim() || "Other",
       mimeType: payload.mimeType?.trim() || null,
       fileSize: Number.isFinite(payload.fileSize) ? payload.fileSize : null,
-      fileUrl: normalizeStorageReference(payload.fileUrl.trim()) || null,
-      storageUrl: payload.storageUrl
-        ? normalizeStorageReference(payload.storageUrl.trim())
-        : normalizeStorageReference(payload.fileUrl.trim()) || null,
+      fileUrl: normalizedFileUrl,
+      storageUrl: normalizedStorageUrl,
       uploadedBy: payload.uploadedBy?.trim() || "Workspace staff",
       notes: payload.notes.trim() || null,
     },
@@ -650,6 +669,13 @@ export async function addClientPaymentAction(
     };
   }
 
+  if (hasUnsafePublicUrl(payload.receiptUrl)) {
+    return {
+      ok: false,
+      error: "Use a safe HTTPS receipt link.",
+    };
+  }
+
   await prisma.clientPayment.create({
     data: {
       businessId: context.business.id,
@@ -661,7 +687,7 @@ export async function addClientPaymentAction(
       receiptNumber: payload.receiptNumber?.trim() || null,
       paymentMethod: payload.paymentMethod?.trim() || null,
       billingNote: payload.billingNote?.trim() || null,
-      receiptUrl: payload.receiptUrl.trim() || null,
+      receiptUrl: normalizeOptionalPublicUrl(payload.receiptUrl) || null,
       paidAt: parseOptionalDate(payload.paidAt),
     },
   });

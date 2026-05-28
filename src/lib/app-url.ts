@@ -1,11 +1,22 @@
 import { headers } from "next/headers";
 
+import {
+  buildAuthConfirmUrl,
+  normalizeConfiguredAppUrl,
+} from "@/lib/app-url-policy";
+
 export async function getAppUrl() {
-  const configuredUrl =
-    process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
+  const configuredRaw =
+    process.env.APP_URL ??
+    (process.env.NODE_ENV === "production"
+      ? ""
+      : process.env.NEXT_PUBLIC_APP_URL ?? "");
+  const configuredUrl = normalizeConfiguredAppUrl({
+    configuredUrl: configuredRaw,
+  });
 
   if (configuredUrl) {
-    return configuredUrl.replace(/\/$/, "");
+    return configuredUrl;
   }
 
   const headerStore = await headers();
@@ -22,7 +33,5 @@ export async function getAppUrl() {
 
 export async function buildAuthRedirectUrl(nextPath: string) {
   const baseUrl = await getAppUrl();
-  const redirect = new URL("/auth/confirm", baseUrl);
-  redirect.searchParams.set("next", nextPath);
-  return redirect.toString();
+  return buildAuthConfirmUrl(baseUrl, nextPath).toString();
 }

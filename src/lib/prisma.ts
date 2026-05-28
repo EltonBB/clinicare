@@ -26,6 +26,20 @@ function normalizeConnectionString(connectionString: string) {
   return hash ? `${rebuilt}#${hash}` : rebuilt;
 }
 
+function buildDatabaseSslConfig() {
+  const ca = process.env.DATABASE_SSL_CA?.replace(/\\n/g, "\n");
+  const rejectUnauthorized =
+    process.env.NODE_ENV === "production"
+      ? true
+      : process.env.DATABASE_SSL_REJECT_UNAUTHORIZED?.trim().toLowerCase() !==
+        "false";
+
+  return {
+    rejectUnauthorized,
+    ...(ca ? { ca } : {}),
+  };
+}
+
 const connectionString = normalizeConnectionString(getDatabaseUrl());
 
 const pool =
@@ -34,9 +48,7 @@ const pool =
     connectionString,
     max: 1,
     idleTimeoutMillis: 10_000,
-    ssl: {
-      rejectUnauthorized: false,
-    },
+    ssl: buildDatabaseSslConfig(),
   });
 
 if (!global.prismaPool) {

@@ -6,6 +6,10 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireCurrentBusiness } from "@/lib/business";
 import {
+  hasUnsafePublicUrl,
+  normalizeOptionalPublicUrl,
+} from "@/lib/safe-url";
+import {
   toPrismaAppointmentStatus,
   type CalendarAppointment,
   type CalendarAppointmentStatus,
@@ -388,6 +392,13 @@ export async function saveAppointmentAction(
 
     const paymentAmountCents = parseAmountToCents(payload.paymentAmount);
     if (paymentAmountCents !== null && paymentAmountCents > 0) {
+      if (hasUnsafePublicUrl(payload.paymentReceiptUrl)) {
+        return {
+          ok: false,
+          error: "Use a safe HTTPS receipt link.",
+        };
+      }
+
       await prisma.clientPayment.create({
         data: {
           businessId: business.id,
@@ -398,7 +409,8 @@ export async function saveAppointmentAction(
           description:
             payload.paymentDescription?.trim() ||
             `Payment for ${payload.service.trim()}`,
-          receiptUrl: payload.paymentReceiptUrl?.trim() || null,
+          receiptUrl:
+            normalizeOptionalPublicUrl(payload.paymentReceiptUrl) || null,
           paidAt:
             payload.paymentStatus === "Paid"
               ? parseOptionalDate(payload.paymentPaidAt) ?? new Date()
