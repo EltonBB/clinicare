@@ -41,4 +41,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-.vercel
+# graphify generated output (regenerable)
+/graphify-out/
+
+# local Claude Code settings (machine-specific)
+.claude/settings.local.json
