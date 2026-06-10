@@ -1,36 +1,37 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Vela / Clinicare
 
-## Getting Started
+A SaaS workspace for clinics and appointment-based businesses — one calm, organized place to run the day: onboarding, branding, staff, clients, appointments, calendar, WhatsApp inbox, reminders, documents, payments surfaces, reports, and AI-assisted insights.
 
-First, run the development server:
+## Documentation
+
+This repo's `README` is intentionally short. The authoritative docs are:
+
+- **[AGENTS.md](AGENTS.md)** — product direction, layout-type system, brand rules, UI/UX boundaries (source of truth for *what* to build).
+- **[CLAUDE.md](CLAUDE.md)** — engineering guide: stack, commands, architecture, conventions, data model, security model, integrations (source of truth for *how* it's built).
+- **[PROJECT_STATUS.md](PROJECT_STATUS.md)** — running status log: what's done, current flows, next priorities.
+- **[docs/](docs/)** — setup guides (Supabase auth delivery, media storage, RLS).
+
+## Stack
+
+Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · Prisma 6 + PostgreSQL (Supabase) · Supabase Auth & Storage · Twilio (WhatsApp) · OpenAI (analytics) · Vercel.
+
+## Getting started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.local.example .env.local   # fill in Supabase + DB values (see CLAUDE.md)
+npm install                        # runs prisma generate
+npm run db:push                    # apply schema to your database
+npm run dev                        # http://localhost:3001
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Common commands
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run dev          # dev server
+npm run build        # prisma generate && next build
+npm run lint         # eslint
+npm run db:push      # apply Prisma schema to the database
+npm run db:generate  # regenerate Prisma client
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Standard checks before pushing: `npm run lint` then `npm run build`. There is no automated test suite — signed-in browser QA is the manual gate (see PROJECT_STATUS.md).
