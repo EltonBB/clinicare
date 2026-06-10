@@ -2,7 +2,7 @@
 
 # CLAUDE.md — Vela / Clinicare engineering guide
 
-> `AGENTS.md` (imported above) is the **source of truth for product direction, layout types, brand rules, and UI/UX boundaries**. `PROJECT_STATUS.md` is the running status log (what's done / next priorities). This file is the **technical/codebase layer**: stack, commands, architecture, and conventions. When product intent and this file disagree, AGENTS.md wins.
+> `AGENTS.md` (imported above) is the **source of truth for product direction, layout types, brand rules, and UI/UX boundaries**. `ROADMAP.md` is the strategy layer (market, compliance, messaging channels, Azure migration plan). `PROJECT_STATUS.md` is the running status log (what's done / next priorities). This file is the **technical/codebase layer**: stack, commands, architecture, and conventions. When product intent and this file disagree, AGENTS.md wins; when strategy and this file disagree, ROADMAP.md wins.
 
 ## ⚠️ Next.js version
 
@@ -16,7 +16,7 @@ This repo runs a **modified Next.js with breaking changes** (currently `^16.2.6`
 - **Data:** Prisma 6 (`@prisma/client`) over PostgreSQL, using the **`pg` driver adapter** (`@prisma/adapter-pg`). Database is hosted on Supabase.
 - **Auth:** Supabase Auth (email/password + email confirmation) via `@supabase/ssr`.
 - **Validation:** Zod 4.
-- **Integrations:** Twilio (WhatsApp), OpenAI (analytics snapshots, with rule-based fallback).
+- **Integrations:** Twilio (WhatsApp) and OpenAI (analytics snapshots with rule-based fallback) are called via **raw `fetch()` — no provider SDKs are installed**. Keep it that way: fewer dependencies makes the planned Azure provider swap cheaper.
 - **Hosting:** Vercel (deploy via the Git integration only — avoid `vercel` CLI deploys so each commit = one deployment). Cron in `vercel.json`.
 
 ## Commands
@@ -32,7 +32,7 @@ npm run db:setup-auth-sync       # scripts/setup-auth-delete-sync.mjs
 npm run media:normalize-storage-refs  # scripts/normalize-media-storage-refs.mjs
 ```
 
-**Standard verification before pushing:** `npm run lint` then `npm run build` (and `npm audit --omit=dev` for dependency hygiene). There is no automated test suite — signed-in browser QA is the manual gate (see PROJECT_STATUS.md "Testing Checklist").
+**Standard verification before pushing:** `npm run lint` then `npm run build` (and `npm audit --omit=dev` for dependency hygiene). There is no automated test suite — signed-in browser QA is the manual gate (see PROJECT_STATUS.md "Testing Checklist"). A reusable signed-in test session does not exist yet, so unauthenticated browser checks can only verify `/login` redirects and public pages.
 
 ## Architecture
 
@@ -54,7 +54,7 @@ src/
     ui/                # shadcn primitives (Button, Card, Dialog, Tabs, Input, ...)
     layout/            # app-shell, sidebar/topbar, global-search, notifications, tour
     workspace/         # shared workspace structure system (WorkspacePage, *Header, *KpiGrid, *Table, *Rail, ...)
-    {dashboard,clients,staff,calendar,inbox,reports,settings,onboarding,auth,marketing,legal,billing}/
+    {dashboard,clients,staff,calendar,inbox,reports,settings,onboarding,auth,marketing,legal,billing,upgrade}/
   lib/                 # server-side business logic + view-model builders (see below)
   utils/supabase/      # SSR Supabase clients: client.ts (browser), server.ts (RSC/actions), middleware.ts
   proxy.ts             # Next "proxy" — protects all (workspace) routes, applies global security headers
@@ -78,11 +78,32 @@ graphify-out/          # generated knowledge graph (graph.html / graph.json / GR
 - **Media** is stored in a **private** Supabase Storage bucket (`clinic-media`). Never expose raw storage paths to the browser; resolve short-lived signed URLs via `lib/media-storage*.ts` (`createSignedImageUrl`, `resolveMediaDisplayUrl`). Uploads are restricted to allowed image/document MIME types.
 - **Customer-facing language hides providers.** Never surface Twilio / Supabase / Prisma / OpenAI internals or raw provider/database errors in UI — return generic, support-friendly messages (see `whatsapp-connection.ts` copy builders).
 
+## Architecture seams (migration guardrails — do not bypass)
+
+The roadmap ends in a single Supabase/Vercel → Azure swap (ROADMAP.md Step 5). That swap stays cheap only if feature code never touches a provider directly. Every feature goes through these seams:
+
+- **Auth** → only via the helpers in `lib/auth.ts` / `lib/business.ts`. Never import `@supabase/ssr` or `utils/supabase/*` in feature code — those imports stay confined to the existing auth/infra modules.
+- **Media/storage** → only via `lib/media-storage*.ts`.
+- **AI** → only via `lib/analytics-ai.ts`.
+- **Messaging** → all outbound messages go through the `sendMessage(channel, payload)` abstraction (ROADMAP Step 1; not built yet). Until it exists, provider calls stay confined to `lib/whatsapp*.ts` — never add a direct provider call in a feature, action, or component.
+- **Database** → only via Prisma (`lib/prisma.ts`); no raw Supabase data access.
+
+If a task seems to require breaking a seam, stop and flag it — that's a roadmap decision, not an implementation detail.
+
+## HIPAA-ready engineering rules (apply now, not "later")
+
+Pilot (Kosovo) data is non-PHI by design, but the app must be HIPAA-ready before the first US clinic (ROADMAP.md Step 3 + gate checklist). These are standing rules for all new code:
+
+- **No patient-identifying data in logs, error messages, analytics events, or third-party services.** Log record IDs, not names/diagnoses. The existing "generic customer-facing errors" rule is also a compliance rule.
+- **Minimum-necessary messaging:** outbound SMS/WhatsApp/email reminders carry name + appointment time only — never clinical content. Bake this into templates and the messaging layer, don't rely on operator discipline.
+- **Design for auditability:** audit logging (who viewed/changed which patient record, when), auto-logoff/session timeout, and role-based access are planned safeguards. When building PHI-adjacent features (client records, documents, messages, payments), structure data access through the `lib/` builders and server actions so audit hooks can attach in one place later.
+- **PHI stays inside the trust boundary:** Supabase Postgres (via Prisma), the private `clinic-media` bucket, and server-side code. Never send patient data to new third-party services without flagging it as a compliance decision.
+
 ## Data model (`prisma/schema.prisma`)
 
 Core entities: `Business`, `BusinessHours`, `StaffMember`, `StaffTimeEntry`, `StaffShift`, `ScheduleBlock`, `Client` (+ `ClientMedication`, `ClientDocument`, `ClientPayment`, `ClientHealthItem`, `ClientCareNote`, `ClientTreatmentPlanItem`, `ClientFollowUpReminder`, `ClientGalleryItem`), `Appointment` (+ `AppointmentReminder`), `Conversation` + `Message`, `ReminderSettings`, `WhatsAppConnection`, `EmailVerificationReceipt`, `AnalyticsSnapshot`.
 
-Everything is scoped to a `Business` (the workspace/tenant). Plan state lives on `Business` (`BusinessPlan` / `BusinessPlanStatus`; `isProBusinessPlan()` gates Pro features like full Reports).
+Everything is scoped to a `Business` (the workspace/tenant). Plan state lives on `Business` (`BusinessPlan` / `BusinessPlanStatus`; `isProBusinessPlan()` in `lib/billing.ts` gates Pro features like full Reports; public plan copy in `lib/public-plans.ts`).
 
 ## Security model
 
@@ -92,15 +113,26 @@ Everything is scoped to a `Business` (the workspace/tenant). Plan state lives on
 
 ## External integrations
 
-- **Twilio WhatsApp** (`lib/whatsapp.ts`, `lib/whatsapp-connection.ts`): inbound via the webhook → `Conversation`/`Message`; outbound replies from Inbox. Customer-owned-number onboarding is not production-ready; a configured test sender is used for validation.
+- **Twilio WhatsApp** (`lib/whatsapp.ts`, `lib/whatsapp-connection.ts`): inbound via the webhook → `Conversation`/`Message`; outbound replies from Inbox. Customer-owned-number onboarding is not production-ready; a configured test sender is used for validation. The pilot WhatsApp channel will use Baileys behind the messaging seam (Kosovo-only, disposable — see ROADMAP.md §2).
 - **OpenAI analytics** (`lib/analytics-ai.ts`, `lib/reports.ts`): Reports AI snapshots need a server-side OpenAI key in prod; without it the app writes an auditable **rule-based fallback** snapshot and shows that rules were used. A short cooldown rate-limits manual refresh.
+- **Billing (planned):** Paddle behind `/checkout` — session creation, webhook verification, and plan activation are not implemented; the checkout page is preparation-only.
 - **Cron:** `vercel.json` → `/api/cron/reminders` (daily 08:00) and `/api/cron/analytics` (daily 02:30).
+
+## Not built yet — don't assume these exist
+
+- `sendMessage(channel, payload)` messaging layer + Resend/Twilio/Baileys adapters (ROADMAP Step 1).
+- Reminder automation wiring `lib/reminders.ts` + `/api/cron/reminders` into the messaging layer (Step 2).
+- Audit logging, auto-logoff/session timeout, role-based access (Step 3).
+- Paddle checkout sessions, webhooks, plan activation (Step 4).
+- A reusable signed-in test session for browser QA (long-standing blocker).
+- Customer-owned WhatsApp number onboarding (test sender only).
 
 ## Gotchas
 
-- The root `README.md` is stale create-next-app boilerplate — ignore it; AGENTS.md + PROJECT_STATUS.md are authoritative.
+- The root `README.md` is a short human-facing overview; AGENTS.md + ROADMAP.md + PROJECT_STATUS.md remain the authoritative agent docs.
 - `build` runs `prisma generate` first; after schema edits run `npm run db:push` to apply to the DB (the schema is already applied to the configured Supabase Postgres).
 - This is a **git worktree**; `graphify-out/` is generated output (safe to delete/regenerate).
+- AGENTS.md is shared with other agents (e.g. Codex) — keep it self-contained and product-focused; codebase mechanics belong here in CLAUDE.md.
 
 ## Knowledge graph (graphify)
 
