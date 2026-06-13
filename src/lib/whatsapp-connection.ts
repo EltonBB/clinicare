@@ -6,6 +6,7 @@ import {
   type WhatsAppVerificationStatus,
 } from "@prisma/client";
 
+import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import {
   createTwilioWhatsAppSender,
@@ -47,7 +48,7 @@ async function buildLiveConnectionErrorMessage(args: {
   }
 
   if (
-    /already connected to another Clinicare workspace|already being set up in another Clinicare workspace/i.test(
+    /already connected to another (?:Vela|Clinicare) workspace|already being set up in another (?:Vela|Clinicare) workspace/i.test(
       rawMessage
     )
   ) {
@@ -70,7 +71,13 @@ async function buildLiveConnectionErrorMessage(args: {
     return `This clinic number was submitted, but the provider could not find a usable WhatsApp business account for it yet. Finish provider verification for ${normalizeLiveNumber(args.requestedPhoneNumber)}, then retry setup here.`;
   }
 
-  return rawMessage;
+  // Never surface an unmapped provider error verbatim (it can leak provider
+  // names/internals). Keep the raw text in server logs for support instead.
+  logger.warn("Unmapped WhatsApp setup error — returning generic message.", {
+    rawMessage,
+  });
+
+  return "We couldn't finish WhatsApp setup for this clinic number. Please try again, or contact support if the problem continues.";
 }
 
 function normalizeTwilioSenderForComparison(sender: TwilioWhatsAppSender) {
@@ -243,10 +250,10 @@ function buildWorkspaceConflictMessage(args: {
     activePhoneNumber &&
     normalizeLiveNumber(activePhoneNumber) === normalizeLiveNumber(args.requestedPhoneNumber)
   ) {
-    return `This clinic number is already connected to another Clinicare workspace. Disconnect it there first before using ${normalizeLiveNumber(args.requestedPhoneNumber)} here.`;
+    return `This clinic number is already connected to another Vela workspace. Disconnect it there first before using ${normalizeLiveNumber(args.requestedPhoneNumber)} here.`;
   }
 
-  return `This clinic number is already being set up in another Clinicare workspace. Finish or remove ${normalizeLiveNumber(args.requestedPhoneNumber)} there before trying again here.`;
+  return `This clinic number is already being set up in another Vela workspace. Finish or remove ${normalizeLiveNumber(args.requestedPhoneNumber)} there before trying again here.`;
 }
 
 async function refreshSenderWebhookIfNeeded(sender: TwilioWhatsAppSender) {

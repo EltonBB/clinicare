@@ -40,12 +40,12 @@ export function LegalPage({
         </header>
 
         <section className="section-reveal py-10 sm:py-14">
-          <div className="rounded-[1.2rem] border border-border/80 bg-white/86 px-5 py-8 shadow-[0_18px_44px_rgba(20,32,51,0.05)] sm:px-8 sm:py-10">
+          <div className="rounded-(--radius-panel) border border-border/80 bg-white/86 px-5 py-8 shadow-[0_18px_44px_rgba(20,32,51,0.05)] sm:px-8 sm:py-10">
             <div className="max-w-3xl">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              <p className="eyebrow text-[11px] text-muted-foreground">
                 {eyebrow}
               </p>
-              <h1 className="mt-4 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
+              <h1 className="display-2 mt-4 font-semibold text-foreground">
                 {title}
               </h1>
               <p className="mt-5 text-base leading-8 text-muted-foreground">
@@ -58,8 +58,8 @@ export function LegalPage({
           </div>
         </section>
 
-        <div className="grid gap-5 pb-12 lg:grid-cols-[240px_minmax(0,1fr)]">
-          <aside className="h-fit rounded-[1rem] border border-border/80 bg-white/80 p-4 shadow-[0_12px_30px_rgba(20,32,51,0.035)] lg:sticky lg:top-6">
+        <div className="landing-reveal grid gap-5 pb-12 lg:grid-cols-[240px_minmax(0,1fr)]">
+          <aside className="h-fit rounded-(--radius-field) border border-border/80 bg-white/80 p-4 shadow-[0_12px_30px_rgba(20,32,51,0.035)] lg:sticky lg:top-6">
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               In this policy
             </p>
@@ -68,7 +68,7 @@ export function LegalPage({
                 <a
                   key={section.title}
                   href={`#${slugify(section.title)}`}
-                  className="block rounded-[0.7rem] px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                  className="block rounded-(--radius-card) px-3 py-2 text-sm text-muted-foreground transition-colors duration-(--duration-base) hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
                 >
                   {section.title}
                 </a>
@@ -81,7 +81,7 @@ export function LegalPage({
               <section
                 key={section.title}
                 id={slugify(section.title)}
-                className="scroll-mt-8 rounded-[1rem] border border-border/80 bg-white/90 px-5 py-5 shadow-[0_12px_30px_rgba(20,32,51,0.035)] sm:px-6"
+                className="scroll-mt-8 rounded-(--radius-field) border border-border/80 bg-white/90 px-5 py-5 shadow-[0_12px_30px_rgba(20,32,51,0.035)] sm:px-6"
               >
                 <h2 className="text-xl font-semibold tracking-tight text-foreground">
                   {section.title}
@@ -99,7 +99,7 @@ export function LegalPage({
               </section>
             ))}
 
-            <section className="rounded-[1rem] border border-primary/20 bg-primary/5 px-5 py-5 sm:px-6">
+            <section className="rounded-(--radius-field) border border-primary/20 bg-primary/5 px-5 py-5 sm:px-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-foreground">

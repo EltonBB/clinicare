@@ -2,15 +2,7 @@
 
 import Link from "next/link";
 import { useDeferredValue, useMemo, useState, useTransition } from "react";
-import {
-  BarChart3,
-  CalendarClock,
-  CheckCircle2,
-  Plus,
-  Search,
-  UserRoundCog,
-  UsersRound,
-} from "lucide-react";
+import { ChevronRight, Plus, Search, UserRoundCog } from "lucide-react";
 
 import { checkInStaffAction, checkOutStaffAction } from "@/app/(workspace)/staff/actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -18,31 +10,38 @@ import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  WorkspaceCard,
+  FilterChip,
   WorkspaceEmptyState,
   WorkspaceHeader,
-  WorkspaceKpiCard,
-  WorkspaceKpiGrid,
   WorkspacePage,
   WorkspaceTable,
   WorkspaceToolbar,
 } from "@/components/workspace/workspace-layout";
-import { cn } from "@/lib/utils";
+import { cn, getInitials } from "@/lib/utils";
 import type { StaffStatus, StaffViewModel } from "@/lib/staff";
 
 type StaffWorkspaceProps = {
   initialView: StaffViewModel;
 };
 
-const filters: Array<{ label: string; value: "all" | StaffStatus }> = [
-  { label: "All status", value: "all" },
-  { label: "On duty", value: "ACTIVE" },
+type StaffFilter = "all" | StaffStatus | "checked-in";
+
+const filters: Array<{ label: string; value: StaffFilter }> = [
+  { label: "All", value: "all" },
+  { label: "Active", value: "ACTIVE" },
   { label: "Away", value: "AWAY" },
-  { label: "Off duty", value: "INACTIVE" },
+  { label: "Inactive", value: "INACTIVE" },
+  { label: "Checked in", value: "checked-in" },
 ];
 
+const statusLabels: Record<StaffStatus, string> = {
+  ACTIVE: "Active",
+  AWAY: "Away",
+  INACTIVE: "Inactive",
+};
+
 const staffTableGrid =
-  "lg:grid-cols-[minmax(250px,1.45fr)_220px_110px_150px_170px]";
+  "lg:grid-cols-[minmax(230px,1.4fr)_120px_130px_minmax(170px,1fr)_120px_170px]";
 
 function statusDot(status: StaffStatus) {
   return cn(
@@ -53,60 +52,41 @@ function statusDot(status: StaffStatus) {
   );
 }
 
-function staffInitials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2);
-}
-
 export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
   const [staff, setStaff] = useState(initialView.staff);
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | StaffStatus>("all");
+  const [filter, setFilter] = useState<StaffFilter>("all");
   const [roleFilter, setRoleFilter] = useState("all");
   const [clockingId, setClockingId] = useState("");
   const [clockError, setClockError] = useState("");
   const [isPending, startTransition] = useTransition();
   const deferredQuery = useDeferredValue(query);
   const hasStaff = staff.length > 0;
-  const onDutyStaff = staff.filter(
-    (member) => member.status === "ACTIVE" || member.isCheckedIn
-  );
-  const totalAppointmentsToday = staff.reduce((sum, member) => sum + member.appointmentsToday, 0);
-  const activeStaffCount = staff.filter((member) => member.status !== "INACTIVE").length;
-  const averageUtilization =
-    activeStaffCount > 0
-      ? Math.round(
-          staff.reduce((sum, member) => sum + Math.min((member.appointmentsToday / 8) * 100, 100), 0) /
-            activeStaffCount
-        )
-      : 0;
-  const averageCompletion =
-    activeStaffCount > 0
-      ? Math.round(
-          staff
-            .filter((member) => member.status !== "INACTIVE")
-            .reduce((sum, member) => sum + member.completionRate, 0) / activeStaffCount
-        )
-      : 0;
-  const upcomingShiftStaff = staff
-    .filter((member) => member.nextShift !== "-")
-    .slice(0, 5);
   const roles = useMemo(
     () => Array.from(new Set(staff.map((member) => member.role || "Staff"))).sort(),
     [staff]
   );
-  const scheduledStaff = staff
-    .filter((member) => member.shiftLabel !== "-" || member.nextShift !== "-" || member.appointmentsToday > 0)
-    .slice(0, 8);
+  const counts = useMemo(
+    () => ({
+      all: staff.length,
+      ACTIVE: staff.filter((member) => member.status === "ACTIVE").length,
+      AWAY: staff.filter((member) => member.status === "AWAY").length,
+      INACTIVE: staff.filter((member) => member.status === "INACTIVE").length,
+      "checked-in": staff.filter((member) => member.isCheckedIn).length,
+    }),
+    [staff]
+  );
 
   const filteredStaff = useMemo(() => {
     const normalizedQuery = deferredQuery.trim().toLowerCase();
 
     return staff.filter((member) => {
-      const matchesFilter = filter === "all" ? true : member.status === filter;
+      const matchesFilter =
+        filter === "all"
+          ? true
+          : filter === "checked-in"
+            ? member.isCheckedIn
+            : member.status === filter;
       const matchesRole = roleFilter === "all" ? true : (member.role || "Staff") === roleFilter;
       const matchesQuery =
         normalizedQuery.length === 0
@@ -167,7 +147,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
         actions={
           <Link
             href="/staff/new"
-            className={cn(buttonVariants({ size: "lg" }), "h-11 rounded-[0.9rem] px-4")}
+            className={cn(buttonVariants({ variant: "solid" }), "h-10 rounded-(--radius-card) px-4")}
           >
             <Plus className="size-4" />
             New staff member
@@ -175,48 +155,64 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
         }
       />
 
-      <WorkspaceKpiGrid>
-        <WorkspaceKpiCard icon={UsersRound} label="Total staff" value={staff.length.toString()} helper={`${activeStaffCount} active team members`} />
-        <WorkspaceKpiCard icon={CalendarClock} label="On duty today" value={onDutyStaff.length.toString()} helper={`${staff.length > 0 ? Math.round((onDutyStaff.length / staff.length) * 100) : 0}% of team`} />
-        <WorkspaceKpiCard icon={BarChart3} label="Average utilization" value={`${averageUtilization}%`} helper={`${totalAppointmentsToday} appointments today`} />
-        <WorkspaceKpiCard icon={CheckCircle2} label="Avg completion rate" value={`${averageCompletion}%`} helper="Finalized appointments" />
-      </WorkspaceKpiGrid>
+      <div className="section-reveal space-y-3">
+        <WorkspaceToolbar>
+          <div className="relative w-full flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search staff by name, role, email, or phone..."
+              className="h-10 rounded-(--radius-card) bg-white pl-9"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {filters.map((item) => (
+              <FilterChip
+                key={item.value}
+                active={filter === item.value}
+                count={counts[item.value]}
+                onClick={() => setFilter(item.value)}
+              >
+                {item.label}
+              </FilterChip>
+            ))}
+            {roles.length > 1 ? (
+              <select
+                value={roleFilter}
+                onChange={(event) => setRoleFilter(event.target.value)}
+                className="h-9 rounded-(--radius-card) border border-border/80 bg-white px-3 text-sm font-medium text-foreground outline-none transition-[border-color,box-shadow] duration-(--duration-base) focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
+              >
+                <option value="all">All roles</option>
+                {roles.map((role) => (
+                  <option key={role} value={role}>
+                    {role}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+          </div>
+        </WorkspaceToolbar>
 
-      <div className="surface-card section-reveal overflow-hidden p-0">
-          <WorkspaceToolbar className="rounded-none border-0 border-b border-border/70 shadow-none">
-            <div className="grid w-full gap-3 lg:grid-cols-[minmax(260px,1fr)_180px_180px]">
-            <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search staff by name, role, email, or phone..."
-                className="h-10 rounded-[0.7rem] bg-white pl-9"
-          />
-        </div>
-            <NativeRoleFilter value={roleFilter} roles={roles} onChange={setRoleFilter} />
-            <NativeFilter value={filter} onChange={setFilter} />
-            </div>
-          </WorkspaceToolbar>
-          {clockError ? (
-            <div className="border-b border-border/75 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-              {clockError}
-            </div>
-          ) : null}
+        {clockError ? (
+          <div className="state-pop rounded-(--radius-card) border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
+            {clockError}
+          </div>
+        ) : null}
 
-          <WorkspaceTable
-            className="rounded-none border-0 shadow-none"
-            headerClassName="border-b border-border/80 bg-secondary/25 py-2.5"
-            headers={
-              <div className={cn("hidden w-full gap-3 lg:grid", staffTableGrid)}>
-                <span>Staff member</span>
-                <span>Role / status</span>
-                <span>Appts today</span>
-                <span>Completion rate</span>
-                <span className="text-right">Actions</span>
-              </div>
-            }
-          >
+        <WorkspaceTable
+          headerClassName="py-2.5"
+          headers={
+            <div className={cn("hidden w-full gap-3 lg:grid", staffTableGrid)}>
+              <span>Staff member</span>
+              <span>Role</span>
+              <span>Status</span>
+              <span>Today</span>
+              <span>Completion</span>
+              <span className="text-right">Actions</span>
+            </div>
+          }
+        >
           {!hasStaff ? (
             <div className="px-6 py-8">
               <WorkspaceEmptyState
@@ -241,243 +237,103 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
             filteredStaff.map((member) => (
               <div
                 key={member.id}
-                  className={cn(
-                    "grid gap-3 px-3.5 py-2 transition-colors duration-200 hover:bg-[#f7f9fc] lg:min-h-[54px] lg:items-center",
-                    staffTableGrid
-                  )}
+                className={cn(
+                  "grid gap-3 px-3.5 py-2 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] lg:min-h-[54px] lg:items-center",
+                  staffTableGrid
+                )}
               >
                 <Link href={`/staff/${member.id}`} className="flex min-w-0 items-center gap-3">
-                    <Avatar className="size-10">
-                    <AvatarFallback>{staffInitials(member.name)}</AvatarFallback>
+                  <Avatar size="lg" shape="square">
+                    <AvatarFallback className="bg-white text-xs font-semibold text-primary">
+                      {getInitials(member.name)}
+                    </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0">
                     <p className="truncate font-semibold text-foreground">{member.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">{member.email || member.phone || "No contact added"}</p>
+                    <p className="truncate text-sm text-muted-foreground">
+                      {member.email || member.phone || "No contact added"}
+                    </p>
                   </div>
                 </Link>
-                  <div className="min-w-0">
-                    <span className="w-fit rounded-md bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
-                      {member.role || "Staff"}
-                    </span>
-                    <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
-                      <span className={statusDot(member.status)} />
-                      <span>{member.status === "ACTIVE" ? "On duty" : member.status === "AWAY" ? "Away" : "Off duty"}</span>
-                      <span className="truncate">/ {member.shiftLabel !== "-" ? member.shiftLabel : member.nextShift}</span>
-                    </div>
+                <div className="min-w-0">
+                  <span className="inline-flex max-w-full truncate rounded-md bg-primary/8 px-2.5 py-1 text-xs font-semibold text-primary">
+                    {member.role || "Staff"}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-sm text-foreground">
+                    <span className={statusDot(member.status)} />
+                    <span>{statusLabels[member.status]}</span>
                   </div>
-                  <p className="text-sm font-semibold text-foreground">
-                    <span className="font-medium lg:hidden">Appointments today: </span>
-                    {member.appointmentsToday}
-                  </p>
-                  <div>
-                    {member.completionRate > 0 ? (
-                      <>
-                        <p className="text-sm font-semibold text-foreground">{member.completionRate}%</p>
-                        <div className="mt-1 h-1.5 w-28 rounded-full bg-secondary">
-                          <div className="vela-gradient h-full rounded-full" style={{ width: `${Math.min(member.completionRate, 100)}%` }} />
-                        </div>
-                      </>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">-</span>
+                  {member.isCheckedIn ? (
+                    <p className="mt-0.5 text-[11px] font-medium text-emerald-600">
+                      Checked in now
+                    </p>
+                  ) : null}
+                </div>
+                <div className="min-w-0 text-sm">
+                  {member.shiftLabel ? (
+                    <p className="truncate font-medium text-foreground">{member.shiftLabel}</p>
+                  ) : member.nextShift ? (
+                    <p className="truncate text-muted-foreground">Next: {member.nextShift}</p>
+                  ) : (
+                    <p className="text-muted-foreground">No shift planned</p>
+                  )}
+                  {member.appointmentsToday > 0 ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {member.appointmentsToday}{" "}
+                      {member.appointmentsToday === 1 ? "appointment" : "appointments"} today
+                    </p>
+                  ) : null}
+                </div>
+                <div className="min-w-0">
+                  {member.completionRate > 0 ? (
+                    <>
+                      <p className="text-sm font-semibold text-foreground">
+                        {member.completionRate}%
+                      </p>
+                      <div className="mt-1 h-1.5 w-24 rounded-full bg-secondary">
+                        <div
+                          className="vela-gradient h-full rounded-full"
+                          style={{ width: `${Math.min(member.completionRate, 100)}%` }}
+                        />
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap lg:justify-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 min-w-[76px] rounded-(--radius-tile) px-3 text-xs"
+                    onClick={() => toggleClock(member.id)}
+                    disabled={
+                      isPending ||
+                      clockingId === member.id ||
+                      (!member.isCheckedIn && !member.canClock)
+                    }
+                    title={!member.isCheckedIn ? member.clockDisabledReason : undefined}
+                  >
+                    {clockingId === member.id ? "Saving" : member.clockLabel}
+                  </Button>
+                  <Link
+                    href={`/staff/${member.id}`}
+                    className={cn(
+                      buttonVariants({ variant: "solid", size: "sm" }),
+                      "h-8 rounded-(--radius-tile) px-3 text-xs"
                     )}
-                  </div>
-                  <div className="flex flex-nowrap justify-end gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={member.isCheckedIn ? "outline" : "default"}
-                      className="h-8 min-w-[72px] rounded-[0.6rem] px-3 text-xs"
-                      onClick={() => toggleClock(member.id)}
-                      disabled={
-                        isPending ||
-                        clockingId === member.id ||
-                        (!member.isCheckedIn && !member.canClock)
-                      }
-                      title={!member.isCheckedIn ? member.clockDisabledReason : undefined}
-                    >
-                      {clockingId === member.id ? "Saving" : member.clockLabel}
-                    </Button>
-                    <Link
-                      href={`/staff/${member.id}`}
-                      className={cn(
-                        buttonVariants({ variant: "outline", size: "sm" }),
-                        "h-8 min-w-[66px] rounded-[0.6rem] px-3 text-xs"
-                      )}
-                      aria-label={`Open ${member.name}`}
-                    >
-                      Details
-                    </Link>
+                    aria-label={`Open ${member.name}`}
+                  >
+                    Details
+                    <ChevronRight className="size-4" />
+                  </Link>
                 </div>
               </div>
             ))
           )}
-          </WorkspaceTable>
-          <div className="flex items-center justify-between border-t border-border/70 px-4 py-2.5 text-sm text-muted-foreground">
-            <span>
-              Showing 1 to {filteredStaff.length} of {staff.length} staff members
-            </span>
-            <span className="rounded-md bg-primary/10 px-3 py-1 font-semibold text-primary">1</span>
-          </div>
-      </div>
-
-      <WorkspaceCard compact className="section-reveal" title="Team schedule" action={<Link href="/calendar" className="text-sm font-semibold text-primary">Open schedule</Link>}>
-          <p className="mt-1 text-sm text-muted-foreground">Today&apos;s shifts and the next planned coverage from staff records.</p>
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
-            {scheduledStaff.map((member) => (
-              <Link
-                key={member.id}
-                href={`/staff/${member.id}`}
-                className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-[0.72rem] border border-border/70 px-3.5 py-2.5 text-sm transition-colors hover:bg-secondary/25"
-              >
-                <span className="min-w-0">
-                  <span className="block truncate font-semibold text-foreground">{member.name}</span>
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    {member.shiftLabel !== "-" ? member.shiftLabel : member.nextShift}
-                  </span>
-                </span>
-                <span className="text-right">
-                  <span className="block font-semibold text-foreground">{member.appointmentsToday}</span>
-                  <span className="text-xs text-muted-foreground">appts</span>
-                </span>
-              </Link>
-            ))}
-            {scheduledStaff.length === 0 ? (
-              <WorkspaceEmptyState
-                icon={CalendarClock}
-                title="No planned coverage"
-                description="No staff shifts or appointments are scheduled for the visible period."
-                compact
-                className="md:col-span-2"
-              />
-            ) : null}
-          </div>
-      </WorkspaceCard>
-
-      <div className="grid gap-3 lg:grid-cols-3">
-        <WorkspaceCard fill compact title="On duty now" action={<span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">{onDutyStaff.length}</span>}>
-          <div className="grid gap-2">
-            {(onDutyStaff.length > 0 ? onDutyStaff : staff.slice(0, 4)).slice(0, 4).map((member) => (
-              <Link
-                key={member.id}
-                href={`/staff/${member.id}`}
-                className="grid min-h-12 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[0.68rem] border border-border/70 px-3 py-2 transition-colors hover:bg-secondary/25"
-              >
-                  <Avatar className="size-9">
-                  <AvatarFallback>{staffInitials(member.name)}</AvatarFallback>
-                </Avatar>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-foreground">{member.name}</span>
-                  <span className="text-xs text-muted-foreground">{member.role}</span>
-                </span>
-                <span className={statusDot(member.status)} />
-              </Link>
-            ))}
-            {staff.length === 0 ? (
-              <WorkspaceEmptyState
-                icon={UserRoundCog}
-                title="No staff yet"
-                description="Add staff to see who's available today."
-                compact
-              />
-            ) : null}
-          </div>
-        </WorkspaceCard>
-
-        <WorkspaceCard fill compact title="Upcoming shifts">
-          <div className="grid gap-2">
-              {upcomingShiftStaff.slice(0, 4).map((member) => (
-              <div
-                key={member.id}
-                className="grid min-h-12 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-[0.68rem] border border-border/70 px-3 py-2 text-sm"
-              >
-                <span className="mt-0.5 flex size-8 items-center justify-center rounded-[0.75rem] bg-primary/10 text-primary">
-                  <CalendarClock className="size-4" />
-                </span>
-                <span>
-                  <span className="block font-semibold text-foreground">{member.name}</span>
-                    <span className="text-xs text-muted-foreground">{member.nextShift}</span>
-                </span>
-              </div>
-            ))}
-              {upcomingShiftStaff.length === 0 ? (
-              <WorkspaceEmptyState
-                icon={CalendarClock}
-                title="No planned shifts"
-                description="Upcoming shifts will appear here."
-                compact
-              />
-            ) : null}
-          </div>
-          <Link href="/calendar" className="mt-3 inline-flex text-sm font-semibold text-primary">
-            View full schedule
-          </Link>
-        </WorkspaceCard>
-
-        <WorkspaceCard fill compact title="Coverage summary">
-          <div className="space-y-2.5 text-sm">
-            <CoverageRow label="Appointments today" value={totalAppointmentsToday.toString()} />
-            <CoverageRow label="On-duty coverage" value={`${onDutyStaff.length}/${staff.length}`} />
-            <CoverageRow label="Average completion" value={`${averageCompletion}%`} />
-            <CoverageRow label="Planned shifts" value={upcomingShiftStaff.length.toString()} />
-          </div>
-        </WorkspaceCard>
+        </WorkspaceTable>
       </div>
     </WorkspacePage>
-  );
-}
-
-function NativeFilter({
-  value,
-  onChange,
-}: {
-  value: "all" | StaffStatus;
-  onChange: (value: "all" | StaffStatus) => void;
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value as "all" | StaffStatus)}
-      className="h-10 rounded-[0.7rem] border border-border bg-white px-3 text-sm font-medium text-foreground outline-none"
-    >
-      {filters.map((item) => (
-        <option key={item.value} value={item.value}>
-          {item.label}
-        </option>
-      ))}
-    </select>
-  );
-}
-
-function NativeRoleFilter({
-  value,
-  roles,
-  onChange,
-}: {
-  value: string;
-  roles: string[];
-  onChange: (value: string) => void;
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className="h-10 rounded-[0.7rem] border border-border bg-white px-3 text-sm font-medium text-foreground outline-none"
-    >
-      <option value="all">All roles</option>
-      {roles.map((role) => (
-        <option key={role} value={role}>
-          {role}
-        </option>
-      ))}
-    </select>
-  );
-}
-
-function CoverageRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3 border-b border-border/70 pb-3 last:border-b-0 last:pb-0">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-semibold text-foreground">{value}</span>
-    </div>
   );
 }

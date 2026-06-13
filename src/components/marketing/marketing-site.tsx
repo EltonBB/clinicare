@@ -195,13 +195,13 @@ export function MarketingHeader() {
         <div className="flex items-center gap-2">
           <Link
             href="/login"
-            className="hidden h-10 min-w-20 items-center justify-center whitespace-nowrap rounded-[0.75rem] border border-border/80 bg-white px-4 text-sm font-semibold text-foreground shadow-[0_10px_24px_rgba(20,21,47,0.04)] transition hover:border-primary/40 hover:text-primary sm:inline-flex"
+            className="hidden h-10 min-w-20 items-center justify-center whitespace-nowrap rounded-[0.75rem] border border-border/80 bg-white px-4 text-sm font-semibold text-foreground shadow-[0_10px_24px_rgba(20,21,47,0.04)] transition-[color,background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint hover:border-primary/40 hover:text-primary sm:inline-flex"
           >
             Log in
           </Link>
           <Link
             href="/sign-up"
-            className="vela-gradient inline-flex h-10 min-w-24 items-center justify-center whitespace-nowrap rounded-[0.75rem] px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(10,34,255,0.26)] transition hover:-translate-y-0.5"
+            className="vela-gradient inline-flex focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45 h-10 min-w-24 items-center justify-center whitespace-nowrap rounded-[0.75rem] px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(10,34,255,0.26)] transition-[color,background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint hover:-translate-y-0.5"
           >
             Start free
           </Link>
@@ -238,8 +238,8 @@ export function ProductPage() {
         secondaryHref="/pricing"
         secondaryLabel="View pricing"
       />
-      <section className="px-4 pb-14 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-7xl gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="landing-reveal px-4 pb-14 sm:px-6 lg:px-8">
+        <div className="stagger-children mx-auto grid max-w-7xl gap-4 md:grid-cols-2 xl:grid-cols-4">
           {productPillars.map((pillar) => (
             <PillarCard key={pillar.title} {...pillar} />
           ))}
@@ -263,10 +263,10 @@ export function PricingPageContent() {
         secondaryHref="/contact"
         secondaryLabel="Talk to us"
       />
-      <section className="px-4 pb-16 sm:px-6 lg:px-8">
+      <section className="landing-reveal px-4 pb-16 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-6">
           <PricingOperationsMockup />
-          <div className="grid gap-5 lg:grid-cols-2 lg:items-stretch">
+          <div className="stagger-children grid gap-5 lg:grid-cols-2 lg:items-stretch">
             {publicPlans.map((plan) => (
               <PlanCard
                 key={plan.key}
@@ -298,10 +298,10 @@ export function AboutPage() {
         secondaryHref="/contact"
         secondaryLabel="Contact us"
       />
-      <section className="px-4 pb-16 sm:px-6 lg:px-8">
+      <section className="landing-reveal px-4 pb-16 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
           <div className="surface-card p-6 sm:p-8">
-            <h2 className="text-3xl font-semibold text-[var(--brand-ink)] sm:text-5xl">
+            <h2 className="display-3 text-[var(--brand-ink)]">
               A workspace that gives the clinic its focus back.
             </h2>
             <p className="mt-5 text-base leading-8 text-muted-foreground">
@@ -327,10 +327,10 @@ export function AboutPage() {
 export function ContactPage() {
   return (
     <MarketingShell>
-      <section className="px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
+      <section className="landing-reveal px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[0.78fr_1.22fr]">
-          <div className="rounded-[1.5rem] bg-[var(--brand-ink)] p-6 text-white shadow-[0_28px_90px_rgba(20,21,47,0.20)] sm:p-8">
-            <h1 className="max-w-md text-4xl font-semibold leading-[0.98] sm:text-6xl">
+          <div className="rounded-(--radius-hero) bg-[var(--brand-ink)] p-6 text-white shadow-[0_28px_90px_rgba(20,21,47,0.20)] sm:p-8">
+            <h1 className="max-w-md display-2">
               See how Vela fits your clinic.
             </h1>
             <p className="mt-5 max-w-md text-base leading-8 text-white/72">
@@ -351,26 +351,26 @@ export function ContactPage() {
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <FormField label="Clinic / business name" placeholder="Your clinic name" />
-                <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                <label className="grid gap-2 eyebrow text-muted-foreground">
                   How can we help?
-                  <select className="h-12 rounded-[0.75rem] border border-border/80 bg-white px-4 text-sm font-semibold normal-case tracking-normal text-foreground outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10">
+                  <select className="h-12 rounded-(--radius-field) border border-border/80 bg-white px-4 text-sm font-semibold normal-case tracking-normal text-foreground outline-none transition-[color,background-color,border-color,box-shadow] duration-(--duration-base) ease-out-quint focus:border-primary/50 focus:ring-3 focus:ring-ring/45">
                     <option>I want to book a demo</option>
                     <option>I have a pricing question</option>
                     <option>I need help with setup</option>
                   </select>
                 </label>
               </div>
-              <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
+              <label className="grid gap-2 eyebrow text-muted-foreground">
                 Message
                 <textarea
                   rows={7}
                   placeholder="Tell us about your clinic and what you need..."
-                  className="resize-none rounded-[0.75rem] border border-border/80 bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-foreground outline-none transition placeholder:text-muted-foreground/70 focus:border-primary focus:ring-4 focus:ring-primary/10"
+                  className="resize-none rounded-(--radius-field) border border-border/80 bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-foreground outline-none transition-[color,background-color,border-color,box-shadow] duration-(--duration-base) ease-out-quint placeholder:text-muted-foreground/70 focus:border-primary/50 focus:ring-3 focus:ring-ring/45"
                 />
               </label>
               <button
                 type="button"
-                className="vela-gradient inline-flex h-12 items-center justify-center rounded-[0.85rem] px-5 text-sm font-bold text-white shadow-[0_18px_36px_rgba(10,34,255,0.24)] transition hover:-translate-y-0.5"
+                className="vela-gradient inline-flex focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45 h-12 items-center justify-center rounded-(--radius-field) px-5 text-sm font-bold text-white shadow-[0_18px_36px_rgba(10,34,255,0.24)] transition-[color,background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint hover:-translate-y-0.5"
               >
                 Send message
               </button>
@@ -389,7 +389,7 @@ function HeroSection() {
       <div className="landing-gradient-glow absolute left-1/2 top-20 h-48 w-[36rem] -translate-x-1/2 rounded-full opacity-70 blur-3xl" />
       <div className="relative mx-auto max-w-7xl">
         <div className="mx-auto max-w-5xl text-center section-reveal">
-          <h1 className="mx-auto max-w-5xl text-[3rem] font-semibold leading-[0.94] text-[var(--brand-ink)] sm:text-7xl lg:text-[5.85rem]">
+          <h1 className="display-1 mx-auto max-w-5xl text-[var(--brand-ink)]">
             Run your clinic from one calm, intelligent workspace.
           </h1>
           <p className="mx-auto mt-6 max-w-3xl text-base leading-8 text-muted-foreground sm:text-lg">
@@ -398,14 +398,14 @@ function HeroSection() {
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
             <Link
               href="/sign-up"
-              className="vela-gradient inline-flex h-12 min-w-32 items-center justify-center gap-2 whitespace-nowrap rounded-[0.85rem] px-6 text-sm font-bold text-white shadow-[0_18px_44px_rgba(10,34,255,0.28)] transition hover:-translate-y-0.5"
+              className="vela-gradient inline-flex focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45 h-12 min-w-32 items-center justify-center gap-2 whitespace-nowrap rounded-(--radius-field) px-6 text-sm font-bold text-white shadow-[0_18px_44px_rgba(10,34,255,0.28)] transition-[color,background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint hover:-translate-y-0.5"
             >
               Start free
               <ArrowRight className="size-4" />
             </Link>
             <Link
               href="/product"
-              className="inline-flex h-12 min-w-32 items-center justify-center whitespace-nowrap rounded-[0.85rem] border border-border/80 bg-white px-6 text-sm font-bold text-foreground shadow-[0_14px_36px_rgba(20,21,47,0.05)] transition hover:-translate-y-0.5 hover:border-primary/40 hover:text-primary"
+              className="inline-flex focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45 h-12 min-w-32 items-center justify-center whitespace-nowrap rounded-(--radius-field) border border-border/80 bg-white px-6 text-sm font-bold text-foreground shadow-[0_14px_36px_rgba(20,21,47,0.05)] transition-[color,background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint hover:-translate-y-0.5 hover:border-primary/40 hover:text-primary"
             >
               View product
             </Link>
@@ -421,12 +421,12 @@ function HeroSection() {
 
 function CommandCenterMockup() {
   return (
-    <div className="landing-card-pop relative overflow-hidden rounded-[1.65rem] border border-white/80 bg-white/92 p-3 shadow-[0_34px_110px_rgba(54,65,112,0.18)] backdrop-blur-xl sm:p-4 lg:p-5">
-      <div className="grid gap-3 rounded-[1.25rem] border border-border/70 bg-[#fbfdff] p-3 sm:grid-cols-[1.08fr_0.92fr] sm:p-4 lg:grid-cols-[1.18fr_0.82fr]">
-        <div className="min-w-0 rounded-[1rem] border border-border/70 bg-white p-4 shadow-[0_18px_48px_rgba(20,21,47,0.055)]">
+    <div className="landing-card-pop relative overflow-hidden rounded-(--radius-hero) border border-white/80 bg-white/92 p-3 shadow-[0_34px_110px_rgba(54,65,112,0.18)] backdrop-blur-xl sm:p-4 lg:p-5">
+      <div className="grid gap-3 rounded-(--radius-hero) border border-border/70 bg-[#fbfdff] p-3 sm:grid-cols-[1.08fr_0.92fr] sm:p-4 lg:grid-cols-[1.18fr_0.82fr]">
+        <div className="min-w-0 rounded-(--radius-field) border border-border/70 bg-white p-4 shadow-[0_18px_48px_rgba(20,21,47,0.055)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Today</p>
+              <p className="eyebrow text-muted-foreground">Today</p>
               <h3 className="mt-1 text-xl font-semibold text-[var(--brand-ink)]">Clinic dashboard</h3>
             </div>
             <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">7 appointments</span>
@@ -453,7 +453,7 @@ function CommandCenterMockup() {
 
 function MiniMetric({ label, value, icon: Icon }: { label: string; value: string; icon: ElementType }) {
   return (
-    <div className="rounded-[0.9rem] border border-border/70 bg-[var(--brand-wash)]/45 p-3">
+    <div className="rounded-(--radius-field) border border-border/70 bg-[var(--brand-wash)]/45 p-3">
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">{label}</span>
         <Icon className="size-4 text-primary" />
@@ -471,7 +471,7 @@ function AppointmentsPanel() {
   ];
 
   return (
-    <div className="rounded-[0.95rem] border border-border/70 bg-white p-4">
+    <div className="rounded-(--radius-field) border border-border/70 bg-white p-4">
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-bold text-[var(--brand-ink)]">Today&apos;s appointments</h4>
         <CalendarDays className="size-4 text-primary" />
@@ -497,7 +497,7 @@ function AppointmentsPanel() {
 
 function InsightMiniPanel() {
   return (
-    <div className="rounded-[0.95rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-[#64B6FF]/10 p-4">
+    <div className="rounded-(--radius-field) border border-primary/20 bg-gradient-to-br from-primary/10 to-[#64B6FF]/10 p-4">
       <div className="flex items-center gap-2 text-sm font-bold text-primary">
         <Sparkles className="size-4" />
         Operational insight
@@ -515,10 +515,10 @@ function InsightMiniPanel() {
 
 function PatientProfilePanel() {
   return (
-    <div className="landing-card-delay rounded-[1rem] border border-border/70 bg-white p-4 shadow-[0_18px_52px_rgba(20,21,47,0.06)]">
+    <div className="landing-card-delay rounded-(--radius-field) border border-border/70 bg-white p-4 shadow-[0_18px_52px_rgba(20,21,47,0.06)]">
       <div className="flex items-start justify-between gap-3">
         <div className="flex gap-3">
-          <span className="flex size-11 items-center justify-center rounded-[0.9rem] bg-primary/10 text-sm font-bold text-primary">MN</span>
+          <span className="flex size-11 items-center justify-center rounded-(--radius-field) bg-primary/10 text-sm font-bold text-primary">MN</span>
           <div>
             <h4 className="text-sm font-bold text-[var(--brand-ink)]">Maya Novak</h4>
             <p className="mt-1 text-xs font-semibold text-muted-foreground">Last visit 14 days ago</p>
@@ -537,7 +537,7 @@ function PatientProfilePanel() {
 
 function StaffSchedulePanel() {
   return (
-    <div className="landing-card-delay-2 rounded-[1rem] border border-border/70 bg-white p-4 shadow-[0_18px_52px_rgba(20,21,47,0.06)]">
+    <div className="landing-card-delay-2 rounded-(--radius-field) border border-border/70 bg-white p-4 shadow-[0_18px_52px_rgba(20,21,47,0.06)]">
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-bold text-[var(--brand-ink)]">Staff schedule</h4>
         <Clock3 className="size-4 text-primary" />
@@ -555,7 +555,7 @@ function StaffSchedulePanel() {
 
 function InboxPreviewPanel() {
   return (
-    <div className="rounded-[1rem] border border-border/70 bg-white p-4 shadow-[0_18px_52px_rgba(20,21,47,0.06)]">
+    <div className="rounded-(--radius-field) border border-border/70 bg-white p-4 shadow-[0_18px_52px_rgba(20,21,47,0.06)]">
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-bold text-[var(--brand-ink)]">WhatsApp inbox</h4>
         <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">12 unread</span>
@@ -569,8 +569,8 @@ function InboxPreviewPanel() {
 
 function ClinicTypesSection() {
   return (
-    <section className="px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl rounded-[1.25rem] border border-border/80 bg-white/88 p-5 shadow-[0_24px_70px_rgba(20,21,47,0.055)]">
+    <section className="landing-reveal px-4 py-10 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl rounded-(--radius-hero) border border-border/80 bg-white/88 p-5 shadow-[0_24px_70px_rgba(20,21,47,0.055)]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <h2 className="max-w-xl text-2xl font-semibold leading-tight text-[var(--brand-ink)] sm:text-3xl">
             Built for clinics that need structure without complexity.
@@ -590,27 +590,27 @@ function ClinicTypesSection() {
 
 function ProblemSection() {
   return (
-    <section className="px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
+    <section className="landing-reveal px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
       <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.82fr_1.18fr] lg:items-center">
         <div>
-          <h2 className="text-4xl font-semibold leading-[0.98] text-[var(--brand-ink)] sm:text-6xl">
+          <h2 className="display-2 text-[var(--brand-ink)]">
             Clinic work breaks down when every task lives somewhere else.
           </h2>
           <p className="mt-5 max-w-xl text-base leading-8 text-muted-foreground">
             Appointments, staff, patient context, messages, documents, payments, and reports should not require six disconnected tools.
           </p>
         </div>
-        <div className="rounded-[1.35rem] border border-border/80 bg-white p-4 shadow-[0_24px_80px_rgba(20,21,47,0.07)]">
+        <div className="rounded-(--radius-modal) border border-border/80 bg-white p-4 shadow-[0_24px_80px_rgba(20,21,47,0.07)]">
           <div className="grid gap-3 md:grid-cols-2">
             {workflowSteps.map((step, index) => (
-              <div key={step} className="rounded-[0.95rem] border border-border/70 bg-[var(--brand-wash)]/45 p-4">
+              <div key={step} className="rounded-(--radius-field) border border-border/70 bg-[var(--brand-wash)]/45 p-4">
                 <span className="flex size-8 items-center justify-center rounded-[0.7rem] bg-white text-sm font-bold text-primary shadow-[0_10px_24px_rgba(20,21,47,0.05)]">
                   {index + 1}
                 </span>
                 <p className="mt-4 text-sm font-bold text-[var(--brand-ink)]">{step}</p>
               </div>
             ))}
-            <div className="rounded-[0.95rem] border border-primary/30 bg-gradient-to-br from-primary/12 to-[#64B6FF]/12 p-4 md:col-span-2">
+            <div className="rounded-(--radius-field) border border-primary/30 bg-gradient-to-br from-primary/12 to-[#64B6FF]/12 p-4 md:col-span-2">
               <p className="text-sm font-bold text-primary">Vela organizes the same work into one operating view.</p>
             </div>
           </div>
@@ -622,10 +622,10 @@ function ProblemSection() {
 
 function SolutionSection() {
   return (
-    <section className="px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
+    <section className="landing-reveal px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
       <div className="mx-auto max-w-7xl">
         <div className="max-w-3xl">
-          <h2 className="text-4xl font-semibold leading-[0.98] text-[var(--brand-ink)] sm:text-6xl">
+          <h2 className="display-2 text-[var(--brand-ink)]">
             Vela gives every clinic a single workspace for daily operations.
           </h2>
           <p className="mt-5 text-base leading-8 text-muted-foreground">
@@ -644,15 +644,15 @@ function SolutionSection() {
 
 function ProductDeepDive() {
   return (
-    <section className="px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
+    <section className="landing-reveal px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
       <div className="mx-auto grid max-w-7xl gap-8">
         {productFeatures.map((feature, index) => (
           <div
             key={feature.title}
-            className="grid gap-8 rounded-[1.45rem] border border-border/80 bg-white p-5 shadow-[0_24px_84px_rgba(20,21,47,0.06)] lg:grid-cols-[0.78fr_1.22fr] lg:items-center lg:p-7"
+            className="grid gap-8 rounded-(--radius-hero) border border-border/80 bg-white p-5 shadow-[0_24px_84px_rgba(20,21,47,0.06)] lg:grid-cols-[0.78fr_1.22fr] lg:items-center lg:p-7"
           >
             <div className={index % 2 === 1 ? "lg:order-2" : ""}>
-              <h2 className="text-4xl font-semibold leading-[0.98] text-[var(--brand-ink)] sm:text-5xl">
+              <h2 className="display-2 text-[var(--brand-ink)]">
                 {feature.title}
               </h2>
               <p className="mt-5 max-w-xl text-base leading-8 text-muted-foreground">{feature.copy}</p>
@@ -707,7 +707,7 @@ function CalendarMockup() {
       </div>
       <div className="mt-4 grid gap-2">
         {rows.map(([time, event, staff]) => (
-          <div key={`${time}-${event}`} className="grid grid-cols-[4rem_1fr_auto] gap-3 rounded-[0.85rem] border border-border/70 bg-white p-3 text-sm">
+          <div key={`${time}-${event}`} className="grid grid-cols-[4rem_1fr_auto] gap-3 rounded-(--radius-field) border border-border/70 bg-white p-3 text-sm">
             <span className="font-bold text-primary">{time}</span>
             <span className="font-bold text-[var(--brand-ink)]">{event}</span>
             <span className="text-xs font-semibold text-muted-foreground">{staff}</span>
@@ -724,7 +724,7 @@ function PatientsMockup() {
       <PatientProfilePanel />
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         {["Appointment history", "Medical notes", "Documents and images", "Payments and messages"].map((item) => (
-          <div key={item} className="rounded-[0.85rem] border border-border/70 bg-white p-3 text-sm font-bold text-[var(--brand-ink)]">
+          <div key={item} className="rounded-(--radius-field) border border-border/70 bg-white p-3 text-sm font-bold text-[var(--brand-ink)]">
             {item}
           </div>
         ))}
@@ -744,7 +744,7 @@ function InboxMockup() {
     <div className="mockup-frame">
       <div className="grid gap-3">
         {conversations.map(([name, message, status]) => (
-          <div key={name} className="rounded-[0.9rem] border border-border/70 bg-white p-4">
+          <div key={name} className="rounded-(--radius-field) border border-border/70 bg-white p-4">
             <div className="flex items-center justify-between gap-3">
               <h4 className="text-sm font-bold text-[var(--brand-ink)]">{name}</h4>
               <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">{status}</span>
@@ -765,7 +765,7 @@ function ReportsMockup() {
         <MiniMetric label="Revenue" value="$12.8k" icon={CreditCard} />
         <MiniMetric label="Growth" value="+18%" icon={TrendingUp} />
       </div>
-      <div className="mt-4 rounded-[0.95rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-[#64B6FF]/10 p-4">
+      <div className="mt-4 rounded-(--radius-field) border border-primary/20 bg-gradient-to-br from-primary/10 to-[#64B6FF]/10 p-4">
         <p className="text-sm font-bold text-primary">Recommended next action</p>
         <p className="mt-2 text-sm font-semibold leading-6 text-[var(--brand-ink)]">
           Bookings are strongest on Tuesday and Thursday afternoons. Consider moving more staff availability into these periods.
@@ -794,7 +794,7 @@ function DashboardTourMockup() {
         <MiniMetric label="At risk" value="2" icon={Activity} />
       </div>
       <div className="mt-4 grid gap-3 lg:grid-cols-[1.05fr_0.95fr]">
-        <div className="rounded-[1rem] border border-border/70 bg-white p-4">
+        <div className="rounded-(--radius-field) border border-border/70 bg-white p-4">
           <h4 className="text-sm font-bold text-[var(--brand-ink)]">Today&apos;s attention queue</h4>
           <div className="mt-4 grid gap-2">
             {[
@@ -810,7 +810,7 @@ function DashboardTourMockup() {
             ))}
           </div>
         </div>
-        <div className="rounded-[1rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-[#64B6FF]/10 p-4">
+        <div className="rounded-(--radius-field) border border-primary/20 bg-gradient-to-br from-primary/10 to-[#64B6FF]/10 p-4">
           <div className="flex items-center gap-2 text-sm font-bold text-primary">
             <Sparkles className="size-4" />
             Needs attention
@@ -847,7 +847,7 @@ function CalendarTourMockup() {
         </div>
         <div className="grid gap-2">
           {slots.map(([time, event, staff, tone]) => (
-            <div key={event} className="grid grid-cols-[4rem_1fr_auto] gap-3 rounded-[0.9rem] border border-border/70 bg-white p-3 text-sm shadow-[0_10px_30px_rgba(20,21,47,0.035)]">
+            <div key={event} className="grid grid-cols-[4rem_1fr_auto] gap-3 rounded-(--radius-field) border border-border/70 bg-white p-3 text-sm shadow-[0_10px_30px_rgba(20,21,47,0.035)]">
               <span className="font-bold text-primary">{time}</span>
               <span className="font-bold text-[var(--brand-ink)]">{event}</span>
               <span className={`rounded-full px-2 py-1 text-xs font-bold ${tone}`}>{staff}</span>
@@ -870,7 +870,7 @@ function PatientsTourMockup() {
           ["Media", "4 files attached"],
           ["Messages", "Last reply 18 min ago"],
         ].map(([label, value]) => (
-          <div key={label} className="rounded-[0.95rem] border border-border/70 bg-white p-4">
+          <div key={label} className="rounded-(--radius-field) border border-border/70 bg-white p-4">
             <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
             <p className="mt-2 text-sm font-bold text-[var(--brand-ink)]">{value}</p>
           </div>
@@ -896,7 +896,7 @@ function StaffTourMockup() {
       </div>
       <div className="mt-4 grid gap-3">
         {staff.map(([name, role, load, status]) => (
-          <div key={name} className="grid gap-3 rounded-[0.95rem] border border-border/70 bg-white p-4 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+          <div key={name} className="grid gap-3 rounded-(--radius-field) border border-border/70 bg-white p-4 sm:grid-cols-[1fr_auto_auto] sm:items-center">
             <div>
               <p className="text-sm font-bold text-[var(--brand-ink)]">{name}</p>
               <p className="mt-1 text-xs font-semibold text-muted-foreground">{role}</p>
@@ -920,7 +920,7 @@ function InboxTourMockup() {
             ["Unknown contact", "First visit booking", "New"],
             ["Daniel Kiss", "See you Thursday", "Linked"],
           ].map(([name, message, status]) => (
-            <div key={name} className="rounded-[0.9rem] border border-border/70 bg-white p-3">
+            <div key={name} className="rounded-(--radius-field) border border-border/70 bg-white p-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-bold text-[var(--brand-ink)]">{name}</p>
                 <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-bold text-primary">{status}</span>
@@ -929,13 +929,13 @@ function InboxTourMockup() {
             </div>
           ))}
         </div>
-        <div className="rounded-[1rem] border border-border/70 bg-white p-4">
+        <div className="rounded-(--radius-field) border border-border/70 bg-white p-4">
           <h4 className="text-sm font-bold text-[var(--brand-ink)]">Maya Novak</h4>
           <div className="mt-4 grid gap-3 text-sm font-semibold">
-            <p className="mr-10 rounded-[0.9rem] bg-[var(--brand-wash)] p-3 text-muted-foreground">Can I move my appointment to 11:00?</p>
-            <p className="ml-10 rounded-[0.9rem] bg-primary/10 p-3 text-primary">Yes, you are confirmed for 11:00 with Dr. Kim.</p>
+            <p className="mr-10 rounded-(--radius-field) bg-[var(--brand-wash)] p-3 text-muted-foreground">Can I move my appointment to 11:00?</p>
+            <p className="ml-10 rounded-(--radius-field) bg-primary/10 p-3 text-primary">Yes, you are confirmed for 11:00 with Dr. Kim.</p>
           </div>
-          <div className="mt-4 rounded-[0.85rem] border border-[#64B6FF]/20 bg-[#effafc] p-3 text-xs font-bold text-[#0A22FF]">Linked to appointment and patient record</div>
+          <div className="mt-4 rounded-(--radius-field) border border-[#64B6FF]/20 bg-[#effafc] p-3 text-xs font-bold text-[#0A22FF]">Linked to appointment and patient record</div>
         </div>
       </div>
     </div>
@@ -946,7 +946,7 @@ function DocumentsPaymentsTourMockup() {
   return (
     <div className="mockup-frame">
       <div className="grid gap-3 lg:grid-cols-2">
-        <div className="rounded-[1rem] border border-border/70 bg-white p-4">
+        <div className="rounded-(--radius-field) border border-border/70 bg-white p-4">
           <div className="flex items-center gap-2 text-sm font-bold text-[var(--brand-ink)]">
             <FileImage className="size-4 text-primary" />
             Documents
@@ -960,7 +960,7 @@ function DocumentsPaymentsTourMockup() {
             ))}
           </div>
         </div>
-        <div className="rounded-[1rem] border border-border/70 bg-white p-4">
+        <div className="rounded-(--radius-field) border border-border/70 bg-white p-4">
           <div className="flex items-center gap-2 text-sm font-bold text-[var(--brand-ink)]">
             <CreditCard className="size-4 text-primary" />
             Payments
@@ -980,7 +980,7 @@ function DocumentsPaymentsTourMockup() {
           </div>
         </div>
       </div>
-      <div className="mt-3 rounded-[0.95rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-[#64B6FF]/10 p-4 text-sm font-bold text-[var(--brand-ink)]">
+      <div className="mt-3 rounded-(--radius-field) border border-primary/20 bg-gradient-to-br from-primary/10 to-[#64B6FF]/10 p-4 text-sm font-bold text-[var(--brand-ink)]">
         Patient record, files, and payment status stay in the same operational view.
       </div>
     </div>
@@ -996,7 +996,7 @@ function ReportsTourMockup() {
         <MiniMetric label="Utilization" value="76%" icon={BarChart3} />
       </div>
       <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_0.95fr]">
-        <div className="rounded-[1rem] border border-border/70 bg-white p-4">
+        <div className="rounded-(--radius-field) border border-border/70 bg-white p-4">
           <h4 className="text-sm font-bold text-[var(--brand-ink)]">Appointment trend</h4>
           <div className="mt-5 flex h-32 items-end gap-2">
             {[46, 64, 54, 78, 68, 84, 72].map((height, index) => (
@@ -1008,7 +1008,7 @@ function ReportsTourMockup() {
             ))}
           </div>
         </div>
-        <div className="rounded-[1rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-[#64B6FF]/10 p-4">
+        <div className="rounded-(--radius-field) border border-primary/20 bg-gradient-to-br from-primary/10 to-[#64B6FF]/10 p-4">
           <div className="flex items-center gap-2 text-sm font-bold text-primary">
             <Sparkles className="size-4" />
             AI-assisted operational insight
@@ -1031,7 +1031,7 @@ function PricingOperationsMockup() {
     <div className="mockup-frame">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Plan fit</p>
+          <p className="eyebrow text-muted-foreground">Plan fit</p>
           <h2 className="mt-2 text-2xl font-semibold text-[var(--brand-ink)]">Choose by operating depth.</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
             Basic covers the clean daily workspace. Pro adds deeper visibility for clinics that manage growth, utilization, and weekly operating decisions.
@@ -1045,8 +1045,8 @@ function PricingOperationsMockup() {
           ["Growth visibility", "Advanced reports, AI-assisted operational insights, utilization, and setup support."],
           ["Activation path", "Review the selected plan, create or connect a workspace, then activate during setup."],
         ].map(([title, copy], index) => (
-          <div key={title} className="grid grid-cols-[2.75rem_1fr] gap-3 rounded-[0.95rem] border border-border/70 bg-white p-4">
-            <span className="flex size-10 items-center justify-center rounded-[0.85rem] bg-primary/10 text-sm font-bold text-primary">
+          <div key={title} className="grid grid-cols-[2.75rem_1fr] gap-3 rounded-(--radius-field) border border-border/70 bg-white p-4">
+            <span className="flex size-10 items-center justify-center rounded-(--radius-field) bg-primary/10 text-sm font-bold text-primary">
               {index + 1}
             </span>
             <span>
@@ -1056,7 +1056,7 @@ function PricingOperationsMockup() {
           </div>
         ))}
       </div>
-      <div className="mt-5 rounded-[1rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-[#64B6FF]/10 p-4">
+      <div className="mt-5 rounded-(--radius-field) border border-primary/20 bg-gradient-to-br from-primary/10 to-[#64B6FF]/10 p-4">
         <p className="text-sm font-bold text-primary">Usage example</p>
         <p className="mt-2 max-w-4xl text-sm font-semibold leading-6 text-[var(--brand-ink)]">
           A two-provider clinic can start with Basic for scheduling and records, then move to Pro when reports, staff utilization, and operational recommendations become part of weekly management.
@@ -1076,7 +1076,7 @@ function AboutOperatingModel() {
           ["Understand", "Read performance trends and AI-assisted operational insights."],
           ["Improve", "Adjust availability, follow-up, and reporting habits with clearer context."],
         ].map(([title, copy]) => (
-          <div key={title} className="rounded-[0.95rem] border border-border/70 bg-white p-4">
+          <div key={title} className="rounded-(--radius-field) border border-border/70 bg-white p-4">
             <span className="vela-icon-tile">
               <CheckCircle2 className="size-5" />
             </span>
@@ -1091,7 +1091,7 @@ function AboutOperatingModel() {
 
 function AboutContextSection() {
   return (
-    <section className="px-4 pb-16 sm:px-6 lg:px-8">
+    <section className="landing-reveal px-4 pb-16 sm:px-6 lg:px-8">
       <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-3">
         <article className="surface-card p-6">
           <h2 className="text-2xl font-semibold text-[var(--brand-ink)]">Why Vela exists</h2>
@@ -1137,20 +1137,20 @@ function AboutPrinciplesSection() {
   ];
 
   return (
-    <section className="px-4 pb-16 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-7xl gap-6 rounded-[1.5rem] border border-border/80 bg-white p-5 shadow-[0_24px_80px_rgba(20,21,47,0.06)] lg:grid-cols-[0.85fr_1.15fr] lg:p-6">
-        <div className="rounded-[1.1rem] bg-[var(--brand-ink)] p-6 text-white sm:p-7">
+    <section className="landing-reveal px-4 pb-16 sm:px-6 lg:px-8">
+      <div className="mx-auto grid max-w-7xl gap-6 rounded-(--radius-hero) border border-border/80 bg-white p-5 shadow-[0_24px_80px_rgba(20,21,47,0.06)] lg:grid-cols-[0.85fr_1.15fr] lg:p-6">
+        <div className="rounded-(--radius-panel) bg-[var(--brand-ink)] p-6 text-white sm:p-7">
           <p className="text-sm font-bold uppercase tracking-[0.18em] text-white/55">How Vela thinks</p>
-          <h2 className="mt-4 text-3xl font-semibold leading-[1] sm:text-5xl">
+          <h2 className="mt-4 display-3">
             Calm software for busy appointment teams.
           </h2>
           <p className="mt-5 text-sm leading-7 text-white/72">
             Vela is shaped for owners, managers, providers, and front-desk teams who need a shared source of truth without turning the clinic into a technical project.
           </p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="stagger-children grid gap-3 sm:grid-cols-2">
           {principles.map((principle) => (
-            <article key={principle.title} className="rounded-[1rem] border border-border/70 bg-[var(--brand-wash)]/45 p-5">
+            <article key={principle.title} className="rounded-(--radius-field) border border-border/70 bg-[var(--brand-wash)]/45 p-5">
               <span className="vela-icon-tile">
                 <CheckCircle2 className="size-5" />
               </span>
@@ -1166,17 +1166,17 @@ function AboutPrinciplesSection() {
 
 function AiInsightsSection() {
   return (
-    <section className="px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
-      <div className="mx-auto grid max-w-7xl gap-8 rounded-[1.6rem] bg-[var(--brand-ink)] p-6 text-white shadow-[0_30px_100px_rgba(20,21,47,0.22)] sm:p-8 lg:grid-cols-[0.82fr_1.18fr] lg:items-center lg:p-10">
+    <section className="landing-reveal px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
+      <div className="mx-auto grid max-w-7xl gap-8 rounded-(--radius-hero) bg-[var(--brand-ink)] p-6 text-white shadow-[0_30px_100px_rgba(20,21,47,0.22)] sm:p-8 lg:grid-cols-[0.82fr_1.18fr] lg:items-center lg:p-10">
         <div>
-          <h2 className="text-4xl font-semibold leading-[0.98] sm:text-6xl">
+          <h2 className="display-2">
             Understand what changed, why it matters, and what to improve next.
           </h2>
           <p className="mt-5 max-w-xl text-base leading-8 text-white/72">
             Vela keeps insights operational: demand patterns, completion rate, payment context, staff coverage, and next actions.
           </p>
         </div>
-        <div className="rounded-[1.25rem] border border-white/12 bg-white/[0.07] p-5">
+        <div className="rounded-(--radius-hero) border border-white/12 bg-white/[0.07] p-5">
           <div className="flex items-center gap-2 text-sm font-bold text-white">
             <Sparkles className="size-5 text-[#64B6FF]" />
             Insight summary
@@ -1197,7 +1197,7 @@ function AiInsightsSection() {
 
 function DarkMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[0.9rem] border border-white/10 bg-white/[0.06] p-4">
+    <div className="rounded-(--radius-field) border border-white/10 bg-white/[0.06] p-4">
       <p className="text-xs font-bold uppercase tracking-[0.14em] text-white/52">{label}</p>
       <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
     </div>
@@ -1215,10 +1215,10 @@ function TrustSection() {
   ] satisfies Array<[string, ElementType]>;
 
   return (
-    <section className="px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
+    <section className="landing-reveal px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
       <div className="mx-auto max-w-7xl">
         <div className="max-w-3xl">
-          <h2 className="text-4xl font-semibold leading-[0.98] text-[var(--brand-ink)] sm:text-6xl">
+          <h2 className="display-2 text-[var(--brand-ink)]">
             Designed with privacy-conscious clinic workflows in mind.
           </h2>
           <p className="mt-5 text-base leading-8 text-muted-foreground">
@@ -1227,7 +1227,7 @@ function TrustSection() {
         </div>
         <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {trustItems.map(([label, Icon]) => (
-            <div key={label} className="rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_16px_44px_rgba(20,21,47,0.045)]">
+            <div key={label} className="rounded-(--radius-field) border border-border/80 bg-white p-4 shadow-[0_16px_44px_rgba(20,21,47,0.045)]">
               <Icon className="size-5 text-primary" />
               <p className="mt-4 text-sm font-bold text-[var(--brand-ink)]">{label}</p>
             </div>
@@ -1253,25 +1253,25 @@ function PricingPreviewSection() {
   ];
 
   return (
-    <section className="px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
+    <section className="landing-reveal px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
       <div className="mx-auto max-w-7xl">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h2 className="text-4xl font-semibold leading-[0.98] text-[var(--brand-ink)] sm:text-6xl">
+            <h2 className="display-2 text-[var(--brand-ink)]">
               Start simple. Grow into deeper insight.
             </h2>
             <p className="mt-5 max-w-2xl text-base leading-8 text-muted-foreground">
               The homepage gives a quick plan preview. The pricing page keeps the full comparison.
             </p>
           </div>
-          <Link href="/pricing" className="inline-flex h-11 min-w-36 items-center justify-center gap-2 self-start whitespace-nowrap rounded-[0.85rem] border border-border/80 bg-white px-5 text-sm font-bold text-primary shadow-[0_14px_34px_rgba(20,21,47,0.05)] transition hover:-translate-y-0.5 hover:border-primary/40">
+          <Link href="/pricing" className="inline-flex focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45 h-11 min-w-36 items-center justify-center gap-2 self-start whitespace-nowrap rounded-(--radius-field) border border-border/80 bg-white px-5 text-sm font-bold text-primary shadow-[0_14px_34px_rgba(20,21,47,0.05)] transition-[color,background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint hover:-translate-y-0.5 hover:border-primary/40">
             View pricing
             <ArrowRight className="size-4" />
           </Link>
         </div>
         <div className="mt-8 grid gap-4 md:grid-cols-2">
           {previewPlans.map((plan) => (
-            <article key={plan.name} className="rounded-[1.25rem] border border-border/80 bg-white p-6 shadow-[0_24px_80px_rgba(20,21,47,0.06)]">
+            <article key={plan.name} className="rounded-(--radius-hero) border border-border/80 bg-white p-6 shadow-[0_24px_80px_rgba(20,21,47,0.06)]">
               <h3 className="text-2xl font-semibold text-[var(--brand-ink)]">{plan.name}</h3>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">{plan.copy}</p>
               <div className="mt-6 grid gap-3">
@@ -1289,19 +1289,19 @@ function PricingPreviewSection() {
 
 function FinalCtaSection() {
   return (
-    <section className="px-4 pb-14 sm:px-6 lg:px-8">
-      <div className="vela-gradient mx-auto flex max-w-7xl flex-col gap-5 rounded-[1.5rem] p-6 text-white shadow-[0_24px_80px_rgba(10,34,255,0.24)] sm:p-8 lg:flex-row lg:items-center lg:justify-between">
+    <section className="landing-reveal px-4 pb-14 sm:px-6 lg:px-8">
+      <div className="vela-gradient mx-auto flex max-w-7xl flex-col gap-5 rounded-(--radius-hero) p-6 text-white shadow-[0_24px_80px_rgba(10,34,255,0.24)] sm:p-8 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h2 className="text-3xl font-semibold sm:text-5xl">Bring your clinic into one organized workspace.</h2>
+          <h2 className="display-3">Bring your clinic into one organized workspace.</h2>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-white/82">
             Start with appointments, patients, staff, and reports - then grow into messaging, automation, and deeper insights.
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
-          <Link href="/sign-up" className="inline-flex h-11 min-w-28 items-center justify-center whitespace-nowrap rounded-[0.85rem] bg-white px-5 text-sm font-bold text-primary transition hover:bg-white/90">
+          <Link href="/sign-up" className="inline-flex focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45 h-11 min-w-28 items-center justify-center whitespace-nowrap rounded-(--radius-field) bg-white px-5 text-sm font-bold text-primary transition-[color,background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint hover:bg-white/90">
             Start free
           </Link>
-          <Link href="/contact" className="inline-flex h-11 min-w-28 items-center justify-center whitespace-nowrap rounded-[0.85rem] border border-white/40 px-5 text-sm font-bold text-white transition hover:bg-white/10">
+          <Link href="/contact" className="inline-flex focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45 h-11 min-w-28 items-center justify-center whitespace-nowrap rounded-(--radius-field) border border-white/40 px-5 text-sm font-bold text-white transition-[color,background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint hover:bg-white/10">
             Contact us
           </Link>
         </div>
@@ -1312,11 +1312,11 @@ function FinalCtaSection() {
 
 function WorkflowSection({ compact = false }: { compact?: boolean }) {
   return (
-    <section className={compact ? "px-4 py-10 sm:px-6 lg:px-8" : "px-4 py-14 sm:px-6 sm:py-20 lg:px-8"}>
+    <section className={compact ? "landing-reveal px-4 py-10 sm:px-6 lg:px-8" : "landing-reveal px-4 py-14 sm:px-6 sm:py-20 lg:px-8"}>
       <div className="mx-auto max-w-7xl">
         <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr] lg:items-end">
           <div>
-            <h2 className="text-4xl font-semibold leading-[0.98] text-[var(--brand-ink)] sm:text-6xl">
+            <h2 className="display-2 text-[var(--brand-ink)]">
               From booking to follow-up in one flow.
             </h2>
             <p className="mt-5 max-w-xl text-base leading-8 text-muted-foreground">
@@ -1325,12 +1325,12 @@ function WorkflowSection({ compact = false }: { compact?: boolean }) {
           </div>
           <div className="grid gap-3">
             {["Create the patient profile", "Book the appointment and staff member", "Record service, payment, notes, and files", "Follow up with context", "Review what needs attention"].map((step, index) => (
-              <div key={step} className="group flex items-center gap-4 rounded-[0.95rem] border border-border/80 bg-white p-4 shadow-[0_16px_48px_rgba(20,21,47,0.045)] transition hover:-translate-y-0.5 hover:border-primary/35">
+              <div key={step} className="group flex items-center gap-4 rounded-(--radius-field) border border-border/80 bg-white p-4 shadow-[0_16px_48px_rgba(20,21,47,0.045)] transition-[color,background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint hover:-translate-y-0.5 hover:border-primary/35">
                 <span className="flex size-8 shrink-0 items-center justify-center rounded-[0.65rem] bg-primary/10 text-sm font-bold text-primary">
                   {index + 1}
                 </span>
                 <p className="text-sm font-semibold text-foreground">{step}</p>
-                <ChevronRight className="ml-auto size-4 text-muted-foreground transition group-hover:translate-x-1 group-hover:text-primary" />
+                <ChevronRight className="ml-auto size-4 text-muted-foreground transition-[color,background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint group-hover:translate-x-1 group-hover:text-primary" />
               </div>
             ))}
           </div>
@@ -1342,11 +1342,11 @@ function WorkflowSection({ compact = false }: { compact?: boolean }) {
 
 function ProductShowcase() {
   return (
-    <section className="px-4 pb-16 sm:px-6 lg:px-8">
+    <section className="landing-reveal px-4 pb-16 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
         <div className="mb-8 grid gap-4 lg:grid-cols-[0.86fr_1.14fr] lg:items-end">
           <div>
-            <h2 className="text-4xl font-semibold leading-[0.98] text-[var(--brand-ink)] sm:text-6xl">
+            <h2 className="display-2 text-[var(--brand-ink)]">
               A guided tour of the clinic modules.
             </h2>
           </div>
@@ -1358,14 +1358,14 @@ function ProductShowcase() {
           {productTourFeatures.map((feature, index) => (
             <div
               key={feature.title}
-              className="group grid gap-6 rounded-[1.5rem] border border-border/80 bg-white p-5 shadow-[0_24px_80px_rgba(20,21,47,0.06)] transition hover:-translate-y-0.5 hover:border-primary/35 lg:grid-cols-[0.82fr_1.18fr] lg:items-center lg:p-6"
+              className="group grid gap-6 rounded-(--radius-hero) border border-border/80 bg-white p-5 shadow-[0_24px_80px_rgba(20,21,47,0.06)] transition-[color,background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint hover:-translate-y-0.5 hover:border-primary/35 lg:grid-cols-[0.82fr_1.18fr] lg:items-center lg:p-6"
             >
               <div className={index % 2 === 1 ? "lg:order-2" : ""}>
                 <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-3 py-1 text-sm font-bold text-primary">
                   <span className="size-1.5 rounded-full bg-[#64B6FF]" />
                   {feature.title}
                 </div>
-                <h3 className="mt-4 text-3xl font-semibold leading-[1] text-[var(--brand-ink)] sm:text-5xl">
+                <h3 className="mt-4 display-3 text-[var(--brand-ink)]">
                   {feature.heading}
                 </h3>
                 <p className="mt-5 max-w-xl text-base leading-8 text-muted-foreground">{feature.copy}</p>
@@ -1397,16 +1397,16 @@ function PageHero({
   secondaryLabel: string;
 }) {
   return (
-    <section className="px-4 py-12 text-center sm:px-6 sm:py-16 lg:px-8">
+    <section className="landing-reveal px-4 py-12 text-center sm:px-6 sm:py-16 lg:px-8">
       <div className="mx-auto max-w-4xl">
-        <h1 className="text-[2.8rem] font-semibold leading-[0.96] text-[var(--brand-ink)] sm:text-7xl">{title}</h1>
+        <h1 className="display-1 text-[var(--brand-ink)]">{title}</h1>
         <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-muted-foreground sm:text-lg">{copy}</p>
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <Link href={primaryHref} className="vela-gradient inline-flex h-12 min-w-32 items-center justify-center gap-2 whitespace-nowrap rounded-[0.85rem] px-6 text-sm font-bold text-white shadow-[0_18px_44px_rgba(10,34,255,0.24)] transition hover:-translate-y-0.5">
+          <Link href={primaryHref} className="vela-gradient inline-flex focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45 h-12 min-w-32 items-center justify-center gap-2 whitespace-nowrap rounded-(--radius-field) px-6 text-sm font-bold text-white shadow-[0_18px_44px_rgba(10,34,255,0.24)] transition-[color,background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint hover:-translate-y-0.5">
             {primaryLabel}
             <ArrowRight className="size-4" />
           </Link>
-          <Link href={secondaryHref} className="inline-flex h-12 min-w-32 items-center justify-center whitespace-nowrap rounded-[0.85rem] border border-border/80 bg-white px-6 text-sm font-bold text-foreground transition hover:-translate-y-0.5 hover:border-primary/40 hover:text-primary">
+          <Link href={secondaryHref} className="inline-flex focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45 h-12 min-w-32 items-center justify-center whitespace-nowrap rounded-(--radius-field) border border-border/80 bg-white px-6 text-sm font-bold text-foreground transition-[color,background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint hover:-translate-y-0.5 hover:border-primary/40 hover:text-primary">
             {secondaryLabel}
           </Link>
         </div>
@@ -1417,7 +1417,7 @@ function PageHero({
 
 function PillarCard({ icon: Icon, title, copy, compact = false }: { icon: ElementType; title: string; copy: string; compact?: boolean }) {
   return (
-    <article className={compact ? "flex gap-3 rounded-[0.9rem] p-4" : "rounded-[1.1rem] border border-border/80 bg-white p-5 shadow-[0_18px_54px_rgba(20,21,47,0.05)] transition hover:-translate-y-0.5 hover:border-primary/35"}>
+    <article className={compact ? "flex gap-3 rounded-(--radius-field) p-4" : "rounded-(--radius-panel) border border-border/80 bg-white p-5 shadow-[0_18px_54px_rgba(20,21,47,0.05)] transition-[color,background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint hover:-translate-y-0.5 hover:border-primary/35"}>
       <span className="vela-icon-tile">
         <Icon className="size-5" />
       </span>
@@ -1445,7 +1445,7 @@ function PlanCard({
   highlighted?: boolean;
 }) {
   return (
-    <article className={highlighted ? "flex h-full flex-col rounded-[1.5rem] border border-primary/60 bg-white p-6 shadow-[0_24px_80px_rgba(10,34,255,0.15)]" : "flex h-full flex-col rounded-[1.5rem] border border-border/80 bg-white p-6 shadow-[0_24px_80px_rgba(20,21,47,0.06)]"}>
+    <article className={highlighted ? "flex h-full flex-col rounded-(--radius-hero) border border-primary/60 bg-white p-6 shadow-[0_24px_80px_rgba(10,34,255,0.15)]" : "flex h-full flex-col rounded-(--radius-hero) border border-border/80 bg-white p-6 shadow-[0_24px_80px_rgba(20,21,47,0.06)]"}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-semibold text-[var(--brand-ink)]">{name}</h2>
@@ -1457,7 +1457,7 @@ function PlanCard({
         <span className="text-5xl font-semibold text-[var(--brand-ink)]">{price}</span>
         <span className="pb-2 text-sm font-semibold text-muted-foreground">/month</span>
       </div>
-      <Link href={checkoutHref} className="vela-gradient mt-8 inline-flex h-12 w-full items-center justify-center whitespace-nowrap rounded-[0.85rem] px-4 text-sm font-bold text-white shadow-[0_18px_36px_rgba(10,34,255,0.22)] transition hover:-translate-y-0.5">
+      <Link href={checkoutHref} className="vela-gradient mt-8 inline-flex h-12 w-full items-center justify-center whitespace-nowrap rounded-(--radius-field) px-4 text-sm font-bold text-white shadow-[0_18px_36px_rgba(10,34,255,0.22)] transition-[color,background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint hover:-translate-y-0.5">
         Continue to checkout
       </Link>
       <div className="mt-7 grid gap-3">
@@ -1471,14 +1471,14 @@ function PlanCard({
 
 function PricingTable() {
   return (
-    <div className="w-full overflow-x-auto overflow-y-hidden rounded-[1.25rem] border border-border/80 bg-white shadow-[0_24px_80px_rgba(20,21,47,0.06)]">
-      <div className="grid min-w-[38rem] grid-cols-[1.3fr_0.7fr_0.7fr] border-b border-border/70 bg-[var(--brand-wash)]/55 px-4 py-3 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
+    <div className="w-full overflow-x-auto overflow-y-hidden rounded-(--radius-hero) border border-border/80 bg-white shadow-[0_24px_80px_rgba(20,21,47,0.06)]">
+      <div className="grid min-w-[38rem] grid-cols-[1.3fr_0.7fr_0.7fr] border-b border-border/70 bg-[var(--brand-wash)]/55 px-4 py-3 eyebrow text-muted-foreground">
         <span>Feature</span>
         <span className="text-center">Basic</span>
         <span className="text-center">Pro</span>
       </div>
       {comparisonRows.map(([feature, basic, pro]) => (
-        <div key={feature} className="grid min-w-[38rem] grid-cols-[1.3fr_0.7fr_0.7fr] border-b border-border/70 px-4 py-4 text-sm font-semibold text-foreground last:border-b-0">
+        <div key={feature} className="grid min-w-[38rem] grid-cols-[1.3fr_0.7fr_0.7fr] border-b border-border/70 px-4 py-4 text-sm font-semibold text-foreground transition-colors duration-(--duration-base) last:border-b-0 hover:bg-[var(--brand-wash)]/50">
           <span>{feature}</span>
           <span className="text-center">{basic}</span>
           <span className="text-center">{pro}</span>
@@ -1490,16 +1490,16 @@ function PricingTable() {
 
 function LegalPanel() {
   return (
-    <section className="px-4 pb-16 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-7xl gap-4 rounded-[1.5rem] border border-border/80 bg-white p-5 shadow-[0_24px_80px_rgba(20,21,47,0.06)] sm:grid-cols-3">
+    <section className="landing-reveal px-4 pb-16 sm:px-6 lg:px-8">
+      <div className="mx-auto grid max-w-7xl gap-4 rounded-(--radius-hero) border border-border/80 bg-white p-5 shadow-[0_24px_80px_rgba(20,21,47,0.06)] sm:grid-cols-3">
         {[
           ["Terms & Conditions", "/terms-and-conditions"],
           ["Privacy Policy", "/privacy"],
           ["Refund Policy", "/refund"],
         ].map(([label, href]) => (
-          <Link key={href} href={href} className="group flex items-center justify-between rounded-[0.95rem] border border-border/80 p-4 text-sm font-bold text-foreground transition hover:border-primary/40 hover:text-primary">
+          <Link key={href} href={href} className="group flex items-center justify-between rounded-(--radius-field) border border-border/80 p-4 text-sm font-bold text-foreground transition-[color,background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint hover:border-primary/40 hover:text-primary">
             {label}
-            <ChevronRight className="size-4 transition group-hover:translate-x-1" />
+            <ChevronRight className="size-4 transition-[color,background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint group-hover:translate-x-1" />
           </Link>
         ))}
       </div>
@@ -1509,17 +1509,17 @@ function LegalPanel() {
 
 function CtaBand() {
   return (
-    <section className="px-4 pb-14 sm:px-6 lg:px-8">
-      <div className="vela-gradient mx-auto flex max-w-7xl flex-col gap-5 rounded-[1.5rem] p-6 text-white shadow-[0_24px_80px_rgba(10,34,255,0.24)] sm:p-8 lg:flex-row lg:items-center lg:justify-between">
+    <section className="landing-reveal px-4 pb-14 sm:px-6 lg:px-8">
+      <div className="vela-gradient mx-auto flex max-w-7xl flex-col gap-5 rounded-(--radius-hero) p-6 text-white shadow-[0_24px_80px_rgba(10,34,255,0.24)] sm:p-8 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h2 className="text-3xl font-semibold sm:text-4xl">Start with one clearer clinic workspace.</h2>
+          <h2 className="display-3">Start with one clearer clinic workspace.</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-white/80">Centralize appointment, patient, communication, media, payment, and reporting work.</p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
-          <Link href="/sign-up" className="inline-flex h-11 min-w-28 items-center justify-center whitespace-nowrap rounded-[0.85rem] bg-white px-5 text-sm font-bold text-primary transition hover:bg-white/90">
+          <Link href="/sign-up" className="inline-flex focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45 h-11 min-w-28 items-center justify-center whitespace-nowrap rounded-(--radius-field) bg-white px-5 text-sm font-bold text-primary transition-[color,background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint hover:bg-white/90">
             Start free
           </Link>
-          <Link href="/contact" className="inline-flex h-11 min-w-28 items-center justify-center whitespace-nowrap rounded-[0.85rem] border border-white/40 px-5 text-sm font-bold text-white transition hover:bg-white/10">
+          <Link href="/contact" className="inline-flex focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45 h-11 min-w-28 items-center justify-center whitespace-nowrap rounded-(--radius-field) border border-white/40 px-5 text-sm font-bold text-white transition-[color,background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint hover:bg-white/10">
             Contact us
           </Link>
         </div>
@@ -1531,7 +1531,7 @@ function CtaBand() {
 function ContactMethod({ icon: Icon, title, copy }: { icon: ElementType; title: string; copy: string }) {
   return (
     <div className="flex gap-3">
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-[0.85rem] bg-white/10 text-white">
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-(--radius-field) bg-white/10 text-white">
         <Icon className="size-5" />
       </span>
       <div>
@@ -1544,12 +1544,12 @@ function ContactMethod({ icon: Icon, title, copy }: { icon: ElementType; title: 
 
 function FormField({ label, placeholder, type = "text" }: { label: string; placeholder: string; type?: string }) {
   return (
-    <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
+    <label className="grid gap-2 eyebrow text-muted-foreground">
       {label}
       <input
         type={type}
         placeholder={placeholder}
-        className="h-12 rounded-[0.75rem] border border-border/80 bg-white px-4 text-sm font-semibold normal-case tracking-normal text-foreground outline-none transition placeholder:text-muted-foreground/70 focus:border-primary focus:ring-4 focus:ring-primary/10"
+        className="h-12 rounded-(--radius-field) border border-border/80 bg-white px-4 text-sm font-semibold normal-case tracking-normal text-foreground outline-none transition-[color,background-color,border-color,box-shadow] duration-(--duration-base) ease-out-quint placeholder:text-muted-foreground/70 focus:border-primary/50 focus:ring-3 focus:ring-ring/45"
       />
     </label>
   );
@@ -1557,7 +1557,7 @@ function FormField({ label, placeholder, type = "text" }: { label: string; place
 
 function MetricPill({ value, label }: { value: string; label: string }) {
   return (
-    <div className="rounded-[0.95rem] bg-[var(--brand-wash)] p-4">
+    <div className="rounded-(--radius-field) bg-[var(--brand-wash)] p-4">
       <p className="text-2xl font-semibold text-primary">{value}</p>
       <p className="mt-1 text-xs uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
     </div>

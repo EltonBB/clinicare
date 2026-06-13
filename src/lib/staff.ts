@@ -1,5 +1,14 @@
-import { format, isAfter, isBefore, isSameDay } from "date-fns";
+import { isAfter, isBefore } from "date-fns";
 import type { Appointment, StaffMember, StaffShift, StaffTimeEntry } from "@prisma/client";
+
+import {
+  formatZonedDateKey,
+  formatZonedDayName,
+  formatZonedShortDate,
+  formatZonedTime,
+  formatZonedTime24,
+  getZonedWeekWindow,
+} from "@/lib/time-zone";
 
 export const staffRoles = [
   "Specialist",
@@ -13,7 +22,7 @@ export const staffStatuses = ["ACTIVE", "AWAY", "INACTIVE"] as const;
 export type StaffRole = (typeof staffRoles)[number];
 export type StaffStatus = (typeof staffStatuses)[number];
 
-export type StaffRecord = {
+export type StaffDirectoryItem = {
   id: string;
   name: string;
   role: string;
@@ -30,6 +39,10 @@ export type StaffRecord = {
   canClock: boolean;
   clockLabel: string;
   clockDisabledReason: string;
+  completedThisMonth: number;
+};
+
+export type StaffRecord = StaffDirectoryItem & {
   schedule: Array<{
     id: string;
     date: string;
@@ -38,7 +51,13 @@ export type StaffRecord = {
     endTime: string;
     status: string;
   }>;
-  completedThisMonth: number;
+  todayAppointments: Array<{
+    id: string;
+    title: string;
+    clientName: string;
+    time: string;
+    status: string;
+  }>;
   recentAppointments: Array<{
     id: string;
     title: string;
@@ -46,9 +65,14 @@ export type StaffRecord = {
     date: string;
     time: string;
   }>;
+  weekTimeEntries: Array<{
+    id: string;
+    day: string;
+    checkedIn: string;
+    checkedOut: string;
+    duration: string;
+  }>;
 };
-
-export type StaffDirectoryItem = Omit<StaffRecord, "recentAppointments">;
 
 export type StaffViewModel = {
   staff: StaffDirectoryItem[];
@@ -92,11 +116,29 @@ function normalizeStaffStatus(value: StaffMember["status"]): StaffStatus {
   return staffStatuses.includes(value as StaffStatus) ? (value as StaffStatus) : "ACTIVE";
 }
 
+function currentWeekStart() {
+  // Monday 00:00 in the clinic zone, as a UTC instant (week-to-date boundary).
+  return getZonedWeekWindow().start;
+}
+
+function formatDuration(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const remainder = Math.round(minutes % 60);
+
+  if (hours === 0) {
+    return `${remainder}m`;
+  }
+
+  if (remainder === 0) {
+    return `${hours}h`;
+  }
+
+  return `${hours}h ${remainder}m`;
+}
+
 function calculateWeeklyHours(entries: Pick<StaffTimeEntry, "checkedInAt" | "checkedOutAt">[]) {
   const now = new Date();
-  const weekStart = new Date(now);
-  weekStart.setHours(0, 0, 0, 0);
-  weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  const weekStart = currentWeekStart();
 
   const minutes = entries.reduce((total, entry) => {
     const checkedOutAt = entry.checkedOutAt ?? now;
@@ -112,16 +154,16 @@ function calculateWeeklyHours(entries: Pick<StaffTimeEntry, "checkedInAt" | "che
 }
 
 function isThisMonth(date: Date) {
-  const now = new Date();
-  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+  // Compare the zoned YYYY-MM prefixes so month boundaries follow the clinic zone.
+  return formatZonedDateKey(date).slice(0, 7) === formatZonedDateKey().slice(0, 7);
 }
 
 function formatShift(startsAt?: Date, endsAt?: Date) {
   if (!startsAt || !endsAt) {
-    return "-";
+    return "";
   }
 
-  return `${format(startsAt, "h:mm a")} - ${format(endsAt, "h:mm a")}`;
+  return `${formatZonedTime(startsAt)} - ${formatZonedTime(endsAt)}`;
 }
 
 function nextShiftLabel(shifts: Pick<StaffShift, "startsAt" | "endsAt" | "status">[]) {
@@ -131,11 +173,14 @@ function nextShiftLabel(shifts: Pick<StaffShift, "startsAt" | "endsAt" | "status
     .sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime())[0];
 
   if (!nextShift) {
-    return "-";
+    return "";
   }
 
-  const dayLabel = isSameDay(nextShift.startsAt, now) ? "Today" : format(nextShift.startsAt, "MMM d");
-  return `${dayLabel}, ${format(nextShift.startsAt, "h:mm a")}`;
+  const dayLabel =
+    formatZonedDateKey(nextShift.startsAt) === formatZonedDateKey(now)
+      ? "Today"
+      : formatZonedShortDate(nextShift.startsAt);
+  return `${dayLabel}, ${formatZonedTime(nextShift.startsAt)}`;
 }
 
 function buildSchedule(
@@ -146,10 +191,10 @@ function buildSchedule(
     .sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime())
     .map((shift) => ({
       id: shift.id,
-      date: format(shift.startsAt, "yyyy-MM-dd"),
-      day: format(shift.startsAt, "EEE, MMM d"),
-      startTime: format(shift.startsAt, "HH:mm"),
-      endTime: format(shift.endsAt, "HH:mm"),
+      date: formatZonedDateKey(shift.startsAt),
+      day: `${formatZonedDayName(shift.startsAt)}, ${formatZonedShortDate(shift.startsAt)}`,
+      startTime: formatZonedTime24(shift.startsAt),
+      endTime: formatZonedTime24(shift.endsAt),
       status: shift.status,
     }));
 }
@@ -195,7 +240,9 @@ function clockState(args: {
     clockLabel: "Check in",
     clockDisabledReason: withinShiftWindow
       ? ""
-      : `Check-in opens 30 min before ${format(args.todayShift.startsAt, "h:mm a")}.`,
+      : isAfter(now, latestCheckIn)
+        ? `Today's shift ended at ${formatZonedTime(args.todayShift.endsAt)}.`
+        : `Check-in opens 30 min before ${formatZonedTime(args.todayShift.startsAt)}.`,
   };
 }
 
@@ -212,91 +259,92 @@ function calculateCompletionRate(appointments: Pick<Appointment, "status">[]) {
   return Math.round((completed / finalized.length) * 1000) / 10;
 }
 
+export function buildStaffDirectoryRecord(
+  member: StaffDirectoryWithRelations
+): StaffDirectoryItem {
+  const todayKey = formatZonedDateKey();
+  const todayShift = member.shifts.find(
+    (shift) => formatZonedDateKey(shift.startsAt) === todayKey
+  );
+  const isCheckedIn = member.timeEntries.some((entry) => !entry.checkedOutAt);
+  const normalizedStatus = normalizeStaffStatus(member.status);
+  const clock = clockState({
+    status: normalizedStatus,
+    isCheckedIn,
+    todayShift,
+  });
+
+  return {
+    id: member.id,
+    name: member.name,
+    role: member.role,
+    email: member.email ?? "",
+    phone: member.phone ?? "",
+    profileNote: member.profileNote ?? "",
+    status: normalizedStatus,
+    isCheckedIn,
+    weeklyHours: calculateWeeklyHours(member.timeEntries),
+    appointmentsToday: member.appointments.filter(
+      (appointment) => formatZonedDateKey(appointment.startAt) === todayKey
+    ).length,
+    completionRate: calculateCompletionRate(member.appointments),
+    shiftLabel: todayShift ? formatShift(todayShift.startsAt, todayShift.endsAt) : "",
+    nextShift: nextShiftLabel(member.shifts),
+    canClock: clock.canClock,
+    clockLabel: clock.clockLabel,
+    clockDisabledReason: clock.clockDisabledReason,
+    completedThisMonth: member.appointments.filter(
+      (appointment) =>
+        appointment.status === "COMPLETED" && isThisMonth(appointment.startAt)
+    ).length,
+  };
+}
+
 export function buildStaffRecord(member: StaffWithRelations): StaffRecord {
   const completedAppointments = member.appointments.filter(
     (appointment) => appointment.status === "COMPLETED"
   );
-  const today = new Date();
-  const todayShift = member.shifts.find((shift) => isSameDay(shift.startsAt, today));
-  const isCheckedIn = member.timeEntries.some((entry) => !entry.checkedOutAt);
-  const normalizedStatus = normalizeStaffStatus(member.status);
-  const clock = clockState({
-    status: normalizedStatus,
-    isCheckedIn,
-    todayShift,
-  });
+  const todayKey = formatZonedDateKey();
+  const weekStart = currentWeekStart();
 
   return {
-    id: member.id,
-    name: member.name,
-    role: member.role,
-    email: member.email ?? "",
-    phone: member.phone ?? "",
-    profileNote: member.profileNote ?? "",
-    status: normalizedStatus,
-    isCheckedIn,
-    weeklyHours: calculateWeeklyHours(member.timeEntries),
-    appointmentsToday: member.appointments.filter((appointment) =>
-      isSameDay(appointment.startAt, today)
-    ).length,
-    completionRate: calculateCompletionRate(member.appointments),
-    shiftLabel: todayShift ? formatShift(todayShift.startsAt, todayShift.endsAt) : "-",
-    nextShift: nextShiftLabel(member.shifts),
-    canClock: clock.canClock,
-    clockLabel: clock.clockLabel,
-    clockDisabledReason: clock.clockDisabledReason,
+    ...buildStaffDirectoryRecord(member),
     schedule: buildSchedule(member.shifts),
-    completedThisMonth: completedAppointments.filter((appointment) =>
-      isThisMonth(appointment.startAt)
-    ).length,
+    todayAppointments: member.appointments
+      .filter(
+        (appointment) =>
+          formatZonedDateKey(appointment.startAt) === todayKey &&
+          appointment.status !== "CANCELLED"
+      )
+      .sort((left, right) => left.startAt.getTime() - right.startAt.getTime())
+      .map((appointment) => ({
+        id: appointment.id,
+        title: appointment.title,
+        clientName: appointment.client.name,
+        time: formatZonedTime(appointment.startAt),
+        status: appointment.status,
+      })),
     recentAppointments: completedAppointments.slice(0, 5).map((appointment) => ({
       id: appointment.id,
       title: appointment.title,
       clientName: appointment.client.name,
-      date: format(appointment.startAt, "MMM d"),
-      time: format(appointment.startAt, "HH:mm"),
+      date: formatZonedShortDate(appointment.startAt),
+      time: formatZonedTime24(appointment.startAt),
     })),
-  };
-}
-
-export function buildStaffDirectoryRecord(
-  member: StaffDirectoryWithRelations
-): StaffDirectoryItem {
-  const completedThisMonth = member.appointments.filter(
-    (appointment) =>
-      appointment.status === "COMPLETED" && isThisMonth(appointment.startAt)
-  ).length;
-  const today = new Date();
-  const todayShift = member.shifts.find((shift) => isSameDay(shift.startsAt, today));
-  const isCheckedIn = member.timeEntries.some((entry) => !entry.checkedOutAt);
-  const normalizedStatus = normalizeStaffStatus(member.status);
-  const clock = clockState({
-    status: normalizedStatus,
-    isCheckedIn,
-    todayShift,
-  });
-
-  return {
-    id: member.id,
-    name: member.name,
-    role: member.role,
-    email: member.email ?? "",
-    phone: member.phone ?? "",
-    profileNote: member.profileNote ?? "",
-    status: normalizedStatus,
-    isCheckedIn,
-    weeklyHours: calculateWeeklyHours(member.timeEntries),
-    appointmentsToday: member.appointments.filter((appointment) =>
-      isSameDay(appointment.startAt, today)
-    ).length,
-    completionRate: calculateCompletionRate(member.appointments),
-    shiftLabel: todayShift ? formatShift(todayShift.startsAt, todayShift.endsAt) : "-",
-    nextShift: nextShiftLabel(member.shifts),
-    canClock: clock.canClock,
-    clockLabel: clock.clockLabel,
-    clockDisabledReason: clock.clockDisabledReason,
-    schedule: buildSchedule(member.shifts),
-    completedThisMonth,
+    weekTimeEntries: member.timeEntries
+      .filter((entry) => (entry.checkedOutAt ?? new Date()) >= weekStart)
+      .sort((left, right) => right.checkedInAt.getTime() - left.checkedInAt.getTime())
+      .map((entry) => ({
+        id: entry.checkedInAt.toISOString(),
+        day: `${formatZonedDayName(entry.checkedInAt)}, ${formatZonedShortDate(entry.checkedInAt)}`,
+        checkedIn: formatZonedTime(entry.checkedInAt),
+        checkedOut: entry.checkedOutAt ? formatZonedTime(entry.checkedOutAt) : "",
+        duration: entry.checkedOutAt
+          ? formatDuration(
+              Math.max(entry.checkedOutAt.getTime() - entry.checkedInAt.getTime(), 0) / 60000
+            )
+          : "",
+      })),
   };
 }
 

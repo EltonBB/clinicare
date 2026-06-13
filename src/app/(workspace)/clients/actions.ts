@@ -1,7 +1,9 @@
 "use server";
 
+import { z } from "zod";
+
 import { prisma } from "@/lib/prisma";
-import { requireCurrentBusiness } from "@/lib/business";
+import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { ensureConversationForClient, normalizeConversationsForBusiness } from "@/lib/inbox-server";
 import { normalizePhone } from "@/lib/inbox";
 import {
@@ -16,7 +18,6 @@ import {
 } from "@/lib/clients";
 import { normalizeStorageReference } from "@/lib/media-storage";
 import { deleteStorageReferences } from "@/lib/media-storage-server";
-import { createClient } from "@/utils/supabase/server";
 
 export type SaveClientResult = {
   ok: boolean;
@@ -122,29 +123,167 @@ export type ClientRecordMutationResult = {
   client?: ClientRecord;
 };
 
-async function getAuthedBusiness() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+export type UpdateClientMedicationPayload = AddClientMedicationPayload & { id: string };
+export type UpdateClientHealthItemPayload = AddClientHealthItemPayload & { id: string };
+export type UpdateClientCareNotePayload = AddClientCareNotePayload & { id: string };
+export type UpdateClientTreatmentPlanItemPayload = AddClientTreatmentPlanItemPayload & {
+  id: string;
+};
+export type UpdateClientFollowUpReminderPayload = AddClientFollowUpReminderPayload & {
+  id: string;
+};
+export type UpdateClientPaymentPayload = AddClientPaymentPayload & { id: string };
+export type UpdateClientDocumentPayload = {
+  id: string;
+  clientId: string;
+  fileName: string;
+  fileType: string;
+  notes: string;
+};
 
-  if (!user) {
-    return {
-      error: "Your session expired. Log in again to manage clients.",
-    } as const;
-  }
+export type DeleteClientSubRecordPayload = {
+  id: string;
+  clientId: string;
+};
 
-  const business = await requireCurrentBusiness(user, {
-    missingBusinessRedirect: "/onboarding",
-  });
+// Server-side validation for the client sub-record actions. Enum-style fields
+// mirror the detail-page dialog options exactly and use `.catch(default)` so an
+// unexpected value degrades to a safe default (bounding what reaches the DB)
+// instead of rejecting the whole save. Required-text emptiness is still checked
+// inside each action so its specific message is preserved.
+const idField = z.string().min(1);
+const text = (max: number) => z.string().max(max);
+const optionalText = (max: number) => z.string().max(max).optional();
 
-  return { business } as const;
+const HEALTH_TYPES = [
+  "Allergy",
+  "Medical alert",
+  "Chronic condition",
+  "Vital detail",
+  "Care fact",
+] as const;
+const TREATMENT_STATUSES = ["Pending", "Upcoming", "Completed", "On hold"] as const;
+const REMINDER_CHANNELS = ["WhatsApp", "SMS", "Email", "Phone call"] as const;
+const REMINDER_STATUSES = ["Scheduled", "Sent", "Completed"] as const;
+const PAYMENT_STATUSES = ["Paid", "Unpaid", "Partially Paid", "Refunded"] as const;
+const DOCUMENT_CATEGORIES = [
+  "Insurance",
+  "Consent",
+  "Medical History",
+  "Report",
+  "Image / Scan",
+  "Invoice",
+  "Other",
+] as const;
+
+const addClientGalleryItemSchema = z.object({
+  clientId: idField,
+  imageUrl: text(2048),
+  caption: text(280),
+});
+
+const addClientMedicationSchema = z.object({
+  clientId: idField,
+  name: text(160),
+  dosage: text(160),
+  frequency: text(160),
+  notes: text(2000),
+  isActive: z.boolean(),
+});
+
+const addClientDocumentSchema = z.object({
+  clientId: idField,
+  fileName: text(200),
+  fileType: z.enum(DOCUMENT_CATEGORIES).catch("Other"),
+  fileUrl: text(2048),
+  storageUrl: optionalText(2048),
+  category: optionalText(120),
+  mimeType: optionalText(160),
+  fileSize: z.number().nonnegative().optional(),
+  uploadedBy: optionalText(160),
+  notes: text(2000),
+});
+
+const addClientPaymentSchema = z.object({
+  clientId: idField,
+  amount: text(24),
+  status: z.enum(PAYMENT_STATUSES).catch("Unpaid"),
+  description: text(2000),
+  receiptUrl: text(2048),
+  paidAt: text(40),
+  invoiceNumber: optionalText(120),
+  receiptNumber: optionalText(120),
+  paymentMethod: optionalText(120),
+  billingNote: optionalText(2000),
+});
+
+const addClientHealthItemSchema = z.object({
+  clientId: idField,
+  type: z.enum(HEALTH_TYPES).catch("Care fact"),
+  label: text(200),
+  value: optionalText(500),
+  severity: optionalText(60),
+  notes: optionalText(2000),
+});
+
+const addClientCareNoteSchema = z.object({
+  clientId: idField,
+  title: optionalText(200),
+  body: text(5000),
+  staffMemberId: optionalText(400),
+});
+
+const addClientTreatmentPlanItemSchema = z.object({
+  clientId: idField,
+  title: text(200),
+  description: optionalText(2000),
+  status: z.enum(TREATMENT_STATUSES).optional().catch("Pending"),
+  dueAt: optionalText(40),
+});
+
+const addClientFollowUpReminderSchema = z.object({
+  clientId: idField,
+  title: text(200),
+  channel: z.enum(REMINDER_CHANNELS).optional().catch("WhatsApp"),
+  status: z.enum(REMINDER_STATUSES).optional().catch("Scheduled"),
+  remindAt: text(40),
+  notes: optionalText(2000),
+});
+
+const updateClientMedicationSchema = addClientMedicationSchema.extend({ id: idField });
+const updateClientDocumentSchema = z.object({
+  id: idField,
+  clientId: idField,
+  fileName: text(200),
+  fileType: z.enum(DOCUMENT_CATEGORIES).catch("Other"),
+  notes: text(2000),
+});
+const updateClientPaymentSchema = addClientPaymentSchema.extend({ id: idField });
+const updateClientHealthItemSchema = addClientHealthItemSchema.extend({ id: idField });
+const updateClientCareNoteSchema = addClientCareNoteSchema.extend({ id: idField });
+const updateClientTreatmentPlanItemSchema = addClientTreatmentPlanItemSchema.extend({
+  id: idField,
+});
+const updateClientFollowUpReminderSchema = addClientFollowUpReminderSchema.extend({
+  id: idField,
+});
+
+const INVALID_RECORD_ERROR =
+  "We couldn't save this record. Check the details and try again.";
+
+function getAuthedBusiness() {
+  return getAuthedBusinessContext(
+    "Your session expired. Log in again to manage clients."
+  );
 }
 
-async function fetchClientRecord(clientId: string) {
-  const client = await prisma.client.findUniqueOrThrow({
+async function fetchClientRecord(businessId: string, clientId: string) {
+  // Tenant scoping by construction: even though every caller checks ownership
+  // first, this query must never be able to cross a business boundary.
+  const client = await prisma.client.findFirstOrThrow({
     where: {
       id: clientId,
+      businessId,
     },
     include: {
       appointments: {
@@ -366,6 +505,14 @@ function parseAmountToCents(value: string) {
 export async function addClientGalleryItemAction(
   payload: AddClientGalleryItemPayload
 ): Promise<AddClientGalleryItemResult> {
+  const parsed = addClientGalleryItemSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: INVALID_RECORD_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -420,7 +567,7 @@ export async function addClientGalleryItemAction(
 
   return {
     ok: true,
-    client: await fetchClientRecord(payload.clientId),
+    client: await fetchClientRecord(context.business.id, payload.clientId),
   };
 }
 
@@ -539,7 +686,7 @@ export async function saveClientAction(
 
     return {
       ok: true,
-      client: await fetchClientRecord(clientId!),
+      client: await fetchClientRecord(business.id, clientId!),
     };
   } catch {
     return {
@@ -552,6 +699,14 @@ export async function saveClientAction(
 export async function addClientMedicationAction(
   payload: AddClientMedicationPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = addClientMedicationSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: INVALID_RECORD_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedClient(payload.clientId);
 
   if ("error" in context) {
@@ -584,13 +739,21 @@ export async function addClientMedicationAction(
 
   return {
     ok: true,
-    client: await fetchClientRecord(payload.clientId),
+    client: await fetchClientRecord(context.business.id, payload.clientId),
   };
 }
 
 export async function addClientDocumentAction(
   payload: AddClientDocumentPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = addClientDocumentSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: INVALID_RECORD_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedClient(payload.clientId);
 
   if ("error" in context) {
@@ -644,13 +807,21 @@ export async function addClientDocumentAction(
 
   return {
     ok: true,
-    client: await fetchClientRecord(payload.clientId),
+    client: await fetchClientRecord(context.business.id, payload.clientId),
   };
 }
 
 export async function addClientPaymentAction(
   payload: AddClientPaymentPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = addClientPaymentSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: INVALID_RECORD_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedClient(payload.clientId);
 
   if ("error" in context) {
@@ -694,13 +865,21 @@ export async function addClientPaymentAction(
 
   return {
     ok: true,
-    client: await fetchClientRecord(payload.clientId),
+    client: await fetchClientRecord(context.business.id, payload.clientId),
   };
 }
 
 export async function addClientHealthItemAction(
   payload: AddClientHealthItemPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = addClientHealthItemSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: INVALID_RECORD_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedClient(payload.clientId);
 
   if ("error" in context) {
@@ -727,13 +906,21 @@ export async function addClientHealthItemAction(
 
   return {
     ok: true,
-    client: await fetchClientRecord(payload.clientId),
+    client: await fetchClientRecord(context.business.id, payload.clientId),
   };
 }
 
 export async function addClientCareNoteAction(
   payload: AddClientCareNotePayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = addClientCareNoteSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: INVALID_RECORD_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedClient(payload.clientId);
 
   if ("error" in context) {
@@ -771,13 +958,21 @@ export async function addClientCareNoteAction(
 
   return {
     ok: true,
-    client: await fetchClientRecord(payload.clientId),
+    client: await fetchClientRecord(context.business.id, payload.clientId),
   };
 }
 
 export async function addClientTreatmentPlanItemAction(
   payload: AddClientTreatmentPlanItemPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = addClientTreatmentPlanItemSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: INVALID_RECORD_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedClient(payload.clientId);
 
   if ("error" in context) {
@@ -803,13 +998,21 @@ export async function addClientTreatmentPlanItemAction(
 
   return {
     ok: true,
-    client: await fetchClientRecord(payload.clientId),
+    client: await fetchClientRecord(context.business.id, payload.clientId),
   };
 }
 
 export async function addClientFollowUpReminderAction(
   payload: AddClientFollowUpReminderPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = addClientFollowUpReminderSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: INVALID_RECORD_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedClient(payload.clientId);
 
   if ("error" in context) {
@@ -837,7 +1040,7 @@ export async function addClientFollowUpReminderAction(
 
   return {
     ok: true,
-    client: await fetchClientRecord(payload.clientId),
+    client: await fetchClientRecord(context.business.id, payload.clientId),
   };
 }
 
@@ -932,4 +1135,504 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
     ok: true,
     clientId,
   };
+}
+
+type OwnedSubRecordContext =
+  | { error: string }
+  | { business: { id: string } };
+
+async function requireOwnedSubRecord(
+  payload: DeleteClientSubRecordPayload,
+  exists: (businessId: string) => Promise<{ id: string } | null>
+): Promise<OwnedSubRecordContext> {
+  const context = await requireOwnedClient(payload.clientId);
+
+  if ("error" in context) {
+    return {
+      error: context.error ?? "Your session expired. Log in again to manage clients.",
+    };
+  }
+
+  const record = await exists(context.business.id);
+
+  if (!record) {
+    return { error: "This record was not found in the patient file." };
+  }
+
+  return { business: context.business };
+}
+
+export async function updateClientMedicationAction(
+  payload: UpdateClientMedicationPayload
+): Promise<ClientRecordMutationResult> {
+  const parsed = updateClientMedicationSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: INVALID_RECORD_ERROR };
+  }
+
+  payload = parsed.data;
+
+  const context = await requireOwnedSubRecord(payload, (businessId) =>
+    prisma.clientMedication.findFirst({
+      where: { id: payload.id, clientId: payload.clientId, businessId },
+      select: { id: true },
+    })
+  );
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  const name = payload.name.trim();
+
+  if (!name) {
+    return { ok: false, error: "Medication name is required." };
+  }
+
+  await prisma.clientMedication.update({
+    where: { id: payload.id },
+    data: {
+      name,
+      dosage: payload.dosage.trim() || null,
+      frequency: payload.frequency.trim() || null,
+      notes: payload.notes.trim() || null,
+      isActive: payload.isActive,
+    },
+  });
+
+  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+}
+
+export async function deleteClientMedicationAction(
+  payload: DeleteClientSubRecordPayload
+): Promise<ClientRecordMutationResult> {
+  const context = await requireOwnedSubRecord(payload, (businessId) =>
+    prisma.clientMedication.findFirst({
+      where: { id: payload.id, clientId: payload.clientId, businessId },
+      select: { id: true },
+    })
+  );
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  await prisma.clientMedication.delete({ where: { id: payload.id } });
+
+  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+}
+
+export async function updateClientHealthItemAction(
+  payload: UpdateClientHealthItemPayload
+): Promise<ClientRecordMutationResult> {
+  const parsed = updateClientHealthItemSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: INVALID_RECORD_ERROR };
+  }
+
+  payload = parsed.data;
+
+  const context = await requireOwnedSubRecord(payload, (businessId) =>
+    prisma.clientHealthItem.findFirst({
+      where: { id: payload.id, clientId: payload.clientId, businessId },
+      select: { id: true },
+    })
+  );
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  const label = payload.label.trim();
+
+  if (!label) {
+    return { ok: false, error: "Health item label is required." };
+  }
+
+  await prisma.clientHealthItem.update({
+    where: { id: payload.id },
+    data: {
+      type: payload.type.trim() || "Care fact",
+      label,
+      value: payload.value?.trim() || null,
+      severity: payload.severity?.trim() || null,
+      notes: payload.notes?.trim() || null,
+    },
+  });
+
+  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+}
+
+export async function deleteClientHealthItemAction(
+  payload: DeleteClientSubRecordPayload
+): Promise<ClientRecordMutationResult> {
+  const context = await requireOwnedSubRecord(payload, (businessId) =>
+    prisma.clientHealthItem.findFirst({
+      where: { id: payload.id, clientId: payload.clientId, businessId },
+      select: { id: true },
+    })
+  );
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  await prisma.clientHealthItem.delete({ where: { id: payload.id } });
+
+  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+}
+
+export async function updateClientCareNoteAction(
+  payload: UpdateClientCareNotePayload
+): Promise<ClientRecordMutationResult> {
+  const parsed = updateClientCareNoteSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: INVALID_RECORD_ERROR };
+  }
+
+  payload = parsed.data;
+
+  const context = await requireOwnedSubRecord(payload, (businessId) =>
+    prisma.clientCareNote.findFirst({
+      where: { id: payload.id, clientId: payload.clientId, businessId },
+      select: { id: true },
+    })
+  );
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  const body = payload.body.trim();
+
+  if (!body) {
+    return { ok: false, error: "Care note text is required." };
+  }
+
+  await prisma.clientCareNote.update({
+    where: { id: payload.id },
+    data: {
+      title: payload.title?.trim() || null,
+      body,
+    },
+  });
+
+  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+}
+
+export async function deleteClientCareNoteAction(
+  payload: DeleteClientSubRecordPayload
+): Promise<ClientRecordMutationResult> {
+  const context = await requireOwnedSubRecord(payload, (businessId) =>
+    prisma.clientCareNote.findFirst({
+      where: { id: payload.id, clientId: payload.clientId, businessId },
+      select: { id: true },
+    })
+  );
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  await prisma.clientCareNote.delete({ where: { id: payload.id } });
+
+  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+}
+
+export async function updateClientTreatmentPlanItemAction(
+  payload: UpdateClientTreatmentPlanItemPayload
+): Promise<ClientRecordMutationResult> {
+  const parsed = updateClientTreatmentPlanItemSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: INVALID_RECORD_ERROR };
+  }
+
+  payload = parsed.data;
+
+  const context = await requireOwnedSubRecord(payload, (businessId) =>
+    prisma.clientTreatmentPlanItem.findFirst({
+      where: { id: payload.id, clientId: payload.clientId, businessId },
+      select: { id: true },
+    })
+  );
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  const title = payload.title.trim();
+
+  if (!title) {
+    return { ok: false, error: "Treatment plan item title is required." };
+  }
+
+  await prisma.clientTreatmentPlanItem.update({
+    where: { id: payload.id },
+    data: {
+      title,
+      description: payload.description?.trim() || null,
+      status: payload.status?.trim() || "Pending",
+      dueAt: parseOptionalDate(payload.dueAt ?? ""),
+    },
+  });
+
+  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+}
+
+export async function deleteClientTreatmentPlanItemAction(
+  payload: DeleteClientSubRecordPayload
+): Promise<ClientRecordMutationResult> {
+  const context = await requireOwnedSubRecord(payload, (businessId) =>
+    prisma.clientTreatmentPlanItem.findFirst({
+      where: { id: payload.id, clientId: payload.clientId, businessId },
+      select: { id: true },
+    })
+  );
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  await prisma.clientTreatmentPlanItem.delete({ where: { id: payload.id } });
+
+  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+}
+
+export async function updateClientFollowUpReminderAction(
+  payload: UpdateClientFollowUpReminderPayload
+): Promise<ClientRecordMutationResult> {
+  const parsed = updateClientFollowUpReminderSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: INVALID_RECORD_ERROR };
+  }
+
+  payload = parsed.data;
+
+  const context = await requireOwnedSubRecord(payload, (businessId) =>
+    prisma.clientFollowUpReminder.findFirst({
+      where: { id: payload.id, clientId: payload.clientId, businessId },
+      select: { id: true },
+    })
+  );
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  const title = payload.title.trim();
+  const remindAt = parseOptionalDate(payload.remindAt);
+
+  if (!title || !remindAt) {
+    return { ok: false, error: "Reminder title and date are required." };
+  }
+
+  await prisma.clientFollowUpReminder.update({
+    where: { id: payload.id },
+    data: {
+      title,
+      channel: payload.channel?.trim() || "WhatsApp",
+      status: payload.status?.trim() || "Scheduled",
+      remindAt,
+      notes: payload.notes?.trim() || null,
+    },
+  });
+
+  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+}
+
+export async function deleteClientFollowUpReminderAction(
+  payload: DeleteClientSubRecordPayload
+): Promise<ClientRecordMutationResult> {
+  const context = await requireOwnedSubRecord(payload, (businessId) =>
+    prisma.clientFollowUpReminder.findFirst({
+      where: { id: payload.id, clientId: payload.clientId, businessId },
+      select: { id: true },
+    })
+  );
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  await prisma.clientFollowUpReminder.delete({ where: { id: payload.id } });
+
+  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+}
+
+export async function updateClientPaymentAction(
+  payload: UpdateClientPaymentPayload
+): Promise<ClientRecordMutationResult> {
+  const parsed = updateClientPaymentSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: INVALID_RECORD_ERROR };
+  }
+
+  payload = parsed.data;
+
+  const context = await requireOwnedSubRecord(payload, (businessId) =>
+    prisma.clientPayment.findFirst({
+      where: { id: payload.id, clientId: payload.clientId, businessId },
+      select: { id: true },
+    })
+  );
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  const amountCents = parseAmountToCents(payload.amount);
+
+  if (amountCents === null) {
+    return { ok: false, error: "Enter a valid payment amount." };
+  }
+
+  if (hasUnsafePublicUrl(payload.receiptUrl)) {
+    return { ok: false, error: "Use a safe HTTPS receipt link." };
+  }
+
+  await prisma.clientPayment.update({
+    where: { id: payload.id },
+    data: {
+      amountCents,
+      status: payload.status.trim() || "Unpaid",
+      description: payload.description.trim() || null,
+      invoiceNumber: payload.invoiceNumber?.trim() || null,
+      receiptNumber: payload.receiptNumber?.trim() || null,
+      paymentMethod: payload.paymentMethod?.trim() || null,
+      billingNote: payload.billingNote?.trim() || null,
+      receiptUrl: normalizeOptionalPublicUrl(payload.receiptUrl) || null,
+      paidAt: parseOptionalDate(payload.paidAt),
+    },
+  });
+
+  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+}
+
+export async function deleteClientPaymentAction(
+  payload: DeleteClientSubRecordPayload
+): Promise<ClientRecordMutationResult> {
+  const context = await requireOwnedSubRecord(payload, (businessId) =>
+    prisma.clientPayment.findFirst({
+      where: { id: payload.id, clientId: payload.clientId, businessId },
+      select: { id: true },
+    })
+  );
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  await prisma.clientPayment.delete({ where: { id: payload.id } });
+
+  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+}
+
+export async function updateClientDocumentAction(
+  payload: UpdateClientDocumentPayload
+): Promise<ClientRecordMutationResult> {
+  const parsed = updateClientDocumentSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: INVALID_RECORD_ERROR };
+  }
+
+  payload = parsed.data;
+
+  const context = await requireOwnedSubRecord(payload, (businessId) =>
+    prisma.clientDocument.findFirst({
+      where: { id: payload.id, clientId: payload.clientId, businessId },
+      select: { id: true },
+    })
+  );
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  const fileName = payload.fileName.trim();
+
+  if (!fileName) {
+    return { ok: false, error: "File name is required." };
+  }
+
+  await prisma.clientDocument.update({
+    where: { id: payload.id },
+    data: {
+      fileName,
+      fileType: payload.fileType.trim() || "Other",
+      // `category` is set at upload and not edited here — leave it untouched
+      // rather than overwriting it with fileType.
+      notes: payload.notes.trim() || null,
+    },
+  });
+
+  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+}
+
+export async function deleteClientDocumentAction(
+  payload: DeleteClientSubRecordPayload
+): Promise<ClientRecordMutationResult> {
+  const context = await requireOwnedClient(payload.clientId);
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  const record = await prisma.clientDocument.findFirst({
+    where: {
+      id: payload.id,
+      clientId: payload.clientId,
+      businessId: context.business.id,
+    },
+    select: { id: true, storageUrl: true },
+  });
+
+  if (!record) {
+    return { ok: false, error: "This record was not found in the patient file." };
+  }
+
+  await prisma.clientDocument.delete({ where: { id: payload.id } });
+
+  if (record.storageUrl) {
+    await deleteStorageReferences([record.storageUrl]);
+  }
+
+  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+}
+
+export async function deleteClientGalleryItemAction(
+  payload: DeleteClientSubRecordPayload
+): Promise<ClientRecordMutationResult> {
+  const context = await requireOwnedClient(payload.clientId);
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  const record = await prisma.clientGalleryItem.findFirst({
+    where: {
+      id: payload.id,
+      clientId: payload.clientId,
+      businessId: context.business.id,
+    },
+    select: { id: true, imageUrl: true },
+  });
+
+  if (!record) {
+    return { ok: false, error: "This record was not found in the patient file." };
+  }
+
+  await prisma.clientGalleryItem.delete({ where: { id: payload.id } });
+
+  if (record.imageUrl) {
+    await deleteStorageReferences([record.imageUrl]);
+  }
+
+  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
 }

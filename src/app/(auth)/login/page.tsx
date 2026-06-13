@@ -42,12 +42,12 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </CardHeader>
         <CardContent className="space-y-7 px-7 pb-0 sm:px-9">
           {verified ? (
-            <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm font-medium text-primary">
+            <div className="state-pop rounded-(--radius-field) border border-primary/20 bg-primary/8 px-4 py-3 text-sm font-medium text-primary">
               Your email was confirmed. Log in to continue.
             </div>
           ) : null}
           {reset ? (
-            <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm font-medium text-primary">
+            <div className="state-pop rounded-(--radius-field) border border-primary/20 bg-primary/8 px-4 py-3 text-sm font-medium text-primary">
               Your password has been reset. Log in with the new one.
             </div>
           ) : null}

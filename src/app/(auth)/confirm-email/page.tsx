@@ -92,25 +92,25 @@ export default async function ConfirmEmailPage({
         </CardHeader>
         <CardContent className="space-y-6 px-8 pb-9 sm:px-10 sm:pb-10">
           {already ? (
-            <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm font-medium text-primary">
+            <div className="state-pop rounded-(--radius-field) border border-primary/20 bg-primary/8 px-4 py-3 text-sm font-medium text-primary">
               That link was already used or the email was already confirmed. If you already verified on another device, continue to login.
             </div>
           ) : null}
 
           {pending ? (
-            <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm font-medium text-primary">
+            <div className="state-pop rounded-(--radius-field) border border-primary/20 bg-primary/8 px-4 py-3 text-sm font-medium text-primary">
               Your account exists, but the email still needs verification.
             </div>
           ) : null}
 
           {error ? (
-            <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <div className="state-pop rounded-(--radius-field) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
               {error}
             </div>
           ) : null}
 
           {sent && !already ? (
-            <div className="rounded-[1rem] border border-border/75 bg-[linear-gradient(135deg,rgba(10,34,255,0.06),rgba(100,182,255,0.06))] px-4 py-4 text-sm text-muted-foreground">
+            <div className="rounded-(--radius-field) border border-border/75 bg-[linear-gradient(135deg,rgba(10,34,255,0.06),rgba(100,182,255,0.06))] px-4 py-4 text-sm text-muted-foreground">
               Once the email is confirmed, this page will redirect you to login automatically.
             </div>
           ) : null}

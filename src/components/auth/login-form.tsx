@@ -22,7 +22,7 @@ function FieldError({ message }: { message?: string }) {
     return null;
   }
 
-  return <p className="text-xs text-destructive">{message}</p>;
+  return <p className="state-pop text-xs text-destructive">{message}</p>;
 }
 
 export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
@@ -34,7 +34,7 @@ export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
       <input type="hidden" name="next" value={next} />
 
       {state.error ? (
-        <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div className="state-pop rounded-(--radius-field) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {state.error}
         </div>
       ) : null}
@@ -49,7 +49,7 @@ export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
           defaultValue={state.values?.email}
           aria-invalid={Boolean(state.fieldErrors?.email)}
           className={cn(
-            "h-11 rounded-[0.78rem] border-border/80 bg-white px-3.5 text-[15px] shadow-none placeholder:text-muted-foreground/70",
+            "h-11 rounded-(--radius-card) border-border/80 bg-white px-3.5 text-[15px] shadow-none placeholder:text-muted-foreground/70",
             state.fieldErrors?.email && "border-destructive"
           )}
         />
@@ -66,7 +66,7 @@ export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
           defaultValue={state.values?.password}
           aria-invalid={Boolean(state.fieldErrors?.password)}
           className={cn(
-            "h-11 rounded-[0.78rem] border-border/80 bg-white px-3.5 text-[15px] shadow-none placeholder:text-muted-foreground/70",
+            "h-11 rounded-(--radius-card) border-border/80 bg-white px-3.5 text-[15px] shadow-none placeholder:text-muted-foreground/70",
             state.fieldErrors?.password && "border-destructive"
           )}
         />
@@ -75,7 +75,7 @@ export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
 
       <SubmitButton
         pendingLabel="Logging in..."
-        className="h-11 w-full rounded-[0.78rem] text-[15px] font-medium"
+        className="h-11 w-full rounded-(--radius-card) text-[15px] font-medium"
       >
         Log in
       </SubmitButton>

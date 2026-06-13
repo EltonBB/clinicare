@@ -1,22 +1,16 @@
 import { NextResponse } from "next/server";
 
+import { isAuthorizedCronRequest } from "@/lib/cron-auth";
+import { logger } from "@/lib/logger";
 import { syncAppointmentRemindersJob } from "@/lib/reminders";
 
 export const dynamic = "force-dynamic";
-
-function isAuthorized(request: Request) {
-  const configuredSecret = process.env.CRON_SECRET?.trim();
-
-  if (!configuredSecret) {
-    return process.env.NODE_ENV !== "production";
-  }
-
-  const authorization = request.headers.get("authorization")?.trim();
-  return authorization === `Bearer ${configuredSecret}`;
-}
+// Reminders fan out across all WhatsApp-enabled clinics with external sends per
+// appointment; give the batch room beyond the platform default.
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
-  if (!isAuthorized(request)) {
+  if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized cron request." }, { status: 401 });
   }
 
@@ -38,8 +32,8 @@ export async function GET(request: Request) {
         },
       }
     );
-  } catch {
-    console.error("Reminder cron job failed.");
+  } catch (error) {
+    logger.error("Reminder cron job failed.", error);
 
     return NextResponse.json(
       {

@@ -32,6 +32,10 @@ export default async function DashboardPage() {
   const todayEnd = todayWindow.end;
   const monthStart = getZonedMonthStart(now, timeZone);
   const recentWindowStart = getZonedDayWindow(subDays(now, 29), timeZone).start;
+  // Late in the month, monthStart precedes the 30-day window — fetch from
+  // whichever is earlier so month-to-date metrics aren't truncated.
+  const analyticsWindowStart =
+    monthStart < recentWindowStart ? monthStart : recentWindowStart;
   const weekdayMap = [6, 0, 1, 2, 3, 4, 5];
   const todayWeekday = weekdayMap[getZonedWeekday(now, timeZone)] ?? 0;
 
@@ -45,14 +49,14 @@ export default async function DashboardPage() {
     lastClientsResult,
     nextAppointmentResult,
     analyticsAppointmentsResult,
+    paymentsResult,
+    conversationsResult,
+    staffMembersResult,
   ] =
     await Promise.allSettled([
       prisma.appointment.findMany({
         where: {
           businessId: business.id,
-          status: {
-            not: "COMPLETED",
-          },
           startAt: {
             gte: todayStart,
             lte: todayEnd,
@@ -125,6 +129,7 @@ export default async function DashboardPage() {
           id: true,
           name: true,
           phone: true,
+          updatedAt: true,
         },
         orderBy: [
           {
@@ -166,7 +171,7 @@ export default async function DashboardPage() {
         where: {
           businessId: business.id,
           startAt: {
-            gte: recentWindowStart,
+            gte: analyticsWindowStart,
             lte: todayEnd,
           },
         },
@@ -175,6 +180,70 @@ export default async function DashboardPage() {
           startAt: true,
           endAt: true,
         },
+      }),
+      prisma.clientPayment.findMany({
+        where: {
+          businessId: business.id,
+          OR: [
+            {
+              paidAt: {
+                gte: monthStart,
+              },
+            },
+            {
+              paidAt: null,
+              createdAt: {
+                gte: monthStart,
+              },
+            },
+          ],
+        },
+        select: {
+          amountCents: true,
+          status: true,
+          paidAt: true,
+          createdAt: true,
+        },
+      }),
+      prisma.conversation.findMany({
+        where: {
+          businessId: business.id,
+        },
+        select: {
+          id: true,
+          contactName: true,
+          unreadCount: true,
+          updatedAt: true,
+          messages: {
+            select: {
+              body: true,
+              sentAt: true,
+            },
+            orderBy: {
+              sentAt: "desc",
+            },
+            take: 1,
+          },
+        },
+        orderBy: {
+          updatedAt: "desc",
+        },
+        take: 4,
+      }),
+      prisma.staffMember.findMany({
+        where: {
+          businessId: business.id,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          role: true,
+        },
+        orderBy: {
+          name: "asc",
+        },
+        take: 6,
       }),
     ]);
 
@@ -200,6 +269,11 @@ export default async function DashboardPage() {
     analyticsAppointmentsResult.status === "fulfilled"
       ? analyticsAppointmentsResult.value
       : [];
+  const payments = paymentsResult.status === "fulfilled" ? paymentsResult.value : [];
+  const conversations =
+    conversationsResult.status === "fulfilled" ? conversationsResult.value : [];
+  const staffMembers =
+    staffMembersResult.status === "fulfilled" ? staffMembersResult.value : [];
 
   if (appointmentsResult.status === "rejected") {
     console.error("Dashboard appointments query failed", appointmentsResult.reason);
@@ -249,6 +323,18 @@ export default async function DashboardPage() {
     );
   }
 
+  if (paymentsResult.status === "rejected") {
+    console.error("Dashboard payments query failed", paymentsResult.reason);
+  }
+
+  if (conversationsResult.status === "rejected") {
+    console.error("Dashboard conversations query failed", conversationsResult.reason);
+  }
+
+  if (staffMembersResult.status === "rejected") {
+    console.error("Dashboard staff query failed", staffMembersResult.reason);
+  }
+
   const todaysHours =
     todaysHoursRecord && todaysHoursRecord.isOpen
       ? Math.max(
@@ -268,7 +354,11 @@ export default async function DashboardPage() {
     clientCount,
     appointmentCount,
     analyticsAppointments,
+    payments,
+    conversations,
+    staffMembers,
     monthStart,
+    recentWindowStart,
     recentClientId: recentClient?.id,
     now,
     timeZone,

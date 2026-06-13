@@ -55,7 +55,6 @@ export type SettingsState = {
     phoneNumber: string;
     sendReminders: boolean;
     reminderWindow: string;
-    template: string;
     connection: {
       phase:
         | "NOT_STARTED"
@@ -70,7 +69,6 @@ export type SettingsState = {
       requestedPhoneNumber: string;
       senderPhoneNumber: string;
       alternatePhoneNumber: string;
-      externalSenderId: string;
       senderLabel: string;
       phaseLabel: string;
       statusLabel: string;
@@ -82,7 +80,6 @@ export type SettingsState = {
       showVerificationInput: boolean;
       verificationLabel: string;
       displayNameLabel: string;
-      lastError: string;
       connectedAtLabel: string;
       onboardingStartedAtLabel: string;
       lastSyncedLabel: string;
@@ -145,8 +142,8 @@ function buildBillingSummary(business: Business): SettingsState["billing"] {
         : "Your workspace is on the Basic plan with core clinic operations enabled for daily use.",
     nextStep:
       planName === "Pro"
-        ? "Live billing is not connected yet. When payments are enabled, this workspace will manage plan changes here."
-        : "Upgrade flow is prepared, but payment collection goes live later. For now, Pro can be unlocked manually during testing.",
+        ? "Online billing opens soon. Contact support to change plans."
+        : "Pro unlocks full reports. Contact support to upgrade.",
     ctaLabel: planName === "Pro" ? "Manage plan" : "Unlock Pro",
     checkoutHref: "/checkout?plan=pro",
     lockedFeatures:
@@ -351,7 +348,6 @@ export function buildWhatsAppConnectionSummary(
     connection?.requestedPhoneNumber ?? fallbackRequestedPhoneNumber
   );
   const senderPhoneNumber = normalizePhone(connection?.senderPhoneNumber ?? "");
-  const externalSenderId = connection?.externalSenderId ?? "";
   const senderLabel = mode === "LIVE" ? "Live sender" : "Sandbox sender";
   const verificationStatus = connection?.verificationStatus ?? "NOT_STARTED";
   const displayNameStatus = connection?.displayNameStatus ?? "UNKNOWN";
@@ -399,7 +395,6 @@ export function buildWhatsAppConnectionSummary(
     requestedPhoneNumber,
     senderPhoneNumber,
     alternatePhoneNumber,
-    externalSenderId,
     senderLabel,
     phaseLabel: customerCopy.phaseLabel,
     statusLabel: statusLabelMap[status],
@@ -411,7 +406,6 @@ export function buildWhatsAppConnectionSummary(
     showVerificationInput: customerCopy.showVerificationInput,
     verificationLabel: formatVerificationLabel(verificationStatus),
     displayNameLabel: formatDisplayNameLabel(displayNameStatus),
-    lastError: connection?.lastError ?? "",
     connectedAtLabel: formatConnectionTimestamp(connection?.connectedAt),
     onboardingStartedAtLabel: formatConnectionTimestamp(connection?.onboardingStartedAt),
     lastSyncedLabel: formatConnectionTimestamp(connection?.lastSyncedAt),
@@ -455,7 +449,6 @@ export function buildSettingsStateFromWorkspace({
       phoneNumber: business.whatsappNumber ?? "",
       sendReminders: business.whatsappEnabled,
       reminderWindow: reminderSettings?.reminderWindow ?? "24 hours before",
-      template: reminderTemplate,
       connection: buildWhatsAppConnectionSummary(
         whatsappConnection,
         business.whatsappNumber ?? ""
@@ -472,7 +465,30 @@ export function buildSettingsStateFromWorkspace({
   };
 }
 
-export type SaveSettingsPayload = SettingsState;
+/**
+ * The editable subset of SettingsState. Derived/display fields (logoDisplayUrl,
+ * connection copy, billing summary) are intentionally excluded — they are
+ * server-computed output, never client input.
+ */
+export type SaveSettingsPayload = {
+  business: {
+    businessName: string;
+    businessType: BusinessType;
+    ownerName: string;
+    logoUrl: string;
+  };
+  appearance: {
+    accentColor: BrandAccentChoice;
+    accentHex: string;
+  };
+  workingHours: WorkingHoursState;
+  whatsapp: {
+    phoneNumber: string;
+    sendReminders: boolean;
+    reminderWindow: string;
+  };
+  reminders: SettingsReminders;
+};
 
 export const weekdayLabels: Record<WeekdayKey, string> = {
   monday: "Monday",

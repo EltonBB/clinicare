@@ -45,6 +45,13 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+@theme {
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 :root {
   --background: #eef2f7;
   --foreground: #111827;
@@ -53,6 +60,7 @@
   --popover: rgba(255, 255, 255, 0.98);
   --popover-foreground: #111827;
   --primary: #0A22FF;
+  --primary-hover: #0a1ee2;
   --brand-start: #0A22FF;
   --brand-end: #64B6FF;
   --brand-ink: #14152f;
@@ -61,7 +69,7 @@
   --secondary: #f2f4fb;
   --secondary-foreground: #14152f;
   --muted: #f2f5fb;
-  --muted-foreground: #65738a;
+  --muted-foreground: #5b6980;
   --accent: #eef4ff;
   --accent-foreground: #0A22FF;
   --destructive: #e05261;
@@ -76,6 +84,21 @@
   --chart-4: #d9e7ff;
   --chart-5: #eef3ff;
   --radius: 0.72rem;
+  --radius-tile: 0.65rem;
+  --radius-card: 0.72rem;
+  --radius-field: 0.95rem;
+  --radius-panel: 1.15rem;
+  --radius-modal: 1.35rem;
+  --radius-hero: 1.5rem;
+  --duration-fast: 140ms;
+  --duration-base: 190ms;
+  --duration-slow: 240ms;
+  --duration-entrance: 480ms;
+  --shadow-card: 0 3px 9px rgba(20, 21, 47, 0.018), inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  --shadow-card-hover: 0 6px 16px rgba(20, 21, 47, 0.05);
+  --shadow-pop: 0 16px 40px rgba(20, 21, 47, 0.12);
+  --shadow-modal: 0 30px 90px rgba(20, 21, 47, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  --shadow-button: 0 12px 30px rgba(20, 21, 47, 0.05);
   --sidebar: rgba(255, 255, 255, 0.92);
   --sidebar-foreground: #14152f;
   --sidebar-primary: #0A22FF;
@@ -124,8 +147,8 @@
   textarea,
   select {
     transition-property: background-color, border-color, color, box-shadow, opacity, transform;
-    transition-duration: 180ms;
-    transition-timing-function: ease-out;
+    transition-duration: var(--duration-base);
+    transition-timing-function: var(--ease-out-quint);
   }
 
   ::selection {
@@ -166,31 +189,135 @@
   }
 
   .surface-card {
-    @apply rounded-[0.68rem] border border-border/80 bg-white;
-    box-shadow:
-      0 3px 9px rgba(20, 21, 47, 0.018),
-      inset 0 1px 0 rgba(255, 255, 255, 0.78);
+    @apply border border-border/80 bg-white;
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
   }
 
   .surface-soft {
-    @apply rounded-[0.68rem] border border-border/75 bg-white;
+    @apply border border-border/75 bg-white;
+    border-radius: var(--radius-card);
     box-shadow: 0 2px 7px rgba(20, 21, 47, 0.014);
   }
 
+  /* Canonical hover for interactive KPI / stat tiles (dashboard recipe).
+     Tint + soft shadow, never a lift — so every tile across the app behaves
+     identically. Static container cards must NOT use this. */
+  .card-hover {
+    transition-property: border-color, background-color, box-shadow;
+    transition-duration: var(--duration-base);
+    transition-timing-function: var(--ease-out-quint);
+  }
+
+  .card-hover:hover {
+    border-color: var(--border);
+    background-color: #fcfdff;
+    box-shadow: var(--shadow-card-hover);
+  }
+
   .section-reveal {
-    animation: vela-fade-up 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: vela-fade-up var(--duration-entrance) var(--ease-out-expo) both;
   }
 
   .section-reveal-delayed {
-    animation: vela-fade-up 680ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: vela-fade-up calc(var(--duration-entrance) + 200ms) var(--ease-out-expo) both;
   }
 
   .interactive-lift {
+    transition:
+      transform var(--duration-base) var(--ease-out-quint),
+      box-shadow var(--duration-base) var(--ease-out-quint);
     will-change: transform;
   }
 
   .interactive-lift:hover {
     transform: translateY(-2px);
+  }
+
+  .interactive-lift:active {
+    transform: translateY(0);
+    transition-duration: var(--duration-fast);
+  }
+
+  .state-pop {
+    animation: vela-state-in var(--duration-slow) var(--ease-out-quint) both;
+  }
+
+  .step-enter {
+    animation: vela-step-in 260ms var(--ease-out-expo) both;
+  }
+
+  .stagger-children > * {
+    animation: vela-fade-up var(--duration-entrance) var(--ease-out-expo) both;
+  }
+
+  .bar-rise {
+    transform-origin: bottom;
+    animation: vela-bar-rise calc(var(--duration-entrance) + 120ms) var(--ease-out-expo) both;
+  }
+
+  .badge-pulse {
+    animation: vela-badge-pulse 360ms var(--ease-out-quint);
+  }
+
+  .event-enter {
+    animation: vela-event-in 320ms var(--ease-out-expo) backwards;
+  }
+
+  .now-ping {
+    animation: vela-now-ping 2.8s var(--ease-out-quint) infinite;
+  }
+
+  .stagger-children > :nth-child(1) {
+    animation-delay: 0ms;
+  }
+
+  .stagger-children > :nth-child(2) {
+    animation-delay: 60ms;
+  }
+
+  .stagger-children > :nth-child(3) {
+    animation-delay: 120ms;
+  }
+
+  .stagger-children > :nth-child(4) {
+    animation-delay: 180ms;
+  }
+
+  .stagger-children > :nth-child(5) {
+    animation-delay: 240ms;
+  }
+
+  .stagger-children > :nth-child(6) {
+    animation-delay: 300ms;
+  }
+
+  .display-1 {
+    font-size: clamp(2.75rem, 5vw + 1.1rem, 5.5rem);
+    line-height: 0.96;
+    letter-spacing: -0.025em;
+    font-weight: 600;
+  }
+
+  .display-2 {
+    font-size: clamp(2rem, 3vw + 0.8rem, 3.5rem);
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+    font-weight: 600;
+  }
+
+  .display-3 {
+    font-size: clamp(1.55rem, 2vw + 0.6rem, 2.4rem);
+    line-height: 1.08;
+    letter-spacing: -0.015em;
+    font-weight: 600;
+  }
+
+  .eyebrow {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
   }
 
   .glass-divider {
@@ -206,7 +333,7 @@
   }
 
   .tour-coachmark {
-    animation: vela-tour-enter 180ms ease-out both;
+    animation: vela-tour-enter var(--duration-base) var(--ease-out-quint) both;
     will-change: opacity, transform;
   }
 
@@ -249,9 +376,15 @@
   }
 
   .landing-reveal {
-    animation: vela-fade-up 680ms cubic-bezier(0.22, 1, 0.36, 1) both;
-    animation-timeline: view();
-    animation-range: entry 0% cover 30%;
+    /* Visible by default; scroll-driven reveal only where supported. */
+  }
+
+  @supports (animation-timeline: view()) {
+    .landing-reveal {
+      animation: vela-fade-up 680ms var(--ease-out-expo) both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 30%;
+    }
   }
 
   .landing-gradient-glow {
@@ -267,7 +400,7 @@
   .mockup-frame {
     min-width: 0;
     overflow: hidden;
-    border-radius: 1.15rem;
+    border-radius: var(--radius-panel);
     border: 1px solid rgba(92, 102, 132, 0.16);
     background:
       radial-gradient(circle at 18% 0%, rgba(10, 34, 255, 0.09), transparent 16rem),
@@ -287,7 +420,7 @@
 
   .landing-card-pop {
     z-index: 2;
-    animation: vela-card-pop 760ms cubic-bezier(0.22, 1, 0.36, 1) both,
+    animation: vela-card-pop 760ms var(--ease-out-expo) both,
       vela-card-drift 7s ease-in-out infinite;
     will-change: transform, opacity;
   }
@@ -341,7 +474,7 @@
   @media (width < 64rem) {
     .landing-float,
     .landing-card-pop {
-      animation: vela-card-pop 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
+      animation: vela-card-pop 560ms var(--ease-out-expo) both;
       will-change: opacity, transform;
     }
 
@@ -359,8 +492,19 @@
     .landing-reveal,
     .landing-float,
     .landing-card-pop,
-    .landing-streak {
+    .landing-streak,
+    .bar-rise,
+    .badge-pulse,
+    .event-enter,
+    .now-ping {
       animation: none;
+    }
+
+    .state-pop,
+    .step-enter,
+    .stagger-children > * {
+      animation: vela-fade-only 200ms ease-out both;
+      animation-delay: 0ms;
     }
   }
 }
@@ -373,6 +517,81 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes vela-state-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes vela-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes vela-fade-only {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes vela-bar-rise {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes vela-badge-pulse {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.22);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes vela-event-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes vela-now-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  70%,
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
   }
 }
 
@@ -471,7 +690,18 @@
   .dialog-accent-orb,
   .landing-float,
   .landing-card-pop,
-  .landing-streak {
+  .landing-streak,
+  .bar-rise,
+  .badge-pulse,
+  .event-enter,
+  .now-ping {
     animation: none;
+  }
+
+  .state-pop,
+  .step-enter,
+  .stagger-children > * {
+    animation: vela-fade-only 200ms ease-out both;
+    animation-delay: 0ms;
   }
 }

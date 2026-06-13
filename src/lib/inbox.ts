@@ -1,4 +1,3 @@
-import { differenceInCalendarDays, format, isToday, isYesterday } from "date-fns";
 import type {
   Client,
   Conversation,
@@ -6,11 +5,21 @@ import type {
   MessageDeliveryStatus,
 } from "@prisma/client";
 
+import {
+  formatZonedDayName,
+  formatZonedFullDate,
+  formatZonedShortDate,
+  formatZonedTime,
+  getAppTimeZone,
+  zonedCalendarDaysBetween,
+} from "@/lib/time-zone";
+
 export type InboxMessage = {
   id: string;
   sender: "client" | "business" | "system";
   body: string;
   timestamp: string;
+  dayLabel: string;
   deliveryStatus?: "queued" | "sent" | "delivered" | "read" | "failed";
   deliveryLabel?: string;
 };
@@ -72,24 +81,40 @@ export function phoneLookupKey(value: string) {
   return normalizePhone(value).replace(/^\+/, "");
 }
 
-function formatConversationTimestamp(date: Date) {
-  if (isToday(date)) {
-    return format(date, "h:mm a");
+function formatConversationTimestamp(date: Date, now: Date, timeZone: string) {
+  const daysAgo = zonedCalendarDaysBetween(date, now, timeZone);
+
+  if (daysAgo <= 0) {
+    return formatZonedTime(date, timeZone);
   }
 
-  if (isYesterday(date)) {
+  if (daysAgo === 1) {
     return "Yesterday";
   }
 
-  if (differenceInCalendarDays(new Date(), date) < 7) {
-    return format(date, "EEE");
+  if (daysAgo < 7) {
+    return formatZonedDayName(date, timeZone);
   }
 
-  return format(date, "MMM d");
+  return formatZonedShortDate(date, timeZone);
 }
 
-function formatMessageTimestamp(date: Date) {
-  return format(date, "h:mm a");
+function formatMessageTimestamp(date: Date, timeZone: string) {
+  return formatZonedTime(date, timeZone);
+}
+
+function formatMessageDayLabel(date: Date, now: Date, timeZone: string) {
+  const daysAgo = zonedCalendarDaysBetween(date, now, timeZone);
+
+  if (daysAgo <= 0) {
+    return "Today";
+  }
+
+  if (daysAgo === 1) {
+    return "Yesterday";
+  }
+
+  return formatZonedFullDate(date, timeZone);
 }
 
 function toMessageSender(direction: Message["direction"]): InboxMessage["sender"] {
@@ -138,31 +163,45 @@ function deliveryLabel(status: MessageDeliveryStatus | null) {
   return "Queued";
 }
 
-function linkedClientForConversation(
-  conversation: Pick<Conversation, "phoneNumber">,
-  clients: InboxClientLink[]
-) {
-  const normalizedPhone = normalizePhone(conversation.phoneNumber);
+// Index clients by their digit phone key once, so each conversation resolves its
+// linked client in O(1) instead of re-scanning the whole client list (and
+// re-deriving keys) per conversation. Keeps the first client per key, matching
+// the previous `find` semantics.
+function buildClientPhoneIndex(clients: InboxClientLink[]) {
+  const index = new Map<string, InboxClientLink>();
 
-  return clients.find((client) => phoneLookupKey(client.phone) === phoneLookupKey(normalizedPhone));
+  for (const client of clients) {
+    const key = phoneLookupKey(client.phone);
+    if (key && !index.has(key)) {
+      index.set(key, client);
+    }
+  }
+
+  return index;
 }
 
 export function buildInboxConversation(
   conversation: InboxConversationRecord,
-  clients: InboxClientLink[]
+  clients: InboxClientLink[],
+  now: Date = new Date(),
+  timeZone: string = getAppTimeZone(),
+  clientIndex?: Map<string, InboxClientLink>
 ): InboxConversation {
-  const linkedClient = linkedClientForConversation(conversation, clients);
-  const messages = [...conversation.messages]
-    .sort((first, second) => first.sentAt.getTime() - second.sentAt.getTime())
-    .map((message) => ({
-      id: message.id,
-      sender: toMessageSender(message.direction),
-      body: message.body,
-      timestamp: formatMessageTimestamp(message.sentAt),
-      deliveryStatus: toInboxDeliveryStatus(message.deliveryStatus),
-      deliveryLabel: deliveryLabel(message.deliveryStatus),
-    }));
-  const lastMessage = conversation.messages[conversation.messages.length - 1];
+  const index = clientIndex ?? buildClientPhoneIndex(clients);
+  const linkedClient = index.get(phoneLookupKey(conversation.phoneNumber));
+  const sortedMessages = [...conversation.messages].sort(
+    (first, second) => first.sentAt.getTime() - second.sentAt.getTime()
+  );
+  const messages = sortedMessages.map((message) => ({
+    id: message.id,
+    sender: toMessageSender(message.direction),
+    body: message.body,
+    timestamp: formatMessageTimestamp(message.sentAt, timeZone),
+    dayLabel: formatMessageDayLabel(message.sentAt, now, timeZone),
+    deliveryStatus: toInboxDeliveryStatus(message.deliveryStatus),
+    deliveryLabel: deliveryLabel(message.deliveryStatus),
+  }));
+  const lastMessage = sortedMessages[sortedMessages.length - 1];
   const lastActivityAt = lastMessage?.sentAt ?? conversation.updatedAt;
   const isLinkedClient = Boolean(linkedClient);
   const fallbackDisplayName =
@@ -179,13 +218,13 @@ export function buildInboxConversation(
     displayName: linkedClient?.name ?? fallbackDisplayName,
     isLinkedClient,
     contactStatusLabel: linkedClient ? "Client linked" : "Unregistered contact",
-    preview: lastMessage?.body ?? "No messages yet.",
+    preview: lastMessage?.body ?? "",
     unreadCount: conversation.unreadCount,
-    lastMessageAt: formatConversationTimestamp(lastActivityAt),
+    lastMessageAt: formatConversationTimestamp(lastActivityAt, now, timeZone),
     activeLabel: linkedClient
-      ? conversation.unreadCount > 0
-        ? "Active now"
-        : "Last reply recently"
+      ? lastMessage
+        ? `Last message ${formatConversationTimestamp(lastActivityAt, now, timeZone)}`
+        : ""
       : "Reply first, then convert to client",
     messages,
   };
@@ -195,8 +234,11 @@ export function buildInboxViewFromWorkspace(args: {
   conversations: InboxConversationRecord[];
   clients: InboxClientLink[];
 }): InboxViewModel {
+  const now = new Date();
+  const timeZone = getAppTimeZone();
+  const clientIndex = buildClientPhoneIndex(args.clients);
   const conversations = args.conversations.map((conversation) =>
-    buildInboxConversation(conversation, args.clients)
+    buildInboxConversation(conversation, args.clients, now, timeZone, clientIndex)
   );
 
   return {

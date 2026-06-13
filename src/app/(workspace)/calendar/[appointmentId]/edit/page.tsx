@@ -1,4 +1,3 @@
-import { format } from "date-fns";
 import { notFound } from "next/navigation";
 
 import { NewAppointmentForm } from "@/components/calendar/new-appointment-form";
@@ -6,6 +5,7 @@ import { CreatePageShell } from "@/components/workspace/create-page-shell";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { buildCalendarViewFromRecords } from "@/lib/calendar";
 import { prisma } from "@/lib/prisma";
+import { formatZonedDateKey } from "@/lib/time-zone";
 
 export default async function EditAppointmentPage({
   params,
@@ -89,7 +89,7 @@ export default async function EditAppointmentPage({
     staffMembers,
     businessHours,
     ownerName,
-    initialDate: format(appointment.startAt, "yyyy-MM-dd"),
+    initialDate: formatZonedDateKey(appointment.startAt),
   });
   const initialAppointment = calendarView.appointments[0];
 

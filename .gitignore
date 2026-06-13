@@ -46,3 +46,14 @@ next-env.d.ts
 
 # local Claude Code settings (machine-specific)
 .claude/settings.local.json
+
+# Playwright MCP browser artifacts (snapshots, console logs, screenshots — may capture page data; keep out of git)
+/.playwright-mcp/
+/qa-*.jpeg
+/qa-*.png
+
+# Saved signed-in session / secrets for Playwright QA (live auth cookies — never commit)
+/.auth/
+
+# One-off local QA/seed helpers (machine-specific paths, write to the live DB — keep local)
+/scripts/tmp-*

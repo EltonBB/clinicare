@@ -10,7 +10,11 @@ import { deleteStaffAction, saveStaffAction } from "@/app/(workspace)/staff/acti
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { WorkspaceFormSection } from "@/components/workspace/workspace-layout";
+import {
+  fieldInputClass,
+  fieldSelectClass,
+  WorkspaceFormSection,
+} from "@/components/workspace/workspace-layout";
 import { staffRoles, staffStatuses, type StaffRecord, type StaffStatus } from "@/lib/staff";
 import { cn } from "@/lib/utils";
 
@@ -111,7 +115,7 @@ function SelectField({
         name={name}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full rounded-[0.9rem] border border-border/80 bg-white px-3 text-sm outline-none transition-[border-color,box-shadow] focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/35"
+        className={fieldSelectClass}
       >
         {options.map((option) => (
           <option key={option} value={option}>
@@ -194,7 +198,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
         <div className="grid gap-3.5 sm:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Name</span>
-            <Input name="name" required defaultValue={staff?.name} placeholder="Staff member name" className="h-11 rounded-[0.9rem] bg-white" />
+            <Input name="name" required defaultValue={staff?.name} placeholder="Staff member name" className={fieldInputClass} />
           </label>
           <SelectField
             name="role"
@@ -212,11 +216,11 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
           />
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Phone</span>
-            <Input name="phone" defaultValue={staff?.phone} placeholder="+1 555 000 0000" className="h-11 rounded-[0.9rem] bg-white" />
+            <Input name="phone" defaultValue={staff?.phone} placeholder="+1 555 000 0000" className={fieldInputClass} />
           </label>
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-foreground">Email</span>
-            <Input name="email" type="email" defaultValue={staff?.email} placeholder="staff@example.com" className="h-11 rounded-[0.9rem] bg-white" />
+            <Input name="email" type="email" defaultValue={staff?.email} placeholder="staff@example.com" className={fieldInputClass} />
           </label>
         </div>
       </WorkspaceFormSection>
@@ -228,7 +232,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
             name="profileNote"
             defaultValue={staff?.profileNote}
             placeholder="Working preferences, specialties, or scheduling notes"
-            className="min-h-24 rounded-[0.9rem] bg-white px-3 py-3"
+            className="min-h-24 rounded-(--radius-card) bg-white px-3 py-3"
           />
         </label>
       </WorkspaceFormSection>
@@ -315,7 +319,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
       </WorkspaceFormSection>
 
       {error ? (
-        <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div className="rounded-(--radius-card) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       ) : null}
@@ -325,7 +329,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
           <Button
             type="button"
             variant="outline"
-            className="rounded-[0.9rem] border-destructive/25 bg-white text-destructive hover:bg-destructive/5 hover:text-destructive"
+            className="rounded-(--radius-card) border-destructive/25 bg-white text-destructive hover:bg-destructive/5 hover:text-destructive"
             onClick={deleteStaff}
             disabled={isPending}
           >
@@ -338,12 +342,12 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
         <div className="flex justify-end gap-3">
         <Link
           href={staff ? `/staff/${staff.id}` : "/staff"}
-          className={cn(buttonVariants({ variant: "outline" }), "rounded-[0.9rem] bg-white")}
+          className={cn(buttonVariants({ variant: "outline" }), "rounded-(--radius-card) bg-white")}
         >
           <ArrowLeft className="size-4" />
           Cancel
         </Link>
-        <Button type="submit" className="rounded-[0.9rem]" disabled={isPending}>
+        <Button type="submit" className="rounded-(--radius-card)" disabled={isPending}>
           {isEditing ? <Save className="size-4" /> : <UserRoundPlus className="size-4" />}
           {isPending ? "Saving..." : isEditing ? "Save staff" : "Create staff"}
         </Button>

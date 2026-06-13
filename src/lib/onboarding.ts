@@ -27,13 +27,6 @@ export const onboardingSteps = [
     description:
       "Start with one person so bookings and availability have an owner from day one.",
   },
-  {
-    id: "dashboard",
-    shortLabel: "Dashboard",
-    title: "Customize your dashboard",
-    description:
-      "Choose what your workspace should prioritize first so the dashboard feels useful from day one.",
-  },
 ] as const;
 
 export type OnboardingStepId = (typeof onboardingSteps)[number]["id"];
@@ -76,14 +69,6 @@ export type OnboardingState = {
     name: string;
     role: string;
   };
-  dashboard: {
-    widgets: Array<
-      | "todayAppointments"
-      | "lastClients"
-      | "nextStaffAppointment"
-      | "analytics"
-    >;
-  };
 };
 
 const defaultWorkingHours: WorkingHoursState = {
@@ -115,9 +100,6 @@ export function createDefaultOnboardingState(): OnboardingState {
       name: "",
       role: "Specialist",
     },
-    dashboard: {
-      widgets: ["todayAppointments"],
-    },
   };
 }
 
@@ -131,33 +113,6 @@ function readString(value: unknown, fallback: string) {
 
 function readBoolean(value: unknown, fallback: boolean) {
   return typeof value === "boolean" ? value : fallback;
-}
-
-function readDashboardWidgets(
-  value: unknown,
-  fallback: OnboardingState["dashboard"]["widgets"]
-) {
-  const allowed = new Set([
-    "todayAppointments",
-    "lastClients",
-    "nextStaffAppointment",
-    "analytics",
-  ]);
-
-  if (Array.isArray(value)) {
-    const widgets = value.filter(
-      (item): item is OnboardingState["dashboard"]["widgets"][number] =>
-        typeof item === "string" && allowed.has(item)
-    );
-
-    return widgets.length > 0 ? widgets : fallback;
-  }
-
-  if (typeof value === "string" && allowed.has(value)) {
-    return [value as OnboardingState["dashboard"]["widgets"][number]];
-  }
-
-  return fallback;
 }
 
 function readCurrentStep(value: unknown) {
@@ -187,7 +142,6 @@ export function normalizeOnboardingState(value: unknown): OnboardingState {
   }, {} as WorkingHoursState);
 
   const staffMember = isRecord(value.staffMember) ? value.staffMember : {};
-  const dashboard = isRecord(value.dashboard) ? value.dashboard : {};
   const owner = isRecord(value.owner) ? value.owner : {};
   const clinic = isRecord(value.clinic) ? value.clinic : {};
 
@@ -208,12 +162,6 @@ export function normalizeOnboardingState(value: unknown): OnboardingState {
     staffMember: {
       name: readString(staffMember.name, defaults.staffMember.name),
       role: readString(staffMember.role, defaults.staffMember.role),
-    },
-    dashboard: {
-      widgets: readDashboardWidgets(
-        dashboard.widgets ?? dashboard.focus,
-        defaults.dashboard.widgets
-      ),
     },
   };
 }

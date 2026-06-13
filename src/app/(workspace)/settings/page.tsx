@@ -2,9 +2,7 @@ import { after } from "next/server";
 
 import { SettingsWorkspace } from "@/components/settings/settings-workspace";
 import { requireCurrentWorkspace } from "@/lib/business";
-import { prisma } from "@/lib/prisma";
-import { buildSettingsStateFromWorkspace } from "@/lib/settings";
-import { resolveMediaDisplayUrl } from "@/lib/media-storage-server";
+import { loadSettingsState } from "@/lib/settings-server";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 
 type SettingsPageProps = {
@@ -25,41 +23,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     }
   });
 
-  const [businessHours, reminderSettings, whatsappConnection] = await Promise.all([
-    prisma.businessHours.findMany({
-      where: {
-        businessId: business.id,
-      },
-      orderBy: {
-        weekday: "asc",
-      },
-    }),
-    prisma.reminderSettings.findUnique({
-      where: {
-        businessId: business.id,
-      },
-    }),
-    prisma.whatsAppConnection.findUnique({
-      where: {
-        businessId: business.id,
-      },
-    }),
-  ]);
-
-  const logoDisplayUrl = await resolveMediaDisplayUrl(business.logoUrl);
-  const initialState = buildSettingsStateFromWorkspace({
-    business,
-    logoDisplayUrl,
-    supportEmail: user.email ?? "",
-    ownerName:
-      typeof user.user_metadata?.full_name === "string" &&
-      user.user_metadata.full_name.trim().length > 0
-        ? user.user_metadata.full_name
-        : user.email ?? "Workspace Owner",
-    businessHours,
-    reminderSettings,
-    whatsappConnection,
-  });
+  const initialState = await loadSettingsState(user, business);
 
   return (
     <SettingsWorkspace

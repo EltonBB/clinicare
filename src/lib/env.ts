@@ -1,3 +1,7 @@
+import { z } from "zod";
+
+import { logger } from "@/lib/logger";
+
 function readRequiredEnv(names: string[]) {
   for (const name of names) {
     const value = process.env[name]?.trim();
@@ -23,4 +27,80 @@ export function getSupabasePublishableKey() {
     "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
     "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY",
   ]);
+}
+
+const requiredEnvSchema = z.object({
+  DATABASE_URL: z.string().trim().min(1, "DATABASE_URL is required"),
+  NEXT_PUBLIC_SUPABASE_URL: z
+    .string()
+    .trim()
+    .url("NEXT_PUBLIC_SUPABASE_URL must be a valid URL"),
+});
+
+// Feature-specific vars: their absence degrades a feature but must not stop the
+// server from booting. We surface a loud warning instead of failing deep inside
+// a request later.
+const importantOptionalEnv: Record<string, string> = {
+  APP_URL: "auth email links and absolute URLs may be incorrect",
+  CRON_SECRET: "scheduled reminder/analytics jobs will reject every request",
+  OPENAI_API_KEY: "AI insights fall back to rule-based snapshots",
+  TWILIO_ACCOUNT_SID: "WhatsApp messaging is unavailable",
+  TWILIO_AUTH_TOKEN: "WhatsApp messaging is unavailable",
+  TWILIO_WHATSAPP_FROM: "WhatsApp messaging is unavailable",
+};
+
+/**
+ * Validate server environment once at startup (see instrumentation.ts). Hard
+ * vars fail the boot loudly; feature vars only warn. Never log secret values.
+ */
+export function validateServerEnv() {
+  const errors: string[] = [];
+  const parsed = requiredEnvSchema.safeParse(process.env);
+
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) {
+      errors.push(`${issue.path.join(".")}: ${issue.message}`);
+    }
+  }
+
+  const hasPublishableKey =
+    !!process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ||
+    !!process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY?.trim();
+
+  if (!hasPublishableKey) {
+    errors.push(
+      "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or _DEFAULT_KEY) is required"
+    );
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Invalid server environment:\n - ${errors.join("\n - ")}`);
+  }
+
+  for (const [name, impact] of Object.entries(importantOptionalEnv)) {
+    if (!process.env[name]?.trim()) {
+      logger.warn(`Environment variable ${name} is not set — ${impact}.`);
+    }
+  }
+
+  // Connection-pooling guard (warn only). On serverless each function instance
+  // opens its own connection; the Supabase transaction pooler (port 6543)
+  // multiplexes these safely. A direct (db.<ref>.supabase.co) or session-mode
+  // (:5432) runtime URL can exhaust Postgres connections under concurrency.
+  if (process.env.NODE_ENV === "production") {
+    try {
+      const dbUrl = new URL(process.env.DATABASE_URL ?? "");
+      const isDirectHost = /(^|\.)db\.[^.]+\.supabase\.co$/i.test(dbUrl.hostname);
+
+      if (isDirectHost || dbUrl.port === "5432") {
+        logger.warn(
+          "DATABASE_URL does not look like the Supabase transaction pooler (port 6543). " +
+            "Under serverless concurrency this can exhaust database connections — point the " +
+            "runtime URL at the transaction pooler and keep the direct/session URL in DIRECT_URL."
+        );
+      }
+    } catch {
+      // A malformed URL is already reported by the required-env check above.
+    }
+  }
 }

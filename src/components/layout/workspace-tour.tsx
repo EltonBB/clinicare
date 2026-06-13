@@ -75,7 +75,7 @@ const tourSteps: TourStep[] = [
     points: [
       "Dashboard gives the daily overview.",
       "Calendar, Clients, Staff, Inbox, Reports, and Settings each have their own workspace.",
-      "The current plan and account menu stay at the bottom.",
+      "Settings and log out stay pinned at the bottom.",
     ],
     icon: <LayoutDashboard className="size-4" />,
     advanceMode: "button",
@@ -102,38 +102,20 @@ const tourSteps: TourStep[] = [
   {
     id: "dashboard-actions",
     path: "/dashboard",
-    target: "dashboard-quick-actions",
+    target: "dashboard-overview",
     kicker: "Quick actions",
-    title: "Use the right-side actions for fast work",
+    title: "Everything on the dashboard is a shortcut",
     description:
-      "The right panel keeps the most common actions visible without crowding the main dashboard.",
+      "The stat tiles, schedule rows, and module links all jump straight to the page behind them.",
     points: [
-      "Book an appointment from anywhere on the dashboard.",
-      "Add a new client before scheduling if needed.",
-      "Open Inbox when a WhatsApp conversation needs attention.",
+      "Click a stat tile to open Calendar, Clients, Reports, or Inbox.",
+      "The Next up card opens the appointment directly.",
+      "New appointment stays in the header on every visit.",
     ],
     icon: <WandSparkles className="size-4" />,
     buttonLabel: "Next",
     advanceMode: "button",
     placement: "content",
-  },
-  {
-    id: "dashboard-customize",
-    path: "/dashboard",
-    target: "dashboard-customize",
-    kicker: "Personalize",
-    title: "Customize what the dashboard shows",
-    description:
-      "Every clinic can choose the widgets that match how they work. This keeps the dashboard useful instead of overloaded.",
-    points: [
-      "Select appointment, client, staff, and analytics widgets.",
-      "Changes apply to the dashboard layout.",
-      "The right-side quick actions stay available for everyone.",
-    ],
-    icon: <Settings2 className="size-4" />,
-    buttonLabel: "Next",
-    advanceMode: "button",
-    placement: "header-action",
   },
   {
     id: "calendar-nav",
@@ -811,7 +793,7 @@ export function WorkspaceTour({
             <button
               type="button"
               onClick={finishTour}
-              className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-border/80 bg-white text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+              className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-border/80 bg-white text-muted-foreground transition-colors duration-(--duration-base) hover:border-primary/30 hover:text-foreground"
               aria-label="Close tour"
             >
               <X className="size-4" />

@@ -1,7 +1,8 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { requireCurrentBusiness } from "@/lib/business";
+import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
+import { logger } from "@/lib/logger";
 import {
   buildInboxConversation,
   buildInboxViewFromWorkspace,
@@ -16,7 +17,6 @@ import {
   sendTwilioWhatsAppTemplateMessage,
 } from "@/lib/whatsapp";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
-import { createClient } from "@/utils/supabase/server";
 
 export type SendInboxMessageResult = {
   ok: boolean;
@@ -49,23 +49,10 @@ export type ConvertConversationToClientResult = {
   clientId?: string;
 };
 
-async function getAuthedBusiness() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return {
-      error: "Your session expired. Log in again to manage the inbox.",
-    } as const;
-  }
-
-  const business = await requireCurrentBusiness(user, {
-    missingBusinessRedirect: "/onboarding",
-  });
-
-  return { business, user } as const;
+function getAuthedBusiness() {
+  return getAuthedBusinessContext(
+    "Your session expired. Log in again to manage the inbox."
+  );
 }
 
 async function hydrateConversation(conversationId: string, businessId: string) {
@@ -375,7 +362,12 @@ export async function sendInboxMessageAction(
         from: senderPhoneNumber,
       });
     }
-  } catch {
+  } catch (error) {
+    logger.error("WhatsApp outbound send failed.", error, {
+      businessId: context.business.id,
+      conversationId,
+    });
+
     await prisma.whatsAppConnection.update({
       where: {
         businessId: context.business.id,

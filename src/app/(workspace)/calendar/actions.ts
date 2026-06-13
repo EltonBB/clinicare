@@ -1,10 +1,15 @@
 "use server";
 
-import { format } from "date-fns";
 import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/prisma";
-import { requireCurrentBusiness } from "@/lib/business";
+import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
+import {
+  formatZonedDateKey,
+  formatZonedTime24,
+  getZonedWeekday,
+  parseZonedWallClock,
+} from "@/lib/time-zone";
 import {
   hasUnsafePublicUrl,
   normalizeOptionalPublicUrl,
@@ -14,7 +19,6 @@ import {
   type CalendarAppointment,
   type CalendarAppointmentStatus,
 } from "@/lib/calendar";
-import { createClient } from "@/utils/supabase/server";
 
 export type SaveAppointmentPayload = {
   id?: string;
@@ -66,28 +70,16 @@ export type SaveScheduleBlockResult = {
   blockId?: string;
 };
 
-async function getAuthedBusiness() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return {
-      error: "Your session expired. Log in again to manage appointments.",
-    } as const;
-  }
-
-  const business = await requireCurrentBusiness(user, {
-    missingBusinessRedirect: "/onboarding",
-  });
-
-  return { business } as const;
+function getAuthedBusiness() {
+  return getAuthedBusinessContext(
+    "Your session expired. Log in again to manage appointments."
+  );
 }
 
+// Interpret the operator's wall-clock entry in the clinic's time zone and store
+// the true UTC instant (shared helper — see lib/time-zone.ts).
 function parseDateTime(date: string, time: string) {
-  const parsed = new Date(`${date}T${time}:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return parseZonedWallClock(date, time);
 }
 
 function parseOptionalDate(value?: string) {
@@ -123,7 +115,9 @@ async function isInsideBusinessHours(args: {
   startTime: string;
   endTime: string;
 }) {
-  const weekday = (args.startAt.getDay() + 6) % 7;
+  // Map the zoned weekday (Sun=0..Sat=6) onto the clinic schedule's Monday=0
+  // convention so near-midnight bookings resolve to the correct day's hours.
+  const weekday = (getZonedWeekday(args.startAt) + 6) % 7;
   const hours = await prisma.businessHours.findUnique({
     where: {
       businessId_weekday: {
@@ -189,9 +183,9 @@ async function hydrateAppointment(appointmentId: string) {
     service: appointment.title,
     staffMemberId: appointment.staffMemberId ?? undefined,
     staffName: appointment.staffMember?.name ?? "Workspace staff",
-    date: format(appointment.startAt, "yyyy-MM-dd"),
-    startTime: format(appointment.startAt, "HH:mm"),
-    endTime: format(appointment.endAt, "HH:mm"),
+    date: formatZonedDateKey(appointment.startAt),
+    startTime: formatZonedTime24(appointment.startAt),
+    endTime: formatZonedTime24(appointment.endAt),
     notes: appointment.notes ?? "",
     status,
     tone:
@@ -468,6 +462,12 @@ export async function cancelAppointmentAction(
     },
     data: {
       status: "CANCELLED",
+    },
+  });
+  // Clear any pending reminder rows so a later re-confirm starts clean.
+  await prisma.appointmentReminder.deleteMany({
+    where: {
+      appointmentId,
     },
   });
   await refreshClientLastVisitAt(existing.clientId, business.id);

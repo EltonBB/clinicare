@@ -31,7 +31,7 @@ export default async function ForgotPasswordPage({
       </CardHeader>
       <CardContent className="space-y-9 px-8 pb-0 sm:px-10">
         {expired ? (
-          <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <div className="state-pop rounded-(--radius-field) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             That recovery link expired. Request a fresh password reset email below.
           </div>
         ) : null}

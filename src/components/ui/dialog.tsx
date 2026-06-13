@@ -31,7 +31,7 @@ function DialogOverlay({
     <DialogPrimitive.Backdrop
         data-slot="dialog-overlay"
         className={cn(
-        "fixed inset-0 isolate z-50 bg-[rgba(20,21,47,0.22)] duration-200 supports-backdrop-filter:backdrop-blur-md data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        "fixed inset-0 isolate z-50 bg-[rgba(16,21,40,0.32)] duration-(--duration-slow) supports-backdrop-filter:backdrop-blur-[2px] data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className
       )}
       {...props}
@@ -53,7 +53,7 @@ function DialogContent({
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] max-h-[calc(100vh-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-hidden overscroll-contain rounded-[1.35rem] border border-white/70 bg-popover p-5 text-sm text-popover-foreground shadow-[0_30px_90px_rgba(20,21,47,0.18),inset_0_1px_0_rgba(255,255,255,0.78)] outline-none backdrop-blur-xl duration-200 sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] max-h-[calc(100vh-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-hidden overscroll-contain rounded-(--radius-modal) border border-border/80 bg-white p-5 text-sm text-popover-foreground shadow-(--shadow-modal) outline-none duration-(--duration-slow) ease-out-quint sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-[0.98] data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-[0.98]",
           className
         )}
         {...props}
@@ -102,7 +102,7 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        "glass-divider flex flex-col-reverse gap-2 border-t border-white/60 bg-white/72 px-5 py-4 backdrop-blur-sm sm:flex-row sm:justify-end",
+        "flex flex-col-reverse gap-2 border-t border-border/70 bg-[#fafbfd] px-5 py-3.5 sm:flex-row sm:justify-end",
         className
       )}
       {...props}

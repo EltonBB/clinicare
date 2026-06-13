@@ -1,8 +1,11 @@
-import {
-  differenceInMinutes,
-  format,
-} from "date-fns";
+import { differenceInMinutes } from "date-fns";
 import type { Appointment, BusinessHours, Client, ScheduleBlock, StaffMember } from "@prisma/client";
+
+import {
+  formatZonedDateKey,
+  formatZonedTime24,
+  getAppTimeZone,
+} from "@/lib/time-zone";
 
 export type CalendarAppointmentStatus = "confirmed" | "pending" | "cancelled" | "completed";
 export type CalendarAppointmentTone = "primary" | "secondary" | "muted";
@@ -46,12 +49,28 @@ export type CalendarBusinessHours = {
 
 export type CalendarViewModel = {
   initialDate: string;
+  timeZoneLabel: string;
   appointments: CalendarAppointment[];
   scheduleBlocks: CalendarScheduleBlock[];
   clients: CalendarSelectOption[];
   staffMembers: CalendarSelectOption[];
   businessHours: CalendarBusinessHours[];
 };
+
+function getTimeZoneLabel() {
+  try {
+    return (
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: getAppTimeZone(),
+        timeZoneName: "shortOffset",
+      })
+        .formatToParts(new Date())
+        .find((part) => part.type === "timeZoneName")?.value ?? "GMT"
+    );
+  } catch {
+    return "GMT";
+  }
+}
 
 type AppointmentWithRelations = Appointment & {
   client: Pick<Client, "id" | "name">;
@@ -126,10 +145,12 @@ export function buildCalendarViewFromRecords(args: {
     ownerName,
     initialDate,
   } = args;
-  const initialDateValue = initialDate ?? format(appointments[0]?.startAt ?? new Date(), "yyyy-MM-dd");
+  const initialDateValue =
+    initialDate ?? formatZonedDateKey(appointments[0]?.startAt ?? new Date());
 
   return {
     initialDate: initialDateValue,
+    timeZoneLabel: getTimeZoneLabel(),
     appointments: appointments.map((appointment) => ({
       id: appointment.id,
       clientId: appointment.clientId,
@@ -137,9 +158,9 @@ export function buildCalendarViewFromRecords(args: {
       service: appointment.title,
       staffMemberId: appointment.staffMemberId ?? undefined,
       staffName: appointment.staffMember?.name ?? ownerName,
-      date: format(appointment.startAt, "yyyy-MM-dd"),
-      startTime: format(appointment.startAt, "HH:mm"),
-      endTime: format(appointment.endAt, "HH:mm"),
+      date: formatZonedDateKey(appointment.startAt),
+      startTime: formatZonedTime24(appointment.startAt),
+      endTime: formatZonedTime24(appointment.endAt),
       notes: appointment.notes ?? "",
       status: toCalendarStatus(appointment.status),
       tone: toCalendarTone(appointment.status),
@@ -147,9 +168,9 @@ export function buildCalendarViewFromRecords(args: {
     scheduleBlocks: scheduleBlocks.map((block) => ({
       id: block.id,
       title: block.title,
-      date: format(block.startsAt, "yyyy-MM-dd"),
-      startTime: format(block.startsAt, "HH:mm"),
-      endTime: format(block.endsAt, "HH:mm"),
+      date: formatZonedDateKey(block.startsAt),
+      startTime: formatZonedTime24(block.startsAt),
+      endTime: formatZonedTime24(block.endsAt),
       notes: block.reason ?? "",
     })),
     clients: clients.map((client) => ({

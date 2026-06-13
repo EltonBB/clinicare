@@ -1,26 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { useState, useTransition } from "react";
 import {
+  AlertCircle,
   ArrowLeft,
   CalendarDays,
   CalendarPlus2,
   CheckCircle2,
-  ClipboardList,
+  ChevronRight,
   CreditCard,
-  Bell,
   Download,
   FileText,
   HeartPulse,
   ImagePlus,
-  Inbox,
   Mail,
   MessageSquare,
-  MoreHorizontal,
   NotebookText,
+  Pencil,
   Phone,
+  Plus,
+  Trash2,
   UserRoundPen,
 } from "lucide-react";
 
@@ -32,21 +33,44 @@ import {
   addClientMedicationAction,
   addClientPaymentAction,
   addClientTreatmentPlanItemAction,
+  deleteClientCareNoteAction,
+  deleteClientDocumentAction,
+  deleteClientFollowUpReminderAction,
+  deleteClientGalleryItemAction,
+  deleteClientHealthItemAction,
+  deleteClientMedicationAction,
+  deleteClientPaymentAction,
+  deleteClientTreatmentPlanItemAction,
+  updateClientCareNoteAction,
+  updateClientDocumentAction,
+  updateClientFollowUpReminderAction,
+  updateClientHealthItemAction,
+  updateClientMedicationAction,
+  updateClientPaymentAction,
+  updateClientTreatmentPlanItemAction,
+  type ClientRecordMutationResult,
 } from "@/app/(workspace)/clients/actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import {
-  WorkspaceKpiCard,
-  WorkspaceKpiGrid,
+  ConfirmDeleteDialog,
+  RecordFormDialog,
+  type RecordField,
+  type RecordFormValues,
+} from "@/components/clients/record-form-dialog";
+import {
   WorkspaceEmptyState,
   WorkspacePage,
 } from "@/components/workspace/workspace-layout";
+import { HeaderStat } from "@/components/workspace/header-stat";
 import { uploadWorkspaceDocument } from "@/lib/media-storage-client";
-import { cn } from "@/lib/utils";
-import type { ClientRecord, ClientStatus } from "@/lib/clients";
+import { cn, getInitials } from "@/lib/utils";
+import type {
+  ClientRecord,
+  ClientStatus,
+  ClientTimelineEntry,
+} from "@/lib/clients";
 
 type ClientDetailsPageProps = {
   initialClient: ClientRecord;
@@ -59,108 +83,204 @@ const statusLabels: Record<ClientStatus, string> = {
   archived: "Archived",
 };
 
-function clientInitials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2);
-}
+const statusBadgeStyles: Record<ClientStatus, string> = {
+  active: "bg-emerald-100 text-emerald-700",
+  "at-risk": "bg-destructive/10 text-destructive",
+  inactive: "bg-secondary text-muted-foreground",
+  archived: "bg-secondary text-muted-foreground",
+};
 
-function NativeSelect({
-  value,
-  options,
-  onChange,
-}: {
-  value: string;
-  options: string[];
-  onChange: (value: string) => void;
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className="h-11 w-full rounded-[0.7rem] border border-border/80 bg-white/84 px-3 text-sm outline-none transition-[border-color,background-color,box-shadow] duration-200 focus:border-ring focus:bg-white focus-visible:ring-3 focus-visible:ring-ring/40"
-    >
-      {options.map((option) => (
-        <option key={option} value={option}>
-          {option}
-        </option>
-      ))}
-    </select>
-  );
+const documentCategories = [
+  "Insurance",
+  "Consent",
+  "Medical History",
+  "Report",
+  "Image / Scan",
+  "Invoice",
+  "Other",
+];
+
+type EntityKind =
+  | "medication"
+  | "health"
+  | "treatment"
+  | "note"
+  | "reminder"
+  | "payment"
+  | "document";
+
+type DialogState =
+  | { mode: "create"; kind: EntityKind; initialValues?: RecordFormValues }
+  | {
+      mode: "edit";
+      kind: EntityKind;
+      recordId: string;
+      initialValues: RecordFormValues;
+    }
+  | { mode: "delete"; kind: EntityKind | "gallery"; recordId: string; label: string }
+  | null;
+
+const entityDialogs: Record<
+  EntityKind,
+  {
+    createTitle: string;
+    editTitle: string;
+    description: string;
+    submitCreate: string;
+    fields: RecordField[];
+  }
+> = {
+  medication: {
+    createTitle: "Add medication",
+    editTitle: "Edit medication",
+    description: "Record what this patient is currently taking.",
+    submitCreate: "Add medication",
+    fields: [
+      { key: "name", label: "Medication name", required: true, placeholder: "Amoxicillin" },
+      { key: "dosage", label: "Dosage", placeholder: "500mg" },
+      { key: "frequency", label: "Frequency", placeholder: "2x daily" },
+      { key: "isActive", label: "Currently active", type: "checkbox" },
+      { key: "notes", label: "Notes", type: "textarea" },
+    ],
+  },
+  health: {
+    createTitle: "Add health item",
+    editTitle: "Edit health item",
+    description: "Allergies, alerts, conditions, vitals, or care facts.",
+    submitCreate: "Add health item",
+    fields: [
+      {
+        key: "type",
+        label: "Type",
+        type: "select",
+        options: ["Allergy", "Medical alert", "Chronic condition", "Vital detail", "Care fact"],
+      },
+      { key: "label", label: "Label", required: true, placeholder: "Penicillin allergy" },
+      { key: "value", label: "Value", placeholder: "Optional value" },
+      { key: "severity", label: "Severity", placeholder: "High / Moderate / Low" },
+      { key: "notes", label: "Notes", type: "textarea" },
+    ],
+  },
+  treatment: {
+    createTitle: "Add treatment plan item",
+    editTitle: "Edit treatment plan item",
+    description: "Keep the care plan structured and trackable.",
+    submitCreate: "Add item",
+    fields: [
+      { key: "title", label: "Plan item", required: true, placeholder: "Whitening session 2" },
+      {
+        key: "status",
+        label: "Status",
+        type: "select",
+        options: ["Pending", "Upcoming", "Completed", "On hold"],
+      },
+      { key: "dueAt", label: "Due date", type: "date" },
+      { key: "description", label: "Details", type: "textarea" },
+    ],
+  },
+  note: {
+    createTitle: "Add provider note",
+    editTitle: "Edit provider note",
+    description: "Internal clinical note from the care team.",
+    submitCreate: "Add note",
+    fields: [
+      { key: "title", label: "Title", placeholder: "Optional title" },
+      { key: "body", label: "Note", type: "textarea", required: true },
+    ],
+  },
+  reminder: {
+    createTitle: "Add follow-up reminder",
+    editTitle: "Edit follow-up reminder",
+    description: "Schedule a follow-up touchpoint for this patient.",
+    submitCreate: "Add reminder",
+    fields: [
+      { key: "title", label: "Reminder", required: true, placeholder: "Post-visit check-in" },
+      { key: "remindAt", label: "Date", type: "date", required: true },
+      {
+        key: "channel",
+        label: "Channel",
+        type: "select",
+        options: ["WhatsApp", "SMS", "Email", "Phone call"],
+      },
+      {
+        key: "status",
+        label: "Status",
+        type: "select",
+        options: ["Scheduled", "Sent", "Completed"],
+      },
+      { key: "notes", label: "Notes", type: "textarea" },
+    ],
+  },
+  payment: {
+    createTitle: "Add ledger entry",
+    editTitle: "Edit ledger entry",
+    description: "Record a manual payment or billing entry.",
+    submitCreate: "Add entry",
+    fields: [
+      { key: "amount", label: "Amount", required: true, placeholder: "85.00" },
+      {
+        key: "status",
+        label: "Status",
+        type: "select",
+        options: ["Paid", "Unpaid", "Partially Paid", "Refunded"],
+      },
+      { key: "paidAt", label: "Payment date", type: "date" },
+      { key: "paymentMethod", label: "Payment method", placeholder: "Cash, card, transfer..." },
+      { key: "invoiceNumber", label: "Invoice number" },
+      { key: "receiptNumber", label: "Receipt number" },
+      { key: "description", label: "Description", fullWidth: true, placeholder: "Whitening session" },
+      { key: "receiptUrl", label: "Receipt link", fullWidth: true, placeholder: "https://..." },
+      { key: "billingNote", label: "Billing note", type: "textarea" },
+    ],
+  },
+  document: {
+    createTitle: "Add document",
+    editTitle: "Edit document",
+    description: "Private document metadata for this patient file.",
+    submitCreate: "Add document",
+    fields: [
+      { key: "fileName", label: "File name", required: true },
+      { key: "fileType", label: "Category", type: "select", options: documentCategories },
+      { key: "notes", label: "Notes", type: "textarea" },
+    ],
+  },
+};
+
+const timelineIcons: Record<ClientTimelineEntry["kind"], ComponentType<{ className?: string }>> = {
+  appointment: CalendarDays,
+  payment: CreditCard,
+  note: NotebookText,
+  document: FileText,
+  message: MessageSquare,
+};
+
+function stripPlaceholder(value: string, ...placeholders: string[]) {
+  return placeholders.includes(value) ? "" : value;
 }
 
 export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   const [client, setClient] = useState(initialClient);
-  const [medicationDraft, setMedicationDraft] = useState({
-    name: "",
-    dosage: "",
-    frequency: "",
-    notes: "",
-    isActive: true,
-  });
-  const [documentDraft, setDocumentDraft] = useState({
-    fileName: "",
-    fileType: "Medical",
-    fileUrl: "",
-    storageUrl: "",
-    mimeType: "",
-    fileSize: 0,
-    notes: "",
-  });
-  const [healthDraft, setHealthDraft] = useState({
-    type: "Allergy",
-    label: "",
-    value: "",
-    severity: "",
-    notes: "",
-  });
-  const [careNoteDraft, setCareNoteDraft] = useState({
-    title: "",
-    body: "",
-  });
-  const [treatmentDraft, setTreatmentDraft] = useState({
-    title: "",
-    description: "",
-    status: "Pending",
-    dueAt: "",
-  });
-  const [reminderDraft, setReminderDraft] = useState({
-    title: "",
-    remindAt: "",
-    channel: "WhatsApp",
-    status: "Scheduled",
-    notes: "",
-  });
-  const [paymentDraft, setPaymentDraft] = useState({
-    amount: "",
-    status: "Paid",
-    description: "",
-    receiptUrl: "",
-    paidAt: "",
-    invoiceNumber: "",
-    receiptNumber: "",
-    paymentMethod: "Manual",
-    billingNote: "",
-  });
+  const [dialog, setDialog] = useState<DialogState>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
-  const [isGalleryUploading, setIsGalleryUploading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [pendingUpload, setPendingUpload] = useState<{
+    storageUrl: string;
+    mimeType: string;
+    fileSize: number;
+  } | null>(null);
   const [selectedTab, setSelectedTab] = useState("overview");
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [isPending, startSaving] = useTransition();
+
   const upcomingAppointments = client.appointments.filter(
     (appointment) => appointment.status === "PENDING" || appointment.status === "CONFIRMED"
   );
   const pastAppointments = client.appointments.filter(
     (appointment) => appointment.status === "COMPLETED"
   );
-  const firstVisit = client.appointments.at(-1)?.date ?? "No visits yet";
-  const nextAppointment = upcomingAppointments[0]?.date ?? "No appointment booked";
-  const lastMessage = client.messages[0]?.timestamp ?? "No messages yet";
-  const latestAppointment = client.appointments[0];
-  const currentMedications = client.medications.filter((medication) => medication.isActive);
   const latestPayment = client.payments[0];
+  const currentMedications = client.medications.filter((medication) => medication.isActive);
   const totalBilledDisplay = new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -171,63 +291,213 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   const alerts = client.healthItems.filter((item) =>
     item.type.toLowerCase().includes("alert")
   );
-  const careFacts = client.healthItems.filter(
-    (item) => !allergies.some((allergy) => allergy.id === item.id) &&
-      !alerts.some((alert) => alert.id === item.id)
-  );
+  const clinicalAlerts = [...alerts, ...allergies];
+  const selectedDocument =
+    client.documents.find((document) => document.id === selectedDocumentId) ??
+    client.documents[0];
 
-  function addMedication() {
+  function runMutation(
+    mutate: () => Promise<ClientRecordMutationResult>,
+    successMessage: string
+  ) {
     startSaving(async () => {
-      const result = await addClientMedicationAction({
-        clientId: client.id,
-        ...medicationDraft,
-      });
+      const result = await mutate();
 
       if (!result.ok || !result.client) {
-        setErrorMessage(result.error ?? "We couldn't add this medication.");
+        setErrorMessage(result.error ?? "We couldn't save this change.");
         setStatusMessage("");
         return;
       }
 
       setClient(result.client);
-      setMedicationDraft({
-        name: "",
-        dosage: "",
-        frequency: "",
-        notes: "",
-        isActive: true,
-      });
+      setDialog(null);
       setErrorMessage("");
-      setStatusMessage("Medication added.");
+      setStatusMessage(successMessage);
     });
   }
 
-  function addDocument() {
-    startSaving(async () => {
-      const result = await addClientDocumentAction({
-        clientId: client.id,
-        ...documentDraft,
-      });
+  function handleRecordSubmit(values: RecordFormValues) {
+    if (!dialog || dialog.mode === "delete") {
+      return;
+    }
 
-      if (!result.ok || !result.client) {
-        setErrorMessage(result.error ?? "We couldn't add this document.");
-        setStatusMessage("");
-        return;
+    const { kind } = dialog;
+    // Narrows to a string only in edit mode; truthiness below removes the need
+    // for non-null assertions when forwarding the id to the update actions.
+    const editId = dialog.mode === "edit" ? dialog.recordId : undefined;
+    const v = (key: string) => String(values[key] ?? "");
+
+    switch (kind) {
+      case "medication": {
+        const payload = {
+          clientId: client.id,
+          name: v("name"),
+          dosage: v("dosage"),
+          frequency: v("frequency"),
+          notes: v("notes"),
+          isActive: Boolean(values.isActive),
+        };
+        runMutation(
+          () =>
+            editId
+              ? updateClientMedicationAction({ ...payload, id: editId })
+              : addClientMedicationAction(payload),
+          editId ? "Medication updated." : "Medication added."
+        );
+        break;
       }
+      case "health": {
+        const payload = {
+          clientId: client.id,
+          type: v("type"),
+          label: v("label"),
+          value: v("value"),
+          severity: v("severity"),
+          notes: v("notes"),
+        };
+        runMutation(
+          () =>
+            editId
+              ? updateClientHealthItemAction({ ...payload, id: editId })
+              : addClientHealthItemAction(payload),
+          editId ? "Health item updated." : "Health item added."
+        );
+        break;
+      }
+      case "treatment": {
+        const payload = {
+          clientId: client.id,
+          title: v("title"),
+          description: v("description"),
+          status: v("status"),
+          dueAt: v("dueAt"),
+        };
+        runMutation(
+          () =>
+            editId
+              ? updateClientTreatmentPlanItemAction({ ...payload, id: editId })
+              : addClientTreatmentPlanItemAction(payload),
+          editId ? "Treatment plan item updated." : "Treatment plan item added."
+        );
+        break;
+      }
+      case "note": {
+        const payload = {
+          clientId: client.id,
+          title: v("title"),
+          body: v("body"),
+        };
+        runMutation(
+          () =>
+            editId
+              ? updateClientCareNoteAction({ ...payload, id: editId })
+              : addClientCareNoteAction(payload),
+          editId ? "Provider note updated." : "Provider note added."
+        );
+        break;
+      }
+      case "reminder": {
+        const payload = {
+          clientId: client.id,
+          title: v("title"),
+          remindAt: v("remindAt"),
+          channel: v("channel"),
+          status: v("status"),
+          notes: v("notes"),
+        };
+        runMutation(
+          () =>
+            editId
+              ? updateClientFollowUpReminderAction({ ...payload, id: editId })
+              : addClientFollowUpReminderAction(payload),
+          editId ? "Reminder updated." : "Follow-up reminder added."
+        );
+        break;
+      }
+      case "payment": {
+        const payload = {
+          clientId: client.id,
+          amount: v("amount"),
+          status: v("status"),
+          description: v("description"),
+          receiptUrl: v("receiptUrl"),
+          paidAt: v("paidAt"),
+          invoiceNumber: v("invoiceNumber"),
+          receiptNumber: v("receiptNumber"),
+          paymentMethod: v("paymentMethod"),
+          billingNote: v("billingNote"),
+        };
+        runMutation(
+          () =>
+            editId
+              ? updateClientPaymentAction({ ...payload, id: editId })
+              : addClientPaymentAction(payload),
+          editId ? "Ledger entry updated." : "Payment ledger entry added."
+        );
+        break;
+      }
+      case "document": {
+        if (editId) {
+          runMutation(
+            () =>
+              updateClientDocumentAction({
+                id: editId,
+                clientId: client.id,
+                fileName: v("fileName"),
+                fileType: v("fileType"),
+                notes: v("notes"),
+              }),
+            "Document updated."
+          );
+        } else {
+          runMutation(
+            async () => {
+              const result = await addClientDocumentAction({
+                clientId: client.id,
+                fileName: v("fileName"),
+                fileType: v("fileType"),
+                fileUrl: pendingUpload?.storageUrl ?? "",
+                storageUrl: pendingUpload?.storageUrl,
+                mimeType: pendingUpload?.mimeType,
+                fileSize: pendingUpload?.fileSize,
+                notes: v("notes"),
+              });
 
-      setClient(result.client);
-      setDocumentDraft({
-        fileName: "",
-        fileType: "Medical",
-        fileUrl: "",
-        storageUrl: "",
-        mimeType: "",
-        fileSize: 0,
-        notes: "",
-      });
-      setErrorMessage("");
-      setStatusMessage("Document added.");
-    });
+              if (result.ok) {
+                setPendingUpload(null);
+              }
+
+              return result;
+            },
+            "Document added."
+          );
+        }
+        break;
+      }
+    }
+  }
+
+  function handleDeleteConfirm() {
+    if (!dialog || dialog.mode !== "delete") {
+      return;
+    }
+
+    const payload = { id: dialog.recordId, clientId: client.id };
+    const deleteActions: Record<
+      EntityKind | "gallery",
+      (input: typeof payload) => Promise<ClientRecordMutationResult>
+    > = {
+      medication: deleteClientMedicationAction,
+      health: deleteClientHealthItemAction,
+      treatment: deleteClientTreatmentPlanItemAction,
+      note: deleteClientCareNoteAction,
+      reminder: deleteClientFollowUpReminderAction,
+      payment: deleteClientPaymentAction,
+      document: deleteClientDocumentAction,
+      gallery: deleteClientGalleryItemAction,
+    };
+
+    runMutation(() => deleteActions[dialog.kind](payload), "Record removed.");
   }
 
   async function handleDocumentFile(file?: File) {
@@ -235,157 +505,35 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
       return;
     }
 
-    setIsGalleryUploading(true);
+    setIsUploading(true);
 
     try {
       const uploadedDocument = await uploadWorkspaceDocument(file, {
         folder: "client-documents",
         maxBytes: 10_000_000,
       });
-      setDocumentDraft((current) => ({
-        ...current,
-        fileName: current.fileName || file.name,
-        fileType: file.type === "application/pdf" ? "Document" : "Image / Scan",
-        fileUrl: uploadedDocument.storageUrl,
+      setPendingUpload({
         storageUrl: uploadedDocument.storageUrl,
         mimeType: uploadedDocument.mimeType,
         fileSize: uploadedDocument.fileSize,
-      }));
+      });
       setErrorMessage("");
-      setStatusMessage("File uploaded. Add it to save it to this patient.");
+      setStatusMessage("");
+      setDialog({
+        mode: "create",
+        kind: "document",
+        initialValues: {
+          fileName: file.name,
+          fileType: file.type === "application/pdf" ? "Report" : "Image / Scan",
+          notes: "",
+        },
+      });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "We couldn't upload this file.");
       setStatusMessage("");
     } finally {
-      setIsGalleryUploading(false);
+      setIsUploading(false);
     }
-  }
-
-  function addHealthItem() {
-    startSaving(async () => {
-      const result = await addClientHealthItemAction({
-        clientId: client.id,
-        ...healthDraft,
-      });
-
-      if (!result.ok || !result.client) {
-        setErrorMessage(result.error ?? "We couldn't add this health item.");
-        setStatusMessage("");
-        return;
-      }
-
-      setClient(result.client);
-      setHealthDraft({
-        type: "Allergy",
-        label: "",
-        value: "",
-        severity: "",
-        notes: "",
-      });
-      setErrorMessage("");
-      setStatusMessage("Health item added.");
-    });
-  }
-
-  function addCareNote() {
-    startSaving(async () => {
-      const result = await addClientCareNoteAction({
-        clientId: client.id,
-        ...careNoteDraft,
-      });
-
-      if (!result.ok || !result.client) {
-        setErrorMessage(result.error ?? "We couldn't add this care note.");
-        setStatusMessage("");
-        return;
-      }
-
-      setClient(result.client);
-      setCareNoteDraft({ title: "", body: "" });
-      setErrorMessage("");
-      setStatusMessage("Care note added.");
-    });
-  }
-
-  function addTreatmentItem() {
-    startSaving(async () => {
-      const result = await addClientTreatmentPlanItemAction({
-        clientId: client.id,
-        ...treatmentDraft,
-      });
-
-      if (!result.ok || !result.client) {
-        setErrorMessage(result.error ?? "We couldn't add this treatment item.");
-        setStatusMessage("");
-        return;
-      }
-
-      setClient(result.client);
-      setTreatmentDraft({
-        title: "",
-        description: "",
-        status: "Pending",
-        dueAt: "",
-      });
-      setErrorMessage("");
-      setStatusMessage("Treatment plan item added.");
-    });
-  }
-
-  function addFollowUpReminder() {
-    startSaving(async () => {
-      const result = await addClientFollowUpReminderAction({
-        clientId: client.id,
-        ...reminderDraft,
-      });
-
-      if (!result.ok || !result.client) {
-        setErrorMessage(result.error ?? "We couldn't add this reminder.");
-        setStatusMessage("");
-        return;
-      }
-
-      setClient(result.client);
-      setReminderDraft({
-        title: "",
-        remindAt: "",
-        channel: "WhatsApp",
-        status: "Scheduled",
-        notes: "",
-      });
-      setErrorMessage("");
-      setStatusMessage("Follow-up reminder added.");
-    });
-  }
-
-  function addPayment() {
-    startSaving(async () => {
-      const result = await addClientPaymentAction({
-        clientId: client.id,
-        ...paymentDraft,
-      });
-
-      if (!result.ok || !result.client) {
-        setErrorMessage(result.error ?? "We couldn't add this payment.");
-        setStatusMessage("");
-        return;
-      }
-
-      setClient(result.client);
-      setPaymentDraft({
-        amount: "",
-        status: "Paid",
-        description: "",
-        receiptUrl: "",
-        paidAt: "",
-        invoiceNumber: "",
-        receiptNumber: "",
-        paymentMethod: "Manual",
-        billingNote: "",
-      });
-      setErrorMessage("");
-      setStatusMessage("Payment ledger entry added.");
-    });
   }
 
   function downloadPaymentStatement() {
@@ -417,12 +565,15 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
     URL.revokeObjectURL(url);
   }
 
+  const activeFormDialog =
+    dialog && dialog.mode !== "delete" ? entityDialogs[dialog.kind] : null;
+
   return (
     <WorkspacePage>
-      <section className="space-y-3.5 pb-1">
+      <section className="section-reveal space-y-3.5 pb-1">
         <Link
           href="/clients"
-          className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors duration-(--duration-base) hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
           Back to clients
@@ -430,9 +581,9 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
 
         <div className="flex flex-col gap-3.5 xl:flex-row xl:items-start xl:justify-between">
           <div className="flex min-w-0 items-start gap-3.5">
-            <Avatar className="size-20 rounded-full bg-primary/10 text-primary">
-              <AvatarFallback className="bg-primary/10 text-3xl font-semibold text-primary">
-                {clientInitials(client.name)}
+            <Avatar shape="square" className="size-20">
+              <AvatarFallback className="bg-white text-3xl font-semibold text-primary">
+                {getInitials(client.name)}
               </AvatarFallback>
             </Avatar>
 
@@ -441,67 +592,82 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 <h1 className="truncate text-[28px] font-semibold leading-tight tracking-tight text-foreground">
                   {client.name}
                 </h1>
-                <span className="rounded-md bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                <span
+                  className={cn(
+                    "rounded-full px-2.5 py-1 text-xs font-semibold",
+                    statusBadgeStyles[client.status]
+                  )}
+                >
                   {statusLabels[client.status]}
                 </span>
               </div>
 
-              <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
-                <span className="inline-flex items-center gap-2 font-medium text-foreground">
-                  <Phone className="size-4 text-muted-foreground" />
-                  {client.phone || "Not added"}
-                </span>
-                <span className="inline-flex items-center gap-2">
-                  <MessageSquare className="size-4 text-emerald-500" />
-                  {client.details.preferredChannel || "No preference"}
-                </span>
-                <span className="inline-flex items-center gap-2">
-                  <Mail className="size-4 text-muted-foreground" />
-                  {client.email || "Not added"}
-                </span>
+              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
+                {client.phone ? (
+                  <span className="inline-flex items-center gap-2 font-medium text-foreground">
+                    <Phone className="size-4 text-muted-foreground" />
+                    {client.phone}
+                  </span>
+                ) : null}
+                {client.email ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Mail className="size-4 text-muted-foreground" />
+                    {client.email}
+                  </span>
+                ) : null}
+                {!client.phone && !client.email ? (
+                  <span>No contact details yet</span>
+                ) : null}
+                {client.details.preferredChannel ? (
+                  <span className="inline-flex items-center gap-2">
+                    <MessageSquare className="size-4 text-muted-foreground" />
+                    Prefers {client.details.preferredChannel}
+                  </span>
+                ) : null}
               </div>
 
-              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                <span>Last visit: {client.lastVisit}</span>
-                <span className="hidden text-border sm:inline">/</span>
-                <span>Preferred contact: {client.details.preferredChannel}</span>
-              </div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Last visit: {client.lastVisit}
+              </p>
             </div>
           </div>
 
-          <div className="w-full space-y-3.5 xl:w-[560px]">
-            <WorkspaceKpiGrid className="sm:grid-cols-2 xl:grid-cols-4">
-              <WorkspaceKpiCard compact label="Visits" value={client.totalVisits} />
-              <WorkspaceKpiCard compact label="Completed" value={client.appointmentStats.completed} tone="good" />
-              <WorkspaceKpiCard compact label="Pending" value={client.appointmentStats.pending} />
-              <WorkspaceKpiCard
-                compact
+          <div className="w-full space-y-3 xl:w-[560px]">
+            <div className="surface-card stagger-children grid grid-cols-2 sm:grid-cols-4 sm:divide-x sm:divide-border/70">
+              <HeaderStat label="Visits" value={client.totalVisits.toString()} />
+              <HeaderStat
+                label="Completed"
+                value={client.appointmentStats.completed.toString()}
+                tone="good"
+              />
+              <HeaderStat label="Pending" value={client.appointmentStats.pending.toString()} />
+              <HeaderStat
                 label="Balance"
                 value={client.paymentStats.unpaidBalanceDisplay}
                 tone={client.paymentStats.unpaidBalanceCents > 0 ? "danger" : "default"}
               />
-            </WorkspaceKpiGrid>
-            <div className="flex flex-wrap justify-end gap-3">
+            </div>
+            <div className="flex flex-wrap justify-end gap-2.5">
               <Link
                 href={`/calendar/new?client=${client.id}`}
-                className={cn(buttonVariants({ variant: "outline" }), "h-10 rounded-[0.65rem] px-4")}
+                className={cn(buttonVariants({ variant: "solid" }), "h-10 rounded-(--radius-tile) px-4")}
               >
                 <CalendarPlus2 className="size-4" />
                 Book appointment
               </Link>
               <Link
                 href={`/inbox?client=${client.id}`}
-                className={cn(buttonVariants({ variant: "outline" }), "h-10 rounded-[0.65rem] px-4")}
+                className={cn(buttonVariants({ variant: "outline" }), "h-10 rounded-(--radius-tile) px-4")}
               >
                 <MessageSquare className="size-4" />
                 Send message
               </Link>
               <Link
                 href={`/clients/${client.id}/edit`}
-                className={cn(buttonVariants({ variant: "outline" }), "h-10 rounded-[0.65rem] px-4")}
+                className={cn(buttonVariants({ variant: "outline" }), "h-10 rounded-(--radius-tile) px-4")}
               >
-                <MoreHorizontal className="size-4" />
-                More actions
+                <UserRoundPen className="size-4" />
+                Edit profile
               </Link>
             </div>
           </div>
@@ -509,12 +675,12 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
       </section>
 
       {errorMessage ? (
-        <div className="rounded-[0.75rem] border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
+        <div className="state-pop rounded-(--radius-card) border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
           {errorMessage}
         </div>
       ) : null}
       {!errorMessage && statusMessage ? (
-        <div className="rounded-[0.75rem] border border-primary/20 bg-primary/8 px-3 py-2.5 text-sm text-primary">
+        <div className="state-pop rounded-(--radius-card) border border-primary/20 bg-primary/8 px-3 py-2.5 text-sm text-primary">
           {statusMessage}
         </div>
       ) : null}
@@ -526,222 +692,23 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
       >
         <TabsList
           variant="line"
-              className="w-full justify-start gap-4 overflow-x-auto rounded-none border-b border-border/80 p-0"
+          className="w-full justify-start gap-4 overflow-x-auto rounded-none border-b border-border/80 p-0"
         >
           <TabsTrigger className="flex-none px-0 pb-3" value="overview">Overview</TabsTrigger>
           <TabsTrigger className="flex-none px-0 pb-3" value="appointments">Appointments</TabsTrigger>
           <TabsTrigger className="flex-none px-0 pb-3" value="medical">Medical Info</TabsTrigger>
           <TabsTrigger className="flex-none px-0 pb-3" value="documents">Documents</TabsTrigger>
-          <TabsTrigger className="flex-none px-0 pb-3" value="messages">Messages</TabsTrigger>
           <TabsTrigger className="flex-none px-0 pb-3" value="payments">Payments</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="grid items-start gap-3 xl:grid-cols-[340px_minmax(0,1fr)]">
-          <div className="grid auto-rows-fr gap-3 lg:grid-cols-2 xl:col-start-2">
-              <section className="surface-card p-3.5 xl:hidden">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
-                    <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <CheckCircle2 className="size-4" />
-                    </span>
-                    Profile summary
-                  </h2>
-                  <Link
-                    href={`/clients/${client.id}/edit`}
-                    className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-[0.65rem]")}
-                  >
-                    <UserRoundPen className="size-4" />
-                    Edit
-                  </Link>
-                </div>
-                <dl className="mt-4 space-y-3">
-                  <OverviewLine label="Full name" value={client.name} />
-                  <OverviewLine icon={Phone} label="Phone number" value={client.phone || "Not added"} />
-                  <OverviewLine icon={Mail} label="Email" value={client.email || "Not added"} />
-                  <OverviewLine label="Gender" value={client.gender} />
-                  <OverviewLine label="Date of birth" value={client.dateOfBirth} />
-                  <OverviewLine label="Address" value={client.address} />
-                  <OverviewLine label="Patient type" value={client.patientType} />
-                  <OverviewLine label="Status" value={statusLabels[client.status]} />
-                </dl>
-              </section>
-
-              <section className="surface-card flex h-[236px] flex-col overflow-hidden p-3.5">
-                <h2 className="text-base font-semibold text-foreground">Care summary</h2>
-                <dl className="mt-4 space-y-3">
-                  <OverviewLine label="First visit" value={firstVisit} />
-                  <OverviewLine label="Last visit" value={client.lastVisit} />
-                  <OverviewLine label="Next appointment" value={nextAppointment} />
-                  <OverviewLine label="Preferred contact" value={client.details.preferredChannel} />
-                  <OverviewLine label="Patient notes" value={client.notes} />
-                </dl>
-              </section>
-
-              <section className="surface-card flex h-[236px] flex-col overflow-hidden p-3.5">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
-                    <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <CreditCard className="size-4" />
-                    </span>
-                    Payment snapshot
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedTab("payments")}
-                    className="text-sm font-medium text-primary"
-                  >
-                    View payments
-                  </button>
-                </div>
-                <dl className="mt-4 space-y-3">
-                  <OverviewLine label="Payment status" value={client.paymentStats.paymentStatus} />
-                  <OverviewLine label="Total paid" value={client.paymentStats.totalPaidDisplay} />
-                  <OverviewLine label="Unpaid balance" value={client.paymentStats.unpaidBalanceDisplay} />
-                  <OverviewLine
-                    label="Latest payment"
-                    value={latestPayment ? `${latestPayment.paidAt} / ${latestPayment.amountDisplay}` : "No payments yet"}
-                  />
-                </dl>
-              </section>
-
-              <section className="surface-card flex h-[236px] flex-col overflow-hidden p-3.5">
-                <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
-                  <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    <CheckCircle2 className="size-4" />
-                  </span>
-                  Latest appointment
-                </h2>
-              {latestAppointment ? (
-                <div className="mt-4 rounded-[0.85rem] bg-primary/5 px-3.5 py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="font-semibold text-foreground">{latestAppointment.title}</p>
-                    <span className="rounded-md bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">
-                      {latestAppointment.status.toLowerCase()}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-sm text-muted-foreground">{latestAppointment.date}</p>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{latestAppointment.notes}</p>
-                </div>
-              ) : (
-                <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                  No appointment history yet.
-                </p>
-              )}
-            </section>
-
-              <section className="surface-card flex h-[236px] flex-col overflow-hidden p-3.5">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
-                    <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <HeartPulse className="size-4" />
-                    </span>
-                    Health notes
-                  </h2>
-                  <Link
-                    href={`/clients/${client.id}/edit`}
-                    className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-[0.65rem]")}
-                  >
-                    Edit
-                  </Link>
-                </div>
-                <div className="mt-4 divide-y divide-border/70">
-                  <HealthSummaryRow title="Important health notes" value={client.medical.importantHealthNotes} />
-                  <HealthSummaryRow
-                    title="Current medication"
-                    value={
-                      currentMedications[0]
-                        ? `${currentMedications[0].name} ${currentMedications[0].dosage}`.trim()
-                        : "No active medications recorded."
-                    }
-                  />
-                </div>
-              </section>
-
-              <section className="surface-card flex h-[236px] flex-col overflow-hidden p-3.5">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
-                    <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <FileText className="size-4" />
-                    </span>
-                    Documents
-                  </h2>
-                </div>
-                <div className="mt-4 overflow-hidden rounded-[0.85rem] border border-border/75">
-                  <table className="w-full text-sm">
-                    <thead className="bg-secondary/45 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
-                      <tr>
-                        <th className="px-3 py-2.5 text-left">Name</th>
-                        <th className="px-3 py-2.5 text-left">Type</th>
-                        <th className="px-3 py-2.5 text-left">Uploaded on</th>
-                        <th className="px-3 py-2.5 text-left">Uploaded by</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/70 bg-white">
-                      {client.documents.slice(0, 3).map((document) => (
-                        <tr key={document.id}>
-                          <td className="px-3 py-2.5 font-medium text-foreground">{document.fileName}</td>
-                          <td className="px-3 py-2.5 text-muted-foreground">{document.category || document.fileType}</td>
-                          <td className="px-3 py-2.5 text-muted-foreground">{document.createdAt}</td>
-                          <td className="px-3 py-2.5 text-muted-foreground">{document.uploadedBy || "Workspace staff"}</td>
-                        </tr>
-                      ))}
-                      {client.documents.length === 0 ? null : null}
-                    </tbody>
-                  </table>
-                </div>
-                {client.documents.length === 0 ? (
-                  <div className="mt-3 rounded-[0.72rem] border border-dashed border-border/80 bg-[#fbfcfe] px-3.5 py-2.5 text-sm text-muted-foreground">
-                    No documents uploaded yet.
-                  </div>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => setSelectedTab("documents")}
-                  className="mt-auto inline-flex items-center gap-2 pt-3 text-sm font-medium text-primary"
-                >
-                  View all documents
-                  <ArrowLeft className="size-4 rotate-180" />
-                </button>
-              </section>
-
-              <section className="surface-card flex h-[236px] flex-col overflow-hidden p-3.5">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
-                    <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <Inbox className="size-4" />
-                    </span>
-                    Messages
-                  </h2>
-                  <Link href={`/inbox?client=${client.id}`} className="text-sm font-medium text-primary">
-                    View messages
-                  </Link>
-                </div>
-                <div className="mt-4 space-y-3">
-                  {client.messages.slice(0, 3).map((message) => (
-                    <div key={message.id} className="rounded-[0.85rem] border border-border/75 px-3 py-3">
-                      <p className="line-clamp-2 text-sm text-foreground">{message.body}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{message.timestamp}</p>
-                    </div>
-                  ))}
-                  {client.messages.length === 0 ? (
-                    <p className="rounded-[0.72rem] border border-dashed border-border/80 bg-[#fbfcfe] px-3.5 py-2.5 text-sm text-muted-foreground">No recent messages.</p>
-                  ) : null}
-                </div>
-                <Link
-                  href={`/inbox?client=${client.id}`}
-                  className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-auto w-fit rounded-[0.65rem]")}
-                >
-                  <MessageSquare className="size-4" />
-                  Send message
-                </Link>
-              </section>
-          </div>
-
-          <aside className="xl:col-start-1 xl:row-start-1">
-            <section className="surface-card flex flex-col p-3.5 xl:sticky xl:top-[76px] xl:min-h-[732px]">
+        <TabsContent value="overview" className="grid items-start gap-3.5 xl:grid-cols-[320px_minmax(0,1fr)]">
+          <aside>
+            <section className="surface-card flex flex-col p-3.5 xl:sticky xl:top-[76px]">
               <div className="flex items-center gap-3">
-                <Avatar size="lg">
-                  <AvatarFallback>{clientInitials(client.name)}</AvatarFallback>
+                <Avatar size="lg" shape="square">
+                  <AvatarFallback className="bg-white text-xs font-semibold text-primary">
+                    {getInitials(client.name)}
+                  </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0">
                   <h2 className="truncate text-base font-semibold text-foreground">{client.name}</h2>
@@ -750,15 +717,22 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   </p>
                 </div>
               </div>
-              <dl className="mt-4 space-y-3 border-b border-border/70 pb-4">
-                <OverviewLine icon={Phone} label="Phone" value={client.phone || "Not added"} />
-                <OverviewLine icon={Mail} label="Email" value={client.email || "Not added"} />
+              <dl className="mt-4 space-y-2.5">
+                <OverviewLine label="Phone" value={client.phone} />
+                <OverviewLine label="Email" value={client.email} />
                 <OverviewLine label="Patient type" value={client.patientType} />
+                <OverviewLine label="Date of birth" value={client.dateOfBirth} />
                 <OverviewLine label="Preferred contact" value={client.details.preferredChannel} />
               </dl>
+              {client.notes ? (
+                <div className="mt-3 border-t border-border/70 pt-3">
+                  <p className="text-sm text-muted-foreground">Patient notes</p>
+                  <p className="mt-1 text-sm leading-5 text-foreground">{client.notes}</p>
+                </div>
+              ) : null}
               <Link
                 href={`/clients/${client.id}/edit`}
-                className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-4 w-full rounded-[0.65rem] bg-white")}
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-4 w-full rounded-(--radius-tile) bg-white")}
               >
                 <UserRoundPen className="size-4" />
                 Edit profile
@@ -767,109 +741,177 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               <div className="mt-5 border-t border-border/70 pt-4">
                 <SidebarSectionHeader icon={CalendarDays} title="Upcoming appointment" />
                 {upcomingAppointments[0] ? (
-                  <div className="mt-3 rounded-[0.7rem] bg-primary/7 px-3.5 py-3">
+                  <div className="mt-3 rounded-(--radius-card) bg-primary/7 px-3.5 py-3">
                     <div className="flex items-start justify-between gap-3.5">
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-sm font-semibold text-foreground">{upcomingAppointments[0].date}</p>
-                        <p className="mt-2 font-semibold text-foreground">{upcomingAppointments[0].title}</p>
-                        <p className="mt-2 text-sm text-muted-foreground">{upcomingAppointments[0].notes}</p>
+                        <p className="mt-1.5 font-semibold text-foreground">{upcomingAppointments[0].title}</p>
+                        {upcomingAppointments[0].notes ? (
+                          <p className="mt-1.5 line-clamp-2 text-sm text-muted-foreground">
+                            {upcomingAppointments[0].notes}
+                          </p>
+                        ) : null}
                       </div>
-                      <span className="rounded-md bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">
-                        {upcomingAppointments[0].status.toLowerCase()}
-                      </span>
+                      <StatusBadge status={upcomingAppointments[0].status} />
                     </div>
                   </div>
                 ) : (
                   <p className="mt-3 text-sm text-muted-foreground">No upcoming appointment booked.</p>
                 )}
-                <Link href="/calendar" className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-primary">
+                <Link
+                  href="/calendar"
+                  className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-primary transition-colors duration-(--duration-base) hover:text-foreground"
+                >
                   View in calendar
-                  <ArrowLeft className="size-4 rotate-180" />
+                  <ChevronRight className="size-4" />
                 </Link>
-              </div>
-
-              <div className="mt-5 flex min-h-0 flex-1 flex-col border-t border-border/70 pt-4">
-                <SidebarSectionHeader icon={ClipboardList} title="Treatment plan" />
-                <div className="mt-3 space-y-3">
-                  {client.treatmentPlanItems.slice(0, 3).map((item) => (
-                    <div key={item.id} className="flex items-start justify-between gap-3 border-b border-border/70 pb-3 last:border-0 last:pb-0">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{item.title}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{item.description || item.dueAt}</p>
-                      </div>
-                      <span className="rounded-md bg-secondary px-2 py-1 text-[11px] font-semibold text-muted-foreground">
-                        {item.status}
-                      </span>
-                    </div>
-                  ))}
-                  {client.treatmentPlanItems.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">{client.medical.treatmentPlan}</p>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="mt-5 flex min-h-0 flex-1 flex-col border-t border-border/70 pt-4">
-                <div className="flex items-center justify-between gap-3">
-                  <SidebarSectionHeader icon={Bell} title="Follow-up reminders" />
-                  <button type="button" onClick={() => setSelectedTab("medical")} className="text-sm font-medium text-primary">
-                    Manage
-                  </button>
-                </div>
-                <div className="mt-3 space-y-3">
-                  {client.followUpReminders.slice(0, 3).map((reminder) => (
-                    <div key={reminder.id} className="rounded-[0.72rem] border border-border/75 px-3 py-2.5 text-sm">
-                      <p className="font-semibold text-foreground">{reminder.title}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {reminder.remindAt} - {reminder.channel} - {reminder.status}
-                      </p>
-                    </div>
-                  ))}
-                  {client.followUpReminders.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No follow-up reminders scheduled.</p>
-                  ) : null}
-                </div>
               </div>
             </section>
           </aside>
+
+          <div className="grid gap-3">
+            <div className="stagger-children grid auto-rows-fr gap-3 lg:grid-cols-2">
+              <section className="surface-card flex h-full flex-col p-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-[15px] font-semibold leading-5 text-foreground">Payment snapshot</h2>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTab("payments")}
+                    className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
+                  >
+                    View payments
+                  </button>
+                </div>
+                <dl className="mt-3.5 space-y-2.5">
+                  <OverviewLine label="Total paid" value={client.paymentStats.totalPaidDisplay} />
+                  <OverviewLine label="Unpaid balance" value={client.paymentStats.unpaidBalanceDisplay} />
+                  <OverviewLine
+                    label="Latest payment"
+                    value={
+                      latestPayment
+                        ? `${latestPayment.paidAt || latestPayment.createdAt} · ${latestPayment.amountDisplay}`
+                        : ""
+                    }
+                  />
+                </dl>
+              </section>
+
+              <section className="surface-card flex h-full flex-col p-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-[15px] font-semibold leading-5 text-foreground">Health notes</h2>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTab("medical")}
+                    className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
+                  >
+                    View medical info
+                  </button>
+                </div>
+                {client.medical.importantHealthNotes || currentMedications[0] ? (
+                  <div className="mt-2 divide-y divide-border/70">
+                    <HealthSummaryRow
+                      title="Important health notes"
+                      value={client.medical.importantHealthNotes}
+                    />
+                    <HealthSummaryRow
+                      title="Current medication"
+                      value={
+                        currentMedications[0]
+                          ? `${currentMedications[0].name} ${currentMedications[0].dosage}`.trim()
+                          : ""
+                      }
+                    />
+                  </div>
+                ) : (
+                  <p className="mt-3.5 text-sm leading-6 text-muted-foreground">
+                    No health notes recorded yet.
+                  </p>
+                )}
+              </section>
+            </div>
+
+            <section className="section-reveal-delayed surface-card p-3.5">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-[15px] font-semibold leading-5 text-foreground">Recent activity</h2>
+                <Link
+                  href={`/inbox?client=${client.id}`}
+                  className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
+                >
+                  Open inbox
+                </Link>
+              </div>
+              {client.timeline.length > 0 ? (
+                <div className="mt-2 divide-y divide-border/65">
+                  {client.timeline.map((entry) => {
+                    const Icon = timelineIcons[entry.kind];
+
+                    return (
+                      <div key={entry.id} className="flex items-start gap-3 py-2.5">
+                        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-(--radius-tile) border border-border/80 bg-white text-primary">
+                          <Icon className="size-4" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="truncate text-sm font-semibold text-foreground">
+                              {entry.title}
+                            </p>
+                            <span className="shrink-0 text-xs text-muted-foreground">{entry.date}</span>
+                          </div>
+                          <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
+                            {entry.detail}
+                          </p>
+                        </div>
+                        {entry.status ? <StatusBadge status={entry.status} /> : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="mt-3">
+                  <WorkspaceEmptyState
+                    icon={CalendarDays}
+                    title="No activity yet"
+                    description="Appointments, payments, notes, documents, and messages will appear here."
+                    compact
+                  />
+                </div>
+              )}
+            </section>
+          </div>
         </TabsContent>
 
-        <TabsContent value="appointments" className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_330px]">
+        <TabsContent value="appointments" className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
           <div className="space-y-3.5">
             <section className="surface-card p-3.5">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-base font-semibold text-foreground">Upcoming appointment</h2>
+                <h2 className="text-[15px] font-semibold leading-5 text-foreground">Upcoming appointment</h2>
                 <Link
                   href="/calendar"
-                  className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-[0.65rem]")}
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-(--radius-tile)")}
                 >
                   <CalendarDays className="size-4" />
                   View in calendar
                 </Link>
               </div>
               {upcomingAppointments[0] ? (
-                <div className="mt-3 grid gap-3 rounded-[0.72rem] bg-primary/5 p-3.5 lg:grid-cols-[88px_minmax(0,1fr)_minmax(220px,0.8fr)]">
-                  <div className="flex h-20 flex-col items-center justify-center rounded-[0.75rem] bg-white text-center text-primary">
+                <div className="mt-3 grid gap-3 rounded-(--radius-card) bg-primary/5 p-3.5 lg:grid-cols-[88px_minmax(0,1fr)]">
+                  <div className="flex h-20 flex-col items-center justify-center rounded-(--radius-card) bg-white text-center text-primary">
                     <span className="text-xs font-semibold uppercase">{upcomingAppointments[0].date.split(" ")[0]}</span>
                     <span className="text-2xl font-semibold text-foreground">{upcomingAppointments[0].date.match(/\d+/)?.[0] ?? ""}</span>
                   </div>
                   <div>
                     <div className="flex flex-wrap items-center gap-3">
                       <p className="text-lg font-semibold text-foreground">{upcomingAppointments[0].title}</p>
-                      <span className="rounded-md bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">
-                        {upcomingAppointments[0].status.toLowerCase()}
-                      </span>
+                      <StatusBadge status={upcomingAppointments[0].status} />
                     </div>
                     <p className="mt-2 text-sm text-muted-foreground">{upcomingAppointments[0].date}</p>
-                    <p className="mt-2 text-sm text-muted-foreground">{upcomingAppointments[0].notes || "No appointment notes."}</p>
+                    {upcomingAppointments[0].notes ? (
+                      <p className="mt-2 text-sm text-muted-foreground">{upcomingAppointments[0].notes}</p>
+                    ) : null}
                   </div>
-                  <dl className="grid gap-3 text-sm">
-                    <OverviewLine label="Provider" value={client.details.assignedStaff} />
-                    <OverviewLine label="Visit type" value="In-person" />
-                    <OverviewLine label="Reminder" value={client.details.preferredChannel} />
-                  </dl>
                 </div>
               ) : (
-                <p className="mt-4 rounded-[0.7rem] border border-dashed border-border/90 p-3.5 text-sm text-muted-foreground">
+                <p className="mt-4 rounded-(--radius-card) border border-dashed border-border/90 p-3.5 text-sm text-muted-foreground">
                   No upcoming appointment booked.
                 </p>
               )}
@@ -877,41 +919,39 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
 
             <section className="surface-card p-3.5">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-base font-semibold text-foreground">Appointment history</h2>
+                <h2 className="text-[15px] font-semibold leading-5 text-foreground">Appointment history</h2>
                 <Link
                   href={`/calendar/new?client=${client.id}`}
-                  className={cn(buttonVariants({ size: "sm" }), "rounded-[0.65rem]")}
+                  className={cn(buttonVariants({ size: "sm" }), "rounded-(--radius-tile)")}
                 >
                   <CalendarPlus2 className="size-4" />
                   Book appointment
                 </Link>
               </div>
-              <div className="mt-4 overflow-hidden rounded-[0.85rem] border border-border/75">
+              <div className="mt-4 overflow-hidden rounded-(--radius-field) border border-border/75">
                 <table className="w-full text-sm">
-                  <thead className="bg-secondary/40 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
+                  <thead className="bg-[#f8fafc] text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                     <tr>
                       <th className="px-3 py-2.5 text-left">Date & time</th>
                       <th className="px-3 py-2.5 text-left">Appointment</th>
-                      <th className="px-3 py-2.5 text-left">Provider</th>
                       <th className="px-3 py-2.5 text-left">Status</th>
                       <th className="px-3 py-2.5 text-left">Notes</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/70 bg-white">
                     {client.appointments.map((appointment) => (
-                      <tr key={appointment.id}>
+                      <tr key={appointment.id} className="transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]">
                         <td className="px-3 py-2.5 font-medium text-foreground">{appointment.date}</td>
                         <td className="px-3 py-2.5 text-foreground">{appointment.title}</td>
-                        <td className="px-3 py-2.5 text-muted-foreground">{client.details.assignedStaff}</td>
                         <td className="px-3 py-2.5">
                           <StatusBadge status={appointment.status.toLowerCase()} />
                         </td>
-                        <td className="max-w-[260px] px-3 py-2.5 text-muted-foreground">{appointment.notes || "-"}</td>
+                        <td className="max-w-[320px] px-3 py-2.5 text-muted-foreground">{appointment.notes || "-"}</td>
                       </tr>
                     ))}
                     {client.appointments.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-4 py-6 text-sm text-muted-foreground">No appointment history yet.</td>
+                        <td colSpan={4} className="px-4 py-6 text-sm text-muted-foreground">No appointment history yet.</td>
                       </tr>
                     ) : null}
                   </tbody>
@@ -923,54 +963,59 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           <aside className="grid content-start gap-3">
             <section className="surface-card p-3.5">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-base font-semibold text-foreground">Upcoming reminders</h2>
-                <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
-                  {client.followUpReminders.length} upcoming
-                </span>
+                <h2 className="text-[15px] font-semibold leading-5 text-foreground">Follow-up reminders</h2>
+                <Button
+                  size="sm"
+                  onClick={() => setDialog({ mode: "create", kind: "reminder" })}
+                  className="rounded-(--radius-tile)"
+                >
+                  <Plus className="size-4" />
+                  Add
+                </Button>
               </div>
-              <div className="mt-4 grid gap-2">
-                <Input
-                  value={reminderDraft.title}
-                  onChange={(event) =>
-                    setReminderDraft((current) => ({ ...current, title: event.target.value }))
-                  }
-                  placeholder="Reminder title"
-                  className="h-10 rounded-[0.7rem] bg-white"
-                />
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-                  <Input
-                    value={reminderDraft.remindAt}
-                    onChange={(event) =>
-                      setReminderDraft((current) => ({ ...current, remindAt: event.target.value }))
-                    }
-                    type="date"
-                    className="h-10 rounded-[0.7rem] bg-white"
-                  />
-                  <Button
-                    onClick={addFollowUpReminder}
-                    disabled={isPending || !reminderDraft.title.trim() || !reminderDraft.remindAt}
-                    className="h-10 rounded-[0.7rem]"
-                  >
-                    Add
-                  </Button>
+              {client.followUpReminders.length > 0 ? (
+                <div className="mt-1.5 divide-y divide-border/65">
+                  {client.followUpReminders.map((reminder) => (
+                    <RecordRow
+                      key={reminder.id}
+                      title={reminder.title}
+                      meta={[reminder.remindAt, reminder.channel, reminder.status]
+                        .filter(Boolean)
+                        .join(" · ")}
+                      body={reminder.notes}
+                      onEdit={() =>
+                        setDialog({
+                          mode: "edit",
+                          kind: "reminder",
+                          recordId: reminder.id,
+                          initialValues: {
+                            title: reminder.title,
+                            remindAt: reminder.remindAtInput,
+                            channel: reminder.channel,
+                            status: reminder.status,
+                            notes: reminder.notes,
+                          },
+                        })
+                      }
+                      onDelete={() =>
+                        setDialog({
+                          mode: "delete",
+                          kind: "reminder",
+                          recordId: reminder.id,
+                          label: reminder.title,
+                        })
+                      }
+                    />
+                  ))}
                 </div>
-              </div>
-              <div className="mt-4 space-y-3">
-                {client.followUpReminders.slice(0, 3).map((reminder) => (
-                  <div key={reminder.id} className="rounded-[0.8rem] border border-border/75 px-3 py-3 text-sm">
-                    <p className="font-semibold text-foreground">{reminder.title}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{reminder.remindAt} - {reminder.channel} - {reminder.status}</p>
-                  </div>
-                ))}
-                {client.followUpReminders.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No follow-up reminders scheduled.</p>
-                ) : null}
-              </div>
+              ) : (
+                <p className="mt-3 text-sm text-muted-foreground">No follow-up reminders scheduled.</p>
+              )}
             </section>
 
             <section className="surface-card p-3.5">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-base font-semibold text-foreground">Recent visits</h2>
+                <h2 className="text-[15px] font-semibold leading-5 text-foreground">Recent visits</h2>
                 <span className="text-sm font-medium text-primary">{pastAppointments.length}</span>
               </div>
               <div className="mt-4 space-y-3">
@@ -988,414 +1033,413 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 ) : null}
               </div>
             </section>
+          </aside>
+        </TabsContent>
+
+        <TabsContent value="medical" className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+          <div className="space-y-3.5">
+            <section className="surface-card p-3.5">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-[15px] font-semibold leading-5 text-foreground">Medications</h2>
+                <Button
+                  size="sm"
+                  onClick={() => setDialog({ mode: "create", kind: "medication" })}
+                  className="rounded-(--radius-tile)"
+                >
+                  <Plus className="size-4" />
+                  Add
+                </Button>
+              </div>
+              {client.medications.length > 0 ? (
+                <div className="mt-1.5 divide-y divide-border/65">
+                  {client.medications.map((medication) => (
+                    <RecordRow
+                      key={medication.id}
+                      title={medication.name}
+                      badge={
+                        <span
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-[11px] font-semibold leading-4",
+                            medication.isActive
+                              ? "bg-primary/8 text-primary"
+                              : "bg-secondary/80 text-muted-foreground"
+                          )}
+                        >
+                          {medication.isActive ? "Active" : "Inactive"}
+                        </span>
+                      }
+                      meta={[medication.dosage, medication.frequency].filter(Boolean).join(" · ")}
+                      body={medication.notes}
+                      onEdit={() =>
+                        setDialog({
+                          mode: "edit",
+                          kind: "medication",
+                          recordId: medication.id,
+                          initialValues: {
+                            name: medication.name,
+                            dosage: medication.dosage,
+                            frequency: medication.frequency,
+                            notes: medication.notes,
+                            isActive: medication.isActive,
+                          },
+                        })
+                      }
+                      onDelete={() =>
+                        setDialog({
+                          mode: "delete",
+                          kind: "medication",
+                          recordId: medication.id,
+                          label: medication.name,
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-muted-foreground">No medications recorded.</p>
+              )}
+            </section>
 
             <section className="surface-card p-3.5">
-              <h2 className="text-base font-semibold text-foreground">Appointment summary</h2>
-              <div className="mt-4 space-y-3 text-sm">
-                <SummaryRow label="Upcoming" value={upcomingAppointments.length} />
-                <SummaryRow label="Completed" value={pastAppointments.length} />
-                <SummaryRow label="Cancelled" value={client.appointmentStats.cancelled} />
-                <SummaryRow label="Total recorded" value={client.appointments.length} strong />
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-[15px] font-semibold leading-5 text-foreground">Health record</h2>
+                <Button
+                  size="sm"
+                  onClick={() => setDialog({ mode: "create", kind: "health" })}
+                  className="rounded-(--radius-tile)"
+                >
+                  <Plus className="size-4" />
+                  Add
+                </Button>
               </div>
+              {client.healthItems.length > 0 ? (
+                <div className="mt-1.5 divide-y divide-border/65">
+                  {client.healthItems.map((item) => (
+                    <RecordRow
+                      key={item.id}
+                      title={item.label}
+                      badge={
+                        item.severity ? (
+                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold leading-4 text-amber-700">
+                            {item.severity}
+                          </span>
+                        ) : undefined
+                      }
+                      meta={[item.type, item.value].filter(Boolean).join(" · ")}
+                      body={item.notes}
+                      onEdit={() =>
+                        setDialog({
+                          mode: "edit",
+                          kind: "health",
+                          recordId: item.id,
+                          initialValues: {
+                            type: item.type,
+                            label: item.label,
+                            value: item.value,
+                            severity: item.severity,
+                            notes: item.notes,
+                          },
+                        })
+                      }
+                      onDelete={() =>
+                        setDialog({
+                          mode: "delete",
+                          kind: "health",
+                          recordId: item.id,
+                          label: item.label,
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-muted-foreground">
+                  No allergies, alerts, conditions, or vitals recorded.
+                </p>
+              )}
+            </section>
+
+            <section className="surface-card p-3.5">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-[15px] font-semibold leading-5 text-foreground">Treatment plan</h2>
+                <Button
+                  size="sm"
+                  onClick={() => setDialog({ mode: "create", kind: "treatment" })}
+                  className="rounded-(--radius-tile)"
+                >
+                  <Plus className="size-4" />
+                  Add
+                </Button>
+              </div>
+              {client.treatmentPlanItems.length > 0 ? (
+                <div className="mt-1.5 divide-y divide-border/65">
+                  {client.treatmentPlanItems.map((item) => (
+                    <RecordRow
+                      key={item.id}
+                      title={item.title}
+                      badge={
+                        <span className="rounded-full bg-secondary/80 px-2 py-0.5 text-[11px] font-semibold leading-4 text-muted-foreground">
+                          {item.status}
+                        </span>
+                      }
+                      meta={item.dueAt ? `Due ${item.dueAt}` : ""}
+                      body={item.description}
+                      onEdit={() =>
+                        setDialog({
+                          mode: "edit",
+                          kind: "treatment",
+                          recordId: item.id,
+                          initialValues: {
+                            title: item.title,
+                            status: item.status,
+                            dueAt: item.dueAtInput,
+                            description: item.description,
+                          },
+                        })
+                      }
+                      onDelete={() =>
+                        setDialog({
+                          mode: "delete",
+                          kind: "treatment",
+                          recordId: item.id,
+                          label: item.title,
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-muted-foreground">No treatment plan items yet.</p>
+              )}
+            </section>
+
+            <section className="surface-card p-3.5">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-[15px] font-semibold leading-5 text-foreground">Provider notes</h2>
+                <Button
+                  size="sm"
+                  onClick={() => setDialog({ mode: "create", kind: "note" })}
+                  className="rounded-(--radius-tile)"
+                >
+                  <Plus className="size-4" />
+                  Add
+                </Button>
+              </div>
+              {client.careNotes.length > 0 ? (
+                <div className="mt-1.5 divide-y divide-border/65">
+                  {client.careNotes.map((note) => (
+                    <RecordRow
+                      key={note.id}
+                      title={note.title}
+                      meta={`${note.notedAt} · ${note.providerName}`}
+                      body={note.body}
+                      onEdit={() =>
+                        setDialog({
+                          mode: "edit",
+                          kind: "note",
+                          recordId: note.id,
+                          initialValues: {
+                            title: stripPlaceholder(note.title, "Provider note"),
+                            body: note.body,
+                          },
+                        })
+                      }
+                      onDelete={() =>
+                        setDialog({
+                          mode: "delete",
+                          kind: "note",
+                          recordId: note.id,
+                          label: note.title,
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-muted-foreground">No provider notes yet.</p>
+              )}
+            </section>
+          </div>
+
+          <aside className="grid content-start gap-3">
+            <section className="surface-card p-3.5">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-[15px] font-semibold leading-5 text-foreground">Health summary</h2>
+                <Link
+                  href={`/clients/${client.id}/edit`}
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-(--radius-tile)")}
+                >
+                  <Pencil className="size-3.5" />
+                  Edit
+                </Link>
+              </div>
+
+              {clinicalAlerts.length > 0 ? (
+                <div className="mt-3 space-y-2">
+                  {clinicalAlerts.slice(0, 5).map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-start gap-2.5 rounded-(--radius-card) border border-destructive/15 bg-destructive/[0.04] px-3 py-2.5"
+                    >
+                      <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-foreground">{item.label}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {[item.type, item.severity, item.value].filter(Boolean).join(" · ")}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {(
+                [
+                  { label: "Medical history", value: client.medical.medicalHistory },
+                  { label: "Allergies", value: client.medical.allergies },
+                  { label: "Important health notes", value: client.medical.importantHealthNotes },
+                  { label: "Treatment plan", value: client.medical.treatmentPlan },
+                ].filter((field) => field.value)
+              ).length > 0 ? (
+                <div className="mt-3 divide-y divide-border/65">
+                  {[
+                    { label: "Medical history", value: client.medical.medicalHistory },
+                    { label: "Allergies", value: client.medical.allergies },
+                    { label: "Important health notes", value: client.medical.importantHealthNotes },
+                    { label: "Treatment plan", value: client.medical.treatmentPlan },
+                  ]
+                    .filter((field) => field.value)
+                    .map((field) => (
+                      <div key={field.label} className="py-2.5 first:pt-1.5 last:pb-0">
+                        <p className="text-sm font-semibold text-foreground">{field.label}</p>
+                        <p className="mt-0.5 text-sm leading-5 text-muted-foreground">{field.value}</p>
+                      </div>
+                    ))}
+                </div>
+              ) : clinicalAlerts.length === 0 ? (
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  No health background recorded yet. Use Edit to add medical history, allergies, or
+                  notes.
+                </p>
+              ) : null}
             </section>
           </aside>
         </TabsContent>
 
-        <TabsContent value="medical" className="space-y-3.5">
-          <div className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_320px]">
-            <section className="surface-card flex min-h-[292px] flex-col overflow-hidden p-0">
-              <div className="border-b border-border/70 px-3.5 py-3">
-                <h2 className="text-lg font-semibold text-foreground">Patient health info</h2>
-              </div>
-              <div className="grid flex-1 auto-rows-fr md:grid-cols-2">
-                <HealthInfoRow icon={HeartPulse} title="Medical history" value={client.medical.medicalHistory} />
-                <HealthInfoRow icon={HeartPulse} title="Allergies" value={client.medical.allergies} />
-                <HealthInfoRow icon={HeartPulse} title="Important health notes" value={client.medical.importantHealthNotes} />
-                <HealthInfoRow icon={NotebookText} title="Treatment plan" value={client.medical.treatmentPlan} />
-              </div>
-            </section>
-
-            <aside className="grid content-start gap-3">
-              <section className="rounded-[0.82rem] border border-primary/10 bg-primary/5 p-3.5 shadow-[0_8px_20px_rgba(20,32,51,0.026)]">
-                <h2 className="text-lg font-semibold text-foreground">Medical summary</h2>
-                <dl className="mt-4 space-y-3">
-                  <OverviewLine label="Allergies" value={allergies.length ? `${allergies.length} recorded` : client.medical.allergies} />
-                  <OverviewLine label="Alerts" value={alerts.length ? `${alerts.length} recorded` : client.medical.importantHealthNotes} />
-                  <OverviewLine label="Medications" value={`${currentMedications.length} active`} />
-                  <OverviewLine label="Care facts" value={`${careFacts.length} recorded`} />
-                </dl>
-              </section>
-
-              <section className="surface-card p-3.5">
-                <h2 className="text-lg font-semibold text-foreground">Clinical alerts</h2>
-                <div className="mt-4 space-y-3">
-                  {[...alerts, ...allergies].slice(0, 5).map((item) => (
-                    <div key={item.id} className="rounded-[0.7rem] border border-border/80 bg-white/78 px-3 py-3">
-                      <p className="font-semibold text-foreground">{item.label}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {[item.type, item.severity, item.value].filter(Boolean).join(" - ")}
-                      </p>
-                    </div>
-                  ))}
-                  {[...alerts, ...allergies].length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No allergy or medical alert records yet.</p>
-                  ) : null}
-                </div>
-              </section>
-            </aside>
-          </div>
-
-          <section className="surface-card p-3.5">
-            <h2 className="text-lg font-semibold text-foreground">Current medication</h2>
-            <div className="mt-4 grid gap-3 lg:grid-cols-4">
-              <Input
-                value={medicationDraft.name}
-                onChange={(event) =>
-                  setMedicationDraft((current) => ({ ...current, name: event.target.value }))
-                }
-                placeholder="Medication name"
-                className="h-11 rounded-[0.7rem] bg-white/84"
-              />
-              <Input
-                value={medicationDraft.dosage}
-                onChange={(event) =>
-                  setMedicationDraft((current) => ({ ...current, dosage: event.target.value }))
-                }
-                placeholder="Dosage"
-                className="h-11 rounded-[0.7rem] bg-white/84"
-              />
-              <Input
-                value={medicationDraft.frequency}
-                onChange={(event) =>
-                  setMedicationDraft((current) => ({ ...current, frequency: event.target.value }))
-                }
-                placeholder="Frequency"
-                className="h-11 rounded-[0.7rem] bg-white/84"
-              />
-              <Button
-                className="h-11 rounded-[0.7rem]"
-                onClick={addMedication}
-                disabled={isPending || !medicationDraft.name.trim()}
-              >
-                Add medication
-              </Button>
-              <Textarea
-                value={medicationDraft.notes}
-                onChange={(event) =>
-                  setMedicationDraft((current) => ({ ...current, notes: event.target.value }))
-                }
-                placeholder="Medication notes"
-                className="min-h-20 rounded-[0.7rem] bg-white/84 px-3 py-3 lg:col-span-4"
-              />
-            </div>
-            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {client.medications.length > 0 ? (
-                client.medications.map((medication) => (
-                  <div key={medication.id} className="rounded-[0.7rem] border border-border/80 bg-white/78 px-3.5 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="font-semibold text-foreground">{medication.name}</p>
-                      <span className="rounded-full bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground">
-                        {medication.isActive ? "Active" : "Inactive"}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-sm text-muted-foreground">Dosage: {medication.dosage}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">Frequency: {medication.frequency}</p>
-                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{medication.notes}</p>
-                  </div>
-                ))
-              ) : (
-                <EmptyPanel icon={NotebookText} title="No medications yet" text="Add current medication when the patient record needs it." />
-              )}
-            </div>
-          </section>
-
-          <div className="grid items-start gap-3.5">
-            <section className="surface-card p-3.5">
-              <h2 className="text-lg font-semibold text-foreground">Structured health record</h2>
-              <div className="mt-4 grid gap-3 lg:grid-cols-[160px_minmax(0,1fr)_160px]">
-                <NativeSelect
-                  value={healthDraft.type}
-                  options={["Allergy", "Medical alert", "Chronic condition", "Vital detail", "Care fact"]}
-                  onChange={(value) =>
-                    setHealthDraft((current) => ({ ...current, type: value }))
-                  }
-                />
-                <Input
-                  value={healthDraft.label}
-                  onChange={(event) =>
-                    setHealthDraft((current) => ({ ...current, label: event.target.value }))
-                  }
-                  placeholder="Label, condition, or vital"
-                  className="h-11 rounded-[0.7rem] bg-white/84"
-                />
-                <Input
-                  value={healthDraft.value}
-                  onChange={(event) =>
-                    setHealthDraft((current) => ({ ...current, value: event.target.value }))
-                  }
-                  placeholder="Value"
-                  className="h-11 rounded-[0.7rem] bg-white/84"
-                />
-                <Input
-                  value={healthDraft.severity}
-                  onChange={(event) =>
-                    setHealthDraft((current) => ({ ...current, severity: event.target.value }))
-                  }
-                  placeholder="Severity"
-                  className="h-11 rounded-[0.7rem] bg-white/84"
-                />
-                <Input
-                  value={healthDraft.notes}
-                  onChange={(event) =>
-                    setHealthDraft((current) => ({ ...current, notes: event.target.value }))
-                  }
-                  placeholder="Notes"
-                  className="h-11 rounded-[0.7rem] bg-white/84"
-                />
-                <Button
-                  onClick={addHealthItem}
-                  disabled={isPending || !healthDraft.label.trim()}
-                  className="h-11 rounded-[0.7rem]"
-                >
-                  Add health item
-                </Button>
-              </div>
-              <div className="mt-5 grid gap-3 md:grid-cols-2">
-                {client.healthItems.length > 0 ? (
-                  client.healthItems.map((item) => (
-                    <div key={item.id} className="rounded-[0.7rem] border border-border/80 bg-white/78 px-3 py-2.5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                            {item.type}
-                          </p>
-                          <p className="mt-1 font-semibold text-foreground">{item.label}</p>
-                        </div>
-                        {item.severity ? (
-                          <span className="rounded-full bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground">
-                            {item.severity}
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        {[item.value, item.notes].filter(Boolean).join(" - ") || "No extra detail."}
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <EmptyPanel icon={HeartPulse} title="No structured health items" text="Add allergies, alerts, conditions, vitals, or care facts." />
-                )}
-              </div>
-            </section>
-
-          </div>
-
-          <div className="grid gap-3.5 xl:grid-cols-2">
-            <section className="surface-card p-3.5">
-              <h2 className="text-lg font-semibold text-foreground">Treatment plan summary</h2>
-              <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
-                <Input
-                  value={treatmentDraft.title}
-                  onChange={(event) =>
-                    setTreatmentDraft((current) => ({ ...current, title: event.target.value }))
-                  }
-                  placeholder="Plan item"
-                  className="h-11 rounded-[0.7rem] bg-white/84"
-                />
-                <NativeSelect
-                  value={treatmentDraft.status}
-                  options={["Pending", "Upcoming", "Completed", "On hold"]}
-                  onChange={(value) =>
-                    setTreatmentDraft((current) => ({ ...current, status: value }))
-                  }
-                />
-                <Textarea
-                  value={treatmentDraft.description}
-                  onChange={(event) =>
-                    setTreatmentDraft((current) => ({ ...current, description: event.target.value }))
-                  }
-                  placeholder="Plan details"
-                  className="min-h-20 rounded-[0.7rem] bg-white/84 px-3 py-3"
-                />
-                <div className="grid gap-3">
-                  <Input
-                    value={treatmentDraft.dueAt}
-                    onChange={(event) =>
-                      setTreatmentDraft((current) => ({ ...current, dueAt: event.target.value }))
-                    }
-                    type="date"
-                    className="h-11 rounded-[0.7rem] bg-white/84"
-                  />
-                  <Button
-                    onClick={addTreatmentItem}
-                    disabled={isPending || !treatmentDraft.title.trim()}
-                    className="h-11 rounded-[0.7rem]"
-                  >
-                    Add item
-                  </Button>
-                </div>
-              </div>
-              <div className="mt-5 space-y-3">
-                {client.treatmentPlanItems.length > 0 ? (
-                  client.treatmentPlanItems.map((item) => (
-                    <div key={item.id} className="rounded-[0.7rem] border border-border/80 bg-white/78 px-3 py-2.5">
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="font-semibold text-foreground">{item.title}</p>
-                        <span className="rounded-full bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground">
-                          {item.status}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-sm text-muted-foreground">{item.description || "No details."}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Due: {item.dueAt}</p>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">No structured treatment plan items yet.</p>
-                )}
-              </div>
-            </section>
-
-            <section className="surface-card p-3.5">
-              <h2 className="text-lg font-semibold text-foreground">Notes from provider</h2>
-              <div className="mt-4 grid gap-3">
-                <Input
-                  value={careNoteDraft.title}
-                  onChange={(event) =>
-                    setCareNoteDraft((current) => ({ ...current, title: event.target.value }))
-                  }
-                  placeholder="Note title"
-                  className="h-11 rounded-[0.7rem] bg-white/84"
-                />
-                <Textarea
-                  value={careNoteDraft.body}
-                  onChange={(event) =>
-                    setCareNoteDraft((current) => ({ ...current, body: event.target.value }))
-                  }
-                  placeholder="Write a provider note"
-                  className="min-h-24 rounded-[0.7rem] bg-white/84 px-3 py-3"
-                />
-                <Button
-                  onClick={addCareNote}
-                  disabled={isPending || !careNoteDraft.body.trim()}
-                  className="h-11 rounded-[0.7rem]"
-                >
-                  Add note
-                </Button>
-              </div>
-              <div className="mt-5 space-y-3">
-                {client.careNotes.length > 0 ? (
-                  client.careNotes.map((note) => (
-                    <div key={note.id} className="rounded-[0.7rem] border border-border/80 bg-white/78 px-3 py-2.5">
-                      <p className="font-semibold text-foreground">{note.title}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {note.notedAt} - {note.providerName}
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-muted-foreground">{note.body}</p>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">No provider notes yet.</p>
-                )}
-              </div>
-            </section>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="documents" className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <TabsContent value="documents" className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
           <div className="space-y-3.5">
             <section className="surface-card p-3.5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-base font-semibold text-foreground">Documents</h2>
+                  <h2 className="text-[15px] font-semibold leading-5 text-foreground">Documents</h2>
                   <p className="mt-1 text-sm text-muted-foreground">Manage private PDF and image records for this client.</p>
                 </div>
-                <label className={cn(buttonVariants({ size: "sm" }), "h-10 cursor-pointer rounded-[0.65rem]")}>
-                  <input
-                    type="file"
-                    accept="application/pdf,image/*"
-                    className="sr-only"
-                    onChange={(event) => handleDocumentFile(event.target.files?.[0])}
-                    disabled={isGalleryUploading}
-                  />
-                  <ImagePlus className="size-4" />
-                  {isGalleryUploading ? "Uploading..." : "Upload document"}
-                </label>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDialog({ mode: "create", kind: "document" })}
+                    className="rounded-(--radius-tile)"
+                  >
+                    <Plus className="size-4" />
+                    Add manually
+                  </Button>
+                  <label className={cn(buttonVariants({ size: "sm" }), "cursor-pointer rounded-(--radius-tile)")}>
+                    <input
+                      type="file"
+                      accept="application/pdf,image/*"
+                      className="sr-only"
+                      onChange={(event) => {
+                        void handleDocumentFile(event.target.files?.[0]);
+                        event.target.value = "";
+                      }}
+                      disabled={isUploading}
+                    />
+                    <ImagePlus className="size-4" />
+                    {isUploading ? "Uploading..." : "Upload document"}
+                  </label>
+                </div>
               </div>
-              <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_190px_auto]">
-                <Input
-                  value={documentDraft.fileName}
-                  onChange={(event) =>
-                    setDocumentDraft((current) => ({ ...current, fileName: event.target.value }))
-                  }
-                  placeholder="File name"
-                  className="h-10 rounded-[0.7rem] bg-white"
-                />
-                <NativeSelect
-                  value={documentDraft.fileType}
-                  options={["Insurance", "Consent", "Medical History", "Report", "Image / Scan", "Invoice", "Other"]}
-                  onChange={(value) =>
-                    setDocumentDraft((current) => ({ ...current, fileType: value }))
-                  }
-                />
-                <Button
-                  className="h-10 rounded-[0.7rem]"
-                  onClick={addDocument}
-                  disabled={isPending || !documentDraft.fileName.trim()}
-                >
-                  Add
-                </Button>
-              </div>
-              <Textarea
-                value={documentDraft.notes}
-                onChange={(event) =>
-                  setDocumentDraft((current) => ({ ...current, notes: event.target.value }))
-                }
-                placeholder="File notes"
-                className="mt-3 min-h-16 rounded-[0.7rem] bg-white px-3 py-3"
-              />
             </section>
 
-            <section className="overflow-hidden rounded-[0.75rem] border border-border/80 bg-white shadow-[0_5px_14px_rgba(20,32,51,0.02)]">
+            <section className="overflow-hidden rounded-(--radius-card) border border-border/80 bg-white shadow-(--shadow-card)">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-secondary/40 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
+                  <thead className="bg-[#f8fafc] text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                     <tr>
                       <th className="px-3 py-2.5 text-left">Document name</th>
                       <th className="px-3 py-2.5 text-left">Category</th>
                       <th className="px-3 py-2.5 text-left">Uploaded on</th>
-                      <th className="px-3 py-2.5 text-left">Uploaded by</th>
                       <th className="px-3 py-2.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/70">
                     {client.documents.map((document) => (
-                      <tr key={document.id}>
+                      <tr
+                        key={document.id}
+                        onClick={() => setSelectedDocumentId(document.id)}
+                        className={cn(
+                          "cursor-pointer transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]",
+                          selectedDocument?.id === document.id && "bg-primary/[0.04]"
+                        )}
+                      >
                         <td className="px-3 py-2.5">
                           <p className="font-semibold text-foreground">{document.fileName}</p>
-                          <p className="text-xs text-muted-foreground">{document.fileSize}</p>
+                          {document.fileSize ? (
+                            <p className="text-xs text-muted-foreground">{document.fileSize}</p>
+                          ) : null}
                         </td>
                         <td className="px-3 py-2.5">
-                          <span className="rounded-md bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
+                          <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
                             {document.category || document.fileType}
                           </span>
                         </td>
                         <td className="px-3 py-2.5 text-muted-foreground">{document.createdAt}</td>
-                        <td className="px-3 py-2.5 text-muted-foreground">{document.uploadedBy || "Workspace staff"}</td>
-                        <td className="px-3 py-2.5 text-right">
-                          {document.fileUrl ? (
-                            <a href={document.fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm font-semibold text-primary">
-                              <Download className="size-4" />
-                              Open
-                            </a>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
+                        <td className="px-3 py-2.5">
+                          <div
+                            className="flex items-center justify-end gap-1.5"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            {document.fileUrl ? (
+                              <a
+                                href={document.fileUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
+                              >
+                                <Download className="size-4" />
+                                Open
+                              </a>
+                            ) : null}
+                            <RecordActions
+                              onEdit={() =>
+                                setDialog({
+                                  mode: "edit",
+                                  kind: "document",
+                                  recordId: document.id,
+                                  initialValues: {
+                                    fileName: document.fileName,
+                                    fileType: document.category || document.fileType,
+                                    notes: stripPlaceholder(document.notes, "No notes."),
+                                  },
+                                })
+                              }
+                              onDelete={() =>
+                                setDialog({
+                                  mode: "delete",
+                                  kind: "document",
+                                  recordId: document.id,
+                                  label: document.fileName,
+                                })
+                              }
+                            />
+                          </div>
                         </td>
                       </tr>
                     ))}
                     {client.documents.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-4 py-6 text-sm text-muted-foreground">No documents uploaded yet.</td>
+                        <td colSpan={4} className="px-4 py-6 text-sm text-muted-foreground">No documents uploaded yet.</td>
                       </tr>
                     ) : null}
                   </tbody>
@@ -1406,16 +1450,33 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             {client.gallery.length > 0 ? (
               <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {client.gallery.map((item) => (
-                  <figure key={item.id} className="overflow-hidden rounded-[0.75rem] border border-border/80 bg-white">
+                  <figure key={item.id} className="overflow-hidden rounded-(--radius-card) border border-border/80 bg-white">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={item.imageUrl}
                       alt={item.caption || "Client clinical image"}
                       className="aspect-[4/3] w-full object-cover"
                     />
-                    <figcaption className="px-3 py-2.5">
-                      <p className="text-sm font-medium text-foreground">{item.caption || "No note"}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Upload date: {item.createdAt}</p>
+                    <figcaption className="flex items-start justify-between gap-2 px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">{item.caption || "No note"}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Upload date: {item.createdAt}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDialog({
+                            mode: "delete",
+                            kind: "gallery",
+                            recordId: item.id,
+                            label: item.caption || "this image",
+                          })
+                        }
+                        className="mt-0.5 text-muted-foreground transition-colors duration-(--duration-base) hover:text-destructive"
+                        aria-label="Remove image"
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
                     </figcaption>
                   </figure>
                 ))}
@@ -1425,32 +1486,21 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
 
           <aside className="grid content-start gap-3">
             <section className="surface-card p-3.5">
-              <h2 className="text-base font-semibold text-foreground">Documents summary</h2>
-              <div className="mt-4 space-y-3 text-sm">
-                {["Insurance", "Consent", "Medical History", "Report", "Image / Scan", "Invoice", "Other"].map((type) => {
-                  const count = client.documents.filter((document) => (document.category || document.fileType) === type).length;
-                  return <SummaryRow key={type} label={type} value={count} />;
-                })}
-                <div className="border-t border-border/70 pt-3">
-                  <SummaryRow label="Total documents" value={client.documents.length} strong />
-                </div>
-              </div>
-            </section>
-
-            <section className="surface-card p-3.5">
-              <h2 className="text-base font-semibold text-foreground">Selected document</h2>
-              {client.documents[0] ? (
+              <h2 className="text-[15px] font-semibold leading-5 text-foreground">Selected document</h2>
+              {selectedDocument ? (
                 <div className="mt-4 space-y-3">
-                  <div className="rounded-[0.85rem] border border-border/80 p-3.5">
-                    <p className="font-semibold text-foreground">{client.documents[0].fileName}</p>
+                  <div className="rounded-(--radius-field) border border-border/80 p-3.5">
+                    <p className="font-semibold text-foreground">{selectedDocument.fileName}</p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {client.documents[0].category || client.documents[0].fileType} - {client.documents[0].fileSize}
+                      {[selectedDocument.category || selectedDocument.fileType, selectedDocument.fileSize]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </p>
                   </div>
-                  <OverviewLine label="Uploaded on" value={client.documents[0].createdAt} />
-                  <OverviewLine label="Uploaded by" value={client.documents[0].uploadedBy || "Workspace staff"} />
-                  {client.documents[0].fileUrl ? (
-                    <a href={client.documents[0].fileUrl} target="_blank" rel="noreferrer" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-10 w-full rounded-[0.7rem] bg-white")}>
+                  <OverviewLine label="Uploaded on" value={selectedDocument.createdAt} />
+                  <OverviewLine label="Uploaded by" value={selectedDocument.uploadedBy || "Workspace staff"} />
+                  {selectedDocument.fileUrl ? (
+                    <a href={selectedDocument.fileUrl} target="_blank" rel="noreferrer" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-10 w-full rounded-(--radius-card) bg-white")}>
                       <Download className="size-4" />
                       Download document
                     </a>
@@ -1460,136 +1510,155 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 <p className="mt-4 text-sm text-muted-foreground">Upload a document to preview its metadata.</p>
               )}
             </section>
+
+            <section className="surface-card p-3.5">
+              <h2 className="text-[15px] font-semibold leading-5 text-foreground">Documents summary</h2>
+              <div className="mt-4 space-y-3 text-sm">
+                {documentCategories
+                  .map((type) => ({
+                    type,
+                    count: client.documents.filter(
+                      (document) => (document.category || document.fileType) === type
+                    ).length,
+                  }))
+                  .filter((entry) => entry.count > 0)
+                  .map((entry) => (
+                    <SummaryRow key={entry.type} label={entry.type} value={entry.count} />
+                  ))}
+                <div className="border-t border-border/70 pt-3 first:border-t-0 first:pt-0">
+                  <SummaryRow label="Total documents" value={client.documents.length} strong />
+                </div>
+              </div>
+            </section>
           </aside>
         </TabsContent>
 
-        <TabsContent value="messages" className="surface-card p-3.5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-foreground">Messages</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Linked WhatsApp and inbox messages for this client.
-              </p>
-            </div>
-            <Link href={`/inbox?client=${client.id}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-[0.8rem]")}>
-              <Inbox className="size-4" />
-              Open inbox
-            </Link>
-          </div>
-          <dl className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Detail label="WhatsApp number" value={client.phone || "Not added"} />
-            <Detail label="Last message sent" value={lastMessage} />
-            <Detail label="Reminder status" value="Uses appointment reminder settings" />
-            <Detail label="Preferred contact method" value={client.details.preferredChannel} />
-          </dl>
-          <div className="mt-5 space-y-3">
-            {client.messages.length > 0 ? (
-              client.messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={cn(
-                    "max-w-[760px] rounded-[0.7rem] px-3 py-2.5 text-sm leading-6 shadow-[0_5px_14px_rgba(20,32,51,0.02)]",
-                    message.sender === "business"
-                      ? "ml-auto bg-primary text-primary-foreground"
-                      : "bg-white/86 text-foreground ring-1 ring-border/75"
-                  )}
-                >
-                  <p>{message.body}</p>
-                  <p
-                    className={cn(
-                      "mt-2 text-xs",
-                      message.sender === "business"
-                        ? "text-primary-foreground/80"
-                        : "text-muted-foreground"
-                    )}
-                  >
-                    {message.timestamp}
-                  </p>
-                </div>
-              ))
-            ) : (
-              <EmptyPanel icon={Inbox} title="No messages yet" text="Messages will appear here once this client has an inbox thread." />
-            )}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="payments" className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <TabsContent value="payments" className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
           <div className="space-y-3.5">
             <section className="grid gap-3 surface-card p-3.5 md:grid-cols-4">
               <PaymentMetric label="Total billed" value={totalBilledDisplay} helper={`${client.payments.length} ledger entries`} />
               <PaymentMetric label="Total paid" value={client.paymentStats.totalPaidDisplay} helper={`${client.payments.filter((payment) => payment.status.toLowerCase() === "paid").length} paid entries`} tone="good" />
               <PaymentMetric label="Outstanding" value={client.paymentStats.unpaidBalanceDisplay} helper="Open balance" tone={client.paymentStats.unpaidBalanceCents > 0 ? "danger" : "default"} />
-              <PaymentMetric label="Last payment" value={latestPayment?.paidAt ?? "-"} helper={latestPayment?.amountDisplay ?? "No payments yet"} />
+              <PaymentMetric
+                label="Last payment"
+                value={latestPayment ? latestPayment.paidAt || latestPayment.createdAt : "—"}
+                helper={latestPayment?.amountDisplay ?? "No payments yet"}
+              />
             </section>
 
-            <section className="overflow-hidden rounded-[0.75rem] border border-border/80 bg-white shadow-[0_5px_14px_rgba(20,32,51,0.02)]">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/75 px-5 py-4">
-                <h2 className="text-base font-semibold text-foreground">Invoice & payment history</h2>
-                <button type="button" onClick={downloadPaymentStatement} className="text-sm font-medium text-primary">Download statement</button>
+            <section className="overflow-hidden rounded-(--radius-card) border border-border/80 bg-white shadow-(--shadow-card)">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/75 px-3.5 py-3">
+                <h2 className="text-[15px] font-semibold leading-5 text-foreground">Invoice & payment history</h2>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={downloadPaymentStatement}
+                    className="text-sm font-medium text-primary transition-colors duration-(--duration-base) hover:text-foreground"
+                  >
+                    Download statement
+                  </button>
+                  <Button
+                    size="sm"
+                    onClick={() => setDialog({ mode: "create", kind: "payment" })}
+                    className="rounded-(--radius-tile)"
+                  >
+                    <Plus className="size-4" />
+                    Add entry
+                  </Button>
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-secondary/40 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
+                  <thead className="bg-[#f8fafc] text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                     <tr>
                       <th className="px-3 py-2.5 text-left">Date</th>
                       <th className="px-3 py-2.5 text-left">Invoice #</th>
                       <th className="px-3 py-2.5 text-left">Description</th>
-                      <th className="px-3 py-2.5 text-left">Billed</th>
-                      <th className="px-3 py-2.5 text-left">Paid</th>
+                      <th className="px-3 py-2.5 text-left">Amount</th>
                       <th className="px-3 py-2.5 text-left">Status</th>
                       <th className="px-3 py-2.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/70 bg-white">
                     {client.payments.map((payment) => (
-                      <tr key={payment.id}>
+                      <tr key={payment.id} className="transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]">
                         <td className="px-3 py-2.5 font-medium text-foreground">{payment.paidAt || payment.createdAt}</td>
                         <td className="px-3 py-2.5 text-muted-foreground">{payment.invoiceNumber || "-"}</td>
-                        <td className="px-3 py-2.5 text-foreground">{payment.description || "Manual ledger entry"}</td>
+                        <td className="px-3 py-2.5 text-foreground">{payment.description || "—"}</td>
                         <td className="px-3 py-2.5 text-foreground">{payment.amountDisplay}</td>
-                        <td className="px-3 py-2.5 text-foreground">{payment.status.toLowerCase() === "paid" ? payment.amountDisplay : "-"}</td>
                         <td className="px-3 py-2.5"><StatusBadge status={payment.status.toLowerCase()} /></td>
-                        <td className="px-3 py-2.5 text-right">
-                          {payment.receiptUrl ? (
-                            <a href={payment.receiptUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-primary">Receipt</a>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {payment.receiptUrl ? (
+                              <a
+                                href={payment.receiptUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-sm font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
+                              >
+                                Receipt
+                              </a>
+                            ) : null}
+                            <RecordActions
+                              onEdit={() =>
+                                setDialog({
+                                  mode: "edit",
+                                  kind: "payment",
+                                  recordId: payment.id,
+                                  initialValues: {
+                                    amount: payment.amountInput,
+                                    status: payment.status,
+                                    paidAt: payment.paidAtInput,
+                                    paymentMethod: stripPlaceholder(payment.paymentMethod, "Manual entry"),
+                                    invoiceNumber: payment.invoiceNumber,
+                                    receiptNumber: payment.receiptNumber,
+                                    description: stripPlaceholder(payment.description, "Payment record"),
+                                    receiptUrl: payment.receiptUrl,
+                                    billingNote: payment.billingNote,
+                                  },
+                                })
+                              }
+                              onDelete={() =>
+                                setDialog({
+                                  mode: "delete",
+                                  kind: "payment",
+                                  recordId: payment.id,
+                                  label: `${payment.amountDisplay} entry`,
+                                })
+                              }
+                            />
+                          </div>
                         </td>
                       </tr>
                     ))}
                     {client.payments.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-4 py-6 text-sm text-muted-foreground">No payments yet.</td>
+                        <td colSpan={6} className="px-4 py-6 text-sm text-muted-foreground">No payments yet.</td>
                       </tr>
                     ) : null}
                   </tbody>
                 </table>
               </div>
             </section>
-
-            <section className="surface-card p-3.5">
-              <h2 className="text-base font-semibold text-foreground">Manual ledger entry</h2>
-              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <Input value={paymentDraft.amount} onChange={(event) => setPaymentDraft((current) => ({ ...current, amount: event.target.value }))} placeholder="Amount" className="h-10 rounded-[0.7rem] bg-white" />
-                <NativeSelect value={paymentDraft.status} options={["Paid", "Unpaid", "Partial", "Refunded"]} onChange={(value) => setPaymentDraft((current) => ({ ...current, status: value }))} />
-                <Input value={paymentDraft.invoiceNumber} onChange={(event) => setPaymentDraft((current) => ({ ...current, invoiceNumber: event.target.value }))} placeholder="Invoice number" className="h-10 rounded-[0.7rem] bg-white" />
-                <Input value={paymentDraft.receiptNumber} onChange={(event) => setPaymentDraft((current) => ({ ...current, receiptNumber: event.target.value }))} placeholder="Receipt number" className="h-10 rounded-[0.7rem] bg-white" />
-                <Input value={paymentDraft.description} onChange={(event) => setPaymentDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Description" className="h-10 rounded-[0.7rem] bg-white md:col-span-2" />
-                <Input value={paymentDraft.paymentMethod} onChange={(event) => setPaymentDraft((current) => ({ ...current, paymentMethod: event.target.value }))} placeholder="Payment method" className="h-10 rounded-[0.7rem] bg-white" />
-                <Input value={paymentDraft.paidAt} onChange={(event) => setPaymentDraft((current) => ({ ...current, paidAt: event.target.value }))} type="date" className="h-10 rounded-[0.7rem] bg-white" />
-                <Textarea value={paymentDraft.billingNote} onChange={(event) => setPaymentDraft((current) => ({ ...current, billingNote: event.target.value }))} placeholder="Billing note" className="min-h-16 rounded-[0.7rem] bg-white px-3 py-3 md:col-span-2 xl:col-span-3" />
-                <Button onClick={addPayment} disabled={isPending || !paymentDraft.amount.trim()} className="h-10 rounded-[0.7rem]">Add entry</Button>
-              </div>
-            </section>
           </div>
 
           <aside className="grid content-start gap-3">
             <section className="surface-card p-3.5">
-              <h2 className="text-base font-semibold text-foreground">Payment status</h2>
+              <h2 className="text-[15px] font-semibold leading-5 text-foreground">Payment status</h2>
               <div className="mt-4 flex items-start gap-3">
-                <span className="flex size-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-                  <CheckCircle2 className="size-5" />
+                <span
+                  className={cn(
+                    "flex size-10 shrink-0 items-center justify-center rounded-full",
+                    client.paymentStats.unpaidBalanceCents > 0
+                      ? "bg-amber-50 text-amber-600"
+                      : "bg-emerald-100 text-emerald-600"
+                  )}
+                >
+                  {client.paymentStats.unpaidBalanceCents > 0 ? (
+                    <AlertCircle className="size-5" />
+                  ) : (
+                    <CheckCircle2 className="size-5" />
+                  )}
                 </span>
                 <div>
                   <p className="font-semibold text-foreground">{client.paymentStats.paymentStatus}</p>
@@ -1598,68 +1667,121 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   </p>
                 </div>
               </div>
-              <dl className="mt-5 space-y-3">
-                <OverviewLine label="Current balance" value={client.paymentStats.unpaidBalanceDisplay} />
-                <OverviewLine label="Status" value={client.paymentStats.paymentStatus} />
-                <OverviewLine label="Ledger entries" value={client.payments.length.toString()} />
-              </dl>
-            </section>
-
-            <section className="surface-card p-3.5">
-              <h2 className="text-base font-semibold text-foreground">Billing notes</h2>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                {latestPayment?.billingNote || client.notes || "No billing notes recorded."}
-              </p>
-              <p className="mt-3 text-xs text-muted-foreground">
-                Last updated: {latestPayment?.createdAt ?? "No payments yet"}
-              </p>
-            </section>
-
-            <section className="surface-card p-3.5">
-              <h2 className="text-base font-semibold text-foreground">Ledger summary</h2>
-              <div className="mt-4 space-y-3 text-sm">
+              <div className="mt-5 space-y-3 border-t border-border/70 pt-4 text-sm">
                 <SummaryRow label="Paid entries" value={client.payments.filter((payment) => payment.status.toLowerCase() === "paid").length} />
                 <SummaryRow label="Open entries" value={client.payments.filter((payment) => payment.status.toLowerCase() !== "paid").length} />
                 <SummaryRow label="Receipts linked" value={client.payments.filter((payment) => Boolean(payment.receiptUrl)).length} />
                 <SummaryRow label="Last update" value={latestPayment?.createdAt ?? "No payments yet"} strong />
               </div>
             </section>
+
+            {latestPayment?.billingNote ? (
+              <section className="surface-card p-3.5">
+                <h2 className="text-[15px] font-semibold leading-5 text-foreground">Billing notes</h2>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">{latestPayment.billingNote}</p>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Last updated: {latestPayment.createdAt}
+                </p>
+              </section>
+            ) : null}
           </aside>
         </TabsContent>
       </Tabs>
+
+      {activeFormDialog && dialog && dialog.mode !== "delete" ? (
+        <RecordFormDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) {
+              setDialog(null);
+              setPendingUpload(null);
+            }
+          }}
+          title={dialog.mode === "edit" ? activeFormDialog.editTitle : activeFormDialog.createTitle}
+          description={activeFormDialog.description}
+          fields={activeFormDialog.fields}
+          initialValues={dialog.initialValues}
+          submitLabel={dialog.mode === "edit" ? "Save changes" : activeFormDialog.submitCreate}
+          isPending={isPending}
+          onSubmit={handleRecordSubmit}
+        />
+      ) : null}
+
+      {dialog?.mode === "delete" ? (
+        <ConfirmDeleteDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) {
+              setDialog(null);
+            }
+          }}
+          title="Remove this record?"
+          description={`"${dialog.label}" will be permanently removed from this patient file.`}
+          isPending={isPending}
+          onConfirm={handleDeleteConfirm}
+        />
+      ) : null}
     </WorkspacePage>
   );
 }
 
-function Detail({ label, value }: { label: string; value: string }) {
+function RecordRow({
+  title,
+  badge,
+  meta,
+  body,
+  onEdit,
+  onDelete,
+}: {
+  title: string;
+  badge?: ReactNode;
+  meta?: string;
+  body?: string;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   return (
-    <div className="rounded-[0.7rem] border border-border/80 bg-white/72 px-3.5 py-3">
-      <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-        {label}
-      </dt>
-      <dd className="mt-2 text-sm font-medium text-foreground">{value}</dd>
+    <div className="flex items-start gap-3 py-2.5">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm font-semibold text-foreground">{title}</p>
+          {badge}
+        </div>
+        {meta ? <p className="mt-0.5 text-xs text-muted-foreground">{meta}</p> : null}
+        {body ? (
+          <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted-foreground">{body}</p>
+        ) : null}
+      </div>
+      <RecordActions onEdit={onEdit} onDelete={onDelete} />
     </div>
   );
 }
 
-function HealthInfoRow({
-  icon: Icon,
-  title,
-  value,
+function RecordActions({
+  onEdit,
+  onDelete,
 }: {
-  icon: ComponentType<{ className?: string }>;
-  title: string;
-  value: string;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
   return (
-    <div className="grid grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 border-b border-border/70 px-3.5 py-3 last:border-b-0 md:[&:nth-child(odd)]:border-r">
-      <div className="flex size-8 items-center justify-center rounded-[0.62rem] bg-primary/10 text-primary">
-        <Icon className="size-4" />
-      </div>
-      <h3 className="font-semibold text-foreground">{title}</h3>
-      <p className="max-w-[220px] truncate text-right text-sm italic text-muted-foreground">
-        {value || "Not added yet."}
-      </p>
+    <div className="flex shrink-0 items-center gap-0.5">
+      <button
+        type="button"
+        onClick={onEdit}
+        aria-label="Edit record"
+        className="flex size-7 items-center justify-center rounded-(--radius-tile) text-muted-foreground transition-colors duration-(--duration-base) hover:bg-secondary/60 hover:text-foreground"
+      >
+        <Pencil className="size-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        aria-label="Delete record"
+        className="flex size-7 items-center justify-center rounded-(--radius-tile) text-muted-foreground transition-colors duration-(--duration-base) hover:bg-destructive/10 hover:text-destructive"
+      >
+        <Trash2 className="size-3.5" />
+      </button>
     </div>
   );
 }
@@ -1669,12 +1791,12 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span
       className={cn(
-        "inline-flex rounded-md px-2 py-1 text-[11px] font-semibold capitalize",
+        "inline-flex rounded-full px-2 py-1 text-[11px] font-semibold capitalize",
         (normalized === "paid" || normalized === "completed" || normalized === "confirmed") &&
           "bg-emerald-100 text-emerald-700",
         (normalized === "cancelled" || normalized === "refunded") &&
           "bg-destructive/10 text-destructive",
-        (normalized === "pending" || normalized === "partial" || normalized === "unpaid") &&
+        (normalized === "pending" || normalized === "partial" || normalized === "partially paid" || normalized === "unpaid") &&
           "bg-primary/10 text-primary",
         normalized === "scheduled" && "bg-secondary text-muted-foreground"
       )}
@@ -1734,9 +1856,13 @@ function PaymentMetric({
 }
 
 function HealthSummaryRow({ title, value }: { title: string; value: string }) {
+  if (!value) {
+    return null;
+  }
+
   return (
     <div className="grid grid-cols-[40px_minmax(0,1fr)] gap-3 py-3 first:pt-0 last:pb-0">
-      <div className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+      <div className="flex size-9 items-center justify-center rounded-(--radius-tile) border border-border/80 bg-white text-primary">
         <HeartPulse className="size-4" />
       </div>
       <div>
@@ -1755,8 +1881,8 @@ function SidebarSectionHeader({
   title: string;
 }) {
   return (
-    <h2 className="inline-flex items-center gap-3 text-base font-semibold text-foreground">
-      <span className="flex size-8 items-center justify-center rounded-[0.68rem] bg-primary/10 text-primary">
+    <h2 className="inline-flex items-center gap-3 text-[15px] font-semibold leading-5 text-foreground">
+      <span className="flex size-8 items-center justify-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
         <Icon className="size-4" />
       </span>
       {title}
@@ -1764,38 +1890,16 @@ function SidebarSectionHeader({
   );
 }
 
-function OverviewLine({
-  label,
-  value,
-  icon: Icon,
-}: {
-  label: string;
-  value: string;
-  icon?: ComponentType<{ className?: string }>;
-}) {
+function OverviewLine({ label, value }: { label: string; value: string }) {
+  if (!value) {
+    return null;
+  }
+
   return (
-    <div className="grid grid-cols-[120px_minmax(0,1fr)] items-start gap-3.5 text-sm sm:grid-cols-[160px_minmax(0,1fr)]">
-      <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-        {label}
-      </dt>
-      <dd className="flex min-w-0 items-center justify-end gap-2 text-right font-medium text-foreground">
-        {Icon ? <Icon className="size-4 shrink-0 text-muted-foreground" /> : null}
-        <span className="min-w-0 break-words">{value}</span>
-      </dd>
+    <div className="flex items-baseline justify-between gap-4 text-sm">
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 truncate text-right font-medium text-foreground">{value}</dd>
     </div>
   );
 }
 
-function EmptyPanel({
-  icon: Icon,
-  title,
-  text,
-}: {
-  icon: ComponentType<{ className?: string }>;
-  title: string;
-  text: string;
-}) {
-  return (
-    <WorkspaceEmptyState compact icon={Icon} title={title} description={text} />
-  );
-}

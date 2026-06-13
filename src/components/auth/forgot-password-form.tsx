@@ -25,7 +25,7 @@ function FieldError({ message }: { message?: string }) {
     return null;
   }
 
-  return <p className="text-xs text-destructive">{message}</p>;
+  return <p className="state-pop text-xs text-destructive">{message}</p>;
 }
 
 export function ForgotPasswordForm() {
@@ -34,13 +34,13 @@ export function ForgotPasswordForm() {
   return (
     <form action={formAction} className="space-y-5">
       {state.error ? (
-        <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div className="state-pop rounded-(--radius-field) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {state.error}
         </div>
       ) : null}
 
       {!state.error && state.success ? (
-        <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
+        <div className="state-pop rounded-(--radius-field) border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
           {state.success}
         </div>
       ) : null}
@@ -55,7 +55,7 @@ export function ForgotPasswordForm() {
           defaultValue={state.values?.email}
           aria-invalid={Boolean(state.fieldErrors?.email)}
           className={cn(
-            "h-11 rounded-[0.78rem] border-border/80 bg-white px-3.5 text-[15px] shadow-none placeholder:text-muted-foreground/70",
+            "h-11 rounded-(--radius-card) border-border/80 bg-white px-3.5 text-[15px] shadow-none placeholder:text-muted-foreground/70",
             state.fieldErrors?.email && "border-destructive"
           )}
         />
@@ -64,7 +64,7 @@ export function ForgotPasswordForm() {
 
       <SubmitButton
         pendingLabel="Sending link..."
-        className="h-11 w-full rounded-[0.78rem] text-[15px] font-medium"
+        className="h-11 w-full rounded-(--radius-card) text-[15px] font-medium"
       >
         Send reset link
       </SubmitButton>

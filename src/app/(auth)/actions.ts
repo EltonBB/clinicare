@@ -1,11 +1,17 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { buildAuthRedirectUrl } from "@/lib/app-url";
 import { sanitizeAuthMetadataForSession } from "@/lib/auth-metadata";
 import { createEmailVerificationReceipt } from "@/lib/email-verification-receipts";
+import {
+  checkRateLimit,
+  clientIpFromHeaders,
+  type RateLimitRule,
+} from "@/lib/rate-limit";
 import { createClient } from "@/utils/supabase/server";
 
 type FormValues = {
@@ -126,6 +132,40 @@ function sanitizeNextPath(next?: string) {
   return next;
 }
 
+const EMAIL_RATE_LIMIT_MESSAGE =
+  "We're sending a lot of emails right now. Please wait a minute and try again.";
+
+const TOO_MANY_ATTEMPTS_MESSAGE =
+  "Too many attempts right now. Please wait a moment and try again.";
+
+// Per-IP throttles: blunt credential-stuffing on login and email-send abuse on
+// signup / resend / forgot-password (the latter three share the email quota).
+const LOGIN_RATE_LIMIT: RateLimitRule = { limit: 12, windowMs: 60_000 };
+const SIGNUP_RATE_LIMIT: RateLimitRule = { limit: 6, windowMs: 60_000 };
+const EMAIL_SEND_RATE_LIMIT: RateLimitRule = { limit: 5, windowMs: 60_000 };
+
+async function isWithinRateLimit(action: string, rule: RateLimitRule) {
+  const ip = clientIpFromHeaders(await headers());
+  return checkRateLimit(`${action}:${ip}`, rule).allowed;
+}
+
+// Detects the auth provider's rate-limit responses (HTTP 429 / "…rate limit…"
+// codes) without surfacing provider details. Email confirmation and password
+// reset share a sending quota, so a signup burst can throttle them.
+function isEmailRateLimited(
+  error: { status?: number; code?: string } | null | undefined
+) {
+  if (!error) {
+    return false;
+  }
+
+  if (error.status === 429) {
+    return true;
+  }
+
+  return (error.code ?? "").toLowerCase().includes("rate");
+}
+
 export async function signUpAction(
   _: AuthActionState,
   formData: FormData
@@ -134,6 +174,10 @@ export async function signUpAction(
     email: String(formData.get("email") ?? "").trim(),
     password: String(formData.get("password") ?? ""),
   };
+
+  if (!(await isWithinRateLimit("signup", SIGNUP_RATE_LIMIT))) {
+    return { error: TOO_MANY_ATTEMPTS_MESSAGE, values };
+  }
 
   const parsed = signUpSchema.safeParse(values);
 
@@ -170,7 +214,9 @@ export async function signUpAction(
 
   if (error) {
     return {
-      error: "We couldn't create the account. Check the details and try again.",
+      error: isEmailRateLimited(error)
+        ? EMAIL_RATE_LIMIT_MESSAGE
+        : "We couldn't create the account. Check the details and try again.",
       values,
     };
   }
@@ -191,6 +237,10 @@ export async function loginAction(
     password: String(formData.get("password") ?? ""),
     next: String(formData.get("next") ?? ""),
   };
+
+  if (!(await isWithinRateLimit("login", LOGIN_RATE_LIMIT))) {
+    return { error: TOO_MANY_ATTEMPTS_MESSAGE, values };
+  }
 
   const parsed = loginSchema.safeParse(values);
 
@@ -242,6 +292,10 @@ export async function resendConfirmationAction(
     ticket: String(formData.get("ticket") ?? "").trim(),
   };
 
+  if (!(await isWithinRateLimit("resend", EMAIL_SEND_RATE_LIMIT))) {
+    return { error: EMAIL_RATE_LIMIT_MESSAGE, values };
+  }
+
   const parsed = resendSchema.safeParse(values);
 
   if (!parsed.success) {
@@ -269,7 +323,9 @@ export async function resendConfirmationAction(
 
   if (error) {
     return {
-      error: "We couldn't resend the verification email right now.",
+      error: isEmailRateLimited(error)
+        ? EMAIL_RATE_LIMIT_MESSAGE
+        : "We couldn't resend the verification email right now.",
       values,
     };
   }
@@ -294,6 +350,10 @@ export async function forgotPasswordAction(
     email: String(formData.get("email") ?? "").trim(),
   };
 
+  if (!(await isWithinRateLimit("forgot", EMAIL_SEND_RATE_LIMIT))) {
+    return { error: EMAIL_RATE_LIMIT_MESSAGE, values };
+  }
+
   const parsed = forgotPasswordSchema.safeParse(values);
 
   if (!parsed.success) {
@@ -315,9 +375,19 @@ export async function forgotPasswordAction(
 
   const supabase = await createClient();
   const redirectTo = await buildAuthRedirectUrl("/reset-password");
-  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+  const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
     redirectTo,
   });
+
+  // Surface throttling so the user waits instead of retrying (which worsens it).
+  // Any other failure still returns the generic success message on purpose —
+  // it must not reveal whether an account exists for that email.
+  if (isEmailRateLimited(error)) {
+    return {
+      error: EMAIL_RATE_LIMIT_MESSAGE,
+      values,
+    };
+  }
 
   return {
     success: `A password reset link was sent to ${parsed.data.email}.`,

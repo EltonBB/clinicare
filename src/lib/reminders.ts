@@ -1,7 +1,10 @@
-import { addHours, format, isAfter } from "date-fns";
+import { addHours, isAfter } from "date-fns";
 
+import { mapWithConcurrency } from "@/lib/concurrency";
 import { normalizePhone } from "@/lib/inbox";
+import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
+import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 import { sendTwilioWhatsAppMessage } from "@/lib/whatsapp";
 
 type ReminderSyncResult = {
@@ -172,11 +175,13 @@ export async function syncAppointmentRemindersForBusiness(
       continue;
     }
 
+    // HIPAA minimum-necessary: outbound reminders carry name + appointment time
+    // (+ provider) only — never the service/treatment. `service` is deliberately
+    // NOT supplied, so any {service} token in a custom template renders empty.
     const body = renderReminderTemplate(template, {
       client_name: appointment.client.name,
-      date: format(appointment.startAt, "MMMM d"),
-      time: format(appointment.startAt, "h:mm a"),
-      service: appointment.title,
+      date: formatZonedFullDate(appointment.startAt),
+      time: formatZonedTime(appointment.startAt),
       staff_name: appointment.staffMember?.name ?? business.name,
     });
 
@@ -249,9 +254,9 @@ export async function syncAppointmentRemindersForBusiness(
       });
 
       sent += 1;
-    } catch {
+    } catch (error) {
       failed += 1;
-      console.error("Failed to send appointment reminder.", {
+      logger.error("Failed to send appointment reminder.", error, {
         businessId,
         appointmentId: appointment.id,
         reminderType,
@@ -261,6 +266,9 @@ export async function syncAppointmentRemindersForBusiness(
 
   return { sent, failed };
 }
+
+// A few clinics at a time — bounds concurrent Twilio sends across tenants.
+const REMINDER_BUSINESS_CONCURRENCY = 3;
 
 export async function syncAppointmentRemindersJob(): Promise<ReminderCronResult> {
   const businesses = await prisma.business.findMany({
@@ -277,14 +285,24 @@ export async function syncAppointmentRemindersJob(): Promise<ReminderCronResult>
     },
   });
 
-  let sent = 0;
-  let failed = 0;
+  const results = await mapWithConcurrency(
+    businesses,
+    REMINDER_BUSINESS_CONCURRENCY,
+    async (business) => {
+      try {
+        return await syncAppointmentRemindersForBusiness(business.id);
+      } catch (error) {
+        // Isolate per-tenant failures so one clinic can't abort the whole run.
+        logger.error("Reminder sync failed for business.", error, {
+          businessId: business.id,
+        });
+        return { sent: 0, failed: 0 };
+      }
+    }
+  );
 
-  for (const business of businesses) {
-    const result = await syncAppointmentRemindersForBusiness(business.id);
-    sent += result.sent;
-    failed += result.failed;
-  }
+  const sent = results.reduce((total, result) => total + result.sent, 0);
+  const failed = results.reduce((total, result) => total + result.failed, 0);
 
   return {
     processedBusinesses: businesses.length,

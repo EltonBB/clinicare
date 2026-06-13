@@ -15,6 +15,7 @@ import {
   addZonedDays,
   formatZonedDayName,
   formatZonedMonthName,
+  formatZonedDateKey,
   formatZonedMonthYear,
   formatZonedShortDate,
   getAppTimeZone,
@@ -39,6 +40,50 @@ export type ReportMetric = {
   helper: string;
 };
 
+export type ReportKpi = {
+  key:
+    | "appointments"
+    | "completionRate"
+    | "newClients"
+    | "avgVisitLength"
+    | "activeClients"
+    | "unreadMessages";
+  label: string;
+  value: string;
+  delta: string;
+  trend: ReportMetricTrend;
+  helper: string;
+};
+
+export type ReportDetailRowKey =
+  | "utilization"
+  | "lostSlot"
+  | "repeatVisit"
+  | "followUp"
+  | "sameDayBookings"
+  | "leadTime"
+  | "unassigned";
+
+export type ReportDetailRow = {
+  /** Stable identifier — match on this, never on the display label. */
+  key: ReportDetailRowKey;
+  label: string;
+  value: string;
+  delta: string;
+  trend: ReportMetricTrend;
+  helper: string;
+};
+
+export type ReportClientMixSegment = {
+  key: "active" | "atRisk" | "inactive" | "archived";
+  label: string;
+  count: number;
+  percent: number;
+};
+
+// NOTE: ReportChartPoint is serialized verbatim into AI snapshot payloads and
+// compared by the snapshot freshness check — never add fields here. New chart
+// data belongs in parallel fields on the chart object (e.g. completedValues).
 export type ReportChartPoint = {
   label: string;
   value: number;
@@ -102,6 +147,9 @@ export type ReportPeriodView = {
   rangeLabel: string;
   periodStart: string;
   periodEnd: string;
+  /** Calendar dates of the period bounds in the app time zone (yyyy-MM-dd). */
+  periodStartKey: string;
+  periodEndKey: string;
   comparisonLabel: string;
   highlightValue: string;
   highlightChange: string;
@@ -110,11 +158,19 @@ export type ReportPeriodView = {
   unreadMessages: number;
   activeClients: number;
   metrics: ReportMetric[];
+  kpis: ReportKpi[];
+  operationalDetail: ReportDetailRow[];
+  statusTotal: number;
+  clientMixTotal: number;
+  clientMixSegments: ReportClientMixSegment[];
   diagnostics: ReportPeriodDiagnostics;
   chart: {
     title: string;
     periodLabel: string;
     points: ReportChartPoint[];
+    completedValues: number[];
+    newClientValues: number[];
+    hasData: boolean;
   };
   snapshot: ReportSnapshot;
 };
@@ -135,7 +191,10 @@ type ReportAppointment = Pick<
 type ReportsWorkspaceArgs = {
   business: Pick<Business, "name">;
   appointments: ReportAppointment[];
-  clients: Array<Pick<Client, "createdAt" | "status" | "isArchived">>;
+  // Clients created within the report window (for "new clients" counts). Whole-
+  // base composition arrives precomputed as `clientMix`.
+  clients: Array<Pick<Client, "createdAt" | "isArchived">>;
+  clientMix: ReportClientMix;
   messages: Array<Pick<Message, "direction" | "sentAt">>;
   businessHours: Array<Pick<BusinessHours, "weekday" | "isOpen" | "startTime" | "endTime">>;
   staffMembers: Array<Pick<StaffMember, "id" | "name" | "role" | "status" | "isActive">>;
@@ -185,6 +244,13 @@ type PeriodStats = {
   unreadMessages: number;
 };
 
+export type ReportClientMix = {
+  active: number;
+  atRisk: number;
+  inactive: number;
+  archived: number;
+};
+
 export type ReportPeriodDiagnostics = {
   statusMix: Array<{
     label: string;
@@ -208,12 +274,7 @@ export type ReportPeriodDiagnostics = {
     sameDayBookings: number;
     unassignedAppointments: number;
   };
-  clientMix: {
-    active: number;
-    atRisk: number;
-    inactive: number;
-    archived: number;
-  };
+  clientMix: ReportClientMix;
   evidenceSummary: string;
 };
 
@@ -444,9 +505,9 @@ function formatMinuteChange(current: number, previous: number) {
   };
 }
 
-function unmeasuredDelta(label: string) {
+function unmeasuredDelta() {
   return {
-    delta: label,
+    delta: "",
     trend: "flat" as const,
   };
 }
@@ -578,7 +639,7 @@ function buildCapacityMinutes(
 
 function buildPeriodStats(args: {
   appointments: ReportAppointment[];
-  clients: Array<Pick<Client, "createdAt" | "status" | "isArchived">>;
+  clients: Array<Pick<Client, "createdAt" | "isArchived">>;
   messages: Array<Pick<Message, "direction" | "sentAt">>;
   businessHours: Array<Pick<BusinessHours, "weekday" | "isOpen" | "startTime" | "endTime">>;
   activeStaffCount: number;
@@ -675,7 +736,7 @@ function buildPeriodStats(args: {
 
 function buildPeriodDiagnostics(args: {
   appointments: ReportAppointment[];
-  clients: Array<Pick<Client, "createdAt" | "status" | "isArchived">>;
+  clientMix: ReportClientMix;
   staffMembers: Array<Pick<StaffMember, "id" | "name" | "role" | "status" | "isActive">>;
   window: PeriodWindow;
   timeZone: string;
@@ -782,27 +843,9 @@ function buildPeriodDiagnostics(args: {
     })
     .sort((left, right) => right.bookedMinutes - left.bookedMinutes)
     .slice(0, 6);
-  const clientMix = args.clients.reduce(
-    (mix, client) => {
-      if (client.isArchived || client.status === "ARCHIVED") {
-        mix.archived += 1;
-      } else if (client.status === "AT_RISK") {
-        mix.atRisk += 1;
-      } else if (client.status === "INACTIVE") {
-        mix.inactive += 1;
-      } else {
-        mix.active += 1;
-      }
-
-      return mix;
-    },
-    {
-      active: 0,
-      atRisk: 0,
-      inactive: 0,
-      archived: 0,
-    }
-  );
+  // Whole-base client composition is precomputed in the data layer (bounded
+  // aggregate) and passed in — it does not depend on the period window.
+  const clientMix = args.clientMix;
   const completion = statusMix.find((item) => item.label === "Completed");
   const cancelled = statusMix.find((item) => item.label === "Cancelled");
   const busiestDay = sortedDays[0];
@@ -955,7 +998,7 @@ function buildStrength(stats: PeriodStats, periodLabel: string) {
   }
 
   if (stats.utilizationRate >= 70 && stats.utilizationRate <= 92) {
-    return `Capacity is being used well at ${formatPercent(stats.utilizationRate)} schedule utilization, which is a healthy operating range.`;
+    return `Capacity is being used well at ${formatPercent(stats.utilizationRate)} estimated utilization, which is a healthy operating range.`;
   }
 
   if (stats.newClients > 0) {
@@ -981,11 +1024,11 @@ function buildWatch(stats: PeriodStats) {
   }
 
   if (stats.utilizationRate < 55) {
-    return `Schedule utilization is only ${formatPercent(stats.utilizationRate)}. Open hours are not turning into enough booked care time.`;
+    return `Estimated utilization is only ${formatPercent(stats.utilizationRate)}. Open hours are not turning into enough booked care time.`;
   }
 
   if (stats.utilizationRate > 95) {
-    return `Schedule utilization is ${formatPercent(stats.utilizationRate)}, which risks overload and weaker patient experience.`;
+    return `Estimated utilization is ${formatPercent(stats.utilizationRate)}, which risks overload and weaker patient experience.`;
   }
 
   if (stats.repeatVisitRate < 25) {
@@ -1066,7 +1109,7 @@ function buildPrimaryConstraint(stats: PeriodStats) {
   if (stats.utilizationRate < 55) {
     return {
       title: "Open capacity is not converting into visits",
-      metric: "Schedule utilization",
+      metric: "Estimated utilization",
       value: formatPercent(stats.utilizationRate),
       severity: "high" as const,
     };
@@ -1075,7 +1118,7 @@ function buildPrimaryConstraint(stats: PeriodStats) {
   if (stats.utilizationRate > 95) {
     return {
       title: "Schedule is near overload",
-      metric: "Schedule utilization",
+      metric: "Estimated utilization",
       value: formatPercent(stats.utilizationRate),
       severity: "medium" as const,
     };
@@ -1185,8 +1228,8 @@ function buildWhatToMonitor(stats: PeriodStats) {
             }.`,
     },
     {
-      metric: "Schedule utilization",
-      target: `Current utilization is ${formatPercent(stats.utilizationRate)}; healthy range is 70-92%.`,
+      metric: "Estimated utilization",
+      target: `Current estimated utilization is ${formatPercent(stats.utilizationRate)}; healthy range is 70-92%.`,
     },
   ];
 
@@ -1257,7 +1300,7 @@ function buildSnapshot(
     rootCauses: [
       {
         title: primaryConstraint.title,
-        evidence: `${primaryConstraint.metric}: ${primaryConstraint.value}. ${watch}`,
+        evidence: watch,
         severity: primaryConstraint.severity,
       },
       {
@@ -1278,7 +1321,7 @@ function buildSnapshot(
             : "Completion has room to improve through confirmations and recovery follow-up.",
       },
       {
-        label: "Utilization",
+        label: "Estimated utilization",
         value: formatPercent(stats.utilizationRate),
         readout:
           stats.utilizationRate >= 70 && stats.utilizationRate <= 92
@@ -1561,15 +1604,11 @@ function buildMetrics(args: {
   const completionDelta =
     current.finalizedCount > 0 && previous.finalizedCount > 0
       ? formatPointChange(current.completionRate, previous.completionRate)
-      : current.finalizedCount > 0
-        ? unmeasuredDelta("Now measured")
-        : unmeasuredDelta("No outcomes");
+      : unmeasuredDelta();
   const lostSlotDelta =
     current.finalizedCount > 0 && previous.finalizedCount > 0
       ? formatPointChange(current.lostSlotRate, previous.lostSlotRate, { inverse: true })
-      : current.finalizedCount > 0
-        ? unmeasuredDelta("Now measured")
-        : unmeasuredDelta("No outcomes");
+      : unmeasuredDelta();
   const utilizationDelta = formatPointChange(
     current.utilizationRate,
     previous.utilizationRate
@@ -1578,21 +1617,15 @@ function buildMetrics(args: {
   const repeatVisitDelta =
     current.completedCount > 0 && previous.completedCount > 0
       ? formatPointChange(current.repeatVisitRate, previous.repeatVisitRate)
-      : current.completedCount > 0
-        ? unmeasuredDelta("Now measured")
-        : unmeasuredDelta("No visits");
+      : unmeasuredDelta();
   const followUpDelta =
     current.inboundMessages > 0 && previous.inboundMessages > 0
       ? formatPointChange(current.followUpRate, previous.followUpRate)
-      : current.inboundMessages > 0
-        ? unmeasuredDelta("Now measured")
-        : unmeasuredDelta("No inbound");
+      : unmeasuredDelta();
   const averageDurationDelta =
     current.completedCount > 0 && previous.completedCount > 0
       ? formatMinuteChange(current.averageVisitLength, previous.averageVisitLength)
-      : current.completedCount > 0
-        ? unmeasuredDelta("Now measured")
-        : unmeasuredDelta("No visits");
+      : unmeasuredDelta();
 
   return {
     metrics: [
@@ -1605,24 +1638,24 @@ function buildMetrics(args: {
       },
       {
         label: "Completion rate",
-        value: current.finalizedCount > 0 ? formatPercent(current.completionRate) : "-",
+        value: current.finalizedCount > 0 ? formatPercent(current.completionRate) : "",
         delta: completionDelta.delta,
         trend: completionDelta.trend,
         helper: "Completed vs finalized visits",
       },
       {
         label: "Lost-slot rate",
-        value: current.finalizedCount > 0 ? formatPercent(current.lostSlotRate) : "-",
+        value: current.finalizedCount > 0 ? formatPercent(current.lostSlotRate) : "",
         delta: lostSlotDelta.delta,
         trend: lostSlotDelta.trend,
         helper: "Cancelled visit pressure",
       },
       {
-        label: "Schedule utilization",
+        label: "Estimated utilization",
         value: formatPercent(current.utilizationRate),
         delta: utilizationDelta.delta,
         trend: utilizationDelta.trend,
-        helper: "Booked minutes vs open capacity",
+        helper: "Booked minutes vs open hours × staff (estimate)",
       },
       {
         label: "New clients",
@@ -1633,121 +1666,166 @@ function buildMetrics(args: {
       },
       {
         label: "Repeat-visit rate",
-        value: current.completedCount > 0 ? formatPercent(current.repeatVisitRate) : "-",
+        value: current.completedCount > 0 ? formatPercent(current.repeatVisitRate) : "",
         delta: repeatVisitDelta.delta,
         trend: repeatVisitDelta.trend,
         helper: "Clients with multiple completed visits",
       },
       {
         label: "Follow-up coverage",
-        value: current.inboundMessages > 0 ? formatPercent(current.followUpRate) : "-",
+        value: current.inboundMessages > 0 ? formatPercent(current.followUpRate) : "",
         delta: followUpDelta.delta,
         trend: followUpDelta.trend,
         helper: "Outbound vs inbound messages",
       },
       {
         label: "Avg visit length",
-        value: current.averageVisitLength > 0 ? `${current.averageVisitLength}m` : "-",
+        value: current.averageVisitLength > 0 ? `${current.averageVisitLength}m` : "",
         delta: averageDurationDelta.delta,
         trend: averageDurationDelta.trend,
-        helper: `${current.unreadMessages} unread message${current.unreadMessages === 1 ? "" : "s"}`,
+        helper: comparisonLabel,
       },
     ],
     deltas: {
       appointments: appointmentDelta,
       completion: completionDelta,
+      lostSlot: lostSlotDelta,
       utilization: utilizationDelta,
       clients: newClientsDelta,
+      repeatVisit: repeatVisitDelta,
+      followUp: followUpDelta,
+      averageDuration: averageDurationDelta,
     },
+  };
+}
+
+type ReportChartData = {
+  points: ReportChartPoint[];
+  completedValues: number[];
+  newClientValues: number[];
+};
+
+type ReportClientRecord = Pick<Client, "createdAt" | "isArchived">;
+
+function countClientsCreatedInRange(clients: ReportClientRecord[], start: Date, end: Date) {
+  return clients.filter((client) => client.createdAt >= start && client.createdAt <= end).length;
+}
+
+function toChartData(
+  buckets: Array<{ label: string; appointments: ReportAppointment[]; newClients: number }>
+): ReportChartData {
+  return {
+    points: buckets.map((bucket) => ({
+      label: bucket.label,
+      value: bucket.appointments.length,
+    })),
+    completedValues: buckets.map(
+      (bucket) =>
+        bucket.appointments.filter((appointment) => appointment.status === "COMPLETED").length
+    ),
+    newClientValues: buckets.map((bucket) => bucket.newClients),
   };
 }
 
 function buildDailyChart(
   appointments: ReportAppointment[],
+  clients: ReportClientRecord[],
   now: Date,
   timeZone: string
-): ReportChartPoint[] {
-  return Array.from({ length: 7 }, (_, index) => {
-    const dayWindow = getZonedDayWindowByOffset(now, index - 6, timeZone);
+): ReportChartData {
+  return toChartData(
+    Array.from({ length: 7 }, (_, index) => {
+      const dayWindow = getZonedDayWindowByOffset(now, index - 6, timeZone);
 
-    return {
-      label: formatZonedDayName(dayWindow.start, timeZone),
-      value: filterAppointmentsInRange(appointments, dayWindow.start, dayWindow.end).length,
-    };
-  });
+      return {
+        label: formatZonedDayName(dayWindow.start, timeZone),
+        appointments: filterAppointmentsInRange(appointments, dayWindow.start, dayWindow.end),
+        newClients: countClientsCreatedInRange(clients, dayWindow.start, dayWindow.end),
+      };
+    })
+  );
 }
 
 function buildWeeklyChart(
   appointments: ReportAppointment[],
+  clients: ReportClientRecord[],
   now: Date,
   timeZone: string
-): ReportChartPoint[] {
+): ReportChartData {
   const currentWeek = getZonedWeekWindow(now, timeZone);
 
-  return Array.from({ length: 8 }, (_, index) => {
-    const startParts = addZonedDays(currentWeek.parts, (index - 7) * 7);
-    const weekStart = getZonedDayWindowFromParts(
-      startParts.year,
-      startParts.month,
-      startParts.day,
-      timeZone
-    ).start;
-    const nextStartParts = addZonedDays(startParts, 7);
-    const nextWeekStart = getZonedDayWindowFromParts(
-      nextStartParts.year,
-      nextStartParts.month,
-      nextStartParts.day,
-      timeZone
-    ).start;
-    const weekEnd = new Date(nextWeekStart.getTime() - 1);
+  return toChartData(
+    Array.from({ length: 8 }, (_, index) => {
+      const startParts = addZonedDays(currentWeek.parts, (index - 7) * 7);
+      const weekStart = getZonedDayWindowFromParts(
+        startParts.year,
+        startParts.month,
+        startParts.day,
+        timeZone
+      ).start;
+      const nextStartParts = addZonedDays(startParts, 7);
+      const nextWeekStart = getZonedDayWindowFromParts(
+        nextStartParts.year,
+        nextStartParts.month,
+        nextStartParts.day,
+        timeZone
+      ).start;
+      const weekEnd = new Date(nextWeekStart.getTime() - 1);
 
-    return {
-      label: `W${index + 1}`,
-      value: filterAppointmentsInRange(appointments, weekStart, weekEnd).length,
-    };
-  });
+      return {
+        label: `W${index + 1}`,
+        appointments: filterAppointmentsInRange(appointments, weekStart, weekEnd),
+        newClients: countClientsCreatedInRange(clients, weekStart, weekEnd),
+      };
+    })
+  );
 }
 
 function buildMonthlyChart(
   appointments: ReportAppointment[],
+  clients: ReportClientRecord[],
   now: Date,
   timeZone: string
-): ReportChartPoint[] {
+): ReportChartData {
   const currentMonth = getZonedMonthWindow(now, timeZone);
 
-  return Array.from({ length: 6 }, (_, index) => {
-    const monthOffset = index - 5;
-    const localMonthIndex = currentMonth.parts.month - 1 + monthOffset;
-    const monthDate = new Date(Date.UTC(currentMonth.parts.year, localMonthIndex, 1));
-    const monthStart = getZonedDayWindowFromParts(
-      monthDate.getUTCFullYear(),
-      monthDate.getUTCMonth() + 1,
-      1,
-      timeZone
-    ).start;
-    const nextMonthDate = new Date(
-      Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth() + 1, 1)
-    );
-    const nextMonthStart = getZonedDayWindowFromParts(
-      nextMonthDate.getUTCFullYear(),
-      nextMonthDate.getUTCMonth() + 1,
-      1,
-      timeZone
-    ).start;
-    const monthEnd = new Date(nextMonthStart.getTime() - 1);
+  return toChartData(
+    Array.from({ length: 6 }, (_, index) => {
+      const monthOffset = index - 5;
+      const localMonthIndex = currentMonth.parts.month - 1 + monthOffset;
+      const monthDate = new Date(Date.UTC(currentMonth.parts.year, localMonthIndex, 1));
+      const monthStart = getZonedDayWindowFromParts(
+        monthDate.getUTCFullYear(),
+        monthDate.getUTCMonth() + 1,
+        1,
+        timeZone
+      ).start;
+      const nextMonthDate = new Date(
+        Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth() + 1, 1)
+      );
+      const nextMonthStart = getZonedDayWindowFromParts(
+        nextMonthDate.getUTCFullYear(),
+        nextMonthDate.getUTCMonth() + 1,
+        1,
+        timeZone
+      ).start;
+      const monthEnd = new Date(nextMonthStart.getTime() - 1);
 
-    return {
-      label: formatZonedMonthName(monthStart, timeZone),
-      value: filterAppointmentsInRange(appointments, monthStart, monthEnd).length,
-    };
-  });
+      return {
+        label: formatZonedMonthName(monthStart, timeZone),
+        appointments: filterAppointmentsInRange(appointments, monthStart, monthEnd),
+        newClients: countClientsCreatedInRange(clients, monthStart, monthEnd),
+      };
+    })
+  );
 }
 
 function buildCustomChart(
   appointments: ReportAppointment[],
+  clients: ReportClientRecord[],
   window: PeriodWindow,
   timeZone: string
-): ReportChartPoint[] {
+): ReportChartData {
   const startParts = getZonedDateParts(window.start, timeZone);
   const endParts = getZonedDateParts(window.end, timeZone);
   const localStartDate = Date.UTC(startParts.year, startParts.month - 1, startParts.day);
@@ -1755,32 +1833,200 @@ function buildCustomChart(
   const dayCount = Math.max(Math.floor((localEndDate - localStartDate) / 86_400_000) + 1, 1);
   const step = Math.max(Math.ceil(dayCount / 12), 1);
 
-  return Array.from({ length: Math.ceil(dayCount / step) }, (_, index) => {
-    const chunkStartParts = addZonedDays(startParts, index * step);
-    const chunkEndParts = addZonedDays(startParts, Math.min((index + 1) * step, dayCount));
-    const chunkStart = getZonedDayWindowFromParts(
-      chunkStartParts.year,
-      chunkStartParts.month,
-      chunkStartParts.day,
-      timeZone
-    ).start;
-    const chunkEnd = new Date(
-      getZonedDayWindowFromParts(
-        chunkEndParts.year,
-        chunkEndParts.month,
-        chunkEndParts.day,
+  return toChartData(
+    Array.from({ length: Math.ceil(dayCount / step) }, (_, index) => {
+      const chunkStartParts = addZonedDays(startParts, index * step);
+      const chunkEndParts = addZonedDays(startParts, Math.min((index + 1) * step, dayCount));
+      const chunkStart = getZonedDayWindowFromParts(
+        chunkStartParts.year,
+        chunkStartParts.month,
+        chunkStartParts.day,
         timeZone
-      ).start.getTime() - 1
-    );
+      ).start;
+      const chunkEnd = new Date(
+        getZonedDayWindowFromParts(
+          chunkEndParts.year,
+          chunkEndParts.month,
+          chunkEndParts.day,
+          timeZone
+        ).start.getTime() - 1
+      );
 
-    return {
-      label:
-        step === 1
-          ? formatZonedShortDate(chunkStart, timeZone)
-          : `${formatZonedShortDate(chunkStart, timeZone)}+`,
-      value: filterAppointmentsInRange(appointments, chunkStart, chunkEnd).length,
-    };
+      return {
+        label:
+          step === 1
+            ? formatZonedShortDate(chunkStart, timeZone)
+            : `${formatZonedShortDate(chunkStart, timeZone)}+`,
+        appointments: filterAppointmentsInRange(appointments, chunkStart, chunkEnd),
+        newClients: countClientsCreatedInRange(clients, chunkStart, chunkEnd),
+      };
+    })
+  );
+}
+
+function buildKpis(args: {
+  current: PeriodStats;
+  deltas: ReturnType<typeof buildMetrics>["deltas"];
+  diagnostics: ReportPeriodDiagnostics;
+  comparisonLabel: string;
+  clientMixTotal: number;
+}): ReportKpi[] {
+  const { current, deltas, diagnostics, comparisonLabel, clientMixTotal } = args;
+
+  return [
+    {
+      key: "appointments",
+      label: "Appointments",
+      value: current.scheduledCount.toLocaleString("en-US"),
+      delta: deltas.appointments.delta,
+      trend: deltas.appointments.trend,
+      helper: comparisonLabel,
+    },
+    {
+      key: "completionRate",
+      label: "Completion rate",
+      value: current.finalizedCount > 0 ? formatPercent(current.completionRate) : "",
+      delta: deltas.completion.delta,
+      trend: deltas.completion.trend,
+      helper: deltas.completion.delta ? comparisonLabel : "",
+    },
+    {
+      key: "newClients",
+      label: "New clients",
+      value: current.newClients.toLocaleString("en-US"),
+      delta: deltas.clients.delta,
+      trend: deltas.clients.trend,
+      helper: comparisonLabel,
+    },
+    {
+      key: "avgVisitLength",
+      label: "Avg visit length",
+      value: current.averageVisitLength > 0 ? `${current.averageVisitLength}m` : "",
+      delta: deltas.averageDuration.delta,
+      trend: deltas.averageDuration.trend,
+      helper: deltas.averageDuration.delta ? comparisonLabel : "",
+    },
+    {
+      key: "activeClients",
+      label: "Active clients",
+      value: diagnostics.clientMix.active.toLocaleString("en-US"),
+      delta: "",
+      trend: "flat",
+      helper:
+        clientMixTotal > 0
+          ? `of ${clientMixTotal.toLocaleString("en-US")} client records`
+          : "",
+    },
+    {
+      key: "unreadMessages",
+      label: "Unread messages",
+      value: current.unreadMessages.toLocaleString("en-US"),
+      delta: "",
+      trend: "flat",
+      helper: current.unreadMessages > 0 ? "Open conversations" : "",
+    },
+  ];
+}
+
+function buildOperationalDetail(args: {
+  current: PeriodStats;
+  deltas: ReturnType<typeof buildMetrics>["deltas"];
+  diagnostics: ReportPeriodDiagnostics;
+}): ReportDetailRow[] {
+  const { current, deltas, diagnostics } = args;
+  const rows: ReportDetailRow[] = [
+    {
+      key: "utilization",
+      label: "Estimated utilization",
+      value: formatPercent(current.utilizationRate),
+      delta: deltas.utilization.delta,
+      trend: deltas.utilization.trend,
+      helper: "Booked minutes vs open hours × staff (estimate)",
+    },
+  ];
+
+  if (current.finalizedCount > 0) {
+    rows.push({
+      key: "lostSlot",
+      label: "Lost-slot rate",
+      value: formatPercent(current.lostSlotRate),
+      delta: deltas.lostSlot.delta,
+      trend: deltas.lostSlot.trend,
+      helper: "",
+    });
+  }
+
+  if (current.completedCount > 0) {
+    rows.push({
+      key: "repeatVisit",
+      label: "Repeat-visit rate",
+      value: formatPercent(current.repeatVisitRate),
+      delta: deltas.repeatVisit.delta,
+      trend: deltas.repeatVisit.trend,
+      helper: "",
+    });
+  }
+
+  if (current.inboundMessages > 0) {
+    rows.push({
+      key: "followUp",
+      label: "Follow-up coverage",
+      value: formatPercent(current.followUpRate),
+      delta: deltas.followUp.delta,
+      trend: deltas.followUp.trend,
+      helper: "",
+    });
+  }
+
+  rows.push({
+    key: "sameDayBookings",
+    label: "Same-day bookings",
+    value: diagnostics.bookingBehavior.sameDayBookings.toLocaleString("en-US"),
+    delta: "",
+    trend: "flat",
+    helper: "",
   });
+
+  if (current.scheduledCount > 0) {
+    rows.push({
+      key: "leadTime",
+      label: "Avg booking lead time",
+      value: `${diagnostics.bookingBehavior.averageLeadTimeHours}h`,
+      delta: "",
+      trend: "flat",
+      helper: "",
+    });
+
+    if (diagnostics.bookingBehavior.unassignedAppointments > 0) {
+      rows.push({
+        key: "unassigned",
+        label: "Unassigned appointments",
+        value: diagnostics.bookingBehavior.unassignedAppointments.toLocaleString("en-US"),
+        delta: "",
+        trend: "flat",
+        helper: "",
+      });
+    }
+  }
+
+  return rows;
+}
+
+function buildClientMixSegments(
+  clientMix: ReportPeriodDiagnostics["clientMix"]
+): { total: number; segments: ReportClientMixSegment[] } {
+  const total = clientMix.active + clientMix.atRisk + clientMix.inactive + clientMix.archived;
+  const percentOf = (count: number) => (total > 0 ? (count / total) * 100 : 0);
+
+  return {
+    total,
+    segments: [
+      { key: "active", label: "Active", count: clientMix.active, percent: percentOf(clientMix.active) },
+      { key: "atRisk", label: "At risk", count: clientMix.atRisk, percent: percentOf(clientMix.atRisk) },
+      { key: "inactive", label: "Inactive", count: clientMix.inactive, percent: percentOf(clientMix.inactive) },
+      { key: "archived", label: "Archived", count: clientMix.archived, percent: percentOf(clientMix.archived) },
+    ],
+  };
 }
 
 function buildPeriodView(args: {
@@ -1790,9 +2036,10 @@ function buildPeriodView(args: {
   current: PeriodStats;
   previous: PeriodStats;
   diagnostics: ReportPeriodDiagnostics;
-  chartPoints: ReportChartPoint[];
+  chartData: ReportChartData;
   aiSnapshots: ReportAiSnapshotInput[];
   timeZone: string;
+  aiSupported?: boolean;
 }): ReportPeriodView {
   const {
     key,
@@ -1801,9 +2048,10 @@ function buildPeriodView(args: {
     current,
     previous,
     diagnostics,
-    chartPoints,
+    chartData,
     aiSnapshots,
     timeZone,
+    aiSupported = true,
   } = args;
   const comparisonLabel = formatComparisonLabel(key);
   const { metrics, deltas } = buildMetrics({
@@ -1813,11 +2061,19 @@ function buildPeriodView(args: {
   });
   const fallbackSnapshot = buildSnapshot(key, current, deltas);
   const matchedAiSnapshot = aiSnapshotForPeriod(aiSnapshots, key, window);
-  const snapshot = applyAiSnapshot(
-    fallbackSnapshot,
-    matchedAiSnapshot,
-    isAiSnapshotFreshForView(matchedAiSnapshot, metrics, chartPoints, diagnostics)
-  );
+  const snapshot = aiSupported
+    ? applyAiSnapshot(
+        fallbackSnapshot,
+        matchedAiSnapshot,
+        isAiSnapshotFreshForView(matchedAiSnapshot, metrics, chartData.points, diagnostics)
+      )
+    : {
+        ...fallbackSnapshot,
+        statusLabel: "Rule-based analysis",
+        auditLabel:
+          "AI analysis covers daily, weekly, and monthly periods; custom ranges use rule-based analysis.",
+      };
+  const clientMixView = buildClientMixSegments(diagnostics.clientMix);
 
   return {
     key,
@@ -1825,6 +2081,8 @@ function buildPeriodView(args: {
     rangeLabel: formatRangeLabel(window, key, timeZone),
     periodStart: window.start.toISOString(),
     periodEnd: window.end.toISOString(),
+    periodStartKey: formatZonedDateKey(window.start, timeZone),
+    periodEndKey: formatZonedDateKey(window.end, timeZone),
     comparisonLabel,
     highlightValue: `${snapshot.score}/100`,
     highlightChange:
@@ -1834,6 +2092,17 @@ function buildPeriodView(args: {
     unreadMessages: current.unreadMessages,
     activeClients: diagnostics.clientMix.active,
     metrics,
+    kpis: buildKpis({
+      current,
+      deltas,
+      diagnostics,
+      comparisonLabel,
+      clientMixTotal: clientMixView.total,
+    }),
+    operationalDetail: buildOperationalDetail({ current, deltas, diagnostics }),
+    statusTotal: diagnostics.statusMix.reduce((total, status) => total + status.count, 0),
+    clientMixTotal: clientMixView.total,
+    clientMixSegments: clientMixView.segments,
     diagnostics,
     chart: {
       title:
@@ -1852,7 +2121,10 @@ function buildPeriodView(args: {
             : key === "custom"
               ? "Selected date range"
               : "Last 6 months",
-      points: chartPoints,
+      points: chartData.points,
+      completedValues: chartData.completedValues,
+      newClientValues: chartData.newClientValues,
+      hasData: chartData.points.some((point) => point.value > 0),
     },
     snapshot,
   };
@@ -1862,6 +2134,7 @@ export function buildReportsViewFromWorkspace({
   business,
   appointments,
   clients,
+  clientMix,
   messages,
   businessHours,
   staffMembers,
@@ -1954,7 +2227,7 @@ export function buildReportsViewFromWorkspace({
   });
   const dailyDiagnostics = buildPeriodDiagnostics({
     appointments,
-    clients,
+    clientMix,
     staffMembers,
     window: dailyWindow,
     timeZone,
@@ -1987,7 +2260,7 @@ export function buildReportsViewFromWorkspace({
   });
   const weeklyDiagnostics = buildPeriodDiagnostics({
     appointments,
-    clients,
+    clientMix,
     staffMembers,
     window: weeklyWindow,
     timeZone,
@@ -2020,7 +2293,7 @@ export function buildReportsViewFromWorkspace({
   });
   const monthlyDiagnostics = buildPeriodDiagnostics({
     appointments,
-    clients,
+    clientMix,
     staffMembers,
     window: monthlyWindow,
     timeZone,
@@ -2055,7 +2328,7 @@ export function buildReportsViewFromWorkspace({
   const customDiagnostics = customWindow
     ? buildPeriodDiagnostics({
         appointments,
-        clients,
+        clientMix,
         staffMembers,
         window: customWindow,
         timeZone,
@@ -2085,11 +2358,12 @@ export function buildReportsViewFromWorkspace({
     current: customCurrent,
     previous: customPrevious,
     diagnostics: customDiagnostics,
-    chartPoints: customWindow
-      ? buildCustomChart(appointments, customWindow, timeZone)
-      : buildWeeklyChart(appointments, now, timeZone),
+    chartData: customWindow
+      ? buildCustomChart(appointments, clients, customWindow, timeZone)
+      : buildWeeklyChart(appointments, clients, now, timeZone),
     aiSnapshots: [],
     timeZone,
+    aiSupported: false,
   });
 
   return {
@@ -2105,7 +2379,7 @@ export function buildReportsViewFromWorkspace({
         current: dailyCurrent,
         previous: dailyPrevious,
         diagnostics: dailyDiagnostics,
-        chartPoints: buildDailyChart(appointments, now, timeZone),
+        chartData: buildDailyChart(appointments, clients, now, timeZone),
         aiSnapshots,
         timeZone,
       }),
@@ -2116,7 +2390,7 @@ export function buildReportsViewFromWorkspace({
         current: weeklyCurrent,
         previous: weeklyPrevious,
         diagnostics: weeklyDiagnostics,
-        chartPoints: buildWeeklyChart(appointments, now, timeZone),
+        chartData: buildWeeklyChart(appointments, clients, now, timeZone),
         aiSnapshots,
         timeZone,
       }),
@@ -2127,7 +2401,7 @@ export function buildReportsViewFromWorkspace({
         current: monthlyCurrent,
         previous: monthlyPrevious,
         diagnostics: monthlyDiagnostics,
-        chartPoints: buildMonthlyChart(appointments, now, timeZone),
+        chartData: buildMonthlyChart(appointments, clients, now, timeZone),
         aiSnapshots,
         timeZone,
       }),

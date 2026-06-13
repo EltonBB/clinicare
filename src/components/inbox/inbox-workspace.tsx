@@ -8,12 +8,14 @@ import {
   useState,
   useTransition,
 } from "react";
+import { m } from "framer-motion";
 import {
   ArrowRightLeft,
   CalendarPlus2,
   ExternalLink,
   Search,
   SendHorizontal,
+  Trash2,
   UserPlus,
 } from "lucide-react";
 
@@ -36,11 +38,14 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  FilterChip,
   WorkspaceEmptyState,
   WorkspaceHeader,
   WorkspacePage,
 } from "@/components/workspace/workspace-layout";
-import { cn } from "@/lib/utils";
+import { cn, getInitials } from "@/lib/utils";
+import { fadeIn } from "@/lib/motion";
+import { LazyMotionProvider } from "@/components/layout/motion-provider";
 import type { InboxViewModel } from "@/lib/inbox";
 import type { SettingsState } from "@/lib/settings";
 
@@ -52,21 +57,14 @@ type InboxWorkspaceProps = {
   recommendedClientId?: string;
 };
 
+type InboxFilter = "all" | "unread";
+
 function isReminderMessage(body: string) {
   const normalized = body.toLowerCase();
   return (
     normalized.includes("this is a reminder for your appointment") ||
     normalized.includes("appointment is coming up") ||
     normalized.startsWith("reminder:")
-  );
-}
-
-function ContextRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3 border-b border-border/65 pb-2 last:border-b-0 last:pb-0">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="truncate text-right font-semibold text-foreground">{value}</span>
-    </div>
   );
 }
 
@@ -94,6 +92,7 @@ export function InboxWorkspace({
     initialView.initialConversationId
   );
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<InboxFilter>("all");
   const [draftMessage, setDraftMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [convertDialogOpen, setConvertDialogOpen] = useState(false);
@@ -101,11 +100,19 @@ export function InboxWorkspace({
   const [convertEmail, setConvertEmail] = useState("");
   const [isPending, startTransition] = useTransition();
   const deferredQuery = useDeferredValue(query);
+  const unreadTotal = conversations.reduce(
+    (sum, conversation) => sum + conversation.unreadCount,
+    0
+  );
 
   const filteredConversations = useMemo(() => {
     const normalized = deferredQuery.trim().toLowerCase();
 
     return conversations.filter((conversation) => {
+      if (filter === "unread" && conversation.unreadCount === 0) {
+        return false;
+      }
+
       if (!normalized) {
         return true;
       }
@@ -114,7 +121,7 @@ export function InboxWorkspace({
         value.toLowerCase().includes(normalized)
       );
     });
-  }, [conversations, deferredQuery]);
+  }, [conversations, deferredQuery, filter]);
 
   const activeConversation =
     filteredConversations.find(
@@ -126,6 +133,9 @@ export function InboxWorkspace({
   const bookingHref = recommendedClientId
     ? `/calendar/new?client=${recommendedClientId}`
     : "/calendar/new";
+  const connectionLine = connection.senderPhoneNumber
+    ? `${connection.modeLabel} ${connection.statusLabel.toLowerCase()} via ${connection.senderPhoneNumber}`
+    : `${connection.modeLabel} ${connection.statusLabel.toLowerCase()}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -279,453 +289,383 @@ export function InboxWorkspace({
   }
 
   return (
-    <>
+    <LazyMotionProvider>
       <Dialog open={convertDialogOpen} onOpenChange={setConvertDialogOpen}>
-        <DialogContent className="max-w-[480px] p-0">
-          <div className="relative overflow-hidden">
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-28 overflow-hidden">
-              <div className="dialog-accent-orb absolute -left-5 top-3.5 h-20 w-20 rounded-full bg-primary/10 blur-2xl" />
-              <div className="dialog-accent-orb absolute right-6 top-2 h-16 w-16 rounded-full bg-primary/8 blur-2xl [animation-delay:-2.1s]" />
+        <DialogContent className="max-w-[460px]">
+          <DialogHeader>
+            <div className="mb-2 flex size-10 items-center justify-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
+              <ArrowRightLeft className="size-4" />
+            </div>
+            <DialogTitle className="text-[1.1rem] font-semibold">Convert to client</DialogTitle>
+            <DialogDescription className="text-sm leading-6">
+              Create or link a client profile for this conversation without losing the history.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-1">
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground">Phone</p>
+              <p className="text-sm font-medium text-foreground">{activeConversation?.phone}</p>
             </div>
 
-            <DialogHeader className="glass-divider relative rounded-t-[1.2rem] px-5 pb-4 pt-5">
-        <div className="mb-3 flex size-10 items-center justify-center rounded-[0.7rem] bg-primary/12 text-primary shadow-[0_5px_14px_var(--primary-shadow)]">
-                <ArrowRightLeft className="size-4" />
-              </div>
-              <DialogTitle className="text-[1.15rem] font-semibold">
-                Convert to client
-              </DialogTitle>
-              <DialogDescription className="max-w-[24rem] text-sm leading-7">
-                Create or link a client profile for this WhatsApp thread without
-                losing the conversation history.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4 px-5 py-5">
-              <div className="surface-soft section-reveal rounded-[0.75rem] p-3.5 transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_5px_14px_rgba(20,32,51,0.025)]">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Phone
-                </p>
-                <p className="mt-2 text-sm font-medium text-foreground">
-                  {activeConversation?.phone}
-                </p>
-              </div>
-
-              <div className="surface-soft section-reveal-delayed space-y-2 rounded-[0.75rem] p-3.5 transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_5px_14px_rgba(20,32,51,0.025)]">
-                <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Client name
-                </label>
-                <Input
-                  value={convertName}
-                  onChange={(event) => setConvertName(event.target.value)}
-                  placeholder="Add the client name"
-                  className="h-11 rounded-[0.7rem] bg-white/84"
-                />
-              </div>
-
-              <div className="surface-soft section-reveal-delayed space-y-2 rounded-[0.75rem] p-3.5 transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_5px_14px_rgba(20,32,51,0.025)]">
-                <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Email
-                </label>
-                <Input
-                  value={convertEmail}
-                  onChange={(event) => setConvertEmail(event.target.value)}
-                  placeholder="Optional email"
-                  className="h-11 rounded-[0.7rem] bg-white/84"
-                />
-              </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Client name</label>
+              <Input
+                value={convertName}
+                onChange={(event) => setConvertName(event.target.value)}
+                placeholder="Add the client name"
+                className="h-10 rounded-(--radius-card) bg-white"
+              />
             </div>
 
-            <DialogFooter className="items-stretch gap-3 sm:flex-col sm:items-stretch sm:justify-start">
-              <div className="flex">
-                <Button
-                  className="h-11 w-full rounded-[0.7rem]"
-                  onClick={convertConversationToClient}
-                  disabled={isPending}
-                >
-                  {isPending ? "Converting..." : "Convert to client"}
-                </Button>
-              </div>
-              <div className="text-xs font-medium leading-5 text-muted-foreground">
-                This keeps the thread history attached to the new client profile.
-              </div>
-            </DialogFooter>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Email</label>
+              <Input
+                value={convertEmail}
+                onChange={(event) => setConvertEmail(event.target.value)}
+                placeholder="Optional email"
+                className="h-10 rounded-(--radius-card) bg-white"
+              />
+            </div>
           </div>
+
+          <DialogFooter className="items-stretch gap-2 sm:flex-col sm:items-stretch sm:justify-start">
+            <Button
+              className="h-10 w-full rounded-(--radius-field)"
+              onClick={convertConversationToClient}
+              disabled={isPending}
+            >
+              {isPending ? "Converting..." : "Convert to client"}
+            </Button>
+            <p className="text-xs font-medium leading-5 text-muted-foreground">
+              This keeps the thread history attached to the new client profile.
+            </p>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <WorkspacePage size="wide">
         <WorkspaceHeader
           title="Inbox"
-          description="Manage client conversations, replies, and unknown contacts."
-          meta={
-            <div className="flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
-              <span className="rounded-full border border-border/75 bg-white px-2.5 py-1">
-                {conversations.length} conversations
-              </span>
-              <span className="rounded-full border border-border/75 bg-white px-2.5 py-1">
-                {conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0)} unread
-              </span>
-              <span className="rounded-full border border-border/75 bg-white px-2.5 py-1">
-                {connection.modeLabel} inbox
-              </span>
-            </div>
-          }
+          description="Client conversations, replies, and unknown contacts."
         />
 
-      <div className="surface-card min-h-[640px] overflow-hidden p-0 lg:h-[calc(100vh-174px)]">
-        <div className="grid h-full grid-cols-1 lg:grid-cols-[292px_minmax(0,1fr)_260px]">
-        <aside className="flex min-h-0 flex-col border-b border-border/80 lg:border-b-0 lg:border-r">
-          <div className="glass-divider px-3.5 py-3">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search messages or clients..."
-                className="h-10 rounded-[0.72rem] bg-white pl-9"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between px-3.5 py-3">
-            <div>
-              <p className="text-lg font-semibold text-foreground">Messages</p>
-              <p className="text-sm text-muted-foreground">
-                {connection.modeLabel} {connection.statusLabel.toLowerCase()} via{" "}
-                {connection.senderPhoneNumber || "provider setup"}
-              </p>
-            </div>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {errorMessage ? (
-              <div className="px-5 pb-3">
-                <div className="rounded-[0.8rem] border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                  {errorMessage}
+        <div className="surface-card min-h-[640px] overflow-hidden p-0 lg:h-[calc(100vh-174px)]">
+          <div className="grid h-full grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
+            <aside className="flex min-h-0 flex-col border-b border-border/80 lg:border-b-0 lg:border-r">
+              <div className="space-y-2.5 px-3.5 pb-3 pt-3.5">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Search conversations..."
+                    className="h-10 rounded-(--radius-card) bg-white pl-9"
+                  />
                 </div>
+                <div className="flex items-center gap-1.5">
+                  <FilterChip
+                    shape="pill"
+                    active={filter === "all"}
+                    count={conversations.length}
+                    onClick={() => setFilter("all")}
+                  >
+                    All
+                  </FilterChip>
+                  <FilterChip
+                    shape="pill"
+                    active={filter === "unread"}
+                    count={unreadTotal}
+                    onClick={() => setFilter("unread")}
+                  >
+                    Unread
+                  </FilterChip>
+                </div>
+                <p className="truncate text-xs text-muted-foreground">{connectionLine}</p>
               </div>
-            ) : null}
-            {filteredConversations.map((conversation) => (
-              <button
-                key={conversation.id}
-                type="button"
-                onClick={() => openConversation(conversation.id)}
-                className={cn(
-                  "flex w-full items-start gap-3 border-l-2 border-transparent px-3.5 py-3 text-left transition-[background-color] duration-200 hover:bg-secondary/24",
-                  activeConversation?.id === conversation.id &&
-                    "border-primary bg-secondary/40"
-                )}
-              >
-                <Avatar size="lg">
-                  <AvatarFallback>
-                    {conversation.clientName
-                      .split(" ")
-                      .map((part) => part[0] ?? "")
-                      .join("")
-                      .slice(0, 2)}
-                  </AvatarFallback>
-                </Avatar>
 
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-base font-semibold text-foreground">
-                        {conversation.displayName}
-                      </p>
+              <div className="min-h-0 flex-1 overflow-y-auto border-t border-border/70">
+                {errorMessage ? (
+                  <div className="px-3.5 py-3">
+                    <div className="rounded-(--radius-card) border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                      {errorMessage}
+                    </div>
+                  </div>
+                ) : null}
+                {filteredConversations.map((conversation) => (
+                  <button
+                    key={conversation.id}
+                    type="button"
+                    onClick={() => openConversation(conversation.id)}
+                    className={cn(
+                      "relative flex w-full items-start gap-3 px-3.5 py-3 text-left transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30",
+                      activeConversation?.id === conversation.id &&
+                        "bg-primary/8 before:absolute before:inset-y-3 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary"
+                    )}
+                  >
+                    <Avatar size="lg" shape="square">
+                      <AvatarFallback className="bg-white text-xs font-semibold text-primary">
+                        {getInitials(conversation.clientName)}
+                      </AvatarFallback>
+                    </Avatar>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <p className="truncate text-sm font-semibold text-foreground">
+                          {conversation.displayName}
+                        </p>
+                        <p className="shrink-0 text-xs text-muted-foreground">
+                          {conversation.lastMessageAt}
+                        </p>
+                      </div>
                       {!conversation.isLinkedClient ? (
-                        <p className="mt-0.5 text-xs font-medium uppercase tracking-[0.12em] text-primary">
+                        <p className="mt-0.5 text-xs font-medium text-primary">
                           {conversation.contactStatusLabel}
                         </p>
                       ) : null}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {conversation.lastMessageAt}
-                    </p>
-                  </div>
-                  <p className="mt-1 truncate text-sm text-muted-foreground">
-                    {conversation.preview}
-                  </p>
-                </div>
-
-                {conversation.unreadCount > 0 ? (
-                  <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
-                    {conversation.unreadCount}
-                  </span>
-                ) : null}
-              </button>
-            ))}
-            {filteredConversations.length === 0 ? (
-              <div className="px-5 py-6">
-                <WorkspaceEmptyState
-                  icon={Search}
-                  title="No conversations found"
-                  description="Try a different search term or wait for the next client message."
-                  compact
-                />
-              </div>
-            ) : null}
-          </div>
-        </aside>
-
-        <section className="flex min-w-0 flex-col bg-white/92">
-          {activeConversation ? (
-            <>
-              <div className="glass-divider flex items-center justify-between gap-3.5 px-3.5 py-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <Avatar size="lg">
-                    <AvatarFallback>
-                      {activeConversation.clientName
-                        .split(" ")
-                        .map((part) => part[0] ?? "")
-                        .join("")
-                        .slice(0, 2)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0">
-                    <p className="truncate text-lg font-semibold text-foreground">
-                      {activeConversation.displayName}
-                    </p>
-                    <p className="truncate text-sm text-muted-foreground">
-                      {activeConversation.activeLabel}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  {activeConversation.clientId ? (
-                    <Link
-                      href={`/clients/${activeConversation.clientId}`}
-                      className="inline-flex items-center gap-1 text-sm font-medium text-primary"
-                    >
-                      View profile
-                      <ExternalLink className="size-4" />
-                    </Link>
-                  ) : (
-                    <div className="flex items-center gap-3">
-                      <div className="text-right">
-                        <p className="text-sm font-medium text-foreground">
-                          Unregistered contact
+                      {conversation.preview ? (
+                        <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                          {conversation.preview}
                         </p>
-                        <p className="text-xs text-muted-foreground">
-                          Reply here, then convert this thread into a client.
+                      ) : null}
+                    </div>
+
+                    {conversation.unreadCount > 0 ? (
+                      <span className="mt-0.5 rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
+                        {conversation.unreadCount}
+                      </span>
+                    ) : null}
+                  </button>
+                ))}
+                {filteredConversations.length === 0 ? (
+                  <div className="px-4 py-6">
+                    <WorkspaceEmptyState
+                      icon={Search}
+                      title="No conversations found"
+                      description={
+                        filter === "unread"
+                          ? "Everything is read. New replies appear here."
+                          : "Try a different search term or wait for the next client message."
+                      }
+                      compact
+                    />
+                  </div>
+                ) : null}
+              </div>
+            </aside>
+
+            <section className="flex min-w-0 flex-col bg-white/92">
+              {activeConversation ? (
+                <m.div
+                  key={activeConversation.id}
+                  variants={fadeIn}
+                  initial="initial"
+                  animate="animate"
+                  className="flex min-h-0 flex-1 flex-col"
+                >
+                  <div className="flex items-center justify-between gap-3.5 border-b border-border/70 px-4 py-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <Avatar size="lg" shape="square">
+                        <AvatarFallback className="bg-white text-xs font-semibold text-primary">
+                          {getInitials(activeConversation.clientName)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="truncate text-base font-semibold text-foreground">
+                          {activeConversation.displayName}
+                        </p>
+                        <p className="truncate text-sm text-muted-foreground">
+                          {activeConversation.phone}
                         </p>
                       </div>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-2">
+                      {activeConversation.clientId ? (
+                        <Link
+                          href={`/clients/${activeConversation.clientId}`}
+                          className={cn(
+                            buttonVariants({ variant: "outline", size: "sm" }),
+                            "h-9 rounded-(--radius-card) bg-white"
+                          )}
+                        >
+                          View profile
+                          <ExternalLink className="size-3.5" />
+                        </Link>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-9 rounded-(--radius-card) bg-white"
+                          onClick={openConvertDialog}
+                          disabled={isPending}
+                        >
+                          <ArrowRightLeft className="size-3.5" />
+                          Convert to client
+                        </Button>
+                      )}
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="rounded-[0.7rem] bg-white/70"
-                        onClick={openConvertDialog}
+                        className="size-9 rounded-(--radius-card) border-border/80 bg-white px-0 text-muted-foreground hover:border-destructive/30 hover:bg-destructive/5 hover:text-destructive"
+                        onClick={() => deleteConversation(activeConversation.id)}
                         disabled={isPending}
+                        aria-label="Delete conversation"
+                        title="Delete conversation"
                       >
-                        <ArrowRightLeft className="size-4" />
-                        Convert to client
+                        <Trash2 className="size-4" />
                       </Button>
                     </div>
-                  )}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="rounded-[0.7rem] border-destructive/25 text-destructive hover:bg-destructive/5 hover:text-destructive"
-                    onClick={() => deleteConversation(activeConversation.id)}
-                    disabled={isPending}
-                  >
-                    Delete conversation
-                  </Button>
-                </div>
-              </div>
+                  </div>
 
-              <div className="flex-1 overflow-y-auto bg-muted/22 px-3.5 py-3.5">
-                <div className="mx-auto max-w-3xl space-y-3">
-                  {activeConversation.messages.map((message) => (
-                    <div key={message.id}>
-                      {message.sender === "system" ? (
-                        <div className="mx-auto w-fit rounded-full bg-secondary px-3 py-1 text-xs font-medium text-muted-foreground">
-                          {message.body}
-                        </div>
-                      ) : (
-                        <div
-                          className={cn(
-                            "max-w-[75%] rounded-[0.85rem] px-3.5 py-2.5 text-sm leading-6 shadow-[0_8px_18px_rgba(20,32,51,0.025)]",
-                            message.sender === "business"
-                              ? "ml-auto bg-primary text-primary-foreground"
-                              : "bg-white/86 text-foreground ring-1 ring-border/75"
-                          )}
-                        >
-                          {message.sender === "business" && isReminderMessage(message.body) ? (
-                            <span className="mb-2 inline-flex rounded-full bg-white/16 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-primary-foreground/90">
-                              Reminder
-                            </span>
-                          ) : null}
-                          <p>{message.body}</p>
-                          <div
-                            className={cn(
-                              "mt-2 flex items-center gap-2 text-xs",
-                              message.sender === "business"
-                                ? "text-primary-foreground/75"
-                                : "text-muted-foreground"
-                            )}
-                          >
-                            <span>{message.timestamp}</span>
-                            {message.sender === "business" && message.deliveryLabel ? (
-                              <span
+                  <div className="flex-1 overflow-y-auto bg-muted/22 px-4 py-4">
+                    <div className="mx-auto max-w-3xl space-y-2.5">
+                      {activeConversation.messages.map((message, index) => {
+                        const previousMessage = activeConversation.messages[index - 1];
+                        const showDaySeparator =
+                          !previousMessage || previousMessage.dayLabel !== message.dayLabel;
+
+                        return (
+                          <div key={message.id}>
+                            {showDaySeparator ? (
+                              <div className="flex items-center gap-3 py-2">
+                                <span className="h-px flex-1 bg-border/60" />
+                                <span className="text-[11px] font-medium text-muted-foreground">
+                                  {message.dayLabel}
+                                </span>
+                                <span className="h-px flex-1 bg-border/60" />
+                              </div>
+                            ) : null}
+                            {message.sender === "system" ? (
+                              <div className="mx-auto w-fit rounded-full bg-secondary px-3 py-1 text-xs font-medium text-muted-foreground">
+                                {message.body}
+                              </div>
+                            ) : (
+                              <div
                                 className={cn(
-                                  "rounded-full px-2 py-0.5 font-medium",
-                                  deliveryTone(message.deliveryStatus)
+                                  "max-w-[75%] rounded-(--radius-field) px-3.5 py-2.5 text-sm leading-6",
+                                  message.sender === "business"
+                                    ? "ml-auto bg-primary text-primary-foreground"
+                                    : "bg-white text-foreground ring-1 ring-border/70"
                                 )}
                               >
-                                {message.deliveryLabel}
-                              </span>
-                            ) : null}
+                                {message.sender === "business" && isReminderMessage(message.body) ? (
+                                  <span className="mb-2 inline-flex rounded-full bg-white/16 px-2.5 py-1 text-[11px] font-semibold text-primary-foreground/90">
+                                    Reminder
+                                  </span>
+                                ) : null}
+                                <p>{message.body}</p>
+                                <div
+                                  className={cn(
+                                    "mt-1.5 flex items-center gap-2 text-xs",
+                                    message.sender === "business"
+                                      ? "text-primary-foreground/75"
+                                      : "text-muted-foreground"
+                                  )}
+                                >
+                                  <span>{message.timestamp}</span>
+                                  {message.sender === "business" && message.deliveryLabel ? (
+                                    <span
+                                      className={cn(
+                                        "rounded-full px-2 py-0.5 font-medium",
+                                        deliveryTone(message.deliveryStatus)
+                                      )}
+                                    >
+                                      {message.deliveryLabel}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      )}
+                        );
+                      })}
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="glass-divider px-3.5 py-3">
-                <div className="mx-auto flex max-w-3xl items-end gap-3 rounded-[0.82rem] border border-border/75 bg-white px-3 py-2.5 shadow-[0_8px_18px_rgba(20,32,51,0.026)]">
-                  <Input
-                    value={draftMessage}
-                    onChange={(event) => setDraftMessage(event.target.value)}
-                    placeholder={`Type a message to ${activeConversation.displayName || ownerName}...`}
-                    className="h-10 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        sendMessage();
-                      }
-                    }}
-                  />
-                  <Button
-                    onClick={sendMessage}
-                    className="size-10 rounded-[0.7rem] px-0"
-                    aria-label="Send message"
-                    disabled={isPending || draftMessage.trim().length === 0}
-                  >
-                    <SendHorizontal className="size-4" />
-                  </Button>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="flex flex-1 items-center justify-center px-6">
-              <div className="max-w-md space-y-5 text-center">
-                {query.trim().length === 0 ? (
-                  <div className="mx-auto flex size-12 items-center justify-center rounded-[0.75rem] bg-primary/12 text-primary">
-                    {hasClients ? (
-                      <CalendarPlus2 className="size-5" />
-                    ) : (
-                      <UserPlus className="size-5" />
-                    )}
                   </div>
-                ) : null}
-                <p className="text-base font-medium text-foreground">
-                  {query.trim().length > 0
-                    ? "No conversations match your search."
-                    : hasClients
-                      ? "No inbox conversations yet."
-                      : "Add a client to start the workspace."}
-                </p>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  {query.trim().length > 0
-                    ? "Try a different client name or phone number."
-                    : hasClients
-                      ? "WhatsApp replies will appear here. You can also book the first appointment and then open that client thread."
-                      : "Create the first client, then Clinicare can connect that person to bookings and inbox history."}
-                </p>
-                {query.trim().length === 0 ? (
-                  <div className="flex flex-col justify-center gap-2 sm:flex-row">
-                    <Link
-                      href={hasClients ? bookingHref : "/clients/new?next=calendar"}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.7rem] bg-primary px-4 text-sm font-medium text-primary-foreground transition-[background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_18px_var(--primary-shadow)]"
-                    >
-                      {hasClients ? (
-                        <CalendarPlus2 className="size-4" />
-                      ) : (
-                        <UserPlus className="size-4" />
-                      )}
-                      {hasClients ? "Book first appointment" : "Add first client"}
-                    </Link>
-                    {hasClients ? (
-                      <Link
-                        href="/clients"
-                        className="inline-flex h-10 items-center justify-center rounded-[0.7rem] border border-border/80 bg-white px-4 text-sm font-medium text-foreground transition-[background-color,border-color,transform] duration-200 hover:-translate-y-0.5 hover:bg-secondary/50"
+
+                  <div className="border-t border-border/70 px-4 py-3">
+                    <div className="mx-auto flex max-w-3xl items-end gap-3 rounded-(--radius-field) border border-border/75 bg-white px-3 py-2">
+                      <Input
+                        value={draftMessage}
+                        onChange={(event) => setDraftMessage(event.target.value)}
+                        placeholder={`Message ${activeConversation.displayName || ownerName}...`}
+                        className="h-10 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" && !event.shiftKey) {
+                            event.preventDefault();
+                            sendMessage();
+                          }
+                        }}
+                      />
+                      <Button
+                        onClick={sendMessage}
+                        className="size-10 rounded-(--radius-card) px-0"
+                        aria-label="Send message"
+                        disabled={isPending || draftMessage.trim().length === 0}
                       >
-                        Open clients
-                      </Link>
+                        <SendHorizontal className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </m.div>
+              ) : (
+                <div className="flex flex-1 items-center justify-center px-6">
+                  <div className="max-w-md space-y-5 text-center">
+                    {query.trim().length === 0 ? (
+                      <div className="mx-auto flex size-12 items-center justify-center rounded-(--radius-card) bg-primary/12 text-primary">
+                        {hasClients ? (
+                          <CalendarPlus2 className="size-5" />
+                        ) : (
+                          <UserPlus className="size-5" />
+                        )}
+                      </div>
+                    ) : null}
+                    <p className="text-base font-medium text-foreground">
+                      {query.trim().length > 0
+                        ? "No conversations match your search."
+                        : hasClients
+                          ? "No inbox conversations yet."
+                          : "Add a client to start the workspace."}
+                    </p>
+                    <p className="text-sm leading-6 text-muted-foreground">
+                      {query.trim().length > 0
+                        ? "Try a different client name or phone number."
+                        : hasClients
+                          ? "WhatsApp replies will appear here. You can also book the first appointment and then open that client thread."
+                          : "Create the first client, then Vela can connect that person to bookings and inbox history."}
+                    </p>
+                    {query.trim().length === 0 ? (
+                      <div className="flex flex-col justify-center gap-2 sm:flex-row">
+                        <Link
+                          href={hasClients ? bookingHref : "/clients/new?next=calendar"}
+                          className={cn(buttonVariants({ variant: "solid" }), "h-10 rounded-(--radius-card) px-4")}
+                        >
+                          {hasClients ? (
+                            <CalendarPlus2 className="size-4" />
+                          ) : (
+                            <UserPlus className="size-4" />
+                          )}
+                          {hasClients ? "Book first appointment" : "Add first client"}
+                        </Link>
+                        {hasClients ? (
+                          <Link
+                            href="/clients"
+                            className={cn(buttonVariants({ variant: "outline" }), "h-10 rounded-(--radius-card) px-4")}
+                          >
+                            Open clients
+                          </Link>
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
-                ) : null}
-              </div>
-            </div>
-          )}
-        </section>
-
-        <aside className="hidden min-h-0 overflow-y-auto border-l border-border/80 bg-white/90 p-3 lg:block">
-          {activeConversation ? (
-            <div className="space-y-3">
-              <div className="rounded-[0.72rem] border border-border/75 bg-[#f8fafc] p-3">
-                <Avatar size="lg">
-                  <AvatarFallback>
-                    {activeConversation.clientName
-                      .split(" ")
-                      .map((part) => part[0] ?? "")
-                      .join("")
-                      .slice(0, 2)}
-                  </AvatarFallback>
-                </Avatar>
-                <p className="mt-3 truncate text-sm font-semibold text-foreground">
-                  {activeConversation.displayName}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">{activeConversation.activeLabel}</p>
-              </div>
-
-              <div className="rounded-[0.72rem] border border-border/75 bg-white p-3 text-sm">
-                <p className="font-semibold text-foreground">Contact context</p>
-                <div className="mt-3 space-y-2.5">
-                  <ContextRow label="Status" value={activeConversation.contactStatusLabel} />
-                  <ContextRow label="Messages" value={activeConversation.messages.length.toString()} />
-                  <ContextRow label="Unread" value={activeConversation.unreadCount.toString()} />
                 </div>
-              </div>
-
-              {activeConversation.clientId ? (
-                <Link
-                  href={`/clients/${activeConversation.clientId}`}
-                  className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-full rounded-[0.68rem] bg-white")}
-                >
-                  View patient record
-                </Link>
-              ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-full rounded-[0.68rem] bg-white"
-                  onClick={openConvertDialog}
-                  disabled={isPending}
-                >
-                  Convert to client
-                </Button>
               )}
-            </div>
-          ) : (
-            <WorkspaceEmptyState
-              compact
-              icon={UserPlus}
-              title="No conversation selected"
-              description="Choose a message to see contact context."
-            />
-          )}
-        </aside>
-      </div>
-      </div>
+            </section>
+          </div>
+        </div>
       </WorkspacePage>
-    </>
+    </LazyMotionProvider>
   );
 }
