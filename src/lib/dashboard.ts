@@ -321,6 +321,7 @@ export function buildDashboardViewFromWorkspace(args: {
   todaysHours: number;
   clientCount: number;
   appointmentCount: number;
+  nonCancelledAppointmentCount: number;
   analyticsAppointments: Array<Pick<Appointment, "status" | "startAt" | "endAt">>;
   payments?: DashboardPaymentRow[];
   conversations?: DashboardConversationRow[];
@@ -340,6 +341,7 @@ export function buildDashboardViewFromWorkspace(args: {
     unreadCount,
     clientCount,
     appointmentCount,
+    nonCancelledAppointmentCount,
     analyticsAppointments,
     payments = [],
     conversations = [],
@@ -384,7 +386,7 @@ export function buildDashboardViewFromWorkspace(args: {
   const todayKey = formatZonedDateKey(now, timeZone);
   const visitsSummary = buildVisitsSummary({
     analyticsAppointments: recentAppointments,
-    allTime: appointmentCount,
+    allTime: nonCancelledAppointmentCount,
     now,
     timeZone,
   });

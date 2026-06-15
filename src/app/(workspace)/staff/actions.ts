@@ -4,7 +4,13 @@ import { revalidatePath } from "next/cache";
 
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
-import { parseZonedWallClock } from "@/lib/time-zone";
+import {
+  getAppTimeZone,
+  getZonedDayWindow,
+  getZonedDayWindowFromParts,
+  getZonedMonthStart,
+  parseZonedWallClock,
+} from "@/lib/time-zone";
 import {
   buildStaffRecord,
   staffStatuses,
@@ -51,8 +57,8 @@ function staffTimeEntryCutoff() {
 }
 
 function completedAppointmentCutoff() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), 1);
+  // Zoned month start so early-on-the-1st visits aren't dropped in non-UTC clinics.
+  return getZonedMonthStart();
 }
 
 function staffShiftCutoff() {
@@ -137,16 +143,23 @@ function revalidateStaffSurfaces() {
   revalidatePath("/settings");
 }
 
-function weekScheduleWindow() {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 7);
-  return { start, end };
-}
-
 function isValidTime(value: string) {
   return /^\d{2}:\d{2}$/.test(value);
+}
+
+// Zoned day window (true UTC instants) for a `YYYY-MM-DD` clinic-local date key.
+function zonedDateKeyWindow(dateKey: string, timeZone: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey.trim());
+  if (!match) {
+    return null;
+  }
+
+  return getZonedDayWindowFromParts(
+    Number(match[1]),
+    Number(match[2]),
+    Number(match[3]),
+    timeZone
+  );
 }
 
 async function replaceWeeklySchedule(args: {
@@ -154,7 +167,7 @@ async function replaceWeeklySchedule(args: {
   staffMemberId: string;
   weeklySchedule: NonNullable<SaveStaffPayload["weeklySchedule"]>;
 }) {
-  const { start, end } = weekScheduleWindow();
+  const timeZone = getAppTimeZone();
   const shifts = args.weeklySchedule
     .filter((item) => item.enabled && item.date && isValidTime(item.startTime) && isValidTime(item.endTime))
     .map((item) => {
@@ -175,17 +188,39 @@ async function replaceWeeklySchedule(args: {
     })
     .filter((item): item is NonNullable<typeof item> => item !== null);
 
-  await prisma.$transaction([
-    prisma.staffShift.deleteMany({
-      where: {
-        businessId: args.businessId,
-        staffMemberId: args.staffMemberId,
-        startsAt: {
-          gte: start,
-          lt: end,
-        },
-      },
-    }),
+  // Delete only the existing shifts on exactly the clinic-local dates being
+  // replaced, using zoned day bounds so they line up with how shifts are stored
+  // (true UTC instants of the clinic wall-clock entry). Per-day windows (not a
+  // first..last range) keep a non-contiguous or tampered payload from wiping
+  // shifts on intervening days, while still catching an early-morning shift that
+  // crosses to the previous UTC day in a non-UTC clinic.
+  const dayWindows = Array.from(
+    new Set(
+      args.weeklySchedule
+        .map((item) => item.date)
+        .filter((date): date is string => /^\d{4}-\d{2}-\d{2}$/.test((date ?? "").trim()))
+    )
+  )
+    .map((dateKey) => zonedDateKeyWindow(dateKey, timeZone))
+    .filter((window): window is NonNullable<typeof window> => window !== null);
+
+  const operations = [
+    ...(dayWindows.length > 0
+      ? [
+          prisma.staffShift.deleteMany({
+            where: {
+              businessId: args.businessId,
+              staffMemberId: args.staffMemberId,
+              OR: dayWindows.map((window) => ({
+                startsAt: {
+                  gte: window.start,
+                  lte: window.end,
+                },
+              })),
+            },
+          }),
+        ]
+      : []),
     ...(shifts.length > 0
       ? [
           prisma.staffShift.createMany({
@@ -193,7 +228,11 @@ async function replaceWeeklySchedule(args: {
           }),
         ]
       : []),
-  ]);
+  ];
+
+  if (operations.length > 0) {
+    await prisma.$transaction(operations);
+  }
 }
 
 export async function saveStaffAction(payload: SaveStaffPayload): Promise<SaveStaffResult> {
@@ -343,11 +382,7 @@ export async function checkInStaffAction(staffId: string): Promise<StaffClockRes
       shifts: {
         where: {
           startsAt: {
-            gte: (() => {
-              const start = new Date();
-              start.setHours(0, 0, 0, 0);
-              return start;
-            })(),
+            gte: getZonedDayWindow().start,
           },
         },
         select: {
@@ -370,9 +405,12 @@ export async function checkInStaffAction(staffId: string): Promise<StaffClockRes
   }
 
   const now = new Date();
+  // Match purely on the shift's time window (30-min early grace through its end).
+  // A clinic-local-date equality check would reject the pre-midnight grace period
+  // that belongs to an early-morning shift on the next date (e.g. a 00:15 shift's
+  // window opens at 23:45 the previous day) and any post-midnight overnight shift.
   const todayShift = staff.shifts.find(
     (shift) =>
-      shift.startsAt.toDateString() === now.toDateString() &&
       now >= new Date(shift.startsAt.getTime() - 30 * 60 * 1000) &&
       now <= shift.endsAt
   );
