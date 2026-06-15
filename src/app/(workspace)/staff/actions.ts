@@ -189,30 +189,35 @@ async function replaceWeeklySchedule(args: {
     })
     .filter((item): item is NonNullable<typeof item> => item !== null);
 
-  // Delete the existing shifts for exactly the clinic-local dates being replaced,
-  // using zoned day bounds so they line up with how shifts are stored (true UTC
-  // instants of the clinic wall-clock entry). A server-local window would miss an
-  // early-morning shift that crosses to the previous UTC day in a non-UTC clinic
-  // and leave a duplicate behind on re-save.
-  const dateKeys = args.weeklySchedule
-    .map((item) => item.date)
-    .filter((date): date is string => /^\d{4}-\d{2}-\d{2}$/.test((date ?? "").trim()))
-    .sort();
-  const firstWindow = dateKeys.length > 0 ? zonedDateKeyWindow(dateKeys[0], timeZone) : null;
-  const lastWindow =
-    dateKeys.length > 0 ? zonedDateKeyWindow(dateKeys[dateKeys.length - 1], timeZone) : null;
+  // Delete only the existing shifts on exactly the clinic-local dates being
+  // replaced, using zoned day bounds so they line up with how shifts are stored
+  // (true UTC instants of the clinic wall-clock entry). Per-day windows (not a
+  // first..last range) keep a non-contiguous or tampered payload from wiping
+  // shifts on intervening days, while still catching an early-morning shift that
+  // crosses to the previous UTC day in a non-UTC clinic.
+  const dayWindows = Array.from(
+    new Set(
+      args.weeklySchedule
+        .map((item) => item.date)
+        .filter((date): date is string => /^\d{4}-\d{2}-\d{2}$/.test((date ?? "").trim()))
+    )
+  )
+    .map((dateKey) => zonedDateKeyWindow(dateKey, timeZone))
+    .filter((window): window is NonNullable<typeof window> => window !== null);
 
   const operations = [
-    ...(firstWindow && lastWindow
+    ...(dayWindows.length > 0
       ? [
           prisma.staffShift.deleteMany({
             where: {
               businessId: args.businessId,
               staffMemberId: args.staffMemberId,
-              startsAt: {
-                gte: firstWindow.start,
-                lte: lastWindow.end,
-              },
+              OR: dayWindows.map((window) => ({
+                startsAt: {
+                  gte: window.start,
+                  lte: window.end,
+                },
+              })),
             },
           }),
         ]
