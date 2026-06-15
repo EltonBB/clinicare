@@ -10,6 +10,8 @@
  * object is serialized for diagnostics; never log a value that may carry PHI.
  */
 
+import * as Sentry from "@sentry/nextjs";
+
 type LogContext = Record<string, string | number | boolean | null | undefined>;
 
 function serializeError(error: unknown) {
@@ -22,7 +24,12 @@ function serializeError(error: unknown) {
 
 export const logger = {
   error(message: string, error?: unknown, context?: LogContext) {
-    // TODO(observability): forward to Sentry/Logtail here once configured.
+    // Forward handled errors to Sentry (no-op until SENTRY_DSN is set). Context is
+    // IDs/counts only (see HIPAA note above) and PII capture is disabled, so no
+    // patient data leaves the app.
+    Sentry.captureException(error ?? new Error(message), {
+      extra: { message, ...(context ?? {}) },
+    });
     console.error(message, {
       ...(context ?? {}),
       ...(error !== undefined ? { error: serializeError(error) } : {}),
