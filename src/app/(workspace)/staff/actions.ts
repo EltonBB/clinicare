@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
 import {
-  formatZonedDateKey,
   getAppTimeZone,
   getZonedDayWindow,
   getZonedDayWindowFromParts,
@@ -406,11 +405,12 @@ export async function checkInStaffAction(staffId: string): Promise<StaffClockRes
   }
 
   const now = new Date();
-  const timeZone = getAppTimeZone();
-  const todayKey = formatZonedDateKey(now, timeZone);
+  // Match purely on the shift's time window (30-min early grace through its end).
+  // A clinic-local-date equality check would reject the pre-midnight grace period
+  // that belongs to an early-morning shift on the next date (e.g. a 00:15 shift's
+  // window opens at 23:45 the previous day) and any post-midnight overnight shift.
   const todayShift = staff.shifts.find(
     (shift) =>
-      formatZonedDateKey(shift.startsAt, timeZone) === todayKey &&
       now >= new Date(shift.startsAt.getTime() - 30 * 60 * 1000) &&
       now <= shift.endsAt
   );
