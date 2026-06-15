@@ -52,6 +52,7 @@ export default async function DashboardPage() {
     paymentsResult,
     conversationsResult,
     staffMembersResult,
+    nonCancelledAppointmentCountResult,
   ] =
     await Promise.allSettled([
       prisma.appointment.findMany({
@@ -245,6 +246,14 @@ export default async function DashboardPage() {
         },
         take: 6,
       }),
+      prisma.appointment.count({
+        where: {
+          businessId: business.id,
+          status: {
+            not: "CANCELLED",
+          },
+        },
+      }),
     ]);
 
   const appointments =
@@ -274,6 +283,10 @@ export default async function DashboardPage() {
     conversationsResult.status === "fulfilled" ? conversationsResult.value : [];
   const staffMembers =
     staffMembersResult.status === "fulfilled" ? staffMembersResult.value : [];
+  const nonCancelledAppointmentCount =
+    nonCancelledAppointmentCountResult.status === "fulfilled"
+      ? nonCancelledAppointmentCountResult.value
+      : 0;
 
   if (appointmentsResult.status === "rejected") {
     console.error("Dashboard appointments query failed", appointmentsResult.reason);
@@ -335,6 +348,13 @@ export default async function DashboardPage() {
     console.error("Dashboard staff query failed", staffMembersResult.reason);
   }
 
+  if (nonCancelledAppointmentCountResult.status === "rejected") {
+    console.error(
+      "Dashboard non-cancelled appointment count query failed",
+      nonCancelledAppointmentCountResult.reason
+    );
+  }
+
   const todaysHours =
     todaysHoursRecord && todaysHoursRecord.isOpen
       ? Math.max(
@@ -353,6 +373,7 @@ export default async function DashboardPage() {
     todaysHours,
     clientCount,
     appointmentCount,
+    nonCancelledAppointmentCount,
     analyticsAppointments,
     payments,
     conversations,
