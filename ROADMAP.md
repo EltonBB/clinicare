@@ -1,4 +1,4 @@
-# Vela / Clinicare — Roadmap & Migration Plan
+# Vela / Clinicare — Roadmap & Infrastructure Plan
 
 > Strategic plan agreed 2026-06-10. This is the durable "where we're going and why" doc.
 > `PROJECT_STATUS.md` = what's done. `AGENTS.md` = product direction. This = the forward plan.
@@ -12,13 +12,13 @@
 |---|---|
 | **Market** | Free pilot to ~50 **Kosovo** clinics first, then **US-first**. Europe/GDPR is acceptable-to-have but low priority. |
 | **Compliance** | **HIPAA is the primary concern** (US market). Build HIPAA-ready from the start. |
-| **Host** | **Stay on the current stack now** (Supabase / Vercel / Twilio / OpenAI); **migrate to Azure near the end** as one contained swap. |
-| **Why Azure** | $25k Azure credits + one **Microsoft BAA** covers compute + Postgres + storage + email/SMS + AI. Cost is a non-issue for pilot scale (~$150–400/mo). |
-| **Sequencing** | Build the product to "done" on the current stack → one Azure swap → QA → compliance gate → first US clinic. |
+| **Host** | **AWS indefinitely — no cloud migration.** Stay on the current AWS-backed stack (Supabase / Vercel / Twilio / OpenAI; Supabase + Vercel are AWS-hosted). Provider seams are kept for portability, not for a planned migration. |
+| **Why AWS** | Stay on the AWS-backed stack the product already runs on — no migration cost or risk. Cost is a non-issue at pilot scale (~$150–400/mo). **HIPAA note:** with no single cloud BAA, US/PHI coverage means a **BAA with each PHI-handling provider** (Supabase, Vercel, Twilio, production email) — confirm this approach (see §5). |
+| **Sequencing** | Build the product to "done" on the current stack → HIPAA compliance gate (BAAs + app safeguards, all on the current stack) → first US clinic. |
 
-### Two guardrails (these make the deferred migration safe)
-1. **Build HIPAA app-safeguards NOW**, not during the Azure phase. Audit logging, auto-logoff, RBAC, and minimum-necessary messaging are *app work*, not infra work. Retrofitting them after "done" = the expensive trap. Only the **BAA + infrastructure** part waits for Azure.
-2. **Build behind seams** so migration is a swap, not a rewrite:
+### Two guardrails
+1. **Build HIPAA app-safeguards NOW.** Audit logging, auto-logoff, RBAC, and minimum-necessary messaging are *app work*, not infra work. Retrofitting them after "done" = the expensive trap. The remaining gate is the **BAA + compliance** work, not an infra migration.
+2. **Build behind seams** so any future provider swap is a swap, not a rewrite:
    - Auth → always via `requireCurrentUser()` / `getCurrentWorkspaceContext()`, never raw `@supabase/ssr` in features.
    - Media → always via `lib/media-storage*.ts`.
    - AI → always via `lib/analytics-ai.ts`.
@@ -28,15 +28,15 @@
 
 ## 2. Messaging channel decisions
 
-| Channel | Pilot (now, current stack) | After Azure migration |
+| Channel | Pilot (now) | Production / US phase |
 |---|---|---|
-| **Email** | **Resend** (best DX; pilot is non-PHI so no BAA needed) | **ACS Email** (BAA-covered) |
-| **SMS** | **Reuse existing Twilio** (barely used in Kosovo phase; already wired) | **ACS SMS** (+ optional **RCS** richer-messaging upgrade) |
-| **WhatsApp** | **Baileys** (`@whiskeysockets/baileys`) — **Kosovo-only, non-PHI, throwaway**, isolated behind the abstraction | **Official WhatsApp via ACS**, once a US entity + Meta access exist |
+| **Email** | **Resend** (best DX; pilot is non-PHI so no BAA needed) | **BAA-covered email** for US/PHI — confirm provider (e.g. AWS SES under the AWS BAA) |
+| **SMS** | **Reuse existing Twilio** (barely used in Kosovo phase; already wired) | **Twilio with a signed BAA** (Twilio supports HIPAA) |
+| **WhatsApp** | **Baileys** (`@whiskeysockets/baileys`) — **Kosovo-only, non-PHI, throwaway**, isolated behind the abstraction | **Official WhatsApp** (via Twilio or another approved BSP), once a US entity + Meta access exist |
 
 **Why these / what was ruled out:**
-- **No official WhatsApp without Meta.** Every official route (ACS, Twilio, 360dialog) requires a verified Meta Business account, which is currently unavailable (likely the Kosovo entity; expected to unblock once a US entity exists). So Kosovo WhatsApp uses the unofficial Baileys library — accepted as disposable, ban-prone, **never touches the US or PHI**.
-- **iMessage is not buildable** — no business send API; SMS already reaches iPhones. The richer "blue-bubble" experience comes later via **RCS on ACS**.
+- **No official WhatsApp without Meta.** Every official route (Twilio, 360dialog, etc.) requires a verified Meta Business account, which is currently unavailable (likely the Kosovo entity; expected to unblock once a US entity exists). So Kosovo WhatsApp uses the unofficial Baileys library — accepted as disposable, ban-prone, **never touches the US or PHI**.
+- **iMessage is not buildable** — no business send API; SMS already reaches iPhones. The richer "blue-bubble" experience could come later via **RCS** (through Twilio or another provider).
 - **Sent.dm rejected** — no email channel, its WhatsApp/iMessage need the Meta/Apple approvals we lack, and no confirmed BAA. Collapses to "just SMS" for us, which Twilio already covers.
 
 ---
@@ -63,33 +63,33 @@
 - Reusable signed-in test session (unblocks signed-in QA — long-standing blocker).
 - UI/UX + performance polish over the completed surface.
 
-### Step 5 — Azure migration + compliance gate *(finish line)*
-- Provision Azure landing zone (Postgres, Blob, Container Apps, ACS, Azure OpenAI, Key Vault, VNet + private endpoints).
-- Port behind the seams (DB → Azure Postgres; storage → Blob; AI → Azure OpenAI; messaging → ACS; auth → self-hosted lib on Azure Postgres; cron → Container Apps Jobs).
-- **Full QA pass after migration** (auth/session/cron/cold-start differences always surface).
+### Step 5 — HIPAA compliance gate *(finish line)*
+- **No cloud migration** — stay on the current AWS-backed stack (Supabase / Vercel / Twilio / OpenAI).
+- Sign a **BAA with every PHI-handling provider** (Supabase, Vercel, Twilio, and the production email provider); confine PHI to BAA-covered services only.
+- Verify the Step 3 app safeguards (audit logging, auto-logoff, RBAC, minimum-necessary messaging) are live across all PHI paths.
 - HIPAA risk assessment + your clinic-facing BAA (counsel-reviewed) → **then** onboard the first US clinic.
 
 ---
 
-## 4. Azure swap map (reference for Step 5)
+## 4. Provider portability (reference)
 
-| Current | Azure target | Effort |
+No cloud migration is planned — the stack stays on AWS-backed providers (Supabase + Vercel are AWS-hosted) indefinitely. The seams from §1 exist so that **if** a single provider ever needs swapping (for a BAA, pricing, or reliability reason), it's a contained adapter change, not a rewrite:
+
+| Seam | Today | Swap effort if ever needed |
 |---|---|---|
-| Supabase Postgres | Azure Database for PostgreSQL (Flexible Server) | Low — connection string + data copy |
-| Supabase Storage | Azure Blob Storage (private, SAS URLs) | Low — one module |
-| Supabase Auth (`@supabase/ssr`) | Self-hosted auth (Auth.js / better-auth) on Azure Postgres | **High — the hard part** |
-| Vercel hosting | Azure Container Apps (Dockerized Next.js) | Medium |
-| Vercel cron (`vercel.json`) | Azure Container Apps Jobs | Low |
-| OpenAI | Azure OpenAI (VNet + private endpoints + RBAC) | Low |
-| Resend / Twilio messaging | Azure Communication Services (email + SMS) | Low — swap adapter |
-| env vars | Azure Key Vault | Low |
+| Database | Supabase Postgres (via Prisma, `lib/prisma.ts`) | Low — connection string + data copy to another Postgres host (e.g. AWS RDS) |
+| Storage | Supabase Storage (`lib/media-storage*.ts`) | Low — one module |
+| Auth | Supabase Auth (`@supabase/ssr`) behind `lib/auth.ts` / `lib/business.ts` | **High — the hard part** |
+| Hosting / cron | Vercel + `vercel.json` cron | Medium |
+| AI | OpenAI (`lib/analytics-ai.ts`) | Low |
+| Messaging | Resend / Twilio / Baileys behind `sendMessage()` | Low — swap adapter |
 
 ---
 
 ## 5. HIPAA gate checklist (must clear before the first US clinic)
 
-- [ ] Microsoft BAA accepted on the Azure subscription
-- [ ] Twilio BAA (if WhatsApp/SMS still via Twilio) — or fully on ACS
+- [ ] BAA signed with every PHI-handling provider (Supabase, Vercel, production email)
+- [ ] Twilio BAA (for WhatsApp/SMS)
 - [ ] Audit logging live across all PHI access paths
 - [ ] Auto-logoff / session timeout enforced
 - [ ] Role-based / minimum-necessary access verified
