@@ -2,15 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 
-import { requireCurrentBusiness } from "@/lib/business";
+import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
+import { parseZonedWallClock } from "@/lib/time-zone";
 import {
   buildStaffRecord,
   staffStatuses,
   type SaveStaffPayload,
   type StaffRecord,
 } from "@/lib/staff";
-import { createClient } from "@/utils/supabase/server";
 
 export type SaveStaffResult = {
   ok: boolean;
@@ -60,28 +60,16 @@ function staffShiftCutoff() {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
 }
 
+// Store shift times as the true UTC instant for the clinic's wall-clock entry
+// (shared helper — see lib/time-zone.ts).
 function parseDateTime(date: string, time: string) {
-  const parsed = new Date(`${date}T${time}:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return parseZonedWallClock(date, time);
 }
 
-async function getAuthedBusiness() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return {
-      error: "Your session expired. Log in again to manage staff.",
-    } as const;
-  }
-
-  const business = await requireCurrentBusiness(user, {
-    missingBusinessRedirect: "/onboarding",
-  });
-
-  return { business } as const;
+function getAuthedBusiness() {
+  return getAuthedBusinessContext(
+    "Your session expired. Log in again to manage staff."
+  );
 }
 
 async function fetchStaffRecord(staffId: string, businessId: string) {

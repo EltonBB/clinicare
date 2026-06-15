@@ -60,6 +60,10 @@ export default async function StaffPage({
             gte: staffTimeEntryCutoff(),
           },
         },
+        select: {
+          checkedInAt: true,
+          checkedOutAt: true,
+        },
         orderBy: {
           checkedInAt: "desc",
         },

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
+import { logger } from "@/lib/logger";
 import {
   validateTwilioSignature,
 } from "@/lib/whatsapp";
@@ -116,7 +117,7 @@ async function resolveInboundConnection(toPhone: string, fromPhone: string) {
       return sandboxMatch;
     }
 
-    console.error("Twilio webhook matched multiple connected clinic senders.");
+    logger.error("Twilio webhook matched multiple connected clinic senders.");
     return null;
   }
 
@@ -131,10 +132,30 @@ async function resolveInboundConnection(toPhone: string, fromPhone: string) {
   }
 
   if (requestedMatch.length > 1) {
-    console.error("Twilio webhook matched multiple requested clinic numbers.");
+    logger.error("Twilio webhook matched multiple requested clinic numbers.");
   }
 
   return null;
+}
+
+// Client phone numbers are free-text (spaces, formatting), so match leniently on
+// the digit key. This is a single bounded query over small columns, replacing
+// the previous repeated full-client scans. (A normalized-phone column would let
+// this become a direct indexed lookup — tracked as a follow-up.)
+async function findClientByPhone(businessId: string, normalizedPhone: string) {
+  const candidates = await prisma.client.findMany({
+    where: {
+      businessId,
+    },
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+    },
+  });
+  const key = phoneLookupKey(normalizedPhone);
+
+  return candidates.find((client) => phoneLookupKey(client.phone) === key) ?? null;
 }
 
 async function resolveInboundConversation(
@@ -146,74 +167,40 @@ async function resolveInboundConversation(
   }
 
   const normalizedPhone = normalizePhone(fromPhone);
-  const scopedBusinessIds = [connection.businessId];
+  const businessId = connection.businessId;
 
-  const [existingConversations, matchingClients] = await Promise.all([
-    prisma.conversation.findMany({
+  // Conversations are always stored with the normalized phone, so the unique
+  // (businessId, phoneNumber) index resolves them directly — no table scan.
+  const [existingConversation, matchingClient] = await Promise.all([
+    prisma.conversation.findUnique({
       where: {
-        businessId: {
-          in: scopedBusinessIds,
+        businessId_phoneNumber: {
+          businessId,
+          phoneNumber: normalizedPhone,
         },
-      },
-      orderBy: {
-        updatedAt: "desc",
       },
       select: {
         id: true,
-        businessId: true,
         contactName: true,
-        phoneNumber: true,
       },
     }),
-    prisma.client.findMany({
-      where: {
-        businessId: {
-          in: scopedBusinessIds,
-        },
-      },
-      orderBy: {
-        updatedAt: "desc",
-      },
-      select: {
-        id: true,
-        businessId: true,
-        name: true,
-        phone: true,
-      },
-    }),
+    findClientByPhone(businessId, normalizedPhone),
   ]);
-
-  const existingConversation = existingConversations.find(
-    (conversation) => phoneLookupKey(conversation.phoneNumber) === phoneLookupKey(normalizedPhone)
-  );
 
   if (existingConversation) {
     return {
-      businessId: existingConversation.businessId,
+      businessId,
       conversationId: existingConversation.id,
       normalizedPhone,
+      clientId: matchingClient?.id ?? null,
       contactName: existingConversation.contactName,
     };
   }
 
-  const matchingClient = matchingClients.find(
-    (client) => phoneLookupKey(client.phone) === phoneLookupKey(normalizedPhone)
-  );
-
   if (!matchingClient) {
-    if (connection.mode === "SANDBOX") {
+    if (connection.mode === "SANDBOX" || connection.mode === "LIVE") {
       return {
-        businessId: connection.businessId,
-        conversationId: null,
-        normalizedPhone,
-        clientId: null,
-        contactName: normalizedPhone,
-      };
-    }
-
-    if (connection.mode === "LIVE") {
-      return {
-        businessId: connection.businessId,
+        businessId,
         conversationId: null,
         normalizedPhone,
         clientId: null,
@@ -225,7 +212,7 @@ async function resolveInboundConversation(
   }
 
   return {
-    businessId: matchingClient.businessId,
+    businessId,
     conversationId: null,
     normalizedPhone,
     clientId: matchingClient.id,
@@ -257,7 +244,7 @@ export async function POST(request: Request) {
   );
 
   if (!isValid) {
-    console.error("Rejected Twilio webhook due to invalid signature.");
+    logger.error("Rejected Twilio webhook due to invalid signature.");
     return NextResponse.json(
       { error: "Invalid Twilio signature." },
       { status: 403 }
@@ -291,11 +278,31 @@ export async function POST(request: Request) {
     return xmlResponse();
   }
 
+  // Idempotency: Twilio retries any webhook it doesn't get a prompt 2xx for, so
+  // a slow/cold invocation can redeliver the same inbound message. Ack-and-skip
+  // if we've already stored this MessageSid, otherwise retries would duplicate
+  // the message and re-increment the unread badge. (A unique index on
+  // Message.providerMessageSid is the hard backstop once applied.)
+  if (messageSid) {
+    const alreadyProcessed = await prisma.message.findFirst({
+      where: {
+        providerMessageSid: messageSid,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (alreadyProcessed) {
+      return xmlResponse();
+    }
+  }
+
   const inboundConnection = await resolveInboundConnection(to, from);
   const resolved = await resolveInboundConversation(inboundConnection, from);
 
   if (!resolved) {
-    console.error("Twilio webhook did not match any clinic conversation or client.");
+    logger.error("Twilio webhook did not match any clinic conversation or client.");
     return xmlResponse();
   }
 
@@ -349,25 +356,14 @@ export async function POST(request: Request) {
       },
     });
 
-    const businessClients = await tx.client.findMany({
-      where: {
-        businessId: resolved.businessId,
-      },
-      select: {
-        id: true,
-        phone: true,
-      },
-    });
-    const matchedClient = businessClients.find(
-      (client) => phoneLookupKey(client.phone) === phoneLookupKey(normalizedPhone)
-    );
-
     await tx.message.create({
       data: {
         conversationId: conversation.id,
-        clientId: matchedClient?.id ?? null,
+        // Client already resolved (leniently) above — no second table scan.
+        clientId: resolved.clientId ?? null,
         direction: "INBOUND",
         body,
+        providerMessageSid: messageSid || null,
       },
     });
 

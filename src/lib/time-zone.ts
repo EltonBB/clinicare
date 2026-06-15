@@ -99,6 +99,37 @@ export function zonedDateTimeToUtc(args: {
   return new Date(utcTimestamp);
 }
 
+/**
+ * Parse an operator's `YYYY-MM-DD` + `HH:mm` wall-clock entry as a time in the
+ * app's zone and return the true UTC instant. Use this for any human-entered
+ * date+time (appointments, shifts) instead of `new Date("...T...")`, which is
+ * parsed in the server's local zone (UTC on Vercel) and silently shifts times.
+ * Returns null on malformed input.
+ */
+export function parseZonedWallClock(
+  date: string,
+  time: string,
+  timeZone = getAppTimeZone()
+) {
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.trim());
+  const timeMatch = /^(\d{2}):(\d{2})$/.exec(time.trim());
+
+  if (!dateMatch || !timeMatch) {
+    return null;
+  }
+
+  const parsed = zonedDateTimeToUtc({
+    year: Number(dateMatch[1]),
+    month: Number(dateMatch[2]),
+    day: Number(dateMatch[3]),
+    hour: Number(timeMatch[1]),
+    minute: Number(timeMatch[2]),
+    timeZone,
+  });
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export function getZonedDayWindow(date = new Date(), timeZone = getAppTimeZone()) {
   const parts = getZonedDateParts(date, timeZone);
   return getZonedDayWindowFromParts(parts.year, parts.month, parts.day, timeZone);
@@ -252,6 +283,30 @@ export function formatZonedShortDate(date: Date, timeZone = getAppTimeZone()) {
   }).format(date);
 }
 
+export function formatZonedFullDate(date = new Date(), timeZone = getAppTimeZone()) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
+/**
+ * Whole-calendar-day difference (later − earlier) in the app time zone.
+ * Snaps both instants to their zoned day start so DST-length days stay exact.
+ */
+export function zonedCalendarDaysBetween(
+  earlier: Date,
+  later: Date,
+  timeZone = getAppTimeZone()
+) {
+  const earlierStart = getZonedDayWindow(earlier, timeZone).start.getTime();
+  const laterStart = getZonedDayWindow(later, timeZone).start.getTime();
+
+  return Math.round((laterStart - earlierStart) / 86_400_000);
+}
+
 export function formatZonedMonthYear(date: Date, timeZone = getAppTimeZone()) {
   return new Intl.DateTimeFormat("en-US", {
     timeZone,
@@ -267,6 +322,15 @@ export function formatZonedTime(date: Date, timeZone = getAppTimeZone()) {
     minute: "2-digit",
     hour12: true,
   }).format(date);
+}
+
+/** 24-hour `HH:mm` in the app zone — for `<input type="time">` and grid keys. */
+export function formatZonedTime24(date: Date, timeZone = getAppTimeZone()) {
+  const parts = getZonedDateParts(date, timeZone);
+  const hour = String(parts.hour).padStart(2, "0");
+  const minute = String(parts.minute).padStart(2, "0");
+
+  return `${hour}:${minute}`;
 }
 
 export function formatZonedShortDateTime(date: Date, timeZone = getAppTimeZone()) {

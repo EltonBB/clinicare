@@ -9,16 +9,24 @@ function isValidDateParam(value?: string): value is string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
+function isValidTimeParam(value?: string): value is string {
+  return typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
 export default async function NewAppointmentPage({
   searchParams,
 }: {
-  searchParams: Promise<{ client?: string; date?: string }>;
+  searchParams: Promise<{ client?: string; date?: string; time?: string }>;
 }) {
   const { user, business } = await requireCurrentWorkspace("/calendar/new", {
     missingBusinessRedirect: "/onboarding",
   });
   const { ownerName } = toBusinessIdentity(business, user);
-  const { client: requestedClientId, date: requestedDate } = await searchParams;
+  const {
+    client: requestedClientId,
+    date: requestedDate,
+    time: requestedTime,
+  } = await searchParams;
 
   const [clients, staffMembers, businessHours] = await Promise.all([
     prisma.client.findMany({
@@ -69,6 +77,7 @@ export default async function NewAppointmentPage({
   const initialDate: string = isValidDateParam(requestedDate)
     ? requestedDate
     : format(new Date(), "yyyy-MM-dd");
+  const initialStartTime = isValidTimeParam(requestedTime) ? requestedTime : undefined;
 
   return (
     <CreatePageShell
@@ -94,6 +103,7 @@ export default async function NewAppointmentPage({
         ownerName={ownerName}
         initialClientId={initialClientId}
         initialDate={initialDate}
+        initialStartTime={initialStartTime}
       />
     </CreatePageShell>
   );

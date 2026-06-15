@@ -14,7 +14,7 @@ import type {
 } from "@prisma/client";
 import { format } from "date-fns";
 
-import { resolveMediaDisplayUrl } from "@/lib/media-storage-server";
+import { resolveMediaDisplayUrls } from "@/lib/media-storage-server";
 
 export type ClientStatus = "active" | "at-risk" | "inactive" | "archived";
 
@@ -23,6 +23,16 @@ export type ClientHistoryEntry = {
   date: string;
   title: string;
   detail: string;
+};
+
+export type ClientTimelineEntry = {
+  id: string;
+  kind: "appointment" | "payment" | "note" | "document" | "message";
+  date: string;
+  sortKey: number;
+  title: string;
+  detail: string;
+  status?: string;
 };
 
 export type ClientMessageEntry = {
@@ -69,6 +79,7 @@ export type ClientPaymentEntry = {
   appointmentId: string;
   amountCents: number;
   amountDisplay: string;
+  amountInput: string;
   status: string;
   description: string;
   invoiceNumber: string;
@@ -77,6 +88,7 @@ export type ClientPaymentEntry = {
   billingNote: string;
   receiptUrl: string;
   paidAt: string;
+  paidAtInput: string;
   createdAt: string;
 };
 
@@ -104,6 +116,7 @@ export type ClientTreatmentPlanEntry = {
   description: string;
   status: string;
   dueAt: string;
+  dueAtInput: string;
 };
 
 export type ClientFollowUpReminderEntry = {
@@ -112,6 +125,7 @@ export type ClientFollowUpReminderEntry = {
   channel: string;
   status: string;
   remindAt: string;
+  remindAtInput: string;
   notes: string;
 };
 
@@ -143,6 +157,7 @@ export type ClientRecord = {
     tags: string[];
   };
   history: ClientHistoryEntry[];
+  timeline: ClientTimelineEntry[];
   appointments: ClientAppointmentEntry[];
   medications: ClientMedicationEntry[];
   documents: ClientDocumentEntry[];
@@ -181,11 +196,34 @@ export type ClientDirectoryItem = Pick<
 > & {
   lastService: string;
   lastProvider: string;
-  lastDiagnosis: string;
+  needsAttention: boolean;
+  attentionReason: string;
+};
+
+export type ClientDirectoryFilter =
+  | "all"
+  | "active"
+  | "inactive"
+  | "archived"
+  | "attention"
+  | "no-visits";
+
+export type ClientDirectoryCounts = {
+  all: number;
+  active: number;
+  inactive: number;
+  atRisk: number;
+  archived: number;
+  noVisits: number;
+  attention: number;
 };
 
 export type ClientsViewModel = {
   clients: ClientDirectoryItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  counts: ClientDirectoryCounts;
 };
 
 export type SaveClientPayload = {
@@ -242,7 +280,7 @@ type ClientDirectoryRow = Pick<
   | "createdAt"
 > & {
   appointments: Array<
-    Pick<Appointment, "title" | "startAt" | "notes"> & {
+    Pick<Appointment, "title" | "startAt"> & {
       staffMember: { name: string } | null;
     }
   >;
@@ -287,9 +325,13 @@ function formatLastVisit(client: ClientWithRelations) {
 }
 
 function formatDirectoryLastVisit(client: ClientDirectoryRow) {
-  const latestAppointment = client.appointments[0]?.startAt ?? client.lastVisitAt;
-
-  return latestAppointment ? format(latestAppointment, "MMM d, yyyy") : "No visits yet";
+  // `lastVisitAt` is the last confirmed/completed visit (maintained server-side).
+  // Use it — not the most recent appointment of any status — so the column, the
+  // attention badge, and the "Attention" filter all agree and a future booking
+  // never reads as a past visit.
+  return client.lastVisitAt
+    ? format(client.lastVisitAt, "MMM d, yyyy")
+    : "No visits yet";
 }
 
 function buildHistory(client: ClientWithRelations): ClientHistoryEntry[] {
@@ -330,7 +372,7 @@ function formatMoney(cents: number) {
 
 function formatFileSize(bytes: number | null) {
   if (!bytes || bytes <= 0) {
-    return "Size not recorded";
+    return "";
   }
 
   if (bytes < 1024 * 1024) {
@@ -346,7 +388,7 @@ function buildAppointments(client: ClientWithRelations): ClientAppointmentEntry[
     date: format(appointment.startAt, "MMM d, yyyy"),
     title: appointment.title,
     status: appointment.status,
-    notes: appointment.notes ?? "No appointment notes.",
+    notes: appointment.notes ?? "",
   }));
 }
 
@@ -354,30 +396,38 @@ function buildMedications(client: ClientWithRelations): ClientMedicationEntry[] 
   return client.medications.map((medication) => ({
     id: medication.id,
     name: medication.name,
-    dosage: medication.dosage ?? "Not added",
-    frequency: medication.frequency ?? "Not added",
-    notes: medication.notes ?? "No notes.",
+    dosage: medication.dosage ?? "",
+    frequency: medication.frequency ?? "",
+    notes: medication.notes ?? "",
     isActive: medication.isActive,
     createdAt: format(medication.createdAt, "MMM d, yyyy"),
   }));
 }
 
 async function buildDocuments(client: ClientWithRelations): Promise<ClientDocumentEntry[]> {
-  return Promise.all(
-    client.documents.map(async (document) => ({
+  // Sign every document URL in one batched pass (one request per bucket) rather
+  // than a fresh client + round-trip per document.
+  const urlMap = await resolveMediaDisplayUrls(
+    client.documents.map((document) => document.storageUrl ?? document.fileUrl)
+  );
+
+  return client.documents.map((document) => {
+    const source = document.storageUrl ?? document.fileUrl;
+
+    return {
       id: document.id,
       fileName: document.fileName,
       fileType: document.fileType,
       category: document.category ?? document.fileType,
       mimeType: document.mimeType ?? "",
       fileSize: formatFileSize(document.fileSize ?? null),
-      fileUrl: await resolveMediaDisplayUrl(document.storageUrl ?? document.fileUrl),
+      fileUrl: (source && urlMap.get(source)) || "",
       storageUrl: document.storageUrl ?? document.fileUrl ?? "",
       uploadedBy: document.uploadedBy ?? "Workspace staff",
-      notes: document.notes ?? "No notes.",
+      notes: document.notes ?? "",
       createdAt: format(document.createdAt, "MMM d, yyyy"),
-    }))
-  );
+    };
+  });
 }
 
 function buildPayments(client: ClientWithRelations): ClientPaymentEntry[] {
@@ -386,14 +436,16 @@ function buildPayments(client: ClientWithRelations): ClientPaymentEntry[] {
     appointmentId: payment.appointmentId ?? "",
     amountCents: payment.amountCents,
     amountDisplay: formatMoney(payment.amountCents),
+    amountInput: (payment.amountCents / 100).toFixed(2),
     status: payment.status,
-    description: payment.description ?? "Payment record",
+    description: payment.description ?? "",
     invoiceNumber: payment.invoiceNumber ?? "",
     receiptNumber: payment.receiptNumber ?? "",
-    paymentMethod: payment.paymentMethod ?? "Manual entry",
+    paymentMethod: payment.paymentMethod ?? "",
     billingNote: payment.billingNote ?? "",
     receiptUrl: payment.receiptUrl ?? "",
-    paidAt: payment.paidAt ? format(payment.paidAt, "MMM d, yyyy") : "Not paid yet",
+    paidAt: payment.paidAt ? format(payment.paidAt, "MMM d, yyyy") : "",
+    paidAtInput: payment.paidAt ? format(payment.paidAt, "yyyy-MM-dd") : "",
     createdAt: format(payment.createdAt, "MMM d, yyyy"),
   }));
 }
@@ -428,7 +480,8 @@ function buildTreatmentPlanItems(
     title: item.title,
     description: item.description ?? "",
     status: item.status,
-    dueAt: item.dueAt ? format(item.dueAt, "MMM d, yyyy") : "TBD",
+    dueAt: item.dueAt ? format(item.dueAt, "MMM d, yyyy") : "",
+    dueAtInput: item.dueAt ? format(item.dueAt, "yyyy-MM-dd") : "",
   }));
 }
 
@@ -441,8 +494,58 @@ function buildFollowUpReminders(
     channel: reminder.channel,
     status: reminder.status,
     remindAt: format(reminder.remindAt, "MMM d, yyyy"),
+    remindAtInput: format(reminder.remindAt, "yyyy-MM-dd"),
     notes: reminder.notes ?? "",
   }));
+}
+
+function buildTimeline(client: ClientWithRelations): ClientTimelineEntry[] {
+  const entries: ClientTimelineEntry[] = [
+    ...client.appointments.map((appointment) => ({
+      id: `appointment-${appointment.id}`,
+      kind: "appointment" as const,
+      date: format(appointment.startAt, "MMM d, yyyy"),
+      sortKey: appointment.startAt.getTime(),
+      title: appointment.title,
+      detail: appointment.notes?.trim() || "Appointment",
+      status: appointment.status.toLowerCase(),
+    })),
+    ...client.payments.map((payment) => ({
+      id: `payment-${payment.id}`,
+      kind: "payment" as const,
+      date: format(payment.paidAt ?? payment.createdAt, "MMM d, yyyy"),
+      sortKey: (payment.paidAt ?? payment.createdAt).getTime(),
+      title: `${formatMoney(payment.amountCents)} ${payment.status.toLowerCase()}`,
+      detail: payment.description?.trim() || "Payment record",
+      status: payment.status.toLowerCase(),
+    })),
+    ...client.careNotes.map((note) => ({
+      id: `note-${note.id}`,
+      kind: "note" as const,
+      date: format(note.notedAt, "MMM d, yyyy"),
+      sortKey: note.notedAt.getTime(),
+      title: note.title?.trim() || "Provider note",
+      detail: note.body,
+    })),
+    ...client.documents.map((document) => ({
+      id: `document-${document.id}`,
+      kind: "document" as const,
+      date: format(document.createdAt, "MMM d, yyyy"),
+      sortKey: document.createdAt.getTime(),
+      title: document.fileName,
+      detail: `${document.category ?? document.fileType} document added`,
+    })),
+    ...client.messages.map((message) => ({
+      id: `message-${message.id}`,
+      kind: "message" as const,
+      date: format(message.sentAt, "MMM d, yyyy"),
+      sortKey: message.sentAt.getTime(),
+      title: message.direction === "INBOUND" ? "Message received" : "Message sent",
+      detail: message.body,
+    })),
+  ];
+
+  return entries.sort((a, b) => b.sortKey - a.sortKey).slice(0, 14);
 }
 
 export async function buildClientRecord(client: ClientWithRelations): Promise<ClientRecord> {
@@ -476,34 +579,41 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
         ? "Paid"
         : "No payments yet";
 
+  // Batch-sign gallery images once (one request per bucket) instead of a
+  // round-trip per item.
+  const galleryUrlMap = await resolveMediaDisplayUrls(
+    client.galleryItems.map((item) => item.imageUrl)
+  );
+
   return {
     id: client.id,
     name: client.name,
     email: client.email ?? "",
     phone: client.phone,
-    gender: client.gender ?? "Not added",
-    dateOfBirth: client.dateOfBirth ? format(client.dateOfBirth, "MMM d, yyyy") : "Not added",
+    gender: client.gender ?? "",
+    dateOfBirth: client.dateOfBirth ? format(client.dateOfBirth, "MMM d, yyyy") : "",
     dateOfBirthInput: client.dateOfBirth ? format(client.dateOfBirth, "yyyy-MM-dd") : "",
-    address: client.address ?? "Not added",
+    address: client.address ?? "",
     patientType: client.patientType ?? "New Patient",
     clinicType: client.clinicType ?? "Clinic",
     lastVisit: formatLastVisit(client),
     totalVisits: client._count?.appointments ?? client.appointments.length,
     status: formatStatus(client.status, client.isArchived),
-    notes: client.notes ?? "No notes yet.",
+    notes: client.notes ?? "",
     medical: {
-      medicalHistory: client.medicalHistory ?? "Not added yet.",
-      allergies: client.allergies ?? "Not added yet.",
-      importantHealthNotes: client.importantHealthNotes ?? "Not added yet.",
-      previousTreatments: client.previousTreatments ?? "Not added yet.",
-      treatmentPlan: client.treatmentPlan ?? "Not added yet.",
+      medicalHistory: client.medicalHistory ?? "",
+      allergies: client.allergies ?? "",
+      importantHealthNotes: client.importantHealthNotes ?? "",
+      previousTreatments: client.previousTreatments ?? "",
+      treatmentPlan: client.treatmentPlan ?? "",
     },
     details: {
       preferredChannel: client.preferredChannel ?? "WhatsApp",
-      assignedStaff: client.assignedStaffName ?? "Workspace staff",
+      assignedStaff: client.assignedStaffName ?? "",
       tags: client.tags,
     },
     history: buildHistory(client),
+    timeline: buildTimeline(client),
     appointments: buildAppointments(client),
     medications: buildMedications(client),
     documents: await buildDocuments(client),
@@ -527,23 +637,56 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
       unpaidBalanceDisplay: formatMoney(unpaidBalanceCents),
       paymentStatus,
     },
-    gallery: await Promise.all(
-      client.galleryItems.map(async (item) => ({
-        id: item.id,
-        type: item.type === "BEFORE" ? "before" : "after",
-        imageUrl: await resolveMediaDisplayUrl(item.imageUrl),
-        caption: item.caption ?? "",
-        createdAt: format(item.createdAt, "MMM d, yyyy"),
-      }))
-    ),
+    gallery: client.galleryItems.map((item) => ({
+      id: item.id,
+      type: item.type === "BEFORE" ? "before" : "after",
+      imageUrl: (item.imageUrl && galleryUrlMap.get(item.imageUrl)) || "",
+      caption: item.caption ?? "",
+      createdAt: format(item.createdAt, "MMM d, yyyy"),
+    })),
   };
 }
 
+export const ATTENTION_STALE_DAYS = 90;
+
+export function attentionCutoffDate(now = new Date()) {
+  return new Date(now.getTime() - ATTENTION_STALE_DAYS * 24 * 60 * 60 * 1000);
+}
+
+function deriveDirectoryAttention(client: ClientDirectoryRow, status: ClientStatus) {
+  if (status === "archived") {
+    return { needsAttention: false, attentionReason: "" };
+  }
+
+  if (status === "at-risk") {
+    return { needsAttention: true, attentionReason: "Marked at risk" };
+  }
+
+  // Mirror the DB "attention" filter exactly (page.tsx buildFilterWhere), which
+  // keys on lastVisitAt — so the chip count and the row badge can never disagree.
+  if (client.lastVisitAt && client.lastVisitAt < attentionCutoffDate()) {
+    return {
+      needsAttention: true,
+      attentionReason: `No visit in ${ATTENTION_STALE_DAYS}+ days`,
+    };
+  }
+
+  return { needsAttention: false, attentionReason: "" };
+}
+
 export function buildClientDirectoryViewFromRecords(
-  records: ClientDirectoryRow[]
+  records: ClientDirectoryRow[],
+  meta: {
+    total: number;
+    page: number;
+    pageSize: number;
+    counts: ClientDirectoryCounts;
+  }
 ): ClientsViewModel {
   const clients = records.map((client) => {
     const latestAppointment = client.appointments[0];
+    const status = formatStatus(client.status, client.isArchived);
+    const attention = deriveDirectoryAttention(client, status);
 
     return {
       id: client.id,
@@ -552,14 +695,19 @@ export function buildClientDirectoryViewFromRecords(
       phone: client.phone,
       lastVisit: formatDirectoryLastVisit(client),
       totalVisits: client._count?.appointments ?? 0,
-      status: formatStatus(client.status, client.isArchived),
-      lastService: latestAppointment?.title ?? "No service recorded",
-      lastProvider: latestAppointment?.staffMember?.name ?? "Unassigned",
-      lastDiagnosis: latestAppointment?.notes ?? "No diagnosis or visit note recorded",
+      status,
+      lastService: latestAppointment?.title ?? "",
+      lastProvider: latestAppointment?.staffMember?.name ?? "",
+      needsAttention: attention.needsAttention,
+      attentionReason: attention.attentionReason,
     };
   });
 
   return {
     clients,
+    total: meta.total,
+    page: meta.page,
+    pageSize: meta.pageSize,
+    counts: meta.counts,
   };
 }

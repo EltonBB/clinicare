@@ -23,6 +23,7 @@ export async function getReportWorkspaceData(
     businessHours,
     staffMembers,
     conversations,
+    clientStatusCounts,
   ] = await Promise.all([
     prisma.business.findUniqueOrThrow({
       where: {
@@ -51,13 +52,20 @@ export async function getReportWorkspaceData(
         staffMemberId: true,
       },
     }),
+    // Only clients created within the report window — all per-period and chart
+    // "new clients" counts filter to sub-windows of this range, so this is
+    // equivalent to loading the whole table but bounded by time. Point-in-time
+    // client composition comes from the aggregate below, not these rows.
     prisma.client.findMany({
       where: {
         businessId,
+        createdAt: {
+          gte: reportStart,
+          lte: reportEnd,
+        },
       },
       select: {
         createdAt: true,
-        status: true,
         isArchived: true,
       },
     }),
@@ -107,7 +115,39 @@ export async function getReportWorkspaceData(
         unreadCount: true,
       },
     }),
+    // Point-in-time client composition as a bounded aggregate (a handful of
+    // rows) instead of loading the entire client table into memory.
+    prisma.client.groupBy({
+      by: ["status", "isArchived"],
+      where: {
+        businessId,
+      },
+      _count: {
+        _all: true,
+      },
+    }),
   ]);
+
+  // Mirror the original per-client bucketing exactly (archived wins over status,
+  // then at-risk, then inactive, else active) so downstream values are identical.
+  const clientMix = clientStatusCounts.reduce(
+    (mix, row) => {
+      const count = row._count._all;
+
+      if (row.isArchived || row.status === "ARCHIVED") {
+        mix.archived += count;
+      } else if (row.status === "AT_RISK") {
+        mix.atRisk += count;
+      } else if (row.status === "INACTIVE") {
+        mix.inactive += count;
+      } else {
+        mix.active += count;
+      }
+
+      return mix;
+    },
+    { active: 0, atRisk: 0, inactive: 0, archived: 0 }
+  );
 
   return {
     business,
@@ -117,5 +157,6 @@ export async function getReportWorkspaceData(
     businessHours,
     staffMembers,
     conversations,
+    clientMix,
   };
 }

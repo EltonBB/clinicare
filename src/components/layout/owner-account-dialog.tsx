@@ -1,7 +1,6 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -32,7 +31,7 @@ const initialState: OwnerProfileActionState = {};
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+    <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
       {children}
     </label>
   );
@@ -76,17 +75,15 @@ export function OwnerAccountDialog({
       <DialogTrigger
         className={cn(
           variant === "header" &&
-            "interactive-lift flex items-center gap-3 rounded-[1rem] border border-transparent px-2.5 py-2 transition-[background-color,border-color,box-shadow,transform] duration-200 hover:border-border/70 hover:bg-white/80 hover:shadow-[0_14px_28px_rgba(20,32,51,0.06)]",
+            "flex items-center gap-2.5 rounded-full border border-transparent py-1 pl-1 pr-3 transition-[background-color,border-color] duration-(--duration-base) hover:border-border/70 hover:bg-[#f7f9fc] active:bg-[#eef2f8]",
           variant === "sidebar" &&
-            "interactive-lift flex w-full items-center gap-3 rounded-[1rem] px-2 py-2 transition-[background-color,color,transform] duration-200 hover:bg-white/62"
+            "flex w-full items-center gap-3 rounded-(--radius-tile) px-2 py-2 transition-[background-color,color] duration-(--duration-base) hover:bg-[#f7f9fc]"
         )}
       >
         <div
           className={cn(
-            "flex items-center justify-center rounded-full text-sm font-semibold",
-            variant === "header"
-              ? "size-9 bg-transparent text-primary shadow-none"
-              : "size-10 bg-transparent text-foreground shadow-none"
+            "flex shrink-0 items-center justify-center rounded-full border border-border/70 bg-[#f3f6fb] font-semibold text-primary",
+            variant === "header" ? "size-8 text-xs" : "size-9 text-sm"
           )}
         >
           {ownerName
@@ -96,8 +93,10 @@ export function OwnerAccountDialog({
             .slice(0, 2)}
         </div>
         <div className="min-w-0 text-left">
-          <p className="truncate text-sm font-medium text-foreground">{ownerName}</p>
-          <p className="truncate text-xs text-muted-foreground">
+          <p className="truncate text-sm font-medium leading-4 text-foreground">
+            {ownerName}
+          </p>
+          <p className="truncate text-[11px] leading-4 text-muted-foreground">
             {variant === "header" ? businessName : "Account"}
           </p>
         </div>
@@ -105,40 +104,35 @@ export function OwnerAccountDialog({
 
       <DialogContent className="max-w-xl p-0 sm:max-w-xl">
         <div className="flex max-h-[calc(100vh-2rem)] min-h-0 flex-col overflow-hidden">
-          <DialogHeader className="glass-divider shrink-0 space-y-3 px-6 pb-5 pt-6">
-            <div className="flex size-[3.25rem] items-center justify-center rounded-[0.85rem] bg-transparent text-primary shadow-none">
-              <UserRound className="size-5" />
-            </div>
-            <div className="space-y-2">
-              <DialogTitle className="text-2xl font-semibold text-foreground">
-                Owner account
-              </DialogTitle>
-              <DialogDescription className="max-w-md text-sm leading-7">
-                Update the clinic owner profile details separately from the clinic
-                settings.
-              </DialogDescription>
-            </div>
+          <DialogHeader className="shrink-0 gap-1 border-b border-border/70 px-5 pb-4 pt-5">
+            <DialogTitle className="text-lg font-semibold text-foreground">
+              Owner account
+            </DialogTitle>
+            <DialogDescription className="max-w-md text-sm leading-6">
+              Update the clinic owner profile details separately from the clinic
+              settings.
+            </DialogDescription>
           </DialogHeader>
 
           <form action={formAction} className="flex min-h-0 flex-1 flex-col">
-            <div className="dialog-scroll-body min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-5">
-              <div className="space-y-5">
+            <div className="dialog-scroll-body min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              <div className="space-y-3">
                 {state.error ? (
-                  <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                  <div className="rounded-(--radius-field) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
                     {state.error}
                   </div>
                 ) : null}
                 {!state.error && state.success ? (
-                  <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
+                  <div className="rounded-(--radius-field) border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
                     {state.success}
                   </div>
                 ) : null}
 
-                <div className="surface-soft section-reveal rounded-[1.1rem] p-5 transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_36px_rgba(20,32,51,0.06)]">
+                <div className="rounded-(--radius-card) border border-border/75 bg-white p-4">
                   <div className="space-y-4">
-                    <div className="space-y-1">
+                    <div className="space-y-0.5">
                       <p className="text-sm font-semibold text-foreground">Profile</p>
-                      <p className="text-sm leading-6 text-muted-foreground">
+                      <p className="text-xs leading-5 text-muted-foreground">
                         Keep the account owner details current so messages,
                         confirmations, and ownership settings stay aligned.
                       </p>
@@ -152,7 +146,7 @@ export function OwnerAccountDialog({
                           defaultValue={values.fullName}
                           aria-invalid={Boolean(state.fieldErrors?.fullName)}
                           className={cn(
-                            "h-11 rounded-[0.9rem] bg-white/84",
+                            "h-10 rounded-(--radius-field) bg-white",
                             state.fieldErrors?.fullName && "border-destructive"
                           )}
                         />
@@ -165,7 +159,7 @@ export function OwnerAccountDialog({
                           defaultValue={values.phone}
                           aria-invalid={Boolean(state.fieldErrors?.phone)}
                           className={cn(
-                            "h-11 rounded-[0.9rem] bg-white/84",
+                            "h-10 rounded-(--radius-field) bg-white",
                             state.fieldErrors?.phone && "border-destructive"
                           )}
                         />
@@ -175,13 +169,13 @@ export function OwnerAccountDialog({
                   </div>
                 </div>
 
-                <div className="surface-soft section-reveal-delayed rounded-[1.1rem] p-5 transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_36px_rgba(20,32,51,0.06)]">
+                <div className="rounded-(--radius-card) border border-border/75 bg-white p-4">
                   <div className="space-y-4">
-                    <div className="space-y-1">
+                    <div className="space-y-0.5">
                       <p className="text-sm font-semibold text-foreground">
                         Contact details
                       </p>
-                      <p className="text-sm leading-6 text-muted-foreground">
+                      <p className="text-xs leading-5 text-muted-foreground">
                         Update the email tied to the clinic owner account in a
                         dedicated section so it stays separate from security
                         changes.
@@ -196,7 +190,7 @@ export function OwnerAccountDialog({
                         defaultValue={values.email}
                         aria-invalid={Boolean(state.fieldErrors?.email)}
                         className={cn(
-                          "h-11 rounded-[0.9rem] bg-white/84",
+                          "h-10 rounded-(--radius-field) bg-white",
                           state.fieldErrors?.email && "border-destructive"
                         )}
                       />
@@ -205,13 +199,13 @@ export function OwnerAccountDialog({
                   </div>
                 </div>
 
-                <div className="surface-soft section-reveal-delayed rounded-[1.1rem] p-5 transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_36px_rgba(20,32,51,0.06)]">
+                <div className="rounded-(--radius-card) border border-border/75 bg-white p-4">
                   <div className="space-y-4">
-                    <div className="space-y-1">
+                    <div className="space-y-0.5">
                       <p className="text-sm font-semibold text-foreground">
                         Security
                       </p>
-                      <p className="text-sm leading-6 text-muted-foreground">
+                      <p className="text-xs leading-5 text-muted-foreground">
                         Rotate account access separately when you need a fresh
                         password.
                       </p>
@@ -226,7 +220,7 @@ export function OwnerAccountDialog({
                           defaultValue={values.newPassword}
                           aria-invalid={Boolean(state.fieldErrors?.newPassword)}
                           className={cn(
-                            "h-11 rounded-[0.9rem] bg-white/84",
+                            "h-10 rounded-(--radius-field) bg-white",
                             state.fieldErrors?.newPassword && "border-destructive"
                           )}
                         />
@@ -242,7 +236,7 @@ export function OwnerAccountDialog({
                             state.fieldErrors?.confirmPassword
                           )}
                           className={cn(
-                            "h-11 rounded-[0.9rem] bg-white/84",
+                            "h-10 rounded-(--radius-field) bg-white",
                             state.fieldErrors?.confirmPassword && "border-destructive"
                           )}
                         />
@@ -254,17 +248,18 @@ export function OwnerAccountDialog({
               </div>
             </div>
 
-            <div className="glass-divider flex shrink-0 items-center justify-end gap-3 border-t border-white/60 bg-white/72 px-5 py-4 backdrop-blur-sm">
+            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border/70 bg-[#fafbfd] px-5 py-3.5">
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="inline-flex h-10 items-center justify-center rounded-[0.9rem] border border-border bg-white/70 px-4 text-sm font-medium text-foreground transition-[background-color,border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_14px_30px_rgba(20,32,51,0.08)]"
+                className="inline-flex h-9 items-center justify-center rounded-(--radius-card) border border-border/75 bg-white px-3 text-sm font-semibold text-foreground transition-[background-color,border-color] duration-(--duration-base) hover:border-border hover:bg-[#f7f9fc] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
               >
                 Close
               </button>
               <SubmitButton
+                variant="solid"
                 pendingLabel="Saving..."
-                className="h-10 rounded-[0.9rem] px-4 text-sm font-medium"
+                className="h-9 rounded-(--radius-card) px-3.5 text-sm"
               >
                 Save account
               </SubmitButton>

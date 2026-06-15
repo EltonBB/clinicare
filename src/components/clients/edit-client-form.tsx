@@ -9,6 +9,11 @@ import { deleteClientAction, saveClientAction } from "@/app/(workspace)/clients/
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  fieldInputClass,
+  fieldSelectClass,
+  WorkspaceFormSection,
+} from "@/components/workspace/workspace-layout";
 import type { ClientRecord, ClientStatus } from "@/lib/clients";
 import { cn } from "@/lib/utils";
 
@@ -33,7 +38,7 @@ function SelectField({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full rounded-[0.9rem] border border-border/80 bg-white px-3 text-sm outline-none transition-[border-color,box-shadow] focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/35"
+        className={fieldSelectClass}
       >
         {options.map((option) => (
           <option key={option} value={option}>
@@ -111,9 +116,8 @@ export function EditClientForm({ client }: EditClientFormProps) {
 
   return (
     <form action={handleSubmit} className="space-y-3.5">
-      <section className="surface-card p-3.5">
-        <h2 className="text-base font-semibold text-foreground">Basic information</h2>
-        <div className="mt-3.5 grid gap-3.5 sm:grid-cols-2">
+      <WorkspaceFormSection title="Basic information">
+        <div className="grid gap-3.5 sm:grid-cols-2">
           <Field name="name" label="Full name" defaultValue={client.name} required />
           <Field name="phone" label="Phone number" defaultValue={client.phone} required />
           <Field name="email" label="Email" defaultValue={client.email} type="email" />
@@ -133,11 +137,10 @@ export function EditClientForm({ client }: EditClientFormProps) {
             onChange={(value) => setStatus(value as ClientStatus)}
           />
         </div>
-      </section>
+      </WorkspaceFormSection>
 
-      <section className="surface-card p-3.5">
-        <h2 className="text-base font-semibold text-foreground">Clinic information</h2>
-        <div className="mt-3.5 grid gap-3.5 sm:grid-cols-2">
+      <WorkspaceFormSection title="Clinic information">
+        <div className="grid gap-3.5 sm:grid-cols-2">
           <Field name="clinicType" label="Clinic type" defaultValue={clean(client.clinicType)} />
           <SelectField
             label="Preferred contact method"
@@ -149,21 +152,20 @@ export function EditClientForm({ client }: EditClientFormProps) {
           <Field name="tags" label="Patient type / tags" defaultValue={client.details.tags.join(", ")} className="sm:col-span-2" />
           <TextField name="notes" label="Patient notes" defaultValue={client.notes === "No notes yet." ? "" : client.notes} className="sm:col-span-2" />
         </div>
-      </section>
+      </WorkspaceFormSection>
 
-      <section className="surface-card p-3.5">
-        <h2 className="text-base font-semibold text-foreground">Medical information</h2>
-        <div className="mt-3.5 grid gap-3.5 sm:grid-cols-2">
+      <WorkspaceFormSection title="Medical information">
+        <div className="grid gap-3.5 sm:grid-cols-2">
           <TextField name="medicalHistory" label="Medical history" defaultValue={clean(client.medical.medicalHistory)} className="sm:col-span-2" />
           <TextField name="allergies" label="Allergies" defaultValue={clean(client.medical.allergies)} />
           <TextField name="importantHealthNotes" label="Important health notes" defaultValue={clean(client.medical.importantHealthNotes)} />
           <TextField name="previousTreatments" label="Previous treatments" defaultValue={clean(client.medical.previousTreatments)} />
           <TextField name="treatmentPlan" label="Treatment plan" defaultValue={clean(client.medical.treatmentPlan)} />
         </div>
-      </section>
+      </WorkspaceFormSection>
 
       {error ? (
-        <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div className="rounded-(--radius-card) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       ) : null}
@@ -172,7 +174,7 @@ export function EditClientForm({ client }: EditClientFormProps) {
         <Button
           type="button"
           variant="outline"
-          className="rounded-[0.9rem] border-destructive/25 bg-white text-destructive hover:bg-destructive/5 hover:text-destructive"
+          className="rounded-(--radius-card) border-destructive/25 bg-white text-destructive hover:bg-destructive/5 hover:text-destructive"
           onClick={deleteClient}
           disabled={isPending}
         >
@@ -182,12 +184,12 @@ export function EditClientForm({ client }: EditClientFormProps) {
         <div className="flex justify-end gap-3">
           <Link
             href={`/clients/${client.id}`}
-            className={cn(buttonVariants({ variant: "outline" }), "rounded-[0.9rem] bg-white")}
+            className={cn(buttonVariants({ variant: "outline" }), "rounded-(--radius-card) bg-white")}
           >
             <ArrowLeft className="size-4" />
             Cancel
           </Link>
-          <Button type="submit" className="rounded-[0.9rem]" disabled={isPending}>
+          <Button type="submit" className="rounded-(--radius-card)" disabled={isPending}>
             <Save className="size-4" />
             {isPending ? "Saving..." : "Save patient"}
           </Button>
@@ -220,7 +222,7 @@ function Field({
         type={type}
         required={required}
         defaultValue={defaultValue}
-        className="h-11 rounded-[0.9rem] bg-white"
+        className={fieldInputClass}
       />
     </label>
   );
@@ -243,7 +245,7 @@ function TextField({
       <Textarea
         name={name}
         defaultValue={defaultValue}
-        className="min-h-24 rounded-[0.9rem] bg-white px-3 py-3"
+        className="min-h-24 rounded-(--radius-card) bg-white px-3 py-3"
       />
     </label>
   );

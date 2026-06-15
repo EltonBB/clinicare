@@ -9,7 +9,11 @@ import { saveClientAction } from "@/app/(workspace)/clients/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { WorkspaceFormSection } from "@/components/workspace/workspace-layout";
+import {
+  fieldInputClass,
+  fieldSelectClass,
+  WorkspaceFormSection,
+} from "@/components/workspace/workspace-layout";
 import type { ClientStatus } from "@/lib/clients";
 import { cn } from "@/lib/utils";
 
@@ -37,7 +41,7 @@ function SelectField({
         name={name}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full rounded-[0.9rem] border border-border/80 bg-white px-3 text-sm outline-none transition-[border-color,box-shadow] focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/35"
+        className={fieldSelectClass}
       >
         {options.map((option) => (
           <option key={option} value={option}>
@@ -96,27 +100,27 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
         <div className="grid gap-3.5 sm:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Full name</span>
-            <Input name="name" required placeholder="Patient name" className="h-11 rounded-[0.9rem] bg-white" />
+            <Input name="name" required placeholder="Patient name" className={fieldInputClass} />
           </label>
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Phone number</span>
-            <Input name="phone" required placeholder="+1 555 000 0000" className="h-11 rounded-[0.9rem] bg-white" />
+            <Input name="phone" required placeholder="+1 555 000 0000" className={fieldInputClass} />
           </label>
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Email</span>
-            <Input name="email" type="email" placeholder="client@example.com" className="h-11 rounded-[0.9rem] bg-white" />
+            <Input name="email" type="email" placeholder="client@example.com" className={fieldInputClass} />
           </label>
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Gender</span>
-            <Input name="gender" placeholder="Female, male, other..." className="h-11 rounded-[0.9rem] bg-white" />
+            <Input name="gender" placeholder="Female, male, other..." className={fieldInputClass} />
           </label>
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Date of birth</span>
-            <Input name="dateOfBirth" type="date" className="h-11 rounded-[0.9rem] bg-white" />
+            <Input name="dateOfBirth" type="date" className={fieldInputClass} />
           </label>
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-foreground">Address</span>
-            <Input name="address" placeholder="Patient address" className="h-11 rounded-[0.9rem] bg-white" />
+            <Input name="address" placeholder="Patient address" className={fieldInputClass} />
           </label>
           <SelectField
             name="patientType"
@@ -139,7 +143,7 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
         <div className="grid gap-3.5 sm:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Clinic type</span>
-            <Input name="clinicType" placeholder="Dental, aesthetic, medical..." className="h-11 rounded-[0.9rem] bg-white" />
+            <Input name="clinicType" placeholder="Dental, aesthetic, medical..." className={fieldInputClass} />
           </label>
           <SelectField
             name="preferredChannel"
@@ -150,17 +154,17 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
           />
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Assigned doctor / staff member</span>
-            <Input name="assignedStaff" placeholder="Workspace staff" className="h-11 rounded-[0.9rem] bg-white" />
+            <Input name="assignedStaff" placeholder="Workspace staff" className={fieldInputClass} />
           </label>
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-foreground">Patient notes</span>
-            <Textarea name="notes" placeholder="Registration notes, communication preferences, or immediate booking context" className="min-h-24 rounded-[0.9rem] bg-white px-3 py-3" />
+            <Textarea name="notes" placeholder="Registration notes, communication preferences, or immediate booking context" className="min-h-24 rounded-(--radius-card) bg-white px-3 py-3" />
           </label>
         </div>
       </WorkspaceFormSection>
 
       {error ? (
-        <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div className="rounded-(--radius-card) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       ) : null}
@@ -168,12 +172,12 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
       <div className="flex justify-end gap-3">
         <Link
           href="/clients"
-          className={cn(buttonVariants({ variant: "outline" }), "rounded-[0.9rem] bg-white")}
+          className={cn(buttonVariants({ variant: "outline" }), "rounded-(--radius-card) bg-white")}
         >
           <ArrowLeft className="size-4" />
           Cancel
         </Link>
-        <Button type="submit" className="rounded-[0.9rem]" disabled={isPending}>
+        <Button type="submit" className="rounded-(--radius-card)" disabled={isPending}>
           <UserPlus className="size-4" />
           {isPending ? "Creating..." : "Create patient"}
         </Button>

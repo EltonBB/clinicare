@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getCurrentBusiness } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const RESULT_LIMIT = 5;
 
@@ -33,6 +34,17 @@ export async function GET(request: Request) {
 
   if (query.length < 2) {
     return NextResponse.json({ results: [] });
+  }
+
+  // Each search fans out into several `contains` scans; cap per-user frequency
+  // so a tight client loop can't amplify into a DB-load denial of service.
+  const rate = checkRateLimit(`search:${user.id}`, { limit: 30, windowMs: 10_000 });
+
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { results: [], error: "Too many searches. Please slow down for a moment." },
+      { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } }
+    );
   }
 
   const [clients, appointments, staff, conversations] = await Promise.all([

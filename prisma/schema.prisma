@@ -14,6 +14,8 @@ model Business {
   name               String
   businessType       String
   logoUrl            String?
+  // Orphaned 2026-06: the dashboard customizer was removed; no code reads or
+  // writes this. Safe to drop in the next schema migration.
   dashboardFocus     String              @default("appointments")
   brandAccentColor   String?
   plan               BusinessPlan        @default(BASIC)
@@ -186,6 +188,7 @@ model ClientPayment {
   @@index([businessId, clientId, status])
   @@index([businessId, clientId, createdAt])
   @@index([businessId, invoiceNumber])
+  @@index([businessId, paidAt])
   @@index([appointmentId])
 }
 
@@ -366,14 +369,15 @@ model Message {
   client             Client?                @relation(fields: [clientId], references: [id], onDelete: SetNull)
   direction          MessageDirection
   body               String
-  providerMessageSid String?
+  // Unique so a retried Twilio webhook can't create a duplicate message
+  // (Postgres allows multiple NULLs, so outbound/legacy rows are unaffected).
+  providerMessageSid String?                @unique
   deliveryStatus     MessageDeliveryStatus?
   deliveryErrorCode  String?
   deliveryUpdatedAt  DateTime?
   sentAt             DateTime               @default(now())
 
   @@index([conversationId, sentAt])
-  @@index([providerMessageSid])
 }
 
 model ReminderSettings {

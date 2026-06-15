@@ -452,7 +452,7 @@ export async function createTwilioWhatsAppSender({
               }
             : {}),
           profile: {
-            name: businessName.trim() || "Clinicare",
+            name: businessName.trim() || "Vela",
           },
           ...(webhookUrl
             ? {

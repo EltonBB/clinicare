@@ -108,9 +108,9 @@ const mainGridWidths = {
 };
 
 const mainGridTypes = {
-  overview: "grid items-start gap-3",
-  directory: "grid items-start gap-3",
-  detail: "grid items-start gap-3 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]",
+  overview: "grid grid-cols-1 items-start gap-3",
+  directory: "grid grid-cols-1 items-start gap-3",
+  detail: "grid grid-cols-1 items-start gap-3 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]",
 };
 
 const toneStyles = {
@@ -125,6 +125,13 @@ const sectionGridColumns = {
   2: "grid-cols-1 xl:grid-cols-2",
   3: "grid-cols-1 lg:grid-cols-2 xl:grid-cols-3",
 };
+
+// Canonical form-control styling — shared so every workspace form/select matches the
+// record-dialog reference (h-10, card radius). Inputs use the Input primitive's border/focus;
+// native selects need the full border+focus string.
+export const fieldInputClass = "h-10 rounded-(--radius-card) bg-white";
+export const fieldSelectClass =
+  "h-10 w-full rounded-(--radius-card) border border-border/80 bg-white px-3 text-sm text-foreground outline-none transition-[border-color,box-shadow] duration-(--duration-base) focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/40";
 
 export function WorkspacePage({
   children,
@@ -155,7 +162,7 @@ export function WorkspaceHeader({
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Link
             href={backHref}
-            className="font-semibold text-primary transition-colors hover:text-foreground"
+            className="font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
           >
             {backLabel}
           </Link>
@@ -223,7 +230,7 @@ export function WorkspaceKpiCard({
     >
       <div className="flex items-start gap-3">
         {Icon ? (
-          <span className="vela-icon-tile size-9 rounded-[0.65rem]">
+          <span className="vela-icon-tile size-9 rounded-(--radius-tile)">
             <Icon className="size-[17px]" />
           </span>
         ) : null}
@@ -234,7 +241,7 @@ export function WorkspaceKpiCard({
           <p
             className={cn(
               "mt-1.5 font-semibold leading-none tracking-tight text-foreground",
-            compact ? "text-xl" : "text-[1.38rem]"
+            compact ? "text-xl" : "text-[1.6rem]"
             )}
           >
             {value}
@@ -305,7 +312,7 @@ export function WorkspaceTable({
   bodyClassName,
 }: WorkspaceTableProps) {
   return (
-    <section className={cn("overflow-hidden rounded-[0.72rem] border border-border/80 bg-white shadow-[0_3px_10px_rgba(20,32,51,0.018)]", className)}>
+    <section className={cn("overflow-hidden rounded-(--radius-card) border border-border/80 bg-white shadow-(--shadow-card)", className)}>
       {headers ? (
         <div
           className={cn(
@@ -376,7 +383,7 @@ export function WorkspaceEmptyState({
   return (
     <div
       className={cn(
-        "rounded-[0.72rem] border border-dashed border-border/80 bg-[#fbfcfe] px-3.5 text-center",
+        "rounded-(--radius-card) border border-dashed border-border/80 bg-[#fbfcfe] px-3.5 text-center",
         compact ? "py-2.5" : "py-3.5",
         className
       )}
@@ -384,7 +391,7 @@ export function WorkspaceEmptyState({
       {Icon ? (
         <span
           className={cn(
-            "mx-auto flex items-center justify-center rounded-[0.65rem] border border-border/75 bg-white text-primary",
+            "mx-auto flex items-center justify-center rounded-(--radius-tile) border border-border/75 bg-white text-primary",
             compact ? "size-8" : "size-9"
           )}
         >
@@ -401,11 +408,59 @@ export function WorkspaceEmptyState({
       {actionHref && actionLabel ? (
         <Link
           href={actionHref}
-          className={cn(buttonVariants({ size: "sm" }), compact ? "mt-2.5" : "mt-3", "rounded-[0.65rem]")}
+          className={cn(buttonVariants({ size: "sm" }), compact ? "mt-2.5" : "mt-3", "rounded-(--radius-tile)")}
         >
           {actionLabel}
         </Link>
       ) : null}
     </div>
+  );
+}
+
+type FilterChipProps = {
+  active?: boolean;
+  count?: number;
+  shape?: "chip" | "pill";
+  onClick?: () => void;
+  children: ReactNode;
+  className?: string;
+};
+
+// Shared filter/segment chip — one recipe across Clients, Staff, and Inbox so the
+// "selected" affordance reads identically (active = subtle primary tint, not three dialects).
+export function FilterChip({
+  active = false,
+  count,
+  shape = "chip",
+  onClick,
+  children,
+  className,
+}: FilterChipProps) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center border border-transparent px-3 py-1.5 text-sm font-medium transition-[background-color,color,border-color] duration-(--duration-base) ease-out-quint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35",
+        shape === "pill" ? "rounded-full" : "rounded-(--radius-card)",
+        active
+          ? "border-border/80 bg-primary/8 text-primary"
+          : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+        className
+      )}
+    >
+      {children}
+      {typeof count === "number" ? (
+        <span
+          className={cn(
+            "ml-1.5 text-xs font-semibold tabular-nums",
+            active ? "text-primary/80" : "text-muted-foreground/80"
+          )}
+        >
+          {count}
+        </span>
+      ) : null}
+    </button>
   );
 }

@@ -191,7 +191,26 @@ Avoid:
 - full-width forms when not needed
 - exposing internal/provider details to customers
 
+### Visual language laws (locked)
+
+These four rules came out of owner review and apply to every workspace surface; new and refactored UI must follow them:
+
+1. **Identity is square.** People/entity avatars and icon chips use rounded-square tiles (`--radius-tile`, white background, border, primary initials/icon) — never circles. Circles are reserved for status dots, count badges, and pill chips. (Dashboard + Clients surfaces migrated first; remaining surfaces adopt this as they're touched.)
+2. **No filler text.** Empty fields render nothing — or one quiet section-level empty state. Never print "Not added", "No notes.", "TBD"-style placeholders per field. View models return empty strings, never placeholder copy.
+3. **Sub-records are list rows.** Repeating records (medications, health items, plan items, notes, reminders) render as divided list rows — title, inline meta, badge, row actions — never grids of bordered mini-cards that leave empty cells.
+4. **Label/value pairs are flex rows.** Sentence-case muted label left, truncating value right. No fixed-width label columns and no all-caps labels inside profile/summary lists (tiny uppercase labels remain fine on KPI tiles).
+
 The UI UX Pro Max skill may be used for UI/UX review and design work, but AGENTS.md remains the source of truth for Vela-specific product direction, layout types, brand rules, and functionality boundaries.
+
+### Design skill workflow
+
+Claude Code has a curated design-skill stack installed (`emil-design-eng`, `impeccable`, `design-taste-frontend`, `high-end-visual-design`, `redesign-existing-projects`). Use them **surface-dependently** — they supply craft; this file supplies the law:
+
+- **Marketing pages** (`/`, `/product`, `/pricing`, `/about`): bold is good — `design-taste-frontend` / `high-end-visual-design` fit. Higher visual variance and motion are acceptable here.
+- **Authenticated workspace** (dashboard, calendar, clients, staff, inbox, reports, settings): the calm/compact/restrained-motion rules above win. Use only `emil-design-eng` (interaction polish) and `impeccable` (audit/critique) here — never re-style the clinical workspace with marketing-grade variance.
+- **Always:** AGENTS.md + ROADMAP.md override any skill output. Do not run `/impeccable init` to generate a competing `DESIGN.md`/`PRODUCT.md` — point design skills at this file instead.
+
+(These skills are installed for Claude Code only; Codex continues to use UI UX Pro Max.)
 
 ---
 
@@ -289,13 +308,12 @@ These reflect the **settled** designs after many review passes. Do not re-invent
 
 Answers: *What needs my attention today?*
 
-- Page header with date and main action/customize action; customization actually hides/shows sections.
-- Compact KPI row.
-- **Today's appointments as the primary work card**, with paired secondary grids (schedule, activity, clinic health).
-- A merged **Command center** rail (quick actions + today summary + glance/messages) — not separate quick-action and summary cards.
-- Constrained content frame with a narrower command rail — not an over-wide layout.
+- Page header with the date and a single primary action ("New appointment"). There is **no customizer** — the dashboard is a fixed, curated layout (the configurable-widgets system was removed); the page uses the **wide** workspace frame.
+- A **five-tile KPI row** (Appointments today, Completion rate, Active clients, Revenue this month, Unread messages). Each tile carries a tone chip and links to the surface that owns it (calendar, reports, clients, inbox); each KPI appears exactly once.
+- A primary row pairing the **Visits** card (7 / 30 / all-time totals + a 14-day bar chart, cancellations excluded) with **Today's schedule** (a "Next up" panel above the day's appointment list).
+- A secondary row of compact cards — recent activity, **Messages** (preview list + live unread badge), and **Staff today** — none of them restating a KPI.
 
-Avoid: repeated appointment counts, cards that say the same thing, oversized empty panels, too many widgets competing for attention.
+Avoid: repeated appointment counts, cards that say the same thing, oversized empty panels, too many widgets competing for attention, or reintroducing a customizer / command-center rail.
 
 ### Calendar
 
@@ -310,79 +328,96 @@ Avoid: too many side cards; the grid becoming visually secondary.
 
 ### Clients Directory
 
-Table-first.
+Table-first; filters do the summarizing. **No KPI band** — the page is header → toolbar → table.
 
-- Page header with primary action, compact KPIs only if useful, `WorkspaceToolbar` search/filter, main table.
-- Rows show latest appointment service/provider/notes context, with Details-only row actions.
-- Compact summary cards below the table — no right rail.
+- Page header with primary action only. The counted filter chips are the page's summary layer (the "All" chip is the total; "Attention" is the flag count).
+- `WorkspaceToolbar` with search plus filter chips that carry live counts. Chips include manual statuses **and derived smart segments**: "Attention" (manual at-risk OR no visit in 90+ days) and "No visits". Smart segments replace summary cards — don't reintroduce a card band or KPI tiles.
+- Search, status filter, and pagination are **URL-backed and server-side** (`?q=&status=&page=`); never load the full client list into the browser.
+- The table is sorted by most recently updated; rows show square initial tiles and latest appointment service + provider context (no free-text visit notes in the list — clinical text stays on the record), Details-only row actions, and flagged rows show their attention reason inline under the status.
 
-Avoid: duplicated summary cards; table data split across panels.
+Avoid: summary/KPI furniture restating what the filter chips already say; client-side filtering over unbounded queries; visit-note text in list rows.
 
 ### Client Detail
 
-A clean patient profile workspace.
+A clean, **read-first** patient profile workspace. Content is the hero; data entry happens in dialogs.
 
-- Open patient header with name, status, contact, right-side KPI cards, action row, underline tabs: Overview, Appointments, Medical Info, Documents, Messages, Payments.
-- **Overview:** one unified left sidebar card (profile context, upcoming appointment, treatment plan, follow-up reminders) + a strict two-column right grid with equal-height cards (Care summary, Payment snapshot, Latest appointment, Health notes, Documents, Messages).
-- **Appointments:** upcoming appointment panel, history table, reminders/recent-visits rail. Reminders live here, not in Medical Info.
-- **Medical Info:** compact patient health info card + Medical summary/Clinical alerts rail; clinical-only data stays here.
-- **Documents:** upload controls, document table, selected-document metadata, category summary rail.
-- **Payments:** ledger-style metrics row (billed vs paid computed separately), payment history table, manual ledger form, payment-status rail; statement download produces a CSV.
+- Open patient header with square identity tile, name, tone-mapped status badge, contact line, **one divided stat strip** (Visits | Completed | Pending | Balance — a single bordered card with internal dividers, not four floating KPI cards), action row (Book appointment is the primary action), underline tabs: Overview, Appointments, Medical Info, Documents, Payments (five tabs — Messages was folded into the Overview timeline + inbox deep links).
+- **All sub-records (medications, health items, treatment items, provider notes, follow-up reminders, payments, documents, gallery images) are managed through "+ Add" dialogs with edit and delete row actions** — never always-visible inline creation forms. Deletes confirm in a small dialog.
+- **Overview:** a short left profile sidebar (identity, contact/profile flex rows, patient notes when present, Edit profile, upcoming appointment) — treatment plan and reminders do NOT live in the sidebar; they belong to their tabs. Right side: two compact cards (Payment snapshot, Health notes) above a merged **Recent activity timeline** (appointments, payments, notes, documents, messages in one chronological feed).
+- **Appointments:** upcoming appointment panel, history table, reminders (dialog-managed list rows) + recent-visits rail. Reminders live here, not in Medical Info.
+- **Medical Info:** main column of stacked list-row sections (Medications, Health record, Treatment plan, Provider notes — each with "+ Add" and row actions) + one merged **Health summary** rail card (only the filled free-text fields + clinical alerts together). Clinical-only data stays here. Don't show fabricated per-row data the model can't back (e.g. per-visit provider).
+- **Documents:** upload→dialog metadata flow, click-to-select document table, selected-document rail, category summary showing only non-empty categories.
+- **Payments:** ledger-style metrics row (billed vs paid computed separately), payment history table with edit/delete, dialog-based manual entry, tone-aware payment-status rail; statement download produces a CSV.
 
-Avoid: scattered cards, duplicated information (e.g. allergies in two cards), random side rails, uneven card sizes.
+Avoid: permanent inline forms, append-only records with no correction path, mini-card grids with empty cells, per-field placeholder text, duplicated information, summary cards that restate header KPIs.
 
 ### Staff Directory
 
-Table-first like Clients.
+Table-first like Clients. **No KPI band** — the page is header → toolbar → table.
 
-- Page header with primary action, compact KPIs, toolbar, main staff table with real shift/schedule data.
-- Row-level check-in/check-out (schedule-aware) beside a Details button.
-- Team schedule/coverage summary only where useful.
+- Page header with primary action only. Counted filter chips (All / Active / Away / Inactive / Checked in) are the page's summary layer; a role select appears beside them when more than one role exists.
+- Status means employment status (Active / Away / Inactive); **checked-in is a separate signal** (small emerald "Checked in now" line under the status) — never conflate the two.
+- Rows: square initial tiles; Role pill; Today column shows today's shift (or "Next: …" when none today) with the day's appointment count beneath; completion rate with gradient bar (rendered only when non-zero).
+- Row actions: schedule-aware check-in/check-out (outline) beside a primary Details button.
+- No pagination furniture — staff lists are small and filter client-side.
 
-Avoid: unnecessary right rails, repeated staff summaries, over-cluttered tables.
+Avoid: summary/coverage cards that restate table rows, fabricated metrics (e.g. utilization derived from an assumed capacity), fake pagination footers, right rails.
 
 ### Staff Detail
 
-Same open-header/tabbed record structure as Client detail.
+Same read-first open-header structure as Client detail.
 
-- Detail header with name, role, status, contact, actions, and a right-aligned metric strip anchored to the identity header.
-- Tabs/sections: schedule, appointments, performance, profile details.
+- Header: square identity tile, name + tone-mapped status badge, role + contact line (empty fields hidden), conditional shift/checked-in line, **one divided stat strip** (Appts today | This month | Completion | Weekly hours), action row (Check in/out + Edit profile).
+- Two tabs: **Overview** (left profile sidebar — identity, contact/status flex rows, staff notes when present, Edit profile, Today shift card — plus a Today's appointments list when any exist and a Recent completed work list) and **Schedule** (planned shifts plus a Time tracked this week list — per-entry check-in/out times and durations — as divided list rows, with a Manage shifts link to the edit page).
+- Appointments/performance data lives in the header strip and Overview lists — no extra tabs that restate it; profile details live in the sidebar, not a separate tab.
+- When check-in is unavailable, the reason renders as a small muted line under the header actions (never tooltip-only); shift rows show a status badge only when the status differs from the default.
 
-Avoid: duplicated operational summaries, too many small cards, scattered profile information.
+Avoid: duplicated operational summaries, panels that restate the header (Staff information / Operational summary-style cards), fabricated metrics, too many small cards, scattered profile information.
 
 ### Inbox
 
-A three-pane messaging workspace: conversation list, active thread, right contact context panel.
+A **two-pane** messaging workspace (redesigned 2026-06): conversation list (320px) + active thread. There is **no right context rail** — contact context lives in the thread header.
 
-- Compact header status — **no dashboard-style KPI cards**.
-- Inline reply/actions; unknown contacts convertible to clients; fills the viewport height.
+- List pane: search, counted **All / Unread filter chips**, a one-line connection status, then conversation rows (square identity tile, name + time, snippet, unread count pill, left accent bar on the active row).
+- Thread: header with square tile, name, **phone line**, and actions (View profile or Convert to client + an icon-only delete button); messages grouped under **day separators** (Today / Yesterday / date); client bubbles white with a hairline ring, business bubbles primary; composer row at the bottom.
+- Identity tiles are square; conversation previews show the **newest** message (empty conversations show nothing); never invent presence claims like "Active now".
+- Thread switches use a ~150ms fade (framer-motion); the pane fills the viewport height.
 
-Avoid: metric clutter, unrelated summary cards, treating Inbox like a generic list page.
+Avoid: a third context pane, dashboard-style KPI cards, metric clutter, fabricated activity/presence labels.
 
 ### Reports
 
-A clean analytics experience (Pro) or a polished upgrade state (Basic).
+A clean analytics experience (Pro) or a polished upgrade state (Basic). Reshaped 2026-06 (owner-provided finance-dashboard inspiration) into a **compact three-row page** — every card simple, minimal, and shown exactly once:
 
-When active, the settled structure is a **no-rail analytics stack**:
+- header controls: period pills (daily/weekly/monthly + Custom range when active), a **calendar icon button** that opens a small popover (From/To date inputs + "Analyse range"; both dates required) — never inline date inputs in the header — and Refresh AI, all h-10
+- **the page fits one desktop viewport (~1440×900) with no scroll** — compact paddings (`p-4` cards, `gap-3`) are deliberate; don't re-inflate them
+- **Row 1 — exactly three KPI cards** (Appointments, Completion rate, New clients), each with an icon tile + label header, a large value with a **tinted delta pill** + comparison caption, and an **embedded mini-chart filling the right half of the card**: Appointments/New clients use **track-style bars** (full-height light ghost track per bucket with the value filling from the bottom; current bucket solid primary — zero buckets show just the track, never tiny stubs), Completion rate uses a **smooth gradient-filled sparkline with a visible end dot**; mini-charts are **interactive** — per-bucket hover shows a "label · value" tooltip. Avg visit length lives in Highlights; Active clients and Unread messages do not belong on Reports.
+- **Row 2 — Performance chart (≈2fr) beside the AI insight card (≈1fr)**: the chart renders **edge-to-edge** (container width measured with a ResizeObserver into the SVG viewBox — no letterboxed fixed-aspect SVG) with **smooth monotone-cubic curves** (no overshoot on flat-to-rising data), a **gradient area fill**, a **left y-axis** (0 / mid / max ticks aligned to the gridlines), and **both series on one shared scale** (the Completed line must never be normalized to its own max). No permanent point dots — per-bucket hover shows the guide line, both series' dots, and the "N appointments · M completed" tooltip. The AI card is **recommendation-style divided rows** — status badge top-right, then Summary / Diagnosis / Next move rows (label + severity/priority pill, one bold line, one clamped detail line) and a **footer pill "Operational health score: N/100"** with a tone-colored dot. No score ring, no audit footer.
+- **Row 3 — Appointment status donut (left) + Highlights card (right)**: an **SVG segment donut** (size-32, rounded segment caps with small gaps, total visits centered) beside divided legend rows that show **all four statuses including zero counts** (zero rows muted, "count · %", dot colors matching segments); the donut is **interactive from both sides** — hovering a segment or its legend row thickens that segment, fades the others, and swaps the center to that segment's count/label. Highlights is up to four **bordered icon rows** (title + one-line plain-English detail): Busiest window, Estimated utilization (with its basis), Top provider, Average visit length — replacing the old Operational detail, Client mix, and Demand & staff load cards, which were removed.
+- Period switches fade content in (~160ms), the KPI cards stagger subtly, and the date-range popover scales in from its trigger (~150ms).
 
-- header with period controls (daily/weekly/monthly, single date, custom from/to range)
-- KPI row (six compact cards)
-- performance chart + client mix
-- full-width horizontal AI readout (not a tall AI side rail)
-- three balanced operational cards (operational metrics, appointment status from the real status mix, detailed breakdown)
-- demand windows and staff load
+**The delta rule:** a delta always means "change vs the previous period"; point-in-time numbers carry no delta and no trend arrow. Capacity-derived utilization is labeled **"Estimated utilization"** with its basis stated, and lives in Highlights, not the KPI row.
 
-Sparse data uses natural-height compact empty/status states; hide the large trend chart when the appointment count is zero. AI insights clearly indicate when rule-based fallback was used.
+Sparse data uses natural-height compact empty/status states; the trend chart is hidden when no chart bucket has appointments. Custom date ranges always use rule-based analysis and say so; AI insights clearly indicate when rule-based fallback was used.
 
-Avoid: tall disconnected AI rails, masonry-like card placement, large blank chart areas.
+Avoid: four-or-more KPI tiles, tall disconnected AI rails, masonry-like card placement, large blank chart areas, the same metric in two cards, dense metric-table cards (Operational detail-style), synthetic deltas/trends on point-in-time numbers.
 
 ### Settings
 
-Calm and form-focused.
+Settings is a **popup opened from the sidebar/mobile nav** (Claude-style), not a standalone page — `/settings` is kept only as a deep-link/tour fallback. It is a **master-detail** workspace (revised 2026-06 after owner review): a left section list + a right pane that shows **one section at a time**, each opening as its own purposeful, well-described, filled page.
 
-- Settings navigation; clear sections: business details, appearance, working hours, staff link/summary, WhatsApp configuration, reminders, billing.
+- Left: a **section nav card** — one row per section with a square icon tile, title, one-line subtitle, and chevron; the selected row is tinted primary; clicking switches the right pane (no scrollspy/scroll). **Save changes / Discard changes buttons live at the bottom of this card** (Discard disabled when nothing changed; resets to last saved state).
+- Right: the **active section only**, as one card with a header (title + one-line description) above its content. Each section is filled with meaningful content — never a lone sparse card; the dialog sizes to its content so panes are never hollow. **There is no Staff section** — staff lives only in its own workspace. The settled component designs:
+  - **Business details**: logo tile + Upload button + size hint as a header row (no logo-URL paste input), then a 2-col field grid (name, type, owner, support email).
+  - **Appearance**: one wrapping row of **color chip pills** (color dot with a check on the selected one + name) plus an inline custom chip (native color input dot + hex field); a single helper line below.
+  - **Working hours**: 7 days as fixed-height divided toggle rows split across two columns; enabled days show inline start–end selects, closed days a muted "Closed".
+  - **Reminders**: two fixed-height divided toggle rows ("First/Second reminder" + inline "Nh before" select; "Off" when disabled), then the message template with a variables hint line.
+  - **WhatsApp**: a status panel (dot + Connected/Not connected + quiet Refresh, plus the connection detail and next-step line) above the number input + Connect, a format hint, and a checklist of what connecting enables — including the minimum-necessary "name + appointment time only, never clinical detail" line.
+  - **Billing**: a plan panel (name + status pill + one-line note) above a feature checklist ("Included in your plan" on Pro / "Unlock with Pro" on Basic) and a support line + Manage plan CTA.
+- The workspace tour anchors to the WhatsApp **nav button** (`settings-whatsapp`), which is always rendered.
+- Field labels are sentence case (no all-caps/letter-spaced labels); status pills use sentence case.
 
-Avoid: dashboard clutter, full-width forms, exposing provider implementation details.
+Avoid: cramming every section into one long scroll, hollow/oversized panes, a sparse single-card section, a Staff section, dashboard clutter, exposing provider implementation details or internal product names in any customer-facing copy.
 
 ### Forms
 

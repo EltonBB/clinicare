@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { BadgeCheck, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 
 import { refreshWorkspaceNotificationsAction } from "@/app/(workspace)/actions";
 import { BrandMark } from "@/components/brand-mark";
@@ -12,6 +12,8 @@ import { LogoutButton } from "@/components/auth/logout-button";
 import { GlobalSearch } from "@/components/layout/global-search";
 import { NotificationsMenu } from "@/components/layout/notifications-menu";
 import { OwnerAccountDialog } from "@/components/layout/owner-account-dialog";
+import { SettingsDialog } from "@/components/layout/settings-dialog";
+import { WorkspaceLiveProvider } from "@/components/layout/workspace-live-context";
 import { resolveBrandAccentPreset } from "@/lib/branding";
 import { navigationItems } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
@@ -26,6 +28,14 @@ type AppShellNotification = {
   title: string;
   detail: string;
 };
+
+function navLinkClasses(isActive: boolean) {
+  return cn(
+    "flex h-10 items-center gap-3 rounded-(--radius-tile) border border-transparent px-3 text-sm font-semibold text-muted-foreground transition-[background-color,border-color,color] duration-(--duration-base) hover:bg-[#f7f9fc] hover:text-foreground active:bg-[#eef2f8]",
+    isActive &&
+      "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground active:bg-primary/92"
+  );
+}
 
 type AppShellProps = {
   children: React.ReactNode;
@@ -49,8 +59,6 @@ export function AppShell({
   ownerName = "Alex Rivera",
   ownerEmail = "owner@vela.app",
   ownerPhone = "",
-  planName = "Basic",
-  planStatus = "active",
   brandAccentColor = null,
   logoUrl = null,
   tourScopeId = "default",
@@ -64,21 +72,52 @@ export function AppShell({
     () => resolveBrandAccentPreset(brandAccentColor),
     [brandAccentColor]
   );
-  const [liveUnreadCount, setLiveUnreadCount] = useState(unreadCount);
-  const [liveNotifications, setLiveNotifications] = useState(notifications);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    const vars = {
+  const accentVars = useMemo<Record<`--${string}`, string>>(
+    () => ({
+      // Override the accent family so the chosen color recolors every
+      // primary/accent surface in the workspace (bg-primary, rings, charts…).
+      "--primary": accent.value,
+      "--primary-hover": accent.hover,
+      "--primary-soft": accent.soft,
+      "--primary-shadow": accent.shadow,
+      "--ring": accent.value,
+      "--accent": accent.soft,
+      "--accent-foreground": accent.value,
+      "--sidebar-primary": accent.value,
+      "--sidebar-ring": accent.value,
+      "--chart-1": accent.value,
       "--workspace-accent": accent.value,
       "--workspace-accent-soft": accent.soft,
       "--workspace-accent-shadow": accent.shadow,
-    };
+    }),
+    [accent]
+  );
+  const [liveUnreadCount, setLiveUnreadCount] = useState(unreadCount);
+  const [liveNotifications, setLiveNotifications] = useState(notifications);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Published to descendants (e.g. the dashboard Messages card) so they read
+  // this single poll instead of starting their own.
+  const liveUnread = useMemo(
+    () => ({ unreadCount: liveUnreadCount }),
+    [liveUnreadCount]
+  );
 
-    for (const [key, value] of Object.entries(vars)) {
+  useEffect(() => {
+    // Mirror the accent onto <html> so portaled surfaces (dialogs, dropdowns)
+    // inherit it too. Reset on unmount so auth/marketing keep Vela's brand.
+    const root = document.documentElement;
+    const entries = Object.entries(accentVars);
+
+    for (const [key, value] of entries) {
       root.style.setProperty(key, value);
     }
-  }, [accent]);
+
+    return () => {
+      for (const [key] of entries) {
+        root.style.removeProperty(key);
+      }
+    };
+  }, [accentVars]);
 
   function getTourTarget(href: string) {
     switch (href) {
@@ -152,16 +191,10 @@ export function AppShell({
 
   return (
     <div
-      className="app-shell-bg relative min-h-screen overflow-hidden bg-background"
-      style={
-        {
-          "--workspace-accent": accent.value,
-          "--workspace-accent-soft": accent.soft,
-          "--workspace-accent-shadow": accent.shadow,
-        } as CSSProperties
-      }
+      className="app-shell-bg relative min-h-screen overflow-x-clip bg-background"
+      style={accentVars as CSSProperties}
     >
-      <div className="relative flex min-h-screen bg-background lg:min-h-screen lg:overflow-hidden lg:bg-[#f4f6fa]">
+      <div className="relative flex min-h-screen bg-background lg:min-h-screen lg:overflow-x-clip lg:bg-[#f4f6fa]">
         <aside className="hidden w-[216px] shrink-0 border-r border-sidebar-border/80 bg-white backdrop-blur-xl lg:flex">
           <div
             className="sticky top-0 flex h-screen w-full flex-col bg-white p-3"
@@ -192,65 +225,56 @@ export function AppShell({
             </div>
 
             <nav className="flex-1 space-y-1.5 px-0.5 py-2">
-            {navigationItems.map((item) => {
-              const Icon = item.icon;
-              const isActive =
-                pathname === item.href || pathname.startsWith(`${item.href}/`);
-              const navClasses = cn(
-                "flex h-10 items-center gap-3 rounded-[0.62rem] border border-transparent px-3 text-sm font-semibold text-muted-foreground transition-[background-color,border-color,color] duration-200 hover:bg-[#f7f9fc] hover:text-foreground",
-                isActive &&
-                  "border-border/80 bg-[#f3f6fb] text-primary shadow-none ring-0"
-              );
+            {navigationItems
+              .filter((item) => item.href !== "/settings")
+              .map((item) => {
+                const Icon = item.icon;
+                const isActive =
+                  pathname === item.href || pathname.startsWith(`${item.href}/`);
 
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  prefetch
-                  className={navClasses}
-                  data-tour={getTourTarget(item.href)}
-                  onFocus={() => prefetchRoute(item.href)}
-                  onMouseEnter={() => prefetchRoute(item.href)}
-                >
-                  <Icon className="size-4" />
-                  {item.label}
-                </Link>
-              );
-            })}
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    prefetch
+                    className={navLinkClasses(isActive)}
+                    data-tour={getTourTarget(item.href)}
+                    onFocus={() => prefetchRoute(item.href)}
+                    onMouseEnter={() => prefetchRoute(item.href)}
+                  >
+                    <Icon className="size-4" />
+                    {item.label}
+                  </Link>
+                );
+              })}
             </nav>
 
-            <div className="mt-2 space-y-2 border-t border-sidebar-border/70 px-0.5 pt-2.5">
-              <div className="px-2.5 py-2 text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="vela-icon-tile size-7 rounded-[0.62rem] border-0 bg-transparent p-0">
-                    <BadgeCheck className="size-3.5" />
-                  </span>
-                  <p className="truncate font-semibold text-[var(--brand-ink)]">
-                    Vela {planName} plan
-                  </p>
-                </div>
-                <div className="mt-2 flex items-center justify-between border-t border-border/65 pt-2">
-                  <span className="text-xs text-muted-foreground">Status</span>
-                  <span className="text-xs font-semibold text-primary">
-                    {planStatus}
-                  </span>
-                </div>
-              </div>
+            <div className="mt-2 space-y-1.5 border-t border-sidebar-border/70 px-0.5 pt-2.5">
+              {navigationItems
+                .filter((item) => item.href === "/settings")
+                .map((item) => {
+                  const Icon = item.icon;
+                  const isActive =
+                    pathname === item.href || pathname.startsWith(`${item.href}/`);
 
-              <div className="rounded-[0.78rem] px-0.5 py-1">
-                <OwnerAccountDialog
-                  ownerName={ownerName}
-                  ownerEmail={ownerEmail}
-                  ownerPhone={ownerPhone}
-                  businessName={businessName}
-                  variant="sidebar"
-                />
-                <LogoutButton
-                  fullWidth
-                  variant="outline"
-                  className="mt-2 h-9 justify-center rounded-[0.72rem] bg-white"
-                />
-              </div>
+                  return (
+                    <button
+                      key={item.href}
+                      type="button"
+                      onClick={() => setSettingsOpen(true)}
+                      className={navLinkClasses(isActive)}
+                      data-tour={getTourTarget(item.href)}
+                    >
+                      <Icon className="size-4" />
+                      {item.label}
+                    </button>
+                  );
+                })}
+              <LogoutButton
+                fullWidth
+                variant="ghost"
+                className="h-10 justify-start gap-3 rounded-(--radius-tile) border border-transparent px-3 text-sm font-semibold text-muted-foreground hover:bg-[#f7f9fc] hover:text-foreground"
+              />
             </div>
           </div>
         </aside>
@@ -263,9 +287,9 @@ export function AppShell({
                 <BrandMark compact href="/dashboard" className="lg:hidden" />
               </div>
               <GlobalSearch className="hidden min-w-0 w-full max-w-3xl justify-self-center md:block" />
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <NotificationsMenu unreadCount={liveUnreadCount} items={liveNotifications} />
-                <div className="hidden items-center gap-3 sm:flex">
+                <div className="hidden items-center sm:flex">
                   <OwnerAccountDialog
                     ownerName={ownerName}
                     ownerEmail={ownerEmail}
@@ -273,7 +297,9 @@ export function AppShell({
                     businessName={businessName}
                     variant="header"
                   />
-                  <LogoutButton className="ml-2" />
+                </div>
+                <div className="lg:hidden">
+                  <LogoutButton />
                 </div>
               </div>
             </div>
@@ -281,21 +307,37 @@ export function AppShell({
           </header>
 
           <main className="relative flex-1 bg-[#f4f6fa] px-4 py-3 pb-28 sm:px-5 lg:px-6 lg:py-4 lg:pb-4">
-            {children}
+            <WorkspaceLiveProvider value={liveUnread}>{children}</WorkspaceLiveProvider>
           </main>
         </div>
       </div>
 
-      <nav className="fixed inset-x-3 bottom-3 z-30 rounded-[1rem] border border-border/80 bg-white/96 px-2 py-2 shadow-[0_12px_28px_rgba(20,21,47,0.07)] backdrop-blur-xl lg:hidden">
+      <nav className="fixed inset-x-3 bottom-3 z-30 rounded-(--radius-field) border border-border/80 bg-white/96 px-2 py-2 shadow-[0_12px_28px_rgba(20,21,47,0.07)] backdrop-blur-xl lg:hidden">
         <div className="grid grid-cols-7 gap-1">
           {navigationItems.map((item) => {
             const Icon = item.icon;
             const isActive =
               pathname === item.href || pathname.startsWith(`${item.href}/`);
             const mobileNavClasses = cn(
-              "flex flex-col items-center gap-1 rounded-[1rem] border border-transparent px-2 py-2 text-[11px] font-medium text-muted-foreground transition-[background-color,border-color,color,transform] duration-200",
-              isActive && "border-border/80 bg-white text-primary shadow-none"
+              "flex flex-col items-center gap-1 rounded-(--radius-field) border border-transparent px-2 py-2 text-[11px] font-medium text-muted-foreground transition-[background-color,border-color,color,transform] duration-(--duration-base) active:bg-[#eef2f8]",
+              isActive &&
+                "bg-primary text-primary-foreground active:bg-primary/92"
             );
+
+            if (item.href === "/settings") {
+              return (
+                <button
+                  key={item.href}
+                  type="button"
+                  onClick={() => setSettingsOpen(true)}
+                  className={mobileNavClasses}
+                  data-tour={getTourTarget(item.href)}
+                >
+                  <Icon className="size-4" />
+                  <span className="truncate">{item.label}</span>
+                </button>
+              );
+            }
 
             return (
               <Link
@@ -314,6 +356,8 @@ export function AppShell({
           })}
         </div>
       </nav>
+
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
 
       {!tourCompleted ? (
         <WorkspaceTour initialCompleted={tourCompleted} scopeId={tourScopeId} />

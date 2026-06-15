@@ -1,9 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 
 import { prisma } from "@/lib/prisma";
-import { requireCurrentBusiness } from "@/lib/business";
+import { requireCurrentBusiness, requireCurrentWorkspace } from "@/lib/business";
 import { sanitizeAuthMetadataForSession } from "@/lib/auth-metadata";
 import { createClient } from "@/utils/supabase/server";
 import { sendTwilioWhatsAppMessage } from "@/lib/whatsapp";
@@ -14,18 +15,16 @@ import {
 } from "@/lib/whatsapp-connection";
 import { normalizePhone } from "@/lib/inbox";
 import { normalizeStorageReference } from "@/lib/media-storage";
-import {
-  deleteStorageReferences,
-  resolveMediaDisplayUrl,
-} from "@/lib/media-storage-server";
+import { hasUnsafePublicUrl, normalizeOptionalPublicUrl } from "@/lib/safe-url";
+import { deleteStorageReferences } from "@/lib/media-storage-server";
 import { normalizeBrandHexColor, resolveBrandAccentPreset } from "@/lib/branding";
 import {
   buildWhatsAppConnectionSummary,
-  buildSettingsStateFromWorkspace,
   resolveWhatsAppConnectionStatus,
   type SaveSettingsPayload,
   type SettingsState,
 } from "@/lib/settings";
+import { loadSettingsState } from "@/lib/settings-server";
 import { weekdayOrder } from "@/lib/onboarding";
 
 function clampReminderHours(value: number, fallback: number) {
@@ -60,10 +59,23 @@ export type RefreshWhatsAppLiveConnectionResult = PrepareWhatsAppLiveConnectionR
 
 export type SubmitWhatsAppVerificationCodeResult = PrepareWhatsAppLiveConnectionResult;
 
-export type StaffTimeClockResult = {
-  ok: boolean;
-  error?: string;
-};
+export async function getSettingsDataAction(): Promise<SettingsState> {
+  const { user, business } = await requireCurrentWorkspace("/settings", {
+    missingBusinessRedirect: "/onboarding",
+  });
+
+  // Keep the WhatsApp status fresh for the next load, exactly like the
+  // /settings route does — without delaying this response.
+  after(async () => {
+    try {
+      await syncWhatsAppConnectionForBusiness(business.id);
+    } catch {
+      console.error("Failed to refresh WhatsApp connection after settings load.");
+    }
+  });
+
+  return loadSettingsState(user, business);
+}
 
 export async function saveSettingsAction(
   payload: SaveSettingsPayload
@@ -86,7 +98,7 @@ export async function saveSettingsAction(
   const normalizedWhatsAppNumber = normalizePhone(payload.whatsapp.phoneNumber);
   const customAccentHex = normalizeBrandHexColor(payload.appearance.accentHex);
   const accentPreset = resolveBrandAccentPreset(payload.appearance.accentColor);
-  const nextLogoUrl = normalizeStorageReference(payload.business.logoUrl);
+  const candidateLogoUrl = normalizeStorageReference(payload.business.logoUrl);
 
   if (payload.appearance.accentColor === "custom" && !customAccentHex) {
     return {
@@ -95,12 +107,16 @@ export async function saveSettingsAction(
     };
   }
 
-  if (nextLogoUrl.startsWith("data:")) {
+  // Only a Supabase storage reference or a safe HTTPS URL may be stored — the
+  // logo is later interpolated into a CSS url() in the app shell.
+  if (hasUnsafePublicUrl(candidateLogoUrl)) {
     return {
       ok: false,
-      error: "Upload the clinic logo again before saving settings.",
+      error: "Upload the clinic logo again, or use a safe HTTPS link.",
     };
   }
+
+  const nextLogoUrl = normalizeOptionalPublicUrl(candidateLogoUrl);
 
   const brandAccentColor =
     payload.appearance.accentColor === "custom" && customAccentHex
@@ -340,41 +356,13 @@ export async function saveSettingsAction(
     await deleteStorageReferences([previousLogoUrl]);
   }
 
-  const [updatedBusiness, businessHours, reminderSettings, whatsappConnection] = await Promise.all([
-    prisma.business.findUniqueOrThrow({
-      where: {
-        id: business.id,
-      },
-    }),
-    prisma.businessHours.findMany({
-      where: {
-        businessId: business.id,
-      },
-      orderBy: {
-        weekday: "asc",
-      },
-    }),
-    prisma.reminderSettings.findUnique({
-      where: {
-        businessId: business.id,
-      },
-    }),
-    prisma.whatsAppConnection.findUnique({
-      where: {
-        businessId: business.id,
-      },
-    }),
-  ]);
-
-  const logoDisplayUrl = await resolveMediaDisplayUrl(updatedBusiness.logoUrl);
-  const nextState: SettingsState = buildSettingsStateFromWorkspace({
-    business: updatedBusiness,
-    logoDisplayUrl,
-    supportEmail: user.email ?? "",
+  const updatedBusiness = await prisma.business.findUniqueOrThrow({
+    where: {
+      id: business.id,
+    },
+  });
+  const nextState = await loadSettingsState(user, updatedBusiness, {
     ownerName: payload.business.ownerName,
-    businessHours,
-    reminderSettings,
-    whatsappConnection,
   });
 
   revalidatePath("/settings");
@@ -384,113 +372,6 @@ export async function saveSettingsAction(
   return {
     ok: true,
     state: nextState,
-  };
-}
-
-export async function checkInStaffAction(staffMemberId: string): Promise<StaffTimeClockResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return {
-      ok: false,
-      error: "Your session expired. Log in again to update staff time.",
-    };
-  }
-
-  const business = await requireCurrentBusiness(user, {
-    missingBusinessRedirect: "/onboarding",
-  });
-  const staff = await prisma.staffMember.findFirst({
-    where: {
-      id: staffMemberId,
-      businessId: business.id,
-    },
-    select: {
-      id: true,
-    },
-  });
-
-  if (!staff) {
-    return {
-      ok: false,
-      error: "Staff member not found in this workspace.",
-    };
-  }
-
-  const openEntry = await prisma.staffTimeEntry.findFirst({
-    where: {
-      staffMemberId,
-      checkedOutAt: null,
-    },
-  });
-
-  if (!openEntry) {
-    await prisma.staffTimeEntry.create({
-      data: {
-        businessId: business.id,
-        staffMemberId,
-        checkedInAt: new Date(),
-      },
-    });
-  }
-
-  revalidatePath("/settings");
-
-  return {
-    ok: true,
-  };
-}
-
-export async function checkOutStaffAction(staffMemberId: string): Promise<StaffTimeClockResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return {
-      ok: false,
-      error: "Your session expired. Log in again to update staff time.",
-    };
-  }
-
-  const business = await requireCurrentBusiness(user, {
-    missingBusinessRedirect: "/onboarding",
-  });
-  const openEntry = await prisma.staffTimeEntry.findFirst({
-    where: {
-      staffMemberId,
-      businessId: business.id,
-      checkedOutAt: null,
-    },
-    orderBy: {
-      checkedInAt: "desc",
-    },
-  });
-
-  if (!openEntry) {
-    return {
-      ok: false,
-      error: "This staff member is not checked in.",
-    };
-  }
-
-  await prisma.staffTimeEntry.update({
-    where: {
-      id: openEntry.id,
-    },
-    data: {
-      checkedOutAt: new Date(),
-    },
-  });
-
-  revalidatePath("/settings");
-
-  return {
-    ok: true,
   };
 }
 
@@ -517,7 +398,7 @@ export async function sendWhatsAppTestAction(
   if (!recipient) {
     return {
       ok: false,
-      error: "Enter the recipient number that joined the Twilio sandbox.",
+      error: "Enter the recipient number that joined the test sandbox.",
     };
   }
 
@@ -623,7 +504,9 @@ export async function sendWhatsAppTestAction(
   }
 }
 
-export async function prepareWhatsAppLiveConnectionAction(): Promise<PrepareWhatsAppLiveConnectionResult> {
+export async function prepareWhatsAppLiveConnectionAction(
+  rawPhoneNumber?: string
+): Promise<PrepareWhatsAppLiveConnectionResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -640,13 +523,33 @@ export async function prepareWhatsAppLiveConnectionAction(): Promise<PrepareWhat
     missingBusinessRedirect: "/onboarding",
   });
 
-  const requestedPhoneNumber = business.whatsappNumber?.trim() ?? "";
+  const typedPhoneNumber = normalizePhone(rawPhoneNumber ?? "");
+
+  if ((rawPhoneNumber ?? "").trim() && !/^\+?\d{7,15}$/.test(typedPhoneNumber)) {
+    return {
+      ok: false,
+      error:
+        "Enter the clinic WhatsApp number in international format, for example +1 555 000 0000.",
+    };
+  }
+
+  const requestedPhoneNumber =
+    typedPhoneNumber || business.whatsappNumber?.trim() || "";
 
   if (!requestedPhoneNumber) {
     return {
       ok: false,
-      error: "Save the clinic WhatsApp number first before starting setup.",
+      error: "Enter the clinic WhatsApp number first, then start setup.",
     };
+  }
+
+  // Connect must act on the number in the input, not a previously saved one —
+  // persist it before starting setup so the two can never diverge.
+  if (typedPhoneNumber && typedPhoneNumber !== (business.whatsappNumber ?? "")) {
+    await prisma.business.update({
+      where: { id: business.id },
+      data: { whatsappNumber: typedPhoneNumber },
+    });
   }
 
   try {
@@ -674,10 +577,7 @@ export async function prepareWhatsAppLiveConnectionAction(): Promise<PrepareWhat
           : connection.status === "CONNECTING"
             ? "WhatsApp setup started."
             : "Clinic number saved. Finish the next step when it appears.",
-      connection: buildWhatsAppConnectionSummary(
-        connection,
-        business.whatsappNumber ?? ""
-      ),
+      connection: buildWhatsAppConnectionSummary(connection, requestedPhoneNumber),
     };
   } catch {
     return {

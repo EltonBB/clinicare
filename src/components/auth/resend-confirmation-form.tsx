@@ -28,20 +28,20 @@ export function ResendConfirmationForm({
       <input type="hidden" name="ticket" defaultValue={ticket} />
 
       {state.error ? (
-        <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div className="state-pop rounded-(--radius-field) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {state.error}
         </div>
       ) : null}
 
       {state.success ? (
-        <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
+        <div className="state-pop rounded-(--radius-field) border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
           {state.success}
         </div>
       ) : null}
 
       <SubmitButton
         pendingLabel="Sending..."
-        className="h-12 w-full rounded-[1rem] text-[15px] font-medium"
+        className="h-12 w-full rounded-(--radius-field) text-[15px] font-medium"
       >
         Resend email
       </SubmitButton>

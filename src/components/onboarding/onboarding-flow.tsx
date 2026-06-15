@@ -5,16 +5,14 @@ import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
-  CalendarDays,
   CheckCircle2,
-  Clock3,
-  LineChart,
-  Users,
+  Loader2,
 } from "lucide-react";
 
 import { saveOnboardingStateAction } from "@/app/onboarding/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { Input } from "@/components/ui/input";
 import { businessTypes } from "@/lib/constants";
 import {
@@ -65,10 +63,10 @@ const timeOptions = [
 const staffRoles = ["Manager", "Specialist", "Reception"];
 
 const fieldInputClass =
-  "h-11 rounded-[0.78rem] border-border bg-white px-3.5 text-[15px] shadow-none placeholder:text-muted-foreground/70";
+  "h-11 rounded-(--radius-card) border-border bg-white px-3.5 text-[15px] shadow-none placeholder:text-muted-foreground/70";
 
 const selectClass =
-  "h-11 w-full appearance-none rounded-[0.78rem] border border-border bg-white px-3.5 pr-10 text-[15px] text-foreground shadow-none outline-none transition-colors focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+  "h-11 w-full appearance-none rounded-(--radius-card) border border-border bg-white px-3.5 pr-10 text-[15px] text-foreground shadow-none outline-none transition-colors focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
 const onboardingDraftStorageKey = "vela:onboarding-draft";
 
@@ -170,61 +168,10 @@ function getStepError(state: OnboardingState) {
         return "Add at least one staff member name before continuing.";
       }
       return null;
-    case 5:
-      if (state.dashboard.widgets.length === 0) {
-        return "Choose at least one dashboard widget.";
-      }
-      return null;
     default:
       return null;
   }
 }
-
-const dashboardFocusOptions: Array<{
-  value: OnboardingState["dashboard"]["widgets"][number];
-  title: string;
-  description: string;
-  icon: React.ReactNode;
-}> = [
-  {
-    value: "todayAppointments",
-    title: "Today's appointments",
-    description: "Shows today's appointment list directly on the dashboard.",
-    icon: <CalendarDays className="size-5" />,
-  },
-  {
-    value: "lastClients",
-    title: "Last 5 clients",
-    description: "Shows recently updated client records for fast access.",
-    icon: <Users className="size-5" />,
-  },
-  {
-    value: "nextStaffAppointment",
-    title: "Next staff appointment",
-    description: "Shows the next upcoming appointment with assigned staff.",
-    icon: <Clock3 className="size-5" />,
-  },
-  {
-    value: "analytics",
-    title: "Analytics",
-    description: "Shows workspace stats. Basic accounts see the Pro upgrade prompt.",
-    icon: <LineChart className="size-5" />,
-  },
-];
-
-const dashboardWidgetCopy: Record<
-  OnboardingState["dashboard"]["widgets"][number],
-  string
-> = {
-  todayAppointments:
-    "You selected today's appointments. This will show the daily schedule on the dashboard.",
-  lastClients:
-    "You selected last 5 clients. This will show recent client records on the dashboard.",
-  nextStaffAppointment:
-    "You selected next staff appointment. This will show the next assigned visit on the dashboard.",
-  analytics:
-    "You selected analytics. Basic plans see the Pro upgrade card and Pro plans see stats.",
-};
 
 export function OnboardingFlow({
   initialState,
@@ -544,8 +491,8 @@ export function OnboardingFlow({
             </div>
             <div className="space-y-3 md:col-span-2">
               <FieldLabel>Logo optional</FieldLabel>
-              <div className="grid gap-3 rounded-[0.78rem] border border-border bg-white p-3.5 sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center">
-                <div className="flex size-[72px] items-center justify-center overflow-hidden rounded-[1.15rem] bg-primary/10 text-xl font-semibold text-primary">
+              <div className="grid gap-3 rounded-(--radius-card) border border-border bg-white p-3.5 sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center">
+                <div className="flex size-[72px] items-center justify-center overflow-hidden rounded-(--radius-panel) bg-primary/10 text-xl font-semibold text-primary">
                   {logoDisplayUrl ? (
                     <span
                       aria-hidden="true"
@@ -589,14 +536,17 @@ export function OnboardingFlow({
                   />
                   <label
                     htmlFor="clinic-logo-upload"
-                    className="inline-flex h-12 cursor-pointer items-center justify-center rounded-[0.95rem] bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-[0_14px_28px_var(--primary-shadow)] hover:-translate-y-0.5"
+                    className={cn(
+                      buttonVariants({ variant: "solid", size: "lg" }),
+                      "h-12 cursor-pointer px-5"
+                    )}
                   >
                     {isLogoUploading ? "Uploading..." : "Upload logo"}
                   </label>
                   {state.clinic.logoUrl ? (
                     <button
                       type="button"
-                      className="h-12 rounded-[0.95rem] border border-border bg-white/80 px-4 text-sm font-medium text-muted-foreground hover:text-foreground"
+                      className="h-12 rounded-(--radius-field) border border-border bg-white/80 px-4 text-sm font-medium text-muted-foreground hover:text-foreground"
                       onClick={() => {
                         setLogoPreviewUrl("");
                         setState((current) => ({
@@ -653,7 +603,7 @@ export function OnboardingFlow({
                       }))
                     }
                     className={cn(
-                      "rounded-[1rem] border bg-white/84 p-3 text-left transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(20,32,51,0.055)]",
+                      "rounded-(--radius-field) border bg-white/84 p-3 text-left transition-[border-color,box-shadow,transform] duration-(--duration-base) hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(20,32,51,0.055)]",
                       selected
                         ? "border-primary/55 ring-2 ring-primary/15"
                         : "border-border"
@@ -671,7 +621,7 @@ export function OnboardingFlow({
               })}
               <div
                 className={cn(
-                  "rounded-[1rem] border bg-white/84 p-3",
+                  "rounded-(--radius-field) border bg-white/84 p-3",
                   state.clinic.accentColor === "custom"
                     ? "border-primary/55 ring-2 ring-primary/15"
                     : "border-border",
@@ -721,7 +671,7 @@ export function OnboardingFlow({
                     }))
                   }
                   placeholder="#0A22FF"
-                  className="mt-3 h-10 rounded-[0.75rem] bg-white/88 font-mono text-xs uppercase tracking-[0.08em]"
+                  className="mt-3 h-10 rounded-(--radius-card) bg-white/88 font-mono text-xs uppercase tracking-[0.08em]"
                 />
               </div>
             </div>
@@ -745,7 +695,7 @@ export function OnboardingFlow({
 
       return (
         <div className="space-y-3">
-          <div className="flex items-center justify-between rounded-[1.1rem] border border-border bg-card px-5 py-4">
+          <div className="flex items-center justify-between rounded-(--radius-panel) border border-border bg-card px-5 py-4">
             <p className="text-sm font-medium text-foreground">
               Weekly availability
             </p>
@@ -759,7 +709,7 @@ export function OnboardingFlow({
             return (
               <div
                 key={day}
-                className="grid gap-3.5 rounded-[0.82rem] border border-border bg-white px-3.5 py-3 md:grid-cols-[1.4fr_1fr]"
+                className="grid gap-3.5 rounded-(--radius-field) border border-border bg-white px-3.5 py-3 md:grid-cols-[1.4fr_1fr]"
               >
                 <div className="flex items-center gap-4">
                   <Toggle
@@ -838,7 +788,7 @@ export function OnboardingFlow({
           </div>
           <div className="surface-card p-3.5 md:col-span-2">
             <p className="text-sm font-semibold text-foreground">Staff preview</p>
-            <div className="mt-4 flex items-center gap-4 rounded-[1rem] bg-muted/55 p-4">
+            <div className="mt-4 flex items-center gap-4 rounded-(--radius-field) bg-muted/55 p-4">
               <div className="flex size-11 items-center justify-center rounded-full bg-primary/12 text-sm font-semibold text-primary">
                 {(state.staffMember.name || "Staff")
                   .split(" ")
@@ -860,85 +810,6 @@ export function OnboardingFlow({
       );
     }
 
-    if (step.id === "dashboard") {
-      return (
-        <div className="space-y-4">
-          <div className="grid gap-3.5 md:grid-cols-3">
-            {dashboardFocusOptions.map((option) => {
-              const selected = state.dashboard.widgets.includes(option.value);
-
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() =>
-                    setState((current) => ({
-                      ...current,
-                      dashboard: {
-                        ...current.dashboard,
-                        widgets: selected
-                          ? current.dashboard.widgets.filter(
-                              (widget) => widget !== option.value
-                            )
-                          : [...current.dashboard.widgets, option.value],
-                      },
-                    }))
-                  }
-                  className={cn(
-                    "group rounded-[0.82rem] border bg-white p-3.5 text-left transition-[border-color,background-color] duration-200 hover:border-primary/30",
-                    selected
-                      ? "border-primary/55 bg-primary/8 ring-1 ring-primary/15"
-                      : "border-border"
-                  )}
-                >
-                  <span className="flex items-start justify-between gap-3">
-                    <span
-                      className={cn(
-                        "flex size-12 items-center justify-center rounded-[1rem] bg-muted text-muted-foreground transition-colors duration-200 group-hover:bg-primary/10 group-hover:text-primary",
-                        selected && "bg-primary/12 text-primary"
-                      )}
-                    >
-                      {option.icon}
-                    </span>
-                    <span
-                      className={cn(
-                        "inline-flex size-8 items-center justify-center rounded-full border transition-colors",
-                        selected
-                          ? "border-primary/25 bg-primary text-primary-foreground"
-                          : "border-border bg-white/80 text-transparent"
-                      )}
-                    >
-                      <CheckCircle2 className="size-4" />
-                    </span>
-                  </span>
-                  <span className="mt-5 block text-base font-semibold text-foreground">
-                    {option.title}
-                  </span>
-                  <span className="mt-2 block text-sm leading-6 text-muted-foreground">
-                    {option.description}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {state.dashboard.widgets.length > 0 ? (
-            <div className="space-y-2 rounded-[0.82rem] border border-border bg-white p-3.5">
-              {state.dashboard.widgets.map((widget) => (
-                <div
-                  key={widget}
-                  className="flex items-start gap-3 rounded-[0.9rem] bg-muted/45 px-4 py-3 text-sm text-muted-foreground"
-                >
-                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
-                  <span>{dashboardWidgetCopy[widget]}</span>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      );
-    }
-
     return null;
   }
 
@@ -948,6 +819,7 @@ export function OnboardingFlow({
       style={
         {
           "--primary": selectedAccent.value,
+          "--primary-hover": selectedAccent.hover,
           "--primary-soft": selectedAccent.soft,
           "--primary-shadow": selectedAccent.shadow,
           "--ring": selectedAccent.shadow,
@@ -973,7 +845,7 @@ export function OnboardingFlow({
             type="button"
             variant="ghost"
             size="sm"
-            className="rounded-[0.9rem] px-3 text-muted-foreground"
+            className="rounded-(--radius-field) px-3 text-muted-foreground"
             onClick={handleSaveProgress}
             disabled={isPending}
           >
@@ -982,7 +854,7 @@ export function OnboardingFlow({
         </div>
 
         <div className="py-5">
-          <div className="mx-auto max-w-3xl rounded-[0.9rem] border border-white/70 bg-white/70 px-4 py-4 shadow-[0_8px_22px_rgba(20,21,47,0.028)] backdrop-blur-xl sm:px-6">
+          <div className="mx-auto max-w-3xl rounded-(--radius-field) border border-white/70 bg-white/70 px-4 py-4 shadow-[0_8px_22px_rgba(20,21,47,0.028)] backdrop-blur-xl sm:px-6">
             <div
               className="relative grid"
               style={{
@@ -994,7 +866,7 @@ export function OnboardingFlow({
                 style={{ left: progressInset, right: progressInset }}
               />
               <div
-                className="absolute top-4 h-0.5 bg-primary transition-[width] duration-500 ease-out"
+                className="absolute top-4 h-0.5 bg-primary transition-[width] duration-[420ms] ease-out-quart"
                 style={{
                   left: progressInset,
                   width: progressWidth,
@@ -1011,7 +883,7 @@ export function OnboardingFlow({
                   >
                     <span
                       className={cn(
-                        "z-10 flex size-8 items-center justify-center rounded-full border bg-card text-xs font-semibold transition-colors duration-200",
+                        "z-10 flex size-8 items-center justify-center rounded-full border bg-card text-xs font-semibold transition-colors duration-(--duration-base)",
                         completed &&
                           "border-primary bg-primary text-primary-foreground",
                         current &&
@@ -1031,18 +903,18 @@ export function OnboardingFlow({
         </div>
 
         <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col py-3 sm:py-6">
-          <div className="space-y-4">
+          <div key={state.currentStep} className="step-enter space-y-4">
             {renderStepContent()}
           </div>
 
           <div className="mt-auto space-y-4 pt-6">
             {errorMessage ? (
-              <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              <div className="state-pop rounded-(--radius-field) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
                 {errorMessage}
               </div>
             ) : null}
             {!errorMessage && statusMessage ? (
-              <div className="rounded-[1rem] border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
+              <div className="state-pop rounded-(--radius-field) border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
                 {statusMessage}
               </div>
             ) : null}
@@ -1051,7 +923,7 @@ export function OnboardingFlow({
               <Button
                 type="button"
                 variant="ghost"
-                className="rounded-[0.95rem] px-0 text-muted-foreground hover:bg-transparent"
+                className="rounded-(--radius-field) px-0 text-muted-foreground hover:bg-transparent"
                 onClick={handleBack}
                 disabled={state.currentStep === 1 || isPending}
               >
@@ -1061,10 +933,13 @@ export function OnboardingFlow({
               <Button
                 type="button"
                 size="lg"
-                className="h-12 rounded-[0.95rem] px-5"
+                className="h-12 rounded-(--radius-field) px-5"
                 onClick={handleNext}
                 disabled={isPending}
               >
+                {isPending ? (
+                  <Loader2 className="size-4 animate-spin" data-icon="inline-start" />
+                ) : null}
                 {state.currentStep === onboardingSteps.length ? (
                   <>
                     Finish setup

@@ -58,10 +58,10 @@ export default async function OnboardingCompletePage() {
           <BrandMark href="/dashboard" includeSubtitle={false} />
         </div>
         <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col items-center justify-center py-12 text-center">
-          <div className="vela-icon-tile flex size-24 items-center justify-center rounded-[1.75rem]">
+          <div className="section-reveal vela-icon-tile flex size-24 items-center justify-center rounded-[1.75rem]">
             <CheckCircle2 className="size-12" />
           </div>
-          <div className="mt-8 space-y-4">
+          <div className="section-reveal mt-8 space-y-4">
             <h1 className="text-5xl font-semibold tracking-tight text-[var(--brand-ink)]">
               You are ready.
             </h1>
@@ -72,7 +72,7 @@ export default async function OnboardingCompletePage() {
             </p>
           </div>
 
-          <div className="mt-12 grid w-full gap-4 md:grid-cols-2">
+          <div className="section-reveal-delayed mt-12 grid w-full gap-4 md:grid-cols-2">
             <Card className="surface-card">
               <CardContent className="flex gap-4 p-6">
                 <div className="flex size-11 shrink-0 items-center justify-center rounded-[1rem] border border-border/80 bg-white text-primary">
@@ -103,7 +103,7 @@ export default async function OnboardingCompletePage() {
             </Card>
           </div>
 
-          <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <div className="section-reveal-delayed mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
               href="/dashboard"
               className={cn(

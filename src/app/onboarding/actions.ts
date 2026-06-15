@@ -2,6 +2,8 @@
 
 import { prisma } from "@/lib/prisma";
 import { businessTypes } from "@/lib/constants";
+import { normalizeStorageReference } from "@/lib/media-storage";
+import { normalizeOptionalPublicUrl } from "@/lib/safe-url";
 import { normalizeBrandHexColor, resolveBrandAccentPreset } from "@/lib/branding";
 import { sanitizeAuthMetadataForSession } from "@/lib/auth-metadata";
 import { defaultReminderTemplate } from "@/lib/settings";
@@ -60,8 +62,11 @@ async function bootstrapWorkspaceFromOnboarding(user: {
     nextState.clinic.accentColor === "custom" && customAccentHex
       ? customAccentHex
       : accentPreset.id;
-  const logoUrl = nextState.clinic.logoUrl.trim() || null;
-  const dashboardFocus = nextState.dashboard.widgets.join(",");
+  // Accept only a Supabase storage reference or a safe HTTPS URL — never a
+  // data: URL or other scheme that later flows into a CSS url() in the shell.
+  const logoUrl =
+    normalizeOptionalPublicUrl(normalizeStorageReference(nextState.clinic.logoUrl)) ||
+    null;
 
   return prisma.$transaction(async (tx) => {
     const business = await tx.business.upsert({
@@ -73,7 +78,6 @@ async function bootstrapWorkspaceFromOnboarding(user: {
         businessType,
         logoUrl,
         brandAccentColor,
-        dashboardFocus,
       },
       create: {
         ownerId: user.id,
@@ -81,7 +85,6 @@ async function bootstrapWorkspaceFromOnboarding(user: {
         businessType,
         logoUrl,
         brandAccentColor,
-        dashboardFocus,
         plan: "BASIC",
         planStatus: "ACTIVE",
         trialEndsAt: null,

@@ -1,8 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition, type CSSProperties } from "react";
-import { ArrowUpRight, ImageUp, UserRoundCog } from "lucide-react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { m } from "framer-motion";
+import {
+  ArrowUpRight,
+  BellRing,
+  Building2,
+  Check,
+  ChevronRight,
+  Clock3,
+  CreditCard,
+  ImageUp,
+  MessageCircle,
+  Palette,
+  RefreshCw,
+} from "lucide-react";
 
 import {
   prepareWhatsAppLiveConnectionAction,
@@ -17,6 +30,7 @@ import { uploadWorkspaceImage } from "@/lib/media-storage-client";
 import {
   timeOptions,
   weekdayLabels,
+  type SaveSettingsPayload,
   type SettingsState,
 } from "@/lib/settings";
 import { weekdayOrder, type WeekdayKey } from "@/lib/onboarding";
@@ -26,22 +40,50 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   WorkspaceHeader,
-  WorkspaceMainGrid,
   WorkspacePage,
-  WorkspaceRail,
 } from "@/components/workspace/workspace-layout";
+import { LazyMotionProvider } from "@/components/layout/motion-provider";
 
 type SettingsWorkspaceProps = {
   initialState: SettingsState;
   flashMessage?: string;
+  /** "page" renders the full route; "dialog" renders inside the settings popup. */
+  variant?: "page" | "dialog";
+  /** Called after a successful save (the dialog uses this to refresh the app shell). */
+  onSaved?: () => void;
+  /** Notifies the host (the settings dialog) whenever unsaved edits appear or clear. */
+  onDirtyChange?: (dirty: boolean) => void;
 };
+
+type SettingsSectionId =
+  | "business"
+  | "appearance"
+  | "hours"
+  | "reminders"
+  | "whatsapp"
+  | "billing";
+
+const settingsNav: Array<{
+  id: SettingsSectionId;
+  icon: typeof Building2;
+  title: string;
+  subtitle: string;
+}> = [
+  { id: "business", icon: Building2, title: "Business details", subtitle: "Name, type, logo, owner" },
+  { id: "appearance", icon: Palette, title: "Appearance", subtitle: "Workspace accent color" },
+  { id: "hours", icon: Clock3, title: "Working hours", subtitle: "Booking availability" },
+  { id: "reminders", icon: BellRing, title: "Reminders", subtitle: "Send times and message" },
+  { id: "whatsapp", icon: MessageCircle, title: "WhatsApp", subtitle: "Number and connection" },
+  { id: "billing", icon: CreditCard, title: "Billing", subtitle: "Plan and checkout" },
+];
 
 const reminderHourOptions = Array.from({ length: 24 }, (_, index) =>
   String(24 - index)
 );
+
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+    <label className="text-xs font-medium text-muted-foreground">
       {children}
     </label>
   );
@@ -60,14 +102,14 @@ function Toggle({
       aria-pressed={checked}
       onClick={() => onPressedChange(!checked)}
       className={cn(
-        "relative inline-flex h-7 w-12 rounded-full shadow-[inset_0_1px_3px_rgba(20,32,51,0.12)] transition-colors",
+        "relative inline-flex h-6 w-10 shrink-0 rounded-full shadow-[inset_0_1px_3px_rgba(20,32,51,0.12)] transition-colors duration-(--duration-base)",
         checked ? "bg-primary" : "bg-border"
       )}
     >
       <span
         className={cn(
-          "absolute top-1 size-5 rounded-full bg-white transition-transform",
-          checked ? "translate-x-6" : "translate-x-1"
+          "absolute top-1 size-4 rounded-full bg-white transition-transform",
+          checked ? "translate-x-5" : "translate-x-1"
         )}
       />
     </button>
@@ -78,16 +120,24 @@ function NativeSelect({
   value,
   options,
   onChange,
+  className,
+  ariaLabel,
 }: {
   value: string;
   options: string[];
   onChange: (value: string) => void;
+  className?: string;
+  ariaLabel?: string;
 }) {
   return (
     <select
       value={value}
+      aria-label={ariaLabel}
       onChange={(event) => onChange(event.target.value)}
-      className="h-11 w-full rounded-[0.7rem] border border-border/80 bg-white/84 px-3 text-sm outline-none transition-[border-color,background-color,box-shadow] duration-200 focus:border-ring focus:bg-white focus-visible:ring-3 focus-visible:ring-ring/40"
+      className={cn(
+        "h-10 w-full rounded-(--radius-card) border border-border/80 bg-white px-2.5 text-sm outline-none transition-[border-color,box-shadow] duration-(--duration-base) focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/40",
+        className
+      )}
     >
       {options.map((option) => (
         <option key={option} value={option}>
@@ -101,53 +151,57 @@ function NativeSelect({
 function HourSelect({
   value,
   onChange,
+  ariaLabel,
 }: {
   value: number;
   onChange: (value: number) => void;
+  ariaLabel?: string;
 }) {
   return (
     <select
       value={String(value)}
+      aria-label={ariaLabel}
       onChange={(event) => onChange(Number(event.target.value))}
-      className="h-11 w-full rounded-[0.7rem] border border-border/80 bg-white/84 px-3 text-sm outline-none transition-[border-color,background-color,box-shadow] duration-200 focus:border-ring focus:bg-white focus-visible:ring-3 focus-visible:ring-ring/40"
+      className="h-9 w-[124px] rounded-(--radius-card) border border-border/80 bg-white px-2.5 text-sm outline-none transition-[border-color,box-shadow] duration-(--duration-base) focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
     >
       {reminderHourOptions.map((option) => (
         <option key={option} value={option}>
-          {option}h
+          {option}h before
         </option>
       ))}
     </select>
   );
 }
 
-function SettingsSection({
+function SectionCard({
   id,
   title,
   description,
-  tourTarget,
   children,
+  active = true,
 }: {
-  id: string;
+  id: SettingsSectionId;
   title: string;
-  description: string;
-  tourTarget?: string;
+  description?: string;
   children: React.ReactNode;
+  active?: boolean;
 }) {
+  if (!active) {
+    return null;
+  }
+
   return (
     <section
-      id={id}
-      data-tour={tourTarget}
-      className="surface-card scroll-mt-24 px-3.5 py-3.5"
+      id={`section-${id}`}
+      className="rounded-(--radius-card) border border-border/80 bg-white p-4 shadow-(--shadow-card)"
     >
-      <div className="border-b border-border/70 pb-3">
-        <h2 className="text-[15px] font-semibold leading-5 text-foreground">{title}</h2>
+      <div className="border-b border-border/60 pb-3">
+        <h2 className="text-base font-semibold leading-5 text-foreground">{title}</h2>
         {description ? (
-          <p className="mt-1 max-w-2xl text-sm leading-5 text-muted-foreground">
-            {description}
-          </p>
+          <p className="mt-1 text-sm leading-5 text-muted-foreground">{description}</p>
         ) : null}
       </div>
-      <div className="mt-3">{children}</div>
+      <div className="mt-4">{children}</div>
     </section>
   );
 }
@@ -155,24 +209,18 @@ function SettingsSection({
 export function SettingsWorkspace({
   initialState,
   flashMessage = "",
+  variant = "page",
+  onSaved,
+  onDirtyChange,
 }: SettingsWorkspaceProps) {
-  const sectionLinks = [
-    { href: "#business-details", label: "Business details" },
-    { href: "#appearance", label: "Appearance" },
-    { href: "#working-hours", label: "Working hours" },
-    { href: "#team", label: "Staff" },
-    { href: "#whatsapp-configuration", label: "WhatsApp" },
-    { href: "#reminders", label: "Reminders" },
-    { href: "#billing", label: "Billing" },
-  ] as const;
-
+  const inDialog = variant === "dialog";
   const [state, setState] = useState(initialState);
+  const [savedState, setSavedState] = useState(initialState);
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>("business");
   const [message, setMessage] = useState(flashMessage);
   const [errorMessage, setErrorMessage] = useState("");
   const [isLogoUploading, setIsLogoUploading] = useState(false);
   const [isPending, startSaving] = useTransition();
-  const [, setConnectionStatus] = useState("");
-  const [, setConnectionError] = useState("");
   const [isPreparingConnection, startPreparingConnection] = useTransition();
   const [isRefreshingConnection, startRefreshingConnection] = useTransition();
   const visibleAccentPresets = brandAccentPresets.filter(
@@ -187,6 +235,15 @@ export function SettingsWorkspace({
   const logoDisplayUrl =
     state.business.logoDisplayUrl ||
     (isStorageReference(state.business.logoUrl) ? "" : state.business.logoUrl);
+  const isConnected = state.whatsapp.connection.phase === "CONNECTED";
+  const hasUnsavedChanges = useMemo(
+    () => JSON.stringify(state) !== JSON.stringify(savedState),
+    [state, savedState]
+  );
+
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedChanges);
+  }, [hasUnsavedChanges, onDirtyChange]);
 
   function updateDay(day: WeekdayKey, patch: Partial<(typeof state.workingHours)[WeekdayKey]>) {
     setState((current) => ({
@@ -209,7 +266,24 @@ export function SettingsWorkspace({
     }
 
     startSaving(async () => {
-      const result = await saveSettingsAction(state);
+      // Submit only the editable subset — derived/display fields stay server-owned.
+      const payload: SaveSettingsPayload = {
+        business: {
+          businessName: state.business.businessName,
+          businessType: state.business.businessType,
+          ownerName: state.business.ownerName,
+          logoUrl: state.business.logoUrl,
+        },
+        appearance: state.appearance,
+        workingHours: state.workingHours,
+        whatsapp: {
+          phoneNumber: state.whatsapp.phoneNumber,
+          sendReminders: state.whatsapp.sendReminders,
+          reminderWindow: state.whatsapp.reminderWindow,
+        },
+        reminders: state.reminders,
+      };
+      const result = await saveSettingsAction(payload);
 
       if (!result.ok || !result.state) {
         setErrorMessage(result.error ?? "We couldn't save your settings.");
@@ -218,9 +292,17 @@ export function SettingsWorkspace({
       }
 
       setState(result.state);
+      setSavedState(result.state);
       setErrorMessage("");
       setMessage("Settings saved.");
+      onSaved?.();
     });
+  }
+
+  function handleDiscard() {
+    setState(savedState);
+    setErrorMessage("");
+    setMessage("");
   }
 
   async function handleLogoUpload(file: File | null) {
@@ -269,28 +351,40 @@ export function SettingsWorkspace({
 
   function handlePrepareLiveConnection() {
     startPreparingConnection(async () => {
-      const result = await prepareWhatsAppLiveConnectionAction();
+      const result = await prepareWhatsAppLiveConnectionAction(
+        state.whatsapp.phoneNumber
+      );
 
       if (result.connection) {
-        setState((current) => ({
+        const connection = result.connection;
+        const savedNumber = connection.requestedPhoneNumber;
+
+        // Connection status (and the number the server persisted) is server
+        // state, not an edit — mirror it into both snapshots so Connect never
+        // flips the dirty flag and Discard never rewinds it.
+        const applyConnection = (current: SettingsState): SettingsState => ({
           ...current,
           whatsapp: {
             ...current.whatsapp,
-            connection: result.connection!,
+            phoneNumber: savedNumber || current.whatsapp.phoneNumber,
+            connection,
           },
-        }));
+        });
+
+        setState(applyConnection);
+        setSavedState(applyConnection);
       }
 
       if (!result.ok) {
-        setConnectionError(
+        setErrorMessage(
           result.error ?? "We couldn't start WhatsApp setup for this clinic number."
         );
-        setConnectionStatus("");
+        setMessage("");
         return;
       }
 
-      setConnectionError("");
-      setConnectionStatus(result.message ?? "WhatsApp setup started.");
+      setErrorMessage("");
+      setMessage(result.message ?? "WhatsApp setup started.");
     });
   }
 
@@ -299,114 +393,144 @@ export function SettingsWorkspace({
       const result = await refreshWhatsAppLiveConnectionAction();
 
       if (result.connection) {
-        setState((current) => ({
+        const connection = result.connection;
+
+        // Server state, not an edit — keep both snapshots in sync (see above).
+        const applyConnection = (current: SettingsState): SettingsState => ({
           ...current,
           whatsapp: {
             ...current.whatsapp,
-            connection: result.connection!,
+            connection,
           },
-        }));
+        });
+
+        setState(applyConnection);
+        setSavedState(applyConnection);
       }
 
       if (!result.ok) {
-        setConnectionError(
+        setErrorMessage(
           result.error ?? "We couldn't refresh the clinic number status."
         );
-        setConnectionStatus("");
+        setMessage("");
         return;
       }
 
-      setConnectionError("");
-      setConnectionStatus(result.message ?? "Latest WhatsApp status loaded.");
+      setErrorMessage("");
+      setMessage(result.message ?? "Latest WhatsApp status loaded.");
     });
   }
 
-  return (
-    <WorkspacePage size="wide">
-      <WorkspaceMainGrid railWidth="sm" className="xl:grid-cols-[196px_minmax(0,1fr)]">
-      <WorkspaceRail className="order-2 hidden xl:order-1 xl:block">
-        <div className="surface-card sticky top-20 space-y-1 p-2.5">
-          {sectionLinks.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="block rounded-[0.68rem] px-3 py-2 text-sm text-muted-foreground transition-[background-color,color] duration-200 hover:bg-muted/55 hover:text-foreground"
-            >
-              {item.label}
-            </Link>
-          ))}
+  const content = (
+    <LazyMotionProvider>
+      {errorMessage ? (
+        <div className="rounded-(--radius-card) border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
+          {errorMessage}
         </div>
-      </WorkspaceRail>
+      ) : null}
+      {!errorMessage && message ? (
+        <div className="rounded-(--radius-card) border border-primary/20 bg-primary/8 px-3 py-2.5 text-sm text-primary">
+          {message}
+        </div>
+      ) : null}
 
-      <div className="order-1 space-y-3.5 xl:order-2">
-        <WorkspaceHeader
-          title="Settings"
-          description="Manage workspace identity, hours, WhatsApp behavior, reminders, and billing from one focused control panel."
-          actions={
+      <div
+        className={cn(
+          "grid items-start gap-4",
+          inDialog
+            ? "md:grid-cols-[232px_minmax(0,1fr)]"
+            : "xl:grid-cols-[290px_minmax(0,1fr)]"
+        )}
+      >
+        <div
+          className={cn(
+            "rounded-(--radius-card) border border-border/80 bg-white p-2 shadow-(--shadow-card)",
+            inDialog ? "z-10 md:sticky md:top-0" : "xl:sticky xl:top-20"
+          )}
+        >
+          <nav>
+            {settingsNav.map((section) => {
+              const selected = activeSection === section.id;
+              const Icon = section.icon;
+
+              return (
+                <button
+                  key={section.id}
+                  type="button"
+                  data-tour={section.id === "whatsapp" ? "settings-whatsapp" : undefined}
+                  onClick={() => setActiveSection(section.id)}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-(--radius-card) px-2.5 py-2 text-left transition-colors duration-(--duration-base)",
+                    selected ? "bg-primary/8" : "hover:bg-secondary/50"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "grid size-8 shrink-0 place-items-center rounded-(--radius-tile) border bg-white",
+                      selected ? "border-primary/30 text-primary" : "border-border/75 text-muted-foreground"
+                    )}
+                  >
+                    <Icon className="size-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span
+                      className={cn(
+                        "block truncate text-sm font-semibold",
+                        selected ? "text-primary" : "text-foreground"
+                      )}
+                    >
+                      {section.title}
+                    </span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {section.subtitle}
+                    </span>
+                  </span>
+                  <ChevronRight
+                    className={cn(
+                      "size-4 shrink-0",
+                      selected ? "text-primary" : "text-muted-foreground/50"
+                    )}
+                  />
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="mt-2 space-y-2 border-t border-border/70 p-2 pt-3">
             <Button
-              size="lg"
-              className="h-11 rounded-[0.7rem] px-5"
+              className="h-10 w-full rounded-(--radius-card)"
               disabled={isPending}
               onClick={handleSave}
             >
-              Save changes
+              {isPending ? "Saving..." : "Save changes"}
             </Button>
-          }
-        />
-
-        {errorMessage ? (
-          <div className="rounded-[0.75rem] border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
-            {errorMessage}
+            <Button
+              variant="outline"
+              className="h-10 w-full rounded-(--radius-card) bg-white"
+              onClick={handleDiscard}
+              disabled={isPending || !hasUnsavedChanges}
+            >
+              Discard changes
+            </Button>
           </div>
-        ) : null}
-        {!errorMessage && message ? (
-          <div className="rounded-[0.75rem] border border-primary/20 bg-primary/8 px-3 py-2.5 text-sm text-primary">
-            {message}
-          </div>
-        ) : null}
+        </div>
 
-        <SettingsSection
-          id="business-details"
-          title="Business details"
-          description="Keep your workspace identity current so appointments, messages, and reminders reflect the right business context."
+        <m.div
+          key={activeSection}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.16, ease: "easeOut" }}
+          className="min-w-0"
         >
-          <div className="grid gap-3.5 md:grid-cols-2">
-            <div className="space-y-2">
-              <FieldLabel>Business name</FieldLabel>
-              <Input
-                value={state.business.businessName}
-                onChange={(event) =>
-                  setState((current) => ({
-                    ...current,
-                    business: {
-                      ...current.business,
-                      businessName: event.target.value,
-                    },
-                  }))
-                }
-                className="h-11 rounded-[0.7rem] bg-white/84"
-              />
-            </div>
-            <div className="space-y-2">
-              <FieldLabel>Business type</FieldLabel>
-              <NativeSelect
-                value={state.business.businessType}
-                options={[...businessTypes]}
-                onChange={(value) =>
-                  setState((current) => ({
-                    ...current,
-                    business: {
-                      ...current.business,
-                      businessType: value as SettingsState["business"]["businessType"],
-                    },
-                  }))
-                }
-              />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <FieldLabel>Clinic logo</FieldLabel>
-              <div className="grid gap-3 rounded-[0.78rem] border border-border/75 bg-white p-3 sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center">
-                <div className="flex size-16 items-center justify-center overflow-hidden rounded-[0.75rem] bg-primary/10 text-lg font-semibold text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]">
+          <SectionCard
+            id="business"
+            title="Business details"
+            description="Your clinic's identity — the name, type, logo, and contact email clients see."
+            active={activeSection === "business"}
+          >
+            <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-(--radius-tile) border border-border/75 bg-white text-xl font-semibold text-primary">
                   {logoDisplayUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -418,413 +542,275 @@ export function SettingsWorkspace({
                     (state.business.businessName || "V").charAt(0).toUpperCase()
                   )}
                 </div>
-                <Input
-                  value={
-                    isStorageReference(state.business.logoUrl)
-                      ? ""
-                      : state.business.logoUrl
-                  }
-                  onChange={(event) =>
-                    setState((current) => ({
-                      ...current,
-                      business: {
-                        ...current.business,
-                        logoUrl: event.target.value,
-                        logoDisplayUrl: event.target.value,
-                      },
-                    }))
-                  }
-                  placeholder="Paste logo URL or upload an image"
-                  className="h-11 rounded-[0.7rem] bg-white/84"
-                />
-                <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-[0.7rem] border border-border/80 bg-white px-4 text-sm font-medium text-foreground shadow-sm transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[0_12px_26px_rgba(20,32,51,0.06)]">
-                  <ImageUp className="size-4 text-primary" />
-                  {isLogoUploading ? "Uploading..." : "Upload logo"}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    disabled={isLogoUploading}
-                    className="sr-only"
-                    onChange={(event) => handleLogoUpload(event.target.files?.[0] ?? null)}
-                  />
-                </label>
+                <div>
+                  <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-(--radius-card) border border-border/80 bg-white px-3 text-sm font-medium text-foreground transition-[border-color] duration-(--duration-base) hover:border-primary/35">
+                    <ImageUp className="size-4 text-primary" />
+                    {isLogoUploading ? "Uploading..." : "Upload logo"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={isLogoUploading}
+                      className="sr-only"
+                      onChange={(event) => handleLogoUpload(event.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  <p className="mt-1.5 text-xs text-muted-foreground">PNG or JPG, up to 750 KB.</p>
+                </div>
               </div>
-            </div>
-            <div className="space-y-2">
-              <FieldLabel>Owner name</FieldLabel>
-              <Input
-                value={state.business.ownerName}
-                onChange={(event) =>
-                  setState((current) => ({
-                    ...current,
-                    business: {
-                      ...current.business,
-                      ownerName: event.target.value,
-                    },
-                  }))
-                }
-                className="h-11 rounded-[0.7rem] bg-white/84"
-              />
-            </div>
-            <div className="space-y-2">
-              <FieldLabel>Support email</FieldLabel>
-              <Input
-                value={state.business.supportEmail}
-                disabled
-                className="h-11 rounded-[0.75rem] bg-white/92"
-              />
-            </div>
-          </div>
-        </SettingsSection>
 
-        <SettingsSection
-          id="appearance"
-          title="Appearance"
-          description="Choose the accent color used for primary actions, active states, highlights, and workspace feedback."
-        >
-          <div className="grid gap-3.5 lg:grid-cols-[minmax(0,1fr)_260px]">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {visibleAccentPresets.map((preset) => {
-                const selected = state.appearance.accentColor === preset.id;
-
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() =>
+              <div className="grid gap-3.5 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <FieldLabel>Business name</FieldLabel>
+                  <Input
+                    value={state.business.businessName}
+                    onChange={(event) =>
                       setState((current) => ({
                         ...current,
-                        appearance: {
-                          accentColor: preset.id,
-                          accentHex: preset.value,
+                        business: {
+                          ...current.business,
+                          businessName: event.target.value,
                         },
                       }))
                     }
-                    className={cn(
-                      "group rounded-[0.75rem] border bg-white/84 p-3 text-left transition-[border-color,box-shadow,transform,background-color] duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_6px_16px_rgba(20,32,51,0.04)]",
-                      selected
-                        ? "border-primary/55 shadow-[0_6px_16px_rgba(20,32,51,0.05)] ring-2 ring-primary/15"
-                        : "border-border/80"
-                    )}
-                  >
-                    <span
-                      className="block h-14 rounded-[0.85rem] shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
-                      style={{ backgroundColor: preset.value }}
-                    />
-                    <span className="mt-3 flex items-center justify-between gap-2">
-                      <span className="text-sm font-semibold text-foreground">
-                        {preset.name}
-                      </span>
+                    className="h-10 rounded-(--radius-card) bg-white"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Business type</FieldLabel>
+                  <NativeSelect
+                    value={state.business.businessType}
+                    options={[...businessTypes]}
+                    onChange={(value) =>
+                      setState((current) => ({
+                        ...current,
+                        business: {
+                          ...current.business,
+                          businessType: value as SettingsState["business"]["businessType"],
+                        },
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Owner name</FieldLabel>
+                  <Input
+                    value={state.business.ownerName}
+                    onChange={(event) =>
+                      setState((current) => ({
+                        ...current,
+                        business: {
+                          ...current.business,
+                          ownerName: event.target.value,
+                        },
+                      }))
+                    }
+                    className="h-10 rounded-(--radius-card) bg-white"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Support email</FieldLabel>
+                  <Input
+                    value={state.business.supportEmail}
+                    disabled
+                    className="h-10 rounded-(--radius-card) bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            id="appearance"
+            title="Appearance"
+            description="Pick the accent color used for primary actions, active states, and highlights across the workspace."
+            active={activeSection === "appearance"}
+          >
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                {visibleAccentPresets.map((preset) => {
+                  const selected = state.appearance.accentColor === preset.id;
+
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() =>
+                        setState((current) => ({
+                          ...current,
+                          appearance: {
+                            accentColor: preset.id,
+                            accentHex: preset.value,
+                          },
+                        }))
+                      }
+                      className={cn(
+                        "flex w-full items-center gap-2.5 rounded-(--radius-card) border bg-white px-3 py-2.5 text-sm font-medium transition-[border-color,box-shadow] duration-(--duration-base)",
+                        selected
+                          ? "border-primary/45 text-foreground ring-2 ring-primary/12"
+                          : "border-border/80 text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                      )}
+                    >
                       <span
-                        className={cn(
-                          "size-2.5 rounded-full transition-transform duration-200",
-                          selected ? "scale-100 bg-primary" : "scale-75 bg-border"
-                        )}
-                      />
-                    </span>
-                  </button>
-                );
-              })}
+                        className="grid size-6 shrink-0 place-items-center rounded-full"
+                        style={{ backgroundColor: preset.value }}
+                      >
+                        {selected ? <Check className="size-3.5 text-white" /> : null}
+                      </span>
+                      {preset.name}
+                    </button>
+                  );
+                })}
+              </div>
 
               <div
                 className={cn(
-                      "group rounded-[0.75rem] border bg-white/84 p-3 text-left transition-[border-color,box-shadow,transform,background-color] duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_6px_16px_rgba(20,32,51,0.04)]",
+                  "flex items-center justify-between gap-3 rounded-(--radius-card) border bg-white px-3 py-2.5 transition-[border-color,box-shadow] duration-(--duration-base)",
                   customAccentSelected
-                        ? "border-primary/55 shadow-[0_6px_16px_rgba(20,32,51,0.05)] ring-2 ring-primary/15"
+                    ? "border-primary/45 ring-2 ring-primary/12"
                     : "border-border/80",
                   customAccentInvalid && "border-destructive/45 ring-destructive/10"
                 )}
               >
-                <button
-                  type="button"
-                  onClick={() =>
+                <div className="flex items-center gap-2.5">
+                  <label
+                    className="relative grid size-6 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-full"
+                    style={{ backgroundColor: previewAccent }}
+                  >
+                    {customAccentSelected && !customAccentInvalid ? (
+                      <Check className="size-3.5 text-white" />
+                    ) : null}
+                    <input
+                      aria-label="Pick custom accent color"
+                      type="color"
+                      value={previewAccent}
+                      onChange={(event) =>
+                        setState((current) => ({
+                          ...current,
+                          appearance: { accentColor: "custom", accentHex: event.target.value },
+                        }))
+                      }
+                      className="absolute inset-0 cursor-pointer opacity-0"
+                    />
+                  </label>
+                  <span className="text-sm font-medium text-foreground">Custom color</span>
+                </div>
+                <Input
+                  value={state.appearance.accentHex}
+                  onFocus={() =>
                     setState((current) => ({
                       ...current,
-                      appearance: {
-                        ...current.appearance,
-                        accentColor: "custom",
-                      },
+                      appearance: { ...current.appearance, accentColor: "custom" },
                     }))
                   }
-                  className="block w-full text-left"
-                >
-                  <span
-                    className="block h-14 rounded-[0.85rem] border border-border/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
-                    style={{ backgroundColor: previewAccent }}
-                  />
-                  <span className="mt-3 flex items-center justify-between gap-2">
-                    <span className="text-sm font-semibold text-foreground">
-                      Custom HEX
-                    </span>
-                    <span
-                      className={cn(
-                        "size-2.5 rounded-full transition-transform duration-200",
-                        customAccentSelected
-                          ? "scale-100 bg-primary"
-                          : "scale-75 bg-border"
-                      )}
-                    />
-                  </span>
-                </button>
-                <div className="mt-3 grid grid-cols-[44px_minmax(0,1fr)] gap-2">
-                  <input
-                    aria-label="Pick custom accent color"
-                    type="color"
-                    value={previewAccent}
-                    onChange={(event) =>
-                      setState((current) => ({
-                        ...current,
-                        appearance: {
-                          accentColor: "custom",
-                          accentHex: event.target.value,
-                        },
-                      }))
-                    }
-                    className="h-10 w-full cursor-pointer rounded-[0.75rem] border border-border/80 bg-white p-1"
-                  />
-                  <Input
-                    value={state.appearance.accentHex}
-                    onFocus={() =>
-                      setState((current) => ({
-                        ...current,
-                        appearance: {
-                          ...current.appearance,
-                          accentColor: "custom",
-                        },
-                      }))
-                    }
-                    onChange={(event) =>
-                      setState((current) => ({
-                        ...current,
-                        appearance: {
-                          accentColor: "custom",
-                          accentHex: event.target.value,
-                        },
-                      }))
-                    }
-                    placeholder="#0A22FF"
-                    className={cn(
-                      "h-10 rounded-[0.75rem] bg-white/88 font-mono text-xs uppercase tracking-[0.08em]",
-                      customAccentInvalid &&
-                        "border-destructive/45 focus-visible:ring-destructive/20"
-                    )}
-                  />
-                </div>
-                <p
-                  className={cn(
-                    "mt-2 text-xs leading-5 text-muted-foreground",
-                    customAccentInvalid && "text-destructive"
-                  )}
-                >
-                  {customAccentInvalid
-                    ? "Use a valid HEX value like #2f6fbd."
-                    : "Use your own brand color if it is not listed."}
-                </p>
-              </div>
-            </div>
-
-            <div
-              className="surface-card p-3"
-              style={
-                {
-                  "--preview-accent": previewAccent,
-                } as CSSProperties
-              }
-            >
-              <FieldLabel>Live preview</FieldLabel>
-              <div className="mt-4 space-y-3">
-                <div className="rounded-[0.7rem] bg-[var(--preview-accent)] px-3 py-2.5 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(20,32,51,0.055)]">
-                  Primary action
-                </div>
-                <div
-                  className="rounded-[0.7rem] border bg-white px-3 py-2.5"
-                  style={{ borderColor: previewAccent }}
-                >
-                  <p className="text-sm font-semibold text-foreground">
-                    Active navigation
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    The selected accent is applied across the workspace after saving.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </SettingsSection>
-
-        <SettingsSection
-          id="working-hours"
-          title="Working hours"
-          description="These hours drive booking availability and shape the default calendar behavior across the workspace."
-        >
-          <div className="space-y-2.5">
-            {weekdayOrder.map((day) => {
-              const item = state.workingHours[day];
-
-              return (
-                <div
-                  key={day}
-                  className="grid gap-3 rounded-[0.72rem] border border-border/75 bg-muted/35 px-3.5 py-3 md:grid-cols-[1.5fr_1fr]"
-                >
-                  <div className="flex items-center gap-3.5">
-                    <Toggle
-                      checked={item.enabled}
-                      onPressedChange={(checked) => updateDay(day, { enabled: checked })}
-                    />
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
-                        {weekdayLabels[day]}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {item.enabled ? "Open for bookings" : "Closed"}
-                      </p>
-                    </div>
-                  </div>
-                  {item.enabled ? (
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <NativeSelect
-                        value={item.start}
-                        options={timeOptions}
-                        onChange={(value) => updateDay(day, { start: value })}
-                      />
-                      <NativeSelect
-                        value={item.end}
-                        options={timeOptions}
-                        onChange={(value) => updateDay(day, { end: value })}
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-start text-sm font-medium uppercase tracking-[0.16em] text-muted-foreground md:justify-end">
-                      Closed
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </SettingsSection>
-
-        <SettingsSection
-          id="team"
-          title="Staff"
-          description="Staff profiles, work time, and completed appointment records are managed from the dedicated staff workspace."
-        >
-          <div className="flex flex-col gap-3.5 rounded-[0.78rem] border border-border/75 bg-white px-3.5 py-3.5 shadow-[0_8px_18px_rgba(20,32,51,0.026)] sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-[0.7rem] bg-primary/10 text-primary">
-                <UserRoundCog className="size-5" />
-              </span>
-              <div>
-                <p className="text-base font-semibold text-foreground">
-                  Manage staff records
-                </p>
-                <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-                  Add staff, edit profiles, check in/out, and review completed work
-                  without loading that data into Settings.
-                </p>
-              </div>
-            </div>
-            <Link
-              href="/staff"
-              className={cn(
-                buttonVariants({ variant: "outline", size: "lg" }),
-                "h-11 justify-center rounded-[0.7rem] bg-white/76 px-5"
-              )}
-            >
-              Open staff
-              <ArrowUpRight className="size-4" />
-            </Link>
-          </div>
-        </SettingsSection>
-
-        <SettingsSection
-          id="whatsapp-configuration"
-          title="WhatsApp configuration"
-          description="Connect the clinic WhatsApp number used for inbox messages and reminders."
-          tourTarget="settings-whatsapp"
-        >
-          <div className="rounded-[0.78rem] border border-border/75 bg-muted/28 p-3">
-            <div className="grid gap-3.5 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-end">
-              <div className="space-y-2 lg:pb-0">
-                <FieldLabel>WhatsApp number</FieldLabel>
-                <Input
-                  value={state.whatsapp.phoneNumber}
                   onChange={(event) =>
                     setState((current) => ({
                       ...current,
-                      whatsapp: {
-                        ...current.whatsapp,
-                        phoneNumber: event.target.value,
-                      },
+                      appearance: { accentColor: "custom", accentHex: event.target.value },
                     }))
                   }
-                  placeholder="+1 555 000 0000"
-                  className="h-11 rounded-[0.7rem] bg-white/84"
+                  placeholder="#0A22FF"
+                  className="h-9 w-[120px] rounded-(--radius-card) bg-white text-right font-mono text-xs uppercase"
                 />
               </div>
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <Button
-                    variant="default"
-                    className="h-11 rounded-[0.7rem] px-5"
-                    onClick={handlePrepareLiveConnection}
-                    disabled={isPreparingConnection}
+
+              <div className="rounded-(--radius-card) border border-border/70 bg-[#fafbfd] p-3.5">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  Preview
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <span
+                    className="inline-flex h-9 items-center rounded-(--radius-card) px-3.5 text-sm font-semibold text-white"
+                    style={{ backgroundColor: previewAccent }}
                   >
-                    {isPreparingConnection ? "Connecting..." : "Connect"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-11 rounded-[0.7rem] bg-white/84 px-5"
-                    onClick={handleRefreshLiveConnection}
-                    disabled={isRefreshingConnection}
+                    Primary button
+                  </span>
+                  <span
+                    className="inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-semibold"
+                    style={{ backgroundColor: `${previewAccent}14`, color: previewAccent }}
                   >
-                    {isRefreshingConnection ? "Refreshing..." : "Refresh status"}
-                  </Button>
-                </div>
-                <div className="rounded-[0.72rem] border border-border/75 bg-white px-3.5 py-3 shadow-[0_8px_18px_rgba(20,32,51,0.024)]">
-                  <div className="flex items-center justify-between gap-3">
-                    <FieldLabel>Status</FieldLabel>
                     <span
-                      className={cn(
-                        "size-2.5 rounded-full",
-                        state.whatsapp.connection.phase === "CONNECTED"
-                          ? "bg-primary"
-                          : "bg-muted-foreground/35"
-                      )}
+                      className="size-2 rounded-full"
+                      style={{ backgroundColor: previewAccent }}
                     />
-                  </div>
-                  <p
-                    className={cn(
-                      "mt-2 text-base font-semibold",
-                      state.whatsapp.connection.phase === "CONNECTED"
-                        ? "text-primary"
-                        : "text-foreground"
-                    )}
-                  >
-                    {state.whatsapp.connection.phase === "CONNECTED"
-                      ? "Connected"
-                      : "Not connected"}
-                  </p>
+                    Active state
+                  </span>
+                  <span className="text-sm font-semibold" style={{ color: previewAccent }}>
+                    Link &amp; highlight
+                  </span>
                 </div>
               </div>
-            </div>
-          </div>
-        </SettingsSection>
 
-        <SettingsSection
-          id="reminders"
-          title="Reminders"
-          description=""
-        >
-          <div className="space-y-3.5">
-            <div className="grid gap-3.5 md:grid-cols-2">
-              <div className="rounded-[0.72rem] border border-border/75 bg-muted/35 px-3.5 py-3">
-                <div className="flex items-start justify-between gap-3.5">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">
-                      First reminder
-                    </p>
+              <p
+                className={cn(
+                  "text-xs",
+                  customAccentInvalid ? "font-medium text-destructive" : "text-muted-foreground"
+                )}
+              >
+                {customAccentInvalid
+                  ? "Use a valid HEX value like #0A22FF."
+                  : "Applied to primary actions, active states, and highlights across the workspace."}
+              </p>
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            id="hours"
+            title="Working hours"
+            description="Set the days and times your clinic takes bookings. The calendar and reminders follow these hours."
+            active={activeSection === "hours"}
+          >
+            <div className="divide-y divide-border/65">
+              {weekdayOrder.map((day) => {
+                const item = state.workingHours[day];
+
+                return (
+                  <div
+                    key={day}
+                    className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Toggle
+                        checked={item.enabled}
+                        onPressedChange={(checked) => updateDay(day, { enabled: checked })}
+                      />
+                      <p className="text-sm font-medium text-foreground">{weekdayLabels[day]}</p>
+                    </div>
+                    {item.enabled ? (
+                      <div className="flex shrink-0 items-center gap-2">
+                        <NativeSelect
+                          value={item.start}
+                          options={timeOptions}
+                          onChange={(value) => updateDay(day, { start: value })}
+                          className="h-9 w-[104px] px-2.5"
+                          ariaLabel={`${weekdayLabels[day]} opening time`}
+                        />
+                        <span className="text-sm text-muted-foreground">–</span>
+                        <NativeSelect
+                          value={item.end}
+                          options={timeOptions}
+                          onChange={(value) => updateDay(day, { end: value })}
+                          className="h-9 w-[104px] px-2.5"
+                          ariaLabel={`${weekdayLabels[day]} closing time`}
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-sm font-medium text-muted-foreground">Closed</span>
+                    )}
                   </div>
+                );
+              })}
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            id="reminders"
+            title="Reminders"
+            description="Choose when automatic appointment reminders are sent and what they say."
+            active={activeSection === "reminders"}
+          >
+            <div className="divide-y divide-border/65">
+              <div className="flex h-[52px] items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
                   <Toggle
                     checked={state.reminders.twentyFourHour}
                     onPressedChange={(checked) =>
@@ -837,9 +823,9 @@ export function SettingsWorkspace({
                       }))
                     }
                   />
+                  <p className="text-sm font-medium text-foreground">First reminder</p>
                 </div>
-                <div className="mt-4 space-y-2">
-                  <FieldLabel>Send time</FieldLabel>
+                {state.reminders.twentyFourHour ? (
                   <HourSelect
                     value={state.reminders.firstReminderHours}
                     onChange={(value) =>
@@ -851,20 +837,15 @@ export function SettingsWorkspace({
                         },
                       }))
                     }
+                    ariaLabel="First reminder send time"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    {state.reminders.firstReminderHours}h before the appointment.
-                  </p>
-                </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Off</span>
+                )}
               </div>
 
-              <div className="rounded-[0.72rem] border border-border/75 bg-muted/35 px-3.5 py-3">
-                <div className="flex items-start justify-between gap-3.5">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">
-                      Second reminder
-                    </p>
-                  </div>
+              <div className="flex h-[52px] items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
                   <Toggle
                     checked={state.reminders.twoHour}
                     onPressedChange={(checked) =>
@@ -877,9 +858,9 @@ export function SettingsWorkspace({
                       }))
                     }
                   />
+                  <p className="text-sm font-medium text-foreground">Second reminder</p>
                 </div>
-                <div className="mt-4 space-y-2">
-                  <FieldLabel>Send time</FieldLabel>
+                {state.reminders.twoHour ? (
                   <HourSelect
                     value={state.reminders.secondReminderHours}
                     onChange={(value) =>
@@ -891,68 +872,205 @@ export function SettingsWorkspace({
                         },
                       }))
                     }
+                    ariaLabel="Second reminder send time"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    {state.reminders.secondReminderHours}h before the appointment.
-                  </p>
-                </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Off</span>
+                )}
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <FieldLabel>Message template</FieldLabel>
-              <Textarea
-                value={state.reminders.template}
-                onChange={(event) =>
-                  setState((current) => ({
-                    ...current,
-                    reminders: {
-                      ...current.reminders,
-                      template: event.target.value,
-                    },
-                    whatsapp: {
-                      ...current.whatsapp,
-                      template: event.target.value,
-                    },
-                  }))
-                }
-                className="min-h-24 rounded-[0.7rem] bg-white/84 px-3 py-2.5"
-              />
-            </div>
-          </div>
-        </SettingsSection>
-
-        <SettingsSection
-          id="billing"
-          title="Billing"
-          description="Review the current plan and open checkout when you want to change it."
-        >
-          <div className="flex flex-col gap-3.5 rounded-[0.78rem] border border-border/75 bg-white px-3.5 py-3.5 shadow-[0_8px_18px_rgba(20,32,51,0.026)] sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <FieldLabel>Current plan</FieldLabel>
-              <div className="mt-2 flex items-center gap-3">
-                <p className="text-2xl font-semibold text-foreground">
-                  Vela {state.billing.planName}
+              <div className="space-y-1.5 pt-3.5">
+                <FieldLabel>Message template</FieldLabel>
+                <Textarea
+                  value={state.reminders.template}
+                  onChange={(event) =>
+                    setState((current) => ({
+                      ...current,
+                      reminders: {
+                        ...current.reminders,
+                        template: event.target.value,
+                      },
+                    }))
+                  }
+                  className="min-h-[128px] rounded-(--radius-card) bg-white px-3 py-2"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {"{client_name}"}, {"{time}"}, and {"{date}"} are replaced automatically.
                 </p>
-                <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
-                  {state.billing.statusLabel}
-                </span>
               </div>
             </div>
-            <Link
-              href={state.billing.checkoutHref}
-              className={cn(
-                buttonVariants({ variant: "outline", size: "lg" }),
-                "h-11 rounded-[0.7rem] justify-center bg-white/76 px-5"
+          </SectionCard>
+
+          <SectionCard
+            id="whatsapp"
+            title="WhatsApp"
+            description="Connect a WhatsApp number to send appointment reminders and reply to clients from the Inbox."
+            active={activeSection === "whatsapp"}
+          >
+            <div className="space-y-4">
+              <div className="rounded-(--radius-card) border border-border/70 bg-[#fafbfd] p-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "size-2.5 rounded-full",
+                        isConnected ? "bg-emerald-500" : "bg-muted-foreground/35"
+                      )}
+                    />
+                    <p className="text-sm font-semibold text-foreground">
+                      {isConnected ? "Connected" : "Not connected"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRefreshLiveConnection}
+                    disabled={isRefreshingConnection}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors duration-(--duration-base) hover:text-foreground disabled:opacity-60"
+                  >
+                    <RefreshCw className={cn("size-3.5", isRefreshingConnection && "animate-spin")} />
+                    {isRefreshingConnection ? "Refreshing..." : "Refresh"}
+                  </button>
+                </div>
+                {state.whatsapp.connection.detail ? (
+                  <p className="mt-2 text-sm leading-5 text-muted-foreground">
+                    {state.whatsapp.connection.detail}
+                  </p>
+                ) : null}
+                {state.whatsapp.connection.nextStep ? (
+                  <p className="mt-1.5 text-xs font-medium text-primary">
+                    {state.whatsapp.connection.nextStep}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="space-y-1.5">
+                <FieldLabel>Clinic WhatsApp number</FieldLabel>
+                <div className="flex gap-2">
+                  <Input
+                    value={state.whatsapp.phoneNumber}
+                    onChange={(event) =>
+                      setState((current) => ({
+                        ...current,
+                        whatsapp: {
+                          ...current.whatsapp,
+                          phoneNumber: event.target.value,
+                        },
+                      }))
+                    }
+                    placeholder="+1 555 000 0000"
+                    className="h-10 flex-1 rounded-(--radius-card) bg-white"
+                  />
+                  <Button
+                    className="h-10 shrink-0 rounded-(--radius-card) px-4"
+                    onClick={handlePrepareLiveConnection}
+                    disabled={isPreparingConnection}
+                  >
+                    {isPreparingConnection ? "Connecting..." : "Connect"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Use the full international format, for example +1 555 000 0000.
+                </p>
+              </div>
+
+              <ul className="space-y-2 border-t border-border/60 pt-3.5 text-sm text-muted-foreground">
+                <li className="flex items-start gap-2.5">
+                  <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+                  Send appointment reminders to clients automatically.
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+                  Reply to incoming client messages from the Inbox.
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+                  Messages only ever include a name and appointment time — never clinical details.
+                </li>
+              </ul>
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            id="billing"
+            title="Billing"
+            description="Your workspace plan and what's included."
+            active={activeSection === "billing"}
+          >
+            <div className="space-y-4">
+              <div className="rounded-(--radius-card) border border-border/70 bg-[#fafbfd] p-3.5">
+                <div className="flex items-center gap-2.5">
+                  <p className="text-lg font-semibold leading-6 text-foreground">
+                    Vela {state.billing.planName}
+                  </p>
+                  <span className="rounded-full bg-primary/8 px-2 py-0.5 text-xs font-semibold text-primary">
+                    {state.billing.statusLabel}
+                  </span>
+                </div>
+                {state.billing.note ? (
+                  <p className="mt-1.5 text-sm leading-5 text-muted-foreground">
+                    {state.billing.note}
+                  </p>
+                ) : null}
+              </div>
+
+              {state.billing.lockedFeatures.length > 0 ? (
+                <div className="space-y-2.5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                    {state.billing.planName === "Pro" ? "Included in your plan" : "Unlock with Pro"}
+                  </p>
+                  <ul className="space-y-2">
+                    {state.billing.lockedFeatures.map((feature) => (
+                      <li key={feature} className="flex items-start gap-2.5 text-sm text-foreground">
+                        <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                          <Check className="size-3" />
+                        </span>
+                        {feature}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2.5 rounded-(--radius-card) border border-emerald-200/70 bg-emerald-50/60 px-3.5 py-2.5 text-sm text-emerald-700">
+                  <Check className="mt-0.5 size-4 shrink-0" />
+                  You&apos;re on Pro — every analytics and automation feature is included.
+                </div>
               )}
-            >
-              {state.billing.ctaLabel}
-              <ArrowUpRight className="size-4" />
-            </Link>
-          </div>
-        </SettingsSection>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3.5">
+                <p className="text-sm text-muted-foreground">{state.billing.nextStep}</p>
+                <Link
+                  href={state.billing.checkoutHref}
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "sm" }),
+                    "h-9 w-fit rounded-(--radius-card) bg-white"
+                  )}
+                >
+                  {state.billing.ctaLabel}
+                  <ArrowUpRight className="size-3.5" />
+                </Link>
+              </div>
+            </div>
+          </SectionCard>
+        </m.div>
       </div>
-      </WorkspaceMainGrid>
+    </LazyMotionProvider>
+  );
+
+  if (inDialog) {
+    return (
+      <div className="dialog-scroll-body min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <WorkspacePage>
+      <WorkspaceHeader
+        title="Settings"
+        description="Configure how the workspace runs."
+      />
+      {content}
     </WorkspacePage>
   );
 }

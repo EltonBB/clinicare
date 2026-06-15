@@ -1,43 +1,41 @@
 "use client";
 
 import Link from "next/link";
-import { useDeferredValue, useMemo, useState } from "react";
-import {
-  CalendarPlus2,
-  ChevronRight,
-  FileText,
-  MessageSquareText,
-  Plus,
-  Search,
-  UsersRound,
-} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { ChevronRight, Plus, Search, UsersRound } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  WorkspaceCard,
+  FilterChip,
   WorkspaceEmptyState,
   WorkspaceHeader,
-  WorkspaceKpiCard,
-  WorkspaceKpiGrid,
   WorkspacePage,
   WorkspaceTable,
   WorkspaceToolbar,
 } from "@/components/workspace/workspace-layout";
-import { cn } from "@/lib/utils";
-import type { ClientStatus, ClientsViewModel } from "@/lib/clients";
+import { cn, getInitials } from "@/lib/utils";
+import type {
+  ClientDirectoryFilter,
+  ClientStatus,
+  ClientsViewModel,
+} from "@/lib/clients";
 
 type ClientsWorkspaceProps = {
   initialView: ClientsViewModel;
+  initialQuery: string;
+  activeFilter: ClientDirectoryFilter;
 };
 
-const filters: Array<{ label: string; value: "all" | ClientStatus }> = [
+const filters: Array<{ label: string; value: ClientDirectoryFilter }> = [
   { label: "All", value: "all" },
   { label: "Active", value: "active" },
   { label: "Inactive", value: "inactive" },
-  { label: "At risk", value: "at-risk" },
   { label: "Archived", value: "archived" },
+  { label: "Attention", value: "attention" },
+  { label: "No visits", value: "no-visits" },
 ];
 
 const statusColors: Record<ClientStatus, string> = {
@@ -48,7 +46,7 @@ const statusColors: Record<ClientStatus, string> = {
 };
 
 const clientTableGrid =
-  "lg:grid-cols-[minmax(240px,1.45fr)_140px_minmax(280px,1.35fr)_110px_120px_110px]";
+  "lg:grid-cols-[minmax(240px,1.5fr)_140px_minmax(240px,1.25fr)_110px_130px_110px]";
 
 function statusDot(status: ClientStatus) {
   return cn(
@@ -59,41 +57,77 @@ function statusDot(status: ClientStatus) {
   );
 }
 
-function clientInitials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2);
+function buildDirectoryUrl(query: string, filter: ClientDirectoryFilter, page: number) {
+  const params = new URLSearchParams();
+
+  if (query.trim()) {
+    params.set("q", query.trim());
+  }
+
+  if (filter !== "all") {
+    params.set("status", filter);
+  }
+
+  if (page > 1) {
+    params.set("page", page.toString());
+  }
+
+  const suffix = params.toString();
+
+  return suffix ? `/clients?${suffix}` : "/clients";
 }
 
 export function ClientsWorkspace({
   initialView,
+  initialQuery,
+  activeFilter,
 }: ClientsWorkspaceProps) {
-  const clients = initialView.clients;
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | ClientStatus>("all");
-  const deferredQuery = useDeferredValue(query);
-  const hasClients = clients.length > 0;
-  const activeClients = clients.filter((client) => client.status === "active");
-  const atRiskClients = clients.filter((client) => client.status === "at-risk");
-  const totalVisits = clients.reduce((sum, client) => sum + client.totalVisits, 0);
+  const router = useRouter();
+  const [query, setQuery] = useState(initialQuery);
+  const [isNavigating, startNavigating] = useTransition();
+  const skipNextSearchSync = useRef(true);
+  const activeFilterRef = useRef(activeFilter);
+  const view = initialView;
+  const counts = view.counts;
+  const hasClients = counts.all > 0;
+  const isFiltering = initialQuery.trim().length > 0 || activeFilter !== "all";
+  const rangeStart = view.total === 0 ? 0 : (view.page - 1) * view.pageSize + 1;
+  const rangeEnd = Math.min(view.page * view.pageSize, view.total);
+  const pageCount = Math.max(Math.ceil(view.total / view.pageSize), 1);
 
-  const filteredClients = useMemo(() => {
-    const normalizedQuery = deferredQuery.trim().toLowerCase();
+  useEffect(() => {
+    activeFilterRef.current = activeFilter;
+  }, [activeFilter]);
 
-    return clients.filter((client) => {
-      const matchesFilter = filter === "all" ? true : client.status === filter;
-      const matchesQuery =
-        normalizedQuery.length === 0
-          ? true
-          : [client.name, client.email, client.phone].some((value) =>
-              value.toLowerCase().includes(normalizedQuery)
-            );
+  useEffect(() => {
+    if (skipNextSearchSync.current) {
+      skipNextSearchSync.current = false;
+      return;
+    }
 
-      return matchesFilter && matchesQuery;
+    const handle = window.setTimeout(() => {
+      startNavigating(() => {
+        router.replace(buildDirectoryUrl(query, activeFilterRef.current, 1), {
+          scroll: false,
+        });
+      });
+    }, 300);
+
+    return () => window.clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
+  function applyFilter(filter: ClientDirectoryFilter) {
+    startNavigating(() => {
+      router.replace(buildDirectoryUrl(query, filter, 1), { scroll: false });
     });
-  }, [clients, deferredQuery, filter]);
+  }
+
+  function goToPage(page: number) {
+    startNavigating(() => {
+      router.replace(buildDirectoryUrl(query, activeFilter, page), { scroll: false });
+    });
+  }
 
   return (
     <WorkspacePage>
@@ -104,7 +138,7 @@ export function ClientsWorkspace({
           <Link
             href="/clients/new"
             data-tour="clients-create"
-            className={cn(buttonVariants({ size: "lg" }), "h-11 rounded-[0.9rem] px-4")}
+            className={cn(buttonVariants({ variant: "solid" }), "h-10 rounded-(--radius-card) px-4")}
           >
             <Plus className="size-4" />
             New client
@@ -112,43 +146,60 @@ export function ClientsWorkspace({
         }
       />
 
-      <WorkspaceKpiGrid>
-        <WorkspaceKpiCard icon={UsersRound} label="Total clients" value={clients.length.toString()} helper={`${activeClients.length} active`} />
-        <WorkspaceKpiCard icon={CalendarPlus2} label="Recorded visits" value={totalVisits.toString()} helper="Across client records" />
-        <WorkspaceKpiCard icon={MessageSquareText} label="Needs attention" value={atRiskClients.length.toString()} helper="At-risk status" tone={atRiskClients.length > 0 ? "danger" : "default"} />
-        <WorkspaceKpiCard icon={FileText} label="Recent updates" value={clients.slice(0, 5).length.toString()} helper="Latest records ready" />
-      </WorkspaceKpiGrid>
-
-      <WorkspaceToolbar>
-        <div className="relative w-full flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search clients by name, email, or phone..."
-            className="h-10 rounded-[0.72rem] bg-white pl-9"
-          />
-        </div>
-          <div className="flex flex-wrap gap-2">
-            {filters.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                onClick={() => setFilter(item.value)}
-                className={cn(
-                  "rounded-[0.7rem] border border-transparent bg-white/36 px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[background-color,color,border-color,box-shadow] duration-200 hover:border-border/70 hover:bg-white/70 hover:text-foreground",
-                  filter === item.value &&
-                    "border-border/80 bg-white text-foreground shadow-[0_6px_16px_rgba(20,32,51,0.04)]"
-                )}
-              >
-                {item.label}
-              </button>
-            ))}
+      <div className="section-reveal space-y-3">
+        <WorkspaceToolbar>
+          <div className="relative w-full flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search clients by name, email, or phone..."
+              className="h-10 rounded-(--radius-card) bg-white pl-9"
+            />
           </div>
-      </WorkspaceToolbar>
+          <div className="flex flex-wrap gap-2">
+            {filters.map((item) => {
+              const count =
+                item.value === "all"
+                  ? counts.all
+                  : item.value === "active"
+                    ? counts.active
+                    : item.value === "inactive"
+                      ? counts.inactive
+                      : item.value === "archived"
+                        ? counts.archived
+                        : item.value === "attention"
+                          ? counts.attention
+                          : counts.noVisits;
 
-      <div className="section-reveal">
-        <WorkspaceTable
+              return (
+                <FilterChip
+                  key={item.value}
+                  active={activeFilter === item.value}
+                  count={count}
+                  onClick={() => applyFilter(item.value)}
+                >
+                  {item.label}
+                </FilterChip>
+              );
+            })}
+          </div>
+        </WorkspaceToolbar>
+
+        {hasClients && isFiltering ? (
+          <p className="text-xs font-medium text-muted-foreground">
+            Showing {view.clients.length === 0 ? 0 : `${rangeStart}–${rangeEnd}`} of{" "}
+            {view.total} matching clients
+          </p>
+        ) : null}
+
+        <div
+          className={cn(
+            "transition-opacity duration-(--duration-base)",
+            isNavigating && "opacity-60"
+          )}
+        >
+          <WorkspaceTable
             headerClassName="py-2.5"
             headers={
               <div className={cn("hidden w-full gap-3 lg:grid", clientTableGrid)}>
@@ -161,154 +212,136 @@ export function ClientsWorkspace({
               </div>
             }
           >
-          {!hasClients ? (
-            <div className="px-6 py-8">
-              <WorkspaceEmptyState
-                icon={UsersRound}
-                title="Add the first client"
-                description="Clients are the base record for bookings, inbox threads, visit history, documents, and clinical media."
-                actionHref="/clients/new"
-                actionLabel="Add first client"
-                compact
-              />
-            </div>
-          ) : filteredClients.length === 0 ? (
-            <div className="px-6 py-8">
-              <WorkspaceEmptyState
-                icon={Search}
-                title="No clients match this view"
-                description="Try a different search term or filter."
-                compact
-              />
-            </div>
-          ) : (
-            filteredClients.map((client) => (
-              <div
-                key={client.id}
+            {!hasClients ? (
+              <div className="px-6 py-8">
+                <WorkspaceEmptyState
+                  icon={UsersRound}
+                  title="Add the first client"
+                  description="Clients are the base record for bookings, inbox threads, visit history, documents, and clinical media."
+                  actionHref="/clients/new"
+                  actionLabel="Add first client"
+                  compact
+                />
+              </div>
+            ) : view.clients.length === 0 ? (
+              <div className="px-6 py-8">
+                <WorkspaceEmptyState
+                  icon={Search}
+                  title="No clients match this view"
+                  description="Try a different search term or filter."
+                  compact
+                />
+              </div>
+            ) : (
+              view.clients.map((client) => (
+                <div
+                  key={client.id}
                   className={cn(
-                    "grid gap-3 px-3.5 py-2 transition-colors duration-200 hover:bg-[#f7f9fc] lg:min-h-[54px] lg:items-center",
+                    "grid gap-3 px-3.5 py-2 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] lg:min-h-[54px] lg:items-center",
                     clientTableGrid
                   )}
-              >
-                <Link href={`/clients/${client.id}`} className="flex min-w-0 items-center gap-3">
-                  <Avatar size="lg">
-                    <AvatarFallback>{clientInitials(client.name)}</AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold text-foreground">{client.name}</p>
-                    <p className="truncate text-sm text-muted-foreground">
-                      {client.phone || client.email || "No contact added"}
-                    </p>
-                  </div>
-                </Link>
-                <p className="text-sm text-muted-foreground lg:block">
-                  <span className="font-medium text-foreground lg:hidden">Last visit: </span>
-                  {client.lastVisit}
-                </p>
-                <div className="min-w-0 text-sm">
-                  <p className="truncate font-medium text-foreground">{client.lastService}</p>
-                  <p className="mt-1 truncate text-xs text-muted-foreground">
-                    {client.lastProvider} - {client.lastDiagnosis}
-                  </p>
-                </div>
-                <p className="text-sm text-foreground">
-                  <span className="font-medium lg:hidden">Visits: </span>
-                  {client.totalVisits}
-                </p>
-                <div className={cn("flex items-center gap-2 text-sm", statusColors[client.status])}>
-                  <span className={statusDot(client.status)} />
-                  <span className="capitalize">{client.status}</span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                  <Link
-                    href={`/clients/${client.id}`}
-                    className={cn(
-                      buttonVariants({ variant: "default", size: "sm" }),
-                      "h-8 rounded-[0.62rem] px-3 text-xs"
-                    )}
-                  >
-                    Details
-                    <ChevronRight className="size-4" />
+                >
+                  <Link href={`/clients/${client.id}`} className="flex min-w-0 items-center gap-3">
+                    <Avatar size="lg" shape="square">
+                      <AvatarFallback className="bg-white text-xs font-semibold text-primary">
+                        {getInitials(client.name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-foreground">{client.name}</p>
+                      <p className="truncate text-sm text-muted-foreground">
+                        {client.phone || client.email || "No contact added"}
+                      </p>
+                    </div>
                   </Link>
+                  <p className="text-sm text-muted-foreground lg:block">
+                    <span className="font-medium text-foreground lg:hidden">Last visit: </span>
+                    {client.lastVisit}
+                  </p>
+                  <div className="min-w-0 text-sm">
+                    {client.lastService ? (
+                      <>
+                        <p className="truncate font-medium text-foreground">{client.lastService}</p>
+                        {client.lastProvider ? (
+                          <p className="mt-1 truncate text-xs text-muted-foreground">
+                            {client.lastProvider}
+                          </p>
+                        ) : null}
+                      </>
+                    ) : (
+                      <p className="text-muted-foreground">No appointments yet</p>
+                    )}
+                  </div>
+                  <p className="text-sm text-foreground">
+                    <span className="font-medium lg:hidden">Visits: </span>
+                    {client.totalVisits}
+                  </p>
+                  <div className="min-w-0">
+                    <div
+                      className={cn(
+                        "flex items-center gap-2 text-sm",
+                        statusColors[client.status]
+                      )}
+                    >
+                      <span className={statusDot(client.status)} />
+                      <span className="capitalize">{client.status}</span>
+                    </div>
+                    {client.needsAttention ? (
+                      <p className="mt-0.5 truncate text-[11px] font-medium text-amber-600">
+                        {client.attentionReason}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                    <Link
+                      href={`/clients/${client.id}`}
+                      className={cn(
+                        buttonVariants({ variant: "solid", size: "sm" }),
+                        "h-8 rounded-(--radius-tile) px-3 text-xs"
+                      )}
+                    >
+                      Details
+                      <ChevronRight className="size-4" />
+                    </Link>
+                  </div>
                 </div>
-              </div>
-            ))
-          )}
-        </WorkspaceTable>
-      </div>
+              ))
+            )}
+          </WorkspaceTable>
+        </div>
 
-      <div className="grid gap-3 lg:grid-cols-3">
-        <WorkspaceCard fill compact title="Client segments">
-          <div className="space-y-2.5 text-sm">
-            <SegmentRow label="Active" value={activeClients.length} tone="primary" />
-            <SegmentRow label="At risk" value={atRiskClients.length} tone="danger" />
-            <SegmentRow label="Inactive" value={clients.filter((client) => client.status === "inactive").length} />
-            <SegmentRow label="Archived" value={clients.filter((client) => client.status === "archived").length} />
-          </div>
-        </WorkspaceCard>
-
-        <WorkspaceCard fill compact title="Directory health">
-          <div className="space-y-2.5 text-sm">
-            <SegmentRow label="Average visits" value={clients.length > 0 ? Math.round(totalVisits / clients.length) : 0} />
-            <SegmentRow label="With visits" value={clients.filter((client) => client.totalVisits > 0).length} />
-            <SegmentRow label="No visits yet" value={clients.filter((client) => client.totalVisits === 0).length} />
-          </div>
-        </WorkspaceCard>
-
-        <WorkspaceCard fill compact title="Recently updated">
-          <div className="grid gap-2">
-            {clients.slice(0, 4).map((client) => (
-              <Link
-                key={client.id}
-                href={`/clients/${client.id}`}
-                className="grid min-h-12 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[0.68rem] border border-border/70 px-3 py-2 text-sm transition-colors hover:bg-secondary/25"
+        {view.total > view.pageSize ? (
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-medium text-muted-foreground">
+              Page {view.page} of {pageCount}
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => goToPage(view.page - 1)}
+                disabled={view.page <= 1 || isNavigating}
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "rounded-(--radius-tile)"
+                )}
               >
-                <Avatar size="lg">
-                  <AvatarFallback>{clientInitials(client.name)}</AvatarFallback>
-                </Avatar>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-semibold text-foreground">{client.name}</span>
-                  <span className="text-xs text-muted-foreground">{client.lastVisit}</span>
-                </span>
-                <ChevronRight className="size-4 text-muted-foreground" />
-              </Link>
-            ))}
-            {clients.length === 0 ? (
-              <WorkspaceEmptyState
-                icon={UsersRound}
-                title="No client records yet"
-                description="Recently updated clients will appear here."
-                compact
-              />
-            ) : null}
+                Previous
+              </button>
+              <button
+                type="button"
+                onClick={() => goToPage(view.page + 1)}
+                disabled={view.page >= pageCount || isNavigating}
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "rounded-(--radius-tile)"
+                )}
+              >
+                Next
+              </button>
+            </div>
           </div>
-        </WorkspaceCard>
+        ) : null}
       </div>
     </WorkspacePage>
-  );
-}
-
-function SegmentRow({
-  label,
-  value,
-  tone = "default",
-}: {
-  label: string;
-  value: number;
-  tone?: "default" | "primary" | "danger";
-}) {
-  return (
-    <div className="flex items-center justify-between border-b border-border/70 pb-3 last:border-b-0 last:pb-0">
-      <span className="text-muted-foreground">{label}</span>
-      <span
-        className={cn(
-          "font-semibold text-foreground",
-          tone === "primary" && "text-primary",
-          tone === "danger" && "text-destructive"
-        )}
-      >
-        {value}
-      </span>
-    </div>
   );
 }
