@@ -150,6 +150,14 @@ The core product direction is customer-first: clinics should not need to underst
 
 These came out of the second pre-launch review. The code-side fixes are merged; these remaining items are configuration the app cannot set for itself:
 
+**Update — shipped to production 2026-06-15** (`main` @ `38df37b`, live at clinicare-vela.space; verified signed-in against prod: all workspace routes 200, DB connects under strict TLS with real data, no P1011, console clean):
+- ✅ **Custom SMTP** — Resend configured in Supabase Auth with a verified sender domain (SPF/DKIM via Vercel DNS) + raised email rate limit.
+- ✅ **`DATABASE_SSL_CA`** confirmed set in Vercel — prod strict-TLS verification (`rejectUnauthorized:true`) connects to the Supabase pooler's private-CA cert (no P1011).
+- ✅ **Schema indexes applied** — `ClientPayment (businessId, paidAt)` + `Message.providerMessageSid` unique are live (0 duplicate SIDs first; `prisma migrate diff` reports no drift).
+- ⚠️ **Still open (non-blocking at pilot scale):** prod `DATABASE_URL` is on the **session** pooler — switch to the transaction pooler (6543) before heavy load (the boot guard warned in prod); wire a monitoring DSN into `lib/logger.ts`; confirm the Vercel plan allows `maxDuration=300`.
+
+Original items (for reference):
+
 - **Custom SMTP for Supabase Auth (launch blocker).** Supabase's built-in email sender is rate-limited (~2–4/hour, project-wide) and "not for production". Configure a real SMTP provider (Resend per ROADMAP) with a verified sender domain (SPF/DKIM) in Supabase Auth → SMTP **before** the onboarding burst, or ~most confirmation/reset emails in a 50-clinic signup wave will silently fail. (Code already surfaces a friendly "try again shortly" on 429 instead of faking success.)
 - **Use the Supabase transaction pooler (port 6543) for the runtime `DATABASE_URL`** on Vercel; keep the direct/session URL in `DIRECT_URL` for migrations. With `max: 1` per serverless instance, a direct/session (`:5432`) connection can exhaust Postgres connections under concurrency. Boot now logs a warning if the prod `DATABASE_URL` doesn't look like the transaction pooler.
 - **Apply the new schema indexes with `npm run db:push`**: `ClientPayment @@index([businessId, paidAt])` and `Message.providerMessageSid @unique`. The unique index can fail if duplicate provider SIDs already exist — dedupe those rows first. Plan to move from `db push` to committed `prisma migrate` migrations before the DB holds real PHI (auditability).
@@ -213,6 +221,8 @@ These came out of the second pre-launch review. The code-side fixes are merged; 
 - Route protection: `/dashboard`, `/calendar`, `/clients`, `/staff`, `/inbox`, `/reports`, and `/settings` redirect unauthenticated users to login.
 
 ## Last Completed Task
+
+- **Shipped the workspace redesign + pre-launch hardening to production (2026-06-15)** — merged PR #2 to `main` (`38df37b`); Vercel production deploy live at clinicare-vela.space. Verified signed-in **against production**: auth gate + login, dashboard and all workspace routes (calendar/clients/staff/inbox/reports/settings) return 200, DB connects under strict TLS (`DATABASE_SSL_CA`) with real data and no P1011, console clean. Confirmed the appointment timezone round-trip live (14:00 booking → stored `12:00Z` → calendar 14:00 / dashboard 2:00 PM) and via a UTC-process test across DST boundaries. DB index migration applied; Resend SMTP configured (domain verified). Remaining non-blockers: transaction-pooler port (prod on session pooler) and monitoring DSN.
 
 - Second pre-launch review remediation pass: ~20 fixes across timezone correctness (appointment/shift UTC storage + zoned calendar/staff/reminder rendering), HIPAA (no clinical detail in reminders), reliability (idempotent Twilio webhook, hardened/fail-closed crons, logger seam, boot env validation), security (CSP, rate limiting, honest 429 handling, no raw provider errors in UI), performance (bounded Reports queries, webhook lookups, batched media signing, new index), and branded error/not-found boundaries (see the top of Completed Features). Remaining launch items are console/infra only (custom SMTP, transaction pooler, schema push, monitoring DSN) — see Known Issues / Blockers. Verified with `tsc --noEmit`, `npm run lint`, production `build`, and signed-in QA.
 
