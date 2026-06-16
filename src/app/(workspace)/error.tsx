@@ -1,5 +1,6 @@
 "use client";
 
+import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
 import { TriangleAlert } from "lucide-react";
 
@@ -13,7 +14,10 @@ export default function WorkspaceError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Surface the failure in platform logs without exposing details to the user.
+    // Report to Sentry (scrubbed in beforeSend) and surface in platform logs
+    // without exposing details to the user. This boundary catches client render
+    // errors before they reach global-error.tsx, so it must report too.
+    Sentry.captureException(error);
     console.error("Workspace route error", error);
   }, [error]);
 

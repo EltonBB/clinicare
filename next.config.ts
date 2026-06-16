@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -82,4 +83,20 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  // Sentry org/project + source-map upload token come from env (set in Vercel/CI);
+  // upload is skipped gracefully when they're absent.
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+
+  // Upload a wider set of client files for better stack traces.
+  widenClientFileUpload: true,
+
+  // Route browser events through a same-origin API path so they satisfy the strict
+  // CSP (connect-src 'self') and dodge ad-blockers. proxy.ts excludes this path.
+  tunnelRoute: "/monitoring",
+
+  // Quiet build output except in CI.
+  silent: !process.env.CI,
+});
