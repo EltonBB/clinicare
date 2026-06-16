@@ -2,7 +2,7 @@
 // automatically when NEXT_PUBLIC_SENTRY_DSN is unset.
 import * as Sentry from "@sentry/nextjs";
 
-import { scrubSentryEvent } from "@/lib/sentry-scrub";
+import { scrubSentryEvent, scrubSentrySpan } from "@/lib/sentry-scrub";
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -13,10 +13,11 @@ Sentry.init({
   // blockAllMedia) and a BAA in place.
   sendDefaultPii: false,
 
-  // Redact identifiers from exception messages before they leave the browser
-  // (see lib/sentry-scrub.ts).
+  // Redact identifiers and patient-entered search text (e.g. /clients?q=…) from
+  // events, traces, and spans before they leave the browser (see lib/sentry-scrub.ts).
   beforeSend: (event) => scrubSentryEvent(event),
   beforeSendTransaction: (event) => scrubSentryEvent(event),
+  beforeSendSpan: (span) => scrubSentrySpan(span),
 
   tracesSampleRate: process.env.NODE_ENV === "development" ? 1.0 : 0.1,
 });
