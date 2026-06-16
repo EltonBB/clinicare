@@ -204,6 +204,11 @@ interface ScrubbableEvent {
   spans?: Array<ScrubbableSpan | null> | null;
   contexts?: { trace?: { data?: Record<string, unknown> | null } | null } | null;
   extra?: Record<string, unknown> | null;
+  // No app code sets user/tags today (sendDefaultPii is off, so neither is
+  // auto-populated), but scrub them defensively so a future Sentry.setUser({ email })
+  // or PII-bearing tag can't bypass this layer.
+  user?: Record<string, unknown> | null;
+  tags?: Record<string, unknown> | null;
 }
 
 /**
@@ -282,6 +287,14 @@ export function scrubSentryEvent<T>(event: T): T {
 
   if (target.extra && typeof target.extra === "object") {
     target.extra = scrubValue(target.extra, 0) as Record<string, unknown>;
+  }
+
+  if (target.user && typeof target.user === "object") {
+    target.user = scrubValue(target.user, 0) as Record<string, unknown>;
+  }
+
+  if (target.tags && typeof target.tags === "object") {
+    target.tags = scrubValue(target.tags, 0) as Record<string, unknown>;
   }
 
   return event;
