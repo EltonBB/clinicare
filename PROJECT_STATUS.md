@@ -1,6 +1,6 @@
 # Project Status: Vela / Clinicare
 
-Last updated: 2026-06-13
+Last updated: 2026-06-16
 
 ## Product Overview
 
@@ -19,6 +19,8 @@ The core product direction is customer-first: clinics should not need to underst
 - OpenAI-backed analytics snapshots with rule-based fallback when AI is unavailable.
 
 ## Completed Features
+
+- **Production error monitoring + tracing (Sentry) shipped (2026-06-16, PR #6).** Wired `@sentry/nextjs` 10 across client/server/edge (`instrumentation-client.ts`, `sentry.server/edge.config.ts`; `instrumentation.ts` merges Sentry `register` + `onRequestError` with the existing `validateServerEnv`), added `global-error.tsx` and `Sentry.captureException` in both route `error.tsx` boundaries, and `logger.error` now forwards to Sentry (the long-planned seam). **Privacy-safe for patient data:** `sendDefaultPii:false`, NO Session Replay, no local-variable capture, tunneled via `/monitoring` (same-origin, so the strict CSP is unchanged; path excluded from `proxy.ts`). A shared PHI scrubber (`lib/sentry-scrub.ts`) runs in `beforeSend` + `beforeSendTransaction` + `beforeSendSpan`, redacting emails, phone numbers, and patient-entered search text (query-string VALUES stripped from URLs / spans / breadcrumbs / trace data, keys kept). A code review (Codex) surfaced and we closed four PHI-leak vectors — raw provider error messages echoing recipient numbers, search text in `request.url`/`query_string`, search text in spans/traces, and a route-boundary reporting gap; a fifth finding (redact record-ID CUIDs) was declined by design (CUIDs are opaque surrogate keys, not PHI, and CLAUDE.md mandates logging record IDs over names). Verified the scrubber against 33 adversarial inputs (null/circular/deep/non-string never throw — a throwing `beforeSend` would silently drop telemetry), `lint`+`build` green, production deploy READY, and a live smoke test (`/` and `/login` 200; `/dashboard` 307→login; Sentry tunnel healthy). **Activation:** owner set `NEXT_PUBLIC_SENTRY_DSN`/`SENTRY_DSN` in Vercel (EU region); `SENTRY_AUTH_TOKEN` deferred so source-map upload is off (errors still flow).
 
 - **Multi-agent code-review remediation pass (2026-06-13).** Reviewed the redesign branch across correctness, security, performance, and structure, then fixed the findings. Highlights: a themeable `--primary-hover` token so accent-colored buttons/charts no longer flip to cobalt on hover (and unified the dashboard/reports/onboarding solid buttons onto `buttonVariants`); Reports custom-range now uses zoned date keys (no day drift on re-analyse); the settings workspace is dynamic-imported so framer-motion + the Supabase browser client leave every workspace page's first load; `fetchClientRecord` is tenant-scoped by construction; WhatsApp Connect uses the typed number and Connect/Refresh no longer mark settings dirty; the settings dialog confirms before discarding edits; a shared `loadSettingsState` feeds both the route and the dialog; client sub-record actions gained Zod validation; document-category no longer clobbered on edit; the clients "Attention" chip/filter/badge align on `lastVisitAt`; dashboard `staffToday` counts by id and month-to-date no longer truncates; calendar utilization and inbox day-separators are timezone/cancellation-correct; shared `MonthGrid`, `getInitials`, `HeaderStat`, and `getAuthedBusiness` removed duplication; framer-motion moved to `LazyMotion`/`m`. Verified with `tsc --noEmit`, `npm run lint`, production `build`, and signed-in QA. Deferred (documented, non-breaking): reports hover-state localization, client-detail tab-body extraction, grey-surface tokens.
 
@@ -154,7 +156,8 @@ These came out of the second pre-launch review. The code-side fixes are merged; 
 - ✅ **Custom SMTP** — Resend configured in Supabase Auth with a verified sender domain (SPF/DKIM via Vercel DNS) + raised email rate limit.
 - ✅ **`DATABASE_SSL_CA`** confirmed set in Vercel — prod strict-TLS verification (`rejectUnauthorized:true`) connects to the Supabase pooler's private-CA cert (no P1011).
 - ✅ **Schema indexes applied** — `ClientPayment (businessId, paidAt)` + `Message.providerMessageSid` unique are live (0 duplicate SIDs first; `prisma migrate diff` reports no drift).
-- ⚠️ **Still open (non-blocking at pilot scale):** prod `DATABASE_URL` is on the **session** pooler — switch to the transaction pooler (6543) before heavy load (the boot guard warned in prod); wire a monitoring DSN into `lib/logger.ts`; confirm the Vercel plan allows `maxDuration=300`.
+- ✅ **Monitoring** — Sentry error monitoring + tracing live in production (PR #6, 2026-06-16); `lib/logger.ts` forwards to `Sentry.captureException` behind a PHI scrubber (`lib/sentry-scrub.ts`). Optional: add `SENTRY_AUTH_TOKEN` in Vercel to enable source-map upload for readable stack traces.
+- ⚠️ **Still open (non-blocking at pilot scale):** prod `DATABASE_URL` is on the **session** pooler — switch to the transaction pooler (6543) before heavy load (the boot guard warned in prod); confirm the Vercel plan allows `maxDuration=300`.
 
 Original items (for reference):
 
@@ -162,7 +165,7 @@ Original items (for reference):
 - **Use the Supabase transaction pooler (port 6543) for the runtime `DATABASE_URL`** on Vercel; keep the direct/session URL in `DIRECT_URL` for migrations. With `max: 1` per serverless instance, a direct/session (`:5432`) connection can exhaust Postgres connections under concurrency. Boot now logs a warning if the prod `DATABASE_URL` doesn't look like the transaction pooler.
 - **Apply the new schema indexes with `npm run db:push`**: `ClientPayment @@index([businessId, paidAt])` and `Message.providerMessageSid @unique`. The unique index can fail if duplicate provider SIDs already exist — dedupe those rows first. Plan to move from `db push` to committed `prisma migrate` migrations before the DB holds real PHI (auditability).
 - **Confirm the Vercel plan supports `maxDuration = 300`** for the analytics/reminders cron routes (now set in code); on a too-low limit the analytics cron is killed mid-batch.
-- **Wire an error monitor** (Sentry/Logtail DSN) into `lib/logger.ts` (single integration point already in place) so launch incidents are visible.
+- ~~**Wire an error monitor** (Sentry/Logtail DSN) into `lib/logger.ts`~~ **Done (2026-06-16, PR #6):** Sentry error monitoring + tracing live behind the `lib/logger.ts` seam and a PHI scrubber.
 - **For cross-instance rate limiting at scale**, back `lib/rate-limit.ts` with a shared store (Upstash Redis / Vercel KV). The current in-memory limiter is per-instance (fine for the pilot; protects each instance + dev).
 - **Latent media-path authorization:** signed-URL storage paths are keyed by uploader `auth.uid()`, safe today under per-user storage RLS. When role-based / multi-staff access lands (ROADMAP Step 3), switch to a `businessId`-scoped path scheme + RLS policy, or cross-staff document access breaks and the server-side ownership check becomes the only barrier.
 
@@ -221,6 +224,8 @@ Original items (for reference):
 - Route protection: `/dashboard`, `/calendar`, `/clients`, `/staff`, `/inbox`, `/reports`, and `/settings` redirect unauthenticated users to login.
 
 ## Last Completed Task
+
+- **Shipped production error monitoring (Sentry) + closed a 6-round PHI review loop (2026-06-16)** — merged PR #6 to `main` (`7e9badd`); Vercel production deploy READY. `@sentry/nextjs` 10 with errors + tracing, privacy-safe for patient data (`sendDefaultPii:false`, no Session Replay, tunneled, PHI scrubber in `beforeSend`/`beforeSendTransaction`/`beforeSendSpan`). Drove a Codex review loop: fixed 3 P1 + 1 P2 PHI/coverage issues, declined 1 false positive (record-ID redaction) with written reasoning, then did an independent engineering pass (33-case crash-proof test, `event.user`/`tags` hardening) before merge. Also merged the AWS-not-Azure docs correction (PR #5, `ab2224e`). Remaining non-blocker: connect the Sentry MCP or an auth token so error triage can run from the agent.
 
 - **Shipped the workspace redesign + pre-launch hardening to production (2026-06-15)** — merged PR #2 to `main` (`38df37b`); Vercel production deploy live at clinicare-vela.space. Verified signed-in **against production**: auth gate + login, dashboard and all workspace routes (calendar/clients/staff/inbox/reports/settings) return 200, DB connects under strict TLS (`DATABASE_SSL_CA`) with real data and no P1011, console clean. Confirmed the appointment timezone round-trip live (14:00 booking → stored `12:00Z` → calendar 14:00 / dashboard 2:00 PM) and via a UTC-process test across DST boundaries. DB index migration applied; Resend SMTP configured (domain verified). Remaining non-blockers: transaction-pooler port (prod on session pooler) and monitoring DSN.
 
