@@ -1,5 +1,6 @@
 "use client";
 
+import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
 import { TriangleAlert } from "lucide-react";
 
@@ -13,6 +14,10 @@ export default function RootError({
   reset: () => void;
 }) {
   useEffect(() => {
+    // Report to Sentry (scrubbed in beforeSend). Route error boundaries catch
+    // client render errors before they reach global-error.tsx, so without this
+    // those failures would never be seen.
+    Sentry.captureException(error);
     console.error("Unhandled route error", error);
   }, [error]);
 
