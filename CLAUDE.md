@@ -2,7 +2,7 @@
 
 # CLAUDE.md — Vela / Clinicare engineering guide
 
-> `AGENTS.md` (imported above) is the **source of truth for product direction, layout types, brand rules, and UI/UX boundaries**. `ROADMAP.md` is the strategy layer (market, compliance, messaging channels, Azure migration plan). `PROJECT_STATUS.md` is the running status log (what's done / next priorities). This file is the **technical/codebase layer**: stack, commands, architecture, and conventions. When product intent and this file disagree, AGENTS.md wins; when strategy and this file disagree, ROADMAP.md wins.
+> `AGENTS.md` (imported above) is the **source of truth for product direction, layout types, brand rules, and UI/UX boundaries**. `ROADMAP.md` is the strategy layer (market, compliance, messaging channels, AWS infrastructure plan). `PROJECT_STATUS.md` is the running status log (what's done / next priorities). This file is the **technical/codebase layer**: stack, commands, architecture, and conventions. When product intent and this file disagree, AGENTS.md wins; when strategy and this file disagree, ROADMAP.md wins.
 
 ## ⚠️ Next.js version
 
@@ -16,7 +16,7 @@ This repo runs a **modified Next.js with breaking changes** (currently `^16.2.6`
 - **Data:** Prisma 6 (`@prisma/client`) over PostgreSQL, using the **`pg` driver adapter** (`@prisma/adapter-pg`). Database is hosted on Supabase.
 - **Auth:** Supabase Auth (email/password + email confirmation) via `@supabase/ssr`.
 - **Validation:** Zod 4.
-- **Integrations:** Twilio (WhatsApp) and OpenAI (analytics snapshots with rule-based fallback) are called via **raw `fetch()` — no provider SDKs are installed**. Keep it that way: fewer dependencies makes the planned Azure provider swap cheaper.
+- **Integrations:** Twilio (WhatsApp) and OpenAI (analytics snapshots with rule-based fallback) are called via **raw `fetch()` — no provider SDKs are installed**. Keep it that way: fewer dependencies keep provider swaps cheap and avoid vendor lock-in.
 - **Hosting:** Vercel (deploy via the Git integration only — avoid `vercel` CLI deploys so each commit = one deployment). Cron in `vercel.json`.
 
 ## Commands
@@ -78,9 +78,9 @@ graphify-out/          # generated knowledge graph (graph.html / graph.json / GR
 - **Media** is stored in a **private** Supabase Storage bucket (`clinic-media`). Never expose raw storage paths to the browser; resolve short-lived signed URLs via `lib/media-storage*.ts` (`createSignedImageUrl`, `resolveMediaDisplayUrl`). Uploads are restricted to allowed image/document MIME types.
 - **Customer-facing language hides providers.** Never surface Twilio / Supabase / Prisma / OpenAI internals or raw provider/database errors in UI — return generic, support-friendly messages (see `whatsapp-connection.ts` copy builders).
 
-## Architecture seams (migration guardrails — do not bypass)
+## Architecture seams (portability guardrails — do not bypass)
 
-The roadmap ends in a single Supabase/Vercel → Azure swap (ROADMAP.md Step 5). That swap stays cheap only if feature code never touches a provider directly. Every feature goes through these seams:
+The stack stays on AWS indefinitely — there is no planned cloud migration (ROADMAP.md). The provider seams keep the stack portable and any future provider swap cheap, but only if feature code never touches a provider directly. Every feature goes through these seams:
 
 - **Auth** → only via the helpers in `lib/auth.ts` / `lib/business.ts`. Never import `@supabase/ssr` or `utils/supabase/*` in feature code — those imports stay confined to the existing auth/infra modules.
 - **Media/storage** → only via `lib/media-storage*.ts`.

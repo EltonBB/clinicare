@@ -18,7 +18,7 @@ At the start of every new chat or task in this project:
 
 1. Read this `AGENTS.md` file first.
 2. Read `PROJECT_STATUS.md` immediately after.
-3. Read `ROADMAP.md` for strategy: market sequencing, compliance plan, messaging channels, and the Azure migration.
+3. Read `ROADMAP.md` for strategy: market sequencing, compliance plan, messaging channels, and the infrastructure plan (AWS, no cloud migration).
 4. Inspect the repo enough to validate the status file against the actual code before planning or coding.
 5. Reply with a short project summary covering:
    - what Vela / Clinicare is
@@ -36,7 +36,7 @@ If `PROJECT_STATUS.md` is missing, create a plan to restore it before doing feat
 | File | Role | Wins conflicts about |
 |---|---|---|
 | `AGENTS.md` (this file) | Product direction, UX/layout types, brand, product boundaries | What to build and how it should look/feel |
-| `ROADMAP.md` | Strategy: market, compliance, messaging channels, build order, Azure migration | Where the project is going and why |
+| `ROADMAP.md` | Strategy: market, compliance, messaging channels, build order, AWS infrastructure | Where the project is going and why |
 | `CLAUDE.md` | Technical layer: stack, commands, architecture, code conventions | How to build it in this codebase |
 | `PROJECT_STATUS.md` | Running log: completed work, known issues, next priorities | What is already done / currently broken |
 
@@ -73,7 +73,7 @@ Vela should hide operational complexity. Customers should not need to understand
 
 - **Market sequencing:** free pilot to ~50 **Kosovo** clinics first, then **US-first**. Europe/GDPR is low priority.
 - **Compliance:** **HIPAA is the primary target.** The app must be HIPAA-ready before the first US clinic. App-level safeguards (audit logging, auto-logoff, role-based/minimum-necessary access) are built **now, alongside features** — never retrofitted later.
-- **Infrastructure:** stay on the current stack (Supabase / Vercel / Twilio / OpenAI) until the product is done, then one contained **Azure migration**. Features must stay behind the provider seams defined in CLAUDE.md so that swap stays cheap.
+- **Infrastructure:** **AWS indefinitely — no cloud migration planned.** Stay on the current AWS-backed stack (Supabase / Vercel / Twilio / OpenAI; Supabase + Vercel are AWS-hosted). Features still go behind the provider seams defined in CLAUDE.md — for portability and to avoid vendor lock-in (keeping any future provider swap cheap), not for a planned migration.
 - **Pilot data is non-PHI by design.** Never design a feature that puts clinical detail into SMS/WhatsApp messages or third-party services.
 
 What this means for everyday product decisions:
@@ -146,7 +146,7 @@ If a component does not help the user make a decision, take action, or understan
 
 ## Messaging and Communication Rules
 
-- **Channel plan** (ROADMAP.md): pilot uses Resend (email), Twilio (SMS), and Baileys WhatsApp (Kosovo-only, disposable, isolated); after the Azure migration these swap to Azure Communication Services and official WhatsApp.
+- **Channel plan** (ROADMAP.md): pilot uses Resend (email), Twilio (SMS), and Baileys WhatsApp (Kosovo-only, disposable, isolated). The official WhatsApp upgrade (once a US entity + Meta access exist) is a later, BAA-gated step — independent of any cloud migration; all channels stay behind the messaging seam so a provider can be swapped if needed.
 - All outbound messaging must flow through the messaging abstraction (`sendMessage(channel, payload)` — ROADMAP Step 1). Never call a provider directly from feature code.
 - **Minimum-necessary content** on every patient-facing message: name + appointment time. No clinical details over SMS/WhatsApp, ever.
 - **Customer-facing language hides providers.** Never surface Twilio, Meta, Supabase, Prisma, Baileys, or OpenAI names, internals, or raw errors in UI. Connection states, errors, and settings use simple product language with support-friendly fallbacks.
