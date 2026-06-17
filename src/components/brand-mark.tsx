@@ -8,6 +8,7 @@ type BrandMarkProps = {
   href?: string;
   className?: string;
   includeSubtitle?: boolean;
+  size?: "default" | "lg";
 };
 
 export function BrandMark({
@@ -15,7 +16,10 @@ export function BrandMark({
   href = "/dashboard",
   className,
   includeSubtitle = true,
+  size = "default",
 }: BrandMarkProps) {
+  const isLg = size === "lg";
+
   return (
     <Link
       href={href}
@@ -25,19 +29,30 @@ export function BrandMark({
       )}
       aria-label="Vela home"
     >
-      <span className="vela-brand-icon-tile">
+      <span
+        className={cn(
+          isLg
+            ? "inline-flex size-11 shrink-0 items-center justify-center"
+            : "vela-brand-icon-tile"
+        )}
+      >
         <Image
           src="/brand/vela-icon.svg"
           alt=""
-          width={30}
-          height={30}
+          width={isLg ? 44 : 30}
+          height={isLg ? 44 : 30}
           className="object-contain"
           aria-hidden="true"
         />
       </span>
       {!compact ? (
         <span className="flex flex-col">
-          <span className="text-xl font-semibold leading-none tracking-tight text-[var(--brand-ink)]">
+          <span
+            className={cn(
+              "font-semibold leading-none tracking-tight text-[var(--brand-ink)]",
+              isLg ? "text-2xl" : "text-xl"
+            )}
+          >
             Vela
           </span>
           {includeSubtitle ? (

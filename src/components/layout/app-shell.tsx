@@ -3,17 +3,24 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { ShieldCheck } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { LogOut, Settings } from "lucide-react";
 
+import { logoutAction } from "@/app/(auth)/actions";
 import { refreshWorkspaceNotificationsAction } from "@/app/(workspace)/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { GlobalSearch } from "@/components/layout/global-search";
 import { NotificationsMenu } from "@/components/layout/notifications-menu";
-import { OwnerAccountDialog } from "@/components/layout/owner-account-dialog";
 import { SettingsDialog } from "@/components/layout/settings-dialog";
 import { WorkspaceLiveProvider } from "@/components/layout/workspace-live-context";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { resolveBrandAccentPreset } from "@/lib/branding";
 import { navigationItems } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
@@ -95,6 +102,8 @@ export function AppShell({
   const [liveUnreadCount, setLiveUnreadCount] = useState(unreadCount);
   const [liveNotifications, setLiveNotifications] = useState(notifications);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const logoutFormRef = useRef<HTMLFormElement>(null);
+  const businessInitial = (businessName || "V").charAt(0).toUpperCase();
   // Published to descendants (e.g. the dashboard Messages card) so they read
   // this single poll instead of starting their own.
   const liveUnread = useMemo(
@@ -194,34 +203,14 @@ export function AppShell({
       className="app-shell-bg relative min-h-screen overflow-x-clip bg-background"
       style={accentVars as CSSProperties}
     >
-      <div className="relative flex min-h-screen bg-background lg:min-h-screen lg:overflow-x-clip lg:bg-[#f4f6fa]">
-        <aside className="hidden w-[216px] shrink-0 border-r border-sidebar-border/80 bg-white backdrop-blur-xl lg:flex">
+      <div className="relative flex min-h-screen bg-background lg:min-h-screen lg:overflow-x-clip">
+        <aside className="hidden w-64 shrink-0 border-r border-sidebar-border/80 bg-white backdrop-blur-xl lg:flex">
           <div
             className="sticky top-0 flex h-screen w-full flex-col bg-white p-3"
             data-tour="sidebar-shell"
           >
             <div className="mb-4 px-2 py-2">
-              <div className="flex items-center gap-3">
-              <span className="flex size-8 shrink-0 items-center justify-center text-primary">
-                {logoUrl ? (
-                  <span
-                    aria-hidden="true"
-                    className="size-full bg-contain bg-center bg-no-repeat"
-                    style={{ backgroundImage: `url("${logoUrl}")` }}
-                  />
-                ) : (
-                  <ShieldCheck className="size-4" />
-                )}
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold text-[var(--brand-ink)]">
-                  {businessName}
-                </span>
-                <span className="block truncate text-xs text-muted-foreground">
-                  {ownerName.split(" ")[0] ?? ownerName}
-                </span>
-              </span>
-              </div>
+              <BrandMark href="/dashboard" includeSubtitle={false} size="lg" />
             </div>
 
             <nav className="flex-1 space-y-1.5 px-0.5 py-2">
@@ -249,32 +238,53 @@ export function AppShell({
               })}
             </nav>
 
-            <div className="mt-2 space-y-1.5 border-t border-sidebar-border/70 px-0.5 pt-2.5">
-              {navigationItems
-                .filter((item) => item.href === "/settings")
-                .map((item) => {
-                  const Icon = item.icon;
-                  const isActive =
-                    pathname === item.href || pathname.startsWith(`${item.href}/`);
-
-                  return (
-                    <button
-                      key={item.href}
-                      type="button"
-                      onClick={() => setSettingsOpen(true)}
-                      className={navLinkClasses(isActive)}
-                      data-tour={getTourTarget(item.href)}
-                    >
-                      <Icon className="size-4" />
-                      {item.label}
-                    </button>
-                  );
-                })}
-              <LogoutButton
-                fullWidth
-                variant="ghost"
-                className="h-10 justify-start gap-3 rounded-(--radius-tile) border border-transparent px-3 text-sm font-semibold text-muted-foreground hover:bg-[#f7f9fc] hover:text-foreground"
-              />
+            <div className="mt-2 border-t border-sidebar-border/70 px-0.5 pt-2.5">
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  data-tour="settings-nav"
+                  className="flex w-full items-center gap-2.5 rounded-(--radius-tile) border border-transparent px-2 py-2 text-left transition-[background-color,border-color] duration-(--duration-base) hover:bg-[#f7f9fc] data-[popup-open]:bg-[#f7f9fc]"
+                >
+                  <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-(--radius-tile) border border-border/70 bg-white text-sm font-semibold text-primary">
+                    {logoUrl ? (
+                      <span
+                        aria-hidden="true"
+                        className="size-full bg-contain bg-center bg-no-repeat"
+                        style={{ backgroundImage: `url("${logoUrl}")` }}
+                      />
+                    ) : (
+                      businessInitial
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold leading-4 text-foreground">
+                      {businessName}
+                    </span>
+                    <span className="block truncate text-[11px] leading-4 text-muted-foreground">
+                      {ownerName}
+                    </span>
+                  </span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  side="top"
+                  align="start"
+                  sideOffset={8}
+                  className="min-w-[208px]"
+                >
+                  <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
+                    <Settings className="size-4" />
+                    Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={() => logoutFormRef.current?.requestSubmit()}
+                  >
+                    <LogOut className="size-4" />
+                    Log out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <form ref={logoutFormRef} action={logoutAction} className="hidden" />
             </div>
           </div>
         </aside>
@@ -283,21 +293,11 @@ export function AppShell({
           <header className="sticky top-0 z-20 border-b border-border/70 bg-white px-4 py-3 backdrop-blur-xl sm:px-5 lg:px-6 lg:py-0">
             <div className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 lg:h-[56px] lg:gap-5">
               <div className="flex min-w-[148px] items-center">
-                <BrandMark href="/dashboard" includeSubtitle={false} className="hidden lg:flex" />
                 <BrandMark compact href="/dashboard" className="lg:hidden" />
               </div>
               <GlobalSearch className="hidden min-w-0 w-full max-w-3xl justify-self-center md:block" />
               <div className="flex items-center gap-1.5">
                 <NotificationsMenu unreadCount={liveUnreadCount} items={liveNotifications} />
-                <div className="hidden items-center sm:flex">
-                  <OwnerAccountDialog
-                    ownerName={ownerName}
-                    ownerEmail={ownerEmail}
-                    ownerPhone={ownerPhone}
-                    businessName={businessName}
-                    variant="header"
-                  />
-                </div>
                 <div className="lg:hidden">
                   <LogoutButton />
                 </div>
@@ -306,7 +306,7 @@ export function AppShell({
             <GlobalSearch className="mt-3 w-full md:hidden" />
           </header>
 
-          <main className="relative flex-1 bg-[#f4f6fa] px-4 py-3 pb-28 sm:px-5 lg:px-6 lg:py-4 lg:pb-4">
+          <main className="relative flex-1 bg-background px-4 py-3 pb-28 sm:px-5 lg:px-6 lg:py-4 lg:pb-4">
             <WorkspaceLiveProvider value={liveUnread}>{children}</WorkspaceLiveProvider>
           </main>
         </div>
@@ -357,7 +357,13 @@ export function AppShell({
         </div>
       </nav>
 
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        ownerName={ownerName}
+        ownerEmail={ownerEmail}
+        ownerPhone={ownerPhone}
+      />
 
       {!tourCompleted ? (
         <WorkspaceTour initialCompleted={tourCompleted} scopeId={tourScopeId} />
