@@ -1,7 +1,7 @@
 import { after } from "next/server";
 
 import { SettingsWorkspace } from "@/components/settings/settings-workspace";
-import { requireCurrentWorkspace } from "@/lib/business";
+import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { loadSettingsState } from "@/lib/settings-server";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 
@@ -24,10 +24,18 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   });
 
   const initialState = await loadSettingsState(user, business);
+  const { ownerName } = toBusinessIdentity(business, user);
+  const ownerPhone =
+    typeof user.user_metadata?.owner_phone === "string"
+      ? user.user_metadata.owner_phone
+      : "";
 
   return (
     <SettingsWorkspace
       initialState={initialState}
+      ownerName={ownerName}
+      ownerEmail={user.email ?? ""}
+      ownerPhone={ownerPhone}
       flashMessage={
         params.email_updated === "1"
           ? "Your email address was confirmed and updated."

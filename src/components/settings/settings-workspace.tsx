@@ -17,6 +17,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 
+import { updateOwnerProfileAction } from "@/app/(auth)/actions";
 import {
   prepareWhatsAppLiveConnectionAction,
   refreshWhatsAppLiveConnectionAction,
@@ -53,6 +54,10 @@ type SettingsWorkspaceProps = {
   onSaved?: () => void;
   /** Notifies the host (the settings dialog) whenever unsaved edits appear or clear. */
   onDirtyChange?: (dirty: boolean) => void;
+  /** Owner account details merged into the Business & account section. */
+  ownerName?: string;
+  ownerEmail?: string;
+  ownerPhone?: string;
 };
 
 type SettingsSectionId =
@@ -69,7 +74,7 @@ const settingsNav: Array<{
   title: string;
   subtitle: string;
 }> = [
-  { id: "business", icon: Building2, title: "Business details", subtitle: "Name, type, logo, owner" },
+  { id: "business", icon: Building2, title: "Business & account", subtitle: "Owner, contact, clinic & logo" },
   { id: "appearance", icon: Palette, title: "Appearance", subtitle: "Workspace accent color" },
   { id: "hours", icon: Clock3, title: "Working hours", subtitle: "Booking availability" },
   { id: "reminders", icon: BellRing, title: "Reminders", subtitle: "Send times and message" },
@@ -212,10 +217,27 @@ export function SettingsWorkspace({
   variant = "page",
   onSaved,
   onDirtyChange,
+  ownerName = "",
+  ownerEmail = "",
+  ownerPhone = "",
 }: SettingsWorkspaceProps) {
   const inDialog = variant === "dialog";
   const [state, setState] = useState(initialState);
   const [savedState, setSavedState] = useState(initialState);
+  // Owner account fields live in their own state — they save through the auth
+  // profile action, while the rest of the section saves through settings.
+  const [account, setAccount] = useState({
+    fullName: ownerName,
+    email: ownerEmail,
+    phone: ownerPhone,
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [savedAccount, setSavedAccount] = useState({
+    fullName: ownerName,
+    email: ownerEmail,
+    phone: ownerPhone,
+  });
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("business");
   const [message, setMessage] = useState(flashMessage);
   const [errorMessage, setErrorMessage] = useState("");
@@ -236,10 +258,17 @@ export function SettingsWorkspace({
     state.business.logoDisplayUrl ||
     (isStorageReference(state.business.logoUrl) ? "" : state.business.logoUrl);
   const isConnected = state.whatsapp.connection.phase === "CONNECTED";
-  const hasUnsavedChanges = useMemo(
+  const settingsDirty = useMemo(
     () => JSON.stringify(state) !== JSON.stringify(savedState),
     [state, savedState]
   );
+  const accountDirty =
+    account.fullName !== savedAccount.fullName ||
+    account.email !== savedAccount.email ||
+    account.phone !== savedAccount.phone ||
+    account.newPassword.length > 0 ||
+    account.confirmPassword.length > 0;
+  const hasUnsavedChanges = settingsDirty || accountDirty;
 
   useEffect(() => {
     onDirtyChange?.(hasUnsavedChanges);
@@ -266,12 +295,35 @@ export function SettingsWorkspace({
     }
 
     startSaving(async () => {
+      // Owner account (name, login email, phone, password) saves through the
+      // auth profile action — only touch it when those fields actually changed
+      // so a routine settings save never re-submits credentials.
+      let accountMessage = "";
+      if (accountDirty) {
+        const profileData = new FormData();
+        profileData.set("fullName", account.fullName);
+        profileData.set("email", account.email);
+        profileData.set("phone", account.phone);
+        profileData.set("newPassword", account.newPassword);
+        profileData.set("confirmPassword", account.confirmPassword);
+
+        const profileResult = await updateOwnerProfileAction({}, profileData);
+
+        if (profileResult.error) {
+          setErrorMessage(profileResult.error);
+          setMessage("");
+          return;
+        }
+
+        accountMessage = profileResult.success ?? "";
+      }
+
       // Submit only the editable subset — derived/display fields stay server-owned.
       const payload: SaveSettingsPayload = {
         business: {
           businessName: state.business.businessName,
           businessType: state.business.businessType,
-          ownerName: state.business.ownerName,
+          ownerName: account.fullName,
           logoUrl: state.business.logoUrl,
         },
         appearance: state.appearance,
@@ -293,14 +345,31 @@ export function SettingsWorkspace({
 
       setState(result.state);
       setSavedState(result.state);
+      setAccount((current) => ({
+        ...current,
+        newPassword: "",
+        confirmPassword: "",
+      }));
+      setSavedAccount({
+        fullName: account.fullName,
+        email: account.email,
+        phone: account.phone,
+      });
       setErrorMessage("");
-      setMessage("Settings saved.");
+      setMessage(accountDirty && accountMessage ? accountMessage : "Settings saved.");
       onSaved?.();
     });
   }
 
   function handleDiscard() {
     setState(savedState);
+    setAccount({
+      fullName: savedAccount.fullName,
+      email: savedAccount.email,
+      phone: savedAccount.phone,
+      newPassword: "",
+      confirmPassword: "",
+    });
     setErrorMessage("");
     setMessage("");
   }
@@ -436,16 +505,16 @@ export function SettingsWorkspace({
 
       <div
         className={cn(
-          "grid items-start gap-4",
+          "grid gap-4",
           inDialog
-            ? "md:grid-cols-[232px_minmax(0,1fr)]"
-            : "xl:grid-cols-[290px_minmax(0,1fr)]"
+            ? "items-start md:items-stretch md:grid-cols-[232px_minmax(0,1fr)]"
+            : "items-start xl:grid-cols-[290px_minmax(0,1fr)]"
         )}
       >
         <div
           className={cn(
-            "rounded-(--radius-card) border border-border/80 bg-white p-2 shadow-(--shadow-card)",
-            inDialog ? "z-10 md:sticky md:top-0" : "xl:sticky xl:top-20"
+            "flex flex-col rounded-(--radius-card) border border-border/80 bg-white p-2 shadow-(--shadow-card)",
+            !inDialog && "xl:sticky xl:top-20"
           )}
         >
           <nav>
@@ -496,7 +565,7 @@ export function SettingsWorkspace({
             })}
           </nav>
 
-          <div className="mt-2 space-y-2 border-t border-border/70 p-2 pt-3">
+          <div className="mt-auto space-y-2 border-t border-border/70 p-2 pt-3">
             <Button
               className="h-10 w-full rounded-(--radius-card)"
               disabled={isPending}
@@ -524,12 +593,87 @@ export function SettingsWorkspace({
         >
           <SectionCard
             id="business"
-            title="Business details"
-            description="Your clinic's identity — the name, type, logo, and contact email clients see."
+            title="Business & account"
+            description="Your account details and your clinic's information in one place."
             active={activeSection === "business"}
           >
             <div className="space-y-4">
-              <div className="flex items-center gap-4">
+              <div className="grid gap-3.5 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <FieldLabel>Owner name</FieldLabel>
+                  <Input
+                    value={account.fullName}
+                    onChange={(event) =>
+                      setAccount((current) => ({
+                        ...current,
+                        fullName: event.target.value,
+                      }))
+                    }
+                    className="h-10 rounded-(--radius-card) bg-white"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Email</FieldLabel>
+                  <Input
+                    type="email"
+                    value={account.email}
+                    onChange={(event) =>
+                      setAccount((current) => ({
+                        ...current,
+                        email: event.target.value,
+                      }))
+                    }
+                    className="h-10 rounded-(--radius-card) bg-white"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Phone</FieldLabel>
+                  <Input
+                    value={account.phone}
+                    onChange={(event) =>
+                      setAccount((current) => ({
+                        ...current,
+                        phone: event.target.value,
+                      }))
+                    }
+                    className="h-10 rounded-(--radius-card) bg-white"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Business name</FieldLabel>
+                  <Input
+                    value={state.business.businessName}
+                    onChange={(event) =>
+                      setState((current) => ({
+                        ...current,
+                        business: {
+                          ...current.business,
+                          businessName: event.target.value,
+                        },
+                      }))
+                    }
+                    className="h-10 rounded-(--radius-card) bg-white"
+                  />
+                </div>
+                <div className="space-y-1.5 md:col-span-2">
+                  <FieldLabel>Business type</FieldLabel>
+                  <NativeSelect
+                    value={state.business.businessType}
+                    options={[...businessTypes]}
+                    onChange={(value) =>
+                      setState((current) => ({
+                        ...current,
+                        business: {
+                          ...current.business,
+                          businessType: value as SettingsState["business"]["businessType"],
+                        },
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4 border-t border-border/60 pt-4">
                 <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-(--radius-tile) border border-border/75 bg-white text-xl font-semibold text-primary">
                   {logoDisplayUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -558,62 +702,44 @@ export function SettingsWorkspace({
                 </div>
               </div>
 
-              <div className="grid gap-3.5 md:grid-cols-2">
-                <div className="space-y-1.5">
-                  <FieldLabel>Business name</FieldLabel>
-                  <Input
-                    value={state.business.businessName}
-                    onChange={(event) =>
-                      setState((current) => ({
-                        ...current,
-                        business: {
-                          ...current.business,
-                          businessName: event.target.value,
-                        },
-                      }))
-                    }
-                    className="h-10 rounded-(--radius-card) bg-white"
-                  />
+              <div className="space-y-3.5 border-t border-border/60 pt-4">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-semibold text-foreground">Change password</p>
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    Leave both fields blank to keep your current password.
+                  </p>
                 </div>
-                <div className="space-y-1.5">
-                  <FieldLabel>Business type</FieldLabel>
-                  <NativeSelect
-                    value={state.business.businessType}
-                    options={[...businessTypes]}
-                    onChange={(value) =>
-                      setState((current) => ({
-                        ...current,
-                        business: {
-                          ...current.business,
-                          businessType: value as SettingsState["business"]["businessType"],
-                        },
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <FieldLabel>Owner name</FieldLabel>
-                  <Input
-                    value={state.business.ownerName}
-                    onChange={(event) =>
-                      setState((current) => ({
-                        ...current,
-                        business: {
-                          ...current.business,
-                          ownerName: event.target.value,
-                        },
-                      }))
-                    }
-                    className="h-10 rounded-(--radius-card) bg-white"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <FieldLabel>Support email</FieldLabel>
-                  <Input
-                    value={state.business.supportEmail}
-                    disabled
-                    className="h-10 rounded-(--radius-card) bg-white"
-                  />
+                <div className="grid gap-3.5 md:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <FieldLabel>New password</FieldLabel>
+                    <Input
+                      type="password"
+                      autoComplete="new-password"
+                      value={account.newPassword}
+                      onChange={(event) =>
+                        setAccount((current) => ({
+                          ...current,
+                          newPassword: event.target.value,
+                        }))
+                      }
+                      className="h-10 rounded-(--radius-card) bg-white"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <FieldLabel>Confirm password</FieldLabel>
+                    <Input
+                      type="password"
+                      autoComplete="new-password"
+                      value={account.confirmPassword}
+                      onChange={(event) =>
+                        setAccount((current) => ({
+                          ...current,
+                          confirmPassword: event.target.value,
+                        }))
+                      }
+                      className="h-10 rounded-(--radius-card) bg-white"
+                    />
+                  </div>
                 </div>
               </div>
             </div>

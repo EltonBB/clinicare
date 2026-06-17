@@ -27,9 +27,15 @@ const SettingsWorkspace = dynamic(
 export function SettingsDialog({
   open,
   onOpenChange,
+  ownerName = "",
+  ownerEmail = "",
+  ownerPhone = "",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  ownerName?: string;
+  ownerEmail?: string;
+  ownerPhone?: string;
 }) {
   const router = useRouter();
   const [state, setState] = useState<SettingsState | null>(null);
@@ -97,6 +103,9 @@ export function SettingsDialog({
           <SettingsWorkspace
             variant="dialog"
             initialState={state}
+            ownerName={ownerName}
+            ownerEmail={ownerEmail}
+            ownerPhone={ownerPhone}
             onSaved={() => {
               setIsDirty(false);
               router.refresh();
