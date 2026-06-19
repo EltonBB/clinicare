@@ -25,7 +25,6 @@ export async function GET(request: Request) {
   const tokenHash = url.searchParams.get("token_hash");
   const type = url.searchParams.get("type") as EmailOtpType | null;
   const code = url.searchParams.get("code");
-  const next = url.searchParams.get("next") ?? "";
 
   const supabase = await createClient();
 
@@ -46,26 +45,21 @@ export async function GET(request: Request) {
     redirect(INVALID_LINK);
   }
 
-  // Route strictly by the OTP type when it's present. `next` is caller-controlled,
-  // so honoring it here would let a signup/email-confirmation link — which still
-  // mints a session via verifyOtp — be redirected into the password-reset form,
-  // an account-takeover path. `next` is only trusted for the legacy ?code=
-  // callback that carries no explicit type.
+  // Route strictly by the OTP type, which Supabase binds to the token on the
+  // token_hash path: a signup token cannot be replayed as type=recovery because
+  // verifyOtp rejects the mismatch. The PKCE ?code= callback carries no type and
+  // the code authenticates the user, not the intent — so we deliberately do NOT
+  // infer recovery/settings from the caller-controlled `next` there, which would
+  // otherwise let a signup link be exchanged straight into the password-reset
+  // form (account takeover). Code callbacks are confirmation-only and fall
+  // through to sign-out → login; recovery and email-change must therefore arrive
+  // on the token_hash path (type=recovery / email_change).
   if (type === "recovery") {
     redirect("/reset-password?recovery=1");
   }
 
   if (type === "email_change") {
     redirect("/settings?email_updated=1");
-  }
-
-  if (!type) {
-    if (next.startsWith("/reset-password")) {
-      redirect("/reset-password?recovery=1");
-    }
-    if (next.startsWith("/settings")) {
-      redirect("/settings?email_updated=1");
-    }
   }
 
   // The token is already consumed and the account confirmed by this point, so a
