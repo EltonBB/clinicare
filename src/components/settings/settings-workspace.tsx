@@ -230,6 +230,7 @@ export function SettingsWorkspace({
     fullName: ownerName,
     email: ownerEmail,
     phone: ownerPhone,
+    currentPassword: "",
     newPassword: "",
     confirmPassword: "",
   });
@@ -304,6 +305,7 @@ export function SettingsWorkspace({
         profileData.set("fullName", account.fullName);
         profileData.set("email", account.email);
         profileData.set("phone", account.phone);
+        profileData.set("currentPassword", account.currentPassword);
         profileData.set("newPassword", account.newPassword);
         profileData.set("confirmPassword", account.confirmPassword);
 
@@ -347,6 +349,7 @@ export function SettingsWorkspace({
       setSavedState(result.state);
       setAccount((current) => ({
         ...current,
+        currentPassword: "",
         newPassword: "",
         confirmPassword: "",
       }));
@@ -367,6 +370,7 @@ export function SettingsWorkspace({
       fullName: savedAccount.fullName,
       email: savedAccount.email,
       phone: savedAccount.phone,
+      currentPassword: "",
       newPassword: "",
       confirmPassword: "",
     });
@@ -706,8 +710,24 @@ export function SettingsWorkspace({
                 <div className="space-y-0.5">
                   <p className="text-sm font-semibold text-foreground">Change password</p>
                   <p className="text-xs leading-5 text-muted-foreground">
-                    Leave both fields blank to keep your current password.
+                    Leave the fields blank to keep your current password. Changing it
+                    requires your current password.
                   </p>
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Current password</FieldLabel>
+                  <Input
+                    type="password"
+                    autoComplete="current-password"
+                    value={account.currentPassword}
+                    onChange={(event) =>
+                      setAccount((current) => ({
+                        ...current,
+                        currentPassword: event.target.value,
+                      }))
+                    }
+                    className="h-10 rounded-(--radius-card) bg-white"
+                  />
                 </div>
                 <div className="grid gap-3.5 md:grid-cols-2">
                   <div className="space-y-1.5">
