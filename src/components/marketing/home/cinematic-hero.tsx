@@ -7,6 +7,7 @@ import { motion, useReducedMotion, type Variants } from "framer-motion";
 
 import { Magnetic } from "../motion/magnetic";
 import { useScrollScene } from "../motion/use-scroll-scene";
+import { useMarketingScroll } from "../motion/scroll-context";
 
 // WebGL scene is client-only and lazy — the mesh + vignette stand in until it mounts.
 const HeroScene = dynamic(() => import("../motion/hero-scene"), { ssr: false });
@@ -30,6 +31,10 @@ const fade: Variants = {
 
 export function CinematicHero() {
   const reduce = useReducedMotion();
+  // Mount the WebGL orb only on a fine-pointer device without reduced-motion;
+  // touch/low-power and motion-sensitive users get the static brand mesh instead.
+  const { reduced, coarse } = useMarketingScroll();
+  const showOrb = !reduced && !coarse;
 
   // Gentle scroll parallax on the brand mesh.
   const sceneRef = useScrollScene<HTMLElement>(({ root, gsap }) => {
@@ -47,9 +52,9 @@ export function CinematicHero() {
     >
       {/* Living brand mesh — overscanned via negative inset so scroll parallax never reveals an edge */}
       <div aria-hidden data-hero-mesh className="vela-mesh absolute -inset-[12%] -z-30" />
-      {/* WebGL orb — ambient depth on the right */}
+      {/* WebGL orb — ambient depth on the right; skipped under reduced-motion / touch */}
       <div aria-hidden className="absolute inset-0 -z-20">
-        <HeroScene />
+        {showOrb ? <HeroScene /> : null}
       </div>
       {/* faint engineering grid */}
       <div aria-hidden className="vela-grid-texture absolute inset-0 -z-20 opacity-40" />
