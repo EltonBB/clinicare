@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
@@ -45,6 +46,21 @@ export function CinematicHero() {
     });
   });
 
+  // Pause the WebGL render loop while the hero is scrolled out of view — no
+  // point burning GPU/battery animating an orb nobody can see on a long page.
+  // Resumes 300px early so it's already running by the time it's visible again.
+  const [heroInView, setHeroInView] = useState(true);
+  useEffect(() => {
+    if (!showOrb) return;
+    const el = sceneRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([entry]) => setHeroInView(entry.isIntersecting), {
+      rootMargin: "300px",
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [showOrb, sceneRef]);
+
   return (
     <section
       ref={sceneRef}
@@ -54,7 +70,7 @@ export function CinematicHero() {
       <div aria-hidden data-hero-mesh className="vela-mesh absolute -inset-[12%] -z-30" />
       {/* WebGL orb — ambient depth on the right; skipped under reduced-motion / touch */}
       <div aria-hidden className="absolute inset-0 -z-20">
-        {showOrb ? <HeroScene /> : null}
+        {showOrb ? <HeroScene active={heroInView} /> : null}
       </div>
       {/* faint engineering grid */}
       <div aria-hidden className="vela-grid-texture absolute inset-0 -z-20 opacity-40" />

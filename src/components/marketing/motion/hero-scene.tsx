@@ -52,7 +52,7 @@ function ParallaxRig() {
   return null;
 }
 
-export default function HeroScene() {
+export default function HeroScene({ active = true }: { active?: boolean }) {
   // R3F's resize observer can miss the initial size when mounted from a lazy
   // chunk; nudge a resize on mount so the canvas fills its container reliably.
   useEffect(() => {
@@ -67,6 +67,7 @@ export default function HeroScene() {
 
   return (
     <Canvas
+      frameloop={active ? "always" : "never"}
       camera={{ position: [0, 0, 6], fov: 42 }}
       dpr={[1, 1.8]}
       gl={{ antialias: true, alpha: true }}

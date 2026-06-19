@@ -125,7 +125,9 @@ const resetPasswordSchema = z
   });
 
 function sanitizeNextPath(next?: string) {
-  if (!next || !next.startsWith("/") || next.startsWith("//")) {
+  // Same-origin absolute paths only. Reject protocol-relative targets — both
+  // "//evil.com" and the "/\evil.com" backslash variant some browsers normalize.
+  if (!next || !next.startsWith("/") || next[1] === "/" || next[1] === "\\") {
     return "/dashboard";
   }
 

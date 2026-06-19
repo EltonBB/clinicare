@@ -54,7 +54,15 @@ export async function GET(request: Request) {
     redirect("/settings?email_updated=1");
   }
 
-  await markEmailVerificationReceiptVerifiedByEmail(confirmedEmail);
-  await supabase.auth.signOut();
+  // The token is already consumed and the account confirmed by this point, so a
+  // transient receipt-write or sign-out failure must never block the redirect —
+  // otherwise the user 500s on a one-time link they can no longer reuse.
+  // (redirect() throws NEXT_REDIRECT, so it stays outside this try.)
+  try {
+    await markEmailVerificationReceiptVerifiedByEmail(confirmedEmail);
+    await supabase.auth.signOut();
+  } catch {
+    // best-effort cleanup; fall through to the login redirect regardless.
+  }
   redirect("/login?verified=1");
 }
