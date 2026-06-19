@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { HomePage } from "@/components/marketing/marketing-site";
+import { HomePage } from "@/components/marketing/home/home-page";
 
 export const metadata: Metadata = {
   title: "Vela | Clinic management workspace",

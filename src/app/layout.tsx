@@ -23,7 +23,6 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${plusJakarta.variable} h-full antialiased`}
-      data-scroll-behavior="smooth"
     >
       <body
         suppressHydrationWarning

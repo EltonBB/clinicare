@@ -1,6 +1,6 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
@@ -26,6 +26,7 @@ type OwnerProfileValues = {
   fullName?: string;
   email?: string;
   phone?: string;
+  currentPassword?: string;
   newPassword?: string;
   confirmPassword?: string;
 };
@@ -81,12 +82,14 @@ const ownerProfileSchema = z
     fullName: z.string().trim().min(2, "Enter your name."),
     email: z.string().trim().email("Enter a valid email address."),
     phone: z.string().trim().optional(),
+    currentPassword: z.string().optional(),
     newPassword: z.string().optional(),
     confirmPassword: z.string().optional(),
   })
   .superRefine((value, ctx) => {
     const newPassword = value.newPassword?.trim() ?? "";
     const confirmPassword = value.confirmPassword?.trim() ?? "";
+    const currentPassword = value.currentPassword?.trim() ?? "";
 
     if (newPassword.length > 0 && newPassword.length < 8) {
       ctx.addIssue({
@@ -101,6 +104,14 @@ const ownerProfileSchema = z
         code: z.ZodIssueCode.custom,
         path: ["confirmPassword"],
         message: "Passwords do not match.",
+      });
+    }
+
+    if (newPassword.length > 0 && currentPassword.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["currentPassword"],
+        message: "Enter your current password to set a new one.",
       });
     }
   });
@@ -125,7 +136,9 @@ const resetPasswordSchema = z
   });
 
 function sanitizeNextPath(next?: string) {
-  if (!next || !next.startsWith("/") || next.startsWith("//")) {
+  // Same-origin absolute paths only. Reject protocol-relative targets — both
+  // "//evil.com" and the "/\evil.com" backslash variant some browsers normalize.
+  if (!next || !next.startsWith("/") || next[1] === "/" || next[1] === "\\") {
     return "/dashboard";
   }
 
@@ -424,12 +437,25 @@ export async function resetPasswordAction(
   }
 
   const supabase = await createClient();
+  const cookieStore = await cookies();
+
   const {
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
+    return {
+      error: "The recovery link expired. Request a fresh password reset email.",
+      values,
+    };
+  }
+
+  // The password change requires a session that arrived via the password-recovery
+  // verification: /auth/confirm sets this marker to the recovered user's id only
+  // on the token-bound type=recovery branch. Requiring marker === user.id blocks
+  // a plain login session (no marker) and a stale marker from another account.
+  if (cookieStore.get("vela_pw_recovery")?.value !== user.id) {
     return {
       error: "The recovery link expired. Request a fresh password reset email.",
       values,
@@ -447,6 +473,7 @@ export async function resetPasswordAction(
     };
   }
 
+  cookieStore.delete("vela_pw_recovery");
   await supabase.auth.signOut();
   redirect("/login?reset=1");
 }
@@ -459,6 +486,7 @@ export async function updateOwnerProfileAction(
     fullName: String(formData.get("fullName") ?? "").trim(),
     email: String(formData.get("email") ?? "").trim(),
     phone: String(formData.get("phone") ?? "").trim(),
+    currentPassword: String(formData.get("currentPassword") ?? ""),
     newPassword: String(formData.get("newPassword") ?? ""),
     confirmPassword: String(formData.get("confirmPassword") ?? ""),
   };
@@ -507,6 +535,24 @@ export async function updateOwnerProfileAction(
   const newPassword = parsed.data.newPassword?.trim() ?? "";
   const emailChanged = nextEmail !== user.email;
   const passwordChanged = newPassword.length > 0;
+
+  // Re-authenticate before changing the password: verify the CURRENT password so
+  // a borrowed/hijacked session can't silently set new credentials. Done before
+  // any mutation, so a wrong current password changes nothing.
+  if (passwordChanged) {
+    const { error: reauthError } = await supabase.auth.signInWithPassword({
+      email: user.email ?? "",
+      password: parsed.data.currentPassword?.trim() ?? "",
+    });
+
+    if (reauthError) {
+      return {
+        error: "That current password is incorrect.",
+        fieldErrors: { currentPassword: "That current password is incorrect." },
+        values,
+      };
+    }
+  }
 
   const { error: profileError } = await supabase.auth.updateUser(
     {

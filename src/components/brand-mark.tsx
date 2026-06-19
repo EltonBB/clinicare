@@ -9,6 +9,7 @@ type BrandMarkProps = {
   className?: string;
   includeSubtitle?: boolean;
   size?: "default" | "lg";
+  tone?: "default" | "light";
 };
 
 export function BrandMark({
@@ -17,8 +18,10 @@ export function BrandMark({
   className,
   includeSubtitle = true,
   size = "default",
+  tone = "default",
 }: BrandMarkProps) {
   const isLg = size === "lg";
+  const isLight = tone === "light";
 
   return (
     <Link
@@ -41,7 +44,7 @@ export function BrandMark({
           alt=""
           width={isLg ? 44 : 30}
           height={isLg ? 44 : 30}
-          className="object-contain"
+          className={cn("object-contain", isLight && "brightness-0 invert")}
           aria-hidden="true"
         />
       </span>
@@ -49,14 +52,20 @@ export function BrandMark({
         <span className="flex flex-col">
           <span
             className={cn(
-              "font-semibold leading-none tracking-tight text-[var(--brand-ink)]",
+              "font-semibold leading-none tracking-tight",
+              isLight ? "text-white" : "text-[var(--brand-ink)]",
               isLg ? "text-2xl" : "text-xl"
             )}
           >
             Vela
           </span>
           {includeSubtitle ? (
-            <span className="mt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            <span
+              className={cn(
+                "mt-1 text-[10px] font-semibold uppercase tracking-[0.18em]",
+                isLight ? "text-white/60" : "text-muted-foreground"
+              )}
+            >
               Clinic OS
             </span>
           ) : null}

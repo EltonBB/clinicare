@@ -16,14 +16,16 @@ export async function createEmailVerificationReceipt(ticket: string, email: stri
   });
 }
 
-export async function markEmailVerificationReceiptVerified(ticket: string | null | undefined) {
-  if (!ticket) {
+export async function markEmailVerificationReceiptVerifiedByEmail(
+  email: string | null | undefined
+) {
+  if (!email) {
     return;
   }
 
   await prisma.emailVerificationReceipt.updateMany({
     where: {
-      ticket,
+      email,
     },
     data: {
       verifiedAt: new Date(),
