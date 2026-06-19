@@ -437,18 +437,7 @@ export async function resetPasswordAction(
   }
 
   const supabase = await createClient();
-
-  // Setting a new password requires a session that actually arrived via the
-  // password-recovery verification — /auth/confirm sets this marker only on the
-  // token-bound type=recovery branch. A normal authenticated session (or any
-  // forged ?recovery=1 navigation) must NOT be able to change the password here.
   const cookieStore = await cookies();
-  if (cookieStore.get("vela_pw_recovery")?.value !== "1") {
-    return {
-      error: "The recovery link expired. Request a fresh password reset email.",
-      values,
-    };
-  }
 
   const {
     data: { user },
@@ -456,6 +445,17 @@ export async function resetPasswordAction(
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
+    return {
+      error: "The recovery link expired. Request a fresh password reset email.",
+      values,
+    };
+  }
+
+  // The password change requires a session that arrived via the password-recovery
+  // verification: /auth/confirm sets this marker to the recovered user's id only
+  // on the token-bound type=recovery branch. Requiring marker === user.id blocks
+  // a plain login session (no marker) and a stale marker from another account.
+  if (cookieStore.get("vela_pw_recovery")?.value !== user.id) {
     return {
       error: "The recovery link expired. Request a fresh password reset email.",
       values,

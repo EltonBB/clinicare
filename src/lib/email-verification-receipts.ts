@@ -16,21 +16,6 @@ export async function createEmailVerificationReceipt(ticket: string, email: stri
   });
 }
 
-export async function markEmailVerificationReceiptVerified(ticket: string | null | undefined) {
-  if (!ticket) {
-    return;
-  }
-
-  await prisma.emailVerificationReceipt.updateMany({
-    where: {
-      ticket,
-    },
-    data: {
-      verifiedAt: new Date(),
-    },
-  });
-}
-
 export async function markEmailVerificationReceiptVerifiedByEmail(
   email: string | null | undefined
 ) {

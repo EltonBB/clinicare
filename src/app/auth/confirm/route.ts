@@ -38,6 +38,7 @@ export async function GET(request: Request) {
   // and is confirmation-only. We never route on the raw URL `type`/`next` —
   // only on `verifiedType`, the type the token itself proved.
   let verifiedType: EmailOtpType | null = null;
+  let confirmedUserId: string | null = null;
 
   if (tokenHash && type) {
     const { data, error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
@@ -45,6 +46,7 @@ export async function GET(request: Request) {
     confirmedEmail = data.user?.email ?? null;
     if (ok) {
       verifiedType = type;
+      confirmedUserId = data.user?.id ?? null;
     }
   } else if (code) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
@@ -59,13 +61,14 @@ export async function GET(request: Request) {
   }
 
   if (verifiedType === "recovery") {
-    // Bind the privileged reset to THIS verification: the reset page and
-    // resetPasswordAction require this marker, so a plain login session can
-    // never set a new password via the reset form — defense in depth even if
-    // routing ever regresses. httpOnly + short TTL, single-use (cleared on
-    // success). It rides the same redirect response as the session cookie, so
-    // it's exactly as reliable as the session the reset page already requires.
-    (await cookies()).set("vela_pw_recovery", "1", {
+    // Bind the privileged reset to THIS verification AND this user: the reset
+    // page and resetPasswordAction require a marker whose value equals the
+    // current session's user id, so neither a plain login session (no marker)
+    // nor a stale marker from another account can set a new password via the
+    // reset form — defense in depth even if routing ever regresses. httpOnly +
+    // short TTL, single-use (cleared on success). It rides the same redirect
+    // response as the session cookie, so it's as reliable as the session itself.
+    (await cookies()).set("vela_pw_recovery", confirmedUserId ?? "", {
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",

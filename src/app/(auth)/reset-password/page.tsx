@@ -13,9 +13,10 @@ export default async function ResetPasswordPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Only a session that arrived via the recovery verification (marker set in
-  // /auth/confirm) may use this form — not a forgeable ?recovery=1 param.
-  if (cookieStore.get("vela_pw_recovery")?.value !== "1" || !user) {
+  // Only a session that arrived via the recovery verification may use this form:
+  // /auth/confirm sets the marker to the recovered user's id (not a forgeable
+  // ?recovery=1 param), so it must equal the current session's user id.
+  if (!user || cookieStore.get("vela_pw_recovery")?.value !== user.id) {
     redirect("/forgot-password?expired=1");
   }
 
