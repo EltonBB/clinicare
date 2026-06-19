@@ -1,6 +1,5 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -24,11 +23,6 @@ import {
 import { resolveBrandAccentPreset } from "@/lib/branding";
 import { navigationItems } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
-
-const WorkspaceTour = dynamic(
-  () => import("@/components/layout/workspace-tour").then((mod) => mod.WorkspaceTour),
-  { ssr: false }
-);
 
 type AppShellNotification = {
   id: string;
@@ -54,8 +48,6 @@ type AppShellProps = {
   planStatus?: string;
   brandAccentColor?: string | null;
   logoUrl?: string | null;
-  tourScopeId?: string;
-  tourCompleted?: boolean;
   unreadCount?: number;
   notifications?: AppShellNotification[];
 };
@@ -68,8 +60,6 @@ export function AppShell({
   ownerPhone = "",
   brandAccentColor = null,
   logoUrl = null,
-  tourScopeId = "default",
-  tourCompleted = false,
   unreadCount = 0,
   notifications = [],
 }: AppShellProps) {
@@ -128,27 +118,6 @@ export function AppShell({
     };
   }, [accentVars]);
 
-  function getTourTarget(href: string) {
-    switch (href) {
-      case "/dashboard":
-        return "dashboard-nav";
-      case "/calendar":
-        return "calendar-nav";
-      case "/clients":
-        return "clients-nav";
-      case "/staff":
-        return "staff-nav";
-      case "/inbox":
-        return "inbox-nav";
-      case "/reports":
-        return "reports-nav";
-      case "/settings":
-        return "settings-nav";
-      default:
-        return undefined;
-    }
-  }
-
   const prefetchRoute = useCallback((href: string) => {
     if (href !== pathname) {
       router.prefetch(href);
@@ -205,10 +174,7 @@ export function AppShell({
     >
       <div className="relative flex min-h-screen bg-background lg:min-h-screen lg:overflow-x-clip">
         <aside className="hidden w-64 shrink-0 border-r border-sidebar-border/80 bg-white backdrop-blur-xl lg:flex">
-          <div
-            className="sticky top-0 flex h-screen w-full flex-col bg-white p-3"
-            data-tour="sidebar-shell"
-          >
+          <div className="sticky top-0 flex h-screen w-full flex-col bg-white p-3">
             <div className="mb-4 px-2 py-2">
               <BrandMark href="/dashboard" includeSubtitle={false} size="lg" />
             </div>
@@ -227,7 +193,6 @@ export function AppShell({
                     href={item.href}
                     prefetch
                     className={navLinkClasses(isActive)}
-                    data-tour={getTourTarget(item.href)}
                     onFocus={() => prefetchRoute(item.href)}
                     onMouseEnter={() => prefetchRoute(item.href)}
                   >
@@ -241,7 +206,6 @@ export function AppShell({
             <div className="mt-2 border-t border-sidebar-border/70 px-0.5 pt-2.5">
               <DropdownMenu>
                 <DropdownMenuTrigger
-                  data-tour="settings-nav"
                   className="flex w-full items-center gap-2.5 rounded-(--radius-tile) border border-transparent px-2 py-2 text-left transition-[background-color,border-color] duration-(--duration-base) hover:bg-[#f7f9fc] data-[popup-open]:bg-[#f7f9fc]"
                 >
                   <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-(--radius-tile) border border-border/70 bg-white text-sm font-semibold text-primary">
@@ -331,7 +295,6 @@ export function AppShell({
                   type="button"
                   onClick={() => setSettingsOpen(true)}
                   className={mobileNavClasses}
-                  data-tour={getTourTarget(item.href)}
                 >
                   <Icon className="size-4" />
                   <span className="truncate">{item.label}</span>
@@ -345,7 +308,6 @@ export function AppShell({
                 href={item.href}
                 prefetch
                 className={mobileNavClasses}
-                data-tour={getTourTarget(item.href)}
                 onFocus={() => prefetchRoute(item.href)}
                 onMouseEnter={() => prefetchRoute(item.href)}
               >
@@ -364,10 +326,6 @@ export function AppShell({
         ownerEmail={ownerEmail}
         ownerPhone={ownerPhone}
       />
-
-      {!tourCompleted ? (
-        <WorkspaceTour initialCompleted={tourCompleted} scopeId={tourScopeId} />
-      ) : null}
     </div>
   );
 }

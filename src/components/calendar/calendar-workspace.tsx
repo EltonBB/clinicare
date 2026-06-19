@@ -543,7 +543,6 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
           hasClients ? (
             <Link
               href={`/calendar/new?date=${selectedDateKey}`}
-              data-tour="calendar-create"
               className={cn(
                 buttonVariants({ variant: "solid" }),
                 "h-9 rounded-(--radius-card) px-3.5"
@@ -555,7 +554,6 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
           ) : (
             <Link
               href="/clients/new?next=calendar"
-              data-tour="calendar-create"
               className={cn(
                 buttonVariants({ variant: "solid" }),
                 "h-9 rounded-(--radius-card) px-3.5"

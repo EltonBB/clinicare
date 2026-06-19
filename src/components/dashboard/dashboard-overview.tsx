@@ -171,7 +171,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
   const maxVisits = Math.max(...visits.days.map((day) => day.count), 1);
 
   return (
-    <WorkspacePage size="wide" data-tour="dashboard-overview">
+    <WorkspacePage size="wide">
       <WorkspaceHeader
         title="Dashboard"
         description={view.dateLabel}

@@ -34,10 +34,6 @@ export default async function WorkspaceLayout({
     typeof user.user_metadata?.owner_phone === "string"
       ? user.user_metadata.owner_phone
       : "";
-  const tourCompleted =
-    user.user_metadata?.workspace_tour_completed_business_id === business.id &&
-    typeof user.user_metadata?.workspace_tour_completed_at === "string" &&
-    user.user_metadata.workspace_tour_completed_at.length > 0;
   const logoDisplayUrl = await resolveMediaDisplayUrl(business.logoUrl);
 
   return (
@@ -50,8 +46,6 @@ export default async function WorkspaceLayout({
       planStatus={planStatusLabel(business.planStatus)}
       brandAccentColor={business.brandAccentColor}
       logoUrl={logoDisplayUrl}
-      tourScopeId={business.id}
-      tourCompleted={tourCompleted}
       unreadCount={0}
       notifications={[]}
     >
