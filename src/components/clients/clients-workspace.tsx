@@ -137,7 +137,6 @@ export function ClientsWorkspace({
         actions={
           <Link
             href="/clients/new"
-            data-tour="clients-create"
             className={cn(buttonVariants({ variant: "solid" }), "h-10 rounded-(--radius-card) px-4")}
           >
             <Plus className="size-4" />

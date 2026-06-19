@@ -530,7 +530,6 @@ export function SettingsWorkspace({
                 <button
                   key={section.id}
                   type="button"
-                  data-tour={section.id === "whatsapp" ? "settings-whatsapp" : undefined}
                   onClick={() => setActiveSection(section.id)}
                   className={cn(
                     "flex w-full items-center gap-3 rounded-(--radius-card) px-2.5 py-2 text-left transition-colors duration-(--duration-base)",

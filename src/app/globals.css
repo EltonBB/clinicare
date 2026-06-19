@@ -329,11 +329,6 @@
     letter-spacing: 0;
   }
 
-  .tour-coachmark {
-    animation: vela-tour-enter var(--duration-base) var(--ease-out-quint) both;
-    will-change: opacity, transform;
-  }
-
   .dialog-scroll-body {
     scrollbar-width: thin;
     scrollbar-color: var(--primary-shadow) transparent;
@@ -489,7 +484,6 @@
   @media (prefers-reduced-motion: reduce) {
     .section-reveal,
     .section-reveal-delayed,
-    .tour-coachmark,
     .dialog-accent-orb,
     .landing-reveal,
     .landing-aurora-blob,
@@ -598,17 +592,6 @@
   }
 }
 
-@keyframes vela-tour-enter {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
 @keyframes vela-dialog-orb {
   0% {
     transform: translate3d(0, 0, 0) scale(1);
@@ -708,7 +691,6 @@
     transform: none;
   }
 
-  .tour-coachmark,
   .dialog-accent-orb,
   .landing-aurora-blob,
   .landing-float,
