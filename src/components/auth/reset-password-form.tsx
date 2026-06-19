@@ -7,18 +7,11 @@ import {
   type PasswordResetActionState,
 } from "@/app/(auth)/actions";
 import { SubmitButton } from "@/components/auth/submit-button";
+import { authFieldClassName } from "@/components/auth/field-styles";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 const initialState: PasswordResetActionState = {};
-
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-      {children}
-    </label>
-  );
-}
 
 function FieldError({ message }: { message?: string }) {
   if (!message) {
@@ -39,43 +32,43 @@ export function ResetPasswordForm() {
         </div>
       ) : null}
 
-      <div className="space-y-3">
-        <FieldLabel>New password</FieldLabel>
+      <div className="space-y-2">
+        <label htmlFor="password" className="text-sm font-semibold text-foreground">
+          New password
+        </label>
         <Input
+          id="password"
           name="password"
           type="password"
           autoComplete="new-password"
           placeholder="Create a new password"
           defaultValue={state.values?.password}
           aria-invalid={Boolean(state.fieldErrors?.password)}
-          className={cn(
-            "h-11 rounded-(--radius-card) border-border/80 bg-white px-3.5 text-[15px] shadow-none placeholder:text-muted-foreground/70",
-            state.fieldErrors?.password && "border-destructive"
-          )}
+          className={cn(authFieldClassName, state.fieldErrors?.password && "border-destructive")}
         />
         <FieldError message={state.fieldErrors?.password} />
       </div>
 
-      <div className="space-y-3">
-        <FieldLabel>Confirm password</FieldLabel>
+      <div className="space-y-2">
+        <label htmlFor="confirmPassword" className="text-sm font-semibold text-foreground">
+          Confirm password
+        </label>
         <Input
+          id="confirmPassword"
           name="confirmPassword"
           type="password"
           autoComplete="new-password"
           placeholder="Repeat the new password"
           defaultValue={state.values?.confirmPassword}
           aria-invalid={Boolean(state.fieldErrors?.confirmPassword)}
-          className={cn(
-            "h-11 rounded-(--radius-card) border-border/80 bg-white px-3.5 text-[15px] shadow-none placeholder:text-muted-foreground/70",
-            state.fieldErrors?.confirmPassword && "border-destructive"
-          )}
+          className={cn(authFieldClassName, state.fieldErrors?.confirmPassword && "border-destructive")}
         />
         <FieldError message={state.fieldErrors?.confirmPassword} />
       </div>
 
       <SubmitButton
         pendingLabel="Resetting password..."
-        className="h-11 w-full rounded-(--radius-card) text-[15px] font-medium"
+        className="h-12 w-full rounded-(--radius-field) text-[15px] font-semibold"
       >
         Set new password
       </SubmitButton>

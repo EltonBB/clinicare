@@ -1,21 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 
 import { loginAction, type AuthActionState } from "@/app/(auth)/actions";
 import { SubmitButton } from "@/components/auth/submit-button";
+import { authFieldClassName } from "@/components/auth/field-styles";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 const initialState: AuthActionState = {};
-
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-      {children}
-    </label>
-  );
-}
 
 function FieldError({ message }: { message?: string }) {
   if (!message) {
@@ -39,43 +33,48 @@ export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
         </div>
       ) : null}
 
-      <div className="space-y-3">
-        <FieldLabel>Email</FieldLabel>
+      <div className="space-y-2">
+        <label htmlFor="email" className="text-sm font-semibold text-foreground">
+          Email
+        </label>
         <Input
+          id="email"
           name="email"
           type="email"
           autoComplete="email"
-          placeholder="name@company.com"
+          placeholder="name@clinic.com"
           defaultValue={state.values?.email}
           aria-invalid={Boolean(state.fieldErrors?.email)}
-          className={cn(
-            "h-11 rounded-(--radius-card) border-border/80 bg-white px-3.5 text-[15px] shadow-none placeholder:text-muted-foreground/70",
-            state.fieldErrors?.email && "border-destructive"
-          )}
+          className={cn(authFieldClassName, state.fieldErrors?.email && "border-destructive")}
         />
         <FieldError message={state.fieldErrors?.email} />
       </div>
 
-      <div className="space-y-3">
-        <FieldLabel>Password</FieldLabel>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <label htmlFor="password" className="text-sm font-semibold text-foreground">
+            Password
+          </label>
+          <Link href="/forgot-password" className="text-xs font-semibold text-primary hover:underline">
+            Forgot?
+          </Link>
+        </div>
         <Input
+          id="password"
           name="password"
           type="password"
           autoComplete="current-password"
           placeholder="Enter your password"
           defaultValue={state.values?.password}
           aria-invalid={Boolean(state.fieldErrors?.password)}
-          className={cn(
-            "h-11 rounded-(--radius-card) border-border/80 bg-white px-3.5 text-[15px] shadow-none placeholder:text-muted-foreground/70",
-            state.fieldErrors?.password && "border-destructive"
-          )}
+          className={cn(authFieldClassName, state.fieldErrors?.password && "border-destructive")}
         />
         <FieldError message={state.fieldErrors?.password} />
       </div>
 
       <SubmitButton
         pendingLabel="Logging in..."
-        className="h-11 w-full rounded-(--radius-card) text-[15px] font-medium"
+        className="h-12 w-full rounded-(--radius-field) text-[15px] font-semibold"
       >
         Log in
       </SubmitButton>

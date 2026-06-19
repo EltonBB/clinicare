@@ -44,7 +44,7 @@ export function BrandMark({
           alt=""
           width={isLg ? 44 : 30}
           height={isLg ? 44 : 30}
-          className="object-contain"
+          className={cn("object-contain", isLight && "brightness-0 invert")}
           aria-hidden="true"
         />
       </span>
