@@ -46,12 +46,26 @@ export async function GET(request: Request) {
     redirect(INVALID_LINK);
   }
 
-  if (type === "recovery" || next.startsWith("/reset-password")) {
+  // Route strictly by the OTP type when it's present. `next` is caller-controlled,
+  // so honoring it here would let a signup/email-confirmation link — which still
+  // mints a session via verifyOtp — be redirected into the password-reset form,
+  // an account-takeover path. `next` is only trusted for the legacy ?code=
+  // callback that carries no explicit type.
+  if (type === "recovery") {
     redirect("/reset-password?recovery=1");
   }
 
-  if (type === "email_change" || next.startsWith("/settings")) {
+  if (type === "email_change") {
     redirect("/settings?email_updated=1");
+  }
+
+  if (!type) {
+    if (next.startsWith("/reset-password")) {
+      redirect("/reset-password?recovery=1");
+    }
+    if (next.startsWith("/settings")) {
+      redirect("/settings?email_updated=1");
+    }
   }
 
   // The token is already consumed and the account confirmed by this point, so a
