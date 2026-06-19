@@ -143,3 +143,12 @@ This repo has a generated knowledge graph in `graphify-out/` (1,438 nodes / 3,02
 - `graphify-out/graph.json` — queryable graph data
 
 Use it for architecture questions: `graphify query "how does WhatsApp inbound message become a conversation?"`, `graphify explain "requireCurrentWorkspace()"`, `graphify path "NewAppointmentForm()" "Prisma Database Adapter"`. Rebuild after big changes with `graphify update .` (code-only, no LLM) or the `/graphify` skill for a full re-extract.
+
+## Capability advisor (suggest, then wait for green light)
+
+A self-improving loop: surface the right capability per task and capture what we learn, but **suggesting is autonomous and acting is gated** — nothing that changes state runs until the owner green-lights it. Catalog: `.claude/CAPABILITIES.md`. Scratch: `.claude/friction-log.md`.
+
+- **Foresight (before acting):** on substantive tasks, scan `.claude/CAPABILITIES.md`. If any skill/tool/MCP genuinely fits, name it in one line — what it'd do, why it fits — marking whether I run it (with the owner's OK) or it's his to invoke (`/name`, e.g. `/code-review ultra`). Wait for go-ahead before running any.
+- **Hindsight (at wrap-up):** only if the task surfaced a real, behavior-changing improvement (workflow, the owner's prompting, code structure, token waste), drop one line in `.claude/friction-log.md`. Stay silent when there's nothing real.
+- **Promote, don't hoard:** when the same friction recurs (~2–3×), suggest promoting it to a feedback memory or a CLAUDE.md rule — wait for green light before editing either.
+- Skip trivial tasks. Surfacing a suggestion needs no approval; acting on one always does.
