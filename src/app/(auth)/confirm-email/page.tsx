@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Mail } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
-import { AuthConfirmationBridge } from "@/components/auth/auth-confirmation-bridge";
 import { EmailVerificationWatcher } from "@/components/auth/email-verification-watcher";
 import { ResendConfirmationForm } from "@/components/auth/resend-confirmation-form";
 import { createClient } from "@/utils/supabase/server";
@@ -30,7 +29,6 @@ export default async function ConfirmEmailPage({ searchParams }: ConfirmEmailPag
   if (verified) {
     return (
       <>
-        <AuthConfirmationBridge />
         <BrandMark href="/" includeSubtitle={false} className="mb-10 lg:hidden" />
 
         <div className="flex size-14 items-center justify-center rounded-(--radius-field) border border-border/80 bg-white">
@@ -57,7 +55,6 @@ export default async function ConfirmEmailPage({ searchParams }: ConfirmEmailPag
 
   return (
     <>
-      <AuthConfirmationBridge />
       {sent && ticket ? <EmailVerificationWatcher ticket={ticket} /> : null}
       <BrandMark href="/" includeSubtitle={false} className="mb-10 lg:hidden" />
 
@@ -91,7 +88,7 @@ export default async function ConfirmEmailPage({ searchParams }: ConfirmEmailPag
 
           {error ? (
             <div className="state-pop rounded-(--radius-field) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-              {error}
+              That verification link is no longer valid. Request a new one below.
             </div>
           ) : null}
 

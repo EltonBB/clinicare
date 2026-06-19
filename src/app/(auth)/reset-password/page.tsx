@@ -1,23 +1,21 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { BrandMark } from "@/components/brand-mark";
 import { ResetPasswordForm } from "@/components/auth/reset-password-form";
 import { createClient } from "@/utils/supabase/server";
 
-type ResetPasswordPageProps = {
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
-};
-
-export default async function ResetPasswordPage({ searchParams }: ResetPasswordPageProps) {
-  const params = searchParams ? await searchParams : {};
-  const recovery = params.recovery === "1";
+export default async function ResetPasswordPage() {
   const supabase = await createClient();
+  const cookieStore = await cookies();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!recovery || !user) {
+  // Only a session that arrived via the recovery verification (marker set in
+  // /auth/confirm) may use this form — not a forgeable ?recovery=1 param.
+  if (cookieStore.get("vela_pw_recovery")?.value !== "1" || !user) {
     redirect("/forgot-password?expired=1");
   }
 

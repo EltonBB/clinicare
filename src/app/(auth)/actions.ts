@@ -1,6 +1,6 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
@@ -426,6 +426,19 @@ export async function resetPasswordAction(
   }
 
   const supabase = await createClient();
+
+  // Setting a new password requires a session that actually arrived via the
+  // password-recovery verification — /auth/confirm sets this marker only on the
+  // token-bound type=recovery branch. A normal authenticated session (or any
+  // forged ?recovery=1 navigation) must NOT be able to change the password here.
+  const cookieStore = await cookies();
+  if (cookieStore.get("vela_pw_recovery")?.value !== "1") {
+    return {
+      error: "The recovery link expired. Request a fresh password reset email.",
+      values,
+    };
+  }
+
   const {
     data: { user },
     error: userError,
@@ -449,6 +462,7 @@ export async function resetPasswordAction(
     };
   }
 
+  cookieStore.delete("vela_pw_recovery");
   await supabase.auth.signOut();
   redirect("/login?reset=1");
 }

@@ -1,4 +1,5 @@
 import { type EmailOtpType } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { markEmailVerificationReceiptVerifiedByEmail } from "@/lib/email-verification-receipts";
@@ -30,35 +31,51 @@ export async function GET(request: Request) {
 
   let ok = false;
   let confirmedEmail: string | null = null;
+  // The intent we ACT on must be the one the verification cryptographically
+  // bound. verifyOtp validates `type` against the token_hash, so that type is
+  // trustworthy; exchangeCodeForSession ignores `type` (the code authenticates
+  // the user, not the intent), so a `?code=` callback yields NO verified intent
+  // and is confirmation-only. We never route on the raw URL `type`/`next` —
+  // only on `verifiedType`, the type the token itself proved.
+  let verifiedType: EmailOtpType | null = null;
 
   if (tokenHash && type) {
     const { data, error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
     ok = !error;
     confirmedEmail = data.user?.email ?? null;
+    if (ok) {
+      verifiedType = type;
+    }
   } else if (code) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     ok = !error;
     confirmedEmail = data.user?.email ?? null;
+    // Intentionally no verifiedType: a code is bound to the user, not to an
+    // intent, so code callbacks are confirmation-only (→ sign out → login).
   }
 
   if (!ok) {
     redirect(INVALID_LINK);
   }
 
-  // Route strictly by the OTP type, which Supabase binds to the token on the
-  // token_hash path: a signup token cannot be replayed as type=recovery because
-  // verifyOtp rejects the mismatch. The PKCE ?code= callback carries no type and
-  // the code authenticates the user, not the intent — so we deliberately do NOT
-  // infer recovery/settings from the caller-controlled `next` there, which would
-  // otherwise let a signup link be exchanged straight into the password-reset
-  // form (account takeover). Code callbacks are confirmation-only and fall
-  // through to sign-out → login; recovery and email-change must therefore arrive
-  // on the token_hash path (type=recovery / email_change).
-  if (type === "recovery") {
+  if (verifiedType === "recovery") {
+    // Bind the privileged reset to THIS verification: the reset page and
+    // resetPasswordAction require this marker, so a plain login session can
+    // never set a new password via the reset form — defense in depth even if
+    // routing ever regresses. httpOnly + short TTL, single-use (cleared on
+    // success). It rides the same redirect response as the session cookie, so
+    // it's exactly as reliable as the session the reset page already requires.
+    (await cookies()).set("vela_pw_recovery", "1", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 900,
+    });
     redirect("/reset-password?recovery=1");
   }
 
-  if (type === "email_change") {
+  if (verifiedType === "email_change") {
     redirect("/settings?email_updated=1");
   }
 

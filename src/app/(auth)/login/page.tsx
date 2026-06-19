@@ -1,7 +1,6 @@
 import Link from "next/link";
 
 import { BrandMark } from "@/components/brand-mark";
-import { AuthConfirmationBridge } from "@/components/auth/auth-confirmation-bridge";
 import { LoginForm } from "@/components/auth/login-form";
 import { sanitizeOversizedAuthMetadataByEmail } from "@/lib/auth-metadata";
 import { getEmailVerificationReceiptEmail } from "@/lib/email-verification-receipts";
@@ -25,8 +24,6 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   return (
     <>
-      <AuthConfirmationBridge />
-
       {/* Mobile brand (the desktop brand lives in the left panel) */}
       <BrandMark href="/" includeSubtitle={false} className="mb-10 lg:hidden" />
 
