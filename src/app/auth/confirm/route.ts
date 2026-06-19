@@ -68,6 +68,13 @@ export async function GET(request: Request) {
     // reset form — defense in depth even if routing ever regresses. httpOnly +
     // short TTL, single-use (cleared on success). It rides the same redirect
     // response as the session cookie, so it's as reliable as the session itself.
+    //
+    // KNOWN LIMITATION (tracked for the pre-US / HIPAA hardening pass): this is an
+    // unsigned cookie, so a caller who already holds this user's session can forge
+    // it (the user id is derivable from the session). The user-id binding blocks
+    // blind and cross-account forgery — sufficient for the non-PHI pilot — but the
+    // durable fix is a one-time, server-side nonce (Prisma-backed) verified and
+    // consumed on reset, landing with the audit-logging work before the US launch.
     (await cookies()).set("vela_pw_recovery", confirmedUserId ?? "", {
       httpOnly: true,
       sameSite: "lax",
