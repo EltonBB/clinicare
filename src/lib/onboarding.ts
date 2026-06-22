@@ -144,7 +144,7 @@ export function normalizeOnboardingState(value: unknown): OnboardingState {
   const owner = isRecord(value.owner) ? value.owner : {};
   const clinic = isRecord(value.clinic) ? value.clinic : {};
 
-  return {
+  const normalized: OnboardingState = {
     currentStep: readCurrentStep(value.currentStep),
     completed: readBoolean(value.completed, defaults.completed),
     owner: {
@@ -163,6 +163,16 @@ export function normalizeOnboardingState(value: unknown): OnboardingState {
       role: readString(staffMember.role, defaults.staffMember.role),
     },
   };
+
+  // A draft can only resume past the first (clinic) step once the clinic step's
+  // required field exists. This also neutralizes drafts saved under a previous
+  // step ordering, where the same numeric currentStep pointed at a different
+  // step — without it, such a draft could skip clinic validation entirely.
+  if (normalized.currentStep > 1 && !normalized.clinic.name.trim()) {
+    normalized.currentStep = 1;
+  }
+
+  return normalized;
 }
 
 export function isOnboardingCompleted(metadata: unknown) {

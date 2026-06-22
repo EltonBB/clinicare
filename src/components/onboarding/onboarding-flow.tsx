@@ -296,7 +296,13 @@ export function OnboardingFlow({
   }
 
   function handleSaveProgress() {
-    persistState(state, { status: "Progress saved. You can finish anytime." });
+    const nextStaff = solo
+      ? { name: "", role: state.staffMember.role || "Specialist" }
+      : state.staffMember;
+    persistState(
+      { ...state, staffMember: nextStaff },
+      { status: "Progress saved. You can finish anytime." }
+    );
   }
 
   function updateDay(day: WeekdayKey, patch: Partial<(typeof state.workingHours)[WeekdayKey]>) {
@@ -746,7 +752,13 @@ export function OnboardingFlow({
                         <motion.button
                           variants={itemVariants}
                           type="button"
-                          onClick={() => setSolo(true)}
+                          onClick={() => {
+                            setSolo(true);
+                            setState((current) => ({
+                              ...current,
+                              staffMember: { ...current.staffMember, name: "" },
+                            }));
+                          }}
                           className={cn(
                             "flex w-full items-center gap-3 rounded-(--radius-field) border bg-white px-3.5 py-3 text-left transition-colors active:scale-[0.99]",
                             solo ? "border-primary/55 ring-2 ring-primary/15" : "border-border"
