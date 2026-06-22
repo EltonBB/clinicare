@@ -51,6 +51,7 @@ export type DaySchedule = {
 export type WorkingHoursState = Record<WeekdayKey, DaySchedule>;
 
 export type OnboardingState = {
+  version: number;
   currentStep: number;
   completed: boolean;
   owner: {
@@ -80,8 +81,14 @@ const defaultWorkingHours: WorkingHoursState = {
   sunday: { enabled: false, start: "09:00", end: "13:00" },
 };
 
+// Bump when the persisted draft shape or step ordering changes, so drafts saved
+// under an older shape restart from the first step instead of resuming at a
+// numeric step index that now points at a different step.
+export const ONBOARDING_STATE_VERSION = 2;
+
 export function createDefaultOnboardingState(): OnboardingState {
   return {
+    version: ONBOARDING_STATE_VERSION,
     currentStep: 1,
     completed: false,
     owner: {
@@ -144,7 +151,10 @@ export function normalizeOnboardingState(value: unknown): OnboardingState {
   const owner = isRecord(value.owner) ? value.owner : {};
   const clinic = isRecord(value.clinic) ? value.clinic : {};
 
+  const incomingVersion = typeof value.version === "number" ? value.version : 0;
+
   const normalized: OnboardingState = {
+    version: ONBOARDING_STATE_VERSION,
     currentStep: readCurrentStep(value.currentStep),
     completed: readBoolean(value.completed, defaults.completed),
     owner: {
@@ -164,10 +174,17 @@ export function normalizeOnboardingState(value: unknown): OnboardingState {
     },
   };
 
-  // A draft can only resume past the first (clinic) step once the clinic step's
-  // required field exists. This also neutralizes drafts saved under a previous
-  // step ordering, where the same numeric currentStep pointed at a different
-  // step — without it, such a draft could skip clinic validation entirely.
+  // Drafts saved under an older shape can't be trusted to resume mid-flow: a
+  // numeric currentStep from a previous step ordering points at a different step
+  // now (e.g. old Hours -> new Team), so a user could finish without seeing a
+  // step. Restart such drafts from the first step so every step is walked under
+  // the current ordering; entered data is kept as defaults so it stays fast.
+  if (incomingVersion !== ONBOARDING_STATE_VERSION) {
+    normalized.currentStep = 1;
+  }
+
+  // Belt-and-suspenders: never resume past the clinic step without its required
+  // field, regardless of version.
   if (normalized.currentStep > 1 && !normalized.clinic.name.trim()) {
     normalized.currentStep = 1;
   }

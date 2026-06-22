@@ -137,6 +137,9 @@ function getStepError(state: OnboardingState, solo: boolean): string | null {
     if (!businessTypes.includes(state.clinic.type as (typeof businessTypes)[number])) {
       return "Choose what kind of clinic this is.";
     }
+    if (!state.owner.name.trim()) {
+      return "Enter the clinic owner's name before continuing.";
+    }
     if (state.clinic.accentColor === "custom" && !normalizeBrandHexColor(state.clinic.accentHex)) {
       return "Enter a valid brand color, for example #0A22FF.";
     }
@@ -195,8 +198,10 @@ export function OnboardingFlow({
   const isLastStep = state.currentStep >= onboardingSteps.length;
   const ownerFirstName = (state.owner.name || ownerName).trim().split(/\s+/)[0] || "there";
 
-  const logoDisplayUrl =
-    logoPreviewUrl || (isStorageReference(state.clinic.logoUrl) ? "" : state.clinic.logoUrl);
+  // Logo is upload-only, so the only display source is the signed URL resolved
+  // from the stored storage reference — never a raw string that could be smuggled
+  // into the CSS url() below via a tampered draft.
+  const logoDisplayUrl = logoPreviewUrl;
 
   // Variants — swift, ease-out, reduced-motion aware (movement off, opacity kept).
   const stepVariants: Variants = {
