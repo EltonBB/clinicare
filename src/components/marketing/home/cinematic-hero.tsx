@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Component, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
@@ -12,6 +12,46 @@ import { useMarketingScroll } from "../motion/scroll-context";
 
 // WebGL scene is client-only and lazy — the mesh + vignette stand in until it mounts.
 const HeroScene = dynamic(() => import("../motion/hero-scene"), { ssr: false });
+
+// Some browsers can't hand out a WebGL context at all — hardware acceleration
+// off, GPU blocklisted, headless. Probe once (cached) so we keep the static
+// brand mesh instead of letting Three.js throw on context creation.
+let webglSupport: boolean | null = null;
+function isWebGLAvailable() {
+  if (webglSupport !== null) return webglSupport;
+  try {
+    const canvas = document.createElement("canvas");
+    webglSupport = Boolean(
+      window.WebGLRenderingContext &&
+        (canvas.getContext("webgl") || canvas.getContext("experimental-webgl"))
+    );
+  } catch {
+    webglSupport = false;
+  }
+  return webglSupport;
+}
+
+/** SSR-safe WebGL capability probe — false on the server and until hydrated. */
+function useWebGLAvailable() {
+  return useSyncExternalStore(
+    () => () => {},
+    () => isWebGLAvailable(),
+    () => false,
+  );
+}
+
+// Safety net for the cases the probe can't predict — the real context failing
+// despite a passing probe, or the GPU process dying at mount. Swallow it and
+// fall through to the static mesh; never crash the page or report to Sentry.
+class WebglBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
 
 const trustSignals = ["No credit card to start", "Privacy-conscious by design", "WhatsApp-ready"];
 
@@ -35,7 +75,10 @@ export function CinematicHero() {
   // Mount the WebGL orb only on a fine-pointer device without reduced-motion;
   // touch/low-power and motion-sensitive users get the static brand mesh instead.
   const { reduced, coarse } = useMarketingScroll();
-  const showOrb = !reduced && !coarse;
+  // WebGL support resolves post-hydration (like reduced/coarse) to avoid an SSR
+  // mismatch; the orb only mounts once all three agree it's safe.
+  const webglOk = useWebGLAvailable();
+  const showOrb = !reduced && !coarse && webglOk;
 
   // Gentle scroll parallax on the brand mesh.
   const sceneRef = useScrollScene<HTMLElement>(({ root, gsap }) => {
@@ -70,7 +113,11 @@ export function CinematicHero() {
       <div aria-hidden data-hero-mesh className="vela-mesh absolute -inset-[12%] -z-30" />
       {/* WebGL orb — ambient depth on the right; skipped under reduced-motion / touch */}
       <div aria-hidden className="absolute inset-0 -z-20">
-        {showOrb ? <HeroScene active={heroInView} /> : null}
+        {showOrb ? (
+          <WebglBoundary>
+            <HeroScene active={heroInView} />
+          </WebglBoundary>
+        ) : null}
       </div>
       {/* faint engineering grid */}
       <div aria-hidden className="vela-grid-texture absolute inset-0 -z-20 opacity-40" />
