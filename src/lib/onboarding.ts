@@ -1,35 +1,34 @@
+// The onboarding flow opens on a Welcome intro (not a data step), then walks
+// three data steps before the "You're ready" launchpad. Each step pairs the
+// question it answers with the one-line "why" and the workspace section its
+// live preview should show, so the form and the preview stay in lockstep.
 export const onboardingSteps = [
   {
-    id: "owner",
-    shortLabel: "Owner",
-    title: "Tell us who owns this workspace",
-    description:
-      "Start with the clinic owner name. This keeps the workspace and account profile aligned.",
-  },
-  {
     id: "clinic",
-    shortLabel: "Clinic",
-    title: "Set up your clinic identity",
-    description:
-      "Add the clinic name, type, optional logo, and accent color before configuring operations.",
+    shortLabel: "Your clinic",
+    title: "What's your clinic, and how should it look?",
+    why: "This is how your workspace and patient messages will look.",
+    previewSection: "dashboard",
   },
   {
     id: "hours",
-    shortLabel: "Hours",
-    title: "Set your working hours",
-    description:
-      "Define when your business is open for appointments. You can customize individual staff hours later.",
+    shortLabel: "Opening hours",
+    title: "When are you open?",
+    why: "Vela builds your calendar from these and protects closed days.",
+    previewSection: "calendar",
   },
   {
-    id: "staff",
-    shortLabel: "Staff",
-    title: "Add your first staff member",
-    description:
-      "Start with one person so bookings and availability have an owner from day one.",
+    id: "team",
+    shortLabel: "Your team",
+    title: "Who's working day one?",
+    why: "Appointments are assigned to staff — add your first now, more anytime.",
+    previewSection: "staff",
   },
 ] as const;
 
 export type OnboardingStepId = (typeof onboardingSteps)[number]["id"];
+export type OnboardingPreviewSection =
+  (typeof onboardingSteps)[number]["previewSection"];
 
 export const weekdayOrder = [
   "monday",
