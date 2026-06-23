@@ -982,11 +982,11 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           "busiestDays": [
             {
               "count": 3,
-              "label": "Tue",
+              "label": "Mon",
             },
             {
               "count": 3,
-              "label": "Mon",
+              "label": "Tue",
             },
             {
               "count": 2,
@@ -1014,15 +1014,15 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
             },
             {
               "count": 1,
-              "label": "Fri",
+              "label": "Sun",
             },
             {
               "count": 1,
-              "label": "Sun",
+              "label": "Fri",
             },
           ],
         },
-        "evidenceSummary": "54.5% completed and 18.2% cancelled; busiest day Tue (3); quietest day Wed (1); 11 same-day bookings",
+        "evidenceSummary": "54.5% completed and 18.2% cancelled; busiest day Mon (3); quietest day Wed (1); 11 same-day bookings",
         "staffLoad": [
           {
             "appointments": 8,

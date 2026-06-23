@@ -559,14 +559,44 @@ function countDistinct<T>(values: T[]) {
   return new Set(values).size;
 }
 
+// Requires `appointments` sorted ascending by startAt (the view builder sorts
+// once up front). Binary-searches the inclusive [start, end] range — O(log n)
+// per call instead of scanning the whole array, which compounds across the many
+// per-window and per-chart-bucket filters. Output matches the previous
+// isWithinInterval filter exactly (inclusive on both ends).
 function filterAppointmentsInRange(
   appointments: ReportAppointment[],
   start: Date,
   end: Date
 ) {
-  return appointments.filter((appointment) =>
-    isWithinInterval(appointment.startAt, { start, end })
-  );
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+
+  // First index with startAt >= start.
+  let lo = 0;
+  let hi = appointments.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (appointments[mid].startAt.getTime() < startMs) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  const from = lo;
+
+  // First index (at or after `from`) with startAt > end.
+  hi = appointments.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (appointments[mid].startAt.getTime() <= endMs) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+
+  return appointments.slice(from, lo);
 }
 
 function filterMessagesInRange(
@@ -804,16 +834,19 @@ function buildPeriodDiagnostics(args: {
     }
   });
 
+  // Deterministic tiebreakers (label / hour) so equal-count days/hours order the
+  // same regardless of appointment iteration order — the row order is otherwise
+  // arbitrary (no orderBy on the fetch), which made these lists non-deterministic.
   const sortedDays = Array.from(dayCounts.entries())
     .map(([label, count]) => ({ label, count }))
-    .sort((left, right) => right.count - left.count);
+    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
   const busiestHours = Array.from(hourCounts.entries())
+    .sort(([hourLeft, countLeft], [hourRight, countRight]) => countRight - countLeft || hourLeft - hourRight)
+    .slice(0, 3)
     .map(([hour, count]) => ({
       label: formatHourLabel(hour),
       count,
-    }))
-    .sort((left, right) => right.count - left.count)
-    .slice(0, 3);
+    }));
   const staffLoad = args.staffMembers
     .filter((member) => member.isActive && member.status !== "INACTIVE")
     .map((member) => {
@@ -2124,7 +2157,7 @@ function buildPeriodView(args: {
 
 export function buildReportsViewFromWorkspace({
   business,
-  appointments,
+  appointments: appointmentsInput,
   clients,
   clientMix,
   messages,
@@ -2136,6 +2169,12 @@ export function buildReportsViewFromWorkspace({
   now = new Date(),
   timeZone = getAppTimeZone(),
 }: ReportsWorkspaceArgs): ReportsViewModel {
+  // Sort once by startAt so the many per-window / per-bucket range filters can
+  // binary-search instead of re-scanning the whole array each time. Every
+  // downstream consumer reads this sorted copy; results are order-independent.
+  const appointments = [...appointmentsInput].sort(
+    (left, right) => left.startAt.getTime() - right.startAt.getTime()
+  );
   const activeStaffCount = staffMembers.filter(
     (member) => member.isActive && member.status !== "INACTIVE"
   ).length;
