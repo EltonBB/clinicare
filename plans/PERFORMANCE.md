@@ -143,8 +143,8 @@ optionally verify in prod with `curl -sI -H 'Accept-Encoding: br' <url>` →
 | P5 | FK + redundant indexes | DB | High (scale) | S | minutes | ✅ schema · ⏳ apply (db push) |
 | — | Dashboard payments → `groupBy` | DB/payload | Med | S | done | ✅ landed + parity-verified |
 | P3 | Dashboard appt aggregation | CPU/DB | High | M | done | ✅ landed + parity-verified on prod |
-| P1 | Reports/analytics DB aggregation | CPU/DB | **Highest** | L | 3–4 d | 📋 plan 004 |
-| P2 | Booking client search (un-unbound) | payload | **Highest** | M | 1.5–2 d | 📋 plan 003 |
+| P2 | Booking client search (un-unbound) | payload/scaling | **Highest** | M | done | ✅ landed (grid count + server-search picker) |
+| P1 | Reports/analytics DB aggregation | CPU/DB | **Highest** | L | 3–4 d | 📋 plan 004 (harness ready) |
 | P4 | Staff directory aggregation | memory/DB | High | M | done | ✅ landed + parity-verified on prod |
 | P6 | Convert-to-client indexed phone | DB | Med | S–M | 0.5 d | 📋 backlog |
 | — | CI gate (typecheck+lint+test) | pipeline | Med | S | done | ✅ `.github/workflows/ci.yml` |
@@ -166,6 +166,14 @@ one, on top of the test baseline) → caching + CI gate.
 - (From hardening) atomic appointment save, 2 supporting indexes, currency single-source.
 
 ## Remaining (scoped, not safely single-session)
+
+> **Update:** P2 is now done — both unbounded client loads are eliminated
+> (the `/calendar` grid loads a count; booking/edit use a server-search
+> typeahead with a bounded recent list). With the clients directory already
+> paginated and dashboard/staff aggregated, **there are no unbounded queries
+> left on hot paths.** The only remaining ranked item is the *bounded* reports
+> computation (P1) — a high-volume refinement, not a live scaling cliff.
+
 - **P1 — reports/analytics rewrite (highest CPU):** a 2,400-line module consuming
   the 210-day appointment/message arrays across 8 periods + charts + AI-snapshot
   signatures. Needs a characterization-snapshot harness *first* (so the rewrite can
