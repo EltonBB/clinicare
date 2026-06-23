@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ clients: [] });
   }
 
-  const rate = checkRateLimit(`client-search:${user.id}`, {
+  const rate = await checkRateLimit(`client-search:${user.id}`, {
     limit: 30,
     windowMs: 10_000,
   });
