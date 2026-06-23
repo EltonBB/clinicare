@@ -131,6 +131,24 @@ export type DashboardPaymentStatusGroup = {
   _count: { _all: number };
 };
 
+/**
+ * Pre-aggregated appointment metrics for the dashboard, computed in the DB
+ * (see `lib/dashboard-data.ts`) instead of fetching the analytics window's rows
+ * and reducing them in JS.
+ */
+export type DashboardAppointmentAggregates = {
+  /** COMPLETED in the rolling 30-day window. */
+  recentCompleted: number;
+  /** CANCELLED in the rolling 30-day window. */
+  recentCancelled: number;
+  /** COMPLETED month-to-date. */
+  completedThisMonth: number;
+  /** Mean completed-visit length (minutes) in the rolling 30-day window. */
+  averageDurationMinutes: number;
+  /** Non-cancelled visit counts per app-zone calendar day (YYYY-MM-DD) in the window. */
+  visitCountsByDay: Array<{ key: string; count: number }>;
+};
+
 export type DashboardConversationRow = {
   id: string;
   contactName: string;
@@ -204,22 +222,17 @@ function toDashboardStatus(status: Appointment["status"]): DashboardAppointmentS
 
 const formatDashboardMoney = (cents: number) => formatCurrency(cents, { whole: true });
 
-function buildVisitsSummary(args: {
-  analyticsAppointments: Array<Pick<Appointment, "status" | "startAt" | "endAt">>;
+export function buildVisitsSummary(args: {
+  visitCountsByDay: Array<{ key: string; count: number }>;
   allTime: number;
   now: Date;
   timeZone: string;
 }): DashboardVisitsSummary {
-  const { analyticsAppointments, allTime, now, timeZone } = args;
+  const { visitCountsByDay, allTime, now, timeZone } = args;
   const countsByDay = new Map<string, number>();
 
-  for (const appointment of analyticsAppointments) {
-    if (appointment.status === "CANCELLED") {
-      continue;
-    }
-
-    const key = formatZonedDateKey(appointment.startAt, timeZone);
-    countsByDay.set(key, (countsByDay.get(key) ?? 0) + 1);
+  for (const bucket of visitCountsByDay) {
+    countsByDay.set(bucket.key, bucket.count);
   }
 
   const weekdayFormatter = new Intl.DateTimeFormat("en-US", {
@@ -328,13 +341,10 @@ export function buildDashboardViewFromWorkspace(args: {
   clientCount: number;
   appointmentCount: number;
   nonCancelledAppointmentCount: number;
-  analyticsAppointments: Array<Pick<Appointment, "status" | "startAt" | "endAt">>;
+  appointmentAggregates: DashboardAppointmentAggregates;
   paymentGroups?: DashboardPaymentStatusGroup[];
   conversations?: DashboardConversationRow[];
   staffMembers?: DashboardStaffRow[];
-  monthStart: Date;
-  /** Start of the rolling 30-day analytics window (may be after monthStart late in the month). */
-  recentWindowStart: Date;
   recentClientId?: string;
   now?: Date;
   timeZone?: string;
@@ -348,50 +358,28 @@ export function buildDashboardViewFromWorkspace(args: {
     clientCount,
     appointmentCount,
     nonCancelledAppointmentCount,
-    analyticsAppointments,
+    appointmentAggregates,
     paymentGroups = [],
     conversations = [],
     staffMembers = [],
-    monthStart,
-    recentWindowStart,
     recentClientId,
     now = new Date(),
     timeZone = getAppTimeZone(),
   } = args;
-  // The fetch window spans min(monthStart, recentWindowStart) so month-to-date
-  // counts are complete late in the month. Each metric then filters to the
-  // window it actually reports on, so the wider fetch never skews the others.
-  const recentAppointments = analyticsAppointments.filter(
-    (appointment) => appointment.startAt >= recentWindowStart
-  );
-  const recentCompleted = recentAppointments.filter(
-    (appointment) => appointment.status === "COMPLETED"
-  );
-  const recentFinal = recentAppointments.filter(
-    (appointment) =>
-      appointment.status === "COMPLETED" || appointment.status === "CANCELLED"
-  );
+  // Appointment metrics are aggregated in the DB (see lib/dashboard-data.ts) —
+  // the rolling-window completion split, month-to-date completed count, mean
+  // visit length, and per-day visit counts arrive pre-computed.
+  const recentFinal =
+    appointmentAggregates.recentCompleted + appointmentAggregates.recentCancelled;
   const completionRate =
-    recentFinal.length > 0
-      ? Math.round((recentCompleted.length / recentFinal.length) * 100)
+    recentFinal > 0
+      ? Math.round((appointmentAggregates.recentCompleted / recentFinal) * 100)
       : 0;
-  const completedThisMonth = analyticsAppointments.filter(
-    (appointment) =>
-      appointment.status === "COMPLETED" && appointment.startAt >= monthStart
-  ).length;
-  const averageDurationMinutes =
-    recentCompleted.length > 0
-      ? Math.round(
-          recentCompleted.reduce(
-            (sum, appointment) =>
-              sum + Math.max(differenceInMinutes(appointment.endAt, appointment.startAt), 0),
-            0
-          ) / recentCompleted.length
-        )
-      : 0;
+  const completedThisMonth = appointmentAggregates.completedThisMonth;
+  const averageDurationMinutes = appointmentAggregates.averageDurationMinutes;
   const todayKey = formatZonedDateKey(now, timeZone);
   const visitsSummary = buildVisitsSummary({
-    analyticsAppointments: recentAppointments,
+    visitCountsByDay: appointmentAggregates.visitCountsByDay,
     allTime: nonCancelledAppointmentCount,
     now,
     timeZone,

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildRevenueSummary, type DashboardPaymentStatusGroup } from "@/lib/dashboard";
+import {
+  buildRevenueSummary,
+  buildVisitsSummary,
+  type DashboardPaymentStatusGroup,
+} from "@/lib/dashboard";
 
 function group(
   status: string,
@@ -49,5 +53,49 @@ describe("buildRevenueSummary", () => {
 
     expect(summary.monthToDateDisplay).toBe("$0");
     expect(summary.hasPayments).toBe(false);
+  });
+});
+
+describe("buildVisitsSummary", () => {
+  // Fixed reference day; UTC zone keeps day keys == calendar dates.
+  const now = new Date("2026-06-23T12:00:00.000Z");
+
+  it("splits the window into last-7 bars, prior-7, and 30-day totals", () => {
+    const summary = buildVisitsSummary({
+      now,
+      timeZone: "UTC",
+      allTime: 100,
+      visitCountsByDay: [
+        { key: "2026-06-23", count: 3 }, // offset 0 (today, in last 7)
+        { key: "2026-06-22", count: 2 }, // offset 1 (last 7)
+        { key: "2026-06-17", count: 1 }, // offset 6 (last 7)
+        { key: "2026-06-16", count: 5 }, // offset 7 (prior 7)
+        { key: "2026-06-10", count: 4 }, // offset 13 (prior 7)
+        { key: "2026-05-01", count: 9 }, // outside 14 days, still in 30-day total
+      ],
+    });
+
+    expect(summary.days).toHaveLength(7);
+    expect(summary.days.at(-1)?.isToday).toBe(true);
+    expect(summary.lastSevenDays).toBe(6); // 3 + 2 + 1
+    expect(summary.previousSevenDays).toBe(9); // 5 + 4
+    expect(summary.lastThirtyDays).toBe(24); // sum of all buckets
+    expect(summary.allTime).toBe(100);
+    expect(summary.deltaLabel).toBe("-33% vs prior week"); // round((6-9)/9*100)
+    expect(summary.deltaTone).toBe("down");
+  });
+
+  it("reports a null delta when the prior week had no visits", () => {
+    const summary = buildVisitsSummary({
+      now,
+      timeZone: "UTC",
+      allTime: 0,
+      visitCountsByDay: [{ key: "2026-06-23", count: 2 }],
+    });
+
+    expect(summary.lastSevenDays).toBe(2);
+    expect(summary.previousSevenDays).toBe(0);
+    expect(summary.deltaLabel).toBeNull();
+    expect(summary.deltaTone).toBe("neutral");
   });
 });

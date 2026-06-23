@@ -4,6 +4,7 @@ import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
 import { prisma } from "@/lib/prisma";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { buildDashboardViewFromWorkspace } from "@/lib/dashboard";
+import { getDashboardAppointmentAggregates } from "@/lib/dashboard-data";
 import { subDays } from "date-fns";
 import {
   getAppTimeZone,
@@ -32,10 +33,6 @@ export default async function DashboardPage() {
   const todayEnd = todayWindow.end;
   const monthStart = getZonedMonthStart(now, timeZone);
   const recentWindowStart = getZonedDayWindow(subDays(now, 29), timeZone).start;
-  // Late in the month, monthStart precedes the 30-day window — fetch from
-  // whichever is earlier so month-to-date metrics aren't truncated.
-  const analyticsWindowStart =
-    monthStart < recentWindowStart ? monthStart : recentWindowStart;
   const weekdayMap = [6, 0, 1, 2, 3, 4, 5];
   const todayWeekday = weekdayMap[getZonedWeekday(now, timeZone)] ?? 0;
 
@@ -48,7 +45,7 @@ export default async function DashboardPage() {
     appointmentCountResult,
     lastClientsResult,
     nextAppointmentResult,
-    analyticsAppointmentsResult,
+    appointmentAggregatesResult,
     paymentsResult,
     conversationsResult,
     staffMembersResult,
@@ -168,19 +165,12 @@ export default async function DashboardPage() {
           startAt: "asc",
         },
       }),
-      prisma.appointment.findMany({
-        where: {
-          businessId: business.id,
-          startAt: {
-            gte: analyticsWindowStart,
-            lte: todayEnd,
-          },
-        },
-        select: {
-          status: true,
-          startAt: true,
-          endAt: true,
-        },
+      getDashboardAppointmentAggregates({
+        businessId: business.id,
+        recentWindowStart,
+        monthStart,
+        todayEnd,
+        timeZone,
       }),
       // Aggregate in the DB (per-status sums + counts) instead of fetching every
       // month-to-date payment row and reducing in JS — ships a handful of rows,
@@ -278,10 +268,16 @@ export default async function DashboardPage() {
     lastClientsResult.status === "fulfilled" ? lastClientsResult.value : [];
   const nextAppointment =
     nextAppointmentResult.status === "fulfilled" ? nextAppointmentResult.value : null;
-  const analyticsAppointments =
-    analyticsAppointmentsResult.status === "fulfilled"
-      ? analyticsAppointmentsResult.value
-      : [];
+  const appointmentAggregates =
+    appointmentAggregatesResult.status === "fulfilled"
+      ? appointmentAggregatesResult.value
+      : {
+          recentCompleted: 0,
+          recentCancelled: 0,
+          completedThisMonth: 0,
+          averageDurationMinutes: 0,
+          visitCountsByDay: [],
+        };
   const paymentGroups =
     paymentsResult.status === "fulfilled" ? paymentsResult.value : [];
   const conversations =
@@ -334,10 +330,10 @@ export default async function DashboardPage() {
     );
   }
 
-  if (analyticsAppointmentsResult.status === "rejected") {
+  if (appointmentAggregatesResult.status === "rejected") {
     console.error(
-      "Dashboard analytics appointments query failed",
-      analyticsAppointmentsResult.reason
+      "Dashboard appointment aggregates query failed",
+      appointmentAggregatesResult.reason
     );
   }
 
@@ -379,12 +375,10 @@ export default async function DashboardPage() {
     clientCount,
     appointmentCount,
     nonCancelledAppointmentCount,
-    analyticsAppointments,
+    appointmentAggregates,
     paymentGroups,
     conversations,
     staffMembers,
-    monthStart,
-    recentWindowStart,
     recentClientId: recentClient?.id,
     now,
     timeZone,
