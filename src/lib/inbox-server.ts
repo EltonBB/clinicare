@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
+import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 
 type SeedClient = {
@@ -15,16 +16,17 @@ async function ensureConversationForSeedClient(
   client: SeedClient
 ) {
   const normalizedClientPhone = normalizePhone(client.phone);
+  const clientPhoneKey = phoneLookupKey(client.phone);
 
-  if (!normalizedClientPhone) {
+  if (!normalizedClientPhone || !clientPhoneKey) {
     return;
   }
 
   await tx.conversation.upsert({
     where: {
-      businessId_phoneNumber: {
+      businessId_phoneKey: {
         businessId,
-        phoneNumber: normalizedClientPhone,
+        phoneKey: clientPhoneKey,
       },
     },
     update: {
@@ -33,6 +35,7 @@ async function ensureConversationForSeedClient(
     create: {
       businessId,
       phoneNumber: normalizedClientPhone,
+      phoneKey: clientPhoneKey,
       contactName: client.name,
       unreadCount: 0,
     },
@@ -99,12 +102,17 @@ export async function ensureConversationForClient(
   }
 
   const normalizedClientPhone = normalizePhone(client.phone);
+  const clientPhoneKey = phoneLookupKey(client.phone);
+
+  if (!clientPhoneKey) {
+    return null;
+  }
 
   return prisma.conversation.upsert({
     where: {
-      businessId_phoneNumber: {
+      businessId_phoneKey: {
         businessId,
-        phoneNumber: normalizedClientPhone,
+        phoneKey: clientPhoneKey,
       },
     },
     update: {
@@ -114,6 +122,7 @@ export async function ensureConversationForClient(
     create: {
       businessId,
       phoneNumber: normalizedClientPhone,
+      phoneKey: clientPhoneKey,
       contactName: client.name,
       unreadCount: 0,
     },
@@ -216,6 +225,7 @@ export async function normalizeConversationsForBusiness(businessId: string) {
           },
           data: {
             phoneNumber: canonicalPhone,
+            phoneKey: lookupKey,
             contactName:
               matchingClient?.name ??
               preferredConversation.contactName ??
@@ -228,11 +238,11 @@ export async function normalizeConversationsForBusiness(businessId: string) {
         });
       });
     } catch (error) {
-      console.error("Failed to normalize inbox conversations for business", {
+      // Record IDs only — `lookupKey` is a patient phone number (PHI) and must
+      // never reach logs.
+      logger.error("Failed to normalize inbox conversations for business.", error, {
         businessId,
-        lookupKey,
-        conversationIds: group.map((conversation) => conversation.id),
-        error,
+        conversationIds: group.map((conversation) => conversation.id).join(","),
       });
     }
   }

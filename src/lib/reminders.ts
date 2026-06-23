@@ -1,11 +1,15 @@
-import { addHours, isAfter } from "date-fns";
+import { addHours } from "date-fns";
 
 import { mapWithConcurrency } from "@/lib/concurrency";
-import { normalizePhone } from "@/lib/inbox";
+import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
+import { reminderTypeForAppointment } from "@/lib/reminder-schedule";
 import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
-import { sendTwilioWhatsAppMessage } from "@/lib/whatsapp";
+import {
+  mapTwilioStatusToDeliveryStatus,
+  sendTwilioWhatsAppMessage,
+} from "@/lib/whatsapp";
 
 type ReminderSyncResult = {
   sent: number;
@@ -18,48 +22,6 @@ export type ReminderCronResult = ReminderSyncResult & {
 
 function renderReminderTemplate(template: string, values: Record<string, string>) {
   return template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? "");
-}
-
-function reminderTypeForAppointment(args: {
-  startsAt: Date;
-  now: Date;
-  send24HourReminder: boolean;
-  send2HourReminder: boolean;
-  firstReminderHours: number;
-  secondReminderHours: number;
-  sentTypes: Set<string>;
-}) {
-  const {
-    startsAt,
-    now,
-    send24HourReminder,
-    send2HourReminder,
-    firstReminderHours,
-    secondReminderHours,
-    sentTypes,
-  } = args;
-
-  if (!isAfter(startsAt, now)) {
-    return null;
-  }
-
-  if (
-    send2HourReminder &&
-    !sentTypes.has("TWO_HOUR") &&
-    !isAfter(startsAt, addHours(now, secondReminderHours))
-  ) {
-    return "TWO_HOUR" as const;
-  }
-
-  if (
-    send24HourReminder &&
-    !sentTypes.has("TWENTY_FOUR_HOUR") &&
-    !isAfter(startsAt, addHours(now, firstReminderHours))
-  ) {
-    return "TWENTY_FOUR_HOUR" as const;
-  }
-
-  return null;
 }
 
 export async function syncAppointmentRemindersForBusiness(
@@ -169,8 +131,11 @@ export async function syncAppointmentRemindersForBusiness(
     }
 
     const clientPhone = normalizePhone(appointment.client.phone);
+    // Canonical dedup key (digits only) — the conversation is keyed on this so a
+    // reminder and the patient's later inbound reply resolve to the SAME row.
+    const clientPhoneKey = phoneLookupKey(appointment.client.phone);
 
-    if (!clientPhone) {
+    if (!clientPhone || !clientPhoneKey) {
       failed += 1;
       continue;
     }
@@ -194,9 +159,9 @@ export async function syncAppointmentRemindersForBusiness(
       await prisma.$transaction(async (tx) => {
         const clientConversation = await tx.conversation.upsert({
           where: {
-            businessId_phoneNumber: {
+            businessId_phoneKey: {
               businessId,
-              phoneNumber: clientPhone,
+              phoneKey: clientPhoneKey,
             },
           },
           update: {
@@ -206,6 +171,7 @@ export async function syncAppointmentRemindersForBusiness(
           create: {
             businessId,
             phoneNumber: clientPhone,
+            phoneKey: clientPhoneKey,
             contactName: appointment.client.name,
             unreadCount: 0,
           },
@@ -221,16 +187,7 @@ export async function syncAppointmentRemindersForBusiness(
             direction: "OUTBOUND",
             body,
             providerMessageSid: delivery.sid || null,
-            deliveryStatus:
-              delivery.status === "sent"
-                ? "SENT"
-                : delivery.status === "delivered"
-                  ? "DELIVERED"
-                  : delivery.status === "read"
-                    ? "READ"
-                    : delivery.status === "failed" || delivery.status === "undelivered"
-                      ? "FAILED"
-                      : "QUEUED",
+            deliveryStatus: mapTwilioStatusToDeliveryStatus(delivery.status),
             deliveryUpdatedAt: new Date(),
           },
         });
