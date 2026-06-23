@@ -142,10 +142,10 @@ optionally verify in prod with `curl -sI -H 'Accept-Encoding: br' <url>` →
 |---|---|---|---|---|---|---|
 | P5 | FK + redundant indexes | DB | High (scale) | S | minutes | ✅ schema · ⏳ apply (db push) |
 | — | Dashboard payments → `groupBy` | DB/payload | Med | S | done | ✅ landed + parity-verified |
+| P3 | Dashboard appt aggregation | CPU/DB | High | M | done | ✅ landed + parity-verified on prod |
 | P1 | Reports/analytics DB aggregation | CPU/DB | **Highest** | L | 3–4 d | 📋 plan 004 |
 | P2 | Booking client search (un-unbound) | payload | **Highest** | M | 1.5–2 d | 📋 plan 003 |
-| P3 | Dashboard appt aggregation | CPU/DB | High | M | 1 d | 📋 plan 004 |
-| P4 | Staff directory aggregation | memory/DB | High | M | 0.5–1 d | 📋 backlog |
+| P4 | Staff directory aggregation | memory/DB | High | M | done | ✅ landed + parity-verified on prod |
 | P6 | Convert-to-client indexed phone | DB | Med | S–M | 0.5 d | 📋 backlog |
 | — | CI gate (typecheck+lint+test) | pipeline | Med | S | 0.5 d | ⏳ next |
 | — | Report computation caching | CPU | Med | S | 0.5 d (after P1) | 📋 |
