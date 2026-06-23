@@ -144,7 +144,7 @@ optionally verify in prod with `curl -sI -H 'Accept-Encoding: br' <url>` →
 | — | Dashboard payments → `groupBy` | DB/payload | Med | S | done | ✅ landed + parity-verified |
 | P3 | Dashboard appt aggregation | CPU/DB | High | M | done | ✅ landed + parity-verified on prod |
 | P2 | Booking client search (un-unbound) | payload/scaling | **Highest** | M | done | ✅ landed (grid count + server-search picker) |
-| P1 | Reports/analytics DB aggregation | CPU/DB | **Highest** | L | 3–4 d | 📋 plan 004 (harness ready) |
+| P1 | Reports CPU (binary-search range filters) | CPU | **Highest** | M | done | ✅ landed + harness-verified; full DB-agg rewrite evaluated & rejected (see below) |
 | P4 | Staff directory aggregation | memory/DB | High | M | done | ✅ landed + parity-verified on prod |
 | P6 | Convert-to-client indexed phone | DB | Med | S–M | 0.5 d | 📋 backlog |
 | — | CI gate (typecheck+lint+test) | pipeline | Med | S | done | ✅ `.github/workflows/ci.yml` |
@@ -174,11 +174,15 @@ one, on top of the test baseline) → caching + CI gate.
 > left on hot paths.** The only remaining ranked item is the *bounded* reports
 > computation (P1) — a high-volume refinement, not a live scaling cliff.
 
-- **P1 — reports/analytics rewrite (highest CPU):** a 2,400-line module consuming
-  the 210-day appointment/message arrays across 8 periods + charts + AI-snapshot
-  signatures. Needs a characterization-snapshot harness *first* (so the rewrite can
-  prove byte-identical output) — that's why it's a focused ~3–4 day unit, not a
-  rushed in-session change. Plan: [004](004-reports-dashboard-db-aggregation.md).
+- **P1 — reports CPU: DONE (the right scope).** The actual hot cost was ~50
+  full-array range scans per page (per window + per chart bucket). Fixed by sorting
+  once + binary-searching the range (O(log n)/call), harness-verified byte-identical.
+  **The full DB-aggregation rewrite was evaluated and rejected:** the view needs
+  non-additive per-period metrics (distinct clients, repeat rate, busiest hour/day,
+  staff load, lead time) across 8 windows, i.e. ~50 aggregate round-trips per load —
+  which would *regress* typical clinics versus one bounded, now-indexed fetch. If a
+  single clinic ever reaches extreme volume, the path is a per-day `GROUP BY` rollup
+  or short-TTL cache (design, not a rote port), gated by the snapshot harness.
 - **P2 — booking client search:** UI change (combobox) needing signed-in browser QA,
   which has no reusable test session yet. Plan: [003](003-booking-client-search.md).
 - **P6, CI gate, report caching:** small, documented above.
