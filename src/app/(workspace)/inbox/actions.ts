@@ -574,7 +574,12 @@ export async function convertConversationToClientAction(
           phoneKey: normalizedPhoneKey,
           preferredChannel: "WhatsApp",
         },
-        update: {},
+        // Self-heal: if a legacy client row matched by phone but had a NULL
+        // phoneKey (created before the backfill / by older code), populate it so
+        // the indexed lookups can find it. Otherwise leave the row untouched.
+        update: {
+          phoneKey: normalizedPhoneKey,
+        },
         select: {
           id: true,
           name: true,
