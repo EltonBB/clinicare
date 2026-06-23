@@ -1,10 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { getCached, invalidateCache } from "@/lib/cache";
 
 // These run on the in-memory fallback (no Redis env in tests), which is exactly
 // the path that must work for dev / CI / unconfigured deploys.
 describe("getCached (in-memory fallback)", () => {
+  // Clear the process-global fallback map so cases are isolated by construction,
+  // not just by unique key suffixes.
+  beforeEach(() => {
+    globalThis.velaMemoryCache?.clear();
+  });
+
   it("runs the producer once on a miss, then serves the cached value", async () => {
     let calls = 0;
     const key = `test:hit:${Date.now()}`;

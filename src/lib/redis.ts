@@ -44,8 +44,3 @@ export function getRedis(): Redis | null {
   client = url && token ? new Redis({ url, token }) : null;
   return client;
 }
-
-export function isRedisConfigured(): boolean {
-  const { url, token } = readRedisConfig();
-  return Boolean(url && token);
-}

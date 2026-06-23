@@ -13,6 +13,12 @@ import { getRedis } from "@/lib/redis";
  * third-party store, which requires an Upstash BAA + the controls in
  * plans/REDIS.md. Cache only non-patient values (public/marketing data, billing
  * plan state, anonymized aggregates, computed counts).
+ *
+ * TENANT SCOPING — the caller's responsibility: this seam adds only a constant
+ * namespace, so any per-tenant value MUST include the businessId in `key`
+ * (e.g. `staff-count:${businessId}`). An unscoped key would serve one clinic's
+ * cached value to another — a tenant-isolation break. Only genuinely global
+ * data (e.g. `plans:public`) may omit a tenant segment.
  */
 const NAMESPACE = "vela:cache:";
 
