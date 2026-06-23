@@ -94,6 +94,10 @@ model Client {
   name                 String
   email                String?
   phone                String
+  // Canonical digit-only dedup key (phoneLookupKey: no "+", no formatting) so
+  // inbound webhook / reminder / convert paths resolve a client by an indexed
+  // lookup instead of scanning + JS-matching the whole client table.
+  phoneKey             String?
   gender               String?
   dateOfBirth          DateTime?
   address              String?
@@ -126,6 +130,7 @@ model Client {
 
   @@unique([businessId, phone])
   @@index([businessId, isArchived])
+  @@index([businessId, phoneKey])
 }
 
 model ClientMedication {
@@ -358,14 +363,25 @@ model Conversation {
   id          String    @id @default(cuid())
   businessId  String
   business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  // phoneNumber is the human-readable display value (best-known form, may keep
+  // a leading "+"); phoneKey is the canonical dedup key (phoneLookupKey: digits
+  // only). Every writer (webhook, reminder, inbox reply, convert) upserts on
+  // phoneKey so the same patient can never split into two conversation rows.
   phoneNumber String
+  phoneKey    String?
   contactName String
   unreadCount Int       @default(0)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   messages    Message[]
 
+  // phoneKey is the canonical dedup key every writer now upserts on. The
+  // phoneNumber unique is retained for backward-compatibility with the
+  // currently-deployed code (which still keys on phoneNumber), so the migration
+  // is safe to apply to live prod before the new code ships. It can be dropped
+  // as a cleanup once the phoneKey-based code is deployed everywhere.
   @@unique([businessId, phoneNumber])
+  @@unique([businessId, phoneKey])
   @@index([businessId, updatedAt])
 }
 

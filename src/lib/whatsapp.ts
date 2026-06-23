@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+import type { MessageDeliveryStatus } from "@prisma/client";
+
 const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01";
 const TWILIO_MESSAGING_API_BASE = "https://messaging.twilio.com/v2";
 
@@ -55,6 +57,31 @@ type TwilioSendStatus =
   | "read"
   | "undelivered"
   | "failed";
+
+/**
+ * Map any Twilio message status — a send-response status or a status-callback
+ * `MessageStatus` — to our `MessageDeliveryStatus` enum. Single source of truth
+ * so the reminder, inbox-reply, and webhook paths can't drift (they previously
+ * each carried their own copy of this ladder), and the future `sendMessage`
+ * seam owns exactly one provider-status mapping.
+ */
+export function mapTwilioStatusToDeliveryStatus(
+  status: string | null | undefined
+): MessageDeliveryStatus {
+  switch ((status ?? "").trim().toLowerCase()) {
+    case "read":
+      return "READ";
+    case "delivered":
+      return "DELIVERED";
+    case "sent":
+      return "SENT";
+    case "failed":
+    case "undelivered":
+      return "FAILED";
+    default:
+      return "QUEUED";
+  }
+}
 
 function isPrivateIpv4Hostname(hostname: string) {
   const octets = hostname.split(".").map((part) => Number(part));

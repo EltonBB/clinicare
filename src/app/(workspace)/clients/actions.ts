@@ -5,7 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { ensureConversationForClient, normalizeConversationsForBusiness } from "@/lib/inbox-server";
-import { normalizePhone } from "@/lib/inbox";
+import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import {
   hasUnsafePublicUrl,
   normalizeOptionalPublicUrl,
@@ -611,6 +611,9 @@ export async function saveClientAction(
   const business = context.business;
   const cleanedName = payload.name.trim();
   const cleanedPhone = normalizePhone(payload.phone);
+  // Canonical digit key kept in lockstep with phone so inbox/webhook/reminder
+  // lookups resolve this client by the indexed (businessId, phoneKey).
+  const cleanedPhoneKey = phoneLookupKey(payload.phone) || null;
 
   if (!cleanedName || !cleanedPhone) {
     return {
@@ -628,6 +631,7 @@ export async function saveClientAction(
     name: cleanedName,
     email: payload.email.trim() || null,
     phone: cleanedPhone,
+    phoneKey: cleanedPhoneKey,
     gender: payload.gender?.trim() || null,
     dateOfBirth: parseOptionalDate(payload.dateOfBirth),
     address: payload.address?.trim() || null,

@@ -15,6 +15,7 @@ import {
 } from "@/lib/inbox";
 import {
   getConfiguredTwilioFirstMessageTemplateSid,
+  mapTwilioStatusToDeliveryStatus,
   sendTwilioWhatsAppMessage,
   sendTwilioWhatsAppTemplateMessage,
 } from "@/lib/whatsapp";
@@ -285,24 +286,24 @@ export async function sendInboxMessageAction(
     };
   }
 
-  const [clients] = await Promise.all([
-    prisma.client.findMany({
-      where: {
-        businessId: context.business.id,
-      },
-      select: {
-        id: true,
-        name: true,
-        phone: true,
-      },
-    }),
+  // Resolve the linked client by the canonical digit key (indexed) instead of
+  // pulling the whole client table to JS-match one phone.
+  const conversationPhoneKey = phoneLookupKey(conversation.phoneNumber);
+  const [matchedClient, whatsAppConnection] = await Promise.all([
+    conversationPhoneKey
+      ? prisma.client.findFirst({
+          where: {
+            businessId: context.business.id,
+            phoneKey: conversationPhoneKey,
+          },
+          select: {
+            id: true,
+            name: true,
+          },
+        })
+      : null,
+    syncWhatsAppConnectionForBusiness(context.business.id),
   ]);
-  const whatsAppConnection = await syncWhatsAppConnectionForBusiness(
-    context.business.id
-  );
-  const matchedClient = clients.find(
-    (client) => phoneLookupKey(client.phone) === phoneLookupKey(conversation.phoneNumber)
-  );
 
   if (!whatsAppConnection || whatsAppConnection.status !== "CONNECTED") {
     return {
@@ -394,16 +395,7 @@ export async function sendInboxMessageAction(
         direction: "OUTBOUND",
         body: outboundBody,
         providerMessageSid: delivery?.sid || null,
-        deliveryStatus:
-          delivery?.status === "sent"
-            ? "SENT"
-            : delivery?.status === "delivered"
-              ? "DELIVERED"
-              : delivery?.status === "read"
-                ? "READ"
-                : delivery?.status === "failed" || delivery?.status === "undelivered"
-                  ? "FAILED"
-                  : "QUEUED",
+        deliveryStatus: mapTwilioStatusToDeliveryStatus(delivery?.status),
         deliveryUpdatedAt: new Date(),
       },
     });
@@ -534,21 +526,20 @@ export async function convertConversationToClientAction(
     };
   }
 
-  const existingClients = await prisma.client.findMany({
-    where: {
-      businessId,
-    },
-    select: {
-      id: true,
-      name: true,
-      phone: true,
-      email: true,
-    },
-  });
-
-  const matchedClient = existingClients.find(
-    (client) => phoneLookupKey(client.phone) === phoneLookupKey(conversation.phoneNumber)
-  );
+  // Indexed match on the canonical digit key instead of scanning all clients.
+  const conversationPhoneKey = phoneLookupKey(conversation.phoneNumber);
+  const matchedClient = conversationPhoneKey
+    ? await prisma.client.findFirst({
+        where: {
+          businessId,
+          phoneKey: conversationPhoneKey,
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+      })
+    : null;
 
   if (!matchedClient && !cleanedName) {
     return {
@@ -558,6 +549,7 @@ export async function convertConversationToClientAction(
   }
 
   const normalizedPhone = normalizePhone(conversation.phoneNumber) || conversation.phoneNumber.trim();
+  const normalizedPhoneKey = phoneLookupKey(conversation.phoneNumber) || null;
 
   const clientId = await prisma.$transaction(async (tx) => {
     let resolvedClientId = matchedClient?.id;
@@ -579,6 +571,7 @@ export async function convertConversationToClientAction(
           name: cleanedName,
           email: cleanedEmail,
           phone: normalizedPhone,
+          phoneKey: normalizedPhoneKey,
           preferredChannel: "WhatsApp",
         },
         update: {},

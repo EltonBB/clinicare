@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import { logger } from "@/lib/logger";
 import {
+  mapTwilioStatusToDeliveryStatus,
   validateTwilioSignature,
 } from "@/lib/whatsapp";
 
@@ -51,28 +52,6 @@ function resolveWebhookValidationUrls(request: Request) {
   }
 
   return Array.from(candidates);
-}
-
-function toDeliveryStatus(status: string) {
-  const normalized = status.trim().toLowerCase();
-
-  if (normalized === "read") {
-    return "READ" as const;
-  }
-
-  if (normalized === "delivered") {
-    return "DELIVERED" as const;
-  }
-
-  if (normalized === "sent") {
-    return "SENT" as const;
-  }
-
-  if (normalized === "failed" || normalized === "undelivered") {
-    return "FAILED" as const;
-  }
-
-  return "QUEUED" as const;
 }
 
 async function resolveInboundConnection(toPhone: string, fromPhone: string) {
@@ -138,14 +117,21 @@ async function resolveInboundConnection(toPhone: string, fromPhone: string) {
   return null;
 }
 
-// Client phone numbers are free-text (spaces, formatting), so match leniently on
-// the digit key. This is a single bounded query over small columns, replacing
-// the previous repeated full-client scans. (A normalized-phone column would let
-// this become a direct indexed lookup — tracked as a follow-up.)
+// Match the inbound number against a client by the canonical digit key, using
+// the (businessId, phoneKey) index — a direct lookup instead of scanning the
+// whole client table per inbound message (this path is driven by an external
+// party at message volume, so the scan was the worst place to leave unbounded).
 async function findClientByPhone(businessId: string, normalizedPhone: string) {
-  const candidates = await prisma.client.findMany({
+  const key = phoneLookupKey(normalizedPhone);
+
+  if (!key) {
+    return null;
+  }
+
+  return prisma.client.findFirst({
     where: {
       businessId,
+      phoneKey: key,
     },
     select: {
       id: true,
@@ -153,9 +139,6 @@ async function findClientByPhone(businessId: string, normalizedPhone: string) {
       phone: true,
     },
   });
-  const key = phoneLookupKey(normalizedPhone);
-
-  return candidates.find((client) => phoneLookupKey(client.phone) === key) ?? null;
 }
 
 async function resolveInboundConversation(
@@ -167,23 +150,27 @@ async function resolveInboundConversation(
   }
 
   const normalizedPhone = normalizePhone(fromPhone);
+  // Canonical dedup key — conversations are keyed on (businessId, phoneKey), so
+  // the unique index resolves them directly and an inbound reply always lands
+  // on the same row a reminder created (no "+"-prefix split).
+  const phoneKey = phoneLookupKey(fromPhone);
   const businessId = connection.businessId;
 
-  // Conversations are always stored with the normalized phone, so the unique
-  // (businessId, phoneNumber) index resolves them directly — no table scan.
   const [existingConversation, matchingClient] = await Promise.all([
-    prisma.conversation.findUnique({
-      where: {
-        businessId_phoneNumber: {
-          businessId,
-          phoneNumber: normalizedPhone,
-        },
-      },
-      select: {
-        id: true,
-        contactName: true,
-      },
-    }),
+    phoneKey
+      ? prisma.conversation.findUnique({
+          where: {
+            businessId_phoneKey: {
+              businessId,
+              phoneKey,
+            },
+          },
+          select: {
+            id: true,
+            contactName: true,
+          },
+        })
+      : null,
     findClientByPhone(businessId, normalizedPhone),
   ]);
 
@@ -192,6 +179,7 @@ async function resolveInboundConversation(
       businessId,
       conversationId: existingConversation.id,
       normalizedPhone,
+      phoneKey,
       clientId: matchingClient?.id ?? null,
       contactName: existingConversation.contactName,
     };
@@ -203,6 +191,7 @@ async function resolveInboundConversation(
         businessId,
         conversationId: null,
         normalizedPhone,
+        phoneKey,
         clientId: null,
         contactName: normalizedPhone,
       };
@@ -215,6 +204,7 @@ async function resolveInboundConversation(
     businessId,
     conversationId: null,
     normalizedPhone,
+    phoneKey,
     clientId: matchingClient.id,
     contactName: matchingClient.name,
   };
@@ -265,7 +255,7 @@ export async function POST(request: Request) {
         providerMessageSid: messageSid,
       },
       data: {
-        deliveryStatus: toDeliveryStatus(messageStatus),
+        deliveryStatus: mapTwilioStatusToDeliveryStatus(messageStatus),
         deliveryErrorCode: errorCode || null,
         deliveryUpdatedAt: new Date(),
       },
@@ -307,7 +297,14 @@ export async function POST(request: Request) {
   }
 
   const normalizedPhone = resolved.normalizedPhone;
+  const phoneKey = resolved.phoneKey;
   const normalizedTo = normalizePhone(to);
+
+  if (!phoneKey) {
+    // No digits to key the conversation on — nothing safe to store; ack so
+    // Twilio doesn't retry.
+    return xmlResponse();
+  }
 
   await prisma.$transaction(async (tx) => {
     if (
@@ -334,9 +331,9 @@ export async function POST(request: Request) {
 
     const conversation = await tx.conversation.upsert({
       where: {
-        businessId_phoneNumber: {
+        businessId_phoneKey: {
           businessId: resolved.businessId,
-          phoneNumber: normalizedPhone,
+          phoneKey,
         },
       },
       update: {
@@ -348,6 +345,7 @@ export async function POST(request: Request) {
       create: {
         businessId: resolved.businessId,
         phoneNumber: normalizedPhone,
+        phoneKey,
         contactName: profileName || resolved.contactName || normalizedPhone,
         unreadCount: 1,
       },
