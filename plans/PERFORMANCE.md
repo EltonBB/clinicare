@@ -154,8 +154,23 @@ optionally verify in prod with `curl -sI -H 'Accept-Encoding: br' <url>` →
 indexes (now) → P3 + P4 + P6 (quick DB wins) → P2 (booking UX) → P1 (reports, the big
 one, on top of the test baseline) → caching + CI gate.
 
-## Landed this loop (performance)
-- Dashboard payments aggregation (`groupBy` — exact parity, SQL-verified on prod).
-- FK + redundant-index optimization in `schema.prisma` + ready-to-apply SQL.
-- Verification baseline (Vitest, 19 tests) — unblocks the parity-critical aggregations.
+## Landed this loop (performance) — all committed, pushed, parity-verified on prod
+- **Dashboard payments** → `groupBy` (per-status sums/counts, not month-of-rows).
+- **Dashboard appointment KPIs (P3)** → DB aggregates: completion split, completed-
+  this-month, avg visit length, per-day visit bars (UTC→app-zone day buckets).
+- **Staff directory (P4)** → per-staff DB aggregates (today / completed-this-month /
+  completion-rate); the directory no longer loads every appointment per member.
+- **FK + redundant-index optimization** in `schema.prisma` + ready-to-apply
+  `prisma/perf-indexes.sql` (⏳ owner applies via db push).
+- **Verification baseline** (Vitest, 21 tests incl. revenue + visits-summary parity).
 - (From hardening) atomic appointment save, 2 supporting indexes, currency single-source.
+
+## Remaining (scoped, not safely single-session)
+- **P1 — reports/analytics rewrite (highest CPU):** a 2,400-line module consuming
+  the 210-day appointment/message arrays across 8 periods + charts + AI-snapshot
+  signatures. Needs a characterization-snapshot harness *first* (so the rewrite can
+  prove byte-identical output) — that's why it's a focused ~3–4 day unit, not a
+  rushed in-session change. Plan: [004](004-reports-dashboard-db-aggregation.md).
+- **P2 — booking client search:** UI change (combobox) needing signed-in browser QA,
+  which has no reusable test session yet. Plan: [003](003-booking-client-search.md).
+- **P6, CI gate, report caching:** small, documented above.
