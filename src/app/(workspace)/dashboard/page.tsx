@@ -182,7 +182,11 @@ export default async function DashboardPage() {
           endAt: true,
         },
       }),
-      prisma.clientPayment.findMany({
+      // Aggregate in the DB (per-status sums + counts) instead of fetching every
+      // month-to-date payment row and reducing in JS — ships a handful of rows,
+      // not the whole month's payments, and scales with payment volume.
+      prisma.clientPayment.groupBy({
+        by: ["status"],
         where: {
           businessId: business.id,
           OR: [
@@ -199,11 +203,11 @@ export default async function DashboardPage() {
             },
           ],
         },
-        select: {
+        _sum: {
           amountCents: true,
-          status: true,
-          paidAt: true,
-          createdAt: true,
+        },
+        _count: {
+          _all: true,
         },
       }),
       prisma.conversation.findMany({
@@ -278,7 +282,8 @@ export default async function DashboardPage() {
     analyticsAppointmentsResult.status === "fulfilled"
       ? analyticsAppointmentsResult.value
       : [];
-  const payments = paymentsResult.status === "fulfilled" ? paymentsResult.value : [];
+  const paymentGroups =
+    paymentsResult.status === "fulfilled" ? paymentsResult.value : [];
   const conversations =
     conversationsResult.status === "fulfilled" ? conversationsResult.value : [];
   const staffMembers =
@@ -375,7 +380,7 @@ export default async function DashboardPage() {
     appointmentCount,
     nonCancelledAppointmentCount,
     analyticsAppointments,
-    payments,
+    paymentGroups,
     conversations,
     staffMembers,
     monthStart,

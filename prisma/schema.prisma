@@ -126,7 +126,6 @@ model Client {
 
   @@unique([businessId, phone])
   @@index([businessId, isArchived])
-  @@index([businessId, phone])
 }
 
 model ClientMedication {
@@ -143,6 +142,7 @@ model ClientMedication {
   updatedAt  DateTime @updatedAt
 
   @@index([businessId, clientId, isActive])
+  @@index([clientId])
 }
 
 model ClientDocument {
@@ -164,6 +164,7 @@ model ClientDocument {
 
   @@index([businessId, clientId, createdAt])
   @@index([businessId, category])
+  @@index([clientId])
 }
 
 model ClientPayment {
@@ -191,6 +192,7 @@ model ClientPayment {
   @@index([businessId, invoiceNumber])
   @@index([businessId, paidAt])
   @@index([appointmentId])
+  @@index([clientId])
 }
 
 model ClientHealthItem {
@@ -209,6 +211,7 @@ model ClientHealthItem {
 
   @@index([businessId, clientId, type])
   @@index([businessId, clientId, recordedAt])
+  @@index([clientId])
 }
 
 model ClientCareNote {
@@ -226,6 +229,7 @@ model ClientCareNote {
 
   @@index([businessId, clientId, notedAt])
   @@index([staffMemberId])
+  @@index([clientId])
 }
 
 model ClientTreatmentPlanItem {
@@ -245,6 +249,7 @@ model ClientTreatmentPlanItem {
 
   @@index([businessId, clientId, status])
   @@index([appointmentId])
+  @@index([clientId])
 }
 
 model ClientFollowUpReminder {
@@ -262,6 +267,7 @@ model ClientFollowUpReminder {
 
   @@index([businessId, clientId, remindAt])
   @@index([businessId, status])
+  @@index([clientId])
 }
 
 model StaffShift {
@@ -307,6 +313,7 @@ model ClientGalleryItem {
   updatedAt  DateTime          @updatedAt
 
   @@index([businessId, clientId, createdAt])
+  @@index([clientId])
 }
 
 model Appointment {
@@ -359,7 +366,6 @@ model Conversation {
   messages    Message[]
 
   @@unique([businessId, phoneNumber])
-  @@index([businessId, phoneNumber])
   @@index([businessId, updatedAt])
 }
 
@@ -380,6 +386,7 @@ model Message {
   sentAt             DateTime               @default(now())
 
   @@index([conversationId, sentAt])
+  @@index([clientId])
 }
 
 model ReminderSettings {

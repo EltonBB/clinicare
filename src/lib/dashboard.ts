@@ -125,11 +125,10 @@ export type DashboardViewModel = {
   workspaceState: DashboardWorkspaceState;
 };
 
-export type DashboardPaymentRow = {
-  amountCents: number;
+export type DashboardPaymentStatusGroup = {
   status: string;
-  paidAt: Date | null;
-  createdAt: Date;
+  _sum: { amountCents: number | null };
+  _count: { _all: number };
 };
 
 export type DashboardConversationRow = {
@@ -277,21 +276,33 @@ function buildVisitsSummary(args: {
   };
 }
 
-function buildRevenueSummary(payments: DashboardPaymentRow[]): DashboardRevenueSummary {
-  const paidPayments = payments.filter((payment) => payment.status === "Paid");
-  const outstandingCents = payments
-    .filter(
-      (payment) => payment.status === "Unpaid" || payment.status === "Partially Paid"
-    )
-    .reduce((sum, payment) => sum + payment.amountCents, 0);
-  const paidCents = paidPayments.reduce((sum, payment) => sum + payment.amountCents, 0);
+export function buildRevenueSummary(
+  paymentGroups: DashboardPaymentStatusGroup[]
+): DashboardRevenueSummary {
+  let paidCents = 0;
+  let paidCountThisMonth = 0;
+  let outstandingCents = 0;
+  let totalCount = 0;
+
+  for (const group of paymentGroups) {
+    const sum = group._sum.amountCents ?? 0;
+    const count = group._count._all;
+    totalCount += count;
+
+    if (group.status === "Paid") {
+      paidCents += sum;
+      paidCountThisMonth += count;
+    } else if (group.status === "Unpaid" || group.status === "Partially Paid") {
+      outstandingCents += sum;
+    }
+  }
 
   return {
     monthToDateDisplay: formatDashboardMoney(paidCents),
-    paidCountThisMonth: paidPayments.length,
+    paidCountThisMonth,
     outstandingDisplay: formatDashboardMoney(outstandingCents),
     hasOutstanding: outstandingCents > 0,
-    hasPayments: payments.length > 0,
+    hasPayments: totalCount > 0,
   };
 }
 
@@ -318,7 +329,7 @@ export function buildDashboardViewFromWorkspace(args: {
   appointmentCount: number;
   nonCancelledAppointmentCount: number;
   analyticsAppointments: Array<Pick<Appointment, "status" | "startAt" | "endAt">>;
-  payments?: DashboardPaymentRow[];
+  paymentGroups?: DashboardPaymentStatusGroup[];
   conversations?: DashboardConversationRow[];
   staffMembers?: DashboardStaffRow[];
   monthStart: Date;
@@ -338,7 +349,7 @@ export function buildDashboardViewFromWorkspace(args: {
     appointmentCount,
     nonCancelledAppointmentCount,
     analyticsAppointments,
-    payments = [],
+    paymentGroups = [],
     conversations = [],
     staffMembers = [],
     monthStart,
@@ -385,7 +396,7 @@ export function buildDashboardViewFromWorkspace(args: {
     now,
     timeZone,
   });
-  const revenueSummary = buildRevenueSummary(payments);
+  const revenueSummary = buildRevenueSummary(paymentGroups);
   const conversationPreviews: DashboardConversationPreview[] = conversations.map(
     (conversation) => {
       const lastMessage = conversation.messages[0];
