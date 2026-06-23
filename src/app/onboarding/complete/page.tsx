@@ -122,7 +122,7 @@ export default async function OnboardingCompletePage() {
           {stats.map((stat) => (
             <div
               key={stat.label}
-              className="rounded-(--radius-card) border border-white/70 bg-white/75 p-4 text-left shadow-[0_18px_44px_-26px_rgba(10,34,255,0.30)] backdrop-blur-md"
+              className="rounded-(--radius-card) border border-white/70 bg-white/85 p-4 text-left shadow-[0_18px_44px_-26px_rgba(10,34,255,0.30)]"
             >
               <p className="text-2xl font-semibold tracking-tight text-foreground">{stat.value}</p>
               <p className="mt-1 text-xs text-muted-foreground">{stat.label}</p>
@@ -130,7 +130,7 @@ export default async function OnboardingCompletePage() {
           ))}
         </div>
 
-        <div className="section-reveal-delayed mt-4 w-full overflow-hidden rounded-(--radius-panel) border border-white/70 bg-white/80 text-left shadow-[0_30px_80px_-30px_rgba(10,34,255,0.28)] backdrop-blur-xl">
+        <div className="section-reveal-delayed mt-4 w-full overflow-hidden rounded-(--radius-panel) border border-white/70 bg-white/90 text-left shadow-[0_30px_80px_-30px_rgba(10,34,255,0.28)]">
           <p className="border-b border-border px-4 py-3 text-sm font-semibold text-foreground">
             Next best actions
           </p>

@@ -184,15 +184,25 @@ export function OnboardingFlow({
   const orbFarX = useTransform(springX, (v) => v * 28);
   const orbFarY = useTransform(springY, (v) => v * 22);
   useEffect(() => {
-    if (reduce) {
+    if (reduce || window.matchMedia("(pointer: coarse)").matches) {
       return;
     }
-    const onPointerMove = (event: PointerEvent) => {
-      pointerX.set(event.clientX / window.innerWidth - 0.5);
-      pointerY.set(event.clientY / window.innerHeight - 0.5);
+    let viewportWidth = window.innerWidth;
+    let viewportHeight = window.innerHeight;
+    const onResize = () => {
+      viewportWidth = window.innerWidth;
+      viewportHeight = window.innerHeight;
     };
+    const onPointerMove = (event: PointerEvent) => {
+      pointerX.set(event.clientX / viewportWidth - 0.5);
+      pointerY.set(event.clientY / viewportHeight - 0.5);
+    };
+    window.addEventListener("resize", onResize);
     window.addEventListener("pointermove", onPointerMove);
-    return () => window.removeEventListener("pointermove", onPointerMove);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("pointermove", onPointerMove);
+    };
   }, [reduce, pointerX, pointerY]);
 
   // Seed from initialState only, so the server render and the first client render
@@ -529,7 +539,7 @@ export function OnboardingFlow({
                         <motion.div
                           key={item.id}
                           variants={itemVariants}
-                          className="flex items-center gap-3.5 rounded-(--radius-field) border border-border bg-white/70 px-4 py-3 backdrop-blur-sm transition-[transform,border-color,box-shadow] duration-(--duration-base) hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[0_12px_28px_rgba(10,34,255,0.10)]"
+                          className="flex items-center gap-3.5 rounded-(--radius-field) border border-border bg-white/80 px-4 py-3 transition-[transform,border-color,box-shadow] duration-(--duration-base) hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[0_12px_28px_rgba(10,34,255,0.10)]"
                         >
                           <span className="flex size-9 items-center justify-center rounded-(--radius-tile) border border-border bg-white text-primary">
                             <Icon className="size-4" />
@@ -576,7 +586,7 @@ export function OnboardingFlow({
                   </motion.div>
                 </div>
               ) : (
-                <div className="rounded-(--radius-panel) border border-white/70 bg-white/80 p-6 shadow-[0_30px_80px_-28px_rgba(10,34,255,0.28)] backdrop-blur-xl sm:p-8">
+                <div className="rounded-(--radius-panel) border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-28px_rgba(10,34,255,0.28)] sm:p-8">
                   <motion.div variants={itemVariants} className="flex items-center gap-3">
                     <span className="flex size-10 items-center justify-center rounded-(--radius-tile) border border-border bg-white text-primary">
                       <StepIcon className="size-5" />
