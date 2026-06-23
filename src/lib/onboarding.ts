@@ -1,31 +1,24 @@
+// The onboarding flow opens on a Welcome intro (not a data step), then walks
+// three data steps before the "You're ready" launchpad. Each step pairs the
+// question it answers with the one-line "why" shown beneath it.
 export const onboardingSteps = [
   {
-    id: "owner",
-    shortLabel: "Owner",
-    title: "Tell us who owns this workspace",
-    description:
-      "Start with the clinic owner name. This keeps the workspace and account profile aligned.",
-  },
-  {
     id: "clinic",
-    shortLabel: "Clinic",
-    title: "Set up your clinic identity",
-    description:
-      "Add the clinic name, type, optional logo, and accent color before configuring operations.",
+    shortLabel: "Your clinic",
+    title: "What's your clinic, and how should it look?",
+    why: "This is how your workspace and patient messages will look.",
   },
   {
     id: "hours",
-    shortLabel: "Hours",
-    title: "Set your working hours",
-    description:
-      "Define when your business is open for appointments. You can customize individual staff hours later.",
+    shortLabel: "Opening hours",
+    title: "When are you open?",
+    why: "Vela builds your calendar from these and protects closed days.",
   },
   {
-    id: "staff",
-    shortLabel: "Staff",
-    title: "Add your first staff member",
-    description:
-      "Start with one person so bookings and availability have an owner from day one.",
+    id: "team",
+    shortLabel: "Your team",
+    title: "Who's working day one?",
+    why: "Appointments are assigned to staff — add your first now, more anytime.",
   },
 ] as const;
 
@@ -52,6 +45,7 @@ export type DaySchedule = {
 export type WorkingHoursState = Record<WeekdayKey, DaySchedule>;
 
 export type OnboardingState = {
+  version: number;
   currentStep: number;
   completed: boolean;
   owner: {
@@ -71,6 +65,13 @@ export type OnboardingState = {
   };
 };
 
+/** Hours between two "HH:MM" times, minute-accurate and clamped at 0. */
+export function hoursBetweenTimes(start: string, end: string) {
+  const [startHour = 0, startMinute = 0] = start.split(":").map(Number);
+  const [endHour = 0, endMinute = 0] = end.split(":").map(Number);
+  return Math.max(endHour * 60 + endMinute - (startHour * 60 + startMinute), 0) / 60;
+}
+
 const defaultWorkingHours: WorkingHoursState = {
   monday: { enabled: true, start: "09:00", end: "17:00" },
   tuesday: { enabled: true, start: "09:00", end: "17:00" },
@@ -81,8 +82,14 @@ const defaultWorkingHours: WorkingHoursState = {
   sunday: { enabled: false, start: "09:00", end: "13:00" },
 };
 
+// Bump when the persisted draft shape or step ordering changes, so drafts saved
+// under an older shape restart from the first step instead of resuming at a
+// numeric step index that now points at a different step.
+export const ONBOARDING_STATE_VERSION = 2;
+
 export function createDefaultOnboardingState(): OnboardingState {
   return {
+    version: ONBOARDING_STATE_VERSION,
     currentStep: 1,
     completed: false,
     owner: {
@@ -145,7 +152,10 @@ export function normalizeOnboardingState(value: unknown): OnboardingState {
   const owner = isRecord(value.owner) ? value.owner : {};
   const clinic = isRecord(value.clinic) ? value.clinic : {};
 
-  return {
+  const incomingVersion = typeof value.version === "number" ? value.version : 0;
+
+  const normalized: OnboardingState = {
+    version: ONBOARDING_STATE_VERSION,
     currentStep: readCurrentStep(value.currentStep),
     completed: readBoolean(value.completed, defaults.completed),
     owner: {
@@ -164,6 +174,23 @@ export function normalizeOnboardingState(value: unknown): OnboardingState {
       role: readString(staffMember.role, defaults.staffMember.role),
     },
   };
+
+  // Drafts saved under an older shape can't be trusted to resume mid-flow: a
+  // numeric currentStep from a previous step ordering points at a different step
+  // now (e.g. old Hours -> new Team), so a user could finish without seeing a
+  // step. Restart such drafts from the first step so every step is walked under
+  // the current ordering; entered data is kept as defaults so it stays fast.
+  if (incomingVersion !== ONBOARDING_STATE_VERSION) {
+    normalized.currentStep = 1;
+  }
+
+  // Belt-and-suspenders: never resume past the clinic step without its required
+  // field, regardless of version.
+  if (normalized.currentStep > 1 && !normalized.clinic.name.trim()) {
+    normalized.currentStep = 1;
+  }
+
+  return normalized;
 }
 
 export function isOnboardingCompleted(metadata: unknown) {
