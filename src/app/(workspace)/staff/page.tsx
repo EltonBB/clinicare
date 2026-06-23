@@ -7,11 +7,6 @@ import { buildStaffViewFromRecords } from "@/lib/staff";
 import { getStaffDirectoryCounts } from "@/lib/staff-data";
 import { getZonedDayWindow, getZonedMonthWindow } from "@/lib/time-zone";
 
-function completedAppointmentCutoff() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), 1);
-}
-
 function staffShiftCutoff() {
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
@@ -106,7 +101,10 @@ export default async function StaffPage({
     }),
     getStaffDirectoryCounts({
       businessId: business.id,
-      completionCutoff: completedAppointmentCutoff(),
+      // Use the clinic-zone month start (not a server-local boundary) so the
+      // completion-rate window agrees with completedThisMonth around month
+      // boundaries (Codex review).
+      completionCutoff: monthWindow.start,
       monthStart: monthWindow.start,
       monthEnd: monthWindow.end,
       todayStart: todayWindow.start,
