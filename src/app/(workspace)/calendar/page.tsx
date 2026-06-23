@@ -40,7 +40,7 @@ export default async function CalendarPage({
     redirect(`/calendar/new${params.size ? `?${params.toString()}` : ""}`);
   }
 
-  const [appointments, scheduleBlocks, clients, staffMembers, businessHours] = await Promise.all([
+  const [appointments, scheduleBlocks, clientCount, staffMembers, businessHours] = await Promise.all([
     prisma.appointment.findMany({
       where: {
         businessId: business.id,
@@ -82,18 +82,12 @@ export default async function CalendarPage({
         startsAt: "asc",
       },
     }),
-    prisma.client.findMany({
+    // Only need to know whether any client exists (to gate the booking CTA) —
+    // don't load the whole client table to render the calendar.
+    prisma.client.count({
       where: {
         businessId: business.id,
         isArchived: false,
-      },
-      select: {
-        id: true,
-        name: true,
-        phone: true,
-      },
-      orderBy: {
-        name: "asc",
       },
     }),
     prisma.staffMember.findMany({
@@ -125,7 +119,7 @@ export default async function CalendarPage({
   const initialView = buildCalendarViewFromRecords({
     appointments,
     scheduleBlocks,
-    clients,
+    hasClients: clientCount > 0,
     staffMembers,
     businessHours,
     ownerName,

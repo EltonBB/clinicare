@@ -52,7 +52,11 @@ export type CalendarViewModel = {
   timeZoneLabel: string;
   appointments: CalendarAppointment[];
   scheduleBlocks: CalendarScheduleBlock[];
+  // Booking/edit forms need the picker list; the calendar grid only needs to
+  // know whether any client exists (to gate the booking CTA). The grid surface
+  // passes `hasClients` so it never loads the whole client table just to render.
   clients: CalendarSelectOption[];
+  hasClients: boolean;
   staffMembers: CalendarSelectOption[];
   businessHours: CalendarBusinessHours[];
 };
@@ -130,7 +134,10 @@ export function toPrismaAppointmentStatus(status: CalendarAppointmentStatus) {
 export function buildCalendarViewFromRecords(args: {
   appointments: AppointmentWithRelations[];
   scheduleBlocks?: ScheduleBlockWithRelations[];
-  clients: Pick<Client, "id" | "name" | "phone">[];
+  // Provide `clients` for the booking/edit pickers, or just `hasClients` for the
+  // calendar grid (which only gates the booking CTA and shouldn't load the table).
+  clients?: Pick<Client, "id" | "name" | "phone">[];
+  hasClients?: boolean;
   staffMembers: Pick<StaffMember, "id" | "name">[];
   businessHours: Pick<BusinessHours, "weekday" | "isOpen" | "startTime" | "endTime">[];
   ownerName: string;
@@ -139,12 +146,18 @@ export function buildCalendarViewFromRecords(args: {
   const {
     appointments,
     scheduleBlocks = [],
-    clients,
+    clients = [],
+    hasClients,
     staffMembers,
     businessHours,
     ownerName,
     initialDate,
   } = args;
+  const clientOptions = clients.map((client) => ({
+    id: client.id,
+    name: client.name,
+    phone: client.phone ?? undefined,
+  }));
   const initialDateValue =
     initialDate ?? formatZonedDateKey(appointments[0]?.startAt ?? new Date());
 
@@ -173,11 +186,8 @@ export function buildCalendarViewFromRecords(args: {
       endTime: formatZonedTime24(block.endsAt),
       notes: block.reason ?? "",
     })),
-    clients: clients.map((client) => ({
-      id: client.id,
-      name: client.name,
-      phone: client.phone ?? undefined,
-    })),
+    clients: clientOptions,
+    hasClients: hasClients ?? clientOptions.length > 0,
     staffMembers: staffMembers.map((member) => ({
       id: member.id,
       name: member.name,

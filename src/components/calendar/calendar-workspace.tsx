@@ -407,7 +407,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
   const [activeDate, setActiveDate] = useState(() => parseISO(initialView.initialDate));
   const appointments = initialView.appointments;
   const scheduleBlocks = initialView.scheduleBlocks;
-  const hasClients = initialView.clients.length > 0;
+  const hasClients = initialView.hasClients;
   const todayDate = useMemo(
     () => parseISO(initialView.initialDate),
     [initialView.initialDate]
