@@ -29,6 +29,8 @@ export default async function NewAppointmentPage({
   } = await searchParams;
 
   const [clients, staffMembers, businessHours] = await Promise.all([
+    // Bounded recent list for the picker; the form's combobox searches the rest
+    // via /api/clients/search, so we never ship the whole client table.
     prisma.client.findMany({
       where: {
         businessId: business.id,
@@ -40,8 +42,9 @@ export default async function NewAppointmentPage({
         phone: true,
       },
       orderBy: {
-        name: "asc",
+        updatedAt: "desc",
       },
+      take: 25,
     }),
     prisma.staffMember.findMany({
       where: {
@@ -69,9 +72,30 @@ export default async function NewAppointmentPage({
     }),
   ]);
 
+  // Make sure a deep-linked (?client=) client is in the picker list even if it's
+  // not among the 25 most recent, so the preselection renders correctly.
+  let pickerClients = clients;
+  if (
+    typeof requestedClientId === "string" &&
+    requestedClientId &&
+    !clients.some((client) => client.id === requestedClientId)
+  ) {
+    const preselected = await prisma.client.findFirst({
+      where: {
+        id: requestedClientId,
+        businessId: business.id,
+        isArchived: false,
+      },
+      select: { id: true, name: true, phone: true },
+    });
+    if (preselected) {
+      pickerClients = [preselected, ...clients];
+    }
+  }
+
   const initialClientId =
     typeof requestedClientId === "string" &&
-    clients.some((client) => client.id === requestedClientId)
+    pickerClients.some((client) => client.id === requestedClientId)
       ? requestedClientId
       : undefined;
   const initialDate: string = isValidDateParam(requestedDate)
@@ -88,7 +112,7 @@ export default async function NewAppointmentPage({
       backLabel="calendar"
     >
       <NewAppointmentForm
-        clients={clients.map((client) => ({
+        clients={pickerClients.map((client) => ({
           id: client.id,
           name: client.name,
           phone: client.phone ?? undefined,

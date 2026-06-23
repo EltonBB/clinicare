@@ -29,6 +29,7 @@ export default async function EditAppointmentPage({
           select: {
             id: true,
             name: true,
+            phone: true,
           },
         },
         staffMember: {
@@ -39,6 +40,7 @@ export default async function EditAppointmentPage({
         },
       },
     }),
+    // Bounded recent list; the form's combobox searches the rest server-side.
     prisma.client.findMany({
       where: {
         businessId: business.id,
@@ -50,8 +52,9 @@ export default async function EditAppointmentPage({
         phone: true,
       },
       orderBy: {
-        name: "asc",
+        updatedAt: "desc",
       },
+      take: 25,
     }),
     prisma.staffMember.findMany({
       where: {
@@ -83,9 +86,22 @@ export default async function EditAppointmentPage({
     notFound();
   }
 
+  // Ensure the appointment's current client is in the bounded picker list so the
+  // combobox shows it even when it isn't among the 25 most recent.
+  const pickerClients = clients.some((client) => client.id === appointment.clientId)
+    ? clients
+    : [
+        {
+          id: appointment.client.id,
+          name: appointment.client.name,
+          phone: appointment.client.phone,
+        },
+        ...clients,
+      ];
+
   const calendarView = buildCalendarViewFromRecords({
     appointments: [appointment],
-    clients,
+    clients: pickerClients,
     staffMembers,
     businessHours,
     ownerName,
