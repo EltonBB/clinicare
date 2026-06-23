@@ -89,10 +89,11 @@ function parseOptionalDate(value?: string) {
     return null;
   }
 
-  // Anchor date-only fields to midnight in the app's time zone (not UTC), so a
-  // date entered as YYYY-MM-DD displays as the same calendar day for clinics
-  // west of UTC — consistent with how appointment instants are parsed.
-  return parseZonedWallClock(value, "00:00");
+  // Store date-only fields at UTC midnight: the render/edit paths format the
+  // stored Date with date-fns (UTC on Vercel), so UTC midnight round-trips to
+  // the entered calendar day (a zoned anchor would shift the day — PR #13).
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function parseAmountToCents(value?: string) {

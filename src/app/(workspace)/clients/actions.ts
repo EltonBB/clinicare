@@ -18,7 +18,6 @@ import {
 } from "@/lib/clients";
 import { normalizeStorageReference } from "@/lib/media-storage";
 import { deleteStorageReferences } from "@/lib/media-storage-server";
-import { parseZonedWallClock } from "@/lib/time-zone";
 
 export type SaveClientResult = {
   ok: boolean;
@@ -488,10 +487,13 @@ function parseOptionalDate(value: string | undefined) {
     return null;
   }
 
-  // Anchor date-only fields (date of birth, payment/reminder dates) to midnight
-  // in the app's time zone rather than UTC, so they render as the same calendar
-  // day for clinics west of UTC.
-  return parseZonedWallClock(value, "00:00");
+  // Store date-only fields at UTC midnight. The render/edit paths format the
+  // stored Date with date-fns (runtime-local, which is UTC on Vercel), so UTC
+  // midnight round-trips to the entered calendar day. (A zoned anchor would
+  // shift the day for the render path — see PR #13 review.)
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function parseAmountToCents(value: string) {

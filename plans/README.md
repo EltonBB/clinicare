@@ -70,6 +70,24 @@ in the plan — "better a missed reminder than a duplicate."
 
 ---
 
+## Reverted after PR #13 (Codex) review — moved back to the roadmap
+
+Two earlier "fixes" were reverted because review showed they regressed behavior:
+
+- **BUG-05 (date-only zoned anchor) — REVERTED.** `parseOptionalDate` was changed
+  to store app-zone midnight; but the render/edit paths format the stored `Date`
+  with `date-fns` (runtime-local = UTC on Vercel), so a zoned anchor shifts the
+  shown day *back* for the current pilot zone (Budapest). UTC midnight is the
+  display-consistent representation given UTC-based rendering. The real fix —
+  render date-only fields through the app-zone formatters everywhere, then anchor
+  zoned — is a roadmap item (touches all DOB/payment/reminder render+edit paths).
+- **Reminder idempotency (claim-before-send) — REVERTED.** Claiming the
+  `AppointmentReminder` row before the provider send means a crash between insert
+  and send drops that reminder permanently (a missed reminder ≈ a no-show, worse
+  than a duplicate for a clinic). Back to send-then-record (main's behavior). The
+  robust fix is a **pending/claimed state with expiry/retry** — needs a schema
+  column + coordinated migration; see [002](002-reminder-idempotency.md).
+
 ## Roadmap — ranked by leverage (impact ÷ effort, discounted by risk)
 
 Plans `001`–`007` are written out in full. The remaining backlog items are
