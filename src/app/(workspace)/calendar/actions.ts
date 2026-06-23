@@ -314,7 +314,19 @@ export async function saveAppointmentAction(
 
   // Validate the optional payment up front (pure guards) so the write path below
   // can run as a single atomic transaction.
+  const enteredAmount = payload.paymentAmount?.trim();
   const paymentAmountCents = parseAmountToCents(payload.paymentAmount);
+
+  // A non-blank amount that won't parse (malformed, negative, or over the $1M
+  // cap) is a user error — reject it instead of silently saving an appointment
+  // with no ledger entry. Blank stays optional; "0" parses to a no-charge entry.
+  if (enteredAmount && paymentAmountCents === null) {
+    return {
+      ok: false,
+      error: "Enter a valid payment amount up to $1,000,000, or leave it blank.",
+    };
+  }
+
   const hasPayment = paymentAmountCents !== null && paymentAmountCents > 0;
 
   if (hasPayment && hasUnsafePublicUrl(payload.paymentReceiptUrl)) {
