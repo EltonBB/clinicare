@@ -12,7 +12,7 @@ import {
   normalizeOnboardingState,
   type OnboardingState,
 } from "@/lib/onboarding";
-import { createClient } from "@/utils/supabase/server";
+import { getCurrentUser, updateCurrentUserMetadata } from "@/lib/auth";
 
 export type SaveOnboardingStateResult = {
   ok: boolean;
@@ -209,10 +209,7 @@ async function bootstrapWorkspaceFromOnboarding(user: {
 export async function saveOnboardingStateAction(
   nextState: OnboardingState
 ): Promise<SaveOnboardingStateResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     return {
@@ -263,9 +260,7 @@ export async function saveOnboardingStateAction(
     onboarding_completed: metadataState.completed,
   };
 
-  const { error } = await supabase.auth.updateUser({
-    data: nextMetadata,
-  });
+  const { error } = await updateCurrentUserMetadata(nextMetadata);
 
   if (error) {
     return {

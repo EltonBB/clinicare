@@ -507,20 +507,6 @@ export async function fetchTwilioWhatsAppSender(
   return normalizeTwilioSenderPayload(payload);
 }
 
-export async function findTwilioWhatsAppSenderByPhoneNumber(
-  phoneNumber: string,
-  options: TwilioRequestOptions = {}
-) {
-  const senderId = normalizeWhatsAppAddress(phoneNumber);
-  const senders = await listTwilioWhatsAppSenders(options);
-
-  const sender = senders.find((candidate) => {
-    return candidate.senderId.toLowerCase() === senderId.toLowerCase();
-  });
-
-  return sender ?? null;
-}
-
 export async function listTwilioWhatsAppSenders(
   options: TwilioRequestOptions = {}
 ) {

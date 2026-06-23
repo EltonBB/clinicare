@@ -5,8 +5,8 @@ import { after } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { requireCurrentBusiness, requireCurrentWorkspace } from "@/lib/business";
+import { getCurrentUser, updateCurrentUserMetadata } from "@/lib/auth";
 import { sanitizeAuthMetadataForSession } from "@/lib/auth-metadata";
-import { createClient } from "@/utils/supabase/server";
 import { sendTwilioWhatsAppMessage } from "@/lib/whatsapp";
 import {
   beginWhatsAppLiveConnection,
@@ -80,10 +80,7 @@ export async function getSettingsDataAction(): Promise<SettingsState> {
 export async function saveSettingsAction(
   payload: SaveSettingsPayload
 ): Promise<SaveSettingsResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     return {
@@ -341,9 +338,7 @@ export async function saveSettingsAction(
     full_name: payload.business.ownerName,
   };
 
-  const { error } = await supabase.auth.updateUser({
-    data: nextMetadata,
-  });
+  const { error } = await updateCurrentUserMetadata(nextMetadata);
 
   if (error) {
     return {
@@ -378,10 +373,7 @@ export async function saveSettingsAction(
 export async function sendWhatsAppTestAction(
   rawRecipient: string
 ): Promise<SendWhatsAppTestResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     return {
@@ -507,10 +499,7 @@ export async function sendWhatsAppTestAction(
 export async function prepareWhatsAppLiveConnectionAction(
   rawPhoneNumber?: string
 ): Promise<PrepareWhatsAppLiveConnectionResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     return {
@@ -588,10 +577,7 @@ export async function prepareWhatsAppLiveConnectionAction(
 }
 
 export async function refreshWhatsAppLiveConnectionAction(): Promise<RefreshWhatsAppLiveConnectionResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     return {
@@ -651,10 +637,7 @@ export async function refreshWhatsAppLiveConnectionAction(): Promise<RefreshWhat
 export async function submitWhatsAppVerificationCodeAction(
   rawVerificationCode: string
 ): Promise<SubmitWhatsAppVerificationCodeResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     return {

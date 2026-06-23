@@ -4,11 +4,8 @@ import { StaffWorkspace } from "@/components/staff/staff-workspace";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
 import { buildStaffViewFromRecords } from "@/lib/staff";
-
-function completedAppointmentCutoff() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), 1);
-}
+import { getStaffDirectoryCounts } from "@/lib/staff-data";
+import { getZonedDayWindow, getZonedMonthWindow } from "@/lib/time-zone";
 
 function staffShiftCutoff() {
   const now = new Date();
@@ -49,69 +46,73 @@ export default async function StaffPage({
     }
   }
 
-  const records = await prisma.staffMember.findMany({
-    where: {
-      businessId: business.id,
-    },
-    include: {
-      timeEntries: {
-        where: {
-          checkedInAt: {
-            gte: staffTimeEntryCutoff(),
-          },
-        },
-        select: {
-          checkedInAt: true,
-          checkedOutAt: true,
-        },
-        orderBy: {
-          checkedInAt: "desc",
-        },
-      },
-      appointments: {
-        where: {
-          startAt: {
-            gte: completedAppointmentCutoff(),
-          },
-        },
-        select: {
-          startAt: true,
-          endAt: true,
-          status: true,
-        },
-        orderBy: {
-          startAt: "desc",
-        },
-      },
-      shifts: {
-        where: {
-          startsAt: {
-            gte: staffShiftCutoff(),
-          },
-        },
-        select: {
-          id: true,
-          startsAt: true,
-          endsAt: true,
-          status: true,
-        },
-        orderBy: {
-          startsAt: "asc",
-        },
-        take: 8,
-      },
-    },
-    orderBy: [
-      {
-        isActive: "desc",
-      },
-      {
-        name: "asc",
-      },
-    ],
-  });
+  const now = new Date();
+  const todayWindow = getZonedDayWindow(now);
+  const monthWindow = getZonedMonthWindow(now);
 
-  const initialView = buildStaffViewFromRecords(records);
+  // Per-staff appointment counts are aggregated in the DB (see lib/staff-data.ts)
+  // instead of loading every month-to-date appointment per member just to count.
+  const [records, countsByStaff] = await Promise.all([
+    prisma.staffMember.findMany({
+      where: {
+        businessId: business.id,
+      },
+      include: {
+        timeEntries: {
+          where: {
+            checkedInAt: {
+              gte: staffTimeEntryCutoff(),
+            },
+          },
+          select: {
+            checkedInAt: true,
+            checkedOutAt: true,
+          },
+          orderBy: {
+            checkedInAt: "desc",
+          },
+        },
+        shifts: {
+          where: {
+            startsAt: {
+              gte: staffShiftCutoff(),
+            },
+          },
+          select: {
+            id: true,
+            startsAt: true,
+            endsAt: true,
+            status: true,
+          },
+          orderBy: {
+            startsAt: "asc",
+          },
+          take: 8,
+        },
+      },
+      orderBy: [
+        {
+          isActive: "desc",
+        },
+        {
+          name: "asc",
+        },
+      ],
+    }),
+    getStaffDirectoryCounts({
+      businessId: business.id,
+      // Use the clinic-zone month start (not a server-local boundary) so the
+      // completion-rate window agrees with completedThisMonth around month
+      // boundaries (Codex review).
+      completionCutoff: monthWindow.start,
+      monthStart: monthWindow.start,
+      monthEnd: monthWindow.end,
+      todayStart: todayWindow.start,
+      todayEnd: todayWindow.end,
+    }),
+  ]);
+
+  const initialView = buildStaffViewFromRecords(records, countsByStaff);
 
   return <StaffWorkspace initialView={initialView} />;
 }

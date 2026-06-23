@@ -1,6 +1,7 @@
 import { differenceInMinutes, subDays } from "date-fns";
 import type { Appointment, Business, Client } from "@prisma/client";
 import { isProBusinessPlan, planDisplayName, planStatusLabel } from "@/lib/billing";
+import { formatCurrency } from "@/lib/utils";
 import {
   formatZonedDateKey,
   formatZonedLongDate,
@@ -124,11 +125,28 @@ export type DashboardViewModel = {
   workspaceState: DashboardWorkspaceState;
 };
 
-export type DashboardPaymentRow = {
-  amountCents: number;
+export type DashboardPaymentStatusGroup = {
   status: string;
-  paidAt: Date | null;
-  createdAt: Date;
+  _sum: { amountCents: number | null };
+  _count: { _all: number };
+};
+
+/**
+ * Pre-aggregated appointment metrics for the dashboard, computed in the DB
+ * (see `lib/dashboard-data.ts`) instead of fetching the analytics window's rows
+ * and reducing them in JS.
+ */
+export type DashboardAppointmentAggregates = {
+  /** COMPLETED in the rolling 30-day window. */
+  recentCompleted: number;
+  /** CANCELLED in the rolling 30-day window. */
+  recentCancelled: number;
+  /** COMPLETED month-to-date. */
+  completedThisMonth: number;
+  /** Mean completed-visit length (minutes) in the rolling 30-day window. */
+  averageDurationMinutes: number;
+  /** Non-cancelled visit counts per app-zone calendar day (YYYY-MM-DD) in the window. */
+  visitCountsByDay: Array<{ key: string; count: number }>;
 };
 
 export type DashboardConversationRow = {
@@ -202,30 +220,19 @@ function toDashboardStatus(status: Appointment["status"]): DashboardAppointmentS
   return "confirmed";
 }
 
-function formatDashboardMoney(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(Math.round(cents / 100));
-}
+const formatDashboardMoney = (cents: number) => formatCurrency(cents, { whole: true });
 
-function buildVisitsSummary(args: {
-  analyticsAppointments: Array<Pick<Appointment, "status" | "startAt" | "endAt">>;
+export function buildVisitsSummary(args: {
+  visitCountsByDay: Array<{ key: string; count: number }>;
   allTime: number;
   now: Date;
   timeZone: string;
 }): DashboardVisitsSummary {
-  const { analyticsAppointments, allTime, now, timeZone } = args;
+  const { visitCountsByDay, allTime, now, timeZone } = args;
   const countsByDay = new Map<string, number>();
 
-  for (const appointment of analyticsAppointments) {
-    if (appointment.status === "CANCELLED") {
-      continue;
-    }
-
-    const key = formatZonedDateKey(appointment.startAt, timeZone);
-    countsByDay.set(key, (countsByDay.get(key) ?? 0) + 1);
+  for (const bucket of visitCountsByDay) {
+    countsByDay.set(bucket.key, bucket.count);
   }
 
   const weekdayFormatter = new Intl.DateTimeFormat("en-US", {
@@ -282,21 +289,33 @@ function buildVisitsSummary(args: {
   };
 }
 
-function buildRevenueSummary(payments: DashboardPaymentRow[]): DashboardRevenueSummary {
-  const paidPayments = payments.filter((payment) => payment.status === "Paid");
-  const outstandingCents = payments
-    .filter(
-      (payment) => payment.status === "Unpaid" || payment.status === "Partially Paid"
-    )
-    .reduce((sum, payment) => sum + payment.amountCents, 0);
-  const paidCents = paidPayments.reduce((sum, payment) => sum + payment.amountCents, 0);
+export function buildRevenueSummary(
+  paymentGroups: DashboardPaymentStatusGroup[]
+): DashboardRevenueSummary {
+  let paidCents = 0;
+  let paidCountThisMonth = 0;
+  let outstandingCents = 0;
+  let totalCount = 0;
+
+  for (const group of paymentGroups) {
+    const sum = group._sum.amountCents ?? 0;
+    const count = group._count._all;
+    totalCount += count;
+
+    if (group.status === "Paid") {
+      paidCents += sum;
+      paidCountThisMonth += count;
+    } else if (group.status === "Unpaid" || group.status === "Partially Paid") {
+      outstandingCents += sum;
+    }
+  }
 
   return {
     monthToDateDisplay: formatDashboardMoney(paidCents),
-    paidCountThisMonth: paidPayments.length,
+    paidCountThisMonth,
     outstandingDisplay: formatDashboardMoney(outstandingCents),
     hasOutstanding: outstandingCents > 0,
-    hasPayments: payments.length > 0,
+    hasPayments: totalCount > 0,
   };
 }
 
@@ -322,13 +341,10 @@ export function buildDashboardViewFromWorkspace(args: {
   clientCount: number;
   appointmentCount: number;
   nonCancelledAppointmentCount: number;
-  analyticsAppointments: Array<Pick<Appointment, "status" | "startAt" | "endAt">>;
-  payments?: DashboardPaymentRow[];
+  appointmentAggregates: DashboardAppointmentAggregates;
+  paymentGroups?: DashboardPaymentStatusGroup[];
   conversations?: DashboardConversationRow[];
   staffMembers?: DashboardStaffRow[];
-  monthStart: Date;
-  /** Start of the rolling 30-day analytics window (may be after monthStart late in the month). */
-  recentWindowStart: Date;
   recentClientId?: string;
   now?: Date;
   timeZone?: string;
@@ -342,55 +358,33 @@ export function buildDashboardViewFromWorkspace(args: {
     clientCount,
     appointmentCount,
     nonCancelledAppointmentCount,
-    analyticsAppointments,
-    payments = [],
+    appointmentAggregates,
+    paymentGroups = [],
     conversations = [],
     staffMembers = [],
-    monthStart,
-    recentWindowStart,
     recentClientId,
     now = new Date(),
     timeZone = getAppTimeZone(),
   } = args;
-  // The fetch window spans min(monthStart, recentWindowStart) so month-to-date
-  // counts are complete late in the month. Each metric then filters to the
-  // window it actually reports on, so the wider fetch never skews the others.
-  const recentAppointments = analyticsAppointments.filter(
-    (appointment) => appointment.startAt >= recentWindowStart
-  );
-  const recentCompleted = recentAppointments.filter(
-    (appointment) => appointment.status === "COMPLETED"
-  );
-  const recentFinal = recentAppointments.filter(
-    (appointment) =>
-      appointment.status === "COMPLETED" || appointment.status === "CANCELLED"
-  );
+  // Appointment metrics are aggregated in the DB (see lib/dashboard-data.ts) —
+  // the rolling-window completion split, month-to-date completed count, mean
+  // visit length, and per-day visit counts arrive pre-computed.
+  const recentFinal =
+    appointmentAggregates.recentCompleted + appointmentAggregates.recentCancelled;
   const completionRate =
-    recentFinal.length > 0
-      ? Math.round((recentCompleted.length / recentFinal.length) * 100)
+    recentFinal > 0
+      ? Math.round((appointmentAggregates.recentCompleted / recentFinal) * 100)
       : 0;
-  const completedThisMonth = analyticsAppointments.filter(
-    (appointment) =>
-      appointment.status === "COMPLETED" && appointment.startAt >= monthStart
-  ).length;
-  const averageDurationMinutes =
-    recentCompleted.length > 0
-      ? Math.round(
-          recentCompleted.reduce(
-            (sum, appointment) =>
-              sum + Math.max(differenceInMinutes(appointment.endAt, appointment.startAt), 0),
-            0
-          ) / recentCompleted.length
-        )
-      : 0;
+  const completedThisMonth = appointmentAggregates.completedThisMonth;
+  const averageDurationMinutes = appointmentAggregates.averageDurationMinutes;
   const todayKey = formatZonedDateKey(now, timeZone);
   const visitsSummary = buildVisitsSummary({
-    analyticsAppointments: recentAppointments,
+    visitCountsByDay: appointmentAggregates.visitCountsByDay,
     allTime: nonCancelledAppointmentCount,
     now,
     timeZone,
   });
-  const revenueSummary = buildRevenueSummary(payments);
+  const revenueSummary = buildRevenueSummary(paymentGroups);
   const conversationPreviews: DashboardConversationPreview[] = conversations.map(
     (conversation) => {
       const lastMessage = conversation.messages[0];

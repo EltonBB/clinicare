@@ -88,7 +88,3 @@ export function normalizeStorageReference(value: string) {
 export function isStorageReference(value: string) {
   return parseStorageReference(value) !== null;
 }
-
-export function isEmbeddedImageUrl(value: string) {
-  return value.trim().startsWith("data:");
-}

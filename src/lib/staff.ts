@@ -109,8 +109,42 @@ type StaffWithRelations = StaffMember & {
 type StaffDirectoryWithRelations = StaffMember & {
   timeEntries: Pick<StaffTimeEntry, "checkedInAt" | "checkedOutAt">[];
   shifts: Pick<StaffShift, "id" | "startsAt" | "endsAt" | "status">[];
-  appointments: Pick<Appointment, "startAt" | "endAt" | "status">[];
 };
+
+/** Per-staff appointment counts for the directory, computed in the DB at scale. */
+export type StaffDirectoryCounts = {
+  appointmentsToday: number;
+  completionRate: number;
+  completedThisMonth: number;
+};
+
+const EMPTY_STAFF_COUNTS: StaffDirectoryCounts = {
+  appointmentsToday: 0,
+  completionRate: 0,
+  completedThisMonth: 0,
+};
+
+/**
+ * Directory counts from in-memory appointment rows — used by the staff *detail*
+ * builder, which already loads a single member's appointments. The directory
+ * *page* computes the same shape in the DB (see lib/staff-data.ts) so it never
+ * loads every appointment per member.
+ */
+function computeStaffDirectoryCounts(
+  appointments: Array<Pick<Appointment, "startAt" | "status">>
+): StaffDirectoryCounts {
+  const todayKey = formatZonedDateKey();
+
+  return {
+    appointmentsToday: appointments.filter(
+      (appointment) => formatZonedDateKey(appointment.startAt) === todayKey
+    ).length,
+    completionRate: calculateCompletionRate(appointments),
+    completedThisMonth: appointments.filter(
+      (appointment) => appointment.status === "COMPLETED" && isThisMonth(appointment.startAt)
+    ).length,
+  };
+}
 
 function normalizeStaffStatus(value: StaffMember["status"]): StaffStatus {
   return staffStatuses.includes(value as StaffStatus) ? (value as StaffStatus) : "ACTIVE";
@@ -260,7 +294,8 @@ function calculateCompletionRate(appointments: Pick<Appointment, "status">[]) {
 }
 
 export function buildStaffDirectoryRecord(
-  member: StaffDirectoryWithRelations
+  member: StaffDirectoryWithRelations,
+  counts: StaffDirectoryCounts = EMPTY_STAFF_COUNTS
 ): StaffDirectoryItem {
   const todayKey = formatZonedDateKey();
   const todayShift = member.shifts.find(
@@ -284,19 +319,14 @@ export function buildStaffDirectoryRecord(
     status: normalizedStatus,
     isCheckedIn,
     weeklyHours: calculateWeeklyHours(member.timeEntries),
-    appointmentsToday: member.appointments.filter(
-      (appointment) => formatZonedDateKey(appointment.startAt) === todayKey
-    ).length,
-    completionRate: calculateCompletionRate(member.appointments),
+    appointmentsToday: counts.appointmentsToday,
+    completionRate: counts.completionRate,
     shiftLabel: todayShift ? formatShift(todayShift.startsAt, todayShift.endsAt) : "",
     nextShift: nextShiftLabel(member.shifts),
     canClock: clock.canClock,
     clockLabel: clock.clockLabel,
     clockDisabledReason: clock.clockDisabledReason,
-    completedThisMonth: member.appointments.filter(
-      (appointment) =>
-        appointment.status === "COMPLETED" && isThisMonth(appointment.startAt)
-    ).length,
+    completedThisMonth: counts.completedThisMonth,
   };
 }
 
@@ -308,7 +338,7 @@ export function buildStaffRecord(member: StaffWithRelations): StaffRecord {
   const weekStart = currentWeekStart();
 
   return {
-    ...buildStaffDirectoryRecord(member),
+    ...buildStaffDirectoryRecord(member, computeStaffDirectoryCounts(member.appointments)),
     schedule: buildSchedule(member.shifts),
     todayAppointments: member.appointments
       .filter(
@@ -349,9 +379,12 @@ export function buildStaffRecord(member: StaffWithRelations): StaffRecord {
 }
 
 export function buildStaffViewFromRecords(
-  records: StaffDirectoryWithRelations[]
+  records: StaffDirectoryWithRelations[],
+  countsByStaff: Map<string, StaffDirectoryCounts> = new Map()
 ): StaffViewModel {
-  const staff = records.map(buildStaffDirectoryRecord);
+  const staff = records.map((member) =>
+    buildStaffDirectoryRecord(member, countsByStaff.get(member.id) ?? EMPTY_STAFF_COUNTS)
+  );
 
   return {
     staff,

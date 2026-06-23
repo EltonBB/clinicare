@@ -11,6 +11,7 @@ import {
   saveAppointmentAction,
 } from "@/app/(workspace)/calendar/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { ClientCombobox } from "@/components/calendar/client-combobox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -230,18 +231,11 @@ export function NewAppointmentForm({
       <WorkspaceFormSection title="Client">
         <label className="block space-y-2">
           <span className="text-sm font-semibold text-foreground">Client</span>
-          <select
+          <ClientCombobox
             value={clientId}
-            onChange={(event) => setClientId(event.target.value)}
-            className={fieldSelectClass}
-          >
-            {clients.map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.name}
-                {client.phone ? ` - ${client.phone}` : ""}
-              </option>
-            ))}
-          </select>
+            onChange={setClientId}
+            initialOptions={clients}
+          />
         </label>
       </WorkspaceFormSection>
 

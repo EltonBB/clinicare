@@ -487,6 +487,10 @@ function parseOptionalDate(value: string | undefined) {
     return null;
   }
 
+  // Store date-only fields at UTC midnight. The render/edit paths format the
+  // stored Date with date-fns (runtime-local, which is UTC on Vercel), so UTC
+  // midnight round-trips to the entered calendar day. (A zoned anchor would
+  // shift the day for the render path — see PR #13 review.)
   const parsed = new Date(`${value}T00:00:00.000Z`);
 
   return Number.isNaN(parsed.getTime()) ? null : parsed;
@@ -495,7 +499,9 @@ function parseOptionalDate(value: string | undefined) {
 function parseAmountToCents(value: string) {
   const normalized = Number(value.replace(/[^0-9.-]/g, ""));
 
-  if (!Number.isFinite(normalized) || normalized < 0) {
+  // Reject negatives and absurd fat-finger amounts (> $1,000,000) so a typo
+  // can't write a huge value into the ledger and corrupt revenue reporting.
+  if (!Number.isFinite(normalized) || normalized < 0 || normalized > 1_000_000) {
     return null;
   }
 

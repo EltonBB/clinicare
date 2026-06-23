@@ -15,6 +15,7 @@ import type {
 import { format } from "date-fns";
 
 import { resolveMediaDisplayUrls } from "@/lib/media-storage-server";
+import { formatCurrency } from "@/lib/utils";
 
 export type ClientStatus = "active" | "at-risk" | "inactive" | "archived";
 
@@ -363,12 +364,7 @@ function buildMessages(client: ClientWithRelations): ClientMessageEntry[] {
   }));
 }
 
-function formatMoney(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(cents / 100);
-}
+const formatMoney = (cents: number) => formatCurrency(cents);
 
 function formatFileSize(bytes: number | null) {
   if (!bytes || bytes <= 0) {
