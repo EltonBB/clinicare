@@ -147,7 +147,7 @@ optionally verify in prod with `curl -sI -H 'Accept-Encoding: br' <url>` →
 | P2 | Booking client search (un-unbound) | payload | **Highest** | M | 1.5–2 d | 📋 plan 003 |
 | P4 | Staff directory aggregation | memory/DB | High | M | done | ✅ landed + parity-verified on prod |
 | P6 | Convert-to-client indexed phone | DB | Med | S–M | 0.5 d | 📋 backlog |
-| — | CI gate (typecheck+lint+test) | pipeline | Med | S | 0.5 d | ⏳ next |
+| — | CI gate (typecheck+lint+test) | pipeline | Med | S | done | ✅ `.github/workflows/ci.yml` |
 | — | Report computation caching | CPU | Med | S | 0.5 d (after P1) | 📋 |
 
 **Total to clear the ranked list: ~8–10 engineering days**, sequenced: apply P5
