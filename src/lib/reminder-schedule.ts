@@ -27,9 +27,12 @@ export type ReminderDecisionArgs = {
  *  - The window checks use `<=` (via `!isAfter`), so the exact boundary instant
  *    (appointment exactly N hours away) fires.
  *
- * NOTE: this only fires correctly if the cron runs frequently enough to catch
- * the 2-hour window — see `vercel.json` (hourly). A daily cron makes the
- * 2-hour reminder structurally unreachable for most appointments.
+ * NOTE: the 2-hour ("second") reminder only fires when the cron runs often
+ * enough to land inside its window. The deploy is on Vercel Hobby, which caps
+ * crons at once/day (`vercel.json` runs daily at 08:00), so today the 2-hour
+ * reminder reaches only appointments shortly after that run. Reliable 2-hour
+ * reminders need a sub-daily trigger (Vercel Pro cron or an external scheduler
+ * hitting /api/cron/reminders) — an owner/infra decision, not a code change.
  */
 export function reminderTypeForAppointment(
   args: ReminderDecisionArgs
