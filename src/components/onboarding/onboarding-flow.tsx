@@ -2,7 +2,15 @@
 
 import { useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import { AnimatePresence, motion, useReducedMotion, type Variants } from "framer-motion";
+import {
+  AnimatePresence,
+  motion,
+  useMotionValue,
+  useReducedMotion,
+  useSpring,
+  useTransform,
+  type Variants,
+} from "framer-motion";
 import {
   ArrowLeft,
   ArrowRight,
@@ -165,6 +173,28 @@ export function OnboardingFlow({
 }: OnboardingFlowProps) {
   const router = useRouter();
   const reduce = useReducedMotion();
+
+  // Cursor parallax for the ambient backdrop orbs (disabled under reduced motion).
+  const pointerX = useMotionValue(0);
+  const pointerY = useMotionValue(0);
+  const springX = useSpring(pointerX, { stiffness: 50, damping: 18 });
+  const springY = useSpring(pointerY, { stiffness: 50, damping: 18 });
+  const orbNearX = useTransform(springX, (v) => v * 60);
+  const orbNearY = useTransform(springY, (v) => v * 48);
+  const orbFarX = useTransform(springX, (v) => v * 28);
+  const orbFarY = useTransform(springY, (v) => v * 22);
+  useEffect(() => {
+    if (reduce) {
+      return;
+    }
+    const onPointerMove = (event: PointerEvent) => {
+      pointerX.set(event.clientX / window.innerWidth - 0.5);
+      pointerY.set(event.clientY / window.innerHeight - 0.5);
+    };
+    window.addEventListener("pointermove", onPointerMove);
+    return () => window.removeEventListener("pointermove", onPointerMove);
+  }, [reduce, pointerX, pointerY]);
+
   // Seed from initialState only, so the server render and the first client render
   // agree. A saved localStorage draft is restored after mount (effect below) to
   // avoid a hydration mismatch.
@@ -322,16 +352,6 @@ export function OnboardingFlow({
     setState((current) => ({ ...current, currentStep: current.currentStep - 1 }));
   }
 
-  function handleSaveProgress() {
-    const nextStaff = solo
-      ? { name: "", role: state.staffMember.role || "Specialist" }
-      : state.staffMember;
-    persistState(
-      { ...state, staffMember: nextStaff },
-      { status: "Progress saved. You can finish anytime." }
-    );
-  }
-
   function updateDay(day: WeekdayKey, patch: Partial<(typeof state.workingHours)[WeekdayKey]>) {
     setState((current) => ({
       ...current,
@@ -374,7 +394,7 @@ export function OnboardingFlow({
 
   return (
     <div
-      className="app-shell-bg relative min-h-screen overflow-hidden"
+      className="relative min-h-screen overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,var(--brand-wash)_100%)]"
       style={
         {
           "--primary": selectedAccent.value,
@@ -387,25 +407,32 @@ export function OnboardingFlow({
         } as CSSProperties
       }
     >
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-[22rem] bg-[radial-gradient(58%_100%_at_50%_0%,var(--primary-soft),transparent_72%)] opacity-80 transition-colors duration-(--duration-slow)"
-      />
+      {/* Ambient brand backdrop — a moving field of cobalt / light-blue light that
+          fills the side margins, drifts (CSS, reduced-motion gated) and parallaxes
+          with the cursor. A soft center keeps the content column readable. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 bg-[linear-gradient(125deg,#e6ecff_0%,#e9f2ff_45%,#f0e9ff_100%)]" />
+        <motion.div style={{ x: orbNearX, y: orbNearY }} className="absolute inset-0">
+          <div className="dialog-accent-orb absolute -left-24 top-12 size-[30rem] rounded-full bg-[radial-gradient(circle,rgba(10,34,255,0.45),transparent_66%)] blur-3xl" />
+          <div className="landing-aurora-blob absolute -right-20 top-32 size-[34rem] rounded-full bg-[radial-gradient(circle,rgba(100,182,255,0.5),transparent_66%)] blur-3xl" />
+        </motion.div>
+        <motion.div style={{ x: orbFarX, y: orbFarY }} className="absolute inset-0">
+          <div
+            className="dialog-accent-orb absolute left-[4%] -bottom-24 size-[28rem] rounded-full bg-[radial-gradient(circle,rgba(91,33,182,0.34),transparent_68%)] blur-3xl"
+            style={{ animationDelay: "-2.6s" }}
+          />
+          <div
+            className="landing-aurora-blob absolute right-[3%] bottom-4 size-[30rem] rounded-full bg-[radial-gradient(circle,rgba(31,75,255,0.40),transparent_68%)] blur-3xl"
+            style={{ animationDelay: "-4s" }}
+          />
+        </motion.div>
+        <div className="absolute inset-0 bg-[radial-gradient(42%_55%_at_50%_42%,rgba(255,255,255,0.92),rgba(255,255,255,0.32)_56%,transparent_75%)]" />
+      </div>
 
       <div className="relative mx-auto flex min-h-screen w-full max-w-5xl flex-col px-6 py-7 sm:px-8">
         {/* header */}
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-center">
           <BrandMark href="/dashboard" includeSubtitle={false} />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="rounded-(--radius-field) text-muted-foreground"
-            onClick={handleSaveProgress}
-            disabled={isPending}
-          >
-            Save &amp; finish later
-          </Button>
         </div>
 
         {/* stepper */}
@@ -449,7 +476,7 @@ export function OnboardingFlow({
                       {index < onboardingSteps.length - 1 ? (
                         <div className="mx-3 h-0.5 flex-1 overflow-hidden rounded-full bg-border">
                           <motion.div
-                            className="h-full rounded-full bg-primary"
+                            className="vela-gradient h-full rounded-full"
                             initial={false}
                             animate={{ width: done ? "100%" : "0%" }}
                             transition={{ duration: 0.3, ease: EASE }}
@@ -484,7 +511,8 @@ export function OnboardingFlow({
                     variants={itemVariants}
                     className="mx-auto mt-3 max-w-md text-[2.1rem] font-semibold leading-[1.1] tracking-tight text-foreground"
                   >
-                    Let&apos;s set up your clinic, {ownerFirstName}.
+                    Let&apos;s set up your{" "}
+                    <span className="vela-gradient-text">clinic</span>, {ownerFirstName}.
                   </motion.h1>
                   <motion.p
                     variants={itemVariants}
@@ -501,7 +529,7 @@ export function OnboardingFlow({
                         <motion.div
                           key={item.id}
                           variants={itemVariants}
-                          className="flex items-center gap-3.5 rounded-(--radius-field) border border-border bg-white/70 px-4 py-3"
+                          className="flex items-center gap-3.5 rounded-(--radius-field) border border-border bg-white/70 px-4 py-3 backdrop-blur-sm transition-[transform,border-color,box-shadow] duration-(--duration-base) hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[0_12px_28px_rgba(10,34,255,0.10)]"
                         >
                           <span className="flex size-9 items-center justify-center rounded-(--radius-tile) border border-border bg-white text-primary">
                             <Icon className="size-4" />
@@ -548,7 +576,7 @@ export function OnboardingFlow({
                   </motion.div>
                 </div>
               ) : (
-                <div className="surface-card rounded-(--radius-panel) p-6 shadow-[0_24px_60px_rgba(20,21,47,0.07)] sm:p-8">
+                <div className="rounded-(--radius-panel) border border-white/70 bg-white/80 p-6 shadow-[0_30px_80px_-28px_rgba(10,34,255,0.28)] backdrop-blur-xl sm:p-8">
                   <motion.div variants={itemVariants} className="flex items-center gap-3">
                     <span className="flex size-10 items-center justify-center rounded-(--radius-tile) border border-border bg-white text-primary">
                       <StepIcon className="size-5" />

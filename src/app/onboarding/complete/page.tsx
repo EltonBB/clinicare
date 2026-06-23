@@ -82,7 +82,7 @@ export default async function OnboardingCompletePage() {
 
   return (
     <div
-      className="app-shell-bg min-h-screen"
+      className="relative min-h-screen overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,var(--brand-wash)_100%)]"
       style={
         {
           "--primary": accent.value,
@@ -95,7 +95,13 @@ export default async function OnboardingCompletePage() {
         } as CSSProperties
       }
     >
-      <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col items-center justify-center px-5 py-12 text-center">
+      {/* Ambient brand backdrop — soft wash + drifting cobalt / light-blue orbs. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute inset-x-0 top-0 h-[30rem] bg-[radial-gradient(58%_100%_at_50%_0%,var(--primary-soft),transparent_72%)]" />
+        <div className="dialog-accent-orb absolute -left-28 top-24 size-80 rounded-full bg-[radial-gradient(circle,rgba(10,34,255,0.18),transparent_70%)] blur-3xl" />
+        <div className="landing-aurora-blob absolute -right-24 top-44 size-96 rounded-full bg-[radial-gradient(circle,rgba(100,182,255,0.26),transparent_70%)] blur-3xl" />
+      </div>
+      <div className="relative mx-auto flex min-h-screen w-full max-w-2xl flex-col items-center justify-center px-5 py-12 text-center">
         <span className="section-reveal flex size-14 items-center justify-center rounded-(--radius-panel) border border-border bg-white text-lg font-semibold text-primary">
           {getInitials(business.name)}
         </span>
@@ -105,7 +111,7 @@ export default async function OnboardingCompletePage() {
         </span>
 
         <h1 className="section-reveal mt-4 text-3xl font-semibold tracking-tight text-foreground sm:text-[2.5rem]">
-          {business.name} is ready, {ownerFirstName}.
+          {business.name} is <span className="vela-gradient-text">ready</span>, {ownerFirstName}.
         </h1>
         <p className="section-reveal mt-3 max-w-md text-[15px] leading-7 text-muted-foreground">
           Your branded workspace is live. Here are the best next steps to start your first calm clinic
@@ -114,14 +120,17 @@ export default async function OnboardingCompletePage() {
 
         <div className="section-reveal-delayed mt-8 grid w-full grid-cols-3 gap-3">
           {stats.map((stat) => (
-            <div key={stat.label} className="surface-card p-4 text-left">
+            <div
+              key={stat.label}
+              className="rounded-(--radius-card) border border-white/70 bg-white/75 p-4 text-left shadow-[0_18px_44px_-26px_rgba(10,34,255,0.30)] backdrop-blur-md"
+            >
               <p className="text-2xl font-semibold tracking-tight text-foreground">{stat.value}</p>
               <p className="mt-1 text-xs text-muted-foreground">{stat.label}</p>
             </div>
           ))}
         </div>
 
-        <div className="section-reveal-delayed mt-4 w-full overflow-hidden rounded-(--radius-panel) border border-border bg-white text-left shadow-[var(--shadow-card)]">
+        <div className="section-reveal-delayed mt-4 w-full overflow-hidden rounded-(--radius-panel) border border-white/70 bg-white/80 text-left shadow-[0_30px_80px_-30px_rgba(10,34,255,0.28)] backdrop-blur-xl">
           <p className="border-b border-border px-4 py-3 text-sm font-semibold text-foreground">
             Next best actions
           </p>
