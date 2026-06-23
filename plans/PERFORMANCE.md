@@ -140,7 +140,7 @@ optionally verify in prod with `curl -sI -H 'Accept-Encoding: br' <url>` →
 
 | # | Item | Pillar | Impact | Effort | Timeline | Status |
 |---|---|---|---|---|---|---|
-| P5 | FK + redundant indexes | DB | High (scale) | S | minutes | ✅ schema · ⏳ apply (db push) |
+| P5 | FK + redundant indexes | DB | High (scale) | S | done | ✅ applied to prod (verified) |
 | — | Dashboard payments → `groupBy` | DB/payload | Med | S | done | ✅ landed + parity-verified |
 | P3 | Dashboard appt aggregation | CPU/DB | High | M | done | ✅ landed + parity-verified on prod |
 | P2 | Booking client search (un-unbound) | payload/scaling | **Highest** | M | done | ✅ landed (grid count + server-search picker) |
