@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition, type CSSProperties } from "react";
+import { useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion, type Variants } from "framer-motion";
 import {
@@ -26,6 +26,7 @@ import {
   resolveBrandAccentPreset,
 } from "@/lib/branding";
 import {
+  hoursBetweenTimes,
   normalizeOnboardingState,
   onboardingSteps,
   weekdayOrder,
@@ -146,6 +147,10 @@ function getStepError(state: OnboardingState, solo: boolean): string | null {
     return null;
   }
 
+  if (step.id === "hours" && !weekdayOrder.some((day) => state.workingHours[day].enabled)) {
+    return "Open at least one day so patients can book.";
+  }
+
   if (step.id === "team" && !solo && !state.staffMember.name.trim()) {
     return "Add your first team member, or choose “It's just me for now”.";
   }
@@ -160,24 +165,14 @@ export function OnboardingFlow({
 }: OnboardingFlowProps) {
   const router = useRouter();
   const reduce = useReducedMotion();
-  const [state, setState] = useState(() => {
-    if (typeof window === "undefined") {
-      return initialState;
-    }
-    const rawDraft = window.localStorage.getItem(onboardingDraftStorageKey);
-    if (!rawDraft) {
-      return initialState;
-    }
-    try {
-      const parsedDraft = normalizeOnboardingState(JSON.parse(rawDraft));
-      return parsedDraft.completed ? initialState : parsedDraft;
-    } catch {
-      window.localStorage.removeItem(onboardingDraftStorageKey);
-      return initialState;
-    }
-  });
-  const [showWelcome, setShowWelcome] = useState(() => state.currentStep <= 1 && !state.completed);
-  const [solo, setSolo] = useState(() => !state.staffMember.name.trim());
+  // Seed from initialState only, so the server render and the first client render
+  // agree. A saved localStorage draft is restored after mount (effect below) to
+  // avoid a hydration mismatch.
+  const [state, setState] = useState(initialState);
+  const [showWelcome, setShowWelcome] = useState(
+    initialState.currentStep <= 1 && !initialState.completed
+  );
+  const [solo, setSolo] = useState(!initialState.staffMember.name.trim());
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [logoPreviewUrl, setLogoPreviewUrl] = useState("");
@@ -235,7 +230,34 @@ export function OnboardingFlow({
     };
   }, [logoPreviewUrl, state.clinic.logoUrl]);
 
+  // Restore a saved draft after mount — kept out of the useState initializer so
+  // the server render and the first client render agree (no hydration mismatch).
   useEffect(() => {
+    const rawDraft = window.localStorage.getItem(onboardingDraftStorageKey);
+    if (!rawDraft) {
+      return;
+    }
+    try {
+      const draft = normalizeOnboardingState(JSON.parse(rawDraft));
+      if (draft.completed) {
+        return;
+      }
+      setState(draft);
+      setShowWelcome(draft.currentStep <= 1);
+      setSolo(!draft.staffMember.name.trim());
+    } catch {
+      window.localStorage.removeItem(onboardingDraftStorageKey);
+    }
+  }, []);
+
+  // Persist the draft on change. Skip the first run so it can't overwrite a saved
+  // draft with the initial state before the restore effect above has applied it.
+  const skipFirstDraftSave = useRef(true);
+  useEffect(() => {
+    if (skipFirstDraftSave.current) {
+      skipFirstDraftSave.current = false;
+      return;
+    }
     if (typeof window === "undefined") {
       return;
     }
@@ -346,10 +368,7 @@ export function OnboardingFlow({
 
   const weeklyHours = weekdayOrder.reduce((total, day) => {
     const current = state.workingHours[day];
-    if (!current.enabled) return total;
-    const [startHour] = current.start.split(":").map(Number);
-    const [endHour] = current.end.split(":").map(Number);
-    return total + Math.max(endHour - startHour, 0);
+    return current.enabled ? total + hoursBetweenTimes(current.start, current.end) : total;
   }, 0);
   const openDays = weekdayOrder.filter((day) => state.workingHours[day].enabled).length;
 

@@ -1,34 +1,28 @@
 // The onboarding flow opens on a Welcome intro (not a data step), then walks
 // three data steps before the "You're ready" launchpad. Each step pairs the
-// question it answers with the one-line "why" and the workspace section its
-// live preview should show, so the form and the preview stay in lockstep.
+// question it answers with the one-line "why" shown beneath it.
 export const onboardingSteps = [
   {
     id: "clinic",
     shortLabel: "Your clinic",
     title: "What's your clinic, and how should it look?",
     why: "This is how your workspace and patient messages will look.",
-    previewSection: "dashboard",
   },
   {
     id: "hours",
     shortLabel: "Opening hours",
     title: "When are you open?",
     why: "Vela builds your calendar from these and protects closed days.",
-    previewSection: "calendar",
   },
   {
     id: "team",
     shortLabel: "Your team",
     title: "Who's working day one?",
     why: "Appointments are assigned to staff — add your first now, more anytime.",
-    previewSection: "staff",
   },
 ] as const;
 
 export type OnboardingStepId = (typeof onboardingSteps)[number]["id"];
-export type OnboardingPreviewSection =
-  (typeof onboardingSteps)[number]["previewSection"];
 
 export const weekdayOrder = [
   "monday",
@@ -70,6 +64,13 @@ export type OnboardingState = {
     role: string;
   };
 };
+
+/** Hours between two "HH:MM" times, minute-accurate and clamped at 0. */
+export function hoursBetweenTimes(start: string, end: string) {
+  const [startHour = 0, startMinute = 0] = start.split(":").map(Number);
+  const [endHour = 0, endMinute = 0] = end.split(":").map(Number);
+  return Math.max(endHour * 60 + endMinute - (startHour * 60 + startMinute), 0) / 60;
+}
 
 const defaultWorkingHours: WorkingHoursState = {
   monday: { enabled: true, start: "09:00", end: "17:00" },

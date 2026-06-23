@@ -6,7 +6,7 @@ import { ArrowRight, CalendarPlus, Check, MessageCircle, UserPlus } from "lucide
 import { buttonVariants } from "@/components/ui/button-variants";
 import { getCurrentBusiness } from "@/lib/business";
 import { resolveBrandAccentPreset } from "@/lib/branding";
-import { isOnboardingCompleted } from "@/lib/onboarding";
+import { hoursBetweenTimes, isOnboardingCompleted } from "@/lib/onboarding";
 import { prisma } from "@/lib/prisma";
 import { cn, getInitials } from "@/lib/utils";
 import { createClient } from "@/utils/supabase/server";
@@ -34,12 +34,6 @@ const nextActions = [
     hint: "Later",
   },
 ];
-
-function hoursBetween(start: string, end: string) {
-  const [startHour] = start.split(":").map(Number);
-  const [endHour] = end.split(":").map(Number);
-  return Math.max((endHour || 0) - (startHour || 0), 0);
-}
 
 export default async function OnboardingCompletePage() {
   const supabase = await createClient();
@@ -72,7 +66,7 @@ export default async function OnboardingCompletePage() {
 
   const openDays = hours.filter((day) => day.isOpen).length;
   const weeklyHours = hours.reduce(
-    (total, day) => (day.isOpen ? total + hoursBetween(day.startTime, day.endTime) : total),
+    (total, day) => (day.isOpen ? total + hoursBetweenTimes(day.startTime, day.endTime) : total),
     0
   );
   const ownerFirstName =
