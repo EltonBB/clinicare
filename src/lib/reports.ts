@@ -287,14 +287,6 @@ function periodKeyToSnapshotType(period: ReportPeriodKey): ReportAiSnapshotInput
   return "MONTHLY";
 }
 
-function sameInstant(left: Date, right: Date) {
-  return left.getTime() === right.getTime();
-}
-
-function samePeriodStart(left: Date, right: Date) {
-  return sameInstant(left, right);
-}
-
 function cleanText(value: unknown, fallback: string, maxLength = 420) {
   if (typeof value !== "string") {
     return fallback;
@@ -354,7 +346,7 @@ function aiSnapshotForPeriod(
     .filter(
       (snapshot) =>
         snapshot.periodType === periodType &&
-        samePeriodStart(snapshot.periodStart, window.start)
+        snapshot.periodStart.getTime() === window.start.getTime()
     )
     .sort((left, right) => right.generatedAt.getTime() - left.generatedAt.getTime())[0];
 }

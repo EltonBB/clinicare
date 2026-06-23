@@ -18,6 +18,7 @@ import {
 } from "@/lib/clients";
 import { normalizeStorageReference } from "@/lib/media-storage";
 import { deleteStorageReferences } from "@/lib/media-storage-server";
+import { parseZonedWallClock } from "@/lib/time-zone";
 
 export type SaveClientResult = {
   ok: boolean;
@@ -487,15 +488,18 @@ function parseOptionalDate(value: string | undefined) {
     return null;
   }
 
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  // Anchor date-only fields (date of birth, payment/reminder dates) to midnight
+  // in the app's time zone rather than UTC, so they render as the same calendar
+  // day for clinics west of UTC.
+  return parseZonedWallClock(value, "00:00");
 }
 
 function parseAmountToCents(value: string) {
   const normalized = Number(value.replace(/[^0-9.-]/g, ""));
 
-  if (!Number.isFinite(normalized) || normalized < 0) {
+  // Reject negatives and absurd fat-finger amounts (> $1,000,000) so a typo
+  // can't write a huge value into the ledger and corrupt revenue reporting.
+  if (!Number.isFinite(normalized) || normalized < 0 || normalized > 1_000_000) {
     return null;
   }
 

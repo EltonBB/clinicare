@@ -187,6 +187,7 @@ model ClientPayment {
 
   @@index([businessId, clientId, status])
   @@index([businessId, clientId, createdAt])
+  @@index([businessId, createdAt])
   @@index([businessId, invoiceNumber])
   @@index([businessId, paidAt])
   @@index([appointmentId])
@@ -359,6 +360,7 @@ model Conversation {
 
   @@unique([businessId, phoneNumber])
   @@index([businessId, phoneNumber])
+  @@index([businessId, updatedAt])
 }
 
 model Message {

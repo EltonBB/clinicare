@@ -1,5 +1,7 @@
 "use server";
 
+import { z } from "zod";
+
 import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { logger } from "@/lib/logger";
@@ -474,6 +476,16 @@ export async function deleteConversationAction(
   };
 }
 
+const convertConversationSchema = z.object({
+  name: z.string().max(160).optional().default(""),
+  // Trim before validating so an email typed with surrounding whitespace (which
+  // the previous trim-then-store path accepted) still validates and converts.
+  email: z.preprocess(
+    (value) => (typeof value === "string" ? value.trim() : value),
+    z.union([z.string().max(254).email(), z.literal("")]).optional()
+  ),
+});
+
 export async function convertConversationToClientAction(
   conversationId: string,
   payload: {
@@ -491,8 +503,17 @@ export async function convertConversationToClientAction(
   }
 
   const businessId = context.business.id;
-  const cleanedName = payload.name.trim();
-  const cleanedEmail = payload.email?.trim() || null;
+
+  const parsed = convertConversationSchema.safeParse(payload);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Enter a valid name (and email, if provided) to convert this thread.",
+    };
+  }
+
+  const cleanedName = parsed.data.name.trim();
+  const cleanedEmail = parsed.data.email?.trim() || null;
 
   const conversation = await prisma.conversation.findFirst({
     where: {
@@ -543,22 +564,32 @@ export async function convertConversationToClientAction(
     let resolvedClientName = matchedClient?.name ?? cleanedName;
 
     if (!resolvedClientId) {
-      const created = await tx.client.create({
-        data: {
+      // Upsert on the (businessId, phone) unique key so two concurrent
+      // conversions of the same thread can't create duplicate clients —
+      // the second one resolves to the row the first just created.
+      const resolved = await tx.client.upsert({
+        where: {
+          businessId_phone: {
+            businessId,
+            phone: normalizedPhone,
+          },
+        },
+        create: {
           businessId,
           name: cleanedName,
           email: cleanedEmail,
           phone: normalizedPhone,
           preferredChannel: "WhatsApp",
         },
+        update: {},
         select: {
           id: true,
           name: true,
         },
       });
 
-      resolvedClientId = created.id;
-      resolvedClientName = created.name;
+      resolvedClientId = resolved.id;
+      resolvedClientName = resolved.name;
     }
 
     await tx.conversation.update({

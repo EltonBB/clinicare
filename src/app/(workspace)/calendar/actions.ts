@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 
+import { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import {
@@ -87,8 +89,10 @@ function parseOptionalDate(value?: string) {
     return null;
   }
 
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  // Anchor date-only fields to midnight in the app's time zone (not UTC), so a
+  // date entered as YYYY-MM-DD displays as the same calendar day for clinics
+  // west of UTC — consistent with how appointment instants are parsed.
+  return parseZonedWallClock(value, "00:00");
 }
 
 function parseAmountToCents(value?: string) {
@@ -97,7 +101,9 @@ function parseAmountToCents(value?: string) {
   }
 
   const parsed = Number(value.replace(/[^0-9.-]/g, ""));
-  if (!Number.isFinite(parsed) || parsed < 0) {
+  // Reject negatives and absurd fat-finger amounts (> $1,000,000) so a typo
+  // can't write a huge value into the ledger and corrupt revenue reporting.
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1_000_000) {
     return null;
   }
 
@@ -197,8 +203,12 @@ async function hydrateAppointment(appointmentId: string) {
   } satisfies CalendarAppointment;
 }
 
-async function refreshClientLastVisitAt(clientId: string, businessId: string) {
-  const latestAppointment = await prisma.appointment.findFirst({
+async function refreshClientLastVisitAt(
+  clientId: string,
+  businessId: string,
+  db: Prisma.TransactionClient = prisma
+) {
+  const latestAppointment = await db.appointment.findFirst({
     where: {
       businessId,
       clientId,
@@ -214,7 +224,7 @@ async function refreshClientLastVisitAt(clientId: string, businessId: string) {
     },
   });
 
-  await prisma.client.updateMany({
+  await db.client.updateMany({
     where: {
       id: clientId,
       businessId,
@@ -301,9 +311,22 @@ export async function saveAppointmentAction(
     staffMemberId = staff.id;
   }
 
+  // Validate the optional payment up front (pure guards) so the write path below
+  // can run as a single atomic transaction.
+  const paymentAmountCents = parseAmountToCents(payload.paymentAmount);
+  const hasPayment = paymentAmountCents !== null && paymentAmountCents > 0;
+
+  if (hasPayment && hasUnsafePublicUrl(payload.paymentReceiptUrl)) {
+    return {
+      ok: false,
+      error: "Use a safe HTTPS receipt link.",
+    };
+  }
+
   try {
     let appointmentId = payload.id;
     let shouldResetReminders = false;
+    let previousClientId: string | null = null;
 
     if (payload.id) {
       const existing = await prisma.appointment.findFirst({
@@ -329,6 +352,7 @@ export async function saveAppointmentAction(
         };
       }
 
+      previousClientId = existing.clientId;
       shouldResetReminders =
         existing.clientId !== payload.clientId ||
         existing.staffMemberId !== staffMemberId ||
@@ -336,82 +360,86 @@ export async function saveAppointmentAction(
         existing.startAt.getTime() !== startAt.getTime() ||
         existing.endAt.getTime() !== endAt.getTime() ||
         existing.status !== toPrismaAppointmentStatus(payload.status);
+    }
 
-      await prisma.appointment.update({
-        where: {
-          id: payload.id,
-        },
-        data: {
-          clientId: payload.clientId,
-          staffMemberId,
-          title: payload.service.trim(),
-          startAt,
-          endAt,
-          notes: payload.notes.trim() || null,
-          status: toPrismaAppointmentStatus(payload.status),
-        },
-      });
-
-      if (shouldResetReminders) {
-        await prisma.appointmentReminder.deleteMany({
+    // The appointment write, reminder reset, last-visit refresh, and the optional
+    // payment all commit together — a payment failure must not leave a saved
+    // appointment behind (which the caller reports as "couldn't save", prompting
+    // the operator to retry and create a duplicate).
+    await prisma.$transaction(async (tx) => {
+      if (payload.id) {
+        await tx.appointment.update({
           where: {
-            appointmentId: payload.id,
+            id: payload.id,
+          },
+          data: {
+            clientId: payload.clientId,
+            staffMemberId,
+            title: payload.service.trim(),
+            startAt,
+            endAt,
+            notes: payload.notes.trim() || null,
+            status: toPrismaAppointmentStatus(payload.status),
+          },
+        });
+
+        if (shouldResetReminders) {
+          await tx.appointmentReminder.deleteMany({
+            where: {
+              appointmentId: payload.id,
+            },
+          });
+        }
+
+        const affectedClientIds = Array.from(
+          new Set(
+            [previousClientId, payload.clientId].filter(
+              (value): value is string => Boolean(value)
+            )
+          )
+        );
+        for (const clientId of affectedClientIds) {
+          await refreshClientLastVisitAt(clientId, business.id, tx);
+        }
+      } else {
+        const created = await tx.appointment.create({
+          data: {
+            businessId: business.id,
+            clientId: payload.clientId,
+            staffMemberId,
+            title: payload.service.trim(),
+            startAt,
+            endAt,
+            notes: payload.notes.trim() || null,
+            status: toPrismaAppointmentStatus(payload.status),
+          },
+        });
+
+        appointmentId = created.id;
+        await refreshClientLastVisitAt(payload.clientId, business.id, tx);
+      }
+
+      if (hasPayment) {
+        await tx.clientPayment.create({
+          data: {
+            businessId: business.id,
+            clientId: payload.clientId,
+            appointmentId: appointmentId!,
+            amountCents: paymentAmountCents!,
+            status: payload.paymentStatus?.trim() || "Unpaid",
+            description:
+              payload.paymentDescription?.trim() ||
+              `Payment for ${payload.service.trim()}`,
+            receiptUrl:
+              normalizeOptionalPublicUrl(payload.paymentReceiptUrl) || null,
+            paidAt:
+              payload.paymentStatus === "Paid"
+                ? parseOptionalDate(payload.paymentPaidAt) ?? new Date()
+                : parseOptionalDate(payload.paymentPaidAt),
           },
         });
       }
-
-      await Promise.all(
-        Array.from(new Set([existing.clientId, payload.clientId])).map((clientId) =>
-          refreshClientLastVisitAt(clientId, business.id)
-        )
-      );
-    } else {
-      const created = await prisma.appointment.create({
-        data: {
-          businessId: business.id,
-          clientId: payload.clientId,
-          staffMemberId,
-          title: payload.service.trim(),
-          startAt,
-          endAt,
-          notes: payload.notes.trim() || null,
-          status: toPrismaAppointmentStatus(payload.status),
-        },
-      });
-
-      await refreshClientLastVisitAt(payload.clientId, business.id);
-
-      appointmentId = created.id;
-    }
-
-    const paymentAmountCents = parseAmountToCents(payload.paymentAmount);
-    if (paymentAmountCents !== null && paymentAmountCents > 0) {
-      if (hasUnsafePublicUrl(payload.paymentReceiptUrl)) {
-        return {
-          ok: false,
-          error: "Use a safe HTTPS receipt link.",
-        };
-      }
-
-      await prisma.clientPayment.create({
-        data: {
-          businessId: business.id,
-          clientId: payload.clientId,
-          appointmentId: appointmentId!,
-          amountCents: paymentAmountCents,
-          status: payload.paymentStatus?.trim() || "Unpaid",
-          description:
-            payload.paymentDescription?.trim() ||
-            `Payment for ${payload.service.trim()}`,
-          receiptUrl:
-            normalizeOptionalPublicUrl(payload.paymentReceiptUrl) || null,
-          paidAt:
-            payload.paymentStatus === "Paid"
-              ? parseOptionalDate(payload.paymentPaidAt) ?? new Date()
-              : parseOptionalDate(payload.paymentPaidAt),
-        },
-      });
-    }
+    });
 
     return {
       ok: true,

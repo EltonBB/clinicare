@@ -227,8 +227,6 @@ const AI_PERIOD_SCHEMA = {
   },
 } as const;
 
-const AI_SNAPSHOT_SCHEMA = AI_PERIOD_SCHEMA;
-
 function getAnalyticsModel() {
   return process.env.OPENAI_ANALYTICS_MODEL?.trim() || "gpt-4.1-mini";
 }
@@ -383,7 +381,7 @@ function buildAllTimeframesPayload(report: ReturnType<typeof buildReportsViewFro
 async function requestOpenAIInsight(
   promptPayload: unknown,
   options?: {
-    schema?: typeof AI_SNAPSHOT_SCHEMA;
+    schema?: typeof AI_PERIOD_SCHEMA;
     schemaName?: string;
     maxOutputTokens?: number;
   }
@@ -435,7 +433,7 @@ async function requestOpenAIInsight(
               type: "json_schema",
               name: options?.schemaName ?? "clinic_analytics_snapshot",
               strict: true,
-              schema: options?.schema ?? AI_SNAPSHOT_SCHEMA,
+              schema: options?.schema ?? AI_PERIOD_SCHEMA,
             },
           },
           ...buildReasoningOptions(model),
@@ -827,7 +825,7 @@ export async function generateAnalyticsSnapshotsForBusiness(
     const refreshedResults = await Promise.all(
       periodsToRefresh.map(async (period): Promise<GenerateAnalyticsSnapshotResult> => {
         const aiResult = await requestOpenAIInsight(periodPromptPayloads[period], {
-          schema: AI_SNAPSHOT_SCHEMA,
+          schema: AI_PERIOD_SCHEMA,
           schemaName: `clinic_${period}_analytics_snapshot`,
           maxOutputTokens: 1400,
         });

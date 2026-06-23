@@ -16,3 +16,18 @@ export function getInitials(name: string) {
 
   return `${first}${last}`.toUpperCase() || name.slice(0, 2).toUpperCase()
 }
+
+/**
+ * Single source of truth for formatting a cents amount as USD. Pass
+ * `{ whole: true }` for compact surfaces (e.g. dashboard KPI tiles) that show
+ * rounded whole-dollar amounts; the default keeps two-decimal cent precision.
+ */
+export function formatCurrency(cents: number, options?: { whole?: boolean }) {
+  const amount = cents / 100
+
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    ...(options?.whole ? { maximumFractionDigits: 0 } : {}),
+  }).format(options?.whole ? Math.round(amount) : amount)
+}

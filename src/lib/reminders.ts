@@ -1,4 +1,5 @@
 import { addHours, isAfter } from "date-fns";
+import { Prisma } from "@prisma/client";
 
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { normalizePhone } from "@/lib/inbox";
@@ -175,6 +176,35 @@ export async function syncAppointmentRemindersForBusiness(
       continue;
     }
 
+    // Claim this reminder before sending (unique on appointmentId + type) so a
+    // post-send bookkeeping failure can't make the next cron run re-send to the
+    // patient. A concurrent or overlapping run that already claimed it gets P2002.
+    try {
+      await prisma.appointmentReminder.create({
+        data: {
+          appointmentId: appointment.id,
+          type: reminderType,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        // Already claimed (and sent) by a concurrent/overlapping run — skip.
+        continue;
+      }
+      // A transient claim failure should skip just this appointment, like the
+      // rest of the loop — not abort the whole tenant's batch.
+      failed += 1;
+      logger.error("Failed to claim appointment reminder.", error, {
+        businessId,
+        appointmentId: appointment.id,
+        reminderType,
+      });
+      continue;
+    }
+
     // HIPAA minimum-necessary: outbound reminders carry name + appointment time
     // (+ provider) only — never the service/treatment. `service` is deliberately
     // NOT supplied, so any {service} token in a custom template renders empty.
@@ -185,12 +215,32 @@ export async function syncAppointmentRemindersForBusiness(
       staff_name: appointment.staffMember?.name ?? business.name,
     });
 
+    let delivery: Awaited<ReturnType<typeof sendTwilioWhatsAppMessage>>;
     try {
-      const delivery = await sendTwilioWhatsAppMessage({
+      delivery = await sendTwilioWhatsAppMessage({
         to: clientPhone,
         body,
       });
+    } catch (error) {
+      // The send itself failed — release the claim so a later run can retry.
+      await prisma.appointmentReminder
+        .deleteMany({
+          where: { appointmentId: appointment.id, type: reminderType },
+        })
+        .catch(() => {});
+      failed += 1;
+      logger.error("Failed to send appointment reminder.", error, {
+        businessId,
+        appointmentId: appointment.id,
+        reminderType,
+      });
+      continue;
+    }
 
+    // Delivered — the claim stays committed no matter what happens next, so the
+    // reminder is never sent twice. The conversation/message bookkeeping below is
+    // best-effort: a failure here is logged, never retried, and never re-sends.
+    try {
       await prisma.$transaction(async (tx) => {
         const clientConversation = await tx.conversation.upsert({
           where: {
@@ -235,13 +285,6 @@ export async function syncAppointmentRemindersForBusiness(
           },
         });
 
-        await tx.appointmentReminder.create({
-          data: {
-            appointmentId: appointment.id,
-            type: reminderType,
-          },
-        });
-
         await tx.whatsAppConnection.update({
           where: {
             businessId,
@@ -252,16 +295,15 @@ export async function syncAppointmentRemindersForBusiness(
           },
         });
       });
-
-      sent += 1;
     } catch (error) {
-      failed += 1;
-      logger.error("Failed to send appointment reminder.", error, {
+      logger.error("Reminder delivered but bookkeeping failed.", error, {
         businessId,
         appointmentId: appointment.id,
         reminderType,
       });
     }
+
+    sent += 1;
   }
 
   return { sent, failed };

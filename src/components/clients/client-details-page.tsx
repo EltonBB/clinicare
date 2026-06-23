@@ -65,7 +65,7 @@ import {
 } from "@/components/workspace/workspace-layout";
 import { HeaderStat } from "@/components/workspace/header-stat";
 import { uploadWorkspaceDocument } from "@/lib/media-storage-client";
-import { cn, getInitials } from "@/lib/utils";
+import { cn, formatCurrency, getInitials } from "@/lib/utils";
 import type {
   ClientRecord,
   ClientStatus,
@@ -281,10 +281,9 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   );
   const latestPayment = client.payments[0];
   const currentMedications = client.medications.filter((medication) => medication.isActive);
-  const totalBilledDisplay = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(client.payments.reduce((sum, payment) => sum + payment.amountCents, 0) / 100);
+  const totalBilledDisplay = formatCurrency(
+    client.payments.reduce((sum, payment) => sum + payment.amountCents, 0)
+  );
   const allergies = client.healthItems.filter((item) =>
     item.type.toLowerCase().includes("allerg")
   );

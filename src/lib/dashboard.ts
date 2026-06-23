@@ -1,6 +1,7 @@
 import { differenceInMinutes, subDays } from "date-fns";
 import type { Appointment, Business, Client } from "@prisma/client";
 import { isProBusinessPlan, planDisplayName, planStatusLabel } from "@/lib/billing";
+import { formatCurrency } from "@/lib/utils";
 import {
   formatZonedDateKey,
   formatZonedLongDate,
@@ -202,13 +203,7 @@ function toDashboardStatus(status: Appointment["status"]): DashboardAppointmentS
   return "confirmed";
 }
 
-function formatDashboardMoney(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(Math.round(cents / 100));
-}
+const formatDashboardMoney = (cents: number) => formatCurrency(cents, { whole: true });
 
 function buildVisitsSummary(args: {
   analyticsAppointments: Array<Pick<Appointment, "status" | "startAt" | "endAt">>;

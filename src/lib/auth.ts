@@ -23,3 +23,17 @@ export async function requireCurrentUser(nextPath = "/dashboard"): Promise<User>
 
   return user;
 }
+
+/**
+ * Persist changes to the current user's auth metadata through the auth seam, so
+ * feature code never imports the Supabase client directly. Returns `{ error }`
+ * as a plain boolean — callers should surface a generic message on failure.
+ */
+export async function updateCurrentUserMetadata(
+  data: Record<string, unknown>
+): Promise<{ error: boolean }> {
+  const supabase = await createClient();
+  const { error } = await supabase.auth.updateUser({ data });
+
+  return { error: Boolean(error) };
+}
