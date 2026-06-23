@@ -21,7 +21,10 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+      # `npm install` (not `npm ci`): the lockfile is generated on Windows and
+      # omits some Linux-only optional native deps (@emnapi/*), which strict
+      # `npm ci` rejects. This matches what the Vercel deploy uses.
+      - run: npm install --no-audit --no-fund
       - name: Typecheck
         run: npm run typecheck
       - name: Lint
