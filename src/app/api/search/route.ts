@@ -38,7 +38,7 @@ export async function GET(request: Request) {
 
   // Each search fans out into several `contains` scans; cap per-user frequency
   // so a tight client loop can't amplify into a DB-load denial of service.
-  const rate = checkRateLimit(`search:${user.id}`, { limit: 30, windowMs: 10_000 });
+  const rate = await checkRateLimit(`search:${user.id}`, { limit: 30, windowMs: 10_000 });
 
   if (!rate.allowed) {
     return NextResponse.json(

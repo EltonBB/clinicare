@@ -159,7 +159,7 @@ const EMAIL_SEND_RATE_LIMIT: RateLimitRule = { limit: 5, windowMs: 60_000 };
 
 async function isWithinRateLimit(action: string, rule: RateLimitRule) {
   const ip = clientIpFromHeaders(await headers());
-  return checkRateLimit(`${action}:${ip}`, rule).allowed;
+  return (await checkRateLimit(`${action}:${ip}`, rule)).allowed;
 }
 
 // Detects the auth provider's rate-limit responses (HTTP 429 / "…rate limit…"
