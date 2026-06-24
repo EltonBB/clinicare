@@ -3,13 +3,10 @@ import { addHours } from "date-fns";
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import { logger } from "@/lib/logger";
+import { sendMessage } from "@/lib/messaging";
 import { prisma } from "@/lib/prisma";
 import { reminderTypeForAppointment } from "@/lib/reminder-schedule";
 import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
-import {
-  mapTwilioStatusToDeliveryStatus,
-  sendTwilioWhatsAppMessage,
-} from "@/lib/whatsapp";
 
 type ReminderSyncResult = {
   sent: number;
@@ -19,10 +16,6 @@ type ReminderSyncResult = {
 export type ReminderCronResult = ReminderSyncResult & {
   processedBusinesses: number;
 };
-
-function renderReminderTemplate(template: string, values: Record<string, string>) {
-  return template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? "");
-}
 
 export async function syncAppointmentRemindersForBusiness(
   businessId: string
@@ -63,9 +56,9 @@ export async function syncAppointmentRemindersForBusiness(
   }
 
   const reminderSettings = business.reminderSettings;
-  const template =
-    reminderSettings?.template?.trim() ||
-    "Hi {client_name}, this is a reminder for your appointment at {time} on {date}. Reply here if you need to reschedule.";
+  // The seam renders the body (and falls back to a default min-necessary
+  // template); pass the clinic's custom template through when set.
+  const template = reminderSettings?.template?.trim() || undefined;
 
   const firstReminderHours = Math.min(
     Math.max(reminderSettings?.firstReminderHours ?? 24, 1),
@@ -104,6 +97,7 @@ export async function syncAppointmentRemindersForBusiness(
       reminders: {
         select: {
           type: true,
+          status: true,
         },
       },
     },
@@ -123,7 +117,12 @@ export async function syncAppointmentRemindersForBusiness(
       send2HourReminder: reminderSettings?.send2HourReminder ?? true,
       firstReminderHours,
       secondReminderHours,
-      sentTypes: new Set(appointment.reminders.map((reminder) => reminder.type)),
+      // Only delivered reminders suppress a re-send; a FAILED row retries.
+      sentTypes: new Set(
+        appointment.reminders
+          .filter((reminder) => reminder.status === "SENT")
+          .map((reminder) => reminder.type)
+      ),
     });
 
     if (!reminderType) {
@@ -140,22 +139,54 @@ export async function syncAppointmentRemindersForBusiness(
       continue;
     }
 
-    // HIPAA minimum-necessary: outbound reminders carry name + appointment time
-    // (+ provider) only — never the service/treatment. `service` is deliberately
-    // NOT supplied, so any {service} token in a custom template renders empty.
-    const body = renderReminderTemplate(template, {
-      client_name: appointment.client.name,
-      date: formatZonedFullDate(appointment.startAt),
-      time: formatZonedTime(appointment.startAt),
-      staff_name: appointment.staffMember?.name ?? business.name,
+    // Outbound reminders flow through the messaging seam, which renders a HIPAA
+    // minimum-necessary body (name + appointment time only — never the
+    // service/treatment) and routes to the active WhatsApp provider.
+    const result = await sendMessage({
+      channel: "WHATSAPP",
+      businessId,
+      to: clientPhone,
+      message: {
+        kind: "appointment_reminder",
+        recipientName: appointment.client.name,
+        appointmentDate: formatZonedFullDate(appointment.startAt),
+        appointmentTime: formatZonedTime(appointment.startAt),
+        staffName: appointment.staffMember?.name ?? business.name,
+        template,
+      },
     });
 
-    try {
-      const delivery = await sendTwilioWhatsAppMessage({
-        to: clientPhone,
-        body,
-      });
+    if (!result.ok) {
+      failed += 1;
+      // Persist the failure so it's visible and retried on the next run.
+      await prisma.appointmentReminder
+        .upsert({
+          where: {
+            appointmentId_type: {
+              appointmentId: appointment.id,
+              type: reminderType,
+            },
+          },
+          create: {
+            appointmentId: appointment.id,
+            type: reminderType,
+            status: "FAILED",
+          },
+          update: {
+            status: "FAILED",
+          },
+        })
+        .catch((error) => {
+          logger.error("Failed to record reminder failure.", error, {
+            businessId,
+            appointmentId: appointment.id,
+            reminderType,
+          });
+        });
+      continue;
+    }
 
+    try {
       await prisma.$transaction(async (tx) => {
         const clientConversation = await tx.conversation.upsert({
           where: {
@@ -185,17 +216,28 @@ export async function syncAppointmentRemindersForBusiness(
             conversationId: clientConversation.id,
             clientId: appointment.client.id,
             direction: "OUTBOUND",
-            body,
-            providerMessageSid: delivery.sid || null,
-            deliveryStatus: mapTwilioStatusToDeliveryStatus(delivery.status),
+            body: result.body,
+            providerMessageSid: result.providerMessageId,
+            deliveryStatus: result.status,
             deliveryUpdatedAt: new Date(),
           },
         });
 
-        await tx.appointmentReminder.create({
-          data: {
+        await tx.appointmentReminder.upsert({
+          where: {
+            appointmentId_type: {
+              appointmentId: appointment.id,
+              type: reminderType,
+            },
+          },
+          create: {
             appointmentId: appointment.id,
             type: reminderType,
+            status: "SENT",
+          },
+          update: {
+            status: "SENT",
+            sentAt: new Date(),
           },
         });
 
@@ -213,7 +255,7 @@ export async function syncAppointmentRemindersForBusiness(
       sent += 1;
     } catch (error) {
       failed += 1;
-      logger.error("Failed to send appointment reminder.", error, {
+      logger.error("Failed to record sent reminder.", error, {
         businessId,
         appointmentId: appointment.id,
         reminderType,
@@ -224,7 +266,7 @@ export async function syncAppointmentRemindersForBusiness(
   return { sent, failed };
 }
 
-// A few clinics at a time — bounds concurrent Twilio sends across tenants.
+// A few clinics at a time — bounds concurrent outbound sends across tenants.
 const REMINDER_BUSINESS_CONCURRENCY = 3;
 
 export async function syncAppointmentRemindersJob(): Promise<ReminderCronResult> {

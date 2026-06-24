@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { m } from "framer-motion";
 import {
   ArrowUpRight,
@@ -14,13 +21,12 @@ import {
   ImageUp,
   MessageCircle,
   Palette,
-  RefreshCw,
 } from "lucide-react";
 
 import { updateOwnerProfileAction } from "@/app/(auth)/actions";
 import {
-  prepareWhatsAppLiveConnectionAction,
-  refreshWhatsAppLiveConnectionAction,
+  connectBaileysWhatsAppAction,
+  getBaileysPairingStatusAction,
   saveSettingsAction,
 } from "@/app/(workspace)/settings/actions";
 import { businessTypes } from "@/lib/constants";
@@ -78,7 +84,7 @@ const settingsNav: Array<{
   { id: "appearance", icon: Palette, title: "Appearance", subtitle: "Workspace accent color" },
   { id: "hours", icon: Clock3, title: "Working hours", subtitle: "Booking availability" },
   { id: "reminders", icon: BellRing, title: "Reminders", subtitle: "Send times and message" },
-  { id: "whatsapp", icon: MessageCircle, title: "WhatsApp", subtitle: "Number and connection" },
+  { id: "whatsapp", icon: MessageCircle, title: "WhatsApp", subtitle: "Pairing and connection" },
   { id: "billing", icon: CreditCard, title: "Billing", subtitle: "Plan and checkout" },
 ];
 
@@ -244,8 +250,11 @@ export function SettingsWorkspace({
   const [errorMessage, setErrorMessage] = useState("");
   const [isLogoUploading, setIsLogoUploading] = useState(false);
   const [isPending, startSaving] = useTransition();
-  const [isPreparingConnection, startPreparingConnection] = useTransition();
-  const [isRefreshingConnection, startRefreshingConnection] = useTransition();
+  const [isConnecting, startConnecting] = useTransition();
+  const [pairing, setPairing] = useState<{
+    status: "connecting" | "qr" | "connected" | "disconnected";
+    qr?: string;
+  } | null>(null);
   const visibleAccentPresets = brandAccentPresets.filter(
     (preset) => preset.id !== "emerald"
   );
@@ -422,77 +431,84 @@ export function SettingsWorkspace({
     }
   }
 
-  function handlePrepareLiveConnection() {
-    startPreparingConnection(async () => {
-      const result = await prepareWhatsAppLiveConnectionAction(
-        state.whatsapp.phoneNumber
+  // Connection status is server state, not an edit — mirror "connected" into
+  // both snapshots so pairing never flips the dirty flag or gets rewound by
+  // Discard. Stable (useCallback) so the polling effect doesn't churn.
+  const markWhatsAppConnected = useCallback(() => {
+    const applyConnected = (current: SettingsState): SettingsState => ({
+      ...current,
+      whatsapp: {
+        ...current.whatsapp,
+        connection: {
+          ...current.whatsapp.connection,
+          phase: "CONNECTED",
+          status: "CONNECTED",
+        },
+      },
+    });
+    setState(applyConnected);
+    setSavedState(applyConnected);
+    setMessage("WhatsApp connected.");
+  }, []);
+
+  const pairingPollsRef = useRef(0);
+
+  function handleConnectWhatsApp() {
+    startConnecting(async () => {
+      const result = await connectBaileysWhatsAppAction();
+      if (!result.ok) {
+        setErrorMessage(result.error);
+        setMessage("");
+        return;
+      }
+      setErrorMessage("");
+      pairingPollsRef.current = 0;
+      setPairing({ status: result.status, qr: result.qr });
+      if (result.status === "connected") {
+        markWhatsAppConnected();
+      }
+    });
+  }
+
+  // While a QR is outstanding, poll the worker for the connection state and the
+  // (possibly refreshed) QR until it flips to connected — but give up after a
+  // bounded window so an unscanned/expired QR or an unreachable worker doesn't
+  // poll forever; the user can tap Connect again.
+  const isPairing = pairing !== null && pairing.status !== "connected";
+  useEffect(() => {
+    if (!isPairing) {
+      return;
+    }
+    let active = true;
+    const maxPolls = 48; // ~2 minutes at 2.5s
+    const id = setInterval(async () => {
+      if (!active) {
+        return;
+      }
+      pairingPollsRef.current += 1;
+      if (pairingPollsRef.current > maxPolls) {
+        setPairing(null);
+        setErrorMessage(
+          "Pairing timed out. Tap Connect WhatsApp to get a fresh code."
+        );
+        return;
+      }
+      const result = await getBaileysPairingStatusAction();
+      if (!active || !result.ok) {
+        return;
+      }
+      setPairing((prev) =>
+        prev ? { status: result.status, qr: result.qr ?? prev.qr } : prev
       );
-
-      if (result.connection) {
-        const connection = result.connection;
-        const savedNumber = connection.requestedPhoneNumber;
-
-        // Connection status (and the number the server persisted) is server
-        // state, not an edit — mirror it into both snapshots so Connect never
-        // flips the dirty flag and Discard never rewinds it.
-        const applyConnection = (current: SettingsState): SettingsState => ({
-          ...current,
-          whatsapp: {
-            ...current.whatsapp,
-            phoneNumber: savedNumber || current.whatsapp.phoneNumber,
-            connection,
-          },
-        });
-
-        setState(applyConnection);
-        setSavedState(applyConnection);
+      if (result.status === "connected") {
+        markWhatsAppConnected();
       }
-
-      if (!result.ok) {
-        setErrorMessage(
-          result.error ?? "We couldn't start WhatsApp setup for this clinic number."
-        );
-        setMessage("");
-        return;
-      }
-
-      setErrorMessage("");
-      setMessage(result.message ?? "WhatsApp setup started.");
-    });
-  }
-
-  function handleRefreshLiveConnection() {
-    startRefreshingConnection(async () => {
-      const result = await refreshWhatsAppLiveConnectionAction();
-
-      if (result.connection) {
-        const connection = result.connection;
-
-        // Server state, not an edit — keep both snapshots in sync (see above).
-        const applyConnection = (current: SettingsState): SettingsState => ({
-          ...current,
-          whatsapp: {
-            ...current.whatsapp,
-            connection,
-          },
-        });
-
-        setState(applyConnection);
-        setSavedState(applyConnection);
-      }
-
-      if (!result.ok) {
-        setErrorMessage(
-          result.error ?? "We couldn't refresh the clinic number status."
-        );
-        setMessage("");
-        return;
-      }
-
-      setErrorMessage("");
-      setMessage(result.message ?? "Latest WhatsApp status loaded.");
-    });
-  }
+    }, 2500);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, [isPairing, markWhatsAppConnected]);
 
   const content = (
     <LazyMotionProvider>
@@ -1049,74 +1065,68 @@ export function SettingsWorkspace({
           <SectionCard
             id="whatsapp"
             title="WhatsApp"
-            description="Connect a WhatsApp number to send appointment reminders and reply to clients from the Inbox."
+            description="Connect your clinic's WhatsApp to send appointment reminders and reply to clients from the Inbox."
             active={activeSection === "whatsapp"}
           >
             <div className="space-y-4">
               <div className="rounded-(--radius-card) border border-border/70 bg-[#fafbfd] p-3.5">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={cn(
-                        "size-2.5 rounded-full",
-                        isConnected ? "bg-emerald-500" : "bg-muted-foreground/35"
-                      )}
-                    />
-                    <p className="text-sm font-semibold text-foreground">
-                      {isConnected ? "Connected" : "Not connected"}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleRefreshLiveConnection}
-                    disabled={isRefreshingConnection}
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors duration-(--duration-base) hover:text-foreground disabled:opacity-60"
-                  >
-                    <RefreshCw className={cn("size-3.5", isRefreshingConnection && "animate-spin")} />
-                    {isRefreshingConnection ? "Refreshing..." : "Refresh"}
-                  </button>
-                </div>
-                {state.whatsapp.connection.detail ? (
-                  <p className="mt-2 text-sm leading-5 text-muted-foreground">
-                    {state.whatsapp.connection.detail}
-                  </p>
-                ) : null}
-                {state.whatsapp.connection.nextStep ? (
-                  <p className="mt-1.5 text-xs font-medium text-primary">
-                    {state.whatsapp.connection.nextStep}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="space-y-1.5">
-                <FieldLabel>Clinic WhatsApp number</FieldLabel>
-                <div className="flex gap-2">
-                  <Input
-                    value={state.whatsapp.phoneNumber}
-                    onChange={(event) =>
-                      setState((current) => ({
-                        ...current,
-                        whatsapp: {
-                          ...current.whatsapp,
-                          phoneNumber: event.target.value,
-                        },
-                      }))
-                    }
-                    placeholder="+1 555 000 0000"
-                    className="h-10 flex-1 rounded-(--radius-card) bg-white"
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "size-2.5 rounded-full",
+                      isConnected ? "bg-emerald-500" : "bg-muted-foreground/35"
+                    )}
                   />
-                  <Button
-                    className="h-10 shrink-0 rounded-(--radius-card) px-4"
-                    onClick={handlePrepareLiveConnection}
-                    disabled={isPreparingConnection}
-                  >
-                    {isPreparingConnection ? "Connecting..." : "Connect"}
-                  </Button>
+                  <p className="text-sm font-semibold text-foreground">
+                    {isConnected ? "Connected" : "Not connected"}
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Use the full international format, for example +1 555 000 0000.
+                <p className="mt-2 text-sm leading-5 text-muted-foreground">
+                  {isConnected
+                    ? "Your clinic's WhatsApp is linked. Reminders and Inbox replies are active."
+                    : "Link your clinic's WhatsApp by scanning a QR code with the clinic phone — no number setup needed."}
                 </p>
               </div>
+
+              {!isConnected ? (
+                pairing?.qr ? (
+                  <div className="flex flex-col items-center gap-3 rounded-(--radius-card) border border-border/70 bg-white p-4">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={pairing.qr}
+                      alt="WhatsApp pairing QR code"
+                      width={200}
+                      height={200}
+                      className="rounded-lg"
+                    />
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-foreground">
+                        Scan to connect
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        On the clinic phone, open WhatsApp → Settings → Linked
+                        devices → Link a device, then scan this code.
+                      </p>
+                      <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-primary">
+                        <span className="size-1.5 animate-pulse rounded-full bg-primary" />
+                        Waiting for the scan…
+                      </p>
+                    </div>
+                  </div>
+                ) : pairing ? (
+                  <div className="rounded-(--radius-card) border border-border/70 bg-white p-4 text-center text-sm text-muted-foreground">
+                    Preparing your QR code…
+                  </div>
+                ) : (
+                  <Button
+                    className="h-10 w-full rounded-(--radius-card)"
+                    onClick={handleConnectWhatsApp}
+                    disabled={isConnecting}
+                  >
+                    {isConnecting ? "Starting…" : "Connect WhatsApp"}
+                  </Button>
+                )
+              ) : null}
 
               <ul className="space-y-2 border-t border-border/60 pt-3.5 text-sm text-muted-foreground">
                 <li className="flex items-start gap-2.5">

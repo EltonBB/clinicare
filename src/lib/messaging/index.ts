@@ -1,0 +1,149 @@
+import { normalizePhone } from "@/lib/inbox";
+import { logger } from "@/lib/logger";
+
+import { getMessagingRegistry } from "./configure";
+import { ChannelRegistry } from "./registry";
+import { renderReminder } from "./render";
+import type {
+  AdapterSendInput,
+  MessageChannel,
+  SendMessageInput,
+  SendMessageResult,
+} from "./types";
+
+/**
+ * Canonicalizes a raw recipient address for a channel.
+ *
+ * Phone channels produce E.164 with a leading "+"; each adapter re-formats for
+ * its provider (Twilio prefixes `whatsapp:`, Baileys strips the "+"). Returns
+ * `null` when the address is unusable, so the dispatcher can fail closed.
+ */
+function canonicalizeRecipient(
+  channel: MessageChannel,
+  to: string
+): string | null {
+  if (channel === "EMAIL") {
+    const email = to.trim().toLowerCase();
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+  }
+
+  const phone = normalizePhone(to);
+  const digits = phone.replace(/\D/g, "");
+  // A real MSISDN is at least a country code + subscriber number; guard against
+  // empty/garbage input without hard-coding a single region's length.
+  return digits.length >= 6 ? phone : null;
+}
+
+/**
+ * The messaging seam's single entry point. Every outbound patient message goes
+ * through here. Resolves the channel's adapter, canonicalizes the recipient,
+ * renders the body under minimum-necessary rules, and returns a provider-neutral
+ * result — never throwing, never surfacing a provider name or PHI.
+ */
+export async function sendMessage(
+  input: SendMessageInput,
+  registry: ChannelRegistry = getMessagingRegistry()
+): Promise<SendMessageResult> {
+  const adapter = registry.get(input.channel);
+  if (!adapter) {
+    return {
+      ok: false,
+      reason: "channel_unconfigured",
+      error: "This messaging channel isn't connected yet.",
+    };
+  }
+
+  const to = canonicalizeRecipient(input.channel, input.to);
+  if (!to) {
+    return {
+      ok: false,
+      reason: "invalid_recipient",
+      error: "The recipient address looks invalid.",
+    };
+  }
+
+  let adapterInput: AdapterSendInput;
+  switch (input.message.kind) {
+    case "appointment_reminder": {
+      adapterInput = {
+        businessId: input.businessId,
+        to,
+        body: renderReminder(input.message),
+      };
+      break;
+    }
+    case "freeform": {
+      const body = input.message.body.trim();
+      if (!body) {
+        return {
+          ok: false,
+          reason: "empty_message",
+          error: "The message is empty.",
+        };
+      }
+      adapterInput = { businessId: input.businessId, to, body };
+      break;
+    }
+    case "template": {
+      adapterInput = {
+        businessId: input.businessId,
+        to,
+        body: "",
+        template: {
+          id: input.message.templateId,
+          variables: input.message.variables,
+        },
+      };
+      break;
+    }
+  }
+
+  try {
+    const result = await adapter.send(adapterInput);
+    return {
+      ok: true,
+      providerMessageId: result.providerMessageId,
+      status: result.status,
+      body: adapterInput.body,
+    };
+  } catch (error) {
+    // Record-id-only, provider-neutral: never log PHI or a provider name.
+    logger.error("Outbound message send failed.", error, {
+      businessId: input.businessId,
+      channel: input.channel,
+      kind: input.message.kind,
+    });
+    return {
+      ok: false,
+      reason: "provider_error",
+      error: "We couldn't send the message. Please try again.",
+    };
+  }
+}
+
+export { ChannelRegistry } from "./registry";
+export {
+  buildConfiguredRegistry,
+  getMessagingRegistry,
+  resetMessagingRegistry,
+} from "./configure";
+export { DEFAULT_REMINDER_TEMPLATE, renderReminder } from "./render";
+export { EchoAdapter } from "./adapters/echo";
+export { BaileysWhatsAppAdapter } from "./adapters/baileys";
+export {
+  BAILEYS_BRIDGE_HEADER,
+  type WorkerInboundEvent,
+  type WorkerSendRequest,
+  type WorkerSendResponse,
+} from "./baileys-contract";
+export type {
+  AdapterSendInput,
+  AdapterSendResult,
+  ChannelAdapter,
+  MessageChannel,
+  MessageDeliveryStatus,
+  OutboundMessage,
+  SendFailureReason,
+  SendMessageInput,
+  SendMessageResult,
+} from "./types";

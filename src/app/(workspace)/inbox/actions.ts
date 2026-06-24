@@ -13,12 +13,7 @@ import {
   type InboxConversation,
   type InboxViewModel,
 } from "@/lib/inbox";
-import {
-  getConfiguredTwilioFirstMessageTemplateSid,
-  mapTwilioStatusToDeliveryStatus,
-  sendTwilioWhatsAppMessage,
-  sendTwilioWhatsAppTemplateMessage,
-} from "@/lib/whatsapp";
+import { sendMessage } from "@/lib/messaging";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 
 export type SendInboxMessageResult = {
@@ -264,18 +259,6 @@ export async function sendInboxMessageAction(
       id: true,
       phoneNumber: true,
       contactName: true,
-      messages: {
-        where: {
-          direction: "INBOUND",
-        },
-        orderBy: {
-          sentAt: "desc",
-        },
-        take: 1,
-        select: {
-          sentAt: true,
-        },
-      },
     },
   });
 
@@ -313,74 +296,26 @@ export async function sendInboxMessageAction(
     };
   }
 
-  const senderPhoneNumber = whatsAppConnection.senderPhoneNumber?.trim() || "";
+  // All outbound WhatsApp flows through the messaging seam, which routes to the
+  // active provider (Baileys), renders/validates the payload, never throws, and
+  // returns the exact body it sent for storage.
+  const result = await sendMessage({
+    channel: "WHATSAPP",
+    businessId: context.business.id,
+    to: conversation.phoneNumber,
+    message: { kind: "freeform", body: cleanedBody },
+  });
 
-  if (!senderPhoneNumber) {
-    return {
-      ok: false,
-      error:
-        "This clinic does not have an active WhatsApp sender yet. Finish the clinic connection in Settings first.",
-    };
-  }
-
-  let delivery:
-    | {
-        sid: string;
-        status: string;
-      }
-    | undefined;
-
-  const latestInboundAt = conversation.messages[0]?.sentAt ?? null;
-  const hasOpenFreeformWindow =
-    latestInboundAt !== null &&
-    Date.now() - latestInboundAt.getTime() <= 24 * 60 * 60 * 1000;
-  const firstMessageTemplateSid = getConfiguredTwilioFirstMessageTemplateSid();
-  const senderDisplayName =
-    typeof context.user.user_metadata?.full_name === "string" &&
-    context.user.user_metadata.full_name.trim().length > 0
-      ? context.user.user_metadata.full_name.trim()
-      : `${context.business.name} team`;
-  const renderedTemplateBody = `Hello ${matchedClient?.name ?? conversation.contactName ?? "there"}, this is ${senderDisplayName} from ${context.business.name}. You can reply here on WhatsApp to continue the conversation.`;
-  const outboundBody =
-    !hasOpenFreeformWindow && firstMessageTemplateSid
-      ? renderedTemplateBody
-      : cleanedBody;
-
-  try {
-    if (!hasOpenFreeformWindow && firstMessageTemplateSid) {
-      delivery = await sendTwilioWhatsAppTemplateMessage({
-        to: conversation.phoneNumber,
-        from: senderPhoneNumber,
-        contentSid: firstMessageTemplateSid,
-        contentVariables: {
-          "1": matchedClient?.name ?? conversation.contactName ?? "there",
-          "2": senderDisplayName,
-          "3": context.business.name,
-        },
-      });
-    } else {
-      delivery = await sendTwilioWhatsAppMessage({
-        to: conversation.phoneNumber,
-        body: cleanedBody,
-        from: senderPhoneNumber,
-      });
-    }
-  } catch (error) {
-    logger.error("WhatsApp outbound send failed.", error, {
+  if (!result.ok) {
+    logger.error("WhatsApp outbound send failed.", undefined, {
       businessId: context.business.id,
       conversationId,
+      reason: result.reason,
     });
-
     await prisma.whatsAppConnection.update({
-      where: {
-        businessId: context.business.id,
-      },
-      data: {
-        status: "ERRORED",
-        lastSyncedAt: new Date(),
-      },
+      where: { businessId: context.business.id },
+      data: { status: "ERRORED", lastSyncedAt: new Date() },
     });
-
     return {
       ok: false,
       error: "We couldn't send the WhatsApp message.",
@@ -393,17 +328,15 @@ export async function sendInboxMessageAction(
         conversationId: conversation.id,
         clientId: matchedClient?.id ?? null,
         direction: "OUTBOUND",
-        body: outboundBody,
-        providerMessageSid: delivery?.sid || null,
-        deliveryStatus: mapTwilioStatusToDeliveryStatus(delivery?.status),
+        body: result.body,
+        providerMessageSid: result.providerMessageId,
+        deliveryStatus: result.status,
         deliveryUpdatedAt: new Date(),
       },
     });
 
     await tx.conversation.update({
-      where: {
-        id: conversation.id,
-      },
+      where: { id: conversation.id },
       data: {
         contactName: matchedClient?.name ?? conversation.contactName,
         unreadCount: 0,
@@ -411,19 +344,17 @@ export async function sendInboxMessageAction(
     });
 
     await tx.whatsAppConnection.update({
-      where: {
-        businessId: context.business.id,
-      },
-      data: {
-        status: "CONNECTED",
-        lastSyncedAt: new Date(),
-      },
+      where: { businessId: context.business.id },
+      data: { status: "CONNECTED", lastSyncedAt: new Date() },
     });
   });
 
   return {
     ok: true,
-    conversation: await hydrateConversation(conversation.id, context.business.id),
+    conversation: await hydrateConversation(
+      conversation.id,
+      context.business.id
+    ),
   };
 }
 

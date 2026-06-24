@@ -91,41 +91,22 @@ async function bootstrapWorkspaceFromOnboarding(user: {
       },
     });
 
+    // WhatsApp runs on Baileys (QR pairing). Seed a not-yet-connected record so
+    // Settings shows the Connect option; pairing fills in the rest. The update
+    // branch only migrates the provider so a re-bootstrap can't drop a live
+    // session.
     await tx.whatsAppConnection.upsert({
       where: {
         businessId: business.id,
       },
       update: {
-        provider: "TWILIO",
-        mode: "LIVE",
-        status: "DISCONNECTED",
-        requestedPhoneNumber: null,
-        sandboxRecipientPhoneNumber: null,
-        senderPhoneNumber: null,
-        externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
-        externalSenderId: null,
-        verificationStatus: "NOT_STARTED",
-        displayNameStatus: "UNKNOWN",
-        onboardingStartedAt: null,
-        connectedAt: null,
-        lastError: null,
-        lastSyncedAt: new Date(),
+        provider: "BAILEYS",
       },
       create: {
         businessId: business.id,
-        provider: "TWILIO",
+        provider: "BAILEYS",
         mode: "LIVE",
         status: "DISCONNECTED",
-        requestedPhoneNumber: null,
-        sandboxRecipientPhoneNumber: null,
-        senderPhoneNumber: null,
-        externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
-        externalSenderId: null,
-        verificationStatus: "NOT_STARTED",
-        displayNameStatus: "UNKNOWN",
-        onboardingStartedAt: null,
-        connectedAt: null,
-        lastError: null,
         lastSyncedAt: new Date(),
       },
     });

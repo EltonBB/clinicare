@@ -44,9 +44,9 @@ const importantOptionalEnv: Record<string, string> = {
   APP_URL: "auth email links and absolute URLs may be incorrect",
   CRON_SECRET: "scheduled reminder/analytics jobs will reject every request",
   OPENAI_API_KEY: "AI insights fall back to rule-based snapshots",
-  TWILIO_ACCOUNT_SID: "WhatsApp messaging is unavailable",
-  TWILIO_AUTH_TOKEN: "WhatsApp messaging is unavailable",
-  TWILIO_WHATSAPP_FROM: "WhatsApp messaging is unavailable",
+  BAILEYS_WORKER_URL: "WhatsApp sending and QR pairing are unavailable",
+  BAILEYS_BRIDGE_SECRET:
+    "WhatsApp worker requests can't be authenticated, so messaging is unavailable",
 };
 
 /**

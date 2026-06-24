@@ -153,29 +153,6 @@ function buildBillingSummary(business: Business): SettingsState["billing"] {
   };
 }
 
-export function resolveWhatsAppConnectionStatus(args: {
-  hasSender: boolean;
-  previousStatus?: WhatsAppConnectionStatus | null;
-}) {
-  if (!args.hasSender) {
-    return "PENDING_SETUP" as const;
-  }
-
-  if (args.previousStatus === "CONNECTED") {
-    return "CONNECTED" as const;
-  }
-
-  if (args.previousStatus === "CONNECTING") {
-    return "CONNECTING" as const;
-  }
-
-  if (args.previousStatus === "ERRORED") {
-    return "ERRORED" as const;
-  }
-
-  return "PENDING_VERIFICATION" as const;
-}
-
 function formatConnectionTimestamp(value: Date | null | undefined) {
   return value ? format(value, "MMM d, yyyy 'at' h:mm a") : "";
 }
@@ -207,11 +184,10 @@ function extractPhoneNumber(value: string) {
   return match ? match[0].replace(/\s+/g, "") : "";
 }
 
-function resolveCustomerFacingPhase(connection: WhatsAppConnection | null, requestedPhoneNumber: string) {
-  if (!requestedPhoneNumber.trim()) {
-    return "NOT_STARTED" as const;
-  }
-
+function resolveCustomerFacingPhase(connection: WhatsAppConnection | null) {
+  // Phase is derived purely from the stored status. (The old code returned
+  // NOT_STARTED when no phone number was set — a Twilio-era assumption; Baileys
+  // pairs by QR and never sets a number, so that gate would hide a live link.)
   const status = connection?.status ?? "PENDING_SETUP";
   const lastError = connection?.lastError?.toLowerCase() ?? "";
 
@@ -341,7 +317,7 @@ export function buildWhatsAppConnectionSummary(
   connection: WhatsAppConnection | null,
   fallbackRequestedPhoneNumber: string
 ): SettingsState["whatsapp"]["connection"] {
-  const provider = connection?.provider ?? "TWILIO";
+  const provider = connection?.provider ?? "BAILEYS";
   const mode = connection?.mode ?? "SANDBOX";
   const status = connection?.status ?? "PENDING_SETUP";
   const requestedPhoneNumber = normalizePhone(
@@ -361,7 +337,7 @@ export function buildWhatsAppConnectionSummary(
     extractedAlternatePhoneNumber !== senderPhoneNumber
       ? extractedAlternatePhoneNumber
       : "";
-  const phase = resolveCustomerFacingPhase(connection, requestedPhoneNumber);
+  const phase = resolveCustomerFacingPhase(connection);
   const customerCopy = buildCustomerFacingConnectionCopy({
     phase,
     requestedPhoneNumber,
