@@ -120,6 +120,52 @@ export async function recordInboundMessage(
 }
 
 /**
+ * Syncs the app's stored WhatsApp connection state from a worker-pushed event.
+ *
+ * The worker holds the live socket; the app gates Inbox/reminder sends on the
+ * stored `WhatsAppConnection.status`. Without this push, a successful pair (if
+ * the Settings poll misses it) or a phone logout would leave the stored row
+ * stale — showing "Connected" with no session, or never flipping to connected.
+ */
+export async function recordConnectionState(event: {
+  businessId: string;
+  status: "connected" | "disconnected";
+}): Promise<void> {
+  if (event.status === "connected") {
+    // A live socket is confirmed — persist CONNECTED and enable reminders so the
+    // clinic isn't dependent on the Settings poll catching the moment.
+    await prisma.$transaction([
+      prisma.whatsAppConnection.updateMany({
+        where: { businessId: event.businessId },
+        data: {
+          provider: "BAILEYS",
+          status: "CONNECTED",
+          connectedAt: new Date(),
+          lastSyncedAt: new Date(),
+          lastError: null,
+        },
+      }),
+      prisma.business.updateMany({
+        where: { id: event.businessId },
+        data: { whatsappEnabled: true },
+      }),
+    ]);
+    return;
+  }
+  // The phone unlinked or the worker gave up reconnecting — reflect it so
+  // Settings shows "not connected" and the reminder cron stops attempting sends
+  // against a session that no longer exists.
+  await prisma.whatsAppConnection.updateMany({
+    where: { businessId: event.businessId },
+    data: {
+      status: "DISCONNECTED",
+      connectedAt: null,
+      lastSyncedAt: new Date(),
+    },
+  });
+}
+
+/**
  * Applies an async delivery receipt (sent/delivered/read/failed) to a previously
  * stored outbound message, keyed on its provider message id. A no-op if the id
  * matches nothing.

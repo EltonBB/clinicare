@@ -240,7 +240,9 @@ async function renderQrDataUrl(qr?: string): Promise<string | undefined> {
  * connection as Baileys-backed. The QR arrives asynchronously — the client
  * polls {@link getBaileysPairingStatusAction} for it.
  */
-export async function connectBaileysWhatsAppAction(): Promise<BaileysPairingResult> {
+export async function connectBaileysWhatsAppAction(options?: {
+  force?: boolean;
+}): Promise<BaileysPairingResult> {
   const user = await getCurrentUser();
 
   if (!user) {
@@ -278,7 +280,9 @@ export async function connectBaileysWhatsAppAction(): Promise<BaileysPairingResu
     },
   });
 
-  const state = await requestBaileysPairing(business.id);
+  const state = await requestBaileysPairing(business.id, {
+    force: options?.force === true,
+  });
   if (!state) {
     return {
       ok: false,

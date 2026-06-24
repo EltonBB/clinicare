@@ -31,7 +31,7 @@ describe("baileys-control", () => {
     expect(isBaileysWorkerConfigured()).toBe(false);
   });
 
-  it("POSTs to /pair with the bridge secret and businessId", async () => {
+  it("POSTs to /pair with the bridge secret and businessId (force defaults false)", async () => {
     const fetchMock = mockFetch({ status: "qr", qr: "QR_PAYLOAD" });
     const result = await requestBaileysPairing("biz_1");
 
@@ -45,7 +45,24 @@ describe("baileys-control", () => {
     expect(
       (init.headers as Record<string, string>)["x-vela-bridge-secret"]
     ).toBe("s3cret");
-    expect(JSON.parse(init.body as string)).toEqual({ businessId: "biz_1" });
+    expect(JSON.parse(init.body as string)).toEqual({
+      businessId: "biz_1",
+      force: false,
+    });
+  });
+
+  it("forwards force:true to /pair for a re-link", async () => {
+    const fetchMock = mockFetch({ status: "qr", qr: "QR_PAYLOAD" });
+    await requestBaileysPairing("biz_1", { force: true });
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(JSON.parse(init.body as string)).toEqual({
+      businessId: "biz_1",
+      force: true,
+    });
   });
 
   it("GETs /status with the businessId query", async () => {

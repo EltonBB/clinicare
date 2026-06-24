@@ -8,6 +8,7 @@ import { prisma } from "./prisma";
 import {
   bootstrapSessions,
   closeAllSessions,
+  forceRestartSession,
   getStatus,
   sendText,
   startSession,
@@ -42,12 +43,19 @@ app.get("/health", (_req, res) => {
 // the app polls GET /status for it.
 app.post("/pair", requireSecret, async (req, res) => {
   const businessId = String(req.body?.businessId ?? "").trim();
+  const force = req.body?.force === true;
   if (!businessId) {
     res.status(400).json({ error: "businessId is required." });
     return;
   }
   try {
-    await startSession(businessId);
+    if (force) {
+      // "Link a different device": drop the current session + creds and start a
+      // fresh QR even if a session is already connected.
+      await forceRestartSession(businessId);
+    } else {
+      await startSession(businessId);
+    }
     res.json({ ok: true, ...getStatus(businessId) });
   } catch (error) {
     logger.error({ businessId, error: scrubError(error) }, "pair failed");

@@ -159,7 +159,7 @@ export async function startSession(businessId: string): Promise<void> {
     });
 
     sock.ev.on("connection.update", (update) => {
-      handleConnectionUpdate(businessId, update);
+      handleConnectionUpdate(businessId, sock, update);
     });
 
     sock.ev.on("messages.upsert", ({ messages, type }) => {
@@ -192,10 +192,14 @@ export async function startSession(businessId: string): Promise<void> {
 
 function handleConnectionUpdate(
   businessId: string,
+  sock: WASocket,
   update: BaileysEventMap["connection.update"]
 ): void {
   const session = sessions.get(businessId);
-  if (!session) {
+  // Ignore events from a socket that's already been superseded (a restart/
+  // re-pair replaced it) — a stale close/open must not mutate or delete the new
+  // active session.
+  if (!session || session.sock !== sock) {
     return;
   }
   const { connection, lastDisconnect, qr } = update;
@@ -232,6 +236,9 @@ function handleConnectionUpdate(
       }, STABLE_CONNECTION_MS)
     );
     logger.info({ businessId }, "WhatsApp connected");
+    // Tell the app the link is live so it persists CONNECTED + enables reminders
+    // without depending on the Settings poll catching this exact moment.
+    void postToApp({ type: "connection", businessId, status: "connected" });
   }
 
   if (connection === "close") {
@@ -263,6 +270,9 @@ function handleConnectionUpdate(
           "Failed to clear auth state after logout"
         );
       });
+      // The phone unlinked us — tell the app so Settings shows disconnected and
+      // the reminder cron stops attempting sends against a session that's gone.
+      void postToApp({ type: "connection", businessId, status: "disconnected" });
       return;
     }
 
@@ -282,6 +292,9 @@ function scheduleReconnect(businessId: string): void {
       { businessId },
       "Giving up reconnecting after repeated failures — re-pair required"
     );
+    // The connection is down for good (until a re-pair) — tell the app so it
+    // stops showing CONNECTED and the cron stops attempting sends.
+    void postToApp({ type: "connection", businessId, status: "disconnected" });
     return;
   }
   reconnectAttempts.set(businessId, attempts);
@@ -467,6 +480,32 @@ export function closeAllSessions(): void {
     }
   }
   sessions.clear();
+}
+
+/**
+ * Drop a workspace's current session AND stored creds, then start a fresh
+ * pairing — used when the operator links a *different* device. Without wiping
+ * creds, an already-connected session would just re-report "connected" and never
+ * produce a new QR.
+ */
+export async function forceRestartSession(businessId: string): Promise<void> {
+  const existing = sessions.get(businessId);
+  if (existing) {
+    try {
+      existing.sock.end(undefined);
+    } catch {
+      // already closed
+    }
+    sessions.delete(businessId);
+  }
+  clearReconnectTimer(businessId);
+  clearStableTimer(businessId);
+  reconnectAttempts.delete(businessId);
+  // Wipe stored creds so the next connect requires a fresh QR scan instead of
+  // silently re-linking the old phone. (The superseded socket's late close is a
+  // no-op — handleConnectionUpdate's socket-identity guard drops it.)
+  await clearAuthState(businessId);
+  await startSession(businessId);
 }
 
 /** Best-effort reconnect of every workspace that already has saved creds. */

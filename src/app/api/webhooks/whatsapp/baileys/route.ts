@@ -6,6 +6,7 @@ import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { BAILEYS_BRIDGE_HEADER } from "@/lib/messaging/baileys-contract";
 import {
+  recordConnectionState,
   recordDeliveryStatus,
   recordInboundMessage,
 } from "@/lib/messaging/inbound";
@@ -30,6 +31,11 @@ const workerInboundEventSchema = z.discriminatedUnion("type", [
     providerMessageId: z.string().min(1).max(128),
     status: z.enum(["SENT", "DELIVERED", "READ", "FAILED"]),
     errorCode: z.string().max(64).optional(),
+  }),
+  z.object({
+    type: z.literal("connection"),
+    businessId: z.string().min(1).max(64),
+    status: z.enum(["connected", "disconnected"]),
   }),
 ]);
 
@@ -74,6 +80,14 @@ export async function POST(request: Request) {
         providerMessageId: event.providerMessageId,
         status: event.status,
         errorCode: event.errorCode,
+      });
+      return NextResponse.json({ ok: true });
+    }
+
+    if (event.type === "connection") {
+      await recordConnectionState({
+        businessId: event.businessId,
+        status: event.status,
       });
       return NextResponse.json({ ok: true });
     }

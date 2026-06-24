@@ -2,6 +2,7 @@ import { logger } from "@/lib/logger";
 
 import {
   BAILEYS_BRIDGE_HEADER,
+  type WorkerPairRequest,
   type WorkerStatusResponse,
 } from "./baileys-contract";
 
@@ -30,14 +31,23 @@ export function isBaileysWorkerConfigured(): boolean {
   return workerConfig() !== null;
 }
 
-/** Start (or restart) a workspace's session. Returns the current state. */
+/**
+ * Start (or restart) a workspace's session. Returns the current state. Pass
+ * `force` to drop the existing session + creds and emit a fresh QR even if
+ * already connected ("link a different device").
+ */
 export async function requestBaileysPairing(
-  businessId: string
+  businessId: string,
+  options?: { force?: boolean }
 ): Promise<WorkerStatusResponse | null> {
   const config = workerConfig();
   if (!config) {
     return null;
   }
+  const payload: WorkerPairRequest = {
+    businessId,
+    force: options?.force === true,
+  };
   try {
     const response = await fetch(`${config.workerUrl}/pair`, {
       method: "POST",
@@ -45,7 +55,7 @@ export async function requestBaileysPairing(
         "Content-Type": "application/json",
         [BAILEYS_BRIDGE_HEADER]: config.secret,
       },
-      body: JSON.stringify({ businessId }),
+      body: JSON.stringify(payload),
       cache: "no-store",
     });
     if (!response.ok) {

@@ -455,9 +455,14 @@ export function SettingsWorkspace({
 
   const pairingPollsRef = useRef(0);
 
-  function handleConnectWhatsApp() {
+  function handleConnectWhatsApp(options?: { force?: boolean }) {
     startConnecting(async () => {
-      const result = await connectBaileysWhatsAppAction();
+      // `force` re-pairs a clinic that's already connected ("link a different
+      // device") — without it the worker just re-reports the live session and
+      // never emits a new QR.
+      const result = await connectBaileysWhatsAppAction(
+        options?.force ? { force: true } : undefined
+      );
       if (!result.ok) {
         setErrorMessage(result.error);
         setMessage("");
@@ -1123,7 +1128,7 @@ export function SettingsWorkspace({
               ) : isConnected ? (
                 <button
                   type="button"
-                  onClick={handleConnectWhatsApp}
+                  onClick={() => handleConnectWhatsApp({ force: true })}
                   disabled={isConnecting}
                   className="text-xs font-medium text-muted-foreground transition-colors duration-(--duration-base) hover:text-foreground disabled:opacity-60"
                 >
@@ -1132,7 +1137,7 @@ export function SettingsWorkspace({
               ) : (
                 <Button
                   className="h-10 w-full rounded-(--radius-card)"
-                  onClick={handleConnectWhatsApp}
+                  onClick={() => handleConnectWhatsApp()}
                   disabled={isConnecting}
                 >
                   {isConnecting ? "Starting…" : "Connect WhatsApp"}

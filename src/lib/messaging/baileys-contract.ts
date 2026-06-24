@@ -15,6 +15,17 @@
 /** Header carrying the shared bridge secret in both directions. */
 export const BAILEYS_BRIDGE_HEADER = "x-vela-bridge-secret";
 
+/** app → worker: POST {workerUrl}/pair */
+export type WorkerPairRequest = {
+  businessId: string;
+  /**
+   * Force a fresh pairing — drop the existing session + creds and emit a new QR
+   * even if already connected ("link a different device"). Omitted/false reuses
+   * a live session.
+   */
+  force?: boolean;
+};
+
 /** app → worker: POST {workerUrl}/send */
 export type WorkerSendRequest = {
   businessId: string;
@@ -60,4 +71,11 @@ export type WorkerInboundEvent =
       providerMessageId: string;
       status: "SENT" | "DELIVERED" | "READ" | "FAILED";
       errorCode?: string;
+    }
+  | {
+      // Connection-state change so the app's stored WhatsAppConnection.status
+      // stays in sync with the worker (link state only — no patient data).
+      type: "connection";
+      businessId: string;
+      status: "connected" | "disconnected";
     };

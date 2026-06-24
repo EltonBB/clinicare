@@ -20,6 +20,14 @@ export type InboundEvent =
       providerMessageId: string;
       status: "SENT" | "DELIVERED" | "READ" | "FAILED";
       errorCode?: string;
+    }
+  | {
+      // Connection-state change pushed to the app so its stored
+      // WhatsAppConnection.status stays in sync (no patient data — link state
+      // only).
+      type: "connection";
+      businessId: string;
+      status: "connected" | "disconnected";
     };
 
 const MAX_ATTEMPTS = 4;
