@@ -285,19 +285,32 @@ export async function connectBaileysWhatsAppAction(): Promise<BaileysPairingResu
   }
 
   if (state.status === "connected") {
-    await prisma.whatsAppConnection.update({
-      where: { businessId: business.id },
-      data: {
-        status: "CONNECTED",
-        connectedAt: new Date(),
-        lastSyncedAt: new Date(),
-      },
-    });
+    await markWhatsAppConnected(business.id);
     revalidatePath("/inbox");
   }
 
   revalidatePath("/settings");
   return { ok: true, status: state.status, qr: await renderQrDataUrl(state.qr) };
+}
+
+/**
+ * Marks a workspace's WhatsApp connection CONNECTED and turns reminders on. A
+ * clinic that just paired (and sees "Connected") should actually get
+ * reminders — `Business.whatsappEnabled` gates the cron and defaults to false.
+ */
+async function markWhatsAppConnected(businessId: string): Promise<void> {
+  await prisma.whatsAppConnection.updateMany({
+    where: { businessId, provider: "BAILEYS" },
+    data: {
+      status: "CONNECTED",
+      connectedAt: new Date(),
+      lastSyncedAt: new Date(),
+    },
+  });
+  await prisma.business.update({
+    where: { id: businessId },
+    data: { whatsappEnabled: true },
+  });
 }
 
 /** Polls the worker for the current pairing/connection state (and QR). */
@@ -324,14 +337,7 @@ export async function getBaileysPairingStatusAction(): Promise<BaileysPairingRes
   }
 
   if (state.status === "connected") {
-    await prisma.whatsAppConnection.updateMany({
-      where: { businessId: business.id, provider: "BAILEYS" },
-      data: {
-        status: "CONNECTED",
-        connectedAt: new Date(),
-        lastSyncedAt: new Date(),
-      },
-    });
+    await markWhatsAppConnected(business.id);
     revalidatePath("/inbox");
   }
 

@@ -55,3 +55,11 @@ ALTER TABLE "WhatsAppSession" ADD CONSTRAINT "WhatsAppSession_businessId_fkey" F
 
 -- AddForeignKey
 ALTER TABLE "WhatsAppSessionKey" ADD CONSTRAINT "WhatsAppSessionKey_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- Row-level security. These tables live in the public schema and hold WhatsApp
+-- link credentials, so — like every other app table — RLS is enabled with NO
+-- public policies: the browser-exposed anon/authenticated Supabase roles can't
+-- read or write them. The app and worker connect as the table owner (service
+-- role), which bypasses RLS, so normal access is unaffected.
+ALTER TABLE "WhatsAppSession" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "WhatsAppSessionKey" ENABLE ROW LEVEL SECURITY;
