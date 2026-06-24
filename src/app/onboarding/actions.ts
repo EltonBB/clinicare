@@ -91,41 +91,31 @@ async function bootstrapWorkspaceFromOnboarding(user: {
       },
     });
 
+    // WhatsApp runs on Baileys (QR pairing). Seed a not-yet-connected record so
+    // Settings shows the Connect option; pairing fills in the rest.
+    const existingConnection = await tx.whatsAppConnection.findUnique({
+      where: { businessId: business.id },
+      select: { provider: true },
+    });
     await tx.whatsAppConnection.upsert({
       where: {
         businessId: business.id,
       },
       update: {
-        provider: "TWILIO",
-        mode: "LIVE",
-        status: "DISCONNECTED",
-        requestedPhoneNumber: null,
-        sandboxRecipientPhoneNumber: null,
-        senderPhoneNumber: null,
-        externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
-        externalSenderId: null,
-        verificationStatus: "NOT_STARTED",
-        displayNameStatus: "UNKNOWN",
-        onboardingStartedAt: null,
-        connectedAt: null,
-        lastError: null,
-        lastSyncedAt: new Date(),
+        provider: "BAILEYS",
+        // Migrating from a different provider (e.g. a legacy Twilio row)
+        // invalidates the old connection state — force a fresh pair rather than
+        // trusting a stale CONNECTED status with no Baileys session behind it.
+        // A re-bootstrap of an already-Baileys row leaves its live status alone.
+        ...(existingConnection && existingConnection.provider !== "BAILEYS"
+          ? { status: "DISCONNECTED", connectedAt: null }
+          : {}),
       },
       create: {
         businessId: business.id,
-        provider: "TWILIO",
+        provider: "BAILEYS",
         mode: "LIVE",
         status: "DISCONNECTED",
-        requestedPhoneNumber: null,
-        sandboxRecipientPhoneNumber: null,
-        senderPhoneNumber: null,
-        externalAccountId: process.env.TWILIO_ACCOUNT_SID?.trim() ?? null,
-        externalSenderId: null,
-        verificationStatus: "NOT_STARTED",
-        displayNameStatus: "UNKNOWN",
-        onboardingStartedAt: null,
-        connectedAt: null,
-        lastError: null,
         lastSyncedAt: new Date(),
       },
     });

@@ -153,29 +153,6 @@ function buildBillingSummary(business: Business): SettingsState["billing"] {
   };
 }
 
-export function resolveWhatsAppConnectionStatus(args: {
-  hasSender: boolean;
-  previousStatus?: WhatsAppConnectionStatus | null;
-}) {
-  if (!args.hasSender) {
-    return "PENDING_SETUP" as const;
-  }
-
-  if (args.previousStatus === "CONNECTED") {
-    return "CONNECTED" as const;
-  }
-
-  if (args.previousStatus === "CONNECTING") {
-    return "CONNECTING" as const;
-  }
-
-  if (args.previousStatus === "ERRORED") {
-    return "ERRORED" as const;
-  }
-
-  return "PENDING_VERIFICATION" as const;
-}
-
 function formatConnectionTimestamp(value: Date | null | undefined) {
   return value ? format(value, "MMM d, yyyy 'at' h:mm a") : "";
 }
@@ -207,11 +184,16 @@ function extractPhoneNumber(value: string) {
   return match ? match[0].replace(/\s+/g, "") : "";
 }
 
-function resolveCustomerFacingPhase(connection: WhatsAppConnection | null, requestedPhoneNumber: string) {
-  if (!requestedPhoneNumber.trim()) {
+function resolveCustomerFacingPhase(connection: WhatsAppConnection | null) {
+  // Only a Baileys connection has a worker session behind it. A legacy or
+  // other-provider row (e.g. an un-migrated TWILIO/CONNECTED record) must NOT
+  // read as connected — that would hide the Connect button while every send
+  // silently fails. Treat it as not started so the clinic can (re-)pair.
+  if (connection && connection.provider !== "BAILEYS") {
     return "NOT_STARTED" as const;
   }
-
+  // Otherwise derive the phase from the stored status. (Baileys pairs by QR and
+  // never sets a phone number, so the old number-gate would hide a live link.)
   const status = connection?.status ?? "PENDING_SETUP";
   const lastError = connection?.lastError?.toLowerCase() ?? "";
 
@@ -341,8 +323,8 @@ export function buildWhatsAppConnectionSummary(
   connection: WhatsAppConnection | null,
   fallbackRequestedPhoneNumber: string
 ): SettingsState["whatsapp"]["connection"] {
-  const provider = connection?.provider ?? "TWILIO";
-  const mode = connection?.mode ?? "SANDBOX";
+  const provider = connection?.provider ?? "BAILEYS";
+  const mode = connection?.mode ?? "LIVE";
   const status = connection?.status ?? "PENDING_SETUP";
   const requestedPhoneNumber = normalizePhone(
     connection?.requestedPhoneNumber ?? fallbackRequestedPhoneNumber
@@ -361,7 +343,7 @@ export function buildWhatsAppConnectionSummary(
     extractedAlternatePhoneNumber !== senderPhoneNumber
       ? extractedAlternatePhoneNumber
       : "";
-  const phase = resolveCustomerFacingPhase(connection, requestedPhoneNumber);
+  const phase = resolveCustomerFacingPhase(connection);
   const customerCopy = buildCustomerFacingConnectionCopy({
     phase,
     requestedPhoneNumber,
