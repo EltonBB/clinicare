@@ -185,9 +185,15 @@ function extractPhoneNumber(value: string) {
 }
 
 function resolveCustomerFacingPhase(connection: WhatsAppConnection | null) {
-  // Phase is derived purely from the stored status. (The old code returned
-  // NOT_STARTED when no phone number was set — a Twilio-era assumption; Baileys
-  // pairs by QR and never sets a number, so that gate would hide a live link.)
+  // Only a Baileys connection has a worker session behind it. A legacy or
+  // other-provider row (e.g. an un-migrated TWILIO/CONNECTED record) must NOT
+  // read as connected — that would hide the Connect button while every send
+  // silently fails. Treat it as not started so the clinic can (re-)pair.
+  if (connection && connection.provider !== "BAILEYS") {
+    return "NOT_STARTED" as const;
+  }
+  // Otherwise derive the phase from the stored status. (Baileys pairs by QR and
+  // never sets a phone number, so the old number-gate would hide a live link.)
   const status = connection?.status ?? "PENDING_SETUP";
   const lastError = connection?.lastError?.toLowerCase() ?? "";
 

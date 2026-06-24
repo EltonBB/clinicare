@@ -439,6 +439,10 @@ export function SettingsWorkspace({
       ...current,
       whatsapp: {
         ...current.whatsapp,
+        // Mirror the server-side whatsappEnabled=true the pairing action sets,
+        // so a later Settings save from this state can't write sendReminders:
+        // false and disable the reminder cron right after pairing.
+        sendReminders: true,
         connection: {
           ...current.whatsapp.connection,
           phase: "CONNECTED",
