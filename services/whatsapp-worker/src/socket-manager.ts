@@ -38,6 +38,13 @@ const VERSION_FETCH_TIMEOUT_MS = 10_000;
 const stableTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** Pending reconnect timers per business — at most one in flight per tenant. */
 const reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/**
+ * Per-business start "generation". A force re-pair bumps it so an in-flight
+ * startSession (which may have loaded the OLD creds before the wipe) detects the
+ * change after its awaits and restarts with the fresh creds instead of bringing
+ * the old session back up.
+ */
+const sessionEpoch = new Map<string, number>();
 /** Set on graceful shutdown so no new socket is started after closeAllSessions. */
 let stopped = false;
 
@@ -99,6 +106,9 @@ export async function startSession(businessId: string): Promise<void> {
     return;
   }
   starting.add(businessId);
+  // Snapshot the generation so we can detect a force re-pair that lands while
+  // we're loading creds/version below.
+  const epoch = sessionEpoch.get(businessId) ?? 0;
 
   try {
     // A prior socket (status 'qr' or 'disconnected') is about to be replaced —
@@ -129,6 +139,15 @@ export async function startSession(businessId: string): Promise<void> {
         { businessId, error: scrubError(error) },
         "Using bundled Baileys version (latest-version fetch failed)"
       );
+    }
+
+    // A force re-pair wiped creds while we were loading — abandon this start
+    // (no socket exists yet) and restart so the FRESH creds are used instead of
+    // bringing the old session back up. Release the slot first so the re-run can
+    // re-acquire it (synchronous, so nothing else can interleave).
+    if ((sessionEpoch.get(businessId) ?? 0) !== epoch) {
+      starting.delete(businessId);
+      return await startSession(businessId);
     }
 
     // Pin Baileys' own logger to warn — at debug/trace it logs JIDs (phone
@@ -489,6 +508,10 @@ export function closeAllSessions(): void {
  * produce a new QR.
  */
 export async function forceRestartSession(businessId: string): Promise<void> {
+  // Bump the generation FIRST so any in-flight startSession (which may have
+  // already loaded the soon-to-be-wiped creds) detects the change and restarts
+  // with fresh creds rather than reviving the old session.
+  sessionEpoch.set(businessId, (sessionEpoch.get(businessId) ?? 0) + 1);
   const existing = sessions.get(businessId);
   if (existing) {
     try {

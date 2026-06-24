@@ -139,6 +139,30 @@ describe("sendMessage dispatch", () => {
     });
   });
 
+  it("classifies an empty-rendered reminder template as empty_message", async () => {
+    const echo = new EchoAdapter("WHATSAPP");
+    const result = await sendMessage(
+      {
+        channel: "WHATSAPP",
+        businessId: "biz_1",
+        to: "+14155550100",
+        message: {
+          kind: "appointment_reminder",
+          recipientName: "Mira",
+          appointmentDate: "Jun 24",
+          appointmentTime: "3 PM",
+          // Only unfilled (clinical) tokens — renders to empty.
+          template: "{service}{diagnosis}",
+        },
+      },
+      registryWith(echo)
+    );
+    expect(result.ok).toBe(false);
+    // Caught at the seam, not surfaced as a generic provider_error.
+    if (!result.ok) expect(result.reason).toBe("empty_message");
+    expect(echo.sent).toHaveLength(0);
+  });
+
   it("rejects an empty freeform message", async () => {
     const echo = new EchoAdapter("WHATSAPP");
     const result = await sendMessage(

@@ -134,8 +134,8 @@ export async function recordConnectionState(event: {
   if (event.status === "connected") {
     // A live socket is confirmed — persist CONNECTED and enable reminders so the
     // clinic isn't dependent on the Settings poll catching the moment.
-    await prisma.$transaction([
-      prisma.whatsAppConnection.updateMany({
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.whatsAppConnection.updateMany({
         where: { businessId: event.businessId },
         data: {
           provider: "BAILEYS",
@@ -144,12 +144,16 @@ export async function recordConnectionState(event: {
           lastSyncedAt: new Date(),
           lastError: null,
         },
-      }),
-      prisma.business.updateMany({
-        where: { id: event.businessId },
-        data: { whatsappEnabled: true },
-      }),
-    ]);
+      });
+      // Only enable reminders when a connection row actually exists — never flip
+      // whatsappEnabled for a business that has no WhatsApp link.
+      if (updated.count > 0) {
+        await tx.business.updateMany({
+          where: { id: event.businessId },
+          data: { whatsappEnabled: true },
+        });
+      }
+    });
     return;
   }
   // The phone unlinked or the worker gave up reconnecting — reflect it so

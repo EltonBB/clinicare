@@ -113,6 +113,12 @@ export async function syncAppointmentRemindersForBusiness(
 
   let sent = 0;
   let failed = 0;
+  // Circuit breaker: each failed send burns the adapter's ~25s worker timeout.
+  // If the worker is down, stop after a couple of consecutive provider failures
+  // so one unreachable worker can't exhaust the cron budget and starve other
+  // tenants — the unsent reminders simply retry on the next run.
+  let consecutiveProviderErrors = 0;
+  const MAX_CONSECUTIVE_PROVIDER_ERRORS = 2;
 
   for (const appointment of appointments) {
     const reminderType = reminderTypeForAppointment({
@@ -163,6 +169,10 @@ export async function syncAppointmentRemindersForBusiness(
 
     if (!result.ok) {
       failed += 1;
+      // Only a worker/connection failure signals "the worker is down"; a bad
+      // recipient or empty body is per-message and shouldn't trip the breaker.
+      consecutiveProviderErrors =
+        result.reason === "provider_error" ? consecutiveProviderErrors + 1 : 0;
       // Persist the failure so it's visible and retried on the next run.
       await prisma.appointmentReminder
         .upsert({
@@ -188,6 +198,13 @@ export async function syncAppointmentRemindersForBusiness(
             reminderType,
           });
         });
+      if (consecutiveProviderErrors >= MAX_CONSECUTIVE_PROVIDER_ERRORS) {
+        logger.warn(
+          "Stopping reminder run early — WhatsApp worker appears unavailable.",
+          { businessId, attempted: sent + failed }
+        );
+        break;
+      }
       continue;
     }
 
@@ -258,6 +275,7 @@ export async function syncAppointmentRemindersForBusiness(
       });
 
       sent += 1;
+      consecutiveProviderErrors = 0;
     } catch (error) {
       failed += 1;
       logger.error("Failed to record sent reminder.", error, {

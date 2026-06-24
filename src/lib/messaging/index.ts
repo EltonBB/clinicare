@@ -75,10 +75,21 @@ export async function sendMessage(
   let adapterInput: AdapterSendInput;
   switch (input.message.kind) {
     case "appointment_reminder": {
+      const reminderBody = renderReminder(input.message);
+      if (!reminderBody.trim()) {
+        // A custom template that renders to nothing (e.g. only unfilled tokens)
+        // would otherwise fail deep in the adapter as a generic provider error
+        // and retry forever — classify it here instead.
+        return {
+          ok: false,
+          reason: "empty_message",
+          error: "The reminder message is empty.",
+        };
+      }
       adapterInput = {
         businessId: input.businessId,
         to,
-        body: renderReminder(input.message),
+        body: reminderBody,
       };
       break;
     }
