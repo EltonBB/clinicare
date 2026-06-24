@@ -17,6 +17,14 @@ import {
 
 type WorkerConfig = { workerUrl: string; secret: string };
 
+// Per-request deadlines so a stalled worker/proxy can't tie up server-action
+// invocations (Settings polls /status every 2.5s). /pair waits for the worker's
+// startSession (which itself can spend ~10s on a version fetch), so it gets a
+// longer budget than the instant /status read. A timeout throws → the existing
+// catch returns null → callers surface a generic, retryable message.
+const PAIR_TIMEOUT_MS = 15_000;
+const STATUS_TIMEOUT_MS = 8_000;
+
 function workerConfig(): WorkerConfig | null {
   const workerUrl = process.env.BAILEYS_WORKER_URL?.trim();
   const secret = process.env.BAILEYS_BRIDGE_SECRET?.trim();
@@ -57,6 +65,7 @@ export async function requestBaileysPairing(
       },
       body: JSON.stringify(payload),
       cache: "no-store",
+      signal: AbortSignal.timeout(PAIR_TIMEOUT_MS),
     });
     if (!response.ok) {
       logger.error("WhatsApp worker pair request failed.", undefined, {
@@ -88,6 +97,7 @@ export async function fetchBaileysStatus(
       {
         headers: { [BAILEYS_BRIDGE_HEADER]: config.secret },
         cache: "no-store",
+        signal: AbortSignal.timeout(STATUS_TIMEOUT_MS),
       }
     );
     if (!response.ok) {
