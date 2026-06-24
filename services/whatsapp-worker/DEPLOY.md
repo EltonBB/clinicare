@@ -43,7 +43,7 @@ Service → **Variables** → add:
 |---|---|
 | `BAILEYS_BRIDGE_SECRET` | a long random string (generate one; reused on Vercel below) |
 | `APP_WEBHOOK_URL` | `https://<your-vercel-domain>/api/webhooks/whatsapp/baileys` |
-| `DATABASE_URL` | the **same** Supabase connection string the app uses |
+| `DATABASE_URL` | the **same** Supabase connection string the app uses (Vercel → `DATABASE_URL`). ⚠ **NOT `localhost` and NOT the `.env.example` placeholder** — a wrong value lets `/health` pass but makes `/pair` fail with "database unavailable". |
 | `LOG_LEVEL` | `info` (optional) |
 
 > TLS: with just `DATABASE_URL` the worker connects encrypted (cert not

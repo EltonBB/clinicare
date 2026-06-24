@@ -21,7 +21,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · Prisma 6 
 cp .env.local.example .env.local   # fill in Supabase + DB values (see CLAUDE.md)
 npm install                        # runs prisma generate
 npm run db:push                    # apply schema to your database
-npm run dev                        # http://localhost:3001
+npm run dev                        # http://localhost:3000
 ```
 
 ## Common commands
