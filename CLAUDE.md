@@ -32,7 +32,9 @@ npm run db:setup-auth-sync       # scripts/setup-auth-delete-sync.mjs
 npm run media:normalize-storage-refs  # scripts/normalize-media-storage-refs.mjs
 ```
 
-**Standard verification before pushing:** `npm run lint` then `npm run build` (and `npm audit --omit=dev` for dependency hygiene). There is no automated test suite — signed-in browser QA is the manual gate (see PROJECT_STATUS.md "Testing Checklist"). A reusable signed-in test session does not exist yet, so unauthenticated browser checks can only verify `/login` redirects and public pages.
+**Standard verification before pushing:** `npm run lint`, `npx tsc --noEmit`, and `npx vitest run`, then `npm run build` (and `npm audit --omit=dev` for dependency hygiene). A Vitest unit suite now exists (co-located `*.test.ts`, e.g. the messaging seam) — keep it green and add cases for new pure logic; signed-in browser QA remains the manual gate for UI/integration (see PROJECT_STATUS.md "Testing Checklist"). A reusable signed-in test session does not exist yet, so unauthenticated browser checks can only verify `/login` redirects and public pages.
+
+**Responding to code review — fix the _class_, not the flagged line.** When a reviewer (the Codex bot or a person) flags one instance of a pattern, grep the whole codebase for siblings and fix them all in the same push before re-pushing — and audit the privileged sink up front. Reactive one-line patches just feed the review loop: an un-timed-out `fetch` flagged on one bridge call meant *every* cross-process call needed the same `AbortSignal`; a server-side auth fix needed its client-side twin.
 
 ## Architecture
 
