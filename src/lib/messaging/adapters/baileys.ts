@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import {
   BAILEYS_BRIDGE_HEADER,
   type WorkerSendRequest,
@@ -10,6 +12,13 @@ import type {
   MessageChannel,
   MessageDeliveryStatus,
 } from "../types";
+
+/** Runtime guard for the worker's /send reply — a malformed 200 must not be
+ * trusted as a real send. */
+const workerSendResponseSchema = z.object({
+  providerMessageId: z.string().nullable(),
+  status: z.enum(["QUEUED", "SENT", "FAILED"]),
+});
 
 function mapWorkerStatus(
   status: WorkerSendResponse["status"]
@@ -80,10 +89,17 @@ export class BaileysWhatsAppAdapter implements ChannelAdapter {
       );
     }
 
-    const result = (await response.json()) as WorkerSendResponse;
+    const raw: unknown = await response.json().catch(() => null);
+    const parsed = workerSendResponseSchema.safeParse(raw);
+    if (!parsed.success) {
+      // A malformed 200 (proxy error page, shape drift) must not be recorded as
+      // a phantom "sent" message — treat it as a failure the dispatcher maps to
+      // a generic, retryable error.
+      throw new Error("WhatsApp worker returned an unexpected response.");
+    }
     return {
-      providerMessageId: result.providerMessageId ?? null,
-      status: mapWorkerStatus(result.status),
+      providerMessageId: parsed.data.providerMessageId,
+      status: mapWorkerStatus(parsed.data.status),
     };
   }
 }

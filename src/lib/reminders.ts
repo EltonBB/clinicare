@@ -47,10 +47,15 @@ export async function syncAppointmentRemindersForBusiness(
     },
   });
 
+  // ERRORED is a soft, recoverable state: re-attempt so a transient outage
+  // self-heals back to CONNECTED on the next successful send (the success path
+  // below sets CONNECTED), rather than excluding the clinic from reminders until
+  // someone re-pairs.
+  const connectionStatus = business?.whatsappConnection?.status;
   if (
     !business ||
     !business.whatsappEnabled ||
-    business.whatsappConnection?.status !== "CONNECTED"
+    (connectionStatus !== "CONNECTED" && connectionStatus !== "ERRORED")
   ) {
     return { sent: 0, failed: 0 };
   }
@@ -275,7 +280,9 @@ export async function syncAppointmentRemindersJob(): Promise<ReminderCronResult>
       whatsappEnabled: true,
       whatsappConnection: {
         is: {
-          status: "CONNECTED",
+          // ERRORED included so a transiently-failed connection still gets
+          // reminder attempts and self-heals to CONNECTED on the next success.
+          status: { in: ["CONNECTED", "ERRORED"] },
         },
       },
     },

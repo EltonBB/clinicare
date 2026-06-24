@@ -8,12 +8,13 @@ import type {
   BaileysEventMap,
   WAMessage,
   WASocket,
+  WAVersion,
 } from "baileys";
 import qrcode from "qrcode-terminal";
 
 import { clearAuthState, usePostgresAuthState } from "./auth-state";
 import { postToApp } from "./bridge";
-import { logger } from "./logger";
+import { logger, scrubError } from "./logger";
 
 type SessionStatus = "connecting" | "qr" | "connected" | "disconnected";
 
@@ -32,14 +33,30 @@ const reconnectAttempts = new Map<string, number>();
 const MAX_RECONNECT_ATTEMPTS = 10;
 const SEND_TIMEOUT_MS = 20_000;
 const STABLE_CONNECTION_MS = 15_000;
+const VERSION_FETCH_TIMEOUT_MS = 10_000;
 /** Pending "connection has been stable, reset the backoff" timers per business. */
 const stableTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/** Pending reconnect timers per business — at most one in flight per tenant. */
+const reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/** Set on graceful shutdown so no new socket is started after closeAllSessions. */
+let stopped = false;
+
+/** Marks a {@link withTimeout} rejection so callers can react to a hang. */
+class TimeoutError extends Error {}
 
 function clearStableTimer(businessId: string): void {
   const timer = stableTimers.get(businessId);
   if (timer) {
     clearTimeout(timer);
     stableTimers.delete(businessId);
+  }
+}
+
+function clearReconnectTimer(businessId: string): void {
+  const timer = reconnectTimers.get(businessId);
+  if (timer) {
+    clearTimeout(timer);
+    reconnectTimers.delete(businessId);
   }
 }
 
@@ -63,6 +80,11 @@ export function getStatus(businessId: string): {
  * by the `connection.update` QR string; the app polls {@link getStatus} for it.
  */
 export async function startSession(businessId: string): Promise<void> {
+  // No new sockets once shutdown has begun (a pending reconnect could fire
+  // during the graceful-close window).
+  if (stopped) {
+    return;
+  }
   const current = sessions.get(businessId);
   if (
     current &&
@@ -79,8 +101,35 @@ export async function startSession(businessId: string): Promise<void> {
   starting.add(businessId);
 
   try {
+    // A prior socket (status 'qr' or 'disconnected') is about to be replaced —
+    // end it first so we don't leak its WebSocket / keepalive timer / listeners.
+    const previous = sessions.get(businessId);
+    if (previous) {
+      try {
+        previous.sock.end(undefined);
+      } catch {
+        // already closed
+      }
+      sessions.delete(businessId);
+    }
+
     const { state, saveCreds } = await usePostgresAuthState(businessId);
-    const { version } = await fetchLatestBaileysVersion();
+    // Don't let a hung version fetch (Baileys' axios GET has no timeout) strand
+    // this businessId in the `starting` set forever — fall back to the bundled
+    // version on timeout/failure.
+    let version: WAVersion | undefined;
+    try {
+      ({ version } = await withTimeout(
+        fetchLatestBaileysVersion(),
+        VERSION_FETCH_TIMEOUT_MS,
+        "Baileys version fetch timed out."
+      ));
+    } catch (error) {
+      logger.warn(
+        { businessId, error: scrubError(error) },
+        "Using bundled Baileys version (latest-version fetch failed)"
+      );
+    }
 
     // Pin Baileys' own logger to warn — at debug/trace it logs JIDs (phone
     // numbers), which must never reach our logs (HIPAA). Independent of the
@@ -88,7 +137,7 @@ export async function startSession(businessId: string): Promise<void> {
     const waLogger = logger.child({ scope: "baileys", businessId }, { level: "warn" });
 
     const sock = makeWASocket({
-      version,
+      ...(version ? { version } : {}),
       auth: {
         creds: state.creds,
         keys: makeCacheableSignalKeyStore(state.keys, waLogger),
@@ -103,7 +152,7 @@ export async function startSession(businessId: string): Promise<void> {
     sock.ev.on("creds.update", () => {
       saveCreds().catch((error) => {
         logger.error(
-          { businessId, error: String(error) },
+          { businessId, error: scrubError(error) },
           "Failed to persist WhatsApp creds"
         );
       });
@@ -120,7 +169,7 @@ export async function startSession(businessId: string): Promise<void> {
       for (const message of messages) {
         handleInbound(businessId, message).catch((error) => {
           logger.error(
-            { businessId, error: String(error) },
+            { businessId, error: scrubError(error) },
             "Inbound message handling failed"
           );
         });
@@ -131,7 +180,7 @@ export async function startSession(businessId: string): Promise<void> {
     sock.ev.on("messages.update", (updates) => {
       handleReceipts(businessId, updates).catch((error) => {
         logger.error(
-          { businessId, error: String(error) },
+          { businessId, error: scrubError(error) },
           "Receipt handling failed"
         );
       });
@@ -167,6 +216,9 @@ function handleConnectionUpdate(
   if (connection === "open") {
     session.status = "connected";
     session.qr = undefined;
+    // A pending reconnect is now moot — cancel it so it can't replace this live
+    // socket and orphan it.
+    clearReconnectTimer(businessId);
     // Reset the backoff counter only after the connection proves STABLE — a
     // socket that opens then immediately closes (e.g. a 515 restart) must not
     // zero the counter each cycle, or the cap could never be reached and a
@@ -204,9 +256,10 @@ function handleConnectionUpdate(
       // wipe failure (don't swallow it): stale logged-out creds would make the
       // next pair immediately log out again, an invisible re-pair loop.
       reconnectAttempts.delete(businessId);
+      clearReconnectTimer(businessId);
       clearAuthState(businessId).catch((error) => {
         logger.error(
-          { businessId, error: String(error) },
+          { businessId, error: scrubError(error) },
           "Failed to clear auth state after logout"
         );
       });
@@ -219,6 +272,9 @@ function handleConnectionUpdate(
 
 /** Reconnect with capped exponential backoff + jitter (no tight loop). */
 function scheduleReconnect(businessId: string): void {
+  if (stopped) {
+    return;
+  }
   const attempts = (reconnectAttempts.get(businessId) ?? 0) + 1;
   if (attempts > MAX_RECONNECT_ATTEMPTS) {
     reconnectAttempts.delete(businessId);
@@ -235,15 +291,23 @@ function scheduleReconnect(businessId: string): void {
     { businessId, attempts, delayMs: delay },
     "Scheduling WhatsApp reconnect"
   );
-  setTimeout(() => {
+  // At most one reconnect timer per business — a flap (close while a reconnect
+  // is already pending) must not stack parallel reconnect chains.
+  clearReconnectTimer(businessId);
+  const timer = setTimeout(() => {
+    reconnectTimers.delete(businessId);
+    if (stopped) {
+      return;
+    }
     startSession(businessId).catch((error) => {
       // startSession threw before a socket existed (e.g. a DB blip loading auth
       // state) — re-arm so a transient failure doesn't permanently abandon the
       // session. This still respects MAX_RECONNECT_ATTEMPTS.
-      logger.error({ businessId, error: String(error) }, "Reconnect failed");
+      logger.error({ businessId, error: scrubError(error) }, "Reconnect failed");
       scheduleReconnect(businessId);
     });
   }, delay);
+  reconnectTimers.set(businessId, timer);
 }
 
 async function handleReceipts(
@@ -331,7 +395,7 @@ function withTimeout<T>(
   message: string
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(message)), ms);
+    const timer = setTimeout(() => reject(new TimeoutError(message)), ms);
     promise.then(
       (value) => {
         clearTimeout(timer);
@@ -356,17 +420,45 @@ export async function sendText(
     throw new Error("WhatsApp session is not connected.");
   }
   const jid = `${to}@s.whatsapp.net`;
-  // Bound the send so a dead-but-not-yet-closed socket can't hang the request.
-  const sent = await withTimeout(
-    session.sock.sendMessage(jid, { text: body }),
-    SEND_TIMEOUT_MS,
-    "WhatsApp send timed out."
-  );
-  return { providerMessageId: sent?.key?.id ?? null, status: "SENT" };
+  try {
+    // Bound the send so a dead-but-not-yet-closed socket can't hang the request.
+    const sent = await withTimeout(
+      session.sock.sendMessage(jid, { text: body }),
+      SEND_TIMEOUT_MS,
+      "WhatsApp send timed out."
+    );
+    return { providerMessageId: sent?.key?.id ?? null, status: "SENT" };
+  } catch (error) {
+    if (error instanceof TimeoutError) {
+      // A timeout means the socket is almost certainly dead-but-not-closed —
+      // tear it down and reconnect so it stops accepting sends, instead of
+      // hanging every future request for the full timeout. (The close handler
+      // no-ops since the session is already removed.)
+      sessions.delete(businessId);
+      try {
+        session.sock.end(undefined);
+      } catch {
+        // already closed
+      }
+      scheduleReconnect(businessId);
+    }
+    throw error;
+  }
 }
 
-/** End every live socket (called on graceful shutdown). */
+/** End every live socket and cancel all timers (called on graceful shutdown). */
 export function closeAllSessions(): void {
+  // Block any further starts/reconnects, then cancel pending timers so a
+  // reconnect can't spawn a new socket during the shutdown drain window.
+  stopped = true;
+  for (const timer of reconnectTimers.values()) {
+    clearTimeout(timer);
+  }
+  reconnectTimers.clear();
+  for (const timer of stableTimers.values()) {
+    clearTimeout(timer);
+  }
+  stableTimers.clear();
   for (const session of sessions.values()) {
     try {
       session.sock.end(undefined);
@@ -374,6 +466,7 @@ export function closeAllSessions(): void {
       // already closed
     }
   }
+  sessions.clear();
 }
 
 /** Best-effort reconnect of every workspace that already has saved creds. */
@@ -385,7 +478,7 @@ export async function bootstrapSessions(
       await startSession(businessId);
     } catch (error) {
       logger.error(
-        { businessId, error: String(error) },
+        { businessId, error: scrubError(error) },
         "Failed to bootstrap session"
       );
     }

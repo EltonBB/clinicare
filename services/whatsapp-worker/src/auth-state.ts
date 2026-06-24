@@ -64,7 +64,7 @@ export async function usePostgresAuthState(businessId: string): Promise<{
           return data;
         },
         set: async (data) => {
-          const tasks: Promise<unknown>[] = [];
+          const tasks: Prisma.PrismaPromise<unknown>[] = [];
           for (const category of Object.keys(data)) {
             const entries = data[category as keyof typeof data] ?? {};
             for (const keyId of Object.keys(entries)) {
@@ -89,7 +89,12 @@ export async function usePostgresAuthState(businessId: string): Promise<{
               }
             }
           }
-          await Promise.all(tasks);
+          // One transaction so a partial failure can't leave the Signal key
+          // store half-written (which would desync creds/keys and force a
+          // re-pair). clearAuthState already uses the same all-or-nothing shape.
+          if (tasks.length > 0) {
+            await prisma.$transaction(tasks);
+          }
         },
       },
     },

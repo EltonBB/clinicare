@@ -312,10 +312,16 @@ export async function sendInboxMessageAction(
       conversationId,
       reason: result.reason,
     });
-    await prisma.whatsAppConnection.update({
-      where: { businessId: context.business.id },
-      data: { status: "ERRORED", lastSyncedAt: new Date() },
-    });
+    // Only a genuine provider/connection failure flags the clinic's shared
+    // connection as errored. A bad recipient or empty body is a per-message
+    // problem — marking the whole connection ERRORED for it would wrongly
+    // signal the WhatsApp link is down and churn the Settings status.
+    if (result.reason === "provider_error") {
+      await prisma.whatsAppConnection.update({
+        where: { businessId: context.business.id },
+        data: { status: "ERRORED", lastSyncedAt: new Date() },
+      });
+    }
     return {
       ok: false,
       error: "We couldn't send the WhatsApp message.",

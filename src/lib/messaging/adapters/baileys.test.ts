@@ -76,6 +76,15 @@ describe("BaileysWhatsAppAdapter", () => {
     ).rejects.toThrow(/worker rejected the send \(status 503\)/);
   });
 
+  it("rejects a malformed 200 response instead of recording a phantom send", async () => {
+    // A 200 with an unexpected shape (proxy error page, contract drift) must not
+    // be trusted — the old `as` cast would have mapped it to a bogus QUEUED.
+    mockFetch({ ok: true });
+    await expect(
+      adapter.send({ businessId: "b", to: "+14155550100", body: "x" })
+    ).rejects.toThrow(/unexpected response/);
+  });
+
   it("rejects an empty body before any network call", async () => {
     const fetchMock = mockFetch({});
     await expect(

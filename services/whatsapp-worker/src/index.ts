@@ -3,7 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import express, { type RequestHandler } from "express";
 
 import { BRIDGE_HEADER, config } from "./config";
-import { logger } from "./logger";
+import { logger, scrubError } from "./logger";
 import { prisma } from "./prisma";
 import {
   bootstrapSessions,
@@ -50,7 +50,7 @@ app.post("/pair", requireSecret, async (req, res) => {
     await startSession(businessId);
     res.json({ ok: true, ...getStatus(businessId) });
   } catch (error) {
-    logger.error({ businessId, error: String(error) }, "pair failed");
+    logger.error({ businessId, error: scrubError(error) }, "pair failed");
     res.status(500).json({ error: "Failed to start session." });
   }
 });
@@ -83,7 +83,7 @@ app.post("/send", requireSecret, async (req, res) => {
     const result = await sendText(businessId, to, body);
     res.json(result);
   } catch (error) {
-    logger.error({ businessId, error: String(error) }, "send failed");
+    logger.error({ businessId, error: scrubError(error) }, "send failed");
     res.status(502).json({ error: "Send failed." });
   }
 });
@@ -92,10 +92,10 @@ app.post("/send", requireSecret, async (req, res) => {
 // socket. Log (record-ids only) and keep the process alive; the source-level
 // guards in socket-manager handle the known cases.
 process.on("unhandledRejection", (reason) => {
-  logger.error({ error: String(reason) }, "Unhandled promise rejection");
+  logger.error({ error: scrubError(reason) }, "Unhandled promise rejection");
 });
 process.on("uncaughtException", (error) => {
-  logger.error({ error: String(error) }, "Uncaught exception");
+  logger.error({ error: scrubError(error) }, "Uncaught exception");
 });
 
 const server = app.listen(config.port, () => {
@@ -126,7 +126,7 @@ prisma.whatsAppSession
   .then((rows) => bootstrapSessions(rows.map((row) => row.businessId)))
   .catch((error) => {
     logger.error(
-      { error: String(error) },
+      { error: scrubError(error) },
       "Session bootstrap skipped (database unavailable)"
     );
   });

@@ -92,15 +92,24 @@ async function bootstrapWorkspaceFromOnboarding(user: {
     });
 
     // WhatsApp runs on Baileys (QR pairing). Seed a not-yet-connected record so
-    // Settings shows the Connect option; pairing fills in the rest. The update
-    // branch only migrates the provider so a re-bootstrap can't drop a live
-    // session.
+    // Settings shows the Connect option; pairing fills in the rest.
+    const existingConnection = await tx.whatsAppConnection.findUnique({
+      where: { businessId: business.id },
+      select: { provider: true },
+    });
     await tx.whatsAppConnection.upsert({
       where: {
         businessId: business.id,
       },
       update: {
         provider: "BAILEYS",
+        // Migrating from a different provider (e.g. a legacy Twilio row)
+        // invalidates the old connection state — force a fresh pair rather than
+        // trusting a stale CONNECTED status with no Baileys session behind it.
+        // A re-bootstrap of an already-Baileys row leaves its live status alone.
+        ...(existingConnection && existingConnection.provider !== "BAILEYS"
+          ? { status: "DISCONNECTED", connectedAt: null }
+          : {}),
       },
       create: {
         businessId: business.id,
