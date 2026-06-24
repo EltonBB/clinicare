@@ -439,10 +439,6 @@ export function SettingsWorkspace({
       ...current,
       whatsapp: {
         ...current.whatsapp,
-        // Mirror the server-side whatsappEnabled=true the pairing action sets,
-        // so a later Settings save from this state can't write sendReminders:
-        // false and disable the reminder cron right after pairing.
-        sendReminders: true,
         connection: {
           ...current.whatsapp.connection,
           phase: "CONNECTED",
@@ -452,6 +448,8 @@ export function SettingsWorkspace({
     });
     setState(applyConnected);
     setSavedState(applyConnected);
+    // Clear the pairing state so the QR view yields to the connected view.
+    setPairing(null);
     setMessage("WhatsApp connected.");
   }, []);
 
@@ -466,7 +464,6 @@ export function SettingsWorkspace({
         return;
       }
       setErrorMessage("");
-      pairingPollsRef.current = 0;
       setPairing({ status: result.status, qr: result.qr });
       if (result.status === "connected") {
         markWhatsAppConnected();
@@ -483,6 +480,9 @@ export function SettingsWorkspace({
     if (!isPairing) {
       return;
     }
+    // Reset the counter at the start of each pairing attempt (covers reconnect,
+    // not just the initial Connect click).
+    pairingPollsRef.current = 0;
     let active = true;
     const maxPolls = 48; // ~2 minutes at 2.5s
     const id = setInterval(async () => {
@@ -1092,45 +1092,52 @@ export function SettingsWorkspace({
                 </p>
               </div>
 
-              {!isConnected ? (
-                pairing?.qr ? (
-                  <div className="flex flex-col items-center gap-3 rounded-(--radius-card) border border-border/70 bg-white p-4">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={pairing.qr}
-                      alt="WhatsApp pairing QR code"
-                      width={200}
-                      height={200}
-                      className="rounded-lg"
-                    />
-                    <div className="text-center">
-                      <p className="text-sm font-medium text-foreground">
-                        Scan to connect
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                        On the clinic phone, open WhatsApp → Settings → Linked
-                        devices → Link a device, then scan this code.
-                      </p>
-                      <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-primary">
-                        <span className="size-1.5 animate-pulse rounded-full bg-primary" />
-                        Waiting for the scan…
-                      </p>
-                    </div>
+              {pairing?.qr ? (
+                <div className="flex flex-col items-center gap-3 rounded-(--radius-card) border border-border/70 bg-white p-4">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={pairing.qr}
+                    alt="WhatsApp pairing QR code"
+                    width={200}
+                    height={200}
+                    className="rounded-lg"
+                  />
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-foreground">
+                      Scan to connect
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      On the clinic phone, open WhatsApp → Settings → Linked
+                      devices → Link a device, then scan this code.
+                    </p>
+                    <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-primary">
+                      <span className="size-1.5 animate-pulse rounded-full bg-primary" />
+                      Waiting for the scan…
+                    </p>
                   </div>
-                ) : pairing ? (
-                  <div className="rounded-(--radius-card) border border-border/70 bg-white p-4 text-center text-sm text-muted-foreground">
-                    Preparing your QR code…
-                  </div>
-                ) : (
-                  <Button
-                    className="h-10 w-full rounded-(--radius-card)"
-                    onClick={handleConnectWhatsApp}
-                    disabled={isConnecting}
-                  >
-                    {isConnecting ? "Starting…" : "Connect WhatsApp"}
-                  </Button>
-                )
-              ) : null}
+                </div>
+              ) : pairing ? (
+                <div className="rounded-(--radius-card) border border-border/70 bg-white p-4 text-center text-sm text-muted-foreground">
+                  Preparing your QR code…
+                </div>
+              ) : isConnected ? (
+                <button
+                  type="button"
+                  onClick={handleConnectWhatsApp}
+                  disabled={isConnecting}
+                  className="text-xs font-medium text-muted-foreground transition-colors duration-(--duration-base) hover:text-foreground disabled:opacity-60"
+                >
+                  {isConnecting ? "Starting…" : "Link a different device"}
+                </button>
+              ) : (
+                <Button
+                  className="h-10 w-full rounded-(--radius-card)"
+                  onClick={handleConnectWhatsApp}
+                  disabled={isConnecting}
+                >
+                  {isConnecting ? "Starting…" : "Connect WhatsApp"}
+                </Button>
+              )}
 
               <ul className="space-y-2 border-t border-border/60 pt-3.5 text-sm text-muted-foreground">
                 <li className="flex items-start gap-2.5">

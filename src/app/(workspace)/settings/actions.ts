@@ -125,12 +125,14 @@ export async function saveSettingsAction(
         logoUrl: nextLogoUrl || null,
         brandAccentColor,
         whatsappNumber: normalizedWhatsAppNumber || null,
-        whatsappEnabled: payload.whatsapp.sendReminders,
       },
     });
 
-    // The WhatsApp connection (provider, pairing status) is owned by the QR
-    // pairing flow and the inbound webhook — settings save no longer touches it.
+    // `whatsappEnabled` is connection-derived state owned by the pairing flow —
+    // it is NOT written here. There's no UI control for `whatsapp.sendReminders`,
+    // so writing it on save would silently disable a paired clinic's reminders
+    // on any unrelated settings change. The connection (provider, pairing
+    // status) is likewise owned by pairing + the inbound webhook.
     for (const [index, day] of weekdayOrder.entries()) {
       const schedule = payload.workingHours[day];
 
@@ -299,9 +301,13 @@ export async function connectBaileysWhatsAppAction(): Promise<BaileysPairingResu
  * reminders — `Business.whatsappEnabled` gates the cron and defaults to false.
  */
 async function markWhatsAppConnected(businessId: string): Promise<void> {
+  // Match on businessId only (and (re)assert provider=BAILEYS in the data) so a
+  // legacy/other-provider row can't make this silently update zero rows and
+  // leave a connected session unrecorded.
   await prisma.whatsAppConnection.updateMany({
-    where: { businessId, provider: "BAILEYS" },
+    where: { businessId },
     data: {
+      provider: "BAILEYS",
       status: "CONNECTED",
       connectedAt: new Date(),
       lastSyncedAt: new Date(),

@@ -324,7 +324,7 @@ export function buildWhatsAppConnectionSummary(
   fallbackRequestedPhoneNumber: string
 ): SettingsState["whatsapp"]["connection"] {
   const provider = connection?.provider ?? "BAILEYS";
-  const mode = connection?.mode ?? "SANDBOX";
+  const mode = connection?.mode ?? "LIVE";
   const status = connection?.status ?? "PENDING_SETUP";
   const requestedPhoneNumber = normalizePhone(
     connection?.requestedPhoneNumber ?? fallbackRequestedPhoneNumber

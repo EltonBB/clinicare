@@ -1,18 +1,37 @@
 import { timingSafeEqual } from "node:crypto";
 
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import { logger } from "@/lib/logger";
-import {
-  BAILEYS_BRIDGE_HEADER,
-  type WorkerInboundEvent,
-} from "@/lib/messaging/baileys-contract";
+import { BAILEYS_BRIDGE_HEADER } from "@/lib/messaging/baileys-contract";
 import {
   recordDeliveryStatus,
   recordInboundMessage,
 } from "@/lib/messaging/inbound";
 
 export const dynamic = "force-dynamic";
+
+// Validate the worker's payload at the boundary. A malformed event is a
+// terminal 400 (don't 500 → the worker would retry-loop forever). Field lengths
+// are capped to bound abuse from an oversized payload.
+const workerInboundEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("message"),
+    businessId: z.string().min(1).max(64),
+    from: z.string().min(1).max(32),
+    body: z.string().max(8000),
+    providerMessageId: z.string().max(128),
+    contactName: z.string().max(256).optional(),
+  }),
+  z.object({
+    type: z.literal("status"),
+    businessId: z.string().min(1).max(64),
+    providerMessageId: z.string().min(1).max(128),
+    status: z.enum(["SENT", "DELIVERED", "READ", "FAILED"]),
+    errorCode: z.string().max(64).optional(),
+  }),
+]);
 
 /**
  * Inbound endpoint for the isolated WhatsApp worker. Authenticated by a single
@@ -36,16 +55,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  let event: WorkerInboundEvent;
+  let raw: unknown;
   try {
-    event = (await request.json()) as WorkerInboundEvent;
+    raw = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
   }
 
-  if (!event || typeof event !== "object" || !event.businessId) {
+  const parsed = workerInboundEventSchema.safeParse(raw);
+  if (!parsed.success) {
     return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
   }
+  const event = parsed.data;
 
   try {
     if (event.type === "status") {
