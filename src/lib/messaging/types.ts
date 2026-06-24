@@ -66,6 +66,7 @@ export type SendFailureReason =
   | "channel_unconfigured"
   | "invalid_recipient"
   | "empty_message"
+  | "message_too_long"
   | "provider_error";
 
 export type SendMessageResult =

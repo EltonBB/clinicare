@@ -4,6 +4,14 @@ import { logger } from "@/lib/logger";
 import { getMessagingRegistry } from "./configure";
 import { ChannelRegistry } from "./registry";
 import { renderReminder } from "./render";
+
+/**
+ * Maximum send-body length. MUST mirror the worker's cap
+ * (`services/whatsapp-worker/src/index.ts`). The seam rejects an over-limit body
+ * here so the stored message body always equals what the worker actually sends —
+ * never a truncated send recorded as the full text.
+ */
+const MAX_MESSAGE_BODY = 8000;
 import type {
   AdapterSendInput,
   MessageChannel,
@@ -96,6 +104,14 @@ export async function sendMessage(
       };
       break;
     }
+  }
+
+  if (adapterInput.body.length > MAX_MESSAGE_BODY) {
+    return {
+      ok: false,
+      reason: "message_too_long",
+      error: "The message is too long to send.",
+    };
   }
 
   try {

@@ -324,7 +324,12 @@ export async function sendInboxMessageAction(
     }
     return {
       ok: false,
-      error: "We couldn't send the WhatsApp message.",
+      // Surface the specific, customer-safe copy for a too-long message; keep the
+      // generic line for genuine provider/connection failures.
+      error:
+        result.reason === "message_too_long"
+          ? result.error
+          : "We couldn't send the WhatsApp message.",
     };
   }
 

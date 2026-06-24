@@ -155,6 +155,23 @@ describe("sendMessage dispatch", () => {
     expect(echo.sent).toHaveLength(0);
   });
 
+  it("rejects an over-limit body before sending (stored == sent invariant)", async () => {
+    const echo = new EchoAdapter("WHATSAPP");
+    const result = await sendMessage(
+      {
+        channel: "WHATSAPP",
+        businessId: "biz_1",
+        to: "+14155550100",
+        message: { kind: "freeform", body: "x".repeat(8001) },
+      },
+      registryWith(echo)
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("message_too_long");
+    // Never handed to the adapter — so nothing truncated is recorded as full.
+    expect(echo.sent).toHaveLength(0);
+  });
+
   it("rejects an unusable phone recipient", async () => {
     const result = await sendMessage(
       {

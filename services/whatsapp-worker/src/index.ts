@@ -14,6 +14,11 @@ import {
   startSession,
 } from "./socket-manager";
 
+/** Max send-body length. MUST mirror the app seam's cap
+ * (src/lib/messaging/index.ts). Reject — never truncate — so the app's stored
+ * body always equals what was actually sent. */
+const MAX_SEND_BODY = 8000;
+
 function isAuthorized(headerValue: string | undefined): boolean {
   if (!headerValue) {
     return false;
@@ -75,9 +80,16 @@ app.get("/status", requireSecret, (req, res) => {
 app.post("/send", requireSecret, async (req, res) => {
   const businessId = String(req.body?.businessId ?? "").trim();
   const to = String(req.body?.to ?? "").trim();
-  const body = String(req.body?.body ?? "").trim().slice(0, 8000);
+  const body = String(req.body?.body ?? "").trim();
   if (!businessId || !to || !body) {
     res.status(400).json({ error: "businessId, to, and body are required." });
+    return;
+  }
+  // Reject (don't silently truncate) an over-limit body: the app records the
+  // body it sent, so a truncated send would make conversation history show text
+  // the patient never received. The app seam caps first; this is defense-in-depth.
+  if (body.length > MAX_SEND_BODY) {
+    res.status(400).json({ error: "Message body exceeds the limit." });
     return;
   }
   // `to` must be a bare digits-only E.164 number — defense-in-depth so a crafted
