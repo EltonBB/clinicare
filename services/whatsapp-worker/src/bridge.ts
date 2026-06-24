@@ -22,31 +22,57 @@ export type InboundEvent =
       errorCode?: string;
     };
 
+const MAX_ATTEMPTS = 4;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
- * POST an inbound message / delivery receipt to the app webhook. Best-effort:
- * a transient app outage must not crash the socket, so failures are logged
- * (record ids only) and swallowed.
+ * POST an inbound message / delivery receipt to the app webhook.
+ *
+ * Retries on a transient failure (network error or 5xx) with backoff so a
+ * patient's reply isn't lost during an app deploy/outage — a 4xx (the app
+ * rejecting the payload) won't fix itself, so we don't retry that. Never throws:
+ * a persistent app outage must not crash the socket. Logs record ids only.
  */
 export async function postToApp(event: InboundEvent): Promise<void> {
-  try {
-    const response = await fetch(config.appWebhookUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        [BRIDGE_HEADER]: config.bridgeSecret,
-      },
-      body: JSON.stringify(event),
-    });
-    if (!response.ok) {
-      logger.error(
-        { status: response.status, businessId: event.businessId, type: event.type },
-        "App webhook rejected event"
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(config.appWebhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          [BRIDGE_HEADER]: config.bridgeSecret,
+        },
+        body: JSON.stringify(event),
+      });
+      if (response.ok) {
+        return;
+      }
+      if (response.status >= 400 && response.status < 500) {
+        logger.error(
+          { status: response.status, businessId: event.businessId, type: event.type },
+          "App webhook rejected event"
+        );
+        return;
+      }
+      logger.warn(
+        { status: response.status, businessId: event.businessId, type: event.type, attempt },
+        "App webhook 5xx — retrying"
+      );
+    } catch {
+      logger.warn(
+        { businessId: event.businessId, type: event.type, attempt },
+        "App webhook unreachable — retrying"
       );
     }
-  } catch {
-    logger.error(
-      { businessId: event.businessId, type: event.type },
-      "Failed to reach app webhook"
-    );
+    if (attempt < MAX_ATTEMPTS) {
+      await delay(1000 * 2 ** (attempt - 1)); // 1s, 2s, 4s
+    }
   }
+  logger.error(
+    { businessId: event.businessId, type: event.type },
+    "App webhook failed after retries — event dropped"
+  );
 }

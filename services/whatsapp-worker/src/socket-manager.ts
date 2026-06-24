@@ -143,8 +143,13 @@ function handleConnectionUpdate(
   if (qr) {
     session.status = "qr";
     session.qr = qr;
-    // Terminal QR for local pairing; the app surfaces the same string in UI.
-    qrcode.generate(qr, { small: true });
+    // Only print a scannable QR to the terminal in local dev — NEVER in
+    // production logs, where anyone with log access could scan it and link the
+    // clinic's WhatsApp. The app fetches the QR via /status and shows it in the
+    // Settings UI (the only authorized pairing surface).
+    if (process.env.NODE_ENV !== "production") {
+      qrcode.generate(qr, { small: true });
+    }
     logger.info({ businessId }, "WhatsApp QR ready for pairing");
   }
 
