@@ -1,0 +1,38 @@
+// Standalone Prisma schema for the WhatsApp worker.
+//
+// The worker only reads/writes its own two tables, so it carries a minimal
+// schema instead of the app's full one — this lets it build and deploy on its
+// own (Railway today, AWS ECS later) without the rest of the app. The model and
+// field names MUST match the app's `WhatsAppSession` / `WhatsAppSessionKey`
+// models (prisma/schema.prisma at the repo root) so both map to the same
+// Postgres tables — keep them in sync. The tables themselves (and their foreign
+// keys to Business) are created/owned by the app's migration.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model WhatsAppSession {
+  id         String   @id @default(cuid())
+  businessId String   @unique
+  creds      Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model WhatsAppSessionKey {
+  id         String   @id @default(cuid())
+  businessId String
+  category   String
+  keyId      String
+  value      Json
+  updatedAt  DateTime @updatedAt
+
+  @@unique([businessId, category, keyId])
+  @@index([businessId, category])
+}
