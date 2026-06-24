@@ -443,6 +443,7 @@ export function SettingsWorkspace({
           ...current.whatsapp.connection,
           phase: "CONNECTED",
           status: "CONNECTED",
+          statusLabel: "Connected",
         },
       },
     });
