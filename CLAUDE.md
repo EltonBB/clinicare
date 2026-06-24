@@ -16,7 +16,7 @@ This repo runs a **modified Next.js with breaking changes** (currently `^16.2.6`
 - **Data:** Prisma 6 (`@prisma/client`) over PostgreSQL, using the **`pg` driver adapter** (`@prisma/adapter-pg`). Database is hosted on Supabase.
 - **Auth:** Supabase Auth (email/password + email confirmation) via `@supabase/ssr`.
 - **Validation:** Zod 4.
-- **Integrations:** Twilio (WhatsApp) and OpenAI (analytics snapshots with rule-based fallback) are called via **raw `fetch()` — no provider SDKs are installed**. Keep it that way: fewer dependencies keep provider swaps cheap and avoid vendor lock-in.
+- **Integrations:** **OpenAI** (analytics snapshots with rule-based fallback) is called via **raw `fetch()` — no SDK**. **WhatsApp is the only messaging channel wired today** and runs through **Baileys** in a separate always-on worker (`services/whatsapp-worker/`) that the app reaches over an HTTP bridge — Baileys holds a persistent socket and cannot run on Vercel's stateless functions. **Twilio is reserved for SMS/phone (never WhatsApp) and is not wired yet.** Keep dependencies lean: fewer deps keep provider swaps cheap and avoid vendor lock-in.
 - **Hosting:** Vercel (deploy via the Git integration only — avoid `vercel` CLI deploys so each commit = one deployment). Cron in `vercel.json`.
 
 ## Commands
@@ -46,7 +46,7 @@ src/
     onboarding/        # post-confirmation multi-step setup + actions.ts
     api/
       cron/{analytics,reminders}/   # Vercel cron targets, guarded by a secret
-      webhooks/twilio/whatsapp/     # inbound WhatsApp webhook
+      webhooks/whatsapp/baileys/    # inbound from the Baileys worker (shared-secret guarded)
       search/                       # authenticated global search
       auth/email-verification-status/
     <marketing>/       # /, product, pricing, about, contact, checkout, terms, privacy, refund
@@ -76,7 +76,7 @@ graphify-out/          # generated knowledge graph (graph.html / graph.json / GR
 - **`cn()` (`lib/utils.ts`)** is the className merge helper and the single most-connected node in the codebase — use it for all conditional Tailwind classes.
 - **Shared workspace primitives** (`components/workspace/`) enforce page width, card rhythm, KPI sizing, tables, rails, and empty states. Build pages from these instead of bespoke JSX — AGENTS.md's layout-type system maps onto them.
 - **Media** is stored in a **private** Supabase Storage bucket (`clinic-media`). Never expose raw storage paths to the browser; resolve short-lived signed URLs via `lib/media-storage*.ts` (`createSignedImageUrl`, `resolveMediaDisplayUrl`). Uploads are restricted to allowed image/document MIME types.
-- **Customer-facing language hides providers.** Never surface Twilio / Supabase / Prisma / OpenAI internals or raw provider/database errors in UI — return generic, support-friendly messages (see `whatsapp-connection.ts` copy builders).
+- **Customer-facing language hides providers.** Never surface Baileys / Twilio / Supabase / Prisma / OpenAI internals or raw provider/database errors in UI — return generic, support-friendly messages.
 
 ## Architecture seams (portability guardrails — do not bypass)
 
@@ -85,7 +85,7 @@ The stack stays on AWS indefinitely — there is no planned cloud migration (ROA
 - **Auth** → only via the helpers in `lib/auth.ts` / `lib/business.ts`. Never import `@supabase/ssr` or `utils/supabase/*` in feature code — those imports stay confined to the existing auth/infra modules.
 - **Media/storage** → only via `lib/media-storage*.ts`.
 - **AI** → only via `lib/analytics-ai.ts`.
-- **Messaging** → all outbound messages go through the `sendMessage(channel, payload)` abstraction (ROADMAP Step 1; not built yet). Until it exists, provider calls stay confined to `lib/whatsapp*.ts` — never add a direct provider call in a feature, action, or component.
+- **Messaging** → all outbound messages go through the `sendMessage(channel, payload)` abstraction in `lib/messaging/` (now built). Channel adapters live in `lib/messaging/adapters/`; the WhatsApp adapter talks to the Baileys worker over the HTTP bridge. Never call a provider — or the worker — directly from a feature, action, or component; go through `sendMessage`. New channels (Twilio SMS, Resend email) are added as adapters here, not inline.
 - **Database** → only via Prisma (`lib/prisma.ts`); no raw Supabase data access.
 
 If a task seems to require breaking a seam, stop and flag it — that's a roadmap decision, not an implementation detail.
@@ -101,7 +101,7 @@ Pilot (Kosovo) data is non-PHI by design, but the app must be HIPAA-ready before
 
 ## Data model (`prisma/schema.prisma`)
 
-Core entities: `Business`, `BusinessHours`, `StaffMember`, `StaffTimeEntry`, `StaffShift`, `ScheduleBlock`, `Client` (+ `ClientMedication`, `ClientDocument`, `ClientPayment`, `ClientHealthItem`, `ClientCareNote`, `ClientTreatmentPlanItem`, `ClientFollowUpReminder`, `ClientGalleryItem`), `Appointment` (+ `AppointmentReminder`), `Conversation` + `Message`, `ReminderSettings`, `WhatsAppConnection`, `EmailVerificationReceipt`, `AnalyticsSnapshot`.
+Core entities: `Business`, `BusinessHours`, `StaffMember`, `StaffTimeEntry`, `StaffShift`, `ScheduleBlock`, `Client` (+ `ClientMedication`, `ClientDocument`, `ClientPayment`, `ClientHealthItem`, `ClientCareNote`, `ClientTreatmentPlanItem`, `ClientFollowUpReminder`, `ClientGalleryItem`), `Appointment` (+ `AppointmentReminder`, which carries a `status` of `SENT`/`FAILED`), `Conversation` + `Message`, `ReminderSettings`, `WhatsAppConnection`, `WhatsAppSession` + `WhatsAppSessionKey` (Baileys link credentials, non-PHI), `EmailVerificationReceipt`, `AnalyticsSnapshot`.
 
 Everything is scoped to a `Business` (the workspace/tenant). Plan state lives on `Business` (`BusinessPlan` / `BusinessPlanStatus`; `isProBusinessPlan()` in `lib/billing.ts` gates Pro features like full Reports; public plan copy in `lib/public-plans.ts`).
 
@@ -109,23 +109,21 @@ Everything is scoped to a `Business` (the workspace/tenant). Plan state lives on
 
 - **Tenant isolation is enforced server-side** through Prisma + the workspace-context helpers. Supabase public tables have **Row Level Security enabled with no public policies**, so the browser-exposed anon API cannot read/write app data.
 - `src/proxy.ts` protects all `(workspace)` routes and sets global security headers; unauthenticated hits to `/dashboard`, `/calendar`, `/clients`, `/staff`, `/inbox`, `/reports`, `/settings` redirect to `/login`.
-- Cron routes (`/api/cron/*`) and the Twilio webhook are guarded (`isAuthorized()` / secret check) — preserve those guards when editing.
+- Cron routes (`/api/cron/*`) and the WhatsApp worker webhook (`/api/webhooks/whatsapp/baileys`) are guarded (`isAuthorized()` / shared-secret check) — preserve those guards when editing.
 
 ## External integrations
 
-- **Twilio WhatsApp** (`lib/whatsapp.ts`, `lib/whatsapp-connection.ts`): inbound via the webhook → `Conversation`/`Message`; outbound replies from Inbox. Customer-owned-number onboarding is not production-ready; a configured test sender is used for validation. The pilot WhatsApp channel will use Baileys behind the messaging seam (Kosovo-only, disposable — see ROADMAP.md §2).
+- **WhatsApp (Baileys)** — the only WhatsApp integration. A separate always-on worker (`services/whatsapp-worker/`, deployed off-Vercel) holds the WhatsApp socket; the app pairs it by QR from Settings, sends through `sendMessage` → the worker's HTTP bridge (`lib/messaging/adapters/baileys.ts`, control plane in `lib/messaging/baileys-control.ts`), and receives inbound messages + delivery receipts at `/api/webhooks/whatsapp/baileys` → `Conversation`/`Message`. Link credentials live in `WhatsAppSession`/`WhatsAppSessionKey` (non-PHI, RLS-enabled). Kosovo-only, disposable, isolated behind the messaging seam (ROADMAP.md §2). Official WhatsApp (via an approved BSP) and Twilio **SMS/phone** are later, separate channels — not wired today.
 - **OpenAI analytics** (`lib/analytics-ai.ts`, `lib/reports.ts`): Reports AI snapshots need a server-side OpenAI key in prod; without it the app writes an auditable **rule-based fallback** snapshot and shows that rules were used. A short cooldown rate-limits manual refresh.
 - **Billing (planned):** Paddle behind `/checkout` — session creation, webhook verification, and plan activation are not implemented; the checkout page is preparation-only.
 - **Cron:** `vercel.json` → `/api/cron/reminders` (daily 08:00) and `/api/cron/analytics` (daily 02:30).
 
 ## Not built yet — don't assume these exist
 
-- `sendMessage(channel, payload)` messaging layer + Resend/Twilio/Baileys adapters (ROADMAP Step 1).
-- Reminder automation wiring `lib/reminders.ts` + `/api/cron/reminders` into the messaging layer (Step 2).
+- **Twilio SMS** and **Resend email** channel adapters. The `sendMessage` seam and the **WhatsApp (Baileys) adapter** are built, and reminders + Inbox replies already flow through them; SMS/email are not wired yet.
 - Audit logging, auto-logoff/session timeout, role-based access (Step 3).
 - Paddle checkout sessions, webhooks, plan activation (Step 4).
 - A reusable signed-in test session for browser QA (long-standing blocker).
-- Customer-owned WhatsApp number onboarding (test sender only).
 
 ## Gotchas
 

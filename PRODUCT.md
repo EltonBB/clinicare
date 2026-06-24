@@ -29,7 +29,7 @@ It must read as a premium, privacy-serious product — not an admin panel.
 ## Brand Personality
 
 **Calm, organized, premium.** The voice is plain and human — never clinical jargon, never
-developer-speak, never provider names (Twilio / Supabase / OpenAI / Prisma) or internal
+developer-speak, never provider names (Baileys / Twilio / Supabase / OpenAI / Prisma) or internal
 codenames leaked to the surface. Insights are framed as "AI-assisted operational guidance,"
 never medical advice. The emotional goal is **quiet confidence**: the operator should feel
 the software is absorbing the mess so they don't have to.

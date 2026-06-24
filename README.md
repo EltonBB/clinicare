@@ -13,7 +13,7 @@ This repo's `README` is intentionally short. The authoritative docs are:
 
 ## Stack
 
-Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · Prisma 6 + PostgreSQL (Supabase) · Supabase Auth & Storage · Twilio (WhatsApp) · OpenAI (analytics) · Vercel.
+Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · Prisma 6 + PostgreSQL (Supabase) · Supabase Auth & Storage · WhatsApp via Baileys (isolated always-on worker) · OpenAI (analytics) · Vercel. Twilio is reserved for SMS/phone (not yet wired).
 
 ## Getting started
 

@@ -6,7 +6,7 @@ Last updated: 2026-06-16
 
 Vela / Clinicare is a SaaS workspace for clinics and appointment-based businesses. The app helps a clinic manage onboarding, branding, clients, staff, bookings, WhatsApp conversations, reminders, reports, and AI-assisted performance insights from one workspace.
 
-The core product direction is customer-first: clinics should not need to understand Twilio, Meta, Supabase, Prisma, or OpenAI. Provider complexity should stay behind simple product language and support-friendly states.
+The core product direction is customer-first: clinics should not need to understand Baileys, Twilio, Meta, Supabase, Prisma, or OpenAI. Provider complexity should stay behind simple product language and support-friendly states.
 
 ## Technical Stack
 
@@ -15,7 +15,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Prisma with PostgreSQL via Supabase.
 - Supabase Auth for email/password authentication and email confirmation.
 - Vercel production deployment from Git.
-- Twilio WhatsApp integration for live sender testing and webhook-based inbox messaging.
+- WhatsApp via Baileys, run in an isolated always-on worker (Kosovo pilot, non-PHI, disposable) behind the `sendMessage()` messaging seam; paired by QR from Settings, with webhook-based inbound inbox messaging. Twilio is reserved for SMS/phone and is not wired yet.
 - OpenAI-backed analytics snapshots with rule-based fallback when AI is unavailable.
 
 ## Completed Features
@@ -133,7 +133,7 @@ The core product direction is customer-first: clinics should not need to underst
 - Appointments show on the dashboard/calendar and feed staff/client records when completed.
 - Staff can be managed from the Staff page, opened into full details pages, edited from full-page forms, and tracked with row-level check-in/check-out.
 - Client records can hold appointment history, notes, messages, and private Supabase-hosted gallery images.
-- The Twilio WhatsApp test sender can receive inbound messages, create conversations, reply from Inbox, and convert unknown contacts to clients.
+- The WhatsApp channel (Baileys, paired by QR in Settings) can receive inbound messages, create conversations, reply from Inbox, and convert unknown contacts to clients.
 - Reports can calculate core performance metrics, derive operational evidence from appointment status mix, demand windows, staff load, booking lead time, and client mix, refresh AI analysis across daily/weekly/monthly together when the OpenAI environment key is configured, score each timeframe from current clinic metrics, generate rule-based guidance from actual period data, handle sparse/unmeasured data without false zeros, and clearly show when rule-based insights are used instead.
 - Workspace page-to-page navigation keeps the shared shell interactive and shows a skeleton immediately while dynamic page data streams in.
 - Public visitors now land on the marketing homepage first, with signup/login CTAs routing into the existing auth flow.
@@ -169,8 +169,7 @@ Original items (for reference):
 - **For cross-instance rate limiting at scale**, back `lib/rate-limit.ts` with a shared store (Upstash Redis / Vercel KV). The current in-memory limiter is per-instance (fine for the pilot; protects each instance + dev).
 - **Latent media-path authorization:** signed-URL storage paths are keyed by uploader `auth.uid()`, safe today under per-user storage RLS. When role-based / multi-staff access lands (ROADMAP Step 3), switch to a `businessId`-scoped path scheme + RLS policy, or cross-staff document access breaks and the server-side ownership check becomes the only barrier.
 
-- True customer-owned WhatsApp number onboarding is not production-ready until the required Twilio Tech Provider / Meta Embedded Signup business setup is available.
-- WhatsApp currently relies on the configured Twilio sender/test setup for validation.
+- WhatsApp runs on Baileys in a separate always-on worker (`services/whatsapp-worker/`) that cannot run on Vercel; it must be deployed (Railway for the pilot, AWS ECS later) and QR-paired from Settings before WhatsApp send/receive works. Official, customer-owned WhatsApp numbers (via an approved BSP) remain a later, BAA-gated step once a US entity + Meta access exist.
 - AI reports need a valid server-side OpenAI API key in production; otherwise the app records an auditable fallback snapshot and clearly shows that rules are being used.
 - Reports AI manual refresh uses a short cooldown to control cost and prevent accidental repeated refreshes.
 - Supabase media storage uses a private `clinic-media` bucket with authenticated per-user folder policies applied.
