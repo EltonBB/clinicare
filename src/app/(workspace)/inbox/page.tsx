@@ -117,10 +117,7 @@ export default async function InboxPage({
           inboxView.initialConversationId,
       }}
       ownerName={ownerName}
-      connection={buildWhatsAppConnectionSummary(
-        whatsappConnection,
-        business.whatsappNumber ?? ""
-      )}
+      connection={buildWhatsAppConnectionSummary(whatsappConnection)}
       clientCount={clientCount}
       recommendedClientId={clients[0]?.id}
     />

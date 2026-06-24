@@ -133,9 +133,7 @@ export function InboxWorkspace({
   const bookingHref = recommendedClientId
     ? `/calendar/new?client=${recommendedClientId}`
     : "/calendar/new";
-  const connectionLine = connection.senderPhoneNumber
-    ? `${connection.modeLabel} ${connection.statusLabel.toLowerCase()} via ${connection.senderPhoneNumber}`
-    : `${connection.modeLabel} ${connection.statusLabel.toLowerCase()}`;
+  const connectionLine = connection.statusLabel;
 
   useEffect(() => {
     let cancelled = false;
