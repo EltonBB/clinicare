@@ -5,12 +5,12 @@ import { Pool } from "pg";
 import { config } from "./config";
 
 // Mirrors the app's lib/prisma.ts connection handling so the worker reaches the
-// same Supabase Postgres with the same TLS posture. The worker reads/writes only
-// its own WhatsAppSession / WhatsAppSessionKey rows (non-PHI link credentials).
+// same Supabase Postgres. The worker reads/writes only its own WhatsAppSession /
+// WhatsAppSessionKey rows (non-PHI link credentials).
 //
-// Note: this resolves @prisma/client / @prisma/adapter-pg / pg from the repo
-// root's node_modules (shared, already generated). For a standalone deploy, the
-// worker needs its own `prisma generate` against ../../prisma/schema.prisma.
+// The worker is self-contained: it carries its own minimal prisma/schema.prisma
+// and generates its own @prisma/client on install (the package.json postinstall
+// runs `prisma generate`). It does not depend on the app's generated client.
 
 function normalizeConnectionString(connectionString: string): string {
   const [base, hash = ""] = connectionString.split("#", 2);

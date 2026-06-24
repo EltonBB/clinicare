@@ -7,6 +7,7 @@ import { logger } from "./logger";
 import { prisma } from "./prisma";
 import {
   bootstrapSessions,
+  closeAllSessions,
   getStatus,
   sendText,
   startSession,
@@ -101,8 +102,14 @@ const server = app.listen(config.port, () => {
   logger.info({ port: config.port }, "WhatsApp worker listening");
 });
 
+let shuttingDown = false;
 function shutdown(signal: string): void {
+  if (shuttingDown) {
+    return;
+  }
+  shuttingDown = true;
   logger.info({ signal }, "Shutting down");
+  closeAllSessions();
   server.close(() => {
     void prisma.$disconnect().finally(() => process.exit(0));
   });

@@ -31,6 +31,17 @@ const reconnectAttempts = new Map<string, number>();
 
 const MAX_RECONNECT_ATTEMPTS = 10;
 const SEND_TIMEOUT_MS = 20_000;
+const STABLE_CONNECTION_MS = 15_000;
+/** Pending "connection has been stable, reset the backoff" timers per business. */
+const stableTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function clearStableTimer(businessId: string): void {
+  const timer = stableTimers.get(businessId);
+  if (timer) {
+    clearTimeout(timer);
+    stableTimers.delete(businessId);
+  }
+}
 
 export function getStatus(businessId: string): {
   status: SessionStatus;
@@ -156,7 +167,18 @@ function handleConnectionUpdate(
   if (connection === "open") {
     session.status = "connected";
     session.qr = undefined;
-    reconnectAttempts.delete(businessId);
+    // Reset the backoff counter only after the connection proves STABLE — a
+    // socket that opens then immediately closes (e.g. a 515 restart) must not
+    // zero the counter each cycle, or the cap could never be reached and a
+    // flapping connection would hot-loop.
+    clearStableTimer(businessId);
+    stableTimers.set(
+      businessId,
+      setTimeout(() => {
+        reconnectAttempts.delete(businessId);
+        stableTimers.delete(businessId);
+      }, STABLE_CONNECTION_MS)
+    );
     logger.info({ businessId }, "WhatsApp connected");
   }
 
@@ -167,6 +189,7 @@ function handleConnectionUpdate(
     const loggedOut = statusCode === DisconnectReason.loggedOut;
 
     session.status = "disconnected";
+    clearStableTimer(businessId);
     // Clean up the closing socket (keepalive timer, listeners) before dropping.
     try {
       session.sock.end(undefined);
@@ -177,9 +200,16 @@ function handleConnectionUpdate(
     logger.warn({ businessId, statusCode }, "WhatsApp connection closed");
 
     if (loggedOut) {
-      // The phone unlinked us — wipe creds so a fresh pair is required.
+      // The phone unlinked us — wipe creds so a fresh pair is required. Log a
+      // wipe failure (don't swallow it): stale logged-out creds would make the
+      // next pair immediately log out again, an invisible re-pair loop.
       reconnectAttempts.delete(businessId);
-      clearAuthState(businessId).catch(() => {});
+      clearAuthState(businessId).catch((error) => {
+        logger.error(
+          { businessId, error: String(error) },
+          "Failed to clear auth state after logout"
+        );
+      });
       return;
     }
 
@@ -207,7 +237,11 @@ function scheduleReconnect(businessId: string): void {
   );
   setTimeout(() => {
     startSession(businessId).catch((error) => {
+      // startSession threw before a socket existed (e.g. a DB blip loading auth
+      // state) — re-arm so a transient failure doesn't permanently abandon the
+      // session. This still respects MAX_RECONNECT_ATTEMPTS.
       logger.error({ businessId, error: String(error) }, "Reconnect failed");
+      scheduleReconnect(businessId);
     });
   }, delay);
 }
@@ -329,6 +363,17 @@ export async function sendText(
     "WhatsApp send timed out."
   );
   return { providerMessageId: sent?.key?.id ?? null, status: "SENT" };
+}
+
+/** End every live socket (called on graceful shutdown). */
+export function closeAllSessions(): void {
+  for (const session of sessions.values()) {
+    try {
+      session.sock.end(undefined);
+    } catch {
+      // already closed
+    }
+  }
 }
 
 /** Best-effort reconnect of every workspace that already has saved creds. */
