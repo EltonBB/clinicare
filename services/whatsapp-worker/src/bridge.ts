@@ -31,6 +31,10 @@ export type InboundEvent =
     };
 
 const MAX_ATTEMPTS = 4;
+// Per-attempt deadline: a stalled app/proxy (accepts the connection then hangs)
+// must not pin an attempt — abort and retry against a (hopefully healthy)
+// instance. The app webhook only does quick DB writes, so 10s is generous.
+const POST_TIMEOUT_MS = 10_000;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -54,6 +58,9 @@ export async function postToApp(event: InboundEvent): Promise<void> {
           [BRIDGE_HEADER]: config.bridgeSecret,
         },
         body: JSON.stringify(event),
+        // Abort a stalled app instance so this attempt retries (the catch below
+        // treats an AbortError like any transient failure).
+        signal: AbortSignal.timeout(POST_TIMEOUT_MS),
       });
       if (response.ok) {
         return;
