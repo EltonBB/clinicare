@@ -186,6 +186,23 @@ describe("sendMessage dispatch", () => {
     if (!result.ok) expect(result.reason).toBe("invalid_recipient");
   });
 
+  it("rejects an over-long phone (>15 digits) as invalid, not provider_error", async () => {
+    const echo = new EchoAdapter("WHATSAPP");
+    const result = await sendMessage(
+      {
+        channel: "WHATSAPP",
+        businessId: "biz_1",
+        to: "+1234567890123456", // 16 digits — past the worker's ^\d{6,15}$
+        message: { kind: "freeform", body: "hi" },
+      },
+      registryWith(echo)
+    );
+    expect(result.ok).toBe(false);
+    // invalid_recipient (not provider_error) so a bad number can't ERROR the link.
+    if (!result.ok) expect(result.reason).toBe("invalid_recipient");
+    expect(echo.sent).toHaveLength(0);
+  });
+
   it("canonicalizes and validates email recipients", async () => {
     const echo = new EchoAdapter("EMAIL");
     const ok = await sendMessage(

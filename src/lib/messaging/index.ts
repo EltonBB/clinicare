@@ -37,9 +37,11 @@ function canonicalizeRecipient(
 
   const phone = normalizePhone(to);
   const digits = phone.replace(/\D/g, "");
-  // A real MSISDN is at least a country code + subscriber number; guard against
-  // empty/garbage input without hard-coding a single region's length.
-  return digits.length >= 6 ? phone : null;
+  // Match the worker's accepted E.164 range (6–15 digits). Enforcing the upper
+  // bound here means an over-long number fails closed as `invalid_recipient`
+  // rather than as a worker-400 → `provider_error` that would wrongly flag the
+  // shared WhatsApp connection ERRORED.
+  return digits.length >= 6 && digits.length <= 15 ? phone : null;
 }
 
 /**

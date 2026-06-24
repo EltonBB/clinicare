@@ -20,6 +20,12 @@ const workerSendResponseSchema = z.object({
   status: z.enum(["QUEUED", "SENT", "FAILED"]),
 });
 
+// Bound the worker round-trip so a stalled worker/proxy can't hang an Inbox send
+// or block the reminder cron's concurrency pool. Sits above the worker's own 20s
+// socket-send timeout so the worker's clean 502 wins the race; an app-side
+// timeout aborts and surfaces as a retryable provider failure.
+const WORKER_SEND_TIMEOUT_MS = 25_000;
+
 function mapWorkerStatus(
   status: WorkerSendResponse["status"]
 ): MessageDeliveryStatus {
@@ -79,6 +85,9 @@ export class BaileysWhatsAppAdapter implements ChannelAdapter {
         },
         body: JSON.stringify(payload),
         cache: "no-store",
+        // Abort a stalled worker — the dispatcher maps the thrown timeout to a
+        // generic, retryable provider failure (never surfaces it upward).
+        signal: AbortSignal.timeout(WORKER_SEND_TIMEOUT_MS),
       }
     );
 
