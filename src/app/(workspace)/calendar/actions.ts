@@ -340,6 +340,7 @@ export async function saveAppointmentAction(
     let appointmentId = payload.id;
     let shouldResetReminders = false;
     let previousClientId: string | null = null;
+    let previousStaffMemberId: string | null = null;
 
     if (payload.id) {
       const existing = await prisma.appointment.findFirst({
@@ -366,6 +367,7 @@ export async function saveAppointmentAction(
       }
 
       previousClientId = existing.clientId;
+      previousStaffMemberId = existing.staffMemberId;
       shouldResetReminders =
         existing.clientId !== payload.clientId ||
         existing.staffMemberId !== staffMemberId ||
@@ -454,7 +456,7 @@ export async function saveAppointmentAction(
       }
     });
 
-    revalidateCalendarSurfaces(payload.clientId);
+    revalidateCalendarSurfaces(payload.clientId, [staffMemberId, previousStaffMemberId]);
 
     return {
       ok: true,
@@ -471,14 +473,25 @@ export async function saveAppointmentAction(
 // Invalidate the Router Cache for every surface an appointment mutation touches
 // (calendar grid, dashboard schedule/KPIs, the client's directory row + detail
 // timeline) so the change shows on navigation without a manual refresh.
-function revalidateCalendarSurfaces(clientId?: string | null) {
+function revalidateCalendarSurfaces(
+  clientId?: string | null,
+  staffMemberIds: Array<string | null | undefined> = []
+) {
   revalidatePath("/calendar");
   revalidatePath("/dashboard");
   revalidatePath("/clients");
   // Reports' appointment volume + completion-rate KPIs depend on this.
   revalidatePath("/reports");
+  // Staff directory derives today's appointment counts; each staff detail page
+  // lists that member's appointments.
+  revalidatePath("/staff");
   if (clientId) {
     revalidatePath(`/clients/${clientId}`);
+  }
+  for (const staffMemberId of staffMemberIds) {
+    if (staffMemberId) {
+      revalidatePath(`/staff/${staffMemberId}`);
+    }
   }
 }
 
@@ -503,6 +516,7 @@ export async function cancelAppointmentAction(
     select: {
       id: true,
       clientId: true,
+      staffMemberId: true,
     },
   });
 
@@ -529,7 +543,7 @@ export async function cancelAppointmentAction(
   });
   await refreshClientLastVisitAt(existing.clientId, business.id);
 
-  revalidateCalendarSurfaces(existing.clientId);
+  revalidateCalendarSurfaces(existing.clientId, [existing.staffMemberId]);
 
   return {
     ok: true,
@@ -558,6 +572,7 @@ export async function deleteAppointmentAction(
     select: {
       id: true,
       clientId: true,
+      staffMemberId: true,
     },
   });
 
@@ -575,7 +590,7 @@ export async function deleteAppointmentAction(
   });
   await refreshClientLastVisitAt(existing.clientId, business.id);
 
-  revalidateCalendarSurfaces(existing.clientId);
+  revalidateCalendarSurfaces(existing.clientId, [existing.staffMemberId]);
 
   return {
     ok: true,

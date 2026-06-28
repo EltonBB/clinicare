@@ -292,6 +292,14 @@ function revalidateClientDetail(clientId: string) {
   revalidatePath(`/clients/${clientId}`);
 }
 
+function revalidatePaymentSurfaces(clientId: string) {
+  // Payments feed the dashboard "Revenue this month" KPI and the Reports revenue
+  // metrics, beyond the client's own profile ledger.
+  revalidateClientDetail(clientId);
+  revalidatePath("/dashboard");
+  revalidatePath("/reports");
+}
+
 async function fetchClientRecord(businessId: string, clientId: string) {
   // Tenant scoping by construction: even though every caller checks ownership
   // first, this query must never be able to cross a business boundary.
@@ -890,6 +898,8 @@ export async function addClientPaymentAction(
       paidAt: parseOptionalDate(payload.paidAt),
     },
   });
+
+  revalidatePaymentSurfaces(payload.clientId);
 
   return {
     ok: true,
@@ -1544,6 +1554,8 @@ export async function updateClientPaymentAction(
     },
   });
 
+  revalidatePaymentSurfaces(payload.clientId);
+
   return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
 }
 
@@ -1562,6 +1574,8 @@ export async function deleteClientPaymentAction(
   }
 
   await prisma.clientPayment.delete({ where: { id: payload.id } });
+
+  revalidatePaymentSurfaces(payload.clientId);
 
   return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
 }
