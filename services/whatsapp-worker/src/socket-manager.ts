@@ -5,6 +5,7 @@ import makeWASocket, {
   isLidUser,
   jidDecode,
   makeCacheableSignalKeyStore,
+  normalizeMessageContent,
   proto,
 } from "baileys";
 import type {
@@ -385,38 +386,12 @@ function mapReceiptStatus(
   }
 }
 
-// Real WhatsApp container nesting (ephemeral → view-once → document-with-caption)
-// is at most a couple of layers deep; cap the unwrap so a malformed/hostile
-// message can't make this loop indefinitely.
-const MAX_UNWRAP_DEPTH = 3;
-
-/**
- * Unwraps the container message types WhatsApp nests real content inside —
- * disappearing (ephemeral), view-once, and document-with-caption messages.
- * Without this, a reply sent in a disappearing-messages chat (its text lives in
- * `ephemeralMessage.message`) reads as empty and is silently dropped.
- */
-function unwrapMessageContent(
-  content: proto.IMessage | null | undefined
-): proto.IMessage | null {
-  let current: proto.IMessage | null = content ?? null;
-  for (let depth = 0; current && depth < MAX_UNWRAP_DEPTH; depth += 1) {
-    const inner =
-      current.ephemeralMessage?.message ||
-      current.viewOnceMessage?.message ||
-      current.viewOnceMessageV2?.message ||
-      current.viewOnceMessageV2Extension?.message ||
-      current.documentWithCaptionMessage?.message;
-    if (!inner) {
-      break;
-    }
-    current = inner;
-  }
-  return current;
-}
-
 function extractText(message: WAMessage): string {
-  const content = unwrapMessageContent(message.message);
+  // normalizeMessageContent (Baileys' own helper) unwraps the wrapper types
+  // WhatsApp nests real content inside — disappearing (ephemeral), view-once,
+  // and document-with-caption — so a reply wrapped in any of them isn't read as
+  // empty and silently dropped.
+  const content = normalizeMessageContent(message.message);
   if (!content) {
     return "";
   }
@@ -426,6 +401,11 @@ function extractText(message: WAMessage): string {
     content.imageMessage?.caption ||
     content.videoMessage?.caption ||
     content.documentMessage?.caption ||
+    // Tapped replies (quick-reply buttons, list selections, template buttons)
+    // carry the chosen label here instead of in `conversation`.
+    content.buttonsResponseMessage?.selectedDisplayText ||
+    content.listResponseMessage?.title ||
+    content.templateButtonReplyMessage?.selectedDisplayText ||
     ""
   ).trim();
 }
