@@ -454,6 +454,8 @@ export async function saveAppointmentAction(
       }
     });
 
+    revalidateCalendarSurfaces(payload.clientId);
+
     return {
       ok: true,
       appointment: await hydrateAppointment(appointmentId!),
@@ -463,6 +465,20 @@ export async function saveAppointmentAction(
       ok: false,
       error: "We couldn't save the appointment.",
     };
+  }
+}
+
+// Invalidate the Router Cache for every surface an appointment mutation touches
+// (calendar grid, dashboard schedule/KPIs, the client's directory row + detail
+// timeline) so the change shows on navigation without a manual refresh.
+function revalidateCalendarSurfaces(clientId?: string | null) {
+  revalidatePath("/calendar");
+  revalidatePath("/dashboard");
+  revalidatePath("/clients");
+  // Reports' appointment volume + completion-rate KPIs depend on this.
+  revalidatePath("/reports");
+  if (clientId) {
+    revalidatePath(`/clients/${clientId}`);
   }
 }
 
@@ -513,6 +529,8 @@ export async function cancelAppointmentAction(
   });
   await refreshClientLastVisitAt(existing.clientId, business.id);
 
+  revalidateCalendarSurfaces(existing.clientId);
+
   return {
     ok: true,
     appointmentId,
@@ -556,6 +574,8 @@ export async function deleteAppointmentAction(
     },
   });
   await refreshClientLastVisitAt(existing.clientId, business.id);
+
+  revalidateCalendarSurfaces(existing.clientId);
 
   return {
     ok: true,

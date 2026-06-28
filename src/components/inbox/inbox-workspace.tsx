@@ -162,13 +162,24 @@ export function InboxWorkspace({
       });
     }
 
+    // Poll while the tab is visible, AND refresh the moment the operator returns
+    // to the tab so a reply that arrived while it was backgrounded shows at once
+    // instead of waiting for the next interval tick.
     const interval = window.setInterval(() => {
       void refreshInbox();
-    }, 15000);
+    }, 10000);
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        void refreshInbox();
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       cancelled = true;
       window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 

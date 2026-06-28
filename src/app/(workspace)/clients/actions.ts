@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
@@ -275,6 +276,20 @@ function getAuthedBusiness() {
   return getAuthedBusinessContext(
     "Your session expired. Log in again to manage clients."
   );
+}
+
+// Invalidate the Router Cache for the surfaces a client mutation changes so a
+// navigation shows the new data immediately instead of a stale cached payload.
+// (Open detail views also consume the returned record for the live update.)
+function revalidateClientDirectory() {
+  revalidatePath("/clients");
+  revalidatePath("/dashboard");
+  // Reports' "New clients" KPI counts directory membership.
+  revalidatePath("/reports");
+}
+
+function revalidateClientDetail(clientId: string) {
+  revalidatePath(`/clients/${clientId}`);
 }
 
 async function fetchClientRecord(businessId: string, clientId: string) {
@@ -694,6 +709,9 @@ export async function saveClientAction(
 
     await syncClientInboxThread(business.id, clientId!);
 
+    revalidateClientDirectory();
+    revalidateClientDetail(clientId!);
+
     return {
       ok: true,
       client: await fetchClientRecord(business.id, clientId!),
@@ -1093,6 +1111,9 @@ export async function archiveClientAction(clientId: string): Promise<ArchiveClie
     },
   });
 
+  revalidateClientDirectory();
+  revalidateClientDetail(clientId);
+
   return {
     ok: true,
     clientId,
@@ -1140,6 +1161,8 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
   });
 
   await deleteStorageReferences(existing.galleryItems.map((item) => item.imageUrl));
+
+  revalidateClientDirectory();
 
   return {
     ok: true,

@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
@@ -360,6 +361,10 @@ export async function sendInboxMessageAction(
     });
   });
 
+  // The dashboard's unread KPI + Messages preview reflect this thread; refresh
+  // their cached payloads so they don't lag the send.
+  revalidatePath("/dashboard");
+
   return {
     ok: true,
     conversation: await hydrateConversation(
@@ -403,6 +408,8 @@ export async function deleteConversationAction(
       id: conversationId,
     },
   });
+
+  revalidatePath("/dashboard");
 
   return {
     ok: true,
@@ -552,6 +559,11 @@ export async function convertConversationToClientAction(
 
     return resolvedClientId;
   });
+
+  // A new client now exists — refresh the directory + dashboard caches so it
+  // shows without a manual reload.
+  revalidatePath("/clients");
+  revalidatePath("/dashboard");
 
   return {
     ok: true,
