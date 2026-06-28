@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import { DashboardMessagesCard } from "@/components/dashboard/dashboard-messages-card";
+import { useWorkspaceUnreadCount } from "@/components/layout/workspace-live-context";
 import { KpiValue } from "@/components/workspace/kpi-value";
 import {
   WorkspaceCard,
@@ -169,6 +170,10 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
   const visits = view.visitsSummary;
   const revenue = view.revenueSummary;
   const maxVisits = Math.max(...visits.days.map((day) => day.count), 1);
+  // Live unread count from the app shell's single notifications poll (the
+  // Messages card badge reads the same source), so this KPI updates as replies
+  // arrive instead of only on navigation. Falls back to the server value.
+  const liveUnreadCount = useWorkspaceUnreadCount(view.unreadSummary.unreadCount);
 
   return (
     <WorkspacePage size="wide">
@@ -244,11 +249,9 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
         <KpiTile
           label="Unread messages"
           href="/inbox"
-          value={view.unreadSummary.unreadCount.toString()}
-          chipLabel={
-            view.unreadSummary.unreadCount > 0 ? "Needs replies" : "All caught up"
-          }
-          chipTone={view.unreadSummary.unreadCount > 0 ? "attention" : "good"}
+          value={liveUnreadCount.toString()}
+          chipLabel={liveUnreadCount > 0 ? "Needs replies" : "All caught up"}
+          chipTone={liveUnreadCount > 0 ? "attention" : "good"}
           className="max-lg:col-span-2"
         />
       </div>
