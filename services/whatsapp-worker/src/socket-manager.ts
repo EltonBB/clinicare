@@ -1,12 +1,16 @@
 import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
+  isJidUser,
+  isLidUser,
+  jidDecode,
   makeCacheableSignalKeyStore,
   proto,
 } from "baileys";
 import type {
   BaileysEventMap,
   WAMessage,
+  WAMessageKey,
   WASocket,
   WAVersion,
 } from "baileys";
@@ -381,16 +385,78 @@ function mapReceiptStatus(
   }
 }
 
+// Real WhatsApp container nesting (ephemeral → view-once → document-with-caption)
+// is at most a couple of layers deep; cap the unwrap so a malformed/hostile
+// message can't make this loop indefinitely.
+const MAX_UNWRAP_DEPTH = 3;
+
+/**
+ * Unwraps the container message types WhatsApp nests real content inside —
+ * disappearing (ephemeral), view-once, and document-with-caption messages.
+ * Without this, a reply sent in a disappearing-messages chat (its text lives in
+ * `ephemeralMessage.message`) reads as empty and is silently dropped.
+ */
+function unwrapMessageContent(
+  content: proto.IMessage | null | undefined
+): proto.IMessage | null {
+  let current: proto.IMessage | null = content ?? null;
+  for (let depth = 0; current && depth < MAX_UNWRAP_DEPTH; depth += 1) {
+    const inner =
+      current.ephemeralMessage?.message ||
+      current.viewOnceMessage?.message ||
+      current.viewOnceMessageV2?.message ||
+      current.viewOnceMessageV2Extension?.message ||
+      current.documentWithCaptionMessage?.message;
+    if (!inner) {
+      break;
+    }
+    current = inner;
+  }
+  return current;
+}
+
 function extractText(message: WAMessage): string {
-  const content = message.message;
+  const content = unwrapMessageContent(message.message);
   if (!content) {
     return "";
   }
   return (
     content.conversation ||
     content.extendedTextMessage?.text ||
+    content.imageMessage?.caption ||
+    content.videoMessage?.caption ||
+    content.documentMessage?.caption ||
     ""
   ).trim();
+}
+
+/**
+ * Resolves the sender's phone number (digits only) for a 1:1 patient DM, or null
+ * if this isn't a message we can thread by phone.
+ *
+ * WhatsApp is migrating chats to LID addressing: `remoteJid` arrives as
+ * `<id>@lid` instead of the phone JID `<phone>@s.whatsapp.net`. A LID is NOT a
+ * phone number, so the real number is read from `key.senderPn`. Groups, status
+ * broadcasts, and newsletters resolve to null and are ignored. The previous
+ * `endsWith("@s.whatsapp.net")` filter silently dropped every LID-addressed
+ * reply — the cause of "I can send but never receive replies".
+ */
+function resolveSenderPhone(key: WAMessageKey): string | null {
+  const remoteJid = key.remoteJid ?? "";
+  // Phone-addressed 1:1 chat — the number is the JID user part.
+  if (isJidUser(remoteJid)) {
+    return jidDecode(remoteJid)?.user ?? null;
+  }
+  // LID-addressed 1:1 chat — the real phone lives in senderPn.
+  if (isLidUser(remoteJid)) {
+    const pn = key.senderPn;
+    if (pn && isJidUser(pn)) {
+      return jidDecode(pn)?.user ?? null;
+    }
+    return null;
+  }
+  // Group / broadcast / newsletter / anything else — not a patient DM.
+  return null;
 }
 
 async function handleInbound(
@@ -400,14 +466,22 @@ async function handleInbound(
   if (message.key.fromMe) {
     return;
   }
-  const remoteJid = message.key.remoteJid ?? "";
-  // 1:1 conversations only — ignore groups, status broadcasts, newsletters.
-  if (!remoteJid.endsWith("@s.whatsapp.net")) {
+  const from = resolveSenderPhone(message.key);
+  if (!from) {
+    // A LID 1:1 chat we couldn't map to a phone means a real reply is being
+    // dropped — surface it (record-id only, never the JID/number → HIPAA).
+    // Groups / broadcasts / newsletters are expected and stay silent.
+    if (isLidUser(message.key.remoteJid ?? "")) {
+      logger.warn(
+        { businessId },
+        "Dropped LID inbound — no senderPn to resolve the phone number"
+      );
+    }
     return;
   }
-  const from = remoteJid.split("@")[0] ?? "";
   const body = extractText(message);
-  if (!from || !body) {
+  if (!body) {
+    // Media-only / unsupported content — nothing to thread as a text message.
     return;
   }
 
