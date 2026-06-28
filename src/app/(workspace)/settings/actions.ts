@@ -209,9 +209,12 @@ export async function saveSettingsAction(
     ownerName: payload.business.ownerName,
   });
 
-  revalidatePath("/settings");
-  revalidatePath("/dashboard");
-  revalidatePath("/calendar");
+  // Business name, logo, brand accent, and owner name all render in the app
+  // shell on every workspace route, and working hours feed calendar utilization.
+  // Invalidate the whole layout tree so none of those surfaces lag a save
+  // instead of enumerating a partial path list (which missed /clients, /staff,
+  // /reports, /inbox).
+  revalidatePath("/", "layout");
 
   return {
     ok: true,

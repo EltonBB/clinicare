@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -581,6 +582,12 @@ export async function updateOwnerProfileAction(
       };
     }
   }
+
+  // The owner's name + phone render in the app shell on every workspace route
+  // (server-fetched in (workspace)/layout.tsx). Invalidate that layout so a
+  // rename / phone change shows on navigation instead of staying stale until a
+  // hard reload — the same Router-Cache gap the workspace mutations close.
+  revalidatePath("/", "layout");
 
   let success = "Account updated.";
   if (emailChanged && passwordChanged) {
