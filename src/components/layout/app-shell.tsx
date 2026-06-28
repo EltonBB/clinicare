@@ -90,6 +90,7 @@ export function AppShell({
     [accent]
   );
   const [liveUnreadCount, setLiveUnreadCount] = useState(unreadCount);
+  const [unreadInitialized, setUnreadInitialized] = useState(false);
   const [liveNotifications, setLiveNotifications] = useState(notifications);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const logoutFormRef = useRef<HTMLFormElement>(null);
@@ -97,8 +98,8 @@ export function AppShell({
   // Published to descendants (e.g. the dashboard Messages card) so they read
   // this single poll instead of starting their own.
   const liveUnread = useMemo(
-    () => ({ unreadCount: liveUnreadCount }),
-    [liveUnreadCount]
+    () => ({ unreadCount: liveUnreadCount, initialized: unreadInitialized }),
+    [liveUnreadCount, unreadInitialized]
   );
 
   useEffect(() => {
@@ -149,6 +150,7 @@ export function AppShell({
 
       setLiveUnreadCount(result.view.unreadCount);
       setLiveNotifications(result.view.notifications);
+      setUnreadInitialized(true);
     }
 
     const timeout = window.setTimeout(() => {
