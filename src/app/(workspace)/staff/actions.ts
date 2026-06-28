@@ -136,11 +136,29 @@ async function fetchStaffRecord(staffId: string, businessId: string) {
   return buildStaffRecord(staff);
 }
 
-function revalidateStaffSurfaces() {
+// Surfaces local to a staff change: the directory (employment status, the
+// "Checked in now" signal, today's shift) and — when the change is scoped to one
+// member — that member's detail page. Check-in/out and shift edits touch only
+// these (the dashboard, calendar, and reports render neither check-in state nor
+// shifts). Settings has no staff section, so it isn't revalidated here.
+function revalidateStaffSurfaces(staffId?: string | null) {
   revalidatePath("/staff");
-  revalidatePath("/calendar");
+  if (staffId) {
+    revalidatePath(`/staff/${staffId}`);
+  }
+}
+
+// Roster changes (add / remove / rename / role / employment status) ripple
+// beyond the staff workspace: the calendar's provider options, the dashboard's
+// "Staff today" card, Reports' active-staff / top-provider / load highlights,
+// and the clients directory's "last provider" column all derive from the member
+// list. (Mirrors how the calendar helper fans out across the same triangle.)
+function revalidateStaffRosterSurfaces(staffId?: string | null) {
+  revalidateStaffSurfaces(staffId);
   revalidatePath("/dashboard");
-  revalidatePath("/settings");
+  revalidatePath("/calendar");
+  revalidatePath("/reports");
+  revalidatePath("/clients");
 }
 
 function isValidTime(value: string) {
@@ -310,7 +328,7 @@ export async function saveStaffAction(payload: SaveStaffPayload): Promise<SaveSt
     });
   }
 
-  revalidateStaffSurfaces();
+  revalidateStaffRosterSurfaces(staffId);
 
   return {
     ok: true,
@@ -352,7 +370,7 @@ export async function deleteStaffAction(staffId: string): Promise<DeleteStaffRes
     },
   });
 
-  revalidateStaffSurfaces();
+  revalidateStaffRosterSurfaces();
 
   return {
     ok: true,
@@ -447,7 +465,7 @@ export async function checkInStaffAction(staffId: string): Promise<StaffClockRes
     });
   }
 
-  revalidatePath("/staff");
+  revalidateStaffSurfaces(staffId);
 
   return {
     ok: true,
@@ -493,7 +511,7 @@ export async function checkOutStaffAction(staffId: string): Promise<StaffClockRe
     },
   });
 
-  revalidatePath("/staff");
+  revalidateStaffSurfaces(staffId);
 
   return {
     ok: true,
@@ -584,7 +602,7 @@ export async function saveStaffShiftAction(
     shiftId = shift.id;
   }
 
-  revalidateStaffSurfaces();
+  revalidateStaffSurfaces(staff.id);
 
   return {
     ok: true,
@@ -611,6 +629,7 @@ export async function deleteStaffShiftAction(
     },
     select: {
       id: true,
+      staffMemberId: true,
     },
   });
 
@@ -627,7 +646,7 @@ export async function deleteStaffShiftAction(
     },
   });
 
-  revalidateStaffSurfaces();
+  revalidateStaffSurfaces(existing.staffMemberId);
 
   return {
     ok: true,
