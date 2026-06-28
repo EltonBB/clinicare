@@ -223,6 +223,9 @@ export async function markConversationReadAction(
     },
   });
 
+  // The dashboard's unread-messages KPI + Messages preview badges read this count.
+  revalidatePath("/dashboard");
+
   return {
     ok: true,
     conversationId,
@@ -398,6 +401,7 @@ export async function deleteConversationAction(
     },
     select: {
       id: true,
+      phoneNumber: true,
     },
   });
 
@@ -408,6 +412,20 @@ export async function deleteConversationAction(
     };
   }
 
+  // Resolve a linked client (by the canonical phone key) before deleting so we
+  // can refresh their profile timeline — the cascade removes messages that show
+  // on the client detail page.
+  const conversationPhoneKey = phoneLookupKey(conversation.phoneNumber);
+  const linkedClient = conversationPhoneKey
+    ? await prisma.client.findFirst({
+        where: {
+          businessId: context.business.id,
+          phoneKey: conversationPhoneKey,
+        },
+        select: { id: true },
+      })
+    : null;
+
   await prisma.conversation.delete({
     where: {
       id: conversationId,
@@ -415,6 +433,9 @@ export async function deleteConversationAction(
   });
 
   revalidatePath("/dashboard");
+  if (linkedClient) {
+    revalidatePath(`/clients/${linkedClient.id}`);
+  }
 
   return {
     ok: true,

@@ -292,12 +292,23 @@ function revalidateClientDetail(clientId: string) {
   revalidatePath(`/clients/${clientId}`);
 }
 
-function revalidatePaymentSurfaces(clientId: string) {
-  // Payments feed the dashboard "Revenue this month" KPI and the Reports revenue
-  // metrics, beyond the client's own profile ledger.
-  revalidateClientDetail(clientId);
+function revalidatePaymentSurfaces() {
+  // Payments feed the dashboard "Revenue this month" KPI and Reports revenue;
+  // the client's own ledger is refreshed by respondWithClientRecord.
   revalidatePath("/dashboard");
   revalidatePath("/reports");
+}
+
+// Every sub-record mutation returns the refreshed client AND must revalidate the
+// detail route so a later navigation back to it (served from the Router Cache)
+// isn't stale. (The open detail view also consumes the returned record live.)
+async function respondWithClientRecord(
+  businessId: string,
+  clientId: string
+): Promise<ClientRecordMutationResult> {
+  const client = await fetchClientRecord(businessId, clientId);
+  revalidateClientDetail(clientId);
+  return { ok: true, client };
 }
 
 async function fetchClientRecord(businessId: string, clientId: string) {
@@ -594,10 +605,7 @@ export async function addClientGalleryItemAction(
     },
   });
 
-  return {
-    ok: true,
-    client: await fetchClientRecord(context.business.id, payload.clientId),
-  };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 async function syncClientInboxThread(businessId: string, clientId: string) {
@@ -773,10 +781,7 @@ export async function addClientMedicationAction(
     },
   });
 
-  return {
-    ok: true,
-    client: await fetchClientRecord(context.business.id, payload.clientId),
-  };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function addClientDocumentAction(
@@ -841,10 +846,7 @@ export async function addClientDocumentAction(
     },
   });
 
-  return {
-    ok: true,
-    client: await fetchClientRecord(context.business.id, payload.clientId),
-  };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function addClientPaymentAction(
@@ -899,12 +901,9 @@ export async function addClientPaymentAction(
     },
   });
 
-  revalidatePaymentSurfaces(payload.clientId);
+  revalidatePaymentSurfaces();
 
-  return {
-    ok: true,
-    client: await fetchClientRecord(context.business.id, payload.clientId),
-  };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function addClientHealthItemAction(
@@ -942,10 +941,7 @@ export async function addClientHealthItemAction(
     },
   });
 
-  return {
-    ok: true,
-    client: await fetchClientRecord(context.business.id, payload.clientId),
-  };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function addClientCareNoteAction(
@@ -994,10 +990,7 @@ export async function addClientCareNoteAction(
     },
   });
 
-  return {
-    ok: true,
-    client: await fetchClientRecord(context.business.id, payload.clientId),
-  };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function addClientTreatmentPlanItemAction(
@@ -1034,10 +1027,7 @@ export async function addClientTreatmentPlanItemAction(
     },
   });
 
-  return {
-    ok: true,
-    client: await fetchClientRecord(context.business.id, payload.clientId),
-  };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function addClientFollowUpReminderAction(
@@ -1076,10 +1066,7 @@ export async function addClientFollowUpReminderAction(
     },
   });
 
-  return {
-    ok: true,
-    client: await fetchClientRecord(context.business.id, payload.clientId),
-  };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function archiveClientAction(clientId: string): Promise<ArchiveClientResult> {
@@ -1244,7 +1231,7 @@ export async function updateClientMedicationAction(
     },
   });
 
-  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function deleteClientMedicationAction(
@@ -1263,7 +1250,7 @@ export async function deleteClientMedicationAction(
 
   await prisma.clientMedication.delete({ where: { id: payload.id } });
 
-  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function updateClientHealthItemAction(
@@ -1305,7 +1292,7 @@ export async function updateClientHealthItemAction(
     },
   });
 
-  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function deleteClientHealthItemAction(
@@ -1324,7 +1311,7 @@ export async function deleteClientHealthItemAction(
 
   await prisma.clientHealthItem.delete({ where: { id: payload.id } });
 
-  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function updateClientCareNoteAction(
@@ -1363,7 +1350,7 @@ export async function updateClientCareNoteAction(
     },
   });
 
-  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function deleteClientCareNoteAction(
@@ -1382,7 +1369,7 @@ export async function deleteClientCareNoteAction(
 
   await prisma.clientCareNote.delete({ where: { id: payload.id } });
 
-  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function updateClientTreatmentPlanItemAction(
@@ -1423,7 +1410,7 @@ export async function updateClientTreatmentPlanItemAction(
     },
   });
 
-  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function deleteClientTreatmentPlanItemAction(
@@ -1442,7 +1429,7 @@ export async function deleteClientTreatmentPlanItemAction(
 
   await prisma.clientTreatmentPlanItem.delete({ where: { id: payload.id } });
 
-  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function updateClientFollowUpReminderAction(
@@ -1485,7 +1472,7 @@ export async function updateClientFollowUpReminderAction(
     },
   });
 
-  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function deleteClientFollowUpReminderAction(
@@ -1504,7 +1491,7 @@ export async function deleteClientFollowUpReminderAction(
 
   await prisma.clientFollowUpReminder.delete({ where: { id: payload.id } });
 
-  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function updateClientPaymentAction(
@@ -1554,9 +1541,9 @@ export async function updateClientPaymentAction(
     },
   });
 
-  revalidatePaymentSurfaces(payload.clientId);
+  revalidatePaymentSurfaces();
 
-  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function deleteClientPaymentAction(
@@ -1575,9 +1562,9 @@ export async function deleteClientPaymentAction(
 
   await prisma.clientPayment.delete({ where: { id: payload.id } });
 
-  revalidatePaymentSurfaces(payload.clientId);
+  revalidatePaymentSurfaces();
 
-  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function updateClientDocumentAction(
@@ -1619,7 +1606,7 @@ export async function updateClientDocumentAction(
     },
   });
 
-  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function deleteClientDocumentAction(
@@ -1650,7 +1637,7 @@ export async function deleteClientDocumentAction(
     await deleteStorageReferences([record.storageUrl]);
   }
 
-  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
 export async function deleteClientGalleryItemAction(
@@ -1681,5 +1668,5 @@ export async function deleteClientGalleryItemAction(
     await deleteStorageReferences([record.imageUrl]);
   }
 
-  return { ok: true, client: await fetchClientRecord(context.business.id, payload.clientId) };
+  return respondWithClientRecord(context.business.id, payload.clientId);
 }

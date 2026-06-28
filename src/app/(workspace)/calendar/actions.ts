@@ -456,7 +456,10 @@ export async function saveAppointmentAction(
       }
     });
 
-    revalidateCalendarSurfaces(payload.clientId, [staffMemberId, previousStaffMemberId]);
+    revalidateCalendarSurfaces(
+      [payload.clientId, previousClientId],
+      [staffMemberId, previousStaffMemberId]
+    );
 
     return {
       ok: true,
@@ -474,7 +477,7 @@ export async function saveAppointmentAction(
 // (calendar grid, dashboard schedule/KPIs, the client's directory row + detail
 // timeline) so the change shows on navigation without a manual refresh.
 function revalidateCalendarSurfaces(
-  clientId?: string | null,
+  clientIds: Array<string | null | undefined> = [],
   staffMemberIds: Array<string | null | undefined> = []
 ) {
   revalidatePath("/calendar");
@@ -485,10 +488,13 @@ function revalidateCalendarSurfaces(
   // Staff directory derives today's appointment counts; each staff detail page
   // lists that member's appointments.
   revalidatePath("/staff");
-  if (clientId) {
-    revalidatePath(`/clients/${clientId}`);
+  // Dedup so a move that keeps the same client/staff doesn't revalidate twice.
+  for (const clientId of new Set(clientIds)) {
+    if (clientId) {
+      revalidatePath(`/clients/${clientId}`);
+    }
   }
-  for (const staffMemberId of staffMemberIds) {
+  for (const staffMemberId of new Set(staffMemberIds)) {
     if (staffMemberId) {
       revalidatePath(`/staff/${staffMemberId}`);
     }
@@ -543,7 +549,7 @@ export async function cancelAppointmentAction(
   });
   await refreshClientLastVisitAt(existing.clientId, business.id);
 
-  revalidateCalendarSurfaces(existing.clientId, [existing.staffMemberId]);
+  revalidateCalendarSurfaces([existing.clientId], [existing.staffMemberId]);
 
   return {
     ok: true,
@@ -590,7 +596,7 @@ export async function deleteAppointmentAction(
   });
   await refreshClientLastVisitAt(existing.clientId, business.id);
 
-  revalidateCalendarSurfaces(existing.clientId, [existing.staffMemberId]);
+  revalidateCalendarSurfaces([existing.clientId], [existing.staffMemberId]);
 
   return {
     ok: true,
