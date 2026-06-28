@@ -48,7 +48,13 @@ const pool =
   global.prismaPool ??
   new Pool({
     connectionString,
-    max: 1,
+    // Each authenticated page fans out 5–13 queries via Promise.all; with a
+    // single connection they were forced to run serially — the dominant
+    // page-render latency. A small pool lets them run concurrently. Kept low so
+    // the per-instance connection count stays well within the Supabase session
+    // pooler's budget under the pilot's traffic (raise cautiously, or move to the
+    // transaction pooler on :6543, only if connection headroom allows).
+    max: 3,
     idleTimeoutMillis: 10_000,
     ssl: buildDatabaseSslConfig(),
   });
