@@ -223,6 +223,9 @@ export async function markConversationReadAction(
     },
   });
 
+  // The dashboard's unread-messages KPI + Messages preview badges read this count.
+  revalidatePath("/dashboard");
+
   return {
     ok: true,
     conversationId,
@@ -362,8 +365,13 @@ export async function sendInboxMessageAction(
   });
 
   // The dashboard's unread KPI + Messages preview reflect this thread; refresh
-  // their cached payloads so they don't lag the send.
+  // their cached payloads so they don't lag the send. When the thread is linked
+  // to a client, the outbound message also lands on that client's activity
+  // timeline, so refresh their profile too.
   revalidatePath("/dashboard");
+  if (matchedClient) {
+    revalidatePath(`/clients/${matchedClient.id}`);
+  }
 
   return {
     ok: true,
@@ -393,6 +401,7 @@ export async function deleteConversationAction(
     },
     select: {
       id: true,
+      phoneNumber: true,
     },
   });
 
@@ -403,6 +412,20 @@ export async function deleteConversationAction(
     };
   }
 
+  // Resolve a linked client (by the canonical phone key) before deleting so we
+  // can refresh their profile timeline — the cascade removes messages that show
+  // on the client detail page.
+  const conversationPhoneKey = phoneLookupKey(conversation.phoneNumber);
+  const linkedClient = conversationPhoneKey
+    ? await prisma.client.findFirst({
+        where: {
+          businessId: context.business.id,
+          phoneKey: conversationPhoneKey,
+        },
+        select: { id: true },
+      })
+    : null;
+
   await prisma.conversation.delete({
     where: {
       id: conversationId,
@@ -410,6 +433,9 @@ export async function deleteConversationAction(
   });
 
   revalidatePath("/dashboard");
+  if (linkedClient) {
+    revalidatePath(`/clients/${linkedClient.id}`);
+  }
 
   return {
     ok: true,
@@ -560,10 +586,13 @@ export async function convertConversationToClientAction(
     return resolvedClientId;
   });
 
-  // A new client now exists — refresh the directory + dashboard caches so it
-  // shows without a manual reload.
+  // A client now exists/changed and the thread's messages were reassigned to it.
+  // Refresh the directory, dashboard, the Reports New-clients KPI, and the
+  // client's own profile timeline so none lag a manual reload.
   revalidatePath("/clients");
   revalidatePath("/dashboard");
+  revalidatePath("/reports");
+  revalidatePath(`/clients/${clientId}`);
 
   return {
     ok: true,
