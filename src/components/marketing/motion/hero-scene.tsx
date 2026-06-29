@@ -86,8 +86,10 @@ function useVelaMarkGeometry() {
     bb.getCenter(center);
     bb.getSize(size);
     geo.translate(-center.x, -center.y, -center.z);
-    // Match the orb's footprint (~3.4 world units across).
-    const scale = 3.4 / Math.max(size.x, size.y);
+    // Match the orb's footprint (~3.4 world units across). Guard the divisor so a
+    // degenerate (empty-shape) bbox can't scale the geometry to Infinity / NaN.
+    const maxDim = Math.max(size.x, size.y);
+    const scale = maxDim > 0 ? 3.4 / maxDim : 1;
     geo.scale(scale, scale, scale);
     geo.computeVertexNormals();
     applyBrandGradient(geo);
@@ -95,7 +97,13 @@ function useVelaMarkGeometry() {
   }, []);
 }
 
-function VelaMark({ pointer }: { pointer: RefObject<PointerState> }) {
+function VelaMark({
+  pointer,
+  rect,
+}: {
+  pointer: RefObject<PointerState>;
+  rect: RefObject<DOMRect | null>;
+}) {
   const mesh = useRef<Mesh>(null);
   const geometry = useVelaMarkGeometry();
   const ndc = useMemo(() => new Vector3(), []);
@@ -117,10 +125,10 @@ function VelaMark({ pointer }: { pointer: RefObject<PointerState> }) {
     let dirX = 0;
     let dirY = 0;
     const p = pointer.current;
-    if (p.active) {
-      const rect = state.gl.domElement.getBoundingClientRect();
-      const px = ((p.x - rect.left) / rect.width) * 2 - 1;
-      const py = -(((p.y - rect.top) / rect.height) * 2 - 1);
+    const r = rect.current;
+    if (p.active && r && r.width > 0) {
+      const px = ((p.x - r.left) / r.width) * 2 - 1;
+      const py = -(((p.y - r.top) / r.height) * 2 - 1);
       const dx = px - ndc.x;
       const dy = py - ndc.y;
       const dist = Math.hypot(dx, dy) || 1e-4;
@@ -157,15 +165,21 @@ function VelaMark({ pointer }: { pointer: RefObject<PointerState> }) {
   );
 }
 
-function ParallaxRig({ pointer }: { pointer: RefObject<PointerState> }) {
+function ParallaxRig({
+  pointer,
+  rect,
+}: {
+  pointer: RefObject<PointerState>;
+  rect: RefObject<DOMRect | null>;
+}) {
   useFrame((state) => {
     let nx = 0;
     let ny = 0;
     const p = pointer.current;
-    if (p.active) {
-      const rect = state.gl.domElement.getBoundingClientRect();
-      nx = ((p.x - rect.left) / rect.width) * 2 - 1;
-      ny = -(((p.y - rect.top) / rect.height) * 2 - 1);
+    const r = rect.current;
+    if (p.active && r && r.width > 0) {
+      nx = ((p.x - r.left) / r.width) * 2 - 1;
+      ny = -(((p.y - r.top) / r.height) * 2 - 1);
     }
     const targetX = nx * 0.55;
     const targetY = ny * 0.35;
@@ -178,6 +192,11 @@ function ParallaxRig({ pointer }: { pointer: RefObject<PointerState> }) {
 
 export default function HeroScene({ active = true }: { active?: boolean }) {
   const pointer = useRef<PointerState>({ x: 0, y: 0, active: false });
+  // The canvas viewport rect, cached and refreshed only on scroll/resize so the
+  // per-frame pointer math never calls getBoundingClientRect (a forced layout
+  // flush — twice per frame across both rigs before this).
+  const rect = useRef<DOMRect | null>(null);
+  const canvas = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     // Track the cursor at the window level — the canvas sits behind the hero
@@ -190,18 +209,30 @@ export default function HeroScene({ active = true }: { active?: boolean }) {
     const onLeave = () => {
       pointer.current.active = false;
     };
+    const refreshRect = () => {
+      if (canvas.current) {
+        rect.current = canvas.current.getBoundingClientRect();
+      }
+    };
     window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("scroll", refreshRect, { passive: true });
+    window.addEventListener("resize", refreshRect);
     document.documentElement.addEventListener("pointerleave", onLeave);
     window.addEventListener("blur", onLeave);
 
     // R3F's resize observer can miss the initial size when mounted from a lazy
     // chunk; nudge a resize on mount so the canvas fills its container reliably.
-    const kick = () => window.dispatchEvent(new Event("resize"));
+    const kick = () => {
+      window.dispatchEvent(new Event("resize"));
+      refreshRect();
+    };
     const raf = requestAnimationFrame(kick);
     const timer = setTimeout(kick, 200);
 
     return () => {
       window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("scroll", refreshRect);
+      window.removeEventListener("resize", refreshRect);
       document.documentElement.removeEventListener("pointerleave", onLeave);
       window.removeEventListener("blur", onLeave);
       cancelAnimationFrame(raf);
@@ -216,18 +247,22 @@ export default function HeroScene({ active = true }: { active?: boolean }) {
       dpr={[1, 1.8]}
       gl={{ antialias: true, alpha: true }}
       style={{ position: "absolute", inset: 0 }}
+      onCreated={(state) => {
+        canvas.current = state.gl.domElement;
+        rect.current = state.gl.domElement.getBoundingClientRect();
+      }}
     >
       <ambientLight intensity={0.5} />
       <directionalLight position={[3, 4, 5]} intensity={1.6} color="#64B6FF" />
       <pointLight position={[-4, -2, 3]} intensity={2.8} color="#0A22FF" />
-      <VelaMark pointer={pointer} />
+      <VelaMark pointer={pointer} rect={rect} />
       <Sparkles count={80} scale={[11, 7, 5]} size={2.4} speed={0.25} color="#a8c7ff" opacity={0.55} />
       <Environment resolution={256}>
         <Lightformer intensity={2.2} position={[0, 2, 4]} scale={[6, 6, 1]} color="#64B6FF" />
         <Lightformer intensity={2} position={[-3, -2, 2]} scale={[4, 4, 1]} color="#0A22FF" />
         <Lightformer intensity={1.2} position={[3, 0, -3]} scale={[5, 5, 1]} color="#bcd4ff" />
       </Environment>
-      <ParallaxRig pointer={pointer} />
+      <ParallaxRig pointer={pointer} rect={rect} />
     </Canvas>
   );
 }
