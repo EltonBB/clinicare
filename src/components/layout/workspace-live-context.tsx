@@ -35,14 +35,33 @@ export function useWorkspaceUnreadCount(fallback: number) {
   return context && context.initialized ? context.unreadCount : fallback;
 }
 
+/** Most-recent activity (epoch ms) across a preview list; 0 when empty. */
+function latestActivity(previews: DashboardConversationPreview[]) {
+  let latest = 0;
+  for (const preview of previews) {
+    if (preview.lastActivityAt > latest) {
+      latest = preview.lastActivityAt;
+    }
+  }
+  return latest;
+}
+
 /**
- * Reads the app shell's live conversation previews. Falls back to the
- * server-rendered list outside the provider or before the first poll resolves,
- * so the dashboard Messages card never flashes an empty list on initial load.
+ * Reads the app shell's live conversation previews. Before the provider exists
+ * or the first poll resolves, it returns the server-rendered list (no empty
+ * flash on load). Afterwards it returns whichever of the poll snapshot vs the
+ * fresh server `fallback` reflects more recent activity — the `fallback` is
+ * re-rendered on every navigation, so a newly arrived reply carried by the
+ * server payload isn't masked by an up-to-one-interval-old poll.
  */
 export function useWorkspaceConversationPreviews(
   fallback: DashboardConversationPreview[],
 ) {
   const context = useContext(WorkspaceLiveContext);
-  return context && context.initialized ? context.conversationPreviews : fallback;
+  if (!context || !context.initialized) {
+    return fallback;
+  }
+  return latestActivity(context.conversationPreviews) >= latestActivity(fallback)
+    ? context.conversationPreviews
+    : fallback;
 }

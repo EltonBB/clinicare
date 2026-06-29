@@ -84,6 +84,12 @@ export type DashboardConversationPreview = {
   snippet: string;
   timeLabel: string;
   unreadCount: number;
+  /**
+   * Epoch ms of the conversation's latest activity. Lets the live hook prefer
+   * whichever of the server-rendered list vs the poll snapshot is fresher, so a
+   * navigation that carries a newer server payload isn't masked by an older poll.
+   */
+  lastActivityAt: number;
 };
 
 export type DashboardStaffToday = {
@@ -182,6 +188,7 @@ export function buildDashboardConversationPreviews(
           ? formatZonedTime(lastActivity, timeZone)
           : formatZonedShortDate(lastActivity, timeZone),
       unreadCount: conversation.unreadCount,
+      lastActivityAt: lastActivity.getTime(),
     };
   });
 }
