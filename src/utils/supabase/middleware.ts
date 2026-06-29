@@ -69,14 +69,18 @@ export async function updateSession(request: NextRequest) {
   );
   const isOnboardingRoute =
     pathname === onboardingRoot || pathname.startsWith(`${onboardingRoot}/`);
+  // API routes keep validating the session here even though they never redirect:
+  // the authenticated ones (search) get a server-side check, and this stays the
+  // single server validation point if server code later verifies the JWT locally
+  // instead of calling getUser. Cron/webhook routes carry no auth cookie, so
+  // getUser is a cheap no-op for them.
+  const isApiRoute = pathname.startsWith("/api");
 
-  // Only the gated routes below need the session. Public/marketing pages don't
-  // redirect on auth, and API routes (search, cron, webhooks) authenticate
-  // themselves — so skip the Supabase auth round-trip for everything else. It
-  // previously ran on every matched request, including RSC prefetches, adding
-  // latency to public navigation and auth load at scale. Protected routes still
-  // refresh the session here on the next navigation.
-  if (!isProtected && !isAuthRoute && !isOnboardingRoute) {
+  // Public/marketing pages don't gate on auth, so skip the Supabase auth
+  // round-trip for them — it previously ran on every matched request, including
+  // RSC prefetches, adding latency to public navigation and auth load at scale.
+  // Gated routes and API routes still validate + refresh the session below.
+  if (!isProtected && !isAuthRoute && !isOnboardingRoute && !isApiRoute) {
     return response;
   }
 
