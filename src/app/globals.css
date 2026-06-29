@@ -220,6 +220,13 @@
     animation: vela-fade-up calc(var(--duration-entrance) + 200ms) var(--ease-out-expo) both;
   }
 
+  /* Marketing page crossfade — replayed per route via a keyed remount. CSS-driven
+     so the page body fades in the instant the HTML paints instead of waiting for
+     the JS bundle to hydrate (the old framer-motion wrapper held it at opacity 0). */
+  .marketing-page-enter {
+    animation: vela-fade-only var(--duration-slow) var(--ease-out-quint) both;
+  }
+
   .interactive-lift {
     transition:
       transform var(--duration-base) var(--ease-out-quint),
@@ -484,6 +491,7 @@
   @media (prefers-reduced-motion: reduce) {
     .section-reveal,
     .section-reveal-delayed,
+    .marketing-page-enter,
     .dialog-accent-orb,
     .landing-reveal,
     .landing-aurora-blob,

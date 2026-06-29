@@ -2,15 +2,9 @@
 
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
 import type { ReactNode } from "react";
 
 import { Magnetic } from "../motion/magnetic";
-
-const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
-
-const group: Variants = { hidden: {}, show: { transition: { staggerChildren: 0.1, delayChildren: 0.05 } } };
-const item: Variants = { hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: EASE } } };
 
 /** Light-gradient accent for use inside a dark hero headline. */
 export function Highlight({ children }: { children: ReactNode }) {
@@ -43,8 +37,6 @@ export function InnerHero({
   secondaryLabel?: string;
   children?: ReactNode;
 }) {
-  const reduce = useReducedMotion();
-
   return (
     <section className="vela-night relative isolate overflow-hidden px-4 pb-20 pt-32 text-white sm:px-6 sm:pb-24 sm:pt-36 lg:px-8">
       <div aria-hidden className="vela-mesh absolute -inset-[20%] -z-20 opacity-55" />
@@ -54,26 +46,18 @@ export function InnerHero({
         className="pointer-events-none absolute left-1/2 top-0 -z-10 h-72 w-[46rem] max-w-full -translate-x-1/2 bg-[radial-gradient(circle,rgba(100,182,255,0.22),transparent_65%)] blur-3xl"
       />
 
-      <motion.div
-        variants={group}
-        initial={reduce ? false : "hidden"}
-        animate="show"
-        className="mx-auto max-w-4xl text-center"
-      >
-        <motion.p
-          variants={item}
-          className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3.5 py-1.5 text-xs font-bold text-white/80 backdrop-blur"
-        >
+      {/* CSS-driven stagger (see globals.css) so the inner-page hero paints with
+          the HTML instead of waiting on the marketing JS bundle. */}
+      <div className="stagger-children mx-auto max-w-4xl text-center">
+        <p className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3.5 py-1.5 text-xs font-bold text-white/80 backdrop-blur">
           <span className="size-1.5 rounded-full bg-[#64B6FF]" />
           {eyebrow}
-        </motion.p>
-        <motion.h1 variants={item} className="display-1 mt-6 text-white">
-          {title}
-        </motion.h1>
-        <motion.p variants={item} className="mx-auto mt-6 max-w-2xl text-base leading-8 text-white/65 sm:text-lg">
+        </p>
+        <h1 className="display-1 mt-6 text-white">{title}</h1>
+        <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-white/65 sm:text-lg">
           {copy}
-        </motion.p>
-        <motion.div variants={item} className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+        </p>
+        <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Magnetic>
             <Link
               href={primaryHref}
@@ -91,8 +75,8 @@ export function InnerHero({
               {secondaryLabel}
             </Link>
           ) : null}
-        </motion.div>
-      </motion.div>
+        </div>
+      </div>
 
       {children ? <div className="relative mx-auto mt-14 max-w-6xl">{children}</div> : null}
     </section>

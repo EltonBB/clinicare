@@ -4,7 +4,6 @@ import { Component, useEffect, useState, useSyncExternalStore, type ReactNode } 
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
 
 import { Magnetic } from "../motion/magnetic";
 import { useScrollScene } from "../motion/use-scroll-scene";
@@ -55,23 +54,7 @@ class WebglBoundary extends Component<{ children: ReactNode }, { failed: boolean
 
 const trustSignals = ["No credit card to start", "Privacy-conscious by design", "WhatsApp-ready"];
 
-const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
-
-const lineGroup: Variants = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.12, delayChildren: 0.05 } },
-};
-const lineUp: Variants = {
-  hidden: { y: "110%" },
-  show: { y: 0, transition: { duration: 0.85, ease: EASE } },
-};
-const fade: Variants = {
-  hidden: { opacity: 0, y: 16 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: EASE } },
-};
-
 export function CinematicHero() {
-  const reduce = useReducedMotion();
   // Mount the WebGL orb only on a fine-pointer device without reduced-motion;
   // touch/low-power and motion-sensitive users get the static brand mesh instead.
   const { reduced, coarse } = useMarketingScroll();
@@ -132,67 +115,28 @@ export function CinematicHero() {
       />
 
       <div className="relative mx-auto w-full max-w-7xl">
-        <div className="mx-auto max-w-2xl text-center lg:mx-0 lg:text-left">
-          <motion.span
-            initial={reduce ? false : { opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: EASE }}
-            className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3.5 py-1.5 text-xs font-bold text-white/80 backdrop-blur"
-          >
+        {/* CSS-driven entrance (stagger-children) — paints with the HTML so the
+            hero never waits on the marketing JS bundle to hydrate. */}
+        <div className="stagger-children mx-auto max-w-2xl text-center lg:mx-0 lg:text-left">
+          <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3.5 py-1.5 text-xs font-bold text-white/80 backdrop-blur">
             <span className="size-1.5 rounded-full bg-[#64B6FF]" />
             The clinic operating system
-          </motion.span>
+          </span>
 
-          {reduce ? (
-            <h1 className="display-1 mt-6 text-white">
-              Run the whole clinic day from{" "}
-              <span className="bg-[linear-gradient(110deg,#9ec3ff,#ffffff_62%)] bg-clip-text text-transparent">
-                one calm workspace
-              </span>
-              .
-            </h1>
-          ) : (
-            <motion.h1
-              variants={lineGroup}
-              initial="hidden"
-              animate="show"
-              className="display-1 mt-6 text-white"
-            >
-              <span className="block overflow-hidden pb-[0.1em]">
-                <motion.span variants={lineUp} className="block">
-                  Run the whole clinic day
-                </motion.span>
-              </span>
-              <span className="block overflow-hidden pb-[0.1em]">
-                <motion.span variants={lineUp} className="block">
-                  from{" "}
-                  <span className="bg-[linear-gradient(110deg,#9ec3ff,#ffffff_62%)] bg-clip-text text-transparent">
-                    one calm workspace
-                  </span>
-                  .
-                </motion.span>
-              </span>
-            </motion.h1>
-          )}
+          <h1 className="display-1 mt-6 text-white">
+            Run the whole clinic day from{" "}
+            <span className="bg-[linear-gradient(110deg,#9ec3ff,#ffffff_62%)] bg-clip-text text-transparent">
+              one calm workspace
+            </span>
+            .
+          </h1>
 
-          <motion.p
-            variants={fade}
-            initial={reduce ? false : "hidden"}
-            animate="show"
-            transition={reduce ? undefined : { delay: 0.35 }}
-            className="mx-auto mt-6 max-w-xl text-base leading-8 text-white/65 sm:text-lg lg:mx-0"
-          >
+          <p className="mx-auto mt-6 max-w-xl text-base leading-8 text-white/65 sm:text-lg lg:mx-0">
             Appointments, patients, staff, WhatsApp messages, payments, documents, and reports — brought into one
             clean system built for modern clinics.
-          </motion.p>
+          </p>
 
-          <motion.div
-            variants={fade}
-            initial={reduce ? false : "hidden"}
-            animate="show"
-            transition={reduce ? undefined : { delay: 0.45 }}
-            className="mt-9 flex flex-col items-center gap-3 sm:flex-row sm:justify-center lg:justify-start"
-          >
+          <div className="mt-9 flex flex-col items-center gap-3 sm:flex-row sm:justify-center lg:justify-start">
             <Magnetic>
               <Link
                 href="/sign-up"
@@ -208,22 +152,16 @@ export function CinematicHero() {
             >
               Explore the product
             </Link>
-          </motion.div>
+          </div>
 
-          <motion.div
-            variants={fade}
-            initial={reduce ? false : "hidden"}
-            animate="show"
-            transition={reduce ? undefined : { delay: 0.55 }}
-            className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs font-semibold text-white/55 lg:justify-start"
-          >
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs font-semibold text-white/55 lg:justify-start">
             {trustSignals.map((item) => (
               <span key={item} className="inline-flex items-center gap-1.5">
                 <CheckCircle2 className="size-3.5 text-[#64B6FF]" />
                 {item}
               </span>
             ))}
-          </motion.div>
+          </div>
         </div>
       </div>
 

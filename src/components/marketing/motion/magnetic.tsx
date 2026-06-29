@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { motion, useMotionValue, useReducedMotion, useSpring } from "framer-motion";
+import { m, useMotionValue, useReducedMotion, useSpring } from "framer-motion";
 
 import { useMarketingScroll } from "./scroll-context";
 
@@ -46,7 +46,7 @@ export function Magnetic({
   }
 
   return (
-    <motion.span
+    <m.span
       ref={ref}
       className={className}
       onPointerMove={handleMove}
@@ -54,6 +54,6 @@ export function Magnetic({
       style={{ x: sx, y: sy, display: "inline-flex" }}
     >
       {children}
-    </motion.span>
+    </m.span>
   );
 }

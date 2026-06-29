@@ -1,35 +1,27 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { motion, useReducedMotion } from "framer-motion";
 import type { ReactNode } from "react";
-
-const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 /**
  * Branded page transition. Each marketing navigation replays a quick crossfade
- * on the incoming page (keyed on pathname). React's <ViewTransition> isn't in
- * this React build, so this framer enter-transition is the robust equivalent.
+ * on the incoming page (keyed on pathname so React remounts the wrapper and the
+ * CSS animation re-runs).
  *
- * Opacity-only by design: a transform on this wrapper would sit on an ancestor
- * of pinned ScrollTrigger sections and throw off their measurements. Section
- * reveals handle the y-rise; the page itself just fades. No-op under reduced
- * motion.
+ * CSS-driven by design: the old framer-motion wrapper rendered `opacity: 0` into
+ * the SSR HTML, so the entire page body stayed invisible until the marketing JS
+ * bundle hydrated — the visible "page appears a beat after the header" lag. A CSS
+ * animation starts the moment the HTML paints, with no JS dependency. Opacity
+ * only — a transform here would sit on an ancestor of pinned ScrollTrigger
+ * sections and throw off their measurements. Reduced motion is handled by the
+ * `prefers-reduced-motion` rule in globals.css.
  */
 export function PageTransition({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const reduce = useReducedMotion();
-
-  if (reduce) return <>{children}</>;
 
   return (
-    <motion.div
-      key={pathname}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.4, ease: EASE }}
-    >
+    <div key={pathname} className="marketing-page-enter">
       {children}
-    </motion.div>
+    </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "framer-motion";
 import { Menu, X } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
@@ -120,7 +120,7 @@ export function SiteHeader({ overlay = false }: { overlay?: boolean }) {
 
       <AnimatePresence>
         {menuOpen ? (
-          <motion.div
+          <m.div
             key="mobile-menu"
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -156,7 +156,7 @@ export function SiteHeader({ overlay = false }: { overlay?: boolean }) {
                 </Link>
               </div>
             </nav>
-          </motion.div>
+          </m.div>
         ) : null}
       </AnimatePresence>
     </header>
