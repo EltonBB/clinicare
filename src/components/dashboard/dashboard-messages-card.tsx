@@ -5,7 +5,10 @@ import { useState } from "react";
 import { MessageSquareText } from "lucide-react";
 
 import { WorkspaceCard } from "@/components/workspace/workspace-layout";
-import { useWorkspaceUnreadCount } from "@/components/layout/workspace-live-context";
+import {
+  useWorkspaceConversationPreviews,
+  useWorkspaceUnreadCount,
+} from "@/components/layout/workspace-live-context";
 import { cn } from "@/lib/utils";
 import type { DashboardConversationPreview } from "@/lib/dashboard";
 
@@ -19,8 +22,10 @@ export function DashboardMessagesCard({
   conversations,
 }: DashboardMessagesCardProps) {
   // Subscribe to the app shell's single notifications poll instead of running a
-  // second one — the badge updates on the same cadence, no extra round-trips.
+  // second one — the badge and the preview list update on the same cadence, no
+  // extra round-trips, so incoming replies appear without a reload.
   const unreadCount = useWorkspaceUnreadCount(initialUnreadCount);
+  const liveConversations = useWorkspaceConversationPreviews(conversations);
   const [pulseKey, setPulseKey] = useState(0);
   const [prevUnreadCount, setPrevUnreadCount] = useState(unreadCount);
 
@@ -63,9 +68,9 @@ export function DashboardMessagesCard({
         </Link>
       }
     >
-      {conversations.length > 0 ? (
+      {liveConversations.length > 0 ? (
         <div className="divide-y divide-border/65">
-          {conversations.map((conversation) => (
+          {liveConversations.map((conversation) => (
             <Link
               key={conversation.id}
               href="/inbox"

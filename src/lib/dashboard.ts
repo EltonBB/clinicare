@@ -157,6 +157,35 @@ export type DashboardConversationRow = {
   messages: Array<{ body: string; sentAt: Date }>;
 };
 
+/**
+ * Shapes recent conversation rows into dashboard message previews. Shared by the
+ * dashboard page render and the live notifications poll so the Messages card can
+ * refresh incoming replies without a full page reload.
+ */
+export function buildDashboardConversationPreviews(
+  conversations: DashboardConversationRow[],
+  now: Date,
+  timeZone: string,
+): DashboardConversationPreview[] {
+  const todayKey = formatZonedDateKey(now, timeZone);
+
+  return conversations.map((conversation) => {
+    const lastMessage = conversation.messages[0];
+    const lastActivity = lastMessage?.sentAt ?? conversation.updatedAt;
+
+    return {
+      id: conversation.id,
+      contactName: conversation.contactName,
+      snippet: lastMessage?.body ?? "No messages yet",
+      timeLabel:
+        formatZonedDateKey(lastActivity, timeZone) === todayKey
+          ? formatZonedTime(lastActivity, timeZone)
+          : formatZonedShortDate(lastActivity, timeZone),
+      unreadCount: conversation.unreadCount,
+    };
+  });
+}
+
 export type DashboardStaffRow = {
   id: string;
   name: string;
@@ -385,22 +414,10 @@ export function buildDashboardViewFromWorkspace(args: {
     timeZone,
   });
   const revenueSummary = buildRevenueSummary(paymentGroups);
-  const conversationPreviews: DashboardConversationPreview[] = conversations.map(
-    (conversation) => {
-      const lastMessage = conversation.messages[0];
-      const lastActivity = lastMessage?.sentAt ?? conversation.updatedAt;
-
-      return {
-        id: conversation.id,
-        contactName: conversation.contactName,
-        snippet: lastMessage?.body ?? "No messages yet",
-        timeLabel:
-          formatZonedDateKey(lastActivity, timeZone) === todayKey
-            ? formatZonedTime(lastActivity, timeZone)
-            : formatZonedShortDate(lastActivity, timeZone),
-        unreadCount: conversation.unreadCount,
-      };
-    }
+  const conversationPreviews = buildDashboardConversationPreviews(
+    conversations,
+    now,
+    timeZone,
   );
   const staffToday: DashboardStaffToday[] = staffMembers.map((staffMember) => ({
     id: staffMember.id,

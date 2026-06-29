@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { resolveBrandAccentPreset } from "@/lib/branding";
+import type { DashboardConversationPreview } from "@/lib/dashboard";
 import { navigationItems } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
@@ -92,14 +93,21 @@ export function AppShell({
   const [liveUnreadCount, setLiveUnreadCount] = useState(unreadCount);
   const [unreadInitialized, setUnreadInitialized] = useState(false);
   const [liveNotifications, setLiveNotifications] = useState(notifications);
+  const [liveConversationPreviews, setLiveConversationPreviews] = useState<
+    DashboardConversationPreview[]
+  >([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const logoutFormRef = useRef<HTMLFormElement>(null);
   const businessInitial = (businessName || "V").charAt(0).toUpperCase();
   // Published to descendants (e.g. the dashboard Messages card) so they read
   // this single poll instead of starting their own.
   const liveUnread = useMemo(
-    () => ({ unreadCount: liveUnreadCount, initialized: unreadInitialized }),
-    [liveUnreadCount, unreadInitialized]
+    () => ({
+      unreadCount: liveUnreadCount,
+      conversationPreviews: liveConversationPreviews,
+      initialized: unreadInitialized,
+    }),
+    [liveUnreadCount, liveConversationPreviews, unreadInitialized]
   );
 
   useEffect(() => {
@@ -150,6 +158,7 @@ export function AppShell({
 
       setLiveUnreadCount(result.view.unreadCount);
       setLiveNotifications(result.view.notifications);
+      setLiveConversationPreviews(result.view.conversationPreviews);
       setUnreadInitialized(true);
     }
 

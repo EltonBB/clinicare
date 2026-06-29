@@ -2,13 +2,20 @@
 
 import { createContext, useContext } from "react";
 
+import type { DashboardConversationPreview } from "@/lib/dashboard";
+
 type WorkspaceLiveValue = {
   /** Live unread-conversation count, polled once by the app shell. */
   unreadCount: number;
   /**
-   * False until the first notifications poll resolves. The shell seeds
-   * `unreadCount` at 0, so consumers must keep their own server-rendered value
-   * until this flips true — otherwise the count flashes a stale 0 on load.
+   * Recent conversation previews from the same poll, so the dashboard Messages
+   * card refreshes incoming replies live instead of waiting for a reload.
+   */
+  conversationPreviews: DashboardConversationPreview[];
+  /**
+   * False until the first notifications poll resolves. The shell seeds the live
+   * values empty, so consumers must keep their own server-rendered values until
+   * this flips true — otherwise the count flashes a stale 0 / empty list on load.
    */
   initialized: boolean;
 };
@@ -26,4 +33,16 @@ export const WorkspaceLiveProvider = WorkspaceLiveContext.Provider;
 export function useWorkspaceUnreadCount(fallback: number) {
   const context = useContext(WorkspaceLiveContext);
   return context && context.initialized ? context.unreadCount : fallback;
+}
+
+/**
+ * Reads the app shell's live conversation previews. Falls back to the
+ * server-rendered list outside the provider or before the first poll resolves,
+ * so the dashboard Messages card never flashes an empty list on initial load.
+ */
+export function useWorkspaceConversationPreviews(
+  fallback: DashboardConversationPreview[],
+) {
+  const context = useContext(WorkspaceLiveContext);
+  return context && context.initialized ? context.conversationPreviews : fallback;
 }

@@ -2,6 +2,11 @@
 
 import { requireCurrentWorkspace } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
+import {
+  buildDashboardConversationPreviews,
+  type DashboardConversationPreview,
+} from "@/lib/dashboard";
+import { getAppTimeZone } from "@/lib/time-zone";
 
 export type WorkspaceNotificationsView = {
   unreadCount: number;
@@ -10,6 +15,7 @@ export type WorkspaceNotificationsView = {
     title: string;
     detail: string;
   }>;
+  conversationPreviews: DashboardConversationPreview[];
 };
 
 export async function refreshWorkspaceNotificationsAction(): Promise<{
@@ -21,7 +27,7 @@ export async function refreshWorkspaceNotificationsAction(): Promise<{
     missingBusinessRedirect: "/onboarding",
   });
 
-  const [unreadAggregate, notificationRows] = await Promise.all([
+  const [unreadAggregate, notificationRows, recentConversations] = await Promise.all([
     prisma.conversation.aggregate({
       where: {
         businessId: business.id,
@@ -50,6 +56,33 @@ export async function refreshWorkspaceNotificationsAction(): Promise<{
         unreadCount: true,
       },
     }),
+    // Recent conversations (read or not) drive the dashboard Messages preview
+    // list so it refreshes incoming replies on the same poll — no extra tick.
+    prisma.conversation.findMany({
+      where: {
+        businessId: business.id,
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+      take: 4,
+      select: {
+        id: true,
+        contactName: true,
+        unreadCount: true,
+        updatedAt: true,
+        messages: {
+          select: {
+            body: true,
+            sentAt: true,
+          },
+          orderBy: {
+            sentAt: "desc",
+          },
+          take: 1,
+        },
+      },
+    }),
   ]);
 
   return {
@@ -63,6 +96,11 @@ export async function refreshWorkspaceNotificationsAction(): Promise<{
           row.unreadCount === 1 ? "" : "s"
         } waiting in the inbox.`,
       })),
+      conversationPreviews: buildDashboardConversationPreviews(
+        recentConversations,
+        new Date(),
+        getAppTimeZone(),
+      ),
     },
   };
 }
