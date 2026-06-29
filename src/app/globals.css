@@ -771,9 +771,92 @@ html.lenis body {
   mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
 }
 
+/* First-paint landing splash — covers the hero while its 3D logo chunk loads,
+   then fades to reveal the page. Same dark brand mesh as the hero so the reveal
+   reads as a continuation, not a swap. (JS toggles [data-leaving]; the FADE_MS
+   in landing-loader.tsx must match the opacity transition below.) */
+.vela-landing-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background-color: #050a1f;
+  opacity: 1;
+  transition: opacity 520ms var(--ease-out-quint);
+}
+.vela-landing-loader[data-leaving] {
+  opacity: 0;
+  pointer-events: none;
+}
+.vela-landing-loader__inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.6rem;
+}
+.vela-landing-loader__mark {
+  width: 76px;
+  height: 76px;
+  /* Luminous sky halo + a deeper blue lift so the bright mark pops off the mesh. */
+  filter: drop-shadow(0 0 16px rgba(158, 195, 255, 0.55)) drop-shadow(0 8px 26px rgba(10, 34, 255, 0.42));
+}
+.vela-landing-loader__mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.vela-landing-loader__bar {
+  position: relative;
+  width: 132px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+}
+.vela-landing-loader__bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 42%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0a22ff, #64b6ff);
+}
+
+@keyframes vela-loader-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.94;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+}
+@keyframes vela-loader-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(330%);
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .vela-mesh {
     animation: vela-mesh-drift 20s var(--ease-out-quint) infinite alternate;
     will-change: background-position;
+  }
+
+  .vela-landing-loader__mark {
+    animation: vela-loader-breathe 1.8s ease-in-out infinite;
+  }
+  .vela-landing-loader__bar::after {
+    animation: vela-loader-slide 1.15s var(--ease-out-quint) infinite;
   }
 }

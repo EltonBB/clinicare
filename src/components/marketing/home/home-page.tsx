@@ -1,4 +1,5 @@
 import { MarketingShell } from "../shell/marketing-shell";
+import { LandingLoader } from "./landing-loader";
 import { CinematicHero } from "./cinematic-hero";
 import { ClinicMarquee } from "./clinic-marquee";
 import { ProductSlider } from "./product-slider";
@@ -15,15 +16,20 @@ import { FinalCta } from "./final-cta";
  */
 export function HomePage() {
   return (
-    <MarketingShell overlay>
-      <CinematicHero />
-      <ClinicMarquee />
-      <ProductSlider />
-      <Capabilities />
-      <AiInsightBand />
-      <TrustSection />
-      <PricingPreview />
-      <FinalCta />
-    </MarketingShell>
+    <>
+      {/* First-paint splash — rendered outside the shell so its fixed overlay is
+          viewport-anchored, never trapped by a transformed ancestor. */}
+      <LandingLoader />
+      <MarketingShell overlay>
+        <CinematicHero />
+        <ClinicMarquee />
+        <ProductSlider />
+        <Capabilities />
+        <AiInsightBand />
+        <TrustSection />
+        <PricingPreview />
+        <FinalCta />
+      </MarketingShell>
+    </>
   );
 }

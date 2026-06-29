@@ -8,6 +8,7 @@ import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { Magnetic } from "../motion/magnetic";
 import { useScrollScene } from "../motion/use-scroll-scene";
 import { useMarketingScroll } from "../motion/scroll-context";
+import { markHeroReady } from "./hero-ready-signal";
 
 // WebGL scene is client-only and lazy — the mesh + vignette stand in until it mounts.
 const HeroScene = dynamic(() => import("../motion/hero-scene"), { ssr: false });
@@ -72,6 +73,24 @@ export function CinematicHero() {
     });
   });
 
+  // Tell the first-paint splash when the hero visual is final. If the orb won't
+  // show, the static brand mesh (already in the SSR HTML) is the hero, so the
+  // splash can lift right away; the orb path signals via HeroScene's onReady.
+  // `showOrb` starts false on hydration and only flips true once the capability
+  // flags (reduced / coarse / WebGL) resolve — so wait two frames before calling
+  // it static, and let the dep change cancel those frames if the orb wins.
+  useEffect(() => {
+    if (showOrb) return;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => markHeroReady());
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [showOrb]);
+
   // Pause the WebGL render loop while the hero is scrolled out of view — no
   // point burning GPU/battery animating an orb nobody can see on a long page.
   // Resumes 300px early so it's already running by the time it's visible again.
@@ -98,7 +117,7 @@ export function CinematicHero() {
       <div aria-hidden className="absolute inset-0 -z-20">
         {showOrb ? (
           <WebglBoundary>
-            <HeroScene active={heroInView} />
+            <HeroScene active={heroInView} onReady={markHeroReady} />
           </WebglBoundary>
         ) : null}
       </div>

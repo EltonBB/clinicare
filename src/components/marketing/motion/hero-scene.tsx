@@ -190,13 +190,25 @@ function ParallaxRig({
   return null;
 }
 
-export default function HeroScene({ active = true }: { active?: boolean }) {
+export default function HeroScene({
+  active = true,
+  onReady,
+}: {
+  active?: boolean;
+  onReady?: () => void;
+}) {
   const pointer = useRef<PointerState>({ x: 0, y: 0, active: false });
   // The canvas viewport rect, cached and refreshed only on scroll/resize so the
   // per-frame pointer math never calls getBoundingClientRect (a forced layout
   // flush — twice per frame across both rigs before this).
   const rect = useRef<DOMRect | null>(null);
   const canvas = useRef<HTMLCanvasElement | null>(null);
+  // Held in a ref so the mount effect stays `[]` (and never re-subscribes the
+  // window listeners) while still calling the latest callback.
+  const onReadyRef = useRef(onReady);
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
 
   useEffect(() => {
     // Track the cursor at the window level — the canvas sits behind the hero
@@ -227,7 +239,12 @@ export default function HeroScene({ active = true }: { active?: boolean }) {
       refreshRect();
     };
     const raf = requestAnimationFrame(kick);
-    const timer = setTimeout(kick, 200);
+    // Settle once: a final resize, then signal the splash that the logo is on
+    // screen at the right size so it can lift without the mark popping in.
+    const timer = setTimeout(() => {
+      kick();
+      onReadyRef.current?.();
+    }, 200);
 
     return () => {
       window.removeEventListener("pointermove", onMove);
