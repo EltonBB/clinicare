@@ -19,25 +19,34 @@ export const getCurrentUser = cache(async (): Promise<User | null> => {
   // all carried by the token. The email-confirmation gate lives in the proxy and
   // the onboarding pages, which call getUser() directly, never through here, so
   // the token's lack of `email_confirmed_at` doesn't matter. Fall back to
-  // getUser() if claims are unavailable (rotated key, expired token).
-  const { data, error } = await supabase.auth.getClaims();
-  const claims = data?.claims;
+  // getUser() if claims are unavailable.
+  //
+  // getClaims() only maps AuthErrors to `{ error }`; a JWKS-fetch failure,
+  // expired/invalid token, or crypto error is THROWN. getUser() never throws, so
+  // the try/catch preserves the graceful "session expired → null → re-login"
+  // contract instead of surfacing a 500.
+  try {
+    const { data, error } = await supabase.auth.getClaims();
+    const claims = data?.claims;
 
-  if (!error && claims && typeof claims.sub === "string") {
-    const user: User = {
-      id: claims.sub,
-      aud: typeof claims.aud === "string" ? claims.aud : "authenticated",
-      app_metadata: claims.app_metadata ?? {},
-      user_metadata: claims.user_metadata ?? {},
-      created_at: "",
-    };
-    if (typeof claims.email === "string") {
-      user.email = claims.email;
+    if (!error && claims && typeof claims.sub === "string") {
+      const user: User = {
+        id: claims.sub,
+        aud: typeof claims.aud === "string" ? claims.aud : "authenticated",
+        app_metadata: claims.app_metadata ?? {},
+        user_metadata: claims.user_metadata ?? {},
+        created_at: "",
+      };
+      if (typeof claims.email === "string") {
+        user.email = claims.email;
+      }
+      if (typeof claims.role === "string") {
+        user.role = claims.role;
+      }
+      return user;
     }
-    if (typeof claims.role === "string") {
-      user.role = claims.role;
-    }
-    return user;
+  } catch {
+    // fall through to getUser()
   }
 
   const {
