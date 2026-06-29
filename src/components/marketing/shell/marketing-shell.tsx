@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 
+import { LazyMotionProvider } from "@/components/layout/motion-provider";
 import { SiteHeader } from "../site-header";
 import { SmoothScrollProvider } from "../motion/smooth-scroll-provider";
 import { PageTransition } from "../motion/page-transition";
@@ -26,11 +27,13 @@ export function MarketingShell({
   return (
     <main className="app-shell-bg min-h-screen overflow-x-hidden text-foreground">
       <SmoothScrollProvider>
-        <SiteHeader overlay={overlay} />
-        <PageTransition>
-          <div className={overlay ? undefined : "pt-16"}>{children}</div>
-        </PageTransition>
-        <MarketingFooter />
+        <LazyMotionProvider>
+          <SiteHeader overlay={overlay} />
+          <PageTransition>
+            <div className={overlay ? undefined : "pt-16"}>{children}</div>
+          </PageTransition>
+          <MarketingFooter />
+        </LazyMotionProvider>
       </SmoothScrollProvider>
     </main>
   );

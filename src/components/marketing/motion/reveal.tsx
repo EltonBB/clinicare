@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { m, useReducedMotion } from "framer-motion";
 import type { ReactNode } from "react";
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
@@ -20,7 +20,7 @@ export function Reveal({
   const reduce = useReducedMotion();
   if (reduce) return <div className={className}>{children}</div>;
   return (
-    <motion.div
+    <m.div
       className={className}
       initial={{ opacity: 0, y }}
       whileInView={{ opacity: 1, y: 0 }}
@@ -28,7 +28,7 @@ export function Reveal({
       transition={{ duration: 0.6, ease: EASE, delay }}
     >
       {children}
-    </motion.div>
+    </m.div>
   );
 }
 
@@ -45,7 +45,7 @@ export function RevealGroup({
   const reduce = useReducedMotion();
   if (reduce) return <div className={className}>{children}</div>;
   return (
-    <motion.div
+    <m.div
       className={className}
       initial="hidden"
       whileInView="show"
@@ -53,7 +53,7 @@ export function RevealGroup({
       variants={{ hidden: {}, show: { transition: { staggerChildren: stagger } } }}
     >
       {children}
-    </motion.div>
+    </m.div>
   );
 }
 
@@ -69,11 +69,11 @@ export function RevealItem({
   const reduce = useReducedMotion();
   if (reduce) return <div className={className}>{children}</div>;
   return (
-    <motion.div
+    <m.div
       className={className}
       variants={{ hidden: { opacity: 0, y }, show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: EASE } } }}
     >
       {children}
-    </motion.div>
+    </m.div>
   );
 }

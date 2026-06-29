@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { m, useReducedMotion } from "framer-motion";
 import { Reveal } from "../motion/reveal";
 
 const clinicTypes = [
@@ -44,7 +44,7 @@ export function ClinicMarquee() {
             ))}
           </div>
         ) : (
-          <motion.div
+          <m.div
             className="flex w-max gap-3"
             animate={{ x: ["0%", "-50%"] }}
             transition={{ duration: 30, repeat: Infinity, ease: "linear" }}
@@ -52,7 +52,7 @@ export function ClinicMarquee() {
             {doubled.map((type, index) => (
               <Chip key={`${type}-${index}`} label={type} />
             ))}
-          </motion.div>
+          </m.div>
         )}
       </div>
     </section>
