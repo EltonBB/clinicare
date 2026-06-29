@@ -60,9 +60,6 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
   const pathname = request.nextUrl.pathname;
   const isProtected = protectedPrefixes.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
@@ -72,6 +69,20 @@ export async function updateSession(request: NextRequest) {
   );
   const isOnboardingRoute =
     pathname === onboardingRoot || pathname.startsWith(`${onboardingRoot}/`);
+
+  // Only the gated routes below need the session. Public/marketing pages don't
+  // redirect on auth, and API routes (search, cron, webhooks) authenticate
+  // themselves — so skip the Supabase auth round-trip for everything else. It
+  // previously ran on every matched request, including RSC prefetches, adding
+  // latency to public navigation and auth load at scale. Protected routes still
+  // refresh the session here on the next navigation.
+  if (!isProtected && !isAuthRoute && !isOnboardingRoute) {
+    return response;
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const onboardingCompleted = isOnboardingCompleted(user?.user_metadata);
 
   if (!user && (isProtected || isOnboardingRoute)) {
