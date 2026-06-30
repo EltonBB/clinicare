@@ -8,7 +8,6 @@ import { ArrowRight, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Reveal } from "../motion/reveal";
 import { useMarketingScroll } from "../motion/scroll-context";
-import { useMediaQuery } from "../motion/use-media-query";
 import { AppFrame, type AppNav } from "../appframe/app-frame";
 import { AppPane } from "../appframe/app-pane";
 import { FloatingToast } from "../appframe/atoms";
@@ -118,11 +117,7 @@ const MODULE_FLOAT: Record<string, { title: string; sub: string }> = {
 export function ModuleShowcase() {
   const { coarse } = useMarketingScroll();
   const reduce = useReducedMotion();
-  // The sticky live pane only renders at lg+; below that the column is hidden,
-  // so a narrow fine-pointer window would get a text-only tour. Fall to the
-  // stacked-pane layout (which renders panes at any width) below lg too.
-  const belowLg = useMediaQuery("(max-width: 1023.98px)");
-  const interactive = !reduce && !coarse && !belowLg;
+  const interactive = !reduce && !coarse;
 
   const sectionRef = useRef<HTMLDivElement>(null);
   const sectionInView = useInView(sectionRef, { amount: 0 });
@@ -271,6 +266,14 @@ function Blurb({
         Try it free
         <ArrowRight className="size-4" />
       </Link>
+      {/* Below lg the sticky pane column is hidden, so render this module's pane
+          inline — pure CSS (lg:hidden), so it's present on first paint and with
+          no JS, never a text-only tour. */}
+      <div className="mt-8 lg:hidden">
+        <AppPane chrome="app" nav={mod.nav} title={mod.frameTitle} stage glow>
+          <mod.Body />
+        </AppPane>
+      </div>
     </div>
   );
 }
