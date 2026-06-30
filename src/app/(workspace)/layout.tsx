@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { StaffCheckInToaster } from "@/components/layout/staff-checkin-toaster";
 import { completePastConfirmedAppointments } from "@/lib/appointments";
 import { planDisplayName, planStatusLabel } from "@/lib/billing";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
@@ -50,6 +51,7 @@ export default async function WorkspaceLayout({
       notifications={[]}
     >
       {children}
+      <StaffCheckInToaster />
     </AppShell>
   );
 }

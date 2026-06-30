@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
 import {
+  formatZonedTime,
   getAppTimeZone,
   getZonedDayWindow,
   getZonedDayWindowFromParts,
@@ -808,4 +809,46 @@ export async function markStaffThreadReadAction(staffId: string): Promise<StaffM
   }
   revalidateStaffSurfaces(owned.staffId);
   return { ok: true };
+}
+
+// --- Staff check-in feed (dashboard verification popup) ---------------------
+
+export type RecentCheckIn = {
+  entryId: string;
+  staffId: string;
+  staffName: string;
+  atLabel: string;
+  atMs: number;
+};
+
+/**
+ * Recent staff check-ins (last 10 min) for the admin's workspace. Polled by the
+ * dashboard StaffCheckInToaster so the admin is notified to verify a staff
+ * member is actually present when they check in from the mobile app. Read-only.
+ */
+export async function getRecentStaffCheckInsAction(): Promise<RecentCheckIn[]> {
+  const context = await getAuthedBusinessContext();
+  if ("error" in context) {
+    return [];
+  }
+
+  const since = new Date(Date.now() - 10 * 60 * 1000);
+  const entries = await prisma.staffTimeEntry.findMany({
+    where: { businessId: context.business.id, checkedInAt: { gte: since } },
+    orderBy: { checkedInAt: "desc" },
+    take: 20,
+    select: {
+      id: true,
+      checkedInAt: true,
+      staffMember: { select: { id: true, name: true } },
+    },
+  });
+
+  return entries.map((entry) => ({
+    entryId: entry.id,
+    staffId: entry.staffMember.id,
+    staffName: entry.staffMember.name,
+    atLabel: formatZonedTime(entry.checkedInAt),
+    atMs: entry.checkedInAt.getTime(),
+  }));
 }
