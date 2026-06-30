@@ -25,7 +25,7 @@ export function MarketingShell({
   overlay?: boolean;
 }) {
   return (
-    <main className="app-shell-bg min-h-screen overflow-x-hidden text-foreground">
+    <main className="app-shell-bg min-h-screen overflow-x-clip text-foreground">
       <SmoothScrollProvider>
         <LazyMotionProvider>
           <SiteHeader overlay={overlay} />

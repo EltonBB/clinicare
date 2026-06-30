@@ -295,7 +295,10 @@ Used for: Settings; onboarding/setup areas where appropriate.
 Used for: public `/`, `/product`, `/pricing`, `/about`, `/contact`, `/checkout`, legal pages.
 
 - Product-led storytelling on the shared marketing shell: hero, feature sections, CTAs.
-- Code-native Vela workspace mockups with **sample data only** — never live customer data, never raw screenshots with draft labels.
+- Product visuals use **sample data only — never live customer data, never draft/beta labels**.
+- **The product UI itself is code-native, animated "live app panes" — never raster screenshots of the app.** The system lives in `components/marketing/appframe/`: `AppFrame` (mac window chrome + sidebar/topbar app chrome, cobalt-tinted layered shadow, optional 3D tilt + mesh glow), `AppPane` (in-view orchestrator broadcasting a reveal signal), `atoms.tsx` (CountUp, DrawArea, GrowBars, SweepDonut, StatusDot, TypingThenMessage, FloatingToast), and `panes.tsx` (the dashboard/calendar/finance/record/inbox/staff/insight bodies). They render crisp at any DPR and animate on scroll-in (numbers count up, bars grow, charts draw, the inbox types, the calendar drops in, tabs crossfade). Do NOT fake the product UI with PNG screenshots or `next/image`.
+- **Rendered/raster BRAND ART is allowed on marketing surfaces only** (owner decision, 2026-06-30, to match Stripe-grade product presentation): abstract iridescent cobalt gradient mesh **backdrops** and glossy 3D **brand objects** (e.g. `public/marketing/mesh-dark.webp`, `mesh-light.webp`, `object-knot.png`) may sit behind/around the live panes so each pane reads as a composed scene. Constraints: stay within the locked cobalt→light-blue palette; abstract art only (no photographic people, no real patient/clinic photos, sample data optics intact); marketing only — the authenticated workspace stays strictly code-native, no decorative raster.
+- Compose surfaces from these panes: the home `ProductShowcase` is an interactive tabbed showcase on a dark band; `/product` is a sticky-scroll `ModuleShowcase`; the Capabilities bento + Trust + AI band embed panes/atoms. All motion respects `prefers-reduced-motion` (panes render fully populated, static).
 - Mobile-safe responsive structure; CTAs route to `/sign-up`, `/login`, `/pricing`, `/product`, `/contact`, and legal pages.
 
 ---
@@ -429,7 +432,7 @@ Avoid: stretched full-width forms, inconsistent field alignment, too many unrela
 ### Marketing Site
 
 - `/` is a product-command-center landing page: code-native workspace mockups, clinic workflow storytelling, clinic-type targeting, problem/solution sections, product deep dives, privacy-conscious trust messaging, pricing preview, strong CTAs.
-- `/product` is a guided seven-module feature tour (Dashboard, Calendar, Patients, Staff, Inbox/WhatsApp, Documents & Payments, Reports/AI insights), each with a focused feature-specific mockup — not repeated full-workspace visuals.
+- `/product` is a guided seven-module feature tour (Dashboard, Calendar, Patients, Staff, Inbox/WhatsApp, Documents & Payments, Reports/AI insights) rendered as a sticky-scroll showcase: scrolling blurbs on the left drive a pinned, code-native live app pane on the right that crossfades per module — not repeated full-workspace visuals, never screenshots.
 - `/pricing` aligns plan-fit explanation, Basic/Pro cards, and comparison table in one consistent stack.
 - AI copy stays safe: "AI-assisted operational insights," never medical claims.
 - Marketing CTAs use stable no-wrap button sizing.

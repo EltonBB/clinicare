@@ -54,7 +54,7 @@ export function InnerHero({
           {eyebrow}
         </p>
         <h1 className="display-1 mt-6 text-white">{title}</h1>
-        <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-white/65 sm:text-lg">
+        <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-white/75 sm:text-lg">
           {copy}
         </p>
         <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">

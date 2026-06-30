@@ -2,7 +2,7 @@ import { MarketingShell } from "../shell/marketing-shell";
 import { LandingLoader } from "./landing-loader";
 import { CinematicHero } from "./cinematic-hero";
 import { ClinicMarquee } from "./clinic-marquee";
-import { ProductSlider } from "./product-slider";
+import { ProductShowcase } from "./product-showcase";
 import { Capabilities } from "./capabilities";
 import { AiInsightBand } from "./ai-insight-band";
 import { TrustSection } from "./trust-section";
@@ -23,7 +23,7 @@ export function HomePage() {
       <MarketingShell overlay>
         <CinematicHero />
         <ClinicMarquee />
-        <ProductSlider />
+        <ProductShowcase />
         <Capabilities />
         <AiInsightBand />
         <TrustSection />
