@@ -7,9 +7,54 @@ import { postSystemMessageToAdminThread } from "@/lib/mobile/inbox";
 import { serializeAppointment, type MobileAppointment } from "@/lib/mobile/serializers";
 import { prisma } from "@/lib/prisma";
 import type { StaffContext } from "@/lib/staff-auth";
-import { formatZonedTime, getZonedDayWindowByOffset } from "@/lib/time-zone";
+import {
+  formatZonedDateKey,
+  formatZonedTime,
+  getZonedDayWindowByOffset,
+} from "@/lib/time-zone";
 
 export type MobileDay = "today" | "tomorrow";
+
+/** Day key for an arbitrary appointment: today / tomorrow / its clinic-local date. */
+function resolveDayKey(startAt: Date): "today" | "tomorrow" | string {
+  const key = formatZonedDateKey(startAt);
+  if (key === formatZonedDateKey()) return "today";
+  if (key === formatZonedDateKey(getZonedDayWindowByOffset(new Date(), 1).start)) {
+    return "tomorrow";
+  }
+  return key;
+}
+
+/**
+ * One appointment by id, scoped to the signed-in doctor (another staff's id →
+ * null → 404). Backs the appointment-detail screen and notification deep links,
+ * so a tapped push resolves even when the visit isn't in today/tomorrow.
+ */
+export async function getOwnAppointment(
+  ctx: StaffContext,
+  appointmentId: string
+): Promise<MobileAppointment | null> {
+  const appointment = await prisma.appointment.findFirst({
+    where: {
+      id: appointmentId,
+      businessId: ctx.business.id,
+      staffMemberId: ctx.staffMember.id,
+    },
+    select: {
+      id: true,
+      title: true,
+      startAt: true,
+      endAt: true,
+      status: true,
+      notes: true,
+      client: { select: { name: true } },
+    },
+  });
+  if (!appointment) {
+    return null;
+  }
+  return serializeAppointment(appointment, resolveDayKey(appointment.startAt));
+}
 
 /**
  * List the signed-in doctor's appointments for the given day. Scoped to BOTH the

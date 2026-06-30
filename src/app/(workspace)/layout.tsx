@@ -8,6 +8,7 @@ import { planDisplayName, planStatusLabel } from "@/lib/billing";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { isOnboardingCompleted } from "@/lib/onboarding";
 import { resolveMediaDisplayUrl } from "@/lib/media-storage-server";
+import { autoCloseStaleTimeEntries } from "@/lib/staff-clock";
 
 export default async function WorkspaceLayout({
   children,
@@ -27,6 +28,13 @@ export default async function WorkspaceLayout({
       await completePastConfirmedAppointments(business.id);
     } catch {
       console.error("Failed to complete past appointments after response.");
+    }
+    try {
+      // Close forgotten open check-ins for this workspace so weekly hours stay
+      // accurate without waiting for the daily cron.
+      await autoCloseStaleTimeEntries(business.id);
+    } catch {
+      console.error("Failed to auto-close stale time entries after response.");
     }
   });
 
