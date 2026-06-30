@@ -53,6 +53,10 @@ const statusOptions: CalendarAppointmentStatus[] = [
   "completed",
 ];
 
+// At creation a booking is only confirmed or pending; it becomes completed or
+// cancelled later via the calendar, never at the moment it's booked.
+const createStatusOptions: CalendarAppointmentStatus[] = ["confirmed", "pending"];
+
 function timeToMinutes(time: string) {
   const [hours, minutes] = time.split(":").map(Number);
   return (hours || 0) * 60 + (minutes || 0);
@@ -312,7 +316,9 @@ export function NewAppointmentForm({
               onChange={(event) => setStatus(event.target.value as CalendarAppointmentStatus)}
               className={cn(fieldSelectClass, "capitalize")}
             >
-              {statusOptions.map((option) => (
+              {/* A new booking can only be confirmed or pending; completed/cancelled
+                  are reached later from the calendar, not at creation. */}
+              {(isEditing ? statusOptions : createStatusOptions).map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
