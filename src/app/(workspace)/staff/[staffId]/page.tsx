@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { StaffDetailsPage } from "@/components/staff/staff-details-page";
 import { requireCurrentWorkspace } from "@/lib/business";
+import { getMobileAccessStatus } from "@/lib/mobile/admin";
 import { buildStaffRecord } from "@/lib/staff";
 import { prisma } from "@/lib/prisma";
 
@@ -87,5 +88,9 @@ export default async function StaffDetailsRoute({
     notFound();
   }
 
-  return <StaffDetailsPage initialStaff={buildStaffRecord(staff)} />;
+  const mobileAccess = await getMobileAccessStatus(business.id, staffId);
+
+  return (
+    <StaffDetailsPage initialStaff={buildStaffRecord(staff)} mobileAccess={mobileAccess} />
+  );
 }

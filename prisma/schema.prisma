@@ -9,34 +9,38 @@ datasource db {
 }
 
 model Business {
-  id                 String              @id @default(cuid())
-  ownerId            String              @unique
-  name               String
-  businessType       String
-  logoUrl            String?
+  id                  String               @id @default(cuid())
+  ownerId             String               @unique
+  name                String
+  businessType        String
+  logoUrl             String?
   // Orphaned 2026-06: the dashboard customizer was removed; no code reads or
   // writes this. Safe to drop in the next schema migration.
-  dashboardFocus     String              @default("appointments")
-  brandAccentColor   String?
-  plan               BusinessPlan        @default(BASIC)
-  planStatus         BusinessPlanStatus  @default(ACTIVE)
-  whatsappNumber     String?
-  whatsappEnabled    Boolean             @default(false)
-  trialEndsAt        DateTime?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  staffMembers       StaffMember[]
-  clients            Client[]
-  appointments       Appointment[]
-  scheduleBlocks     ScheduleBlock[]
-  staffShifts        StaffShift[]
-  businessHours      BusinessHours[]
-  conversations      Conversation[]
-  reminderSettings   ReminderSettings?
-  whatsappConnection WhatsAppConnection?
-  whatsappSession    WhatsAppSession?
+  dashboardFocus      String               @default("appointments")
+  brandAccentColor    String?
+  plan                BusinessPlan         @default(BASIC)
+  planStatus          BusinessPlanStatus   @default(ACTIVE)
+  whatsappNumber      String?
+  whatsappEnabled     Boolean              @default(false)
+  trialEndsAt         DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  staffMembers        StaffMember[]
+  clients             Client[]
+  appointments        Appointment[]
+  scheduleBlocks      ScheduleBlock[]
+  staffShifts         StaffShift[]
+  businessHours       BusinessHours[]
+  conversations       Conversation[]
+  reminderSettings    ReminderSettings?
+  whatsappConnection  WhatsAppConnection?
+  whatsappSession     WhatsAppSession?
   whatsappSessionKeys WhatsAppSessionKey[]
-  analyticsSnapshots AnalyticsSnapshot[]
+  analyticsSnapshots  AnalyticsSnapshot[]
+  staffAccessCodes    StaffAccessCode[]
+  staffDevices        StaffDevice[]
+  staffThreads        StaffThread[]
+  staffNotifications  StaffNotification[]
 }
 
 model BusinessHours {
@@ -55,22 +59,26 @@ model BusinessHours {
 }
 
 model StaffMember {
-  id           String           @id @default(cuid())
-  businessId   String
-  business     Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  name         String
-  role         String
-  email        String?
-  phone        String?
-  profileNote  String?
-  status       StaffStatus      @default(ACTIVE)
-  isActive     Boolean          @default(true)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  appointments Appointment[]
-  timeEntries  StaffTimeEntry[]
-  shifts       StaffShift[]
-  careNotes    ClientCareNote[]
+  id            String              @id @default(cuid())
+  businessId    String
+  business      Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name          String
+  role          String
+  email         String?
+  phone         String?
+  profileNote   String?
+  status        StaffStatus         @default(ACTIVE)
+  isActive      Boolean             @default(true)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  appointments  Appointment[]
+  timeEntries   StaffTimeEntry[]
+  shifts        StaffShift[]
+  careNotes     ClientCareNote[]
+  accessCodes   StaffAccessCode[]
+  devices       StaffDevice[]
+  threads       StaffThread[]
+  notifications StaffNotification[]
 
   @@index([businessId])
 }
@@ -90,9 +98,9 @@ model StaffTimeEntry {
 }
 
 model Client {
-  id                   String                 @id @default(cuid())
+  id                   String                    @id @default(cuid())
   businessId           String
-  business             Business               @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business             Business                  @relation(fields: [businessId], references: [id], onDelete: Cascade)
   name                 String
   email                String?
   phone                String
@@ -111,14 +119,14 @@ model Client {
   importantHealthNotes String?
   previousTreatments   String?
   treatmentPlan        String?
-  status               ClientEngagementStatus @default(ACTIVE)
+  status               ClientEngagementStatus    @default(ACTIVE)
   preferredChannel     String?
   assignedStaffName    String?
-  tags                 String[]               @default([])
-  isArchived           Boolean                @default(false)
+  tags                 String[]                  @default([])
+  isArchived           Boolean                   @default(false)
   lastVisitAt          DateTime?
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
   appointments         Appointment[]
   messages             Message[]
   galleryItems         ClientGalleryItem[]
@@ -324,22 +332,22 @@ model ClientGalleryItem {
 }
 
 model Appointment {
-  id            String                @id @default(cuid())
-  businessId    String
-  business      Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  clientId      String
-  client        Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  staffMemberId String?
-  staffMember   StaffMember?          @relation(fields: [staffMemberId], references: [id], onDelete: SetNull)
-  title         String
-  startAt       DateTime
-  endAt         DateTime
-  status        AppointmentStatus     @default(PENDING)
-  notes         String?
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
-  reminders     AppointmentReminder[]
-  payments      ClientPayment[]
+  id                 String                    @id @default(cuid())
+  businessId         String
+  business           Business                  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  clientId           String
+  client             Client                    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  staffMemberId      String?
+  staffMember        StaffMember?              @relation(fields: [staffMemberId], references: [id], onDelete: SetNull)
+  title              String
+  startAt            DateTime
+  endAt              DateTime
+  status             AppointmentStatus         @default(PENDING)
+  notes              String?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  reminders          AppointmentReminder[]
+  payments           ClientPayment[]
   treatmentPlanItems ClientTreatmentPlanItem[]
 
   @@index([businessId, startAt])
@@ -617,4 +625,123 @@ enum AnalyticsSnapshotStatus {
   GENERATED
   FALLBACK
   ERRORED
+}
+
+// ---------------------------------------------------------------------------
+// Mobile staff app ("Vela Staff") — second authenticated principal.
+// Staff are NOT Supabase users; they enroll a device with a one-time access
+// code and authenticate every request with a device-bound, revocable token.
+// All models below are tenant-scoped to Business and accessed only via Prisma
+// (RLS enabled, no public policies) — never the browser anon API.
+// ---------------------------------------------------------------------------
+
+model StaffAccessCode {
+  id            String                @id @default(cuid())
+  businessId    String
+  business      Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  staffMemberId String
+  staffMember   StaffMember           @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+  // sha256(normalizedCode) — the plaintext code is shown to the admin once and
+  // never stored or logged. Lookup is by this hash; brute force is bounded by
+  // attemptCount + per-IP rate limiting at the redeem endpoint.
+  codeHash      String                @unique
+  status        StaffAccessCodeStatus @default(ACTIVE)
+  attemptCount  Int                   @default(0)
+  expiresAt     DateTime
+  redeemedAt    DateTime?
+  createdAt     DateTime              @default(now())
+
+  @@index([businessId, staffMemberId])
+  @@index([staffMemberId, status])
+}
+
+model StaffDevice {
+  id            String      @id @default(cuid())
+  businessId    String
+  business      Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  staffMemberId String
+  staffMember   StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+  // sha256(opaque token). The raw token is returned to the device exactly once
+  // at redeem; only this hash is stored. Revoke = set revokedAt (logs out).
+  tokenHash     String      @unique
+  deviceLabel   String?
+  platform      String?
+  expoPushToken String?
+  lastSeenAt    DateTime    @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  createdAt     DateTime    @default(now())
+
+  @@index([staffMemberId, revokedAt])
+  @@index([businessId])
+}
+
+// Internal staff <-> clinic-admin messaging. DISTINCT from the patient-facing
+// Conversation/Message (phone-keyed WhatsApp) — never carries clinical detail.
+model StaffThread {
+  id             String               @id @default(cuid())
+  businessId     String
+  business       Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  staffMemberId  String
+  staffMember    StaffMember          @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+  subtitle       String?
+  unreadForStaff Int                  @default(0)
+  unreadForAdmin Int                  @default(0)
+  lastMessageAt  DateTime             @default(now())
+  createdAt      DateTime             @default(now())
+  messages       StaffThreadMessage[]
+
+  @@index([businessId, lastMessageAt])
+  @@index([staffMemberId, lastMessageAt])
+}
+
+model StaffThreadMessage {
+  id        String            @id @default(cuid())
+  threadId  String
+  thread    StaffThread       @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender    StaffThreadSender
+  body      String
+  readAt    DateTime?
+  createdAt DateTime          @default(now())
+
+  @@index([threadId, createdAt])
+}
+
+// In-app notifications for the staff app's Alerts screen. Titles/bodies are
+// generic and non-PHI by construction (see lib/mobile push-payload builder).
+model StaffNotification {
+  id            String                @id @default(cuid())
+  businessId    String
+  business      Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  staffMemberId String
+  staffMember   StaffMember           @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+  kind          StaffNotificationKind
+  title         String
+  body          String
+  linkType      String?
+  linkId        String?
+  readAt        DateTime?
+  createdAt     DateTime              @default(now())
+
+  @@index([staffMemberId, readAt, createdAt])
+}
+
+enum StaffAccessCodeStatus {
+  ACTIVE
+  REDEEMED
+  REVOKED
+  EXPIRED
+}
+
+enum StaffThreadSender {
+  STAFF
+  ADMIN
+  SYSTEM
+}
+
+enum StaffNotificationKind {
+  MESSAGE
+  APPOINTMENT
+  REMINDER
+  SYSTEM
 }

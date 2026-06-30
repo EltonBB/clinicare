@@ -17,6 +17,12 @@ import {
   type SaveStaffPayload,
   type StaffRecord,
 } from "@/lib/staff";
+import { logger } from "@/lib/logger";
+import {
+  ACCESS_CODE_TTL_MS,
+  generateAccessCode,
+  hashAccessCode,
+} from "@/lib/staff-auth";
 
 export type SaveStaffResult = {
   ok: boolean;
@@ -652,4 +658,101 @@ export async function deleteStaffShiftAction(
     ok: true,
     shiftId,
   };
+}
+
+// --- Mobile access (Vela Staff app enrollment) ------------------------------
+
+export type MobileAccessResult = {
+  ok: boolean;
+  error?: string;
+  /** Plaintext enrollment code — returned exactly once, on generate. */
+  code?: string;
+};
+
+async function requireOwnedStaff(staffId: unknown) {
+  if (typeof staffId !== "string" || !staffId.trim()) {
+    return { error: "Staff member not found." } as const;
+  }
+  const context = await getAuthedBusinessContext();
+  if ("error" in context) {
+    return { error: context.error } as const;
+  }
+  const staff = await prisma.staffMember.findFirst({
+    where: { id: staffId, businessId: context.business.id },
+    select: { id: true },
+  });
+  if (!staff) {
+    return { error: "Staff member not found." } as const;
+  }
+  return { businessId: context.business.id, staffId } as const;
+}
+
+/**
+ * Issue a fresh one-time enrollment code for a staff member's mobile app. The
+ * plaintext is returned ONCE for the admin to hand over; only its hash is
+ * stored. Any prior unredeemed code is superseded so only one is ever active.
+ */
+export async function generateMobileAccessCodeAction(
+  staffId: string
+): Promise<MobileAccessResult> {
+  const owned = await requireOwnedStaff(staffId);
+  if ("error" in owned) {
+    return { ok: false, error: owned.error };
+  }
+
+  const code = generateAccessCode();
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.staffAccessCode.updateMany({
+        where: { businessId: owned.businessId, staffMemberId: owned.staffId, status: "ACTIVE" },
+        data: { status: "REVOKED" },
+      });
+      await tx.staffAccessCode.create({
+        data: {
+          businessId: owned.businessId,
+          staffMemberId: owned.staffId,
+          codeHash: hashAccessCode(code),
+          expiresAt: new Date(Date.now() + ACCESS_CODE_TTL_MS),
+        },
+      });
+    });
+  } catch (error) {
+    logger.error("Failed to generate mobile access code.", error, { staffId: owned.staffId });
+    return { ok: false, error: "We couldn't generate a code. Please try again." };
+  }
+
+  revalidateStaffSurfaces(owned.staffId);
+  return { ok: true, code };
+}
+
+/**
+ * Revoke mobile access: invalidate any active code and log out every paired
+ * device for this staff member.
+ */
+export async function revokeMobileAccessAction(
+  staffId: string
+): Promise<MobileAccessResult> {
+  const owned = await requireOwnedStaff(staffId);
+  if ("error" in owned) {
+    return { ok: false, error: owned.error };
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.staffAccessCode.updateMany({
+        where: { businessId: owned.businessId, staffMemberId: owned.staffId, status: "ACTIVE" },
+        data: { status: "REVOKED" },
+      });
+      await tx.staffDevice.updateMany({
+        where: { businessId: owned.businessId, staffMemberId: owned.staffId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    });
+  } catch (error) {
+    logger.error("Failed to revoke mobile access.", error, { staffId: owned.staffId });
+    return { ok: false, error: "We couldn't update mobile access. Please try again." };
+  }
+
+  revalidateStaffSurfaces(owned.staffId);
+  return { ok: true };
 }
