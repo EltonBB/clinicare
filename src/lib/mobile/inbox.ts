@@ -119,40 +119,61 @@ export async function listConversations(ctx: StaffContext): Promise<MobileConver
   return threads.map((thread) => serializeConversation(thread));
 }
 
-async function getOrCreateAdminThread(ctx: StaffContext) {
+/**
+ * The single staff↔admin thread per staff member, created on first use. Shared
+ * with the admin (web) side so both perspectives operate on the same thread.
+ */
+export async function ensureAdminThread(businessId: string, staffMemberId: string) {
   const existing = await prisma.staffThread.findFirst({
-    where: { businessId: ctx.business.id, staffMemberId: ctx.staffMember.id },
+    where: { businessId, staffMemberId },
     orderBy: { createdAt: "asc" },
   });
   if (existing) {
     return existing;
   }
   return prisma.staffThread.create({
-    data: {
-      businessId: ctx.business.id,
-      staffMemberId: ctx.staffMember.id,
-      subtitle: "Front desk",
-    },
+    data: { businessId, staffMemberId, subtitle: "Front desk" },
   });
 }
 
-/** Resolve a thread by id, or the sentinel "admin" → the staff's admin thread. */
-async function resolveThread(ctx: StaffContext, idParam: string) {
+/**
+ * Find a thread by id, or the sentinel "admin" → the staff's existing admin
+ * thread. READ-ONLY: never creates a thread (threads are created on first send,
+ * so reads can't write). Returns null when no thread exists yet.
+ */
+async function findThread(ctx: StaffContext, idParam: string) {
   if (idParam === "admin") {
-    return getOrCreateAdminThread(ctx);
+    return prisma.staffThread.findFirst({
+      where: { businessId: ctx.business.id, staffMemberId: ctx.staffMember.id },
+      orderBy: { createdAt: "asc" },
+    });
   }
   return prisma.staffThread.findFirst({
     where: { id: idParam, businessId: ctx.business.id, staffMemberId: ctx.staffMember.id },
   });
 }
 
+/** The empty admin conversation shown before any message has been exchanged. */
+function emptyAdminConversation(): MobileConversation {
+  return {
+    id: "admin",
+    contactName: "Clinic admin",
+    subtitle: "Vela dashboard",
+    preview: "",
+    lastAtLabel: "",
+    unreadCount: 0,
+    messages: [],
+  };
+}
+
 export async function getConversation(
   ctx: StaffContext,
   idParam: string
 ): Promise<MobileConversation | null> {
-  const thread = await resolveThread(ctx, idParam);
+  const thread = await findThread(ctx, idParam);
   if (!thread) {
-    return null;
+    // The admin conversation always opens (empty) so the staff can start it.
+    return idParam === "admin" ? emptyAdminConversation() : null;
   }
   const full = await prisma.staffThread.findUnique({
     where: { id: thread.id },
@@ -175,7 +196,11 @@ export async function postConversationMessage(
     return { ok: false, status: 400, error: "Message can't be empty." };
   }
 
-  const thread = await resolveThread(ctx, idParam);
+  // Sending creates the admin thread on first use (write path may create).
+  const thread =
+    idParam === "admin"
+      ? await ensureAdminThread(ctx.business.id, ctx.staffMember.id)
+      : await findThread(ctx, idParam);
   if (!thread) {
     return { ok: false, status: 404, error: "Conversation not found." };
   }
@@ -197,9 +222,10 @@ export async function postConversationMessage(
 }
 
 export async function markConversationRead(ctx: StaffContext, idParam: string): Promise<boolean> {
-  const thread = await resolveThread(ctx, idParam);
+  const thread = await findThread(ctx, idParam);
   if (!thread) {
-    return false;
+    // Nothing to mark yet (no thread created) — treat as a no-op success.
+    return true;
   }
   const now = new Date();
   await prisma.$transaction(async (tx) => {

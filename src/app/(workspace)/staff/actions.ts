@@ -19,6 +19,10 @@ import {
 } from "@/lib/staff";
 import { logger } from "@/lib/logger";
 import {
+  markAdminThreadRead,
+  postAdminThreadMessage,
+} from "@/lib/mobile/admin-inbox";
+import {
   ACCESS_CODE_TTL_MS,
   generateAccessCode,
   hashAccessCode,
@@ -753,6 +757,55 @@ export async function revokeMobileAccessAction(
     return { ok: false, error: "We couldn't update mobile access. Please try again." };
   }
 
+  revalidateStaffSurfaces(owned.staffId);
+  return { ok: true };
+}
+
+// --- Staff messaging (admin/dashboard side of the staff↔admin thread) -------
+
+export type StaffMessageResult = { ok: boolean; error?: string };
+
+/** Admin replies to a staff member; notifies + pushes their device. */
+export async function sendStaffMessageAction(
+  staffId: string,
+  body: string
+): Promise<StaffMessageResult> {
+  const owned = await requireOwnedStaff(staffId);
+  if ("error" in owned) {
+    return { ok: false, error: owned.error };
+  }
+  if (typeof body !== "string" || !body.trim()) {
+    return { ok: false, error: "Message can't be empty." };
+  }
+  if (body.length > 4000) {
+    return { ok: false, error: "Message is too long." };
+  }
+
+  try {
+    const result = await postAdminThreadMessage(owned.businessId, owned.staffId, body);
+    if (!result.ok) {
+      return { ok: false, error: result.error };
+    }
+  } catch (error) {
+    logger.error("Failed to send staff message.", error, { staffId: owned.staffId });
+    return { ok: false, error: "We couldn't send your message. Please try again." };
+  }
+
+  revalidateStaffSurfaces(owned.staffId);
+  return { ok: true };
+}
+
+export async function markStaffThreadReadAction(staffId: string): Promise<StaffMessageResult> {
+  const owned = await requireOwnedStaff(staffId);
+  if ("error" in owned) {
+    return { ok: false, error: owned.error };
+  }
+  try {
+    await markAdminThreadRead(owned.businessId, owned.staffId);
+  } catch (error) {
+    logger.error("Failed to mark staff thread read.", error, { staffId: owned.staffId });
+    return { ok: false, error: "Something went wrong." };
+  }
   revalidateStaffSurfaces(owned.staffId);
   return { ok: true };
 }
