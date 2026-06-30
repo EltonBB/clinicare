@@ -27,6 +27,11 @@ export type MobileDoctor = {
   status: "active" | "away";
   checkedIn: boolean;
   shiftLabel: string;
+  /** Whether check-in/out is allowed right now (inside a scheduled shift window,
+   *  or already checked in). The app disables the button when false. */
+  canClock: boolean;
+  /** Why clocking is unavailable (empty when canClock) — shown under the button. */
+  clockDisabledReason: string;
   deviceLabel: string;
   pairedAtLabel: string;
 };
@@ -51,7 +56,16 @@ export type MobileAppointment = {
 export function serializeMe(args: {
   item: Pick<
     StaffDirectoryItem,
-    "id" | "name" | "role" | "email" | "phone" | "status" | "isCheckedIn" | "shiftLabel"
+    | "id"
+    | "name"
+    | "role"
+    | "email"
+    | "phone"
+    | "status"
+    | "isCheckedIn"
+    | "shiftLabel"
+    | "canClock"
+    | "clockDisabledReason"
   >;
   clinicName: string;
   device: { deviceLabel: string | null; createdAt: Date };
@@ -68,6 +82,8 @@ export function serializeMe(args: {
     status: item.status === "AWAY" ? "away" : "active",
     checkedIn: item.isCheckedIn,
     shiftLabel: item.shiftLabel,
+    canClock: item.canClock,
+    clockDisabledReason: item.clockDisabledReason,
     deviceLabel: device.deviceLabel ?? "This device",
     pairedAtLabel: `Paired ${formatZonedFullDate(device.createdAt)}`,
   };

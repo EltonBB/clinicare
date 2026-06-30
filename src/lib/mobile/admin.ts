@@ -30,7 +30,9 @@ export async function getMobileAccessStatus(
       select: { id: true },
     }),
     prisma.staffDevice.findFirst({
-      where: { businessId, staffMemberId, revokedAt: null },
+      // Only a device that can still authenticate counts as "paired" — exclude
+      // revoked and idle-expired sessions (their token is already rejected).
+      where: { businessId, staffMemberId, revokedAt: null, expiresAt: { gt: new Date() } },
       orderBy: { lastSeenAt: "desc" },
       select: { deviceLabel: true, platform: true, createdAt: true, lastSeenAt: true },
     }),

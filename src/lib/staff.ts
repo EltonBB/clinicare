@@ -280,6 +280,28 @@ function clockState(args: {
   };
 }
 
+/** Early check-in grace before a scheduled shift's start. */
+export const CHECK_IN_EARLY_GRACE_MS = 30 * 60 * 1000;
+
+/**
+ * The scheduled shift whose check-in window currently covers `now` — from 30 min
+ * before its start through its end — or undefined if none does. The single source
+ * of truth for "is this staff member allowed to clock in right now", shared by
+ * the admin check-in action and the mobile self check-in so both enforce the
+ * SAME window (no clocking in outside a scheduled shift).
+ */
+export function findActiveShiftWindow(
+  shifts: Pick<StaffShift, "startsAt" | "endsAt">[],
+  now: Date = new Date()
+): Pick<StaffShift, "startsAt" | "endsAt"> | undefined {
+  const ms = now.getTime();
+  return shifts.find(
+    (shift) =>
+      ms >= shift.startsAt.getTime() - CHECK_IN_EARLY_GRACE_MS &&
+      ms <= shift.endsAt.getTime()
+  );
+}
+
 function calculateCompletionRate(appointments: Pick<Appointment, "status">[]) {
   const finalized = appointments.filter(
     (appointment) => appointment.status === "COMPLETED" || appointment.status === "CANCELLED"

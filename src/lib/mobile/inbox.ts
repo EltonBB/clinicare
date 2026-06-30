@@ -137,6 +137,31 @@ export async function ensureAdminThread(businessId: string, staffMemberId: strin
 }
 
 /**
+ * Post a SYSTEM line to the staff↔admin thread (creating it if needed) and bump
+ * the admin's unread. Surfaces a doctor's self-service action — e.g. a
+ * cancellation — to the admin, who reads the thread on the staff detail page, so
+ * the action isn't silent. Callers wrap this best-effort: a notice must never
+ * fail the action it describes.
+ */
+export async function postSystemMessageToAdminThread(
+  businessId: string,
+  staffMemberId: string,
+  body: string
+): Promise<void> {
+  const thread = await ensureAdminThread(businessId, staffMemberId);
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    await tx.staffThreadMessage.create({
+      data: { threadId: thread.id, sender: "SYSTEM", body },
+    });
+    await tx.staffThread.update({
+      where: { id: thread.id },
+      data: { lastMessageAt: now, unreadForAdmin: { increment: 1 } },
+    });
+  });
+}
+
+/**
  * Find a thread by id, or the sentinel "admin" → the staff's existing admin
  * thread. READ-ONLY: never creates a thread (threads are created on first send,
  * so reads can't write). Returns null when no thread exists yet.
@@ -244,7 +269,7 @@ export async function markConversationRead(ctx: StaffContext, idParam: string): 
 
 export async function listNotifications(ctx: StaffContext): Promise<MobileNotification[]> {
   const notifications = await prisma.staffNotification.findMany({
-    where: { staffMemberId: ctx.staffMember.id },
+    where: { businessId: ctx.business.id, staffMemberId: ctx.staffMember.id },
     orderBy: { createdAt: "desc" },
     take: 50,
   });
@@ -253,7 +278,7 @@ export async function listNotifications(ctx: StaffContext): Promise<MobileNotifi
 
 export async function markNotificationRead(ctx: StaffContext, id: string): Promise<boolean> {
   const result = await prisma.staffNotification.updateMany({
-    where: { id, staffMemberId: ctx.staffMember.id, readAt: null },
+    where: { id, businessId: ctx.business.id, staffMemberId: ctx.staffMember.id, readAt: null },
     data: { readAt: new Date() },
   });
   return result.count > 0;

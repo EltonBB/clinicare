@@ -2,10 +2,12 @@ import {
   refreshClientLastVisitAt,
   revalidateCalendarSurfaces,
 } from "@/lib/appointments-shared";
+import { logger } from "@/lib/logger";
+import { postSystemMessageToAdminThread } from "@/lib/mobile/inbox";
 import { serializeAppointment, type MobileAppointment } from "@/lib/mobile/serializers";
 import { prisma } from "@/lib/prisma";
 import type { StaffContext } from "@/lib/staff-auth";
-import { getZonedDayWindowByOffset } from "@/lib/time-zone";
+import { formatZonedTime, getZonedDayWindowByOffset } from "@/lib/time-zone";
 
 export type MobileDay = "today" | "tomorrow";
 
@@ -61,7 +63,14 @@ export async function cancelOwnAppointment(
       businessId: ctx.business.id,
       staffMemberId: ctx.staffMember.id,
     },
-    select: { id: true, clientId: true, staffMemberId: true, status: true },
+    select: {
+      id: true,
+      clientId: true,
+      staffMemberId: true,
+      status: true,
+      startAt: true,
+      client: { select: { name: true } },
+    },
   });
 
   if (!existing) {
@@ -70,6 +79,17 @@ export async function cancelOwnAppointment(
 
   if (existing.status === "CANCELLED") {
     return { ok: true }; // idempotent — already cancelled
+  }
+
+  // Never trust the client: a COMPLETED visit can't be cancelled (the app hides
+  // the button, but the endpoint must enforce it too — otherwise a crafted
+  // request would corrupt completion metrics and the client's last-visit date).
+  if (existing.status === "COMPLETED") {
+    return {
+      ok: false,
+      status: 409,
+      error: "This visit is already completed and can't be cancelled.",
+    };
   }
 
   await prisma.$transaction(async (tx) => {
@@ -82,9 +102,22 @@ export async function cancelOwnAppointment(
     await refreshClientLastVisitAt(existing.clientId, ctx.business.id, tx);
   });
 
-  // TODO(phase 6): post a system message to the doctor↔admin thread + push so the
-  // admin is actively notified to reschedule/reassign, once that surface exists.
   revalidateCalendarSurfaces([existing.clientId], [existing.staffMemberId]);
+
+  // Surface the cancellation to the admin in the staff↔admin thread so they can
+  // reschedule/reassign — minimum-necessary scheduling info (name + time, no
+  // clinical detail). Best-effort: a failed notice must not fail the cancel.
+  try {
+    await postSystemMessageToAdminThread(
+      ctx.business.id,
+      ctx.staffMember.id,
+      `Cancelled the ${formatZonedTime(existing.startAt)} appointment with ${existing.client.name} — please reschedule.`
+    );
+  } catch (error) {
+    logger.error("Failed to post cancellation notice to the admin thread.", error, {
+      appointmentId,
+    });
+  }
 
   return { ok: true };
 }

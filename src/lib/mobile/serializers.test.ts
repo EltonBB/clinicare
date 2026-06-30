@@ -16,6 +16,8 @@ describe("serializeMe", () => {
     status: "ACTIVE" as const,
     isCheckedIn: true,
     shiftLabel: "08:30 - 17:00",
+    canClock: true,
+    clockDisabledReason: "",
   };
 
   it("maps ACTIVE/AWAY to lowercase and carries through identity", () => {
@@ -30,6 +32,16 @@ describe("serializeMe", () => {
     expect(me.deviceLabel).toBe("iPhone 15 Pro");
     expect(me.pairedAtLabel.startsWith("Paired ")).toBe(true);
     expect(me.pairedAtLabel).toContain("2026");
+  });
+
+  it("carries through clock eligibility for the app to gate the button", () => {
+    const me = serializeMe({
+      item: { ...baseItem, isCheckedIn: false, canClock: false, clockDisabledReason: "No shift" },
+      clinicName: "Vela Dental",
+      device: { deviceLabel: "iPhone 15 Pro", createdAt: new Date("2026-06-12T10:00:00.000Z") },
+    });
+    expect(me.canClock).toBe(false);
+    expect(me.clockDisabledReason).toBe("No shift");
   });
 
   it("falls back to a generic device label and maps AWAY", () => {

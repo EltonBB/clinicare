@@ -14,6 +14,7 @@ import {
 } from "@/lib/time-zone";
 import {
   buildStaffRecord,
+  findActiveShiftWindow,
   staffStatuses,
   type SaveStaffPayload,
   type StaffRecord,
@@ -433,16 +434,11 @@ export async function checkInStaffAction(staffId: string): Promise<StaffClockRes
     };
   }
 
-  const now = new Date();
-  // Match purely on the shift's time window (30-min early grace through its end).
-  // A clinic-local-date equality check would reject the pre-midnight grace period
-  // that belongs to an early-morning shift on the next date (e.g. a 00:15 shift's
-  // window opens at 23:45 the previous day) and any post-midnight overnight shift.
-  const todayShift = staff.shifts.find(
-    (shift) =>
-      now >= new Date(shift.startsAt.getTime() - 30 * 60 * 1000) &&
-      now <= shift.endsAt
-  );
+  // Match on the shift's time window (30-min early grace through its end) — the
+  // shared findActiveShiftWindow. A clinic-local-date equality check would reject
+  // the pre-midnight grace of an early-morning shift on the next date and any
+  // post-midnight overnight shift.
+  const todayShift = findActiveShiftWindow(staff.shifts);
 
   if (staff.status === "INACTIVE") {
     return {
