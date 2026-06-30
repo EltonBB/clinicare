@@ -118,7 +118,6 @@ export function NewAppointmentForm({
   const [status, setStatus] = useState<CalendarAppointmentStatus>(
     initialAppointment?.status ?? "confirmed"
   );
-  const [paymentStatus, setPaymentStatus] = useState("Unpaid");
   const isEditing = Boolean(initialAppointment);
   const selectedHours = useMemo(
     () => businessHoursForDate(date, businessHours),
@@ -162,11 +161,6 @@ export function NewAppointmentForm({
         endTime,
         notes: String(formData.get("notes") ?? ""),
         status,
-        paymentAmount: String(formData.get("paymentAmount") ?? ""),
-        paymentStatus,
-        paymentDescription: String(formData.get("paymentDescription") ?? ""),
-        paymentReceiptUrl: String(formData.get("paymentReceiptUrl") ?? ""),
-        paymentPaidAt: String(formData.get("paymentPaidAt") ?? ""),
       });
 
       if (!result.ok || !result.appointment) {
@@ -336,46 +330,6 @@ export function NewAppointmentForm({
             : "This clinic is closed on the selected date. Choose an open day before booking."}
         </p>
       </WorkspaceFormSection>
-
-      {!isEditing ? (
-      <WorkspaceFormSection
-        title="Payment"
-        description="Add the expected or collected payment for this booked service. Leave amount blank if payment will be handled later."
-      >
-        <div className="grid gap-3.5 sm:grid-cols-2">
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-foreground">Service amount</span>
-            <Input name="paymentAmount" inputMode="decimal" placeholder="0.00" className={fieldInputClass} />
-          </label>
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-foreground">Payment status</span>
-            <select
-              value={paymentStatus}
-              onChange={(event) => setPaymentStatus(event.target.value)}
-              className={fieldSelectClass}
-            >
-              {["Unpaid", "Paid", "Partially Paid"].map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-foreground">Paid date</span>
-            <Input name="paymentPaidAt" type="date" className={fieldInputClass} />
-          </label>
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-foreground">Invoice / receipt URL</span>
-            <Input name="paymentReceiptUrl" placeholder="Optional" className={fieldInputClass} />
-          </label>
-          <label className="space-y-2 sm:col-span-2">
-            <span className="text-sm font-semibold text-foreground">Payment note</span>
-            <Textarea name="paymentDescription" placeholder="Deposit, full service payment, balance due..." className="min-h-24 rounded-(--radius-card) bg-white px-3 py-3" />
-          </label>
-        </div>
-      </WorkspaceFormSection>
-      ) : null}
 
       {error ? (
         <div className="rounded-(--radius-card) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">

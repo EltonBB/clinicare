@@ -15,10 +15,6 @@ import {
   parseZonedWallClock,
 } from "@/lib/time-zone";
 import {
-  hasUnsafePublicUrl,
-  normalizeOptionalPublicUrl,
-} from "@/lib/safe-url";
-import {
   toPrismaAppointmentStatus,
   type CalendarAppointment,
   type CalendarAppointmentStatus,
@@ -34,11 +30,6 @@ export type SaveAppointmentPayload = {
   endTime: string;
   notes: string;
   status: CalendarAppointmentStatus;
-  paymentAmount?: string;
-  paymentStatus?: string;
-  paymentDescription?: string;
-  paymentReceiptUrl?: string;
-  paymentPaidAt?: string;
 };
 
 export type SaveAppointmentResult = {
@@ -84,33 +75,6 @@ function getAuthedBusiness() {
 // the true UTC instant (shared helper — see lib/time-zone.ts).
 function parseDateTime(date: string, time: string) {
   return parseZonedWallClock(date, time);
-}
-
-function parseOptionalDate(value?: string) {
-  if (!value?.trim()) {
-    return null;
-  }
-
-  // Store date-only fields at UTC midnight: the render/edit paths format the
-  // stored Date with date-fns (UTC on Vercel), so UTC midnight round-trips to
-  // the entered calendar day (a zoned anchor would shift the day — PR #13).
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function parseAmountToCents(value?: string) {
-  if (!value?.trim()) {
-    return null;
-  }
-
-  const parsed = Number(value.replace(/[^0-9.-]/g, ""));
-  // Reject negatives and absurd fat-finger amounts (> $1,000,000) so a typo
-  // can't write a huge value into the ledger and corrupt revenue reporting.
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1_000_000) {
-    return null;
-  }
-
-  return Math.round(parsed * 100);
 }
 
 function timeToMinutes(time: string) {
@@ -282,30 +246,6 @@ export async function saveAppointmentAction(
     staffMemberId = staff.id;
   }
 
-  // Validate the optional payment up front (pure guards) so the write path below
-  // can run as a single atomic transaction.
-  const enteredAmount = payload.paymentAmount?.trim();
-  const paymentAmountCents = parseAmountToCents(payload.paymentAmount);
-
-  // A non-blank amount that won't parse (malformed, negative, or over the $1M
-  // cap) is a user error — reject it instead of silently saving an appointment
-  // with no ledger entry. Blank stays optional; "0" parses to a no-charge entry.
-  if (enteredAmount && paymentAmountCents === null) {
-    return {
-      ok: false,
-      error: "Enter a valid payment amount up to $1,000,000, or leave it blank.",
-    };
-  }
-
-  const hasPayment = paymentAmountCents !== null && paymentAmountCents > 0;
-
-  if (hasPayment && hasUnsafePublicUrl(payload.paymentReceiptUrl)) {
-    return {
-      ok: false,
-      error: "Use a safe HTTPS receipt link.",
-    };
-  }
-
   try {
     let appointmentId = payload.id;
     let shouldResetReminders = false;
@@ -347,10 +287,9 @@ export async function saveAppointmentAction(
         existing.status !== toPrismaAppointmentStatus(payload.status);
     }
 
-    // The appointment write, reminder reset, last-visit refresh, and the optional
-    // payment all commit together — a payment failure must not leave a saved
-    // appointment behind (which the caller reports as "couldn't save", prompting
-    // the operator to retry and create a duplicate).
+    // The appointment write, reminder reset, and last-visit refresh commit
+    // together. Payment is intentionally NOT collected here — it's recorded
+    // separately on the client's Payments tab, after the visit.
     await prisma.$transaction(async (tx) => {
       if (payload.id) {
         await tx.appointment.update({
@@ -402,27 +341,6 @@ export async function saveAppointmentAction(
 
         appointmentId = created.id;
         await refreshClientLastVisitAt(payload.clientId, business.id, tx);
-      }
-
-      if (hasPayment) {
-        await tx.clientPayment.create({
-          data: {
-            businessId: business.id,
-            clientId: payload.clientId,
-            appointmentId: appointmentId!,
-            amountCents: paymentAmountCents!,
-            status: payload.paymentStatus?.trim() || "Unpaid",
-            description:
-              payload.paymentDescription?.trim() ||
-              `Payment for ${payload.service.trim()}`,
-            receiptUrl:
-              normalizeOptionalPublicUrl(payload.paymentReceiptUrl) || null,
-            paidAt:
-              payload.paymentStatus === "Paid"
-                ? parseOptionalDate(payload.paymentPaidAt) ?? new Date()
-                : parseOptionalDate(payload.paymentPaidAt),
-          },
-        });
       }
     });
 

@@ -207,13 +207,17 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
             options={staffRoles}
             onChange={setRole}
           />
-          <SelectField
-            name="status"
-            label="Status"
-            value={status}
-            options={staffStatuses}
-            onChange={(value) => setStatus(value as StaffStatus)}
-          />
+          {/* A new staff member is active by default; status (Away / Inactive) is
+              only set later, so it's an edit-only control. */}
+          {isEditing ? (
+            <SelectField
+              name="status"
+              label="Status"
+              value={status}
+              options={staffStatuses}
+              onChange={(value) => setStatus(value as StaffStatus)}
+            />
+          ) : null}
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Phone</span>
             <Input name="phone" defaultValue={staff?.phone} placeholder="+1 555 000 0000" className={fieldInputClass} />
