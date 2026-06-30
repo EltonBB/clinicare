@@ -112,9 +112,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: GENERIC_INVALID }, { status: 401 });
     }
 
-    const me = await loadMobileMe(result.device);
-    if (!me) {
-      return NextResponse.json({ error: GENERIC_INVALID }, { status: 401 });
+    // The code is now consumed and the device created, so the session is valid.
+    // Loading the profile must NOT be able to fail the redeem — otherwise a
+    // transient error would burn a single-use code. Best-effort: return the
+    // token always; the app can fetch /me separately if `me` is null.
+    let me = null;
+    try {
+      me = await loadMobileMe(result.device);
+    } catch (error) {
+      logger.error("Loading mobile profile after redeem failed.", error, {
+        deviceId: result.device.id,
+      });
     }
 
     // The raw token is returned exactly once; only its hash is stored.

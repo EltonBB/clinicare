@@ -29,3 +29,12 @@ alter table public."StaffShift" enable row level security;
 alter table public."StaffTimeEntry" enable row level security;
 alter table public."ScheduleBlock" enable row level security;
 alter table public."WhatsAppConnection" enable row level security;
+
+-- Mobile staff app tables (see prisma/mobile-staff-migration.sql). These hold
+-- access-code / device-token hashes and internal staff↔admin messages, so RLS
+-- here is a hard security requirement.
+alter table public."StaffAccessCode" enable row level security;
+alter table public."StaffDevice" enable row level security;
+alter table public."StaffThread" enable row level security;
+alter table public."StaffThreadMessage" enable row level security;
+alter table public."StaffNotification" enable row level security;

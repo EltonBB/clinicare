@@ -631,8 +631,12 @@ enum AnalyticsSnapshotStatus {
 // Mobile staff app ("Vela Staff") — second authenticated principal.
 // Staff are NOT Supabase users; they enroll a device with a one-time access
 // code and authenticate every request with a device-bound, revocable token.
-// All models below are tenant-scoped to Business and accessed only via Prisma
-// (RLS enabled, no public policies) — never the browser anon API.
+// All models below are tenant-scoped to Business and accessed only via Prisma.
+// RLS (no public policies) is enabled on every table here by
+// prisma/mobile-staff-migration.sql (mirrored in docs/supabase-enable-public-rls.sql),
+// which MUST run after db push since Prisma does not manage RLS — the browser
+// anon role can otherwise read access-code/device-token hashes and internal
+// staff messages.
 // ---------------------------------------------------------------------------
 
 model StaffAccessCode {
