@@ -16,6 +16,7 @@ import { PaneSignalContext } from "../appframe/pane-context";
 import {
   CalendarBody,
   DashboardBody,
+  DocumentsBody,
   FinanceBody,
   InboxBody,
   RecordBody,
@@ -29,6 +30,8 @@ type ModuleDef = {
   copy: string;
   points: string[];
   nav: AppNav;
+  /** Overrides the in-frame topbar title when it differs from the nav label. */
+  frameTitle?: string;
   Body: ComponentType;
 };
 
@@ -67,6 +70,7 @@ const MODULES: ModuleDef[] = [
     copy: "See who is available, where they are assigned, what is complete, and where the clinic may need more coverage.",
     points: ["Availability today", "Assignments", "Coverage gaps"],
     nav: "clients",
+    frameTitle: "Staff",
     Body: StaffBody,
   },
   {
@@ -79,8 +83,18 @@ const MODULES: ModuleDef[] = [
     Body: InboxBody,
   },
   {
-    key: "reports",
+    key: "documents",
     n: "06",
+    title: "Keep documents and payments beside the record.",
+    copy: "Scans, consent forms, invoices, and payment status attach to the same patient — private storage with short-lived signed access.",
+    points: ["Private document storage", "Signed access links", "Payment status"],
+    nav: "clients",
+    frameTitle: "Documents",
+    Body: DocumentsBody,
+  },
+  {
+    key: "reports",
+    n: "07",
     title: "Understand performance without another spreadsheet.",
     copy: "Appointment trends, completion rate, revenue context, and AI-assisted operational recommendations — never medical claims.",
     points: ["Appointment trends", "Completion rate", "AI next step"],
@@ -96,6 +110,7 @@ const MODULE_FLOAT: Record<string, { title: string; sub: string }> = {
   patients: { title: "Payment received", sub: "Maya Novak · €110" },
   staff: { title: "Emily checked in", sub: "On shift · 08:30" },
   inbox: { title: "Message delivered", sub: "Maya Novak · 2m ago" },
+  documents: { title: "Document secured", sub: "x-ray · signed access" },
   reports: { title: "Health score 92/100", sub: "Operational · Healthy" },
 };
 
@@ -129,7 +144,7 @@ export function ModuleShowcase() {
                 <p className="mt-4 max-w-xl text-base leading-8 text-muted-foreground">{mod.copy}</p>
               </div>
               <div className={i % 2 === 1 ? "lg:order-1" : ""}>
-                <AppPane chrome="app" nav={mod.nav} title={mod.key === "staff" ? "Staff" : undefined} stage glow>
+                <AppPane chrome="app" nav={mod.nav} title={mod.frameTitle} stage glow>
                   <mod.Body />
                 </AppPane>
               </div>
@@ -159,7 +174,7 @@ export function ModuleShowcase() {
             <AppFrame
               chrome="app"
               nav={MODULES[active].nav}
-              title={MODULES[active].key === "staff" ? "Staff" : undefined}
+              title={MODULES[active].frameTitle}
               stage
               glow
               float={
@@ -251,6 +266,14 @@ function Blurb({
         Try it free
         <ArrowRight className="size-4" />
       </Link>
+      {/* Below lg the sticky pane column is hidden, so render this module's pane
+          inline — pure CSS (lg:hidden), so it's present on first paint and with
+          no JS, never a text-only tour. */}
+      <div className="mt-8 lg:hidden">
+        <AppPane chrome="app" nav={mod.nav} title={mod.frameTitle} stage glow>
+          <mod.Body />
+        </AppPane>
+      </div>
     </div>
   );
 }

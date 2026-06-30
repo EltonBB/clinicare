@@ -33,7 +33,10 @@ export function PlanCard({
       aria-label={`Choose the ${plan.name} plan`}
       onClick={onSelect}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
+        // Only act when the card itself has focus — never swallow Enter/Space
+        // meant for the nested "Choose …" checkout link (which would block its
+        // navigation for keyboard users).
+        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
           e.preventDefault();
           onSelect?.();
         }
