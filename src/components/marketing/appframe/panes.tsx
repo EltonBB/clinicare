@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { m, type Variants } from "framer-motion";
-import { ArrowDownRight, ArrowUpRight, Phone, Search, Sparkles } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, FileText, Lock, Phone, Search, Sparkles } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { CountUp, GrowBars, StatusDot, SweepDonut, TypingThenMessage } from "./atoms";
@@ -602,6 +602,70 @@ export function StaffBody() {
           </m.div>
         ))}
       </m.div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------- Documents/Payments */
+
+export function DocumentsBody() {
+  const active = usePaneActive();
+  const docs: { name: string; cat: string; tone: keyof typeof TILE; size: string }[] = [
+    { name: "Panoramic x-ray.png", cat: "Imaging", tone: "cobalt", size: "2.4 MB" },
+    { name: "Consent form.pdf", cat: "Forms", tone: "indigo", size: "180 KB" },
+    { name: "Treatment plan.pdf", cat: "Clinical", tone: "teal", size: "210 KB" },
+    { name: "Invoice #1042.pdf", cat: "Billing", tone: "amber", size: "96 KB" },
+  ];
+  const pay: [number, string][] = [
+    [420, "Billed"],
+    [360, "Paid"],
+    [60, "Balance"],
+  ];
+  return (
+    <div aria-hidden className="text-[var(--brand-ink)]">
+      <div className="flex items-center justify-between">
+        <p className="text-base font-bold">Documents &amp; payments</p>
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-[12px] font-bold text-primary">
+          <Lock className="size-3" /> Private storage
+        </span>
+      </div>
+      <m.div className="mt-3.5 space-y-2" variants={container} initial="hidden" animate={active ? "show" : "hidden"}>
+        {docs.map((d) => (
+          <m.div
+            key={d.name}
+            variants={itemUp}
+            className="flex items-center gap-3 rounded-[0.7rem] border border-black/[0.05] bg-white px-3 py-2.5"
+          >
+            <span
+              className={cn(
+                "flex size-9 shrink-0 items-center justify-center rounded-[0.55rem] ring-1 ring-inset ring-black/[0.04]",
+                TILE[d.tone],
+              )}
+            >
+              <FileText className="size-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-bold leading-tight">{d.name}</p>
+              <p className="text-[11px] font-semibold leading-tight text-muted-foreground">
+                {d.cat} · {d.size}
+              </p>
+            </div>
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
+              <Lock className="size-2.5" /> Signed
+            </span>
+          </m.div>
+        ))}
+      </m.div>
+      <div className="mt-3.5 grid grid-cols-3 divide-x divide-black/[0.06] overflow-hidden rounded-[0.8rem] border border-black/[0.06] bg-[var(--brand-wash)]/40">
+        {pay.map(([v, l]) => (
+          <div key={l} className="px-2 py-2.5 text-center">
+            <p className="text-base font-semibold leading-none">
+              <CountUp value={v} prefix="€" />
+            </p>
+            <p className="mt-1.5 text-[11px] font-bold uppercase tracking-[0.05em] text-muted-foreground">{l}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

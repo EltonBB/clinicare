@@ -1,25 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import Lenis from "lenis";
 
 import { MarketingScrollContext } from "./scroll-context";
-
-/** SSR-safe media-query subscription (returns false on the server). */
-function useMediaQuery(query: string) {
-  return useSyncExternalStore(
-    (notify) => {
-      const mq = window.matchMedia(query);
-      mq.addEventListener("change", notify);
-      return () => mq.removeEventListener("change", notify);
-    },
-    () => window.matchMedia(query).matches,
-    () => false,
-  );
-}
+import { useMediaQuery } from "./use-media-query";
 
 /**
  * Marketing-only smooth-scroll + GSAP engine.
