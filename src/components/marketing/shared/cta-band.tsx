@@ -23,11 +23,20 @@ export function CtaBand({
 }) {
   return (
     <section className="px-4 pb-24 pt-8 sm:px-6 lg:px-8">
-      <Reveal className="vela-night relative mx-auto max-w-7xl overflow-hidden rounded-[2rem] px-6 py-16 text-center text-white shadow-[0_40px_120px_rgba(10,34,255,0.3)] sm:px-12 sm:py-20">
-        <div aria-hidden className="vela-grid-texture pointer-events-none absolute inset-0 opacity-50" />
+      <Reveal className="relative mx-auto max-w-7xl overflow-hidden rounded-[2rem] bg-[linear-gradient(120deg,#0a1cb0_0%,#0A22FF_28%,#2f6bff_54%,#23a6d6_78%,#6a5cf0_100%)] px-6 py-16 text-center text-white shadow-[0_40px_120px_rgba(10,34,255,0.4)] sm:px-12 sm:py-20">
+        <div aria-hidden className="vela-grid-texture pointer-events-none absolute inset-0 opacity-25" />
+        {/* flowing cyan ribbon streak (Stripe-Connect style) */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 mx-auto h-64 w-[42rem] max-w-full bg-[radial-gradient(circle,rgba(100,182,255,0.28),transparent_65%)] blur-3xl"
+          className="pointer-events-none absolute -inset-x-24 top-[36%] h-44 -rotate-6 bg-[linear-gradient(90deg,transparent,rgba(140,228,255,0.4),rgba(180,200,255,0.3),transparent)] blur-3xl"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-20 -top-24 size-[28rem] rounded-full bg-[radial-gradient(circle,rgba(120,96,240,0.45),transparent_65%)] blur-3xl"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -bottom-28 -left-16 size-[26rem] rounded-full bg-[radial-gradient(circle,rgba(100,182,255,0.4),transparent_65%)] blur-3xl"
         />
         <div className="relative mx-auto max-w-2xl">
           <h2 className="display-2 text-white">{title}</h2>

@@ -4,7 +4,7 @@ import type { ElementType } from "react";
 import { MarketingShell } from "../shell/marketing-shell";
 import { InnerHero, Highlight } from "../shared/inner-hero";
 import { CtaBand } from "../shared/cta-band";
-import { PlanCard } from "../shared/plan-card";
+import { InteractivePlans } from "../shared/interactive-plans";
 import { Reveal, RevealGroup, RevealItem } from "../motion/reveal";
 import { publicPlans } from "@/lib/public-plans";
 
@@ -71,14 +71,14 @@ export function PricingPageContent() {
       />
 
       {/* plans */}
-      <section className="mx-auto max-w-5xl px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
-        <RevealGroup className="grid gap-5 md:grid-cols-2 md:items-stretch">
-          {publicPlans.map((plan) => (
-            <RevealItem key={plan.key} className="h-full">
-              <PlanCard plan={plan} />
-            </RevealItem>
-          ))}
-        </RevealGroup>
+      <section className="relative mx-auto max-w-5xl px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-1/4 -z-10 mx-auto h-72 max-w-3xl rounded-full bg-[radial-gradient(circle,rgba(10,34,255,0.1),transparent_68%)] blur-3xl"
+        />
+        <Reveal>
+          <InteractivePlans plans={publicPlans} />
+        </Reveal>
 
         <Reveal className="mt-6 grid grid-cols-2 gap-3 rounded-(--radius-hero) border border-border/80 bg-[var(--brand-wash)]/40 p-4 sm:grid-cols-4">
           {includes.map(({ icon: Icon, label }) => (
