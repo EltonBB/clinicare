@@ -38,12 +38,12 @@ export function PlanCard({
           onSelect?.();
         }
       }}
-      animate={{ scale: selected ? 1 : 0.97 }}
+      animate={{ scale: selected ? 1 : 0.99 }}
       whileHover={{ y: -4 }}
-      whileTap={{ scale: selected ? 0.99 : 0.96 }}
+      whileTap={{ scale: selected ? 0.99 : 0.98 }}
       transition={{ duration: 0.3, ease: EASE }}
       className={cn(
-        "relative flex h-full cursor-pointer flex-col overflow-hidden rounded-(--radius-hero) p-7 outline-none transition-shadow duration-300 sm:p-8",
+        "relative isolate flex h-full cursor-pointer flex-col overflow-hidden rounded-(--radius-hero) p-7 outline-none transition-shadow duration-300 sm:p-8",
         pro
           ? "text-white shadow-[0_2px_10px_rgba(10,34,255,0.12),0_44px_96px_-26px_rgba(10,34,255,0.5)]"
           : "border border-border/80 bg-white text-[var(--brand-ink)] shadow-[0_24px_70px_rgba(20,21,47,0.06)]",
@@ -54,11 +54,11 @@ export function PlanCard({
         <>
           <span
             aria-hidden
-            className="absolute inset-0 -z-10 bg-[linear-gradient(155deg,#0a1cb0_0%,#0A22FF_44%,#2f6bff_82%,#23a6d6_120%)]"
+            className="absolute inset-0 -z-10 bg-[linear-gradient(160deg,#0e22e6_0%,#0A22FF_52%,#0a18a8_100%)]"
           />
           <span
             aria-hidden
-            className="pointer-events-none absolute -right-16 -top-20 -z-10 size-56 rounded-full bg-[radial-gradient(circle,rgba(160,205,255,0.45),transparent_65%)] blur-2xl"
+            className="pointer-events-none absolute -right-16 -top-20 -z-10 size-56 rounded-full bg-[radial-gradient(circle,rgba(90,150,255,0.28),transparent_65%)] blur-2xl"
           />
           <span aria-hidden className="absolute inset-x-0 top-0 h-px bg-white/30" />
         </>
