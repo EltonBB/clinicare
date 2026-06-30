@@ -819,8 +819,8 @@ export type RecentCheckIn = {
 
 /**
  * Recent staff check-ins (last 10 min) for the admin's workspace. Polled by the
- * dashboard StaffCheckInToaster so the admin is notified to verify a staff
- * member is actually present when they check in from the mobile app. Read-only.
+ * dashboard WorkspaceToaster so the admin is notified to verify a staff member
+ * is actually present when they check in from the mobile app. Read-only.
  */
 export async function getRecentStaffCheckInsAction(): Promise<RecentCheckIn[]> {
   const context = await getAuthedBusinessContext();
@@ -846,5 +846,50 @@ export async function getRecentStaffCheckInsAction(): Promise<RecentCheckIn[]> {
     staffName: entry.staffMember.name,
     atLabel: formatZonedTime(entry.checkedInAt),
     atMs: entry.checkedInAt.getTime(),
+  }));
+}
+
+export type RecentStaffMessage = {
+  messageId: string;
+  staffId: string;
+  staffName: string;
+  atLabel: string;
+  atMs: number;
+};
+
+/**
+ * Recent inbound staff messages (last 10 min) across this workspace's staff↔admin
+ * threads. Polled by the dashboard toaster so the dashboard operator (the
+ * receptionist who runs it) is notified when a doctor messages in. Read-only;
+ * generic notice only (no message body — they open the staff page to read it).
+ */
+export async function getRecentStaffMessagesAction(): Promise<RecentStaffMessage[]> {
+  const context = await getAuthedBusinessContext();
+  if ("error" in context) {
+    return [];
+  }
+
+  const since = new Date(Date.now() - 10 * 60 * 1000);
+  const messages = await prisma.staffThreadMessage.findMany({
+    where: {
+      sender: "STAFF",
+      createdAt: { gte: since },
+      thread: { businessId: context.business.id },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+    select: {
+      id: true,
+      createdAt: true,
+      thread: { select: { staffMemberId: true, staffMember: { select: { name: true } } } },
+    },
+  });
+
+  return messages.map((message) => ({
+    messageId: message.id,
+    staffId: message.thread.staffMemberId,
+    staffName: message.thread.staffMember.name,
+    atLabel: formatZonedTime(message.createdAt),
+    atMs: message.createdAt.getTime(),
   }));
 }

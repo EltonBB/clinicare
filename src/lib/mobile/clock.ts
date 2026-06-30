@@ -8,7 +8,7 @@ import { getZonedDayWindow } from "@/lib/time-zone";
 /**
  * Mobile self check-in / check-out. The staff member asserts their own presence
  * from the app; the admin is notified on the dashboard to verify it (see the
- * StaffCheckInToaster). Check-in is allowed ONLY inside a scheduled shift window
+ * WorkspaceToaster). Check-in is allowed ONLY inside a scheduled shift window
  * (30-min early grace through the shift end) — the same rule the admin-side
  * checkInStaffAction enforces, via the shared findActiveShiftWindow. Check-OUT is
  * always allowed so an open entry is never trapped open.
