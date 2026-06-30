@@ -121,9 +121,9 @@ export function TrustSection() {
               <div className="flex items-center gap-2 rounded-(--radius-field) border border-black/[0.06] bg-[var(--brand-wash)]/50 px-3 py-2.5">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary">
                   <ShieldCheck className="size-3.5" />
-                  HIPAA-ready
+                  Building toward HIPAA
                 </span>
-                <span className="ml-auto text-[11px] font-semibold text-muted-foreground">Safeguards built in</span>
+                <span className="ml-auto text-[11px] font-semibold text-muted-foreground">Before the first US clinic</span>
               </div>
               <div className="flex items-center gap-2 rounded-(--radius-field) border border-black/[0.06] bg-[var(--brand-wash)]/50 px-3 py-2.5">
                 <ShieldCheck className="size-4 text-primary" />
