@@ -66,8 +66,12 @@ export async function sendStaffPush(
   expoPushTokens: Array<string | null | undefined>,
   payload: StaffPushPayload
 ): Promise<void> {
-  const tokens = expoPushTokens.filter(
-    (token): token is string => !!token && token.startsWith("ExponentPushToken")
+  const tokens = Array.from(
+    new Set(
+      expoPushTokens.filter(
+        (token): token is string => !!token && token.startsWith("ExponentPushToken")
+      )
+    )
   );
   if (tokens.length === 0) {
     return;

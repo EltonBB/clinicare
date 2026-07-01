@@ -74,7 +74,6 @@ export function EditClientForm({ client }: EditClientFormProps) {
         dateOfBirth: String(formData.get("dateOfBirth") ?? ""),
         address: String(formData.get("address") ?? ""),
         patientType,
-        clinicType: String(formData.get("clinicType") ?? ""),
         status,
         notes: String(formData.get("notes") ?? ""),
         medicalHistory: String(formData.get("medicalHistory") ?? ""),
@@ -83,8 +82,13 @@ export function EditClientForm({ client }: EditClientFormProps) {
         previousTreatments: String(formData.get("previousTreatments") ?? ""),
         treatmentPlan: String(formData.get("treatmentPlan") ?? ""),
         preferredChannel,
-        assignedStaff: String(formData.get("assignedStaff") ?? ""),
-        tags: String(formData.get("tags") ?? ""),
+        // Not shown on the record and vestigial (clinic-type-per-patient is a
+        // wrong concept, assigned-staff was free text). Clear them rather than
+        // persist the view model's fabricated display default ("Clinic"). Tags
+        // mirror the patient type.
+        clinicType: "",
+        assignedStaff: "",
+        tags: patientType,
       });
 
       if (!result.ok || !result.client) {
@@ -136,20 +140,12 @@ export function EditClientForm({ client }: EditClientFormProps) {
             options={["active", "inactive", "at-risk", "archived"]}
             onChange={(value) => setStatus(value as ClientStatus)}
           />
-        </div>
-      </WorkspaceFormSection>
-
-      <WorkspaceFormSection title="Clinic information">
-        <div className="grid gap-3.5 sm:grid-cols-2">
-          <Field name="clinicType" label="Clinic type" defaultValue={clean(client.clinicType)} />
           <SelectField
             label="Preferred contact method"
             value={preferredChannel}
             options={["WhatsApp", "Phone Call", "Email"]}
             onChange={setPreferredChannel}
           />
-          <Field name="assignedStaff" label="Assigned doctor / staff member" defaultValue={client.details.assignedStaff} />
-          <Field name="tags" label="Patient type / tags" defaultValue={client.details.tags.join(", ")} className="sm:col-span-2" />
           <TextField name="notes" label="Patient notes" defaultValue={client.notes === "No notes yet." ? "" : client.notes} className="sm:col-span-2" />
         </div>
       </WorkspaceFormSection>
