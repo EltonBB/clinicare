@@ -11,6 +11,7 @@ import {
   saveAppointmentAction,
 } from "@/app/(workspace)/calendar/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { ConfirmDeleteDialog } from "@/components/clients/record-form-dialog";
 import { ClientCombobox } from "@/components/calendar/client-combobox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -103,6 +104,7 @@ export function NewAppointmentForm({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
+  const [confirmingAction, setConfirmingAction] = useState<"cancel" | "delete" | null>(null);
   const [clientId, setClientId] = useState(
     initialAppointment?.clientId ?? initialClientId ?? clients[0]?.id ?? ""
   );
@@ -186,6 +188,7 @@ export function NewAppointmentForm({
       const result = await cancelAppointmentAction(initialAppointment.id);
 
       if (!result.ok) {
+        setConfirmingAction(null);
         setError(result.error ?? "We couldn't cancel this booking.");
         return;
       }
@@ -195,7 +198,7 @@ export function NewAppointmentForm({
   }
 
   function deleteAppointment() {
-    if (!initialAppointment || !window.confirm("Delete this booking permanently?")) {
+    if (!initialAppointment) {
       return;
     }
 
@@ -204,6 +207,7 @@ export function NewAppointmentForm({
       const result = await deleteAppointmentAction(initialAppointment.id);
 
       if (!result.ok) {
+        setConfirmingAction(null);
         setError(result.error ?? "We couldn't delete this booking.");
         return;
       }
@@ -350,7 +354,7 @@ export function NewAppointmentForm({
               type="button"
               variant="destructive"
               className="rounded-(--radius-card)"
-              onClick={cancelAppointment}
+              onClick={() => setConfirmingAction("cancel")}
               disabled={isPending || status === "cancelled"}
             >
               <XCircle className="size-4" />
@@ -360,7 +364,7 @@ export function NewAppointmentForm({
               type="button"
               variant="outline"
               className="rounded-(--radius-card) border-destructive/25 bg-white text-destructive hover:bg-destructive/5 hover:text-destructive"
-              onClick={deleteAppointment}
+              onClick={() => setConfirmingAction("delete")}
               disabled={isPending}
             >
               <Trash2 className="size-4" />
@@ -384,6 +388,20 @@ export function NewAppointmentForm({
         </Button>
         </div>
       </div>
+
+      <ConfirmDeleteDialog
+        open={confirmingAction !== null}
+        onOpenChange={(open) => setConfirmingAction(open ? confirmingAction : null)}
+        title={confirmingAction === "cancel" ? "Cancel this booking?" : "Delete this booking?"}
+        description={
+          confirmingAction === "cancel"
+            ? "The client will need to be rebooked. This can't be undone."
+            : "This permanently removes the booking record. This can't be undone."
+        }
+        confirmLabel={confirmingAction === "cancel" ? "Cancel booking" : "Delete"}
+        isPending={isPending}
+        onConfirm={confirmingAction === "cancel" ? cancelAppointment : deleteAppointment}
+      />
     </form>
   );
 }

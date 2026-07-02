@@ -13,8 +13,16 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 // Process a few tenants at a time: enough to finish the batch in time, bounded
-// so concurrent AI calls don't spike spend or hit provider rate limits.
-const ANALYTICS_CONCURRENCY = 3;
+// so concurrent AI calls don't spike spend or hit provider rate limits. Each
+// business itself fans out 3 concurrent OpenAI calls (daily/weekly/monthly —
+// see generateAnalyticsSnapshotsForBusiness), so real peak concurrent OpenAI
+// calls is ANALYTICS_CONCURRENCY * 3 (15 at this setting), not this number —
+// size provider rate limits against that, not against this constant directly.
+// At ~50s/business worst case, this many Pro tenants theoretically don't all
+// fit in one 300s run — the oldest-first ordering below makes that self-healing
+// (whichever tenants miss this run sort first next time) instead of silently
+// leaving the same tenants stale forever.
+const ANALYTICS_CONCURRENCY = 5;
 
 export async function GET(request: Request) {
   if (!isAuthorizedCronRequest(request)) {
@@ -34,8 +42,27 @@ export async function GET(request: Request) {
     isProBusinessPlan(business.plan)
   );
 
+  // Stalest-first: if a run can't reach every tenant before maxDuration, the
+  // businesses most overdue for a fresh snapshot go first — and any tenant
+  // that misses this run has an even older generatedAt next time, so it can't
+  // be perpetually starved by always landing at the back of a fixed order.
+  const staleness = await prisma.analyticsSnapshot.groupBy({
+    by: ["businessId"],
+    where: { businessId: { in: proBusinesses.map((business) => business.id) } },
+    _max: { generatedAt: true },
+  });
+  const lastGeneratedAt = new Map(
+    staleness.map((row) => [row.businessId, row._max.generatedAt])
+  );
+  const orderedBusinesses = [...proBusinesses].sort((a, b) => {
+    // Never generated sorts first (treated as maximally stale).
+    const aTime = lastGeneratedAt.get(a.id)?.getTime() ?? 0;
+    const bTime = lastGeneratedAt.get(b.id)?.getTime() ?? 0;
+    return aTime - bTime;
+  });
+
   const results = await mapWithConcurrency(
-    proBusinesses,
+    orderedBusinesses,
     ANALYTICS_CONCURRENCY,
     async (business) => {
       try {

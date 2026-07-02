@@ -35,10 +35,18 @@ export async function getAdminThread(
   if (!thread) {
     return { threadId: "", messages: [] };
   }
-  const messages = await prisma.staffThreadMessage.findMany({
+  // Mirror of the take:100 cap in lib/mobile/inbox.ts's getConversation — same
+  // table, same unbounded growth (system messages on every cancellation), just
+  // the admin-side viewer instead of the staff one. Query desc for the cap,
+  // then re-sort ascending for display (same pattern as serializeConversation).
+  const recentMessages = await prisma.staffThreadMessage.findMany({
     where: { threadId: thread.id },
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: "desc" },
+    take: 100,
   });
+  const messages = [...recentMessages].sort(
+    (a, b) => a.createdAt.getTime() - b.createdAt.getTime()
+  );
   const now = new Date();
 
   return {

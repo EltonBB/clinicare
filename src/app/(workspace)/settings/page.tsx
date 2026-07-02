@@ -29,6 +29,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     typeof user.user_metadata?.owner_phone === "string"
       ? user.user_metadata.owner_phone
       : "";
+  const requestedSection = Array.isArray(params.section) ? params.section[0] : params.section;
 
   return (
     <SettingsWorkspace
@@ -36,6 +37,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       ownerName={ownerName}
       ownerEmail={user.email ?? ""}
       ownerPhone={ownerPhone}
+      // Server-rendered from the start (e.g. checkout's ?section=billing deep
+      // link) so there's no client-side section swap/flash after hydration.
+      initialSection={requestedSection}
       flashMessage={
         params.email_updated === "1"
           ? "Your email address was confirmed and updated."

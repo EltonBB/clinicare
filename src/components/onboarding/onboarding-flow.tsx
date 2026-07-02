@@ -43,7 +43,11 @@ import {
   type WeekdayKey,
 } from "@/lib/onboarding";
 import { isStorageReference } from "@/lib/media-storage";
-import { createSignedImageUrl, uploadWorkspaceImage } from "@/lib/media-storage-client";
+import {
+  createSignedImageUrl,
+  safeUploadErrorMessage,
+  uploadWorkspaceImage,
+} from "@/lib/media-storage-client";
 import { cn, getInitials } from "@/lib/utils";
 
 const weekdayLabels: Record<WeekdayKey, string> = {
@@ -390,7 +394,7 @@ export function OnboardingFlow({
       setLogoPreviewUrl(uploadedLogo.signedUrl);
       setErrorMessage("");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "We couldn't upload this logo.");
+      setErrorMessage(safeUploadErrorMessage(error, "We couldn't upload this logo."));
     } finally {
       setIsLogoUploading(false);
     }

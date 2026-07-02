@@ -25,6 +25,33 @@ const extensionByDocumentMimeType: Record<string, string> = {
 
 const allowedDocumentTypes = new Set(Object.keys(extensionByDocumentMimeType));
 
+// Every message this module's upload/signing functions throw, below — kept in
+// sync with those `throw new Error(...)` call sites deliberately, so callers
+// can safely surface a caught error's message without ever risking a raw
+// provider/network error (thrown by something other than this file, e.g. a
+// Supabase SDK-level failure) reaching the UI verbatim.
+const SAFE_UPLOAD_ERROR_MESSAGES = new Set([
+  "Upload a JPG, PNG, WebP, or GIF image.",
+  "This image is too large.",
+  "Your session expired. Log in again to upload images.",
+  "We couldn't upload this image. Try again.",
+  "We couldn't prepare this image for preview. Try again.",
+  "We couldn't load this image. Try again.",
+  "Upload a PDF, JPG, PNG, WebP, or GIF file.",
+  "This file is too large.",
+  "Your session expired. Log in again to upload files.",
+  "We couldn't upload this file. Try again.",
+  "We couldn't prepare this file for preview. Try again.",
+]);
+
+/** A caught error's message if (and only if) it's one this module threw; otherwise `fallback`. */
+export function safeUploadErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && SAFE_UPLOAD_ERROR_MESSAGES.has(error.message)) {
+    return error.message;
+  }
+  return fallback;
+}
+
 export type UploadWorkspaceImageOptions = {
   folder: WorkspaceImageFolder;
   maxBytes: number;

@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { ConfirmDeleteDialog } from "@/components/clients/record-form-dialog";
 import { Input } from "@/components/ui/input";
 import {
   FilterChip,
@@ -95,6 +96,7 @@ export function InboxWorkspace({
   const [filter, setFilter] = useState<InboxFilter>("all");
   const [draftMessage, setDraftMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [convertDialogOpen, setConvertDialogOpen] = useState(false);
   const [convertName, setConvertName] = useState("");
   const [convertEmail, setConvertEmail] = useState("");
@@ -245,14 +247,11 @@ export function InboxWorkspace({
   }
 
   function deleteConversation(conversationId: string) {
-    if (!window.confirm("Delete this conversation permanently?")) {
-      return;
-    }
-
     startTransition(async () => {
       const result = await deleteConversationAction(conversationId);
 
       if (!result.ok) {
+        setConfirmingDeleteId(null);
         setErrorMessage(result.error ?? "We couldn't delete the conversation.");
         return;
       }
@@ -264,6 +263,7 @@ export function InboxWorkspace({
         setSelectedConversationId(nextConversations[0]?.id ?? "");
         return nextConversations;
       });
+      setConfirmingDeleteId(null);
       setDraftMessage("");
       setErrorMessage("");
     });
@@ -352,6 +352,17 @@ export function InboxWorkspace({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDeleteDialog
+        open={confirmingDeleteId !== null}
+        onOpenChange={(open) => setConfirmingDeleteId(open ? confirmingDeleteId : null)}
+        title="Delete this conversation?"
+        description="This permanently removes the message history for this conversation. This can't be undone."
+        isPending={isPending}
+        onConfirm={() => {
+          if (confirmingDeleteId) deleteConversation(confirmingDeleteId);
+        }}
+      />
 
       <WorkspacePage size="wide">
         <WorkspaceHeader
@@ -519,7 +530,7 @@ export function InboxWorkspace({
                         variant="outline"
                         size="sm"
                         className="size-9 rounded-(--radius-card) border-border/80 bg-white px-0 text-muted-foreground hover:border-destructive/30 hover:bg-destructive/5 hover:text-destructive"
-                        onClick={() => deleteConversation(activeConversation.id)}
+                        onClick={() => setConfirmingDeleteId(activeConversation.id)}
                         disabled={isPending}
                         aria-label="Delete conversation"
                         title="Delete conversation"

@@ -8,8 +8,8 @@ import { getZonedDayWindow, getZonedWeekWindow } from "@/lib/time-zone";
 /**
  * Load the `/me` view model for a device's staff member. Used by both the redeem
  * and `/me` endpoints. Bounded query — this week's time entries (plus any still
- * open) and today's shifts only, which is all the directory record needs to
- * derive `isCheckedIn` and `shiftLabel`.
+ * open) and shifts still active from today onward (bounded to 8), which is all
+ * the directory record needs to derive `isCheckedIn`, `shiftLabel`, and `canClock`.
  */
 export async function loadMobileMe(device: StaffDevice): Promise<MobileDoctor | null> {
   const week = getZonedWeekWindow();
@@ -24,8 +24,13 @@ export async function loadMobileMe(device: StaffDevice): Promise<MobileDoctor | 
           select: { checkedInAt: true, checkedOutAt: true },
         },
         shifts: {
-          where: { startsAt: { gte: day.start, lt: day.end } },
+          // endsAt (not a startsAt window) so an overnight shift that started
+          // yesterday but hasn't ended yet still shows canClock correctly,
+          // consistent with the clockStaff enforcement query.
+          where: { endsAt: { gte: day.start } },
           select: { id: true, startsAt: true, endsAt: true, status: true },
+          orderBy: { startsAt: "asc" },
+          take: 8,
         },
       },
     }),

@@ -50,6 +50,12 @@ export function WorkspaceToaster() {
   }, []);
 
   const poll = useCallback(async () => {
+    // A backgrounded/hidden tab has no toasts to show — skip the two server
+    // action calls entirely (matches the app-shell notifications poll).
+    if (document.visibilityState !== "visible") {
+      return;
+    }
+
     try {
       const recent = await getRecentStaffCheckInsAction();
       if (seenCheckins.current === null) {

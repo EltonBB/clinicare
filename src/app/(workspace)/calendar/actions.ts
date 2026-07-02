@@ -1,10 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-
 import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import {
+  cancelAppointmentCore,
+  deleteAppointmentCore,
   refreshClientLastVisitAt,
   revalidateCalendarSurfaces,
 } from "@/lib/appointments-shared";
@@ -48,21 +48,6 @@ export type DeleteAppointmentResult = {
   ok: boolean;
   error?: string;
   appointmentId?: string;
-};
-
-export type SaveScheduleBlockPayload = {
-  id?: string;
-  title: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  notes?: string;
-};
-
-export type SaveScheduleBlockResult = {
-  ok: boolean;
-  error?: string;
-  blockId?: string;
 };
 
 function getAuthedBusiness() {
@@ -374,46 +359,23 @@ export async function cancelAppointmentAction(
   }
 
   const business = context.business;
-  const existing = await prisma.appointment.findFirst({
-    where: {
-      id: appointmentId,
-      businessId: business.id,
-    },
-    select: {
-      id: true,
-      clientId: true,
-      staffMemberId: true,
-    },
-  });
+  const outcome = await cancelAppointmentCore({ id: appointmentId, businessId: business.id });
 
-  if (!existing) {
+  if (!outcome.ok) {
     return {
       ok: false,
-      error: "Appointment not found in this clinic workspace.",
+      error:
+        outcome.status === 404
+          ? "Appointment not found in this clinic workspace."
+          : outcome.error,
     };
   }
 
-  await prisma.appointment.update({
-    where: {
-      id: appointmentId,
-    },
-    data: {
-      status: "CANCELLED",
-    },
-  });
-  // Clear any pending reminder rows so a later re-confirm starts clean.
-  await prisma.appointmentReminder.deleteMany({
-    where: {
-      appointmentId,
-    },
-  });
-  await refreshClientLastVisitAt(existing.clientId, business.id);
-
-  revalidateCalendarSurfaces([existing.clientId], [existing.staffMemberId]);
+  revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId]);
 
   return {
     ok: true,
-    appointmentId,
+    appointmentId: outcome.appointmentId,
   };
 }
 
@@ -430,155 +392,23 @@ export async function deleteAppointmentAction(
   }
 
   const business = context.business;
-  const existing = await prisma.appointment.findFirst({
-    where: {
-      id: appointmentId,
-      businessId: business.id,
-    },
-    select: {
-      id: true,
-      clientId: true,
-      staffMemberId: true,
-    },
-  });
+  const outcome = await deleteAppointmentCore({ id: appointmentId, businessId: business.id });
 
-  if (!existing) {
+  if (!outcome.ok) {
     return {
       ok: false,
-      error: "Appointment not found in this clinic workspace.",
+      error:
+        outcome.status === 404
+          ? "Appointment not found in this clinic workspace."
+          : outcome.error,
     };
   }
 
-  await prisma.appointment.delete({
-    where: {
-      id: appointmentId,
-    },
-  });
-  await refreshClientLastVisitAt(existing.clientId, business.id);
-
-  revalidateCalendarSurfaces([existing.clientId], [existing.staffMemberId]);
+  revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId]);
 
   return {
     ok: true,
-    appointmentId,
+    appointmentId: outcome.appointmentId,
   };
 }
 
-export async function saveScheduleBlockAction(
-  payload: SaveScheduleBlockPayload
-): Promise<SaveScheduleBlockResult> {
-  const context = await getAuthedBusiness();
-
-  if ("error" in context) {
-    return {
-      ok: false,
-      error: context.error,
-    };
-  }
-
-  const business = context.business;
-  const startAt = parseDateTime(payload.date, payload.startTime);
-  const endAt = parseDateTime(payload.date, payload.endTime);
-  const title = payload.title.trim();
-
-  if (!title || !startAt || !endAt || endAt <= startAt) {
-    return {
-      ok: false,
-      error: "Add a block title and valid start/end time.",
-    };
-  }
-
-  const data = {
-    title,
-    startsAt: startAt,
-    endsAt: endAt,
-    reason: payload.notes?.trim() || null,
-  };
-
-  let blockId = payload.id;
-  if (payload.id) {
-    const existing = await prisma.scheduleBlock.findFirst({
-      where: {
-        id: payload.id,
-        businessId: business.id,
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    if (!existing) {
-      return {
-        ok: false,
-        error: "Schedule block not found in this clinic workspace.",
-      };
-    }
-
-    await prisma.scheduleBlock.update({
-      where: {
-        id: payload.id,
-      },
-      data,
-    });
-  } else {
-    const block = await prisma.scheduleBlock.create({
-        data: {
-          businessId: business.id,
-          ...data,
-        },
-      });
-    blockId = block.id;
-  }
-
-  revalidatePath("/calendar");
-  revalidatePath("/dashboard");
-
-  return {
-    ok: true,
-    blockId,
-  };
-}
-
-export async function deleteScheduleBlockAction(
-  blockId: string
-): Promise<SaveScheduleBlockResult> {
-  const context = await getAuthedBusiness();
-
-  if ("error" in context) {
-    return {
-      ok: false,
-      error: context.error,
-    };
-  }
-
-  const existing = await prisma.scheduleBlock.findFirst({
-    where: {
-      id: blockId,
-      businessId: context.business.id,
-    },
-    select: {
-      id: true,
-    },
-  });
-
-  if (!existing) {
-    return {
-      ok: false,
-      error: "Schedule block not found in this clinic workspace.",
-    };
-  }
-
-  await prisma.scheduleBlock.delete({
-    where: {
-      id: blockId,
-    },
-  });
-
-  revalidatePath("/calendar");
-  revalidatePath("/dashboard");
-
-  return {
-    ok: true,
-    blockId,
-  };
-}

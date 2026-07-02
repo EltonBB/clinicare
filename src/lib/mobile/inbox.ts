@@ -202,7 +202,11 @@ export async function getConversation(
   }
   const full = await prisma.staffThread.findUnique({
     where: { id: thread.id },
-    include: { messages: { orderBy: { createdAt: "asc" } } },
+    // The thread grows monotonically forever (system messages on every
+    // cancellation, etc.) with no natural cap — take the most recent 100 by
+    // querying desc; serializeConversation already re-sorts into chronological
+    // order internally, so feeding it a desc-ordered batch is safe.
+    include: { messages: { orderBy: { createdAt: "desc" }, take: 100 } },
   });
   return full ? serializeConversation(full) : null;
 }

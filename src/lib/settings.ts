@@ -13,6 +13,7 @@ import {
   weekdayOrder,
 } from "@/lib/onboarding";
 import { planDisplayName, planStatusLabel } from "@/lib/billing";
+import { proAddedFeatures } from "@/lib/public-plans";
 import {
   defaultBrandAccent,
   normalizeBrandHexColor,
@@ -119,10 +120,10 @@ function buildBillingSummary(business: Business): SettingsState["billing"] {
         : "Pro unlocks full reports. Contact support to upgrade.",
     ctaLabel: planName === "Pro" ? "Manage plan" : "Unlock Pro",
     checkoutHref: "/checkout?plan=pro",
-    lockedFeatures:
-      planName === "Pro"
-        ? ["Reports", "Premium workflow surfaces", "Future automation tools"]
-        : ["Reports", "Premium workflow surfaces", "Future automation tools"],
+    // Same Pro-exclusive bullets either way — only the section heading framing
+    // differs ("Included in your plan" vs "Unlock with Pro"). Sourced from
+    // publicPlans so this can never drift from /pricing or the checkout summary.
+    lockedFeatures: proAddedFeatures,
   };
 }
 

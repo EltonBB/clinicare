@@ -218,8 +218,11 @@ export async function syncAppointmentRemindersForBusiness(
             },
           },
           update: {
+            // Never touch unreadCount here — this is an outbound reminder, not
+            // a read receipt; resetting it would silently clear real unread
+            // patient replies (see messaging/inbound.ts for the read-vs-write
+            // split this mirrors).
             contactName: appointment.client.name,
-            unreadCount: 0,
           },
           create: {
             businessId,

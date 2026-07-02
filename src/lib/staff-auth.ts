@@ -4,6 +4,7 @@ import type { Business, StaffDevice, StaffMember } from "@prisma/client";
 
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 
 /**
  * Mobile-staff authentication seam — the device-token twin of
@@ -21,8 +22,18 @@ import { prisma } from "@/lib/prisma";
  * `node:crypto` primitives, mirroring `src/lib/cron-auth.ts`.
  */
 
-/** Device session lifetime. Bumped on activity; absolute cap re-checked each request. */
+/** Device session idle lifetime — slides forward on activity, capped by DEVICE_ABSOLUTE_TTL_MS. */
 export const DEVICE_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+/**
+ * Absolute device session lifetime from enrollment, regardless of activity —
+ * without this, a device used at least once every 30 days would slide forever
+ * and never require re-enrollment even if it were lost/stolen and later used
+ * once. Forces periodic re-enrollment via a fresh admin-issued code.
+ */
+export const DEVICE_ABSOLUTE_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+/** Only bump lastSeenAt/expiresAt when the session is at least this stale — a
+ *  DB write on literally every request (polling included) is unnecessary. */
+const SESSION_REFRESH_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
 /** Enrollment code lifetime — short, single-use. */
 export const ACCESS_CODE_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours
 /** Wrong-state redemption attempts on one code before it locks. */
@@ -114,6 +125,19 @@ export function bearerToken(request: Request): string | null {
 export async function requireStaffContext(
   request: Request
 ): Promise<StaffContext | StaffAuthError> {
+  // Pre-auth, IP-scoped — an invalid/garbage bearer token must not get an
+  // unbounded number of DB lookups. This sits IN FRONT OF the per-device,
+  // per-endpoint limits below (20-90/min each), so it must clear their sum,
+  // not just one of them: several devices sharing a clinic's NAT/WiFi, each
+  // hitting a few endpoints on a foreground refetch, land well into the
+  // hundreds/min in normal use. Sized to still bound genuine abuse (nowhere
+  // near "unbounded") without throttling legitimate multi-device bursts.
+  const ip = clientIpFromHeaders(request.headers);
+  const throttled = await checkRateLimit(`mobile-auth:${ip}`, { limit: 600, windowMs: 60_000 });
+  if (!throttled.allowed) {
+    return { error: "Too many requests. Please slow down for a moment.", status: 429 };
+  }
+
   const raw = bearerToken(request);
   if (!raw) {
     return { error: "Unauthorized.", status: 401 };
@@ -129,6 +153,7 @@ export async function requireStaffContext(
     device &&
     device.revokedAt === null &&
     device.expiresAt > now &&
+    now.getTime() - device.createdAt.getTime() <= DEVICE_ABSOLUTE_TTL_MS &&
     device.staffMember.isActive &&
     device.staffMember.status !== "INACTIVE";
 
@@ -136,17 +161,20 @@ export async function requireStaffContext(
     return { error: "Unauthorized.", status: 401 };
   }
 
-  // Slide the session forward on activity. Best-effort: a write fault must not
-  // fail an otherwise-valid read.
-  try {
-    await prisma.staffDevice.update({
-      where: { id: device.id },
-      data: { lastSeenAt: now, expiresAt: new Date(now.getTime() + DEVICE_TOKEN_TTL_MS) },
-    });
-  } catch (error) {
-    logger.error("Failed to refresh staff device session.", error, {
-      deviceId: device.id,
-    });
+  // Slide the session forward on activity, but only when it's meaningfully
+  // stale — every request (polling included) writing to the DB is wasteful.
+  // Best-effort: a write fault must not fail an otherwise-valid read.
+  if (now.getTime() - device.lastSeenAt.getTime() > SESSION_REFRESH_THRESHOLD_MS) {
+    try {
+      await prisma.staffDevice.update({
+        where: { id: device.id },
+        data: { lastSeenAt: now, expiresAt: new Date(now.getTime() + DEVICE_TOKEN_TTL_MS) },
+      });
+    } catch (error) {
+      logger.error("Failed to refresh staff device session.", error, {
+        deviceId: device.id,
+      });
+    }
   }
 
   // TODO(audit): record this mobile access (staffMemberId + accessed record id +

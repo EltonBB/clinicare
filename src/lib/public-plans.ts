@@ -54,6 +54,19 @@ export const publicPlans: PublicPlan[] = [
   },
 ];
 
+/**
+ * Pro's feature list minus the "Everything in Basic" connector line — the
+ * actual net-new capabilities Pro adds. Single source of truth for any
+ * customer-facing copy that lists what upgrading unlocks (the Settings
+ * billing card, the Reports lock screen), so they can't drift from /pricing
+ * or from each other.
+ */
+export const proAddedFeatures = publicPlans
+  .find((plan) => plan.key === "pro")!
+  .features.filter((feature) => feature !== "Everything in Basic");
+
+export const basicFeatures = publicPlans.find((plan) => plan.key === "basic")!.features;
+
 export function getPublicPlan(plan?: string | string[]) {
   const value = Array.isArray(plan) ? plan[0] : plan;
   return publicPlans.find((item) => item.key === value) ?? publicPlans[1];
@@ -151,7 +164,7 @@ export function resolveCheckoutPlanState({
       summaryTitle: "Reactivation",
       primaryActionLabel: `Reactivate on ${selectedPlan.name}`,
       secondaryActionLabel: "Back to settings",
-      secondaryActionHref: "/settings#billing",
+      secondaryActionHref: "/settings?section=billing",
     };
   }
 
@@ -170,7 +183,7 @@ export function resolveCheckoutPlanState({
       summaryTitle: "Current subscription",
       primaryActionLabel: "Manage current plan",
       secondaryActionLabel: "Back to settings",
-      secondaryActionHref: "/settings#billing",
+      secondaryActionHref: "/settings?section=billing",
     };
   }
 
@@ -189,7 +202,7 @@ export function resolveCheckoutPlanState({
       summaryTitle: "Plan upgrade",
       primaryActionLabel: `Upgrade to ${selectedPlan.name}`,
       secondaryActionLabel: "Back to settings",
-      secondaryActionHref: "/settings#billing",
+      secondaryActionHref: "/settings?section=billing",
     };
   }
 
@@ -207,7 +220,7 @@ export function resolveCheckoutPlanState({
     summaryTitle: "Plan downgrade",
     primaryActionLabel: `Downgrade to ${selectedPlan.name}`,
     secondaryActionLabel: "Back to settings",
-    secondaryActionHref: "/settings#billing",
+    secondaryActionHref: "/settings?section=billing",
   };
 }
 

@@ -47,7 +47,23 @@ const importantOptionalEnv: Record<string, string> = {
   BAILEYS_WORKER_URL: "WhatsApp sending and QR pairing are unavailable",
   BAILEYS_BRIDGE_SECRET:
     "WhatsApp worker requests can't be authenticated, so messaging is unavailable",
+  SENTRY_DSN: "server-side error monitoring is silently disabled",
+  NEXT_PUBLIC_SENTRY_DSN: "client-side error monitoring is silently disabled",
+  EXPO_ACCESS_TOKEN:
+    "staff push notifications send unauthenticated (fine until Expo enforces enhanced push security on this account)",
 };
+
+// Rate limiting (login/signup/mobile-redeem throttles, etc. — see lib/rate-limit.ts)
+// silently degrades to a per-serverless-instance in-memory counter without these,
+// which is close to no protection at all under Vercel's multi-instance model.
+// Warned separately (not folded into importantOptionalEnv) because either var
+// alone is enough to configure Upstash — only warn when BOTH naming schemes are
+// fully absent.
+function hasRedisConfig() {
+  const url = process.env.KV_REST_API_URL?.trim() || process.env.UPSTASH_REDIS_REST_URL?.trim();
+  const token = process.env.KV_REST_API_TOKEN?.trim() || process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+  return !!url && !!token;
+}
 
 /**
  * Validate server environment once at startup (see instrumentation.ts). Hard
@@ -73,6 +89,16 @@ export function validateServerEnv() {
     );
   }
 
+  // In production the pg pool forces rejectUnauthorized:true with no fallback
+  // CA (lib/prisma.ts) — without DATABASE_SSL_CA every query fails closed with
+  // a P1011 TLS error. That's a total outage, not a degraded feature, so this
+  // fails the boot loudly instead of letting every request discover it later.
+  if (process.env.NODE_ENV === "production" && !process.env.DATABASE_SSL_CA?.trim()) {
+    errors.push(
+      "DATABASE_SSL_CA is required in production — without it every database query fails (P1011 self-signed cert error)"
+    );
+  }
+
   if (errors.length > 0) {
     throw new Error(`Invalid server environment:\n - ${errors.join("\n - ")}`);
   }
@@ -81,6 +107,15 @@ export function validateServerEnv() {
     if (!process.env[name]?.trim()) {
       logger.warn(`Environment variable ${name} is not set — ${impact}.`);
     }
+  }
+
+  if (process.env.NODE_ENV === "production" && !hasRedisConfig()) {
+    logger.warn(
+      "Upstash Redis is not configured (KV_REST_API_URL/TOKEN or UPSTASH_REDIS_REST_URL/TOKEN) — " +
+        "rate limiting (login, signup, mobile code redemption, search) falls back to per-instance " +
+        "in-memory counters, which is close to no protection at all across Vercel's multiple " +
+        "serverless instances."
+    );
   }
 
   // Connection-pooling guard (warn only). On serverless each function instance

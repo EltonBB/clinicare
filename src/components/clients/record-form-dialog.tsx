@@ -226,7 +226,7 @@ export function ConfirmDeleteDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm p-5">
         <DialogHeader className="gap-2">
-          <span className="flex size-9 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+          <span className="flex size-9 items-center justify-center rounded-(--radius-tile) bg-destructive/10 text-destructive">
             <TriangleAlert className="size-4" />
           </span>
           <DialogTitle className="text-base font-semibold text-foreground">

@@ -26,12 +26,6 @@ export type SaveClientResult = {
   client?: ClientRecord;
 };
 
-export type ArchiveClientResult = {
-  ok: boolean;
-  error?: string;
-  clientId?: string;
-};
-
 export type DeleteClientResult = {
   ok: boolean;
   error?: string;
@@ -1069,54 +1063,6 @@ export async function addClientFollowUpReminderAction(
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
-export async function archiveClientAction(clientId: string): Promise<ArchiveClientResult> {
-  const context = await getAuthedBusiness();
-
-  if ("error" in context) {
-    return {
-      ok: false,
-      error: context.error,
-    };
-  }
-
-  const business = context.business;
-
-  const existing = await prisma.client.findFirst({
-    where: {
-      id: clientId,
-      businessId: business.id,
-    },
-    select: {
-      id: true,
-    },
-  });
-
-  if (!existing) {
-    return {
-      ok: false,
-      error: "Client not found in this clinic workspace.",
-    };
-  }
-
-  await prisma.client.update({
-    where: {
-      id: clientId,
-    },
-    data: {
-      isArchived: true,
-      status: "ARCHIVED",
-    },
-  });
-
-  revalidateClientDirectory();
-  revalidateClientDetail(clientId);
-
-  return {
-    ok: true,
-    clientId,
-  };
-}
-
 export async function deleteClientAction(clientId: string): Promise<DeleteClientResult> {
   const context = await getAuthedBusiness();
 
@@ -1141,6 +1087,12 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
           imageUrl: true,
         },
       },
+      documents: {
+        select: {
+          storageUrl: true,
+          fileUrl: true,
+        },
+      },
     },
   });
 
@@ -1157,7 +1109,14 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
     },
   });
 
-  await deleteStorageReferences(existing.galleryItems.map((item) => item.imageUrl));
+  // Deleting the client cascades the DB rows, but the actual files in storage
+  // don't clean themselves up — without this, patient documents (the most
+  // PHI-laden objects in the system) would sit in the private bucket forever
+  // with no surviving reference to find and remove them later.
+  await deleteStorageReferences([
+    ...existing.galleryItems.map((item) => item.imageUrl),
+    ...existing.documents.map((document) => document.storageUrl ?? document.fileUrl),
+  ]);
 
   revalidateClientDirectory();
 

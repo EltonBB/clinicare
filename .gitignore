@@ -57,3 +57,7 @@ next-env.d.ts
 
 # One-off local QA/seed helpers (machine-specific paths, write to the live DB — keep local)
 /scripts/tmp-*
+/tmp-*
+
+# Ad-hoc on-device QA screenshots (may capture seeded demo data — keep local)
+/vela-staff-*.png

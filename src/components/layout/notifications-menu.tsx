@@ -31,7 +31,7 @@ export function NotificationsMenu({
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label="Open notifications"
-        className="relative inline-flex size-9 items-center justify-center rounded-full border border-transparent text-muted-foreground transition-[background-color,border-color,color,transform] duration-(--duration-base) hover:border-border/70 hover:bg-[#f7f9fc] hover:text-foreground active:scale-[0.97] active:bg-[#eef2f8]"
+        className="relative inline-flex size-9 items-center justify-center rounded-(--radius-tile) border border-transparent text-muted-foreground transition-[background-color,border-color,color,transform] duration-(--duration-base) hover:border-border/70 hover:bg-[#f7f9fc] hover:text-foreground active:scale-[0.97] active:bg-[#eef2f8]"
       >
         <Bell className="size-[18px]" />
         {unreadCount > 0 ? (

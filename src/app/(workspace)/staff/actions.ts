@@ -48,22 +48,6 @@ export type StaffClockResult = {
   staff?: StaffRecord;
 };
 
-export type SaveStaffShiftPayload = {
-  id?: string;
-  staffMemberId: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  status?: string;
-  notes?: string;
-};
-
-export type SaveStaffShiftResult = {
-  ok: boolean;
-  error?: string;
-  shiftId?: string;
-};
-
 function staffTimeEntryCutoff() {
   return new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
 }
@@ -411,7 +395,10 @@ export async function checkInStaffAction(staffId: string): Promise<StaffClockRes
       status: true,
       shifts: {
         where: {
-          startsAt: {
+          // endsAt (not startsAt) so an overnight shift that started yesterday
+          // but hasn't ended yet is still loaded — findActiveShiftWindow below
+          // would match it, but only if the query doesn't filter it out first.
+          endsAt: {
             gte: getZonedDayWindow().start,
           },
         },
@@ -523,141 +510,6 @@ export async function checkOutStaffAction(staffId: string): Promise<StaffClockRe
   return {
     ok: true,
     staff: await fetchStaffRecord(staffId, business.id),
-  };
-}
-
-export async function saveStaffShiftAction(
-  payload: SaveStaffShiftPayload
-): Promise<SaveStaffShiftResult> {
-  const context = await getAuthedBusiness();
-
-  if ("error" in context) {
-    return {
-      ok: false,
-      error: context.error,
-    };
-  }
-
-  const business = context.business;
-  const startAt = parseDateTime(payload.date, payload.startTime);
-  const endAt = parseDateTime(payload.date, payload.endTime);
-
-  if (!payload.staffMemberId || !startAt || !endAt || endAt <= startAt) {
-    return {
-      ok: false,
-      error: "Choose staff and a valid shift start/end time.",
-    };
-  }
-
-  const staff = await prisma.staffMember.findFirst({
-    where: {
-      id: payload.staffMemberId,
-      businessId: business.id,
-    },
-    select: {
-      id: true,
-    },
-  });
-
-  if (!staff) {
-    return {
-      ok: false,
-      error: "Staff member not found in this workspace.",
-    };
-  }
-
-  const data = {
-    staffMemberId: staff.id,
-    startsAt: startAt,
-    endsAt: endAt,
-    status: payload.status?.trim() || "Scheduled",
-    notes: payload.notes?.trim() || null,
-  };
-
-  let shiftId = payload.id;
-  if (payload.id) {
-    const existing = await prisma.staffShift.findFirst({
-      where: {
-        id: payload.id,
-        businessId: business.id,
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    if (!existing) {
-      return {
-        ok: false,
-        error: "Staff shift not found in this workspace.",
-      };
-    }
-
-    await prisma.staffShift.update({
-      where: {
-        id: payload.id,
-      },
-      data,
-    });
-  } else {
-    const shift = await prisma.staffShift.create({
-      data: {
-        businessId: business.id,
-        ...data,
-      },
-    });
-    shiftId = shift.id;
-  }
-
-  revalidateStaffSurfaces(staff.id);
-
-  return {
-    ok: true,
-    shiftId,
-  };
-}
-
-export async function deleteStaffShiftAction(
-  shiftId: string
-): Promise<SaveStaffShiftResult> {
-  const context = await getAuthedBusiness();
-
-  if ("error" in context) {
-    return {
-      ok: false,
-      error: context.error,
-    };
-  }
-
-  const existing = await prisma.staffShift.findFirst({
-    where: {
-      id: shiftId,
-      businessId: context.business.id,
-    },
-    select: {
-      id: true,
-      staffMemberId: true,
-    },
-  });
-
-  if (!existing) {
-    return {
-      ok: false,
-      error: "Staff shift not found in this workspace.",
-    };
-  }
-
-  await prisma.staffShift.delete({
-    where: {
-      id: shiftId,
-    },
-  });
-
-  revalidateStaffSurfaces(existing.staffMemberId);
-
-  return {
-    ok: true,
-    shiftId,
   };
 }
 

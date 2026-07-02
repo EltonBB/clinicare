@@ -157,6 +157,12 @@ const TOO_MANY_ATTEMPTS_MESSAGE =
 const LOGIN_RATE_LIMIT: RateLimitRule = { limit: 12, windowMs: 60_000 };
 const SIGNUP_RATE_LIMIT: RateLimitRule = { limit: 6, windowMs: 60_000 };
 const EMAIL_SEND_RATE_LIMIT: RateLimitRule = { limit: 5, windowMs: 60_000 };
+const RESET_PASSWORD_RATE_LIMIT: RateLimitRule = { limit: 8, windowMs: 60_000 };
+// Per-ACCOUNT (not IP) — this gates a signInWithPassword call that doubles as a
+// password-guessing oracle for a hijacked/borrowed session; an attacker could
+// spread guesses across IPs, but not across accounts without a valid session
+// for each one, so keying by user id is what actually bounds the guess count.
+const OWNER_REAUTH_RATE_LIMIT: RateLimitRule = { limit: 5, windowMs: 5 * 60_000 };
 
 async function isWithinRateLimit(action: string, rule: RateLimitRule) {
   const ip = clientIpFromHeaders(await headers());
@@ -188,9 +194,11 @@ export async function signUpAction(
     email: String(formData.get("email") ?? "").trim(),
     password: String(formData.get("password") ?? ""),
   };
+  // Never round-trip the password back through the RSC/action response payload.
+  const safeValues: FormValues = { email: values.email };
 
   if (!(await isWithinRateLimit("signup", SIGNUP_RATE_LIMIT))) {
-    return { error: TOO_MANY_ATTEMPTS_MESSAGE, values };
+    return { error: TOO_MANY_ATTEMPTS_MESSAGE, values: safeValues };
   }
 
   const parsed = signUpSchema.safeParse(values);
@@ -208,7 +216,7 @@ export async function signUpAction(
     return {
       error: "Check the highlighted fields and try again.",
       fieldErrors,
-      values,
+      values: safeValues,
     };
   }
 
@@ -231,7 +239,7 @@ export async function signUpAction(
       error: isEmailRateLimited(error)
         ? EMAIL_RATE_LIMIT_MESSAGE
         : "We couldn't create the account. Check the details and try again.",
-      values,
+      values: safeValues,
     };
   }
 
@@ -251,9 +259,12 @@ export async function loginAction(
     password: String(formData.get("password") ?? ""),
     next: String(formData.get("next") ?? ""),
   };
+  // Never round-trip the password back through the RSC/action response
+  // payload — only email/next are safe (and useful) to restore on error.
+  const safeValues: FormValues = { email: values.email, next: values.next };
 
   if (!(await isWithinRateLimit("login", LOGIN_RATE_LIMIT))) {
-    return { error: TOO_MANY_ATTEMPTS_MESSAGE, values };
+    return { error: TOO_MANY_ATTEMPTS_MESSAGE, values: safeValues };
   }
 
   const parsed = loginSchema.safeParse(values);
@@ -271,7 +282,7 @@ export async function loginAction(
     return {
       error: "Enter a valid email and password.",
       fieldErrors,
-      values,
+      values: safeValues,
     };
   }
 
@@ -284,7 +295,7 @@ export async function loginAction(
   if (error) {
     return {
       error: "We couldn't log you in with those credentials.",
-      values,
+      values: safeValues,
     };
   }
 
@@ -417,6 +428,11 @@ export async function resetPasswordAction(
     password: String(formData.get("password") ?? ""),
     confirmPassword: String(formData.get("confirmPassword") ?? ""),
   };
+  // Nothing here is safe (or useful) to echo back — both fields are passwords.
+
+  if (!(await isWithinRateLimit("reset-password", RESET_PASSWORD_RATE_LIMIT))) {
+    return { error: TOO_MANY_ATTEMPTS_MESSAGE };
+  }
 
   const parsed = resetPasswordSchema.safeParse(values);
 
@@ -433,7 +449,6 @@ export async function resetPasswordAction(
     return {
       error: "Choose a valid new password and try again.",
       fieldErrors,
-      values,
     };
   }
 
@@ -448,7 +463,6 @@ export async function resetPasswordAction(
   if (userError || !user) {
     return {
       error: "The recovery link expired. Request a fresh password reset email.",
-      values,
     };
   }
 
@@ -459,7 +473,6 @@ export async function resetPasswordAction(
   if (cookieStore.get("vela_pw_recovery")?.value !== user.id) {
     return {
       error: "The recovery link expired. Request a fresh password reset email.",
-      values,
     };
   }
 
@@ -470,7 +483,6 @@ export async function resetPasswordAction(
   if (error) {
     return {
       error: "We couldn't update the password. Request a fresh recovery link and try again.",
-      values,
     };
   }
 
@@ -491,6 +503,12 @@ export async function updateOwnerProfileAction(
     newPassword: String(formData.get("newPassword") ?? ""),
     confirmPassword: String(formData.get("confirmPassword") ?? ""),
   };
+  // Never round-trip password fields back through the RSC/action response payload.
+  const safeValues: OwnerProfileValues = {
+    fullName: values.fullName,
+    email: values.email,
+    phone: values.phone,
+  };
 
   const parsed = ownerProfileSchema.safeParse(values);
 
@@ -507,7 +525,7 @@ export async function updateOwnerProfileAction(
     return {
       error: "Check the highlighted fields and try again.",
       fieldErrors,
-      values,
+      values: safeValues,
     };
   }
 
@@ -520,7 +538,7 @@ export async function updateOwnerProfileAction(
   if (userError || !user) {
     return {
       error: "Your session expired. Log in again to update your account.",
-      values,
+      values: safeValues,
     };
   }
 
@@ -541,6 +559,21 @@ export async function updateOwnerProfileAction(
   // a borrowed/hijacked session can't silently set new credentials. Done before
   // any mutation, so a wrong current password changes nothing.
   if (passwordChanged) {
+    // Per-account, not per-IP: signInWithPassword here doubles as a
+    // password-guessing oracle for a hijacked session, and the thing that
+    // actually bounds an attacker is a cap on guesses against THIS account,
+    // not the IP they happen to be sending from.
+    const reauthLimit = await checkRateLimit(
+      `owner-reauth:${user.id}`,
+      OWNER_REAUTH_RATE_LIMIT
+    );
+    if (!reauthLimit.allowed) {
+      return {
+        error: TOO_MANY_ATTEMPTS_MESSAGE,
+        values: safeValues,
+      };
+    }
+
     const { error: reauthError } = await supabase.auth.signInWithPassword({
       email: user.email ?? "",
       password: parsed.data.currentPassword?.trim() ?? "",
@@ -550,7 +583,7 @@ export async function updateOwnerProfileAction(
       return {
         error: "That current password is incorrect.",
         fieldErrors: { currentPassword: "That current password is incorrect." },
-        values,
+        values: safeValues,
       };
     }
   }
@@ -566,7 +599,7 @@ export async function updateOwnerProfileAction(
   if (profileError) {
     return {
       error: "We couldn't update the account profile right now.",
-      values,
+      values: safeValues,
     };
   }
 
@@ -578,7 +611,7 @@ export async function updateOwnerProfileAction(
     if (passwordError) {
       return {
         error: "We couldn't update the password right now.",
-        values,
+        values: safeValues,
       };
     }
   }

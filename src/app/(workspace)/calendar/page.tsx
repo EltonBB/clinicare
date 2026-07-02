@@ -69,6 +69,10 @@ export default async function CalendarPage({
       orderBy: {
         startAt: "asc",
       },
+      // Defensive runaway guard — this 6-month window has no natural upper
+      // bound otherwise, and a high-volume clinic would ship its entire
+      // window as one RSC payload with no cap at all.
+      take: 2000,
     }),
     prisma.scheduleBlock.findMany({
       where: {

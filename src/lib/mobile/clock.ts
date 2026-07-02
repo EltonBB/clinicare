@@ -26,14 +26,16 @@ export async function clockStaff(
   }
 
   // Enforce the scheduled-shift window on check-in (server-authoritative — never
-  // trust the client). Load today's shifts onward so an early-morning shift whose
-  // 30-min grace opens before midnight is still matched (mirrors checkInStaffAction).
+  // trust the client). Filter by endsAt (not startsAt) so an overnight shift
+  // that started yesterday but hasn't ended yet is still loaded — otherwise a
+  // doctor mid-overnight-shift would be refused check-in after midnight
+  // (mirrors checkInStaffAction).
   if (action === "in") {
     const shifts = await prisma.staffShift.findMany({
       where: {
         businessId: ctx.business.id,
         staffMemberId: ctx.staffMember.id,
-        startsAt: { gte: getZonedDayWindow().start },
+        endsAt: { gte: getZonedDayWindow().start },
       },
       select: { startsAt: true, endsAt: true },
       orderBy: { startsAt: "asc" },

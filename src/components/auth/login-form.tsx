@@ -65,7 +65,6 @@ export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
           type="password"
           autoComplete="current-password"
           placeholder="Enter your password"
-          defaultValue={state.values?.password}
           aria-invalid={Boolean(state.fieldErrors?.password)}
           className={cn(authFieldClassName, state.fieldErrors?.password && "border-destructive")}
         />

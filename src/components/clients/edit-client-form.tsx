@@ -9,6 +9,7 @@ import { deleteClientAction, saveClientAction } from "@/app/(workspace)/clients/
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmDeleteDialog } from "@/components/clients/record-form-dialog";
 import {
   fieldInputClass,
   fieldSelectClass,
@@ -41,8 +42,8 @@ function SelectField({
         className={fieldSelectClass}
       >
         {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
+          <option key={option || "unset"} value={option}>
+            {option || "Not set"}
           </option>
         ))}
       </select>
@@ -61,6 +62,7 @@ export function EditClientForm({ client }: EditClientFormProps) {
   const [status, setStatus] = useState<ClientStatus>(client.status);
   const [preferredChannel, setPreferredChannel] = useState(client.details.preferredChannel);
   const [patientType, setPatientType] = useState(client.patientType);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   function handleSubmit(formData: FormData) {
     setError("");
@@ -101,15 +103,12 @@ export function EditClientForm({ client }: EditClientFormProps) {
   }
 
   function deleteClient() {
-    if (!window.confirm("Delete this patient permanently?")) {
-      return;
-    }
-
     setError("");
     startTransition(async () => {
       const result = await deleteClientAction(client.id);
 
       if (!result.ok) {
+        setConfirmingDelete(false);
         setError(result.error ?? "We couldn't delete this patient.");
         return;
       }
@@ -143,7 +142,7 @@ export function EditClientForm({ client }: EditClientFormProps) {
           <SelectField
             label="Preferred contact method"
             value={preferredChannel}
-            options={["WhatsApp", "Phone Call", "Email"]}
+            options={["", "WhatsApp", "Phone Call", "Email"]}
             onChange={setPreferredChannel}
           />
           <TextField name="notes" label="Patient notes" defaultValue={client.notes === "No notes yet." ? "" : client.notes} className="sm:col-span-2" />
@@ -171,7 +170,7 @@ export function EditClientForm({ client }: EditClientFormProps) {
           type="button"
           variant="outline"
           className="rounded-(--radius-card) border-destructive/25 bg-white text-destructive hover:bg-destructive/5 hover:text-destructive"
-          onClick={deleteClient}
+          onClick={() => setConfirmingDelete(true)}
           disabled={isPending}
         >
           <Trash2 className="size-4" />
@@ -191,6 +190,15 @@ export function EditClientForm({ client }: EditClientFormProps) {
           </Button>
         </div>
       </div>
+
+      <ConfirmDeleteDialog
+        open={confirmingDelete}
+        onOpenChange={setConfirmingDelete}
+        title="Delete this patient?"
+        description="This permanently removes the patient record, including appointments, documents, and payment history. This can't be undone."
+        isPending={isPending}
+        onConfirm={deleteClient}
+      />
     </form>
   );
 }

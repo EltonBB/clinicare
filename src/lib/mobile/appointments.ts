@@ -1,5 +1,5 @@
 import {
-  refreshClientLastVisitAt,
+  cancelAppointmentCore,
   revalidateCalendarSurfaces,
 } from "@/lib/appointments-shared";
 import { logger } from "@/lib/logger";
@@ -91,73 +91,54 @@ export async function listOwnAppointments(
 export type MobileCancelResult = { ok: true } | { ok: false; status: number; error: string };
 
 /**
- * The mobile app's lone write: a doctor cancels a slot they can't make. Scoped to
- * the doctor's OWN appointment (another staff's id → 404). NOT the web
- * `cancelAppointmentAction` (which authorizes by business and would let a doctor
- * cancel anyone's appointment). Mirrors its side effects via the shared helpers;
- * the web calendar reflects the cancel after revalidation, which is how the admin
+ * The mobile app's lone write: a doctor cancels a slot they can't make. Runs
+ * through the SAME `cancelAppointmentCore` as the web calendar action (so the
+ * COMPLETED-guard and transactional side effects can't drift between them
+ * again), scoped additionally by staffMemberId — another staff's id 404s,
+ * unlike the web admin action which authorizes by business only. The web
+ * calendar reflects the cancel after revalidation, which is how the admin
  * sees it today.
  */
 export async function cancelOwnAppointment(
   ctx: StaffContext,
   appointmentId: string
 ): Promise<MobileCancelResult> {
-  const existing = await prisma.appointment.findFirst({
-    where: {
-      id: appointmentId,
-      businessId: ctx.business.id,
-      staffMemberId: ctx.staffMember.id,
-    },
-    select: {
-      id: true,
-      clientId: true,
-      staffMemberId: true,
-      status: true,
-      startAt: true,
-      client: { select: { name: true } },
-    },
+  // Shared with the web calendar action: ownership-scoped lookup, refuses to
+  // cancel a COMPLETED visit, and the status update + reminder cleanup +
+  // lastVisitAt refresh run as one atomic transaction. Scoped by
+  // staffMemberId too (unlike the web admin action) — another staff's id 404s.
+  const outcome = await cancelAppointmentCore({
+    id: appointmentId,
+    businessId: ctx.business.id,
+    staffMemberId: ctx.staffMember.id,
   });
 
-  if (!existing) {
-    return { ok: false, status: 404, error: "Appointment not found." };
+  if (!outcome.ok) {
+    return { ok: false, status: outcome.status, error: outcome.error };
   }
 
-  if (existing.status === "CANCELLED") {
-    return { ok: true }; // idempotent — already cancelled
+  if (!outcome.changed) {
+    // Already cancelled — nothing new to reflect or notify the admin about.
+    return { ok: true };
   }
 
-  // Never trust the client: a COMPLETED visit can't be cancelled (the app hides
-  // the button, but the endpoint must enforce it too — otherwise a crafted
-  // request would corrupt completion metrics and the client's last-visit date).
-  if (existing.status === "COMPLETED") {
-    return {
-      ok: false,
-      status: 409,
-      error: "This visit is already completed and can't be cancelled.",
-    };
-  }
-
-  await prisma.$transaction(async (tx) => {
-    await tx.appointment.update({
-      where: { id: appointmentId },
-      data: { status: "CANCELLED" },
-    });
-    // Clear any pending reminder rows so a later re-confirm starts clean.
-    await tx.appointmentReminder.deleteMany({ where: { appointmentId } });
-    await refreshClientLastVisitAt(existing.clientId, ctx.business.id, tx);
-  });
-
-  revalidateCalendarSurfaces([existing.clientId], [existing.staffMemberId]);
+  revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId]);
 
   // Surface the cancellation to the admin in the staff↔admin thread so they can
   // reschedule/reassign — minimum-necessary scheduling info (name + time, no
   // clinical detail). Best-effort: a failed notice must not fail the cancel.
   try {
-    await postSystemMessageToAdminThread(
-      ctx.business.id,
-      ctx.staffMember.id,
-      `Cancelled the ${formatZonedTime(existing.startAt)} appointment with ${existing.client.name} — please reschedule.`
-    );
+    const appointment = await prisma.appointment.findUnique({
+      where: { id: outcome.appointmentId },
+      select: { startAt: true, client: { select: { name: true } } },
+    });
+    if (appointment) {
+      await postSystemMessageToAdminThread(
+        ctx.business.id,
+        ctx.staffMember.id,
+        `Cancelled the ${formatZonedTime(appointment.startAt)} appointment with ${appointment.client.name} — please reschedule.`
+      );
+    }
   } catch (error) {
     logger.error("Failed to post cancellation notice to the admin thread.", error, {
       appointmentId,
