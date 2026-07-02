@@ -1,5 +1,6 @@
 "use server";
 
+import { type EmailOtpType } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -7,7 +8,10 @@ import { z } from "zod";
 
 import { buildAuthRedirectUrl } from "@/lib/app-url";
 import { sanitizeAuthMetadataForSession } from "@/lib/auth-metadata";
-import { createEmailVerificationReceipt } from "@/lib/email-verification-receipts";
+import {
+  createEmailVerificationReceipt,
+  markEmailVerificationReceiptVerifiedByEmail,
+} from "@/lib/email-verification-receipts";
 import {
   checkRateLimit,
   clientIpFromHeaders,
@@ -477,6 +481,83 @@ export async function resetPasswordAction(
   cookieStore.delete("vela_pw_recovery");
   await supabase.auth.signOut();
   redirect("/login?reset=1");
+}
+
+// Deferred-verification companion to /auth/confirm's GET redirect (see that
+// route's docstring for the prefetch-safety rationale). Only this explicit,
+// user-initiated submit consumes the recovery token — never a bare GET.
+export async function confirmPasswordRecoveryAction(tokenHash: string): Promise<void> {
+  if (!tokenHash) {
+    redirect("/forgot-password?expired=1");
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.verifyOtp({
+    type: "recovery",
+    token_hash: tokenHash,
+  });
+
+  if (error || !data.user) {
+    redirect("/forgot-password?expired=1");
+  }
+
+  // Same binding /auth/confirm used to set inline before this fix: the marker
+  // is THIS call's own verified user id, never a URL-supplied value, so this
+  // action can never be talked into recovering the wrong account.
+  (await cookies()).set("vela_pw_recovery", data.user.id, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 900,
+  });
+  redirect("/reset-password?recovery=1");
+}
+
+// type is intentionally NOT EmailOtpType here — "recovery" is excluded on
+// purpose (it has its own hardcoded-type action above) and must stay excluded
+// even if EmailOtpType grows a new variant later.
+const CONFIRMABLE_EMAIL_OTP_TYPES = new Set(["signup", "invite", "magiclink", "email_change", "email"]);
+
+const INVALID_CONFIRM_LINK =
+  "/confirm-email?error=" +
+  encodeURIComponent("That verification link is no longer valid. Request a new one below.");
+
+// Generic deferred-verification companion to /auth/confirm's GET redirect,
+// covering every token_hash type except recovery (which has its own action
+// above). Restricting `type` to this allowlist — rather than trusting
+// whatever the URL says — is what keeps this safe to call with a URL-sourced
+// value: verifyOtp only ever runs with a type this action already vetted.
+export async function confirmEmailLinkAction(tokenHash: string, type: string): Promise<void> {
+  if (!tokenHash || !CONFIRMABLE_EMAIL_OTP_TYPES.has(type)) {
+    redirect(INVALID_CONFIRM_LINK);
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.verifyOtp({
+    type: type as EmailOtpType,
+    token_hash: tokenHash,
+  });
+
+  if (error) {
+    redirect(INVALID_CONFIRM_LINK);
+  }
+
+  if (type === "email_change") {
+    redirect("/settings?email_updated=1");
+  }
+
+  // The token is already consumed and the account confirmed by this point, so
+  // a transient receipt-write or sign-out failure must never block the
+  // redirect — otherwise the user 500s on a one-time link they can no longer
+  // reuse. (redirect() throws NEXT_REDIRECT, so it stays outside this try.)
+  try {
+    await markEmailVerificationReceiptVerifiedByEmail(data.user?.email ?? null);
+    await supabase.auth.signOut();
+  } catch {
+    // best-effort cleanup; fall through to the login redirect regardless.
+  }
+  redirect("/login?verified=1");
 }
 
 export async function updateOwnerProfileAction(
