@@ -8,7 +8,7 @@ import { getCurrentBusiness } from "@/lib/business";
 import { resolveBrandAccentPreset } from "@/lib/branding";
 import { hoursBetweenTimes, isOnboardingCompleted } from "@/lib/onboarding";
 import { prisma } from "@/lib/prisma";
-import { cn, getInitials } from "@/lib/utils";
+import { cn, firstDisplayName, getInitials } from "@/lib/utils";
 import { createClient } from "@/utils/supabase/server";
 
 const nextActions = [
@@ -70,7 +70,7 @@ export default async function OnboardingCompletePage() {
     0
   );
   const ownerFirstName =
-    (typeof metadata.full_name === "string" ? metadata.full_name : "").trim().split(/\s+/)[0] || "you";
+    firstDisplayName(typeof metadata.full_name === "string" ? metadata.full_name : "") || "you";
 
   const accent = resolveBrandAccentPreset(business.brandAccentColor);
 

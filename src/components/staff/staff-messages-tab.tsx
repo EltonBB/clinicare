@@ -5,7 +5,7 @@ import { SendHorizontal } from "lucide-react";
 
 import { markStaffThreadReadAction, sendStaffMessageAction } from "@/app/(workspace)/staff/actions";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, firstDisplayName } from "@/lib/utils";
 import type { AdminThreadMessage, AdminThreadView } from "@/lib/mobile/admin-inbox";
 
 type StaffMessagesTabProps = {
@@ -69,7 +69,7 @@ export function StaffMessagesTab({ staffId, staffName, initial }: StaffMessagesT
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-4">
         {messages.length === 0 ? (
           <p className="m-auto max-w-xs text-center text-sm text-muted-foreground">
-            No messages yet. Send {staffName.split(" ")[0]} a message — it appears in their Vela
+            No messages yet. Send {firstDisplayName(staffName)} a message — it appears in their Vela
             Staff app.
           </p>
         ) : (
