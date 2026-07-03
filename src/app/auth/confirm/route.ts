@@ -1,12 +1,12 @@
-import { type EmailOtpType } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 
+import {
+  authConfirmContinuationPath,
+  INVALID_CONFIRM_LINK_REDIRECT,
+  RECOVERY_EXPIRED_REDIRECT,
+} from "@/lib/app-url-policy";
 import { markEmailVerificationReceiptVerifiedByEmail } from "@/lib/email-verification-receipts";
 import { createClient } from "@/utils/supabase/server";
-
-const INVALID_LINK =
-  "/confirm-email?error=" +
-  encodeURIComponent("That verification link is no longer valid. Request a new one below.");
 
 /**
  * Email-confirmation handler.
@@ -20,18 +20,26 @@ const INVALID_LINK =
  * documented Supabase Auth limitation with a documented fix: this GET never
  * calls verifyOtp — it only redirects, deferring the actual verification to
  * an explicit, scanner-unreachable user action (a real button click,
- * submitted as a POST) on a continuation page:
+ * submitted as a POST) on a continuation page (see
+ * authConfirmContinuationPath):
  *   - password recovery  → /reset-password/confirm, whose action hardcodes
  *     type: "recovery" as a literal (never a URL-supplied value) before
  *     calling verifyOtp, then binds the vela_pw_recovery cookie to THAT
  *     call's own verified user id
- *   - everything else (signup, invite, magic link, email change)
- *                        → /auth/confirm/continue, whose action restricts
- *     the URL-supplied type to a fixed allowlist that excludes "recovery"
+ *   - everything else    → /auth/confirm/continue, whose action restricts
+ *     the URL-supplied type to CONFIRMABLE_EMAIL_OTP_TYPES, a fixed
+ *     allowlist that excludes "recovery"
  * so the "never route on a raw, unverified type" property this route
  * previously enforced inline still holds — it now holds inside the Server
  * Actions instead. Neither continuation page calls verifyOtp on render, only
  * on form submit, so a scanner GET-ing either URL is inert.
+ *
+ * A token_hash link only reaches this route when its Supabase email template
+ * links here directly ({{ .TokenHash }}). Reset Password and Confirm signup
+ * do; templates still on the default {{ .ConfirmationURL }} (Change Email
+ * Address today) verify at the provider's own endpoint first and arrive here
+ * as the legacy `?code=` callback below instead — update those templates to
+ * the token_hash form to bring them onto the prefetch-safe path.
  *
  * The legacy `?code=` callback is handled here directly (unchanged) — it's
  * inherently prefetch-resistant already: exchanging it requires the PKCE
@@ -43,19 +51,18 @@ const INVALID_LINK =
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const tokenHash = url.searchParams.get("token_hash");
-  const type = url.searchParams.get("type") as EmailOtpType | null;
+  const type = url.searchParams.get("type");
   const code = url.searchParams.get("code");
 
-  if (tokenHash && type === "recovery") {
-    redirect(
-      `/reset-password/confirm?${new URLSearchParams({ token_hash: tokenHash, type }).toString()}`
-    );
+  if (tokenHash && type) {
+    redirect(authConfirmContinuationPath(tokenHash, type));
   }
 
-  if (tokenHash && type) {
-    redirect(
-      `/auth/confirm/continue?${new URLSearchParams({ token_hash: tokenHash, type }).toString()}`
-    );
+  // A recovery link that lost its token (truncated or rewritten in transit)
+  // gets the recovery re-request page — not the signup-flavored resend page
+  // the generic invalid-link fallback below points at.
+  if (type === "recovery") {
+    redirect(RECOVERY_EXPIRED_REDIRECT);
   }
 
   if (code) {
@@ -63,22 +70,22 @@ export async function GET(request: Request) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (error) {
-      redirect(INVALID_LINK);
+      redirect(INVALID_CONFIRM_LINK_REDIRECT);
     }
 
-    // The code is already consumed and the account confirmed by this point, so
-    // a transient receipt-write or sign-out failure must never block the
+    // The code is already consumed and the account confirmed by this point,
+    // so a transient receipt-write or sign-out failure must never block the
     // redirect — otherwise the user 500s on a one-time link they can no
-    // longer reuse. (redirect() throws NEXT_REDIRECT, so it stays outside
-    // this try.)
-    try {
-      await markEmailVerificationReceiptVerifiedByEmail(data.user?.email ?? null);
-      await supabase.auth.signOut();
-    } catch {
-      // best-effort cleanup; fall through to the login redirect regardless.
-    }
+    // longer reuse. allSettled swallows both failures AND still attempts the
+    // sign-out when the receipt write fails (a try block would skip it).
+    // The two calls are independent (Prisma-by-email vs auth), so they run
+    // concurrently. (redirect() throws NEXT_REDIRECT, so it stays outside.)
+    await Promise.allSettled([
+      markEmailVerificationReceiptVerifiedByEmail(data.user?.email ?? null),
+      supabase.auth.signOut(),
+    ]);
     redirect("/login?verified=1");
   }
 
-  redirect(INVALID_LINK);
+  redirect(INVALID_CONFIRM_LINK_REDIRECT);
 }

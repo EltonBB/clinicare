@@ -1,13 +1,13 @@
 import { redirect } from "next/navigation";
 
 import { confirmEmailLinkAction } from "@/app/(auth)/actions";
-import { AuthSplitShell } from "@/components/auth/auth-split-shell";
+import {
+  authConfirmContinuationPath,
+  CONFIRMABLE_EMAIL_OTP_TYPES,
+  INVALID_CONFIRM_LINK_REDIRECT,
+} from "@/lib/app-url-policy";
 import { BrandMark } from "@/components/brand-mark";
 import { SubmitButton } from "@/components/auth/submit-button";
-
-const INVALID_LINK =
-  "/confirm-email?error=" +
-  encodeURIComponent("That verification link is no longer valid. Request a new one below.");
 
 type ConfirmContinuePageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -15,9 +15,11 @@ type ConfirmContinuePageProps = {
 
 /**
  * The generic (non-recovery) continuation page /auth/confirm redirects a
- * bare GET to instead of verifying there — see route.ts for why. Rendering
+ * bare GET to instead of verifying there — see that route for why. Rendering
  * this page never consumes the token; only submitting the form below does.
- * Outside the (auth) route group, so it wraps itself in AuthSplitShell.
+ * The render gate mirrors the action's allowlist so a link that can only
+ * fail is rejected (or, for recovery, handed to the right page) up front —
+ * never shown a Continue button that is guaranteed to dead-end.
  */
 export default async function ConfirmContinuePage({ searchParams }: ConfirmContinuePageProps) {
   const params = searchParams ? await searchParams : {};
@@ -25,11 +27,19 @@ export default async function ConfirmContinuePage({ searchParams }: ConfirmConti
   const type = typeof params.type === "string" ? params.type : "";
 
   if (!tokenHash || !type) {
-    redirect(INVALID_LINK);
+    redirect(INVALID_CONFIRM_LINK_REDIRECT);
+  }
+
+  if (type === "recovery") {
+    redirect(authConfirmContinuationPath(tokenHash, type));
+  }
+
+  if (!CONFIRMABLE_EMAIL_OTP_TYPES.has(type)) {
+    redirect(INVALID_CONFIRM_LINK_REDIRECT);
   }
 
   return (
-    <AuthSplitShell>
+    <>
       {/* Mobile brand (the desktop brand lives in the left panel) */}
       <BrandMark href="/" includeSubtitle={false} className="mb-10 lg:hidden" />
 
@@ -50,6 +60,6 @@ export default async function ConfirmContinuePage({ searchParams }: ConfirmConti
           Continue
         </SubmitButton>
       </form>
-    </AuthSplitShell>
+    </>
   );
 }

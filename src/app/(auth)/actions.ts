@@ -7,6 +7,11 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { buildAuthRedirectUrl } from "@/lib/app-url";
+import {
+  CONFIRMABLE_EMAIL_OTP_TYPES,
+  INVALID_CONFIRM_LINK_REDIRECT,
+  RECOVERY_EXPIRED_REDIRECT,
+} from "@/lib/app-url-policy";
 import { sanitizeAuthMetadataForSession } from "@/lib/auth-metadata";
 import {
   createEmailVerificationReceipt,
@@ -161,6 +166,10 @@ const TOO_MANY_ATTEMPTS_MESSAGE =
 const LOGIN_RATE_LIMIT: RateLimitRule = { limit: 12, windowMs: 60_000 };
 const SIGNUP_RATE_LIMIT: RateLimitRule = { limit: 6, windowMs: 60_000 };
 const EMAIL_SEND_RATE_LIMIT: RateLimitRule = { limit: 5, windowMs: 60_000 };
+// Confirm-link submits are one click per email for a real user; 10/min per IP
+// leaves room for double-clicks and retries while stopping token-probe loops
+// from draining the auth provider's verify quota for everyone else.
+const CONFIRM_ATTEMPT_RATE_LIMIT: RateLimitRule = { limit: 10, windowMs: 60_000 };
 
 async function isWithinRateLimit(action: string, rule: RateLimitRule) {
   const ip = clientIpFromHeaders(await headers());
@@ -457,9 +466,11 @@ export async function resetPasswordAction(
   }
 
   // The password change requires a session that arrived via the password-recovery
-  // verification: /auth/confirm sets this marker to the recovered user's id only
-  // on the token-bound type=recovery branch. Requiring marker === user.id blocks
-  // a plain login session (no marker) and a stale marker from another account.
+  // verification: confirmPasswordRecoveryAction (the /reset-password/confirm
+  // Continue button) sets this marker to the recovered user's id only after its
+  // own hardcoded type=recovery verifyOtp succeeds. Requiring marker === user.id
+  // blocks a plain login session (no marker) and a stale marker from another
+  // account.
   if (cookieStore.get("vela_pw_recovery")?.value !== user.id) {
     return {
       error: "The recovery link expired. Request a fresh password reset email.",
@@ -488,7 +499,14 @@ export async function resetPasswordAction(
 // user-initiated submit consumes the recovery token — never a bare GET.
 export async function confirmPasswordRecoveryAction(tokenHash: string): Promise<void> {
   if (!tokenHash) {
-    redirect("/forgot-password?expired=1");
+    redirect(RECOVERY_EXPIRED_REDIRECT);
+  }
+
+  // Unauthenticated + consumes a single-use token on every call: throttle like
+  // the sibling auth entry points so a probe loop can't drain the provider's
+  // verify quota. A throttled real user just clicks Continue again.
+  if (!(await isWithinRateLimit("confirm-recovery", CONFIRM_ATTEMPT_RATE_LIMIT))) {
+    redirect(RECOVERY_EXPIRED_REDIRECT);
   }
 
   const supabase = await createClient();
@@ -498,12 +516,21 @@ export async function confirmPasswordRecoveryAction(tokenHash: string): Promise<
   });
 
   if (error || !data.user) {
-    redirect("/forgot-password?expired=1");
+    redirect(RECOVERY_EXPIRED_REDIRECT);
   }
 
-  // Same binding /auth/confirm used to set inline before this fix: the marker
-  // is THIS call's own verified user id, never a URL-supplied value, so this
-  // action can never be talked into recovering the wrong account.
+  // Bind the privileged reset to THIS verification AND this user: the marker
+  // is this call's own verified user id, never a URL-supplied value, so this
+  // action can never be talked into recovering the wrong account. httpOnly +
+  // short TTL, single-use (cleared on success). It rides the same redirect
+  // response as the session cookie, so it's as reliable as the session itself.
+  //
+  // KNOWN LIMITATION (tracked for the pre-US / HIPAA hardening pass): this is an
+  // unsigned cookie, so a caller who already holds this user's session can forge
+  // it (the user id is derivable from the session). The user-id binding blocks
+  // blind and cross-account forgery — sufficient for the non-PHI pilot — but the
+  // durable fix is a one-time, server-side nonce (Prisma-backed) verified and
+  // consumed on reset, landing with the audit-logging work before the US launch.
   (await cookies()).set("vela_pw_recovery", data.user.id, {
     httpOnly: true,
     sameSite: "lax",
@@ -514,23 +541,20 @@ export async function confirmPasswordRecoveryAction(tokenHash: string): Promise<
   redirect("/reset-password?recovery=1");
 }
 
-// type is intentionally NOT EmailOtpType here — "recovery" is excluded on
-// purpose (it has its own hardcoded-type action above) and must stay excluded
-// even if EmailOtpType grows a new variant later.
-const CONFIRMABLE_EMAIL_OTP_TYPES = new Set(["signup", "invite", "magiclink", "email_change", "email"]);
-
-const INVALID_CONFIRM_LINK =
-  "/confirm-email?error=" +
-  encodeURIComponent("That verification link is no longer valid. Request a new one below.");
-
 // Generic deferred-verification companion to /auth/confirm's GET redirect,
 // covering every token_hash type except recovery (which has its own action
-// above). Restricting `type` to this allowlist — rather than trusting
-// whatever the URL says — is what keeps this safe to call with a URL-sourced
-// value: verifyOtp only ever runs with a type this action already vetted.
+// above). Restricting `type` to CONFIRMABLE_EMAIL_OTP_TYPES — the shared
+// allowlist in lib/app-url-policy.ts that deliberately excludes "recovery" —
+// rather than trusting whatever the URL says is what keeps this safe to call
+// with a URL-sourced value: verifyOtp only ever runs with a vetted type.
 export async function confirmEmailLinkAction(tokenHash: string, type: string): Promise<void> {
   if (!tokenHash || !CONFIRMABLE_EMAIL_OTP_TYPES.has(type)) {
-    redirect(INVALID_CONFIRM_LINK);
+    redirect(INVALID_CONFIRM_LINK_REDIRECT);
+  }
+
+  // Same rationale as confirmPasswordRecoveryAction's throttle above.
+  if (!(await isWithinRateLimit("confirm-email-link", CONFIRM_ATTEMPT_RATE_LIMIT))) {
+    redirect(INVALID_CONFIRM_LINK_REDIRECT);
   }
 
   const supabase = await createClient();
@@ -540,23 +564,28 @@ export async function confirmEmailLinkAction(tokenHash: string, type: string): P
   });
 
   if (error) {
-    redirect(INVALID_CONFIRM_LINK);
+    redirect(INVALID_CONFIRM_LINK_REDIRECT);
   }
 
   if (type === "email_change") {
+    // The account email is shell-global identity (server-fetched in
+    // (workspace)/layout.tsx and the settings account section), so the
+    // completed change must invalidate the whole layout, not a page list.
+    revalidatePath("/", "layout");
     redirect("/settings?email_updated=1");
   }
 
   // The token is already consumed and the account confirmed by this point, so
   // a transient receipt-write or sign-out failure must never block the
   // redirect — otherwise the user 500s on a one-time link they can no longer
-  // reuse. (redirect() throws NEXT_REDIRECT, so it stays outside this try.)
-  try {
-    await markEmailVerificationReceiptVerifiedByEmail(data.user?.email ?? null);
-    await supabase.auth.signOut();
-  } catch {
-    // best-effort cleanup; fall through to the login redirect regardless.
-  }
+  // reuse. allSettled swallows both failures AND still attempts the sign-out
+  // when the receipt write fails (a try block would skip it). The two calls
+  // are independent (Prisma-by-email vs auth), so they run concurrently.
+  // (redirect() throws NEXT_REDIRECT, so it stays outside.)
+  await Promise.allSettled([
+    markEmailVerificationReceiptVerifiedByEmail(data.user?.email ?? null),
+    supabase.auth.signOut(),
+  ]);
   redirect("/login?verified=1");
 }
 
