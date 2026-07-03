@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
+import { openTimeEntryIfAbsent } from "@/lib/mobile/clock";
 import { prisma } from "@/lib/prisma";
 import {
   formatZonedTime,
@@ -441,23 +442,10 @@ export async function checkInStaffAction(staffId: string): Promise<StaffClockRes
     };
   }
 
-  const openEntry = await prisma.staffTimeEntry.findFirst({
-    where: {
-      businessId: business.id,
-      staffMemberId: staffId,
-      checkedOutAt: null,
-    },
-  });
-
-  if (!openEntry) {
-    await prisma.staffTimeEntry.create({
-      data: {
-        businessId: business.id,
-        staffMemberId: staffId,
-        checkedInAt: new Date(),
-      },
-    });
-  }
+  // Shared with the mobile self check-in — atomic (Serializable transaction),
+  // so an admin double-click or an admin/mobile race can't both create an
+  // open time entry for the same member.
+  await openTimeEntryIfAbsent(business.id, staffId);
 
   revalidateStaffSurfaces(staffId);
 
@@ -705,6 +693,7 @@ export type RecentStaffMessage = {
   messageId: string;
   staffId: string;
   staffName: string;
+  isSystem: boolean;
   atLabel: string;
   atMs: number;
 };
@@ -724,7 +713,11 @@ export async function getRecentStaffMessagesAction(): Promise<RecentStaffMessage
   const since = new Date(Date.now() - 10 * 60 * 1000);
   const messages = await prisma.staffThreadMessage.findMany({
     where: {
-      sender: "STAFF",
+      // SYSTEM covers a doctor's self-service actions (e.g. a mobile
+      // cancellation notice) — those must alert the admin same as a typed
+      // message, or the notice sits unseen in the thread. ADMIN is excluded:
+      // that's the admin's own reply, not something to alert themselves about.
+      sender: { in: ["STAFF", "SYSTEM"] },
       createdAt: { gte: since },
       thread: { businessId: context.business.id },
     },
@@ -733,6 +726,7 @@ export async function getRecentStaffMessagesAction(): Promise<RecentStaffMessage
     select: {
       id: true,
       createdAt: true,
+      sender: true,
       thread: { select: { staffMemberId: true, staffMember: { select: { name: true } } } },
     },
   });
@@ -741,6 +735,7 @@ export async function getRecentStaffMessagesAction(): Promise<RecentStaffMessage
     messageId: message.id,
     staffId: message.thread.staffMemberId,
     staffName: message.thread.staffMember.name,
+    isSystem: message.sender === "SYSTEM",
     atLabel: formatZonedTime(message.createdAt),
     atMs: message.createdAt.getTime(),
   }));

@@ -1,9 +1,48 @@
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/prisma";
 import { findActiveShiftWindow } from "@/lib/staff";
 import type { StaffContext } from "@/lib/staff-auth";
 import { getZonedDayWindow } from "@/lib/time-zone";
+
+/**
+ * Atomically open a time entry unless one is already open — shared by the
+ * mobile self check-in (below) and the admin check-in action
+ * (staff/actions.ts) so both close the same race: a plain
+ * find-then-create (no lock) lets two concurrent check-ins (a double-tap, or
+ * admin + mobile racing) both see no open entry and both insert one,
+ * double-counting the member's hours until the auto-close sweep. Serializable
+ * isolation makes Postgres itself detect that write-write conflict and abort
+ * the loser with P2034, which we treat as "a concurrent request already
+ * checked this member in" — not a failure, since that IS the correct
+ * resulting state.
+ */
+export async function openTimeEntryIfAbsent(
+  businessId: string,
+  staffMemberId: string
+): Promise<void> {
+  try {
+    await prisma.$transaction(
+      async (tx) => {
+        const openEntry = await tx.staffTimeEntry.findFirst({
+          where: { businessId, staffMemberId, checkedOutAt: null },
+        });
+        if (!openEntry) {
+          await tx.staffTimeEntry.create({
+            data: { businessId, staffMemberId, checkedInAt: new Date() },
+          });
+        }
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+      return;
+    }
+    throw error;
+  }
+}
 
 /**
  * Mobile self check-in / check-out. The staff member asserts their own presence
@@ -50,30 +89,23 @@ export async function clockStaff(
     }
   }
 
-  const openEntry = await prisma.staffTimeEntry.findFirst({
-    where: {
-      businessId: ctx.business.id,
-      staffMemberId: ctx.staffMember.id,
-      checkedOutAt: null,
-    },
-    orderBy: { checkedInAt: "desc" },
-  });
-
   if (action === "in") {
-    if (!openEntry) {
-      await prisma.staffTimeEntry.create({
-        data: {
-          businessId: ctx.business.id,
-          staffMemberId: ctx.staffMember.id,
-          checkedInAt: new Date(),
-        },
+    await openTimeEntryIfAbsent(ctx.business.id, ctx.staffMember.id);
+  } else {
+    const openEntry = await prisma.staffTimeEntry.findFirst({
+      where: {
+        businessId: ctx.business.id,
+        staffMemberId: ctx.staffMember.id,
+        checkedOutAt: null,
+      },
+      orderBy: { checkedInAt: "desc" },
+    });
+    if (openEntry) {
+      await prisma.staffTimeEntry.update({
+        where: { id: openEntry.id },
+        data: { checkedOutAt: new Date() },
       });
     }
-  } else if (openEntry) {
-    await prisma.staffTimeEntry.update({
-      where: { id: openEntry.id },
-      data: { checkedOutAt: new Date() },
-    });
   }
 
   // The admin's "Staff today" card + staff pages reflect the new clock state.

@@ -16,8 +16,15 @@ function corsHeaders(): Record<string, string> {
   };
 }
 
+// Exact-or-prefixed-with-slash so a future route sharing the "/api/mobile"
+// prefix (e.g. "/api/mobile-admin") can't silently inherit wildcard CORS and
+// skip the Supabase session middleware below.
+function isMobileApiPath(pathname: string): boolean {
+  return pathname === "/api/mobile" || pathname.startsWith("/api/mobile/");
+}
+
 export async function proxy(request: NextRequest) {
-  if (request.nextUrl.pathname.startsWith("/api/mobile")) {
+  if (isMobileApiPath(request.nextUrl.pathname)) {
     if (request.method === "OPTIONS") {
       return new NextResponse(null, { status: 204, headers: corsHeaders() });
     }

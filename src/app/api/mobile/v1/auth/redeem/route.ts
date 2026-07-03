@@ -23,6 +23,12 @@ const bodySchema = z.object({
 });
 
 const REDEEM_RATE_LIMIT = { limit: 8, windowMs: 60_000 };
+// Per-IP + the per-code attemptCount lockout each bound a narrow slice of the
+// same threat: someone holding several real codes for one clinic (leaked,
+// social-engineered, or insider) could spread attempts thinly across codes
+// and source IPs to stay under both. This adds a cumulative cap per business,
+// independent of which code or IP an attempt used.
+const REDEEM_BUSINESS_RATE_LIMIT = { limit: 20, windowMs: 10 * 60_000 };
 // One generic message for every failure mode — never reveal whether a code
 // exists, is expired, already used, or locked.
 const GENERIC_INVALID =
@@ -53,6 +59,25 @@ export async function POST(request: Request) {
   const codeHash = hashAccessCode(parsed.data.code);
   const rawToken = generateDeviceToken();
   const now = new Date();
+
+  // A pure random guess never matches a codeHash (60 bits of entropy), so this
+  // lookup only resolves a business for codes that are real — including
+  // already-used/expired/revoked ones. That's exactly what bounds the
+  // spread-across-codes threat described above without penalizing genuine
+  // wrong-guess noise, which the per-IP limit already covers.
+  const matchedCode = await prisma.staffAccessCode.findUnique({
+    where: { codeHash },
+    select: { businessId: true },
+  });
+  if (matchedCode) {
+    const businessRate = await checkRateLimit(
+      `mobile-redeem-business:${matchedCode.businessId}`,
+      REDEEM_BUSINESS_RATE_LIMIT
+    );
+    if (!businessRate.allowed) {
+      return NextResponse.json({ error: GENERIC_INVALID }, { status: 401 });
+    }
+  }
 
   try {
     const result = await prisma.$transaction(async (tx) => {

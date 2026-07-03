@@ -17,6 +17,7 @@ type Toast = {
   kind: "checkin" | "message";
   staffId: string;
   staffName: string;
+  isSystem?: boolean;
   atLabel: string;
 };
 
@@ -90,6 +91,7 @@ export function WorkspaceToaster() {
             kind: "message" as const,
             staffId: message.staffId,
             staffName: message.staffName,
+            isSystem: message.isSystem,
             atLabel: message.atLabel,
           }))
         );
@@ -135,7 +137,9 @@ export function WorkspaceToaster() {
               <p className="truncate text-sm font-semibold text-foreground">
                 {isCheckin
                   ? `${toast.staffName} checked in`
-                  : `${toast.staffName} sent a message`}
+                  : toast.isSystem
+                    ? `Update from ${toast.staffName}`
+                    : `${toast.staffName} sent a message`}
               </p>
               <p className="text-xs text-muted-foreground">
                 {isCheckin ? `Checked in at ${toast.atLabel}` : `Sent at ${toast.atLabel}`}
