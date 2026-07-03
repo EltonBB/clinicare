@@ -26,8 +26,13 @@ export async function GET(request: Request) {
     return limited;
   }
 
-  const offsetParam = new URL(request.url).searchParams.get("offset");
-  const offset = offsetParam ? Number(offsetParam) : 0;
+  const searchParams = new URL(request.url).searchParams;
+  const offsetParam = searchParams.get("offset");
+  // Back-compat: a client built before the offset param existed only ever
+  // sent day=today|tomorrow. Without this, such a client silently gets
+  // today's schedule back while believing it asked for tomorrow's.
+  const offset =
+    offsetParam !== null ? Number(offsetParam) : searchParams.get("day") === "tomorrow" ? 1 : 0;
   if (!Number.isInteger(offset) || Math.abs(offset) > MAX_OFFSET_DAYS) {
     return NextResponse.json({ error: "Invalid date offset." }, { status: 400 });
   }
