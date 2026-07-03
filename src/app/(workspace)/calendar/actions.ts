@@ -237,6 +237,10 @@ export async function saveAppointmentAction(
     let shouldResetReminders = false;
     let previousClientId: string | null = null;
     let previousStaffMemberId: string | null = null;
+    // The edit form's Status dropdown can cancel an appointment directly
+    // (not just the dedicated Cancel booking action) — the doctor's app
+    // needs to hear about that path too, not just cancelAppointmentAction.
+    let wasNewlyCancelled = false;
 
     if (payload.id) {
       const existing = await prisma.appointment.findFirst({
@@ -264,13 +268,15 @@ export async function saveAppointmentAction(
 
       previousClientId = existing.clientId;
       previousStaffMemberId = existing.staffMemberId;
+      const newStatus = toPrismaAppointmentStatus(payload.status);
+      wasNewlyCancelled = existing.status !== "CANCELLED" && newStatus === "CANCELLED";
       shouldResetReminders =
         existing.clientId !== payload.clientId ||
         existing.staffMemberId !== staffMemberId ||
         existing.title !== payload.service.trim() ||
         existing.startAt.getTime() !== startAt.getTime() ||
         existing.endAt.getTime() !== endAt.getTime() ||
-        existing.status !== toPrismaAppointmentStatus(payload.status);
+        existing.status !== newStatus;
     }
 
     // The appointment write, reminder reset, and last-visit refresh commit
@@ -334,6 +340,10 @@ export async function saveAppointmentAction(
       [payload.clientId, previousClientId],
       [staffMemberId, previousStaffMemberId]
     );
+
+    if (wasNewlyCancelled) {
+      await notifyStaffOfAppointmentChange(business.id, staffMemberId, appointmentId!);
+    }
 
     return {
       ok: true,
