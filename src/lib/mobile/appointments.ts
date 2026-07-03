@@ -4,7 +4,11 @@ import {
 } from "@/lib/appointments-shared";
 import { logger } from "@/lib/logger";
 import { postSystemMessageToAdminThread } from "@/lib/mobile/inbox";
-import { serializeAppointment, type MobileAppointment } from "@/lib/mobile/serializers";
+import {
+  dateLabelFor,
+  serializeAppointment,
+  type MobileAppointment,
+} from "@/lib/mobile/serializers";
 import { prisma } from "@/lib/prisma";
 import type { StaffContext } from "@/lib/staff-auth";
 import {
@@ -12,8 +16,6 @@ import {
   formatZonedTime,
   getZonedDayWindowByOffset,
 } from "@/lib/time-zone";
-
-export type MobileDay = "today" | "tomorrow";
 
 /** Day key for an arbitrary appointment: today / tomorrow / its clinic-local date. */
 function resolveDayKey(startAt: Date): "today" | "tomorrow" | string {
@@ -56,16 +58,25 @@ export async function getOwnAppointment(
   return serializeAppointment(appointment, resolveDayKey(appointment.startAt));
 }
 
+export type MobileAppointmentsResult = {
+  date: { key: string; label: string };
+  appointments: MobileAppointment[];
+};
+
 /**
- * List the signed-in doctor's appointments for the given day. Scoped to BOTH the
- * business and the staff member — a doctor only ever sees their own schedule,
- * never the whole clinic. Uses the `[staffMemberId, status, startAt]` index.
+ * List the signed-in doctor's appointments for an arbitrary clinic-local day,
+ * given as an offset from today (0 = today, 1 = tomorrow, -1 = yesterday, ...)
+ * so a doctor can page through their week, not just today/tomorrow. Scoped to
+ * BOTH the business and the staff member — a doctor only ever sees their own
+ * schedule, never the whole clinic. Uses the `[staffMemberId, status, startAt]`
+ * index.
  */
 export async function listOwnAppointments(
   ctx: StaffContext,
-  day: MobileDay
-): Promise<MobileAppointment[]> {
-  const window = getZonedDayWindowByOffset(new Date(), day === "tomorrow" ? 1 : 0);
+  dayOffset = 0
+): Promise<MobileAppointmentsResult> {
+  const window = getZonedDayWindowByOffset(new Date(), dayOffset);
+  const dayKey = resolveDayKey(window.start);
 
   const appointments = await prisma.appointment.findMany({
     where: {
@@ -85,7 +96,10 @@ export async function listOwnAppointments(
     orderBy: { startAt: "asc" },
   });
 
-  return appointments.map((appointment) => serializeAppointment(appointment, day));
+  return {
+    date: { key: formatZonedDateKey(window.start), label: dateLabelFor(window.start, dayKey) },
+    appointments: appointments.map((appointment) => serializeAppointment(appointment, dayKey)),
+  };
 }
 
 export type MobileCancelResult = { ok: true } | { ok: false; status: number; error: string };

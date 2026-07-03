@@ -6,6 +6,7 @@ import {
   formatZonedFullDate,
   formatZonedShortDate,
   formatZonedTime24,
+  formatZonedWeekdayShortDate,
 } from "@/lib/time-zone";
 
 /**
@@ -48,6 +49,9 @@ export type MobileAppointment = {
   startMinutes: number;
   durationMin: number;
   status: MobileAppointmentStatus;
+  /** The appointment's end time has already passed (real time, not status) —
+   *  lets clients stop calling a never-marked-completed past visit "next up". */
+  hasEnded: boolean;
   dayKey: "today" | "tomorrow" | string;
   dateLabel: string;
   notes?: string;
@@ -96,7 +100,8 @@ export type AppointmentForMobile = Pick<
 
 export function serializeAppointment(
   appointment: AppointmentForMobile,
-  dayKey: "today" | "tomorrow" | string
+  dayKey: "today" | "tomorrow" | string,
+  now: Date = new Date()
 ): MobileAppointment {
   const startLabel = formatZonedTime24(appointment.startAt);
   const [hours, minutes] = startLabel.split(":").map(Number);
@@ -111,15 +116,16 @@ export function serializeAppointment(
     durationMin: appointmentDurationMinutes(appointment),
     // The enum values map 1:1 to the mobile lowercase statuses.
     status: appointment.status.toLowerCase() as MobileAppointmentStatus,
+    hasEnded: appointment.endAt.getTime() < now.getTime(),
     dayKey,
     dateLabel: dateLabelFor(appointment.startAt, dayKey),
     notes: appointment.notes ?? undefined,
   };
 }
 
-function dateLabelFor(startAt: Date, dayKey: string): string {
+export function dateLabelFor(startAt: Date, dayKey: string): string {
   const shortDate = formatZonedShortDate(startAt);
   if (dayKey === "today") return `Today, ${shortDate}`;
   if (dayKey === "tomorrow") return `Tomorrow, ${shortDate}`;
-  return shortDate;
+  return formatZonedWeekdayShortDate(startAt);
 }
