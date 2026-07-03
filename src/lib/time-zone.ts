@@ -283,6 +283,15 @@ export function formatZonedShortDate(date: Date, timeZone = getAppTimeZone()) {
   }).format(date);
 }
 
+export function formatZonedWeekdayShortDate(date: Date, timeZone = getAppTimeZone()) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
 export function formatZonedFullDate(date = new Date(), timeZone = getAppTimeZone()) {
   return new Intl.DateTimeFormat("en-US", {
     timeZone,

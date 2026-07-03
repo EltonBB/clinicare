@@ -7,6 +7,11 @@ import { requireStaffContext } from "@/lib/staff-auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// A doctor paging through their schedule has no legitimate reason to go
+// further than a year out either direction — bounds a malformed/abusive
+// offset before it reaches date math.
+const MAX_OFFSET_DAYS = 365;
+
 export async function GET(request: Request) {
   const ctx = await requireStaffContext(request);
   if ("error" in ctx) {
@@ -21,9 +26,12 @@ export async function GET(request: Request) {
     return limited;
   }
 
-  const dayParam = new URL(request.url).searchParams.get("day");
-  const day = dayParam === "tomorrow" ? "tomorrow" : "today";
+  const offsetParam = new URL(request.url).searchParams.get("offset");
+  const offset = offsetParam ? Number(offsetParam) : 0;
+  if (!Number.isInteger(offset) || Math.abs(offset) > MAX_OFFSET_DAYS) {
+    return NextResponse.json({ error: "Invalid date offset." }, { status: 400 });
+  }
 
-  const appointments = await listOwnAppointments(ctx, day);
-  return NextResponse.json({ appointments });
+  const result = await listOwnAppointments(ctx, offset);
+  return NextResponse.json(result);
 }

@@ -95,4 +95,18 @@ describe("serializeAppointment", () => {
   it("labels tomorrow distinctly", () => {
     expect(serializeAppointment(appt(), "tomorrow").dateLabel.startsWith("Tomorrow, ")).toBe(true);
   });
+
+  it("labels a day that's neither today nor tomorrow with its weekday", () => {
+    const label = serializeAppointment(appt(), "2026-06-29").dateLabel;
+    expect(label).not.toMatch(/^Today|^Tomorrow/);
+    expect(label).toMatch(/^[A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2}$/); // e.g. "Mon, Jun 29"
+  });
+
+  it("flags hasEnded once the appointment's end time has passed, regardless of status", () => {
+    const NOW = new Date("2026-06-25T10:00:00.000Z"); // after the 09:00-09:30 fixture
+    // Never marked completed/cancelled by anyone, but the clock has moved on.
+    expect(serializeAppointment(appt({ status: "CONFIRMED" }), "today", NOW).hasEnded).toBe(true);
+    const BEFORE = new Date("2026-06-25T09:15:00.000Z"); // mid-appointment
+    expect(serializeAppointment(appt(), "today", BEFORE).hasEnded).toBe(false);
+  });
 });
