@@ -1,6 +1,5 @@
 "use server";
 
-import { type EmailOtpType } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -8,10 +7,7 @@ import { z } from "zod";
 
 import { buildAuthRedirectUrl } from "@/lib/app-url";
 import { sanitizeAuthMetadataForSession } from "@/lib/auth-metadata";
-import {
-  createEmailVerificationReceipt,
-  markEmailVerificationReceiptVerifiedByEmail,
-} from "@/lib/email-verification-receipts";
+import { createEmailVerificationReceipt } from "@/lib/email-verification-receipts";
 import {
   checkRateLimit,
   clientIpFromHeaders,
@@ -161,12 +157,6 @@ const TOO_MANY_ATTEMPTS_MESSAGE =
 const LOGIN_RATE_LIMIT: RateLimitRule = { limit: 12, windowMs: 60_000 };
 const SIGNUP_RATE_LIMIT: RateLimitRule = { limit: 6, windowMs: 60_000 };
 const EMAIL_SEND_RATE_LIMIT: RateLimitRule = { limit: 5, windowMs: 60_000 };
-const RESET_PASSWORD_RATE_LIMIT: RateLimitRule = { limit: 8, windowMs: 60_000 };
-// Per-ACCOUNT (not IP) — this gates a signInWithPassword call that doubles as a
-// password-guessing oracle for a hijacked/borrowed session; an attacker could
-// spread guesses across IPs, but not across accounts without a valid session
-// for each one, so keying by user id is what actually bounds the guess count.
-const OWNER_REAUTH_RATE_LIMIT: RateLimitRule = { limit: 5, windowMs: 5 * 60_000 };
 
 async function isWithinRateLimit(action: string, rule: RateLimitRule) {
   const ip = clientIpFromHeaders(await headers());
@@ -198,11 +188,9 @@ export async function signUpAction(
     email: String(formData.get("email") ?? "").trim(),
     password: String(formData.get("password") ?? ""),
   };
-  // Never round-trip the password back through the RSC/action response payload.
-  const safeValues: FormValues = { email: values.email };
 
   if (!(await isWithinRateLimit("signup", SIGNUP_RATE_LIMIT))) {
-    return { error: TOO_MANY_ATTEMPTS_MESSAGE, values: safeValues };
+    return { error: TOO_MANY_ATTEMPTS_MESSAGE, values };
   }
 
   const parsed = signUpSchema.safeParse(values);
@@ -220,7 +208,7 @@ export async function signUpAction(
     return {
       error: "Check the highlighted fields and try again.",
       fieldErrors,
-      values: safeValues,
+      values,
     };
   }
 
@@ -243,7 +231,7 @@ export async function signUpAction(
       error: isEmailRateLimited(error)
         ? EMAIL_RATE_LIMIT_MESSAGE
         : "We couldn't create the account. Check the details and try again.",
-      values: safeValues,
+      values,
     };
   }
 
@@ -263,12 +251,9 @@ export async function loginAction(
     password: String(formData.get("password") ?? ""),
     next: String(formData.get("next") ?? ""),
   };
-  // Never round-trip the password back through the RSC/action response
-  // payload — only email/next are safe (and useful) to restore on error.
-  const safeValues: FormValues = { email: values.email, next: values.next };
 
   if (!(await isWithinRateLimit("login", LOGIN_RATE_LIMIT))) {
-    return { error: TOO_MANY_ATTEMPTS_MESSAGE, values: safeValues };
+    return { error: TOO_MANY_ATTEMPTS_MESSAGE, values };
   }
 
   const parsed = loginSchema.safeParse(values);
@@ -286,7 +271,7 @@ export async function loginAction(
     return {
       error: "Enter a valid email and password.",
       fieldErrors,
-      values: safeValues,
+      values,
     };
   }
 
@@ -299,7 +284,7 @@ export async function loginAction(
   if (error) {
     return {
       error: "We couldn't log you in with those credentials.",
-      values: safeValues,
+      values,
     };
   }
 
@@ -432,11 +417,6 @@ export async function resetPasswordAction(
     password: String(formData.get("password") ?? ""),
     confirmPassword: String(formData.get("confirmPassword") ?? ""),
   };
-  // Nothing here is safe (or useful) to echo back — both fields are passwords.
-
-  if (!(await isWithinRateLimit("reset-password", RESET_PASSWORD_RATE_LIMIT))) {
-    return { error: TOO_MANY_ATTEMPTS_MESSAGE };
-  }
 
   const parsed = resetPasswordSchema.safeParse(values);
 
@@ -453,6 +433,7 @@ export async function resetPasswordAction(
     return {
       error: "Choose a valid new password and try again.",
       fieldErrors,
+      values,
     };
   }
 
@@ -467,6 +448,7 @@ export async function resetPasswordAction(
   if (userError || !user) {
     return {
       error: "The recovery link expired. Request a fresh password reset email.",
+      values,
     };
   }
 
@@ -477,6 +459,7 @@ export async function resetPasswordAction(
   if (cookieStore.get("vela_pw_recovery")?.value !== user.id) {
     return {
       error: "The recovery link expired. Request a fresh password reset email.",
+      values,
     };
   }
 
@@ -487,104 +470,13 @@ export async function resetPasswordAction(
   if (error) {
     return {
       error: "We couldn't update the password. Request a fresh recovery link and try again.",
+      values,
     };
   }
 
   cookieStore.delete("vela_pw_recovery");
   await supabase.auth.signOut();
   redirect("/login?reset=1");
-}
-
-/**
- * Consumes the recovery token from an explicit user click (a real form POST),
- * never from the GET that /auth/confirm redirects to /reset-password/confirm
- * for — that GET is exactly what an email security scanner prefetches, and
- * verifying (consuming) a single-use token there burns it before the real
- * user ever clicks. Deferring verifyOtp to here means a scanner's prefetch of
- * the confirm page renders inert HTML with nothing to consume.
- */
-export async function confirmPasswordRecoveryAction(tokenHash: string): Promise<void> {
-  if (!tokenHash) {
-    redirect("/forgot-password?expired=1");
-  }
-
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.verifyOtp({
-    type: "recovery",
-    token_hash: tokenHash,
-  });
-
-  if (error || !data.user) {
-    redirect("/forgot-password?expired=1");
-  }
-
-  // Bind the privileged reset to THIS verification AND this user: the reset
-  // page and resetPasswordAction require a marker whose value equals the
-  // current session's user id, so neither a plain login session (no marker)
-  // nor a stale marker from another account can set a new password via the
-  // reset form — defense in depth even if routing ever regresses. httpOnly +
-  // short TTL, single-use (cleared on success). It rides the same redirect
-  // response as the session cookie, so it's as reliable as the session itself.
-  //
-  // KNOWN LIMITATION (tracked for the pre-US / HIPAA hardening pass): this is an
-  // unsigned cookie, so a caller who already holds this user's session can forge
-  // it (the user id is derivable from the session). The user-id binding blocks
-  // blind and cross-account forgery — sufficient for the non-PHI pilot — but the
-  // durable fix is a one-time, server-side nonce (Prisma-backed) verified and
-  // consumed on reset, landing with the audit-logging work before the US launch.
-  (await cookies()).set("vela_pw_recovery", data.user.id, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 900,
-  });
-  redirect("/reset-password?recovery=1");
-}
-
-const CONFIRMABLE_EMAIL_OTP_TYPES = new Set(["signup", "invite", "magiclink", "email_change", "email"]);
-
-const INVALID_CONFIRM_LINK =
-  "/confirm-email?error=" +
-  encodeURIComponent("That verification link is no longer valid. Request a new one below.");
-
-/**
- * The generic (non-recovery) twin of confirmPasswordRecoveryAction, for the
- * same reason: /auth/confirm's GET defers verifyOtp here — to an explicit
- * user click — for signup/invite/magic-link/email-change links too, so an
- * email security scanner's automatic prefetch can't burn the token before
- * the real user clicks.
- */
-export async function confirmEmailLinkAction(tokenHash: string, type: string): Promise<void> {
-  if (!tokenHash || !CONFIRMABLE_EMAIL_OTP_TYPES.has(type)) {
-    redirect(INVALID_CONFIRM_LINK);
-  }
-
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.verifyOtp({
-    type: type as EmailOtpType,
-    token_hash: tokenHash,
-  });
-
-  if (error) {
-    redirect(INVALID_CONFIRM_LINK);
-  }
-
-  if (type === "email_change") {
-    redirect("/settings?email_updated=1");
-  }
-
-  // The token is already consumed and the account confirmed by this point, so
-  // a transient receipt-write or sign-out failure must never block the
-  // redirect — otherwise the user 500s on a one-time link they can no longer
-  // reuse. (redirect() throws NEXT_REDIRECT, so it stays outside this try.)
-  try {
-    await markEmailVerificationReceiptVerifiedByEmail(data.user?.email ?? null);
-    await supabase.auth.signOut();
-  } catch {
-    // best-effort cleanup; fall through to the login redirect regardless.
-  }
-  redirect("/login?verified=1");
 }
 
 export async function updateOwnerProfileAction(
@@ -598,12 +490,6 @@ export async function updateOwnerProfileAction(
     currentPassword: String(formData.get("currentPassword") ?? ""),
     newPassword: String(formData.get("newPassword") ?? ""),
     confirmPassword: String(formData.get("confirmPassword") ?? ""),
-  };
-  // Never round-trip password fields back through the RSC/action response payload.
-  const safeValues: OwnerProfileValues = {
-    fullName: values.fullName,
-    email: values.email,
-    phone: values.phone,
   };
 
   const parsed = ownerProfileSchema.safeParse(values);
@@ -621,7 +507,7 @@ export async function updateOwnerProfileAction(
     return {
       error: "Check the highlighted fields and try again.",
       fieldErrors,
-      values: safeValues,
+      values,
     };
   }
 
@@ -634,7 +520,7 @@ export async function updateOwnerProfileAction(
   if (userError || !user) {
     return {
       error: "Your session expired. Log in again to update your account.",
-      values: safeValues,
+      values,
     };
   }
 
@@ -655,21 +541,6 @@ export async function updateOwnerProfileAction(
   // a borrowed/hijacked session can't silently set new credentials. Done before
   // any mutation, so a wrong current password changes nothing.
   if (passwordChanged) {
-    // Per-account, not per-IP: signInWithPassword here doubles as a
-    // password-guessing oracle for a hijacked session, and the thing that
-    // actually bounds an attacker is a cap on guesses against THIS account,
-    // not the IP they happen to be sending from.
-    const reauthLimit = await checkRateLimit(
-      `owner-reauth:${user.id}`,
-      OWNER_REAUTH_RATE_LIMIT
-    );
-    if (!reauthLimit.allowed) {
-      return {
-        error: TOO_MANY_ATTEMPTS_MESSAGE,
-        values: safeValues,
-      };
-    }
-
     const { error: reauthError } = await supabase.auth.signInWithPassword({
       email: user.email ?? "",
       password: parsed.data.currentPassword?.trim() ?? "",
@@ -679,7 +550,7 @@ export async function updateOwnerProfileAction(
       return {
         error: "That current password is incorrect.",
         fieldErrors: { currentPassword: "That current password is incorrect." },
-        values: safeValues,
+        values,
       };
     }
   }
@@ -695,7 +566,7 @@ export async function updateOwnerProfileAction(
   if (profileError) {
     return {
       error: "We couldn't update the account profile right now.",
-      values: safeValues,
+      values,
     };
   }
 
@@ -707,7 +578,7 @@ export async function updateOwnerProfileAction(
     if (passwordError) {
       return {
         error: "We couldn't update the password right now.",
-        values: safeValues,
+        values,
       };
     }
   }
