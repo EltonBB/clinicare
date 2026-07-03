@@ -5,6 +5,7 @@ import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import {
   cancelAppointmentCore,
   deleteAppointmentCore,
+  notifyStaffOfAppointmentChange,
   refreshClientLastVisitAt,
   revalidateCalendarSurfaces,
 } from "@/lib/appointments-shared";
@@ -373,6 +374,10 @@ export async function cancelAppointmentAction(
 
   revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId]);
 
+  if (outcome.changed) {
+    await notifyStaffOfAppointmentChange(business.id, outcome.staffMemberId, outcome.appointmentId);
+  }
+
   return {
     ok: true,
     appointmentId: outcome.appointmentId,
@@ -405,6 +410,9 @@ export async function deleteAppointmentAction(
   }
 
   revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId]);
+
+  // No deep link — the row is gone, unlike a cancel which keeps it (status only).
+  await notifyStaffOfAppointmentChange(business.id, outcome.staffMemberId, null);
 
   return {
     ok: true,

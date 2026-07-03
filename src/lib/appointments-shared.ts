@@ -2,6 +2,8 @@ import { revalidatePath } from "next/cache";
 
 import { Prisma } from "@prisma/client";
 
+import { logger } from "@/lib/logger";
+import { buildStaffPushPayload, sendStaffPush } from "@/lib/mobile/push";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -185,5 +187,53 @@ export function revalidateCalendarSurfaces(
     if (staffMemberId) {
       revalidatePath(`/staff/${staffMemberId}`);
     }
+  }
+}
+
+/**
+ * Tell the assigned doctor's mobile app that the admin changed one of their
+ * appointments (cancelled or deleted) — the reverse direction of the doctor's
+ * own cancel, which already notifies the admin. Without this a doctor only
+ * finds out by noticing their schedule looks different. Best-effort: never
+ * blocks or fails the mutation it followed.
+ *
+ * `deepLinkAppointmentId` should be omitted for a delete — the row is gone,
+ * so a deep link to it would 404 in the app. A cancel keeps the row (status
+ * only), so it's safe to link to.
+ */
+export async function notifyStaffOfAppointmentChange(
+  businessId: string,
+  staffMemberId: string | null,
+  deepLinkAppointmentId: string | null
+): Promise<void> {
+  if (!staffMemberId) {
+    return;
+  }
+  try {
+    await prisma.staffNotification.create({
+      data: {
+        businessId,
+        staffMemberId,
+        kind: "APPOINTMENT",
+        title: "Schedule updated",
+        body: "Your clinic changed one of your appointments.",
+        linkType: deepLinkAppointmentId ? "appointment" : null,
+        linkId: deepLinkAppointmentId,
+      },
+    });
+    const devices = await prisma.staffDevice.findMany({
+      where: { businessId, staffMemberId, revokedAt: null, expoPushToken: { not: null } },
+      select: { expoPushToken: true },
+    });
+    await sendStaffPush(
+      devices.map((device) => device.expoPushToken),
+      buildStaffPushPayload(
+        deepLinkAppointmentId
+          ? { kind: "appointment", linkType: "appointment", linkId: deepLinkAppointmentId }
+          : { kind: "appointment" }
+      )
+    );
+  } catch (error) {
+    logger.error("Failed to notify staff of an appointment change.", error, { staffMemberId });
   }
 }
