@@ -342,7 +342,11 @@ export async function saveAppointmentAction(
     );
 
     if (wasNewlyCancelled) {
-      await notifyStaffOfAppointmentChange(business.id, staffMemberId, appointmentId!);
+      // The doctor who is told is whoever HAD this slot before the edit, not
+      // the post-save assignee: if the same save also reassigns or clears the
+      // staff dropdown, the previous owner is the one whose schedule just
+      // lost an appointment — the new/cleared assignee never had it to lose.
+      await notifyStaffOfAppointmentChange(business.id, previousStaffMemberId, appointmentId!);
     }
 
     return {
