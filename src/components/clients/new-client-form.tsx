@@ -14,7 +14,6 @@ import {
   fieldSelectClass,
   WorkspaceFormSection,
 } from "@/components/workspace/workspace-layout";
-import type { ClientStatus } from "@/lib/clients";
 import { cn } from "@/lib/utils";
 
 type NewClientFormProps = {
@@ -57,8 +56,6 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
-  const [status, setStatus] = useState<ClientStatus>("active");
-  const [preferredChannel, setPreferredChannel] = useState("WhatsApp");
   const [patientType, setPatientType] = useState("New Patient");
 
   function handleSubmit(formData: FormData) {
@@ -72,11 +69,13 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
         dateOfBirth: String(formData.get("dateOfBirth") ?? ""),
         address: String(formData.get("address") ?? ""),
         patientType,
-        clinicType: String(formData.get("clinicType") ?? ""),
-        status,
+        // A new patient starts active; status, clinic-wide and contact-routing
+        // details are managed later on the record — not collected at creation.
+        clinicType: "",
+        status: "active",
         notes: String(formData.get("notes") ?? ""),
-        preferredChannel,
-        assignedStaff: String(formData.get("assignedStaff") ?? ""),
+        preferredChannel: "",
+        assignedStaff: "",
         tags: patientType,
       });
 
@@ -129,36 +128,9 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
             options={["New Patient", "Returning Patient", "VIP / Important"]}
             onChange={setPatientType}
           />
-          <SelectField
-            name="status"
-            label="Status"
-            value={status}
-            options={["active", "inactive", "at-risk", "archived"]}
-            onChange={(value) => setStatus(value as ClientStatus)}
-          />
-        </div>
-      </WorkspaceFormSection>
-
-      <WorkspaceFormSection title="Clinic information">
-        <div className="grid gap-3.5 sm:grid-cols-2">
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-foreground">Clinic type</span>
-            <Input name="clinicType" placeholder="Dental, aesthetic, medical..." className={fieldInputClass} />
-          </label>
-          <SelectField
-            name="preferredChannel"
-            label="Preferred contact method"
-            value={preferredChannel}
-            options={["WhatsApp", "Phone Call", "Email"]}
-            onChange={setPreferredChannel}
-          />
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-foreground">Assigned doctor / staff member</span>
-            <Input name="assignedStaff" placeholder="Workspace staff" className={fieldInputClass} />
-          </label>
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-foreground">Patient notes</span>
-            <Textarea name="notes" placeholder="Registration notes, communication preferences, or immediate booking context" className="min-h-24 rounded-(--radius-card) bg-white px-3 py-3" />
+            <Textarea name="notes" placeholder="Registration notes or immediate booking context" className="min-h-24 rounded-(--radius-card) bg-white px-3 py-3" />
           </label>
         </div>
       </WorkspaceFormSection>

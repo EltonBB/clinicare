@@ -1,7 +1,7 @@
 "use client";
 
-import { CalendarDays, MessageCircle, ShieldCheck, Sparkles } from "lucide-react";
-import type { ElementType } from "react";
+import { CalendarDays, CheckCircle2, MessageCircle, ShieldCheck, Sparkles } from "lucide-react";
+import { type ElementType, type FormEvent, useState } from "react";
 
 import { MarketingShell } from "../shell/marketing-shell";
 import { InnerHero, Highlight } from "../shared/inner-hero";
@@ -15,7 +15,53 @@ const methods: { icon: ElementType<{ className?: string }>; title: string; copy:
   { icon: Sparkles, title: "Early access", copy: "Share what your clinic needs before online checkout is fully available." },
 ];
 
+const CONTACT_EMAIL = "support@clinicare-vela.space";
+const TOPIC_OPTIONS = ["I want to book a demo", "I have a pricing question", "I need help with setup"];
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// No email-sending provider is wired yet (Resend is roadmapped, not built) —
+// a mailto: handoff means a visitor's message is never silently discarded,
+// with the raw address always visible as a manual fallback.
+function buildMailtoHref(fields: { name: string; email: string; clinicName: string; topic: string; message: string }) {
+  const subject = `${fields.topic} — ${fields.clinicName || fields.name}`;
+  const body = [
+    `Name: ${fields.name}`,
+    `Email: ${fields.email}`,
+    fields.clinicName ? `Clinic / business: ${fields.clinicName}` : null,
+    "",
+    fields.message,
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+  return `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 export function ContactPage() {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [clinicName, setClinicName] = useState("");
+  const [topic, setTopic] = useState(TOPIC_OPTIONS[0]);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+
+    if (!name.trim() || !message.trim()) {
+      setError("Please add your name and a short message.");
+      return;
+    }
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      setError("Please add a valid email so we can reply.");
+      return;
+    }
+
+    window.location.href = buildMailtoHref({ name: name.trim(), email: email.trim(), clinicName: clinicName.trim(), topic, message: message.trim() });
+    setSubmitted(true);
+  }
+
   return (
     <MarketingShell overlay>
       <InnerHero
@@ -58,39 +104,70 @@ export function ContactPage() {
           </Reveal>
 
           <Reveal delay={0.08} className="surface-card p-5 sm:p-8">
-            <form className="grid gap-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Full name" placeholder="Your name" />
-                <Field label="Email" placeholder="you@example.com" type="email" />
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Clinic / business name" placeholder="Your clinic name" />
-                <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
-                  How can we help?
-                  <select className="h-12 rounded-(--radius-field) border border-border/80 bg-white px-4 text-sm font-semibold normal-case tracking-normal text-foreground outline-none transition-[border-color,box-shadow] duration-(--duration-base) ease-out-quint focus:border-primary/50 focus:ring-3 focus:ring-ring/45">
-                    <option>I want to book a demo</option>
-                    <option>I have a pricing question</option>
-                    <option>I need help with setup</option>
-                  </select>
-                </label>
-              </div>
-              <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
-                Message
-                <textarea
-                  rows={6}
-                  placeholder="Tell us about your clinic and what you need..."
-                  className="resize-none rounded-(--radius-field) border border-border/80 bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-foreground outline-none transition-[border-color,box-shadow] duration-(--duration-base) ease-out-quint placeholder:text-muted-foreground/70 focus:border-primary/50 focus:ring-3 focus:ring-ring/45"
-                />
-              </label>
-              <Magnetic className="justify-self-start">
+            {submitted ? (
+              <div className="flex flex-col items-start gap-3 py-6">
+                <span className="flex size-11 items-center justify-center rounded-(--radius-tile) border border-border/80 bg-white text-primary">
+                  <CheckCircle2 className="size-5" />
+                </span>
+                <h3 className="text-lg font-bold text-foreground">Your email client should be open</h3>
+                <p className="max-w-sm text-sm leading-6 text-muted-foreground">
+                  We pre-filled a message to our team — just hit send from there. Didn&apos;t open?{" "}
+                  <a href={`mailto:${CONTACT_EMAIL}`} className="font-semibold text-primary underline underline-offset-2">
+                    Email us directly at {CONTACT_EMAIL}
+                  </a>
+                  .
+                </p>
                 <button
                   type="button"
-                  className="vela-gradient inline-flex h-12 items-center justify-center rounded-(--radius-field) px-6 text-sm font-bold text-white shadow-[0_18px_36px_rgba(10,34,255,0.24)] transition-transform duration-(--duration-base) ease-out-quint hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
+                  onClick={() => setSubmitted(false)}
+                  className="text-sm font-semibold text-primary underline underline-offset-2"
                 >
-                  Send message
+                  Send another message
                 </button>
-              </Magnetic>
-            </form>
+              </div>
+            ) : (
+              <form className="grid gap-4" onSubmit={handleSubmit}>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field label="Full name" placeholder="Your name" value={name} onChange={setName} required />
+                  <Field label="Email" placeholder="you@example.com" type="email" value={email} onChange={setEmail} required />
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field label="Clinic / business name" placeholder="Your clinic name" value={clinicName} onChange={setClinicName} />
+                  <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                    How can we help?
+                    <select
+                      value={topic}
+                      onChange={(event) => setTopic(event.target.value)}
+                      className="h-12 rounded-(--radius-field) border border-border/80 bg-white px-4 text-sm font-semibold normal-case tracking-normal text-foreground outline-none transition-[border-color,box-shadow] duration-(--duration-base) ease-out-quint focus:border-primary/50 focus:ring-3 focus:ring-ring/45"
+                    >
+                      {TOPIC_OPTIONS.map((option) => (
+                        <option key={option}>{option}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                  Message
+                  <textarea
+                    rows={6}
+                    required
+                    value={message}
+                    onChange={(event) => setMessage(event.target.value)}
+                    placeholder="Tell us about your clinic and what you need..."
+                    className="resize-none rounded-(--radius-field) border border-border/80 bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-foreground outline-none transition-[border-color,box-shadow] duration-(--duration-base) ease-out-quint placeholder:text-muted-foreground/70 focus:border-primary/50 focus:ring-3 focus:ring-ring/45"
+                  />
+                </label>
+                {error ? <p className="text-sm font-semibold text-destructive">{error}</p> : null}
+                <Magnetic className="justify-self-start">
+                  <button
+                    type="submit"
+                    className="vela-gradient inline-flex h-12 items-center justify-center rounded-(--radius-field) px-6 text-sm font-bold text-white shadow-[0_18px_36px_rgba(10,34,255,0.24)] transition-transform duration-(--duration-base) ease-out-quint hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
+                  >
+                    Send message
+                  </button>
+                </Magnetic>
+              </form>
+            )}
           </Reveal>
         </div>
       </section>
@@ -98,13 +175,30 @@ export function ContactPage() {
   );
 }
 
-function Field({ label, placeholder, type = "text" }: { label: string; placeholder: string; type?: string }) {
+function Field({
+  label,
+  placeholder,
+  type = "text",
+  value,
+  onChange,
+  required,
+}: {
+  label: string;
+  placeholder: string;
+  type?: string;
+  value: string;
+  onChange: (value: string) => void;
+  required?: boolean;
+}) {
   return (
     <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
       {label}
       <input
         type={type}
         placeholder={placeholder}
+        value={value}
+        required={required}
+        onChange={(event) => onChange(event.target.value)}
         className="h-12 rounded-(--radius-field) border border-border/80 bg-white px-4 text-sm font-semibold normal-case tracking-normal text-foreground outline-none transition-[border-color,box-shadow] duration-(--duration-base) ease-out-quint placeholder:text-muted-foreground/70 focus:border-primary/50 focus:ring-3 focus:ring-ring/45"
       />
     </label>

@@ -15,6 +15,7 @@ import type {
 import { format } from "date-fns";
 
 import { resolveMediaDisplayUrls } from "@/lib/media-storage-server";
+import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
 
 export type ClientStatus = "active" | "at-risk" | "inactive" | "archived";
@@ -320,9 +321,11 @@ export function toPrismaClientStatus(status: ClientStatus) {
 }
 
 function formatLastVisit(client: ClientWithRelations) {
-  const latestAppointment = client.appointments[0]?.startAt ?? client.lastVisitAt;
-
-  return latestAppointment ? format(latestAppointment, "MMM d, yyyy") : "No visits yet";
+  // Same source as the directory (`formatDirectoryLastVisit` below) — not the
+  // most recent appointment of any status, which could be a future booking or
+  // a cancellation and would then disagree with the directory row for the
+  // same client.
+  return client.lastVisitAt ? format(client.lastVisitAt, "MMM d, yyyy") : "No visits yet";
 }
 
 function formatDirectoryLastVisit(client: ClientDirectoryRow) {
@@ -546,26 +549,49 @@ function buildTimeline(client: ClientWithRelations): ClientTimelineEntry[] {
 
 export async function buildClientRecord(client: ClientWithRelations): Promise<ClientRecord> {
   const now = new Date();
-  const completed = client.appointments.filter(
-    (appointment) => appointment.status === "COMPLETED"
-  ).length;
-  const cancelled = client.appointments.filter(
-    (appointment) => appointment.status === "CANCELLED"
-  ).length;
-  const pending = client.appointments.filter(
-    (appointment) => appointment.status === "PENDING"
-  ).length;
-  const upcoming = client.appointments.filter(
-    (appointment) =>
-      appointment.startAt >= now &&
-      (appointment.status === "PENDING" || appointment.status === "CONFIRMED")
-  ).length;
-  const totalPaidCents = client.payments
-    .filter((payment) => payment.status === "Paid")
-    .reduce((sum, payment) => sum + payment.amountCents, 0);
-  const unpaidBalanceCents = client.payments
-    .filter((payment) => payment.status === "Unpaid" || payment.status === "Partially Paid")
-    .reduce((sum, payment) => sum + payment.amountCents, 0);
+
+  // The appointments/payments arrays on `client` are display lists capped at
+  // take:25/take:60 (ordered most-recent-first) — fine for rendering history,
+  // but a patient with more visits/invoices than that would silently undercount
+  // completed/cancelled/pending and understate money totals. Aggregate those
+  // over the FULL history in the DB instead, unbounded by the display take limit.
+  const [appointmentCountsByStatus, upcomingCount, paymentSumsByStatus, galleryUrlMap] =
+    await Promise.all([
+      prisma.appointment.groupBy({
+        by: ["status"],
+        where: { businessId: client.businessId, clientId: client.id },
+        _count: true,
+      }),
+      prisma.appointment.count({
+        where: {
+          businessId: client.businessId,
+          clientId: client.id,
+          startAt: { gte: now },
+          status: { in: ["PENDING", "CONFIRMED"] },
+        },
+      }),
+      prisma.clientPayment.groupBy({
+        by: ["status"],
+        where: { businessId: client.businessId, clientId: client.id },
+        _sum: { amountCents: true },
+      }),
+      // Batch-sign gallery images once (one request per bucket) instead of a
+      // round-trip per item; independent of the aggregates above, so it runs
+      // alongside them rather than after.
+      resolveMediaDisplayUrls(client.galleryItems.map((item) => item.imageUrl)),
+    ]);
+
+  const appointmentCount = (status: AppointmentStatus) =>
+    appointmentCountsByStatus.find((row) => row.status === status)?._count ?? 0;
+  const completed = appointmentCount("COMPLETED");
+  const cancelled = appointmentCount("CANCELLED");
+  const pending = appointmentCount("PENDING");
+  const upcoming = upcomingCount;
+
+  const paymentSum = (status: string) =>
+    paymentSumsByStatus.find((row) => row.status === status)?._sum.amountCents ?? 0;
+  const totalPaidCents = paymentSum("Paid");
+  const unpaidBalanceCents = paymentSum("Unpaid") + paymentSum("Partially Paid");
   const paymentStatus =
     unpaidBalanceCents > 0
       ? totalPaidCents > 0
@@ -574,12 +600,6 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
       : totalPaidCents > 0
         ? "Paid"
         : "No payments yet";
-
-  // Batch-sign gallery images once (one request per bucket) instead of a
-  // round-trip per item.
-  const galleryUrlMap = await resolveMediaDisplayUrls(
-    client.galleryItems.map((item) => item.imageUrl)
-  );
 
   return {
     id: client.id,
@@ -591,7 +611,9 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
     dateOfBirthInput: client.dateOfBirth ? format(client.dateOfBirth, "yyyy-MM-dd") : "",
     address: client.address ?? "",
     patientType: client.patientType ?? "New Patient",
-    clinicType: client.clinicType ?? "Clinic",
+    // Vestigial (clinic-type-per-patient isn't a real concept) and never
+    // rendered anywhere — an empty string here, not a fabricated "Clinic".
+    clinicType: client.clinicType ?? "",
     lastVisit: formatLastVisit(client),
     totalVisits: client._count?.appointments ?? client.appointments.length,
     status: formatStatus(client.status, client.isArchived),
@@ -604,7 +626,11 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
       treatmentPlan: client.treatmentPlan ?? "",
     },
     details: {
-      preferredChannel: client.preferredChannel ?? "WhatsApp",
+      // A never-captured preference is unknown, not "WhatsApp" — the record
+      // shouldn't assert a fact about the patient the clinic never confirmed.
+      // Both render sites (client-details-page.tsx) already treat an empty
+      // string as "hide this row", matching the empty-value display rule.
+      preferredChannel: client.preferredChannel ?? "",
       assignedStaff: client.assignedStaffName ?? "",
       tags: client.tags,
     },

@@ -1,4 +1,3 @@
-import { isAfter, isBefore } from "date-fns";
 import type { Appointment, StaffMember, StaffShift, StaffTimeEntry } from "@prisma/client";
 
 import {
@@ -236,7 +235,7 @@ function buildSchedule(
 function clockState(args: {
   status: StaffStatus;
   isCheckedIn: boolean;
-  todayShift?: Pick<StaffShift, "startsAt" | "endsAt">;
+  shifts: Pick<StaffShift, "startsAt" | "endsAt">[];
 }) {
   if (args.isCheckedIn) {
     return {
@@ -254,30 +253,76 @@ function clockState(args: {
     };
   }
 
-  if (!args.todayShift) {
+  const now = new Date();
+
+  // Single source of truth for "can this staff member clock in right now" —
+  // the same function the server enforces with, so the button can never
+  // disagree with what a check-in request would actually do. Replaces a
+  // former date-equality "todayShift" pick that missed split shifts (after
+  // the morning half ends, the button showed "ended" even though an evening
+  // shift was about to open) and overnight shifts (date-equality can't match
+  // a shift that started yesterday).
+  if (findActiveShiftWindow(args.shifts, now)) {
     return {
-      canClock: false,
-      clockLabel: "No shift",
-      clockDisabledReason: "Add a shift for today before check-in.",
+      canClock: true,
+      clockLabel: "Check in",
+      clockDisabledReason: "",
     };
   }
 
-  const now = new Date();
-  const earliestCheckIn = new Date(args.todayShift.startsAt.getTime() - 30 * 60 * 1000);
-  const latestCheckIn = args.todayShift.endsAt;
-  const withinShiftWindow =
-    (isAfter(now, earliestCheckIn) || now.getTime() === earliestCheckIn.getTime()) &&
-    (isBefore(now, latestCheckIn) || now.getTime() === latestCheckIn.getTime());
+  // Not in an active window — explain why using whichever shift is most
+  // relevant: the soonest upcoming one, else the most recently ended one.
+  const upcoming = args.shifts
+    .filter((shift) => shift.startsAt.getTime() > now.getTime())
+    .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())[0];
+
+  if (upcoming) {
+    return {
+      canClock: false,
+      clockLabel: "Check in",
+      clockDisabledReason: `Check-in opens 30 min before ${formatZonedTime(upcoming.startsAt)}.`,
+    };
+  }
+
+  const mostRecentlyEnded = args.shifts
+    .filter((shift) => shift.endsAt.getTime() <= now.getTime())
+    .sort((a, b) => b.endsAt.getTime() - a.endsAt.getTime())[0];
+
+  if (mostRecentlyEnded) {
+    return {
+      canClock: false,
+      clockLabel: "Check in",
+      clockDisabledReason: `Today's shift ended at ${formatZonedTime(mostRecentlyEnded.endsAt)}.`,
+    };
+  }
 
   return {
-    canClock: withinShiftWindow,
-    clockLabel: "Check in",
-    clockDisabledReason: withinShiftWindow
-      ? ""
-      : isAfter(now, latestCheckIn)
-        ? `Today's shift ended at ${formatZonedTime(args.todayShift.endsAt)}.`
-        : `Check-in opens 30 min before ${formatZonedTime(args.todayShift.startsAt)}.`,
+    canClock: false,
+    clockLabel: "No shift",
+    clockDisabledReason: "Add a shift for today before check-in.",
   };
+}
+
+/** Early check-in grace before a scheduled shift's start. */
+export const CHECK_IN_EARLY_GRACE_MS = 30 * 60 * 1000;
+
+/**
+ * The scheduled shift whose check-in window currently covers `now` — from 30 min
+ * before its start through its end — or undefined if none does. The single source
+ * of truth for "is this staff member allowed to clock in right now", shared by
+ * the admin check-in action and the mobile self check-in so both enforce the
+ * SAME window (no clocking in outside a scheduled shift).
+ */
+export function findActiveShiftWindow(
+  shifts: Pick<StaffShift, "startsAt" | "endsAt">[],
+  now: Date = new Date()
+): Pick<StaffShift, "startsAt" | "endsAt"> | undefined {
+  const ms = now.getTime();
+  return shifts.find(
+    (shift) =>
+      ms >= shift.startsAt.getTime() - CHECK_IN_EARLY_GRACE_MS &&
+      ms <= shift.endsAt.getTime()
+  );
 }
 
 function calculateCompletionRate(appointments: Pick<Appointment, "status">[]) {
@@ -298,6 +343,12 @@ export function buildStaffDirectoryRecord(
   counts: StaffDirectoryCounts = EMPTY_STAFF_COUNTS
 ): StaffDirectoryItem {
   const todayKey = formatZonedDateKey();
+  // For the "Today" column label only — a calendar-date match is the right
+  // concept for "what's scheduled today" display text. Check-in eligibility
+  // below is decided separately, from the full shift list, since that's a
+  // currently-active-window question, not a calendar-date one (a split shift's
+  // second half or an overnight shift wouldn't be "today's shift" by this
+  // definition but can still be legitimately clockable right now).
   const todayShift = member.shifts.find(
     (shift) => formatZonedDateKey(shift.startsAt) === todayKey
   );
@@ -306,7 +357,7 @@ export function buildStaffDirectoryRecord(
   const clock = clockState({
     status: normalizedStatus,
     isCheckedIn,
-    todayShift,
+    shifts: member.shifts,
   });
 
   return {

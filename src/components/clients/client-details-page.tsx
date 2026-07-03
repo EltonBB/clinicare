@@ -64,7 +64,7 @@ import {
   WorkspacePage,
 } from "@/components/workspace/workspace-layout";
 import { HeaderStat } from "@/components/workspace/header-stat";
-import { uploadWorkspaceDocument } from "@/lib/media-storage-client";
+import { safeUploadErrorMessage, uploadWorkspaceDocument } from "@/lib/media-storage-client";
 import { cn, formatCurrency, getInitials } from "@/lib/utils";
 import type {
   ClientRecord,
@@ -528,7 +528,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
         },
       });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "We couldn't upload this file.");
+      setErrorMessage(safeUploadErrorMessage(error, "We couldn't upload this file."));
       setStatusMessage("");
     } finally {
       setIsUploading(false);
@@ -1647,7 +1647,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               <div className="mt-4 flex items-start gap-3">
                 <span
                   className={cn(
-                    "flex size-10 shrink-0 items-center justify-center rounded-full",
+                    "flex size-10 shrink-0 items-center justify-center rounded-(--radius-tile)",
                     client.paymentStats.unpaidBalanceCents > 0
                       ? "bg-amber-50 text-amber-600"
                       : "bg-emerald-100 text-emerald-600"

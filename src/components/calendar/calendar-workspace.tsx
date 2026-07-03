@@ -911,7 +911,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
               </div>
             ) : (
               <div className="flex flex-col items-center gap-1.5 py-5 text-center">
-                <span className="mb-1 flex size-8 items-center justify-center rounded-full border border-border/75 bg-[#f7f9fc] text-primary">
+                <span className="mb-1 flex size-8 items-center justify-center rounded-(--radius-tile) border border-border/75 bg-[#f7f9fc] text-primary">
                   <CalendarX2 className="size-3.5" />
                 </span>
                 <p className="text-sm font-semibold text-foreground">No bookings</p>

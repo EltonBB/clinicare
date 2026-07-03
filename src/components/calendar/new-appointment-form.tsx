@@ -11,6 +11,7 @@ import {
   saveAppointmentAction,
 } from "@/app/(workspace)/calendar/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { ConfirmDeleteDialog } from "@/components/clients/record-form-dialog";
 import { ClientCombobox } from "@/components/calendar/client-combobox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -52,6 +53,10 @@ const statusOptions: CalendarAppointmentStatus[] = [
   "cancelled",
   "completed",
 ];
+
+// At creation a booking is only confirmed or pending; it becomes completed or
+// cancelled later via the calendar, never at the moment it's booked.
+const createStatusOptions: CalendarAppointmentStatus[] = ["confirmed", "pending"];
 
 function timeToMinutes(time: string) {
   const [hours, minutes] = time.split(":").map(Number);
@@ -99,6 +104,7 @@ export function NewAppointmentForm({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
+  const [confirmingAction, setConfirmingAction] = useState<"cancel" | "delete" | null>(null);
   const [clientId, setClientId] = useState(
     initialAppointment?.clientId ?? initialClientId ?? clients[0]?.id ?? ""
   );
@@ -118,7 +124,6 @@ export function NewAppointmentForm({
   const [status, setStatus] = useState<CalendarAppointmentStatus>(
     initialAppointment?.status ?? "confirmed"
   );
-  const [paymentStatus, setPaymentStatus] = useState("Unpaid");
   const isEditing = Boolean(initialAppointment);
   const selectedHours = useMemo(
     () => businessHoursForDate(date, businessHours),
@@ -162,11 +167,6 @@ export function NewAppointmentForm({
         endTime,
         notes: String(formData.get("notes") ?? ""),
         status,
-        paymentAmount: String(formData.get("paymentAmount") ?? ""),
-        paymentStatus,
-        paymentDescription: String(formData.get("paymentDescription") ?? ""),
-        paymentReceiptUrl: String(formData.get("paymentReceiptUrl") ?? ""),
-        paymentPaidAt: String(formData.get("paymentPaidAt") ?? ""),
       });
 
       if (!result.ok || !result.appointment) {
@@ -188,6 +188,7 @@ export function NewAppointmentForm({
       const result = await cancelAppointmentAction(initialAppointment.id);
 
       if (!result.ok) {
+        setConfirmingAction(null);
         setError(result.error ?? "We couldn't cancel this booking.");
         return;
       }
@@ -197,7 +198,7 @@ export function NewAppointmentForm({
   }
 
   function deleteAppointment() {
-    if (!initialAppointment || !window.confirm("Delete this booking permanently?")) {
+    if (!initialAppointment) {
       return;
     }
 
@@ -206,6 +207,7 @@ export function NewAppointmentForm({
       const result = await deleteAppointmentAction(initialAppointment.id);
 
       if (!result.ok) {
+        setConfirmingAction(null);
         setError(result.error ?? "We couldn't delete this booking.");
         return;
       }
@@ -318,7 +320,9 @@ export function NewAppointmentForm({
               onChange={(event) => setStatus(event.target.value as CalendarAppointmentStatus)}
               className={cn(fieldSelectClass, "capitalize")}
             >
-              {statusOptions.map((option) => (
+              {/* A new booking can only be confirmed or pending; completed/cancelled
+                  are reached later from the calendar, not at creation. */}
+              {(isEditing ? statusOptions : createStatusOptions).map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
@@ -337,46 +341,6 @@ export function NewAppointmentForm({
         </p>
       </WorkspaceFormSection>
 
-      {!isEditing ? (
-      <WorkspaceFormSection
-        title="Payment"
-        description="Add the expected or collected payment for this booked service. Leave amount blank if payment will be handled later."
-      >
-        <div className="grid gap-3.5 sm:grid-cols-2">
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-foreground">Service amount</span>
-            <Input name="paymentAmount" inputMode="decimal" placeholder="0.00" className={fieldInputClass} />
-          </label>
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-foreground">Payment status</span>
-            <select
-              value={paymentStatus}
-              onChange={(event) => setPaymentStatus(event.target.value)}
-              className={fieldSelectClass}
-            >
-              {["Unpaid", "Paid", "Partially Paid"].map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-foreground">Paid date</span>
-            <Input name="paymentPaidAt" type="date" className={fieldInputClass} />
-          </label>
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-foreground">Invoice / receipt URL</span>
-            <Input name="paymentReceiptUrl" placeholder="Optional" className={fieldInputClass} />
-          </label>
-          <label className="space-y-2 sm:col-span-2">
-            <span className="text-sm font-semibold text-foreground">Payment note</span>
-            <Textarea name="paymentDescription" placeholder="Deposit, full service payment, balance due..." className="min-h-24 rounded-(--radius-card) bg-white px-3 py-3" />
-          </label>
-        </div>
-      </WorkspaceFormSection>
-      ) : null}
-
       {error ? (
         <div className="rounded-(--radius-card) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
@@ -390,7 +354,7 @@ export function NewAppointmentForm({
               type="button"
               variant="destructive"
               className="rounded-(--radius-card)"
-              onClick={cancelAppointment}
+              onClick={() => setConfirmingAction("cancel")}
               disabled={isPending || status === "cancelled"}
             >
               <XCircle className="size-4" />
@@ -400,7 +364,7 @@ export function NewAppointmentForm({
               type="button"
               variant="outline"
               className="rounded-(--radius-card) border-destructive/25 bg-white text-destructive hover:bg-destructive/5 hover:text-destructive"
-              onClick={deleteAppointment}
+              onClick={() => setConfirmingAction("delete")}
               disabled={isPending}
             >
               <Trash2 className="size-4" />
@@ -424,6 +388,20 @@ export function NewAppointmentForm({
         </Button>
         </div>
       </div>
+
+      <ConfirmDeleteDialog
+        open={confirmingAction !== null}
+        onOpenChange={(open) => setConfirmingAction(open ? confirmingAction : null)}
+        title={confirmingAction === "cancel" ? "Cancel this booking?" : "Delete this booking?"}
+        description={
+          confirmingAction === "cancel"
+            ? "The client will need to be rebooked. This can't be undone."
+            : "This permanently removes the booking record. This can't be undone."
+        }
+        confirmLabel={confirmingAction === "cancel" ? "Cancel booking" : "Delete"}
+        isPending={isPending}
+        onConfirm={confirmingAction === "cancel" ? cancelAppointment : deleteAppointment}
+      />
     </form>
   );
 }

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
+import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
 import { requireCurrentBusiness, requireCurrentWorkspace } from "@/lib/business";
@@ -35,6 +36,38 @@ function clampReminderHours(value: number, fallback: number) {
 
   return Math.min(Math.max(Math.round(value), 1), 24);
 }
+
+// Only the fields whose format actually matters downstream: a malformed
+// working-hours time collapses `timeToMinutes` to 0 (calendar/actions.ts),
+// making every booking on that weekday fail with a misleading "outside
+// business hours" error, and an unbounded template has no cap anywhere else.
+// Deliberately not exhaustive over the whole payload — unknown/extra keys are
+// ignored by Zod here, not stripped, since we validate-then-continue-using
+// `payload`, never the parsed output.
+//
+// businessType is deliberately NOT enum-validated here: nothing downstream
+// computes on it (unlike the times), so hard-rejecting an unexpected value
+// would only turn a cosmetic mismatch into a worse bug — any account whose
+// stored businessType predates/bypasses the picker's fixed list would be
+// unable to save ANY settings at all, since this payload always resubmits
+// the currently-loaded value even when the operator is editing something
+// unrelated (hours, reminders, etc.).
+const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "must be HH:MM");
+const daySchema = z.object({ start: timeSchema, end: timeSchema });
+const saveSettingsSchema = z.object({
+  workingHours: z.object({
+    monday: daySchema,
+    tuesday: daySchema,
+    wednesday: daySchema,
+    thursday: daySchema,
+    friday: daySchema,
+    saturday: daySchema,
+    sunday: daySchema,
+  }),
+  reminders: z.object({
+    template: z.string().max(1000, "Reminder template is too long."),
+  }),
+});
 
 export type SaveSettingsResult = {
   ok: boolean;
@@ -70,6 +103,14 @@ export async function saveSettingsAction(
     return {
       ok: false,
       error: "Your session expired. Log in again to update settings.",
+    };
+  }
+
+  const validation = saveSettingsSchema.safeParse(payload);
+  if (!validation.success) {
+    return {
+      ok: false,
+      error: validation.error.issues[0]?.message ?? "Some settings values aren't valid.",
     };
   }
 
@@ -182,6 +223,13 @@ export async function saveSettingsAction(
     });
   });
 
+  // The transaction above already committed — business name, logo, brand
+  // accent, working hours, and reminders all render in the app shell on every
+  // workspace route. Revalidate now, regardless of what happens below, so a
+  // later owner-profile failure can never leave those surfaces serving a stale
+  // Router-Cache payload while telling the operator nothing saved.
+  revalidatePath("/", "layout");
+
   const nextMetadata = {
     ...sanitizeAuthMetadataForSession(user.user_metadata),
     full_name: payload.business.ownerName,
@@ -192,7 +240,7 @@ export async function saveSettingsAction(
   if (error) {
     return {
       ok: false,
-      error: "We couldn't update settings right now.",
+      error: "Settings saved, but we couldn't update your account name. Try again from Settings.",
     };
   }
 
@@ -208,13 +256,6 @@ export async function saveSettingsAction(
   const nextState = await loadSettingsState(user, updatedBusiness, {
     ownerName: payload.business.ownerName,
   });
-
-  // Business name, logo, brand accent, and owner name all render in the app
-  // shell on every workspace route, and working hours feed calendar utilization.
-  // Invalidate the whole layout tree so none of those surfaces lag a save
-  // instead of enumerating a partial path list (which missed /clients, /staff,
-  // /reports, /inbox).
-  revalidatePath("/", "layout");
 
   return {
     ok: true,

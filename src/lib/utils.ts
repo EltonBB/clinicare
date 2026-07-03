@@ -17,6 +17,18 @@ export function getInitials(name: string) {
   return `${first}${last}`.toUpperCase() || name.slice(0, 2).toUpperCase()
 }
 
+const HONORIFIC_PATTERN = /^(dr|mr|mrs|ms|prof)\.?$/i
+
+/**
+ * First word of a name, skipping a leading honorific (Dr./Mr./Mrs./Ms./Prof.)
+ * so greeting copy addresses "Sarah" rather than "Dr." Falls back to the
+ * first word itself when every word is a title.
+ */
+export function firstDisplayName(name: string) {
+  const words = name.trim().split(/\s+/)
+  return words.find((word) => !HONORIFIC_PATTERN.test(word)) ?? words[0]
+}
+
 /**
  * Single source of truth for formatting a cents amount as USD. Pass
  * `{ whole: true }` for compact surfaces (e.g. dashboard KPI tiles) that show

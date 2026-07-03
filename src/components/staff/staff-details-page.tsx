@@ -16,16 +16,22 @@ import {
 } from "lucide-react";
 
 import { checkInStaffAction, checkOutStaffAction } from "@/app/(workspace)/staff/actions";
+import { MobileAccessCard } from "@/components/staff/mobile-access-card";
+import { StaffMessagesTab } from "@/components/staff/staff-messages-tab";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WorkspaceEmptyState, WorkspacePage } from "@/components/workspace/workspace-layout";
 import { HeaderStat } from "@/components/workspace/header-stat";
 import { cn, getInitials } from "@/lib/utils";
+import type { AdminThreadView } from "@/lib/mobile/admin-inbox";
+import type { MobileAccessStatus } from "@/lib/mobile/admin";
 import type { StaffRecord, StaffStatus } from "@/lib/staff";
 
 type StaffDetailsPageProps = {
   initialStaff: StaffRecord;
+  mobileAccess: MobileAccessStatus;
+  adminThread: AdminThreadView;
 };
 
 const statusLabels: Record<StaffStatus, string> = {
@@ -40,7 +46,11 @@ const statusBadgeStyles: Record<StaffStatus, string> = {
   INACTIVE: "bg-secondary text-muted-foreground",
 };
 
-export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
+export function StaffDetailsPage({
+  initialStaff,
+  mobileAccess,
+  adminThread,
+}: StaffDetailsPageProps) {
   const [staff, setStaff] = useState(initialStaff);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -208,6 +218,9 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
           <TabsTrigger className="flex-none px-0 pb-3" value="schedule">
             Schedule
           </TabsTrigger>
+          <TabsTrigger className="flex-none px-0 pb-3" value="messages">
+            Messages
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent
@@ -283,6 +296,7 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
                 </Link>
               </div>
             </section>
+            <MobileAccessCard staffId={staff.id} initial={mobileAccess} />
           </aside>
 
           <div className="grid gap-3">
@@ -459,6 +473,14 @@ export function StaffDetailsPage({ initialStaff }: StaffDetailsPageProps) {
               </p>
             )}
           </section>
+        </TabsContent>
+
+        <TabsContent value="messages">
+          <StaffMessagesTab
+            staffId={staff.id}
+            staffName={staff.name}
+            initial={adminThread}
+          />
         </TabsContent>
       </Tabs>
     </WorkspacePage>

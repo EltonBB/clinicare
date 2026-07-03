@@ -8,6 +8,7 @@ import { ArrowLeft, CalendarClock, Save, Trash2, UserRoundPlus } from "lucide-re
 
 import { deleteStaffAction, saveStaffAction } from "@/app/(workspace)/staff/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { ConfirmDeleteDialog } from "@/components/clients/record-form-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -131,6 +132,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [role, setRole] = useState(staff?.role ?? "Specialist");
   const [status, setStatus] = useState<StaffStatus>(staff?.status ?? "ACTIVE");
   const [schedule, setSchedule] = useState<ScheduleDraft[]>(() =>
@@ -175,7 +177,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
   }
 
   function deleteStaff() {
-    if (!staff || !window.confirm("Delete this staff member permanently?")) {
+    if (!staff) {
       return;
     }
 
@@ -184,6 +186,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
       const result = await deleteStaffAction(staff.id);
 
       if (!result.ok) {
+        setConfirmingDelete(false);
         setError(result.error ?? "We couldn't delete this staff member.");
         return;
       }
@@ -207,13 +210,17 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
             options={staffRoles}
             onChange={setRole}
           />
-          <SelectField
-            name="status"
-            label="Status"
-            value={status}
-            options={staffStatuses}
-            onChange={(value) => setStatus(value as StaffStatus)}
-          />
+          {/* A new staff member is active by default; status (Away / Inactive) is
+              only set later, so it's an edit-only control. */}
+          {isEditing ? (
+            <SelectField
+              name="status"
+              label="Status"
+              value={status}
+              options={staffStatuses}
+              onChange={(value) => setStatus(value as StaffStatus)}
+            />
+          ) : null}
           <label className="space-y-2">
             <span className="text-sm font-semibold text-foreground">Phone</span>
             <Input name="phone" defaultValue={staff?.phone} placeholder="+1 555 000 0000" className={fieldInputClass} />
@@ -330,7 +337,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
             type="button"
             variant="outline"
             className="rounded-(--radius-card) border-destructive/25 bg-white text-destructive hover:bg-destructive/5 hover:text-destructive"
-            onClick={deleteStaff}
+            onClick={() => setConfirmingDelete(true)}
             disabled={isPending}
           >
             <Trash2 className="size-4" />
@@ -353,6 +360,15 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
         </Button>
         </div>
       </div>
+
+      <ConfirmDeleteDialog
+        open={confirmingDelete}
+        onOpenChange={setConfirmingDelete}
+        title="Delete this staff member?"
+        description="This permanently removes their profile, schedule, and time records. This can't be undone."
+        isPending={isPending}
+        onConfirm={deleteStaff}
+      />
     </form>
   );
 }

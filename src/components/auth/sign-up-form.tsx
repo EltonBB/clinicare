@@ -56,7 +56,6 @@ export function SignUpForm() {
           type="password"
           autoComplete="new-password"
           placeholder="Create a password"
-          defaultValue={state.values?.password}
           aria-invalid={Boolean(state.fieldErrors?.password)}
           className={cn(authFieldClassName, state.fieldErrors?.password && "border-destructive")}
         />

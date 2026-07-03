@@ -3,6 +3,7 @@ import { BarChart3, Lock, Sparkles } from "lucide-react";
 
 import { UpgradeModalTrigger } from "@/components/upgrade/upgrade-modal-trigger";
 import { buttonVariants } from "@/components/ui/button-variants";
+import { basicFeatures, proAddedFeatures } from "@/lib/public-plans";
 import { cn } from "@/lib/utils";
 
 export function ProFeatureLock({
@@ -51,10 +52,13 @@ export function ProFeatureLock({
             <div className="rounded-[0.95rem] border border-border/80 bg-white/88 p-4">
               <p className="text-sm font-semibold text-foreground">Included on Basic</p>
               <ul className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
-                <li>Calendar and appointment management</li>
-                <li>Client records and conversation history</li>
-                <li>Inbox messaging and WhatsApp setup</li>
-                <li>Settings, staff, and working hours</li>
+                {basicFeatures
+                  // This screen's whole point is "full Reports is a Pro unlock" —
+                  // don't list a reports bullet under Basic right next to it.
+                  .filter((feature) => feature !== "Basic operational reports")
+                  .map((feature) => (
+                    <li key={feature}>{feature}</li>
+                  ))}
               </ul>
             </div>
             <div className="rounded-[0.95rem] border border-primary/20 bg-primary/5 p-4">
@@ -63,9 +67,10 @@ export function ProFeatureLock({
                 <p className="text-sm font-semibold text-foreground">Added on Pro</p>
               </div>
               <ul className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
-                <li>Reports and weekly performance readouts</li>
-                <li>Premium upgrade surfaces and future automation tools</li>
-                <li>A cleaner path to deeper insight as the clinic grows</li>
+                <li>Reports and detailed performance breakdowns</li>
+                {proAddedFeatures.map((feature) => (
+                  <li key={feature}>{feature}</li>
+                ))}
               </ul>
             </div>
           </div>

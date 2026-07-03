@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ConfirmDeleteDialog } from "@/components/clients/record-form-dialog";
 import type { SettingsState } from "@/lib/settings";
 
 // Loaded on demand so the settings workspace (and its heavy dependencies)
@@ -41,6 +42,7 @@ export function SettingsDialog({
   const [state, setState] = useState<SettingsState | null>(null);
   const [error, setError] = useState("");
   const [isDirty, setIsDirty] = useState(false);
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -69,21 +71,26 @@ export function SettingsDialog({
   }, [open]);
 
   // Reset to the loading state when the dialog closes so the next open always
-  // reflects current server state, never a stale snapshot. Done in the event
-  // handler (not the effect) to avoid synchronous cascading renders.
+  // reflects current server state, never a stale snapshot.
+  function closeAndReset() {
+    setState(null);
+    setError("");
+    setIsDirty(false);
+    setConfirmingDiscard(false);
+    onOpenChange(false);
+  }
+
   function handleOpenChange(next: boolean) {
     if (!next) {
-      // Guard against losing in-progress edits to an accidental Esc/backdrop close.
-      if (
-        isDirty &&
-        !window.confirm("Discard your unsaved settings changes?")
-      ) {
+      // Guard against losing in-progress edits to an accidental Esc/backdrop
+      // close — ask instead of silently discarding.
+      if (isDirty) {
+        setConfirmingDiscard(true);
         return;
       }
 
-      setState(null);
-      setError("");
-      setIsDirty(false);
+      closeAndReset();
+      return;
     }
     onOpenChange(next);
   }
@@ -125,6 +132,16 @@ export function SettingsDialog({
           </div>
         )}
       </DialogContent>
+
+      <ConfirmDeleteDialog
+        open={confirmingDiscard}
+        onOpenChange={setConfirmingDiscard}
+        title="Discard unsaved changes?"
+        description="Your edits to settings haven't been saved. Closing now will lose them."
+        confirmLabel="Discard"
+        isPending={false}
+        onConfirm={closeAndReset}
+      />
     </Dialog>
   );
 }

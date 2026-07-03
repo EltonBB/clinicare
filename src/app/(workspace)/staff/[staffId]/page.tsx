@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 
 import { StaffDetailsPage } from "@/components/staff/staff-details-page";
 import { requireCurrentWorkspace } from "@/lib/business";
+import { getAdminThread } from "@/lib/mobile/admin-inbox";
+import { getMobileAccessStatus } from "@/lib/mobile/admin";
 import { buildStaffRecord } from "@/lib/staff";
 import { prisma } from "@/lib/prisma";
 
@@ -87,5 +89,16 @@ export default async function StaffDetailsRoute({
     notFound();
   }
 
-  return <StaffDetailsPage initialStaff={buildStaffRecord(staff)} />;
+  const [mobileAccess, adminThread] = await Promise.all([
+    getMobileAccessStatus(business.id, staffId),
+    getAdminThread(business.id, staffId),
+  ]);
+
+  return (
+    <StaffDetailsPage
+      initialStaff={buildStaffRecord(staff)}
+      mobileAccess={mobileAccess}
+      adminThread={adminThread}
+    />
+  );
 }

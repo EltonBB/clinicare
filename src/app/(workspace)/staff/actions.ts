@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
+import { openTimeEntryIfAbsent } from "@/lib/mobile/clock";
 import { prisma } from "@/lib/prisma";
 import {
+  formatZonedTime,
   getAppTimeZone,
   getZonedDayWindow,
   getZonedDayWindowFromParts,
@@ -13,10 +15,21 @@ import {
 } from "@/lib/time-zone";
 import {
   buildStaffRecord,
+  findActiveShiftWindow,
   staffStatuses,
   type SaveStaffPayload,
   type StaffRecord,
 } from "@/lib/staff";
+import { logger } from "@/lib/logger";
+import {
+  markAdminThreadRead,
+  postAdminThreadMessage,
+} from "@/lib/mobile/admin-inbox";
+import {
+  ACCESS_CODE_TTL_MS,
+  generateAccessCode,
+  hashAccessCode,
+} from "@/lib/staff-auth";
 
 export type SaveStaffResult = {
   ok: boolean;
@@ -34,22 +47,6 @@ export type StaffClockResult = {
   ok: boolean;
   error?: string;
   staff?: StaffRecord;
-};
-
-export type SaveStaffShiftPayload = {
-  id?: string;
-  staffMemberId: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  status?: string;
-  notes?: string;
-};
-
-export type SaveStaffShiftResult = {
-  ok: boolean;
-  error?: string;
-  shiftId?: string;
 };
 
 function staffTimeEntryCutoff() {
@@ -399,7 +396,10 @@ export async function checkInStaffAction(staffId: string): Promise<StaffClockRes
       status: true,
       shifts: {
         where: {
-          startsAt: {
+          // endsAt (not startsAt) so an overnight shift that started yesterday
+          // but hasn't ended yet is still loaded — findActiveShiftWindow below
+          // would match it, but only if the query doesn't filter it out first.
+          endsAt: {
             gte: getZonedDayWindow().start,
           },
         },
@@ -422,16 +422,11 @@ export async function checkInStaffAction(staffId: string): Promise<StaffClockRes
     };
   }
 
-  const now = new Date();
-  // Match purely on the shift's time window (30-min early grace through its end).
-  // A clinic-local-date equality check would reject the pre-midnight grace period
-  // that belongs to an early-morning shift on the next date (e.g. a 00:15 shift's
-  // window opens at 23:45 the previous day) and any post-midnight overnight shift.
-  const todayShift = staff.shifts.find(
-    (shift) =>
-      now >= new Date(shift.startsAt.getTime() - 30 * 60 * 1000) &&
-      now <= shift.endsAt
-  );
+  // Match on the shift's time window (30-min early grace through its end) — the
+  // shared findActiveShiftWindow. A clinic-local-date equality check would reject
+  // the pre-midnight grace of an early-morning shift on the next date and any
+  // post-midnight overnight shift.
+  const todayShift = findActiveShiftWindow(staff.shifts);
 
   if (staff.status === "INACTIVE") {
     return {
@@ -447,23 +442,10 @@ export async function checkInStaffAction(staffId: string): Promise<StaffClockRes
     };
   }
 
-  const openEntry = await prisma.staffTimeEntry.findFirst({
-    where: {
-      businessId: business.id,
-      staffMemberId: staffId,
-      checkedOutAt: null,
-    },
-  });
-
-  if (!openEntry) {
-    await prisma.staffTimeEntry.create({
-      data: {
-        businessId: business.id,
-        staffMemberId: staffId,
-        checkedInAt: new Date(),
-      },
-    });
-  }
+  // Shared with the mobile self check-in — atomic (Serializable transaction),
+  // so an admin double-click or an admin/mobile race can't both create an
+  // open time entry for the same member.
+  await openTimeEntryIfAbsent(business.id, staffId);
 
   revalidateStaffSurfaces(staffId);
 
@@ -519,137 +501,242 @@ export async function checkOutStaffAction(staffId: string): Promise<StaffClockRe
   };
 }
 
-export async function saveStaffShiftAction(
-  payload: SaveStaffShiftPayload
-): Promise<SaveStaffShiftResult> {
-  const context = await getAuthedBusiness();
+// --- Mobile access (Vela Staff app enrollment) ------------------------------
 
+export type MobileAccessResult = {
+  ok: boolean;
+  error?: string;
+  /** Plaintext enrollment code — returned exactly once, on generate. */
+  code?: string;
+};
+
+async function requireOwnedStaff(staffId: unknown) {
+  if (typeof staffId !== "string" || !staffId.trim()) {
+    return { error: "Staff member not found." } as const;
+  }
+  const context = await getAuthedBusinessContext();
   if ("error" in context) {
-    return {
-      ok: false,
-      error: context.error,
-    };
+    return { error: context.error } as const;
   }
-
-  const business = context.business;
-  const startAt = parseDateTime(payload.date, payload.startTime);
-  const endAt = parseDateTime(payload.date, payload.endTime);
-
-  if (!payload.staffMemberId || !startAt || !endAt || endAt <= startAt) {
-    return {
-      ok: false,
-      error: "Choose staff and a valid shift start/end time.",
-    };
-  }
-
   const staff = await prisma.staffMember.findFirst({
-    where: {
-      id: payload.staffMemberId,
-      businessId: business.id,
-    },
-    select: {
-      id: true,
-    },
+    where: { id: staffId, businessId: context.business.id },
+    select: { id: true },
   });
-
   if (!staff) {
-    return {
-      ok: false,
-      error: "Staff member not found in this workspace.",
-    };
+    return { error: "Staff member not found." } as const;
   }
-
-  const data = {
-    staffMemberId: staff.id,
-    startsAt: startAt,
-    endsAt: endAt,
-    status: payload.status?.trim() || "Scheduled",
-    notes: payload.notes?.trim() || null,
-  };
-
-  let shiftId = payload.id;
-  if (payload.id) {
-    const existing = await prisma.staffShift.findFirst({
-      where: {
-        id: payload.id,
-        businessId: business.id,
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    if (!existing) {
-      return {
-        ok: false,
-        error: "Staff shift not found in this workspace.",
-      };
-    }
-
-    await prisma.staffShift.update({
-      where: {
-        id: payload.id,
-      },
-      data,
-    });
-  } else {
-    const shift = await prisma.staffShift.create({
-      data: {
-        businessId: business.id,
-        ...data,
-      },
-    });
-    shiftId = shift.id;
-  }
-
-  revalidateStaffSurfaces(staff.id);
-
-  return {
-    ok: true,
-    shiftId,
-  };
+  return { businessId: context.business.id, staffId } as const;
 }
 
-export async function deleteStaffShiftAction(
-  shiftId: string
-): Promise<SaveStaffShiftResult> {
-  const context = await getAuthedBusiness();
-
-  if ("error" in context) {
-    return {
-      ok: false,
-      error: context.error,
-    };
+/**
+ * Issue a fresh one-time enrollment code for a staff member's mobile app. The
+ * plaintext is returned ONCE for the admin to hand over; only its hash is
+ * stored. Any prior unredeemed code is superseded so only one is ever active.
+ */
+export async function generateMobileAccessCodeAction(
+  staffId: string
+): Promise<MobileAccessResult> {
+  const owned = await requireOwnedStaff(staffId);
+  if ("error" in owned) {
+    return { ok: false, error: owned.error };
   }
 
-  const existing = await prisma.staffShift.findFirst({
-    where: {
-      id: shiftId,
-      businessId: context.business.id,
-    },
+  const code = generateAccessCode();
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.staffAccessCode.updateMany({
+        where: { businessId: owned.businessId, staffMemberId: owned.staffId, status: "ACTIVE" },
+        data: { status: "REVOKED" },
+      });
+      await tx.staffAccessCode.create({
+        data: {
+          businessId: owned.businessId,
+          staffMemberId: owned.staffId,
+          codeHash: hashAccessCode(code),
+          expiresAt: new Date(Date.now() + ACCESS_CODE_TTL_MS),
+        },
+      });
+    });
+  } catch (error) {
+    logger.error("Failed to generate mobile access code.", error, { staffId: owned.staffId });
+    return { ok: false, error: "We couldn't generate a code. Please try again." };
+  }
+
+  revalidateStaffSurfaces(owned.staffId);
+  return { ok: true, code };
+}
+
+/**
+ * Revoke mobile access: invalidate any active code and log out every paired
+ * device for this staff member.
+ */
+export async function revokeMobileAccessAction(
+  staffId: string
+): Promise<MobileAccessResult> {
+  const owned = await requireOwnedStaff(staffId);
+  if ("error" in owned) {
+    return { ok: false, error: owned.error };
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.staffAccessCode.updateMany({
+        where: { businessId: owned.businessId, staffMemberId: owned.staffId, status: "ACTIVE" },
+        data: { status: "REVOKED" },
+      });
+      await tx.staffDevice.updateMany({
+        where: { businessId: owned.businessId, staffMemberId: owned.staffId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    });
+  } catch (error) {
+    logger.error("Failed to revoke mobile access.", error, { staffId: owned.staffId });
+    return { ok: false, error: "We couldn't update mobile access. Please try again." };
+  }
+
+  revalidateStaffSurfaces(owned.staffId);
+  return { ok: true };
+}
+
+// --- Staff messaging (admin/dashboard side of the staff↔admin thread) -------
+
+export type StaffMessageResult = { ok: boolean; error?: string };
+
+/** Admin replies to a staff member; notifies + pushes their device. */
+export async function sendStaffMessageAction(
+  staffId: string,
+  body: string
+): Promise<StaffMessageResult> {
+  const owned = await requireOwnedStaff(staffId);
+  if ("error" in owned) {
+    return { ok: false, error: owned.error };
+  }
+  if (typeof body !== "string" || !body.trim()) {
+    return { ok: false, error: "Message can't be empty." };
+  }
+  if (body.length > 4000) {
+    return { ok: false, error: "Message is too long." };
+  }
+
+  try {
+    const result = await postAdminThreadMessage(owned.businessId, owned.staffId, body);
+    if (!result.ok) {
+      return { ok: false, error: result.error };
+    }
+  } catch (error) {
+    logger.error("Failed to send staff message.", error, { staffId: owned.staffId });
+    return { ok: false, error: "We couldn't send your message. Please try again." };
+  }
+
+  revalidateStaffSurfaces(owned.staffId);
+  return { ok: true };
+}
+
+export async function markStaffThreadReadAction(staffId: string): Promise<StaffMessageResult> {
+  const owned = await requireOwnedStaff(staffId);
+  if ("error" in owned) {
+    return { ok: false, error: owned.error };
+  }
+  try {
+    await markAdminThreadRead(owned.businessId, owned.staffId);
+  } catch (error) {
+    logger.error("Failed to mark staff thread read.", error, { staffId: owned.staffId });
+    return { ok: false, error: "Something went wrong." };
+  }
+  revalidateStaffSurfaces(owned.staffId);
+  return { ok: true };
+}
+
+// --- Staff check-in feed (dashboard verification popup) ---------------------
+
+export type RecentCheckIn = {
+  entryId: string;
+  staffId: string;
+  staffName: string;
+  atLabel: string;
+  atMs: number;
+};
+
+/**
+ * Recent staff check-ins (last 10 min) for the admin's workspace. Polled by the
+ * dashboard WorkspaceToaster so the admin is notified to verify a staff member
+ * is actually present when they check in from the mobile app. Read-only.
+ */
+export async function getRecentStaffCheckInsAction(): Promise<RecentCheckIn[]> {
+  const context = await getAuthedBusinessContext();
+  if ("error" in context) {
+    return [];
+  }
+
+  const since = new Date(Date.now() - 10 * 60 * 1000);
+  const entries = await prisma.staffTimeEntry.findMany({
+    where: { businessId: context.business.id, checkedInAt: { gte: since } },
+    orderBy: { checkedInAt: "desc" },
+    take: 20,
     select: {
       id: true,
-      staffMemberId: true,
+      checkedInAt: true,
+      staffMember: { select: { id: true, name: true } },
     },
   });
 
-  if (!existing) {
-    return {
-      ok: false,
-      error: "Staff shift not found in this workspace.",
-    };
+  return entries.map((entry) => ({
+    entryId: entry.id,
+    staffId: entry.staffMember.id,
+    staffName: entry.staffMember.name,
+    atLabel: formatZonedTime(entry.checkedInAt),
+    atMs: entry.checkedInAt.getTime(),
+  }));
+}
+
+export type RecentStaffMessage = {
+  messageId: string;
+  staffId: string;
+  staffName: string;
+  isSystem: boolean;
+  atLabel: string;
+  atMs: number;
+};
+
+/**
+ * Recent inbound staff messages (last 10 min) across this workspace's staff↔admin
+ * threads. Polled by the dashboard toaster so the dashboard operator (the
+ * receptionist who runs it) is notified when a doctor messages in. Read-only;
+ * generic notice only (no message body — they open the staff page to read it).
+ */
+export async function getRecentStaffMessagesAction(): Promise<RecentStaffMessage[]> {
+  const context = await getAuthedBusinessContext();
+  if ("error" in context) {
+    return [];
   }
 
-  await prisma.staffShift.delete({
+  const since = new Date(Date.now() - 10 * 60 * 1000);
+  const messages = await prisma.staffThreadMessage.findMany({
     where: {
-      id: shiftId,
+      // SYSTEM covers a doctor's self-service actions (e.g. a mobile
+      // cancellation notice) — those must alert the admin same as a typed
+      // message, or the notice sits unseen in the thread. ADMIN is excluded:
+      // that's the admin's own reply, not something to alert themselves about.
+      sender: { in: ["STAFF", "SYSTEM"] },
+      createdAt: { gte: since },
+      thread: { businessId: context.business.id },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+    select: {
+      id: true,
+      createdAt: true,
+      sender: true,
+      thread: { select: { staffMemberId: true, staffMember: { select: { name: true } } } },
     },
   });
 
-  revalidateStaffSurfaces(existing.staffMemberId);
-
-  return {
-    ok: true,
-    shiftId,
-  };
+  return messages.map((message) => ({
+    messageId: message.id,
+    staffId: message.thread.staffMemberId,
+    staffName: message.thread.staffMember.name,
+    isSystem: message.sender === "SYSTEM",
+    atLabel: formatZonedTime(message.createdAt),
+    atMs: message.createdAt.getTime(),
+  }));
 }

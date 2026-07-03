@@ -43,8 +43,12 @@ import {
   type WeekdayKey,
 } from "@/lib/onboarding";
 import { isStorageReference } from "@/lib/media-storage";
-import { createSignedImageUrl, uploadWorkspaceImage } from "@/lib/media-storage-client";
-import { cn, getInitials } from "@/lib/utils";
+import {
+  createSignedImageUrl,
+  safeUploadErrorMessage,
+  uploadWorkspaceImage,
+} from "@/lib/media-storage-client";
+import { cn, firstDisplayName, getInitials } from "@/lib/utils";
 
 const weekdayLabels: Record<WeekdayKey, string> = {
   monday: "Monday",
@@ -231,7 +235,7 @@ export function OnboardingFlow({
   const step = onboardingSteps[stepIndex];
   const StepIcon = stepIcons[step.id];
   const isLastStep = state.currentStep >= onboardingSteps.length;
-  const ownerFirstName = (state.owner.name || ownerName).trim().split(/\s+/)[0] || "there";
+  const ownerFirstName = firstDisplayName(state.owner.name || ownerName) || "there";
 
   // Logo is upload-only, so the only display source is the signed URL resolved
   // from the stored storage reference — never a raw string that could be smuggled
@@ -390,7 +394,7 @@ export function OnboardingFlow({
       setLogoPreviewUrl(uploadedLogo.signedUrl);
       setErrorMessage("");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "We couldn't upload this logo.");
+      setErrorMessage(safeUploadErrorMessage(error, "We couldn't upload this logo."));
     } finally {
       setIsLogoUploading(false);
     }
@@ -834,7 +838,7 @@ export function OnboardingFlow({
                               It&apos;s just me for now
                             </span>
                             <span className="block text-sm text-muted-foreground">
-                              {(state.owner.name || ownerName || "You").split(/\s+/)[0]} runs the day solo
+                              {firstDisplayName(state.owner.name || ownerName || "You")} runs the day solo
                             </span>
                           </span>
                           <span

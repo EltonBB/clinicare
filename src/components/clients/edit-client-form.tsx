@@ -9,6 +9,7 @@ import { deleteClientAction, saveClientAction } from "@/app/(workspace)/clients/
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmDeleteDialog } from "@/components/clients/record-form-dialog";
 import {
   fieldInputClass,
   fieldSelectClass,
@@ -41,8 +42,8 @@ function SelectField({
         className={fieldSelectClass}
       >
         {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
+          <option key={option || "unset"} value={option}>
+            {option || "Not set"}
           </option>
         ))}
       </select>
@@ -61,6 +62,7 @@ export function EditClientForm({ client }: EditClientFormProps) {
   const [status, setStatus] = useState<ClientStatus>(client.status);
   const [preferredChannel, setPreferredChannel] = useState(client.details.preferredChannel);
   const [patientType, setPatientType] = useState(client.patientType);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   function handleSubmit(formData: FormData) {
     setError("");
@@ -74,7 +76,6 @@ export function EditClientForm({ client }: EditClientFormProps) {
         dateOfBirth: String(formData.get("dateOfBirth") ?? ""),
         address: String(formData.get("address") ?? ""),
         patientType,
-        clinicType: String(formData.get("clinicType") ?? ""),
         status,
         notes: String(formData.get("notes") ?? ""),
         medicalHistory: String(formData.get("medicalHistory") ?? ""),
@@ -83,8 +84,13 @@ export function EditClientForm({ client }: EditClientFormProps) {
         previousTreatments: String(formData.get("previousTreatments") ?? ""),
         treatmentPlan: String(formData.get("treatmentPlan") ?? ""),
         preferredChannel,
-        assignedStaff: String(formData.get("assignedStaff") ?? ""),
-        tags: String(formData.get("tags") ?? ""),
+        // Not shown on the record and vestigial (clinic-type-per-patient is a
+        // wrong concept, assigned-staff was free text). Clear them rather than
+        // persist the view model's fabricated display default ("Clinic"). Tags
+        // mirror the patient type.
+        clinicType: "",
+        assignedStaff: "",
+        tags: patientType,
       });
 
       if (!result.ok || !result.client) {
@@ -97,15 +103,12 @@ export function EditClientForm({ client }: EditClientFormProps) {
   }
 
   function deleteClient() {
-    if (!window.confirm("Delete this patient permanently?")) {
-      return;
-    }
-
     setError("");
     startTransition(async () => {
       const result = await deleteClientAction(client.id);
 
       if (!result.ok) {
+        setConfirmingDelete(false);
         setError(result.error ?? "We couldn't delete this patient.");
         return;
       }
@@ -136,20 +139,12 @@ export function EditClientForm({ client }: EditClientFormProps) {
             options={["active", "inactive", "at-risk", "archived"]}
             onChange={(value) => setStatus(value as ClientStatus)}
           />
-        </div>
-      </WorkspaceFormSection>
-
-      <WorkspaceFormSection title="Clinic information">
-        <div className="grid gap-3.5 sm:grid-cols-2">
-          <Field name="clinicType" label="Clinic type" defaultValue={clean(client.clinicType)} />
           <SelectField
             label="Preferred contact method"
             value={preferredChannel}
-            options={["WhatsApp", "Phone Call", "Email"]}
+            options={["", "WhatsApp", "Phone Call", "Email"]}
             onChange={setPreferredChannel}
           />
-          <Field name="assignedStaff" label="Assigned doctor / staff member" defaultValue={client.details.assignedStaff} />
-          <Field name="tags" label="Patient type / tags" defaultValue={client.details.tags.join(", ")} className="sm:col-span-2" />
           <TextField name="notes" label="Patient notes" defaultValue={client.notes === "No notes yet." ? "" : client.notes} className="sm:col-span-2" />
         </div>
       </WorkspaceFormSection>
@@ -175,7 +170,7 @@ export function EditClientForm({ client }: EditClientFormProps) {
           type="button"
           variant="outline"
           className="rounded-(--radius-card) border-destructive/25 bg-white text-destructive hover:bg-destructive/5 hover:text-destructive"
-          onClick={deleteClient}
+          onClick={() => setConfirmingDelete(true)}
           disabled={isPending}
         >
           <Trash2 className="size-4" />
@@ -195,6 +190,15 @@ export function EditClientForm({ client }: EditClientFormProps) {
           </Button>
         </div>
       </div>
+
+      <ConfirmDeleteDialog
+        open={confirmingDelete}
+        onOpenChange={setConfirmingDelete}
+        title="Delete this patient?"
+        description="This permanently removes the patient record, including appointments, documents, and payment history. This can't be undone."
+        isPending={isPending}
+        onConfirm={deleteClient}
+      />
     </form>
   );
 }

@@ -42,7 +42,6 @@ export function ResetPasswordForm() {
           type="password"
           autoComplete="new-password"
           placeholder="Create a new password"
-          defaultValue={state.values?.password}
           aria-invalid={Boolean(state.fieldErrors?.password)}
           className={cn(authFieldClassName, state.fieldErrors?.password && "border-destructive")}
         />
@@ -59,7 +58,6 @@ export function ResetPasswordForm() {
           type="password"
           autoComplete="new-password"
           placeholder="Repeat the new password"
-          defaultValue={state.values?.confirmPassword}
           aria-invalid={Boolean(state.fieldErrors?.confirmPassword)}
           className={cn(authFieldClassName, state.fieldErrors?.confirmPassword && "border-destructive")}
         />

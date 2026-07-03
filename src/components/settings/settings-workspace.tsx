@@ -33,7 +33,7 @@ import { businessTypes } from "@/lib/constants";
 import { brandAccentPresets, normalizeBrandHexColor } from "@/lib/branding";
 import { cn } from "@/lib/utils";
 import { isStorageReference } from "@/lib/media-storage";
-import { uploadWorkspaceImage } from "@/lib/media-storage-client";
+import { safeUploadErrorMessage, uploadWorkspaceImage } from "@/lib/media-storage-client";
 import {
   timeOptions,
   weekdayLabels,
@@ -64,6 +64,8 @@ type SettingsWorkspaceProps = {
   ownerName?: string;
   ownerEmail?: string;
   ownerPhone?: string;
+  /** Section to open on first render (e.g. a `?section=billing` deep link). */
+  initialSection?: string;
 };
 
 type SettingsSectionId =
@@ -217,6 +219,12 @@ function SectionCard({
   );
 }
 
+function resolveInitialSection(requested: string | undefined): SettingsSectionId {
+  return settingsNav.some((section) => section.id === requested)
+    ? (requested as SettingsSectionId)
+    : "business";
+}
+
 export function SettingsWorkspace({
   initialState,
   flashMessage = "",
@@ -226,6 +234,7 @@ export function SettingsWorkspace({
   ownerName = "",
   ownerEmail = "",
   ownerPhone = "",
+  initialSection,
 }: SettingsWorkspaceProps) {
   const inDialog = variant === "dialog";
   const [state, setState] = useState(initialState);
@@ -245,7 +254,13 @@ export function SettingsWorkspace({
     email: ownerEmail,
     phone: ownerPhone,
   });
-  const [activeSection, setActiveSection] = useState<SettingsSectionId>("business");
+  // Server-resolved (e.g. checkout's ?section=billing deep link on the
+  // standalone /settings page) so the right section is in the very first
+  // render — no client-side swap/flash after hydration. The dialog never
+  // passes initialSection, so it always starts on "business" as before.
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>(() =>
+    resolveInitialSection(initialSection)
+  );
   const [message, setMessage] = useState(flashMessage);
   const [errorMessage, setErrorMessage] = useState("");
   const [isLogoUploading, setIsLogoUploading] = useState(false);
@@ -422,9 +437,7 @@ export function SettingsWorkspace({
       setErrorMessage("");
       setMessage("Logo uploaded. Save changes to keep it.");
     } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "We couldn't upload this logo."
-      );
+      setErrorMessage(safeUploadErrorMessage(error, "We couldn't upload this logo."));
       setMessage("");
     } finally {
       setIsLogoUploading(false);
