@@ -5,6 +5,7 @@ import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import {
   cancelAppointmentCore,
   deleteAppointmentCore,
+  notifyStaffOfAppointmentChange,
   refreshClientLastVisitAt,
   revalidateCalendarSurfaces,
 } from "@/lib/appointments-shared";
@@ -236,6 +237,10 @@ export async function saveAppointmentAction(
     let shouldResetReminders = false;
     let previousClientId: string | null = null;
     let previousStaffMemberId: string | null = null;
+    // The edit form's Status dropdown can cancel an appointment directly
+    // (not just the dedicated Cancel booking action) — the doctor's app
+    // needs to hear about that path too, not just cancelAppointmentAction.
+    let wasNewlyCancelled = false;
 
     if (payload.id) {
       const existing = await prisma.appointment.findFirst({
@@ -263,13 +268,15 @@ export async function saveAppointmentAction(
 
       previousClientId = existing.clientId;
       previousStaffMemberId = existing.staffMemberId;
+      const newStatus = toPrismaAppointmentStatus(payload.status);
+      wasNewlyCancelled = existing.status !== "CANCELLED" && newStatus === "CANCELLED";
       shouldResetReminders =
         existing.clientId !== payload.clientId ||
         existing.staffMemberId !== staffMemberId ||
         existing.title !== payload.service.trim() ||
         existing.startAt.getTime() !== startAt.getTime() ||
         existing.endAt.getTime() !== endAt.getTime() ||
-        existing.status !== toPrismaAppointmentStatus(payload.status);
+        existing.status !== newStatus;
     }
 
     // The appointment write, reminder reset, and last-visit refresh commit
@@ -334,6 +341,14 @@ export async function saveAppointmentAction(
       [staffMemberId, previousStaffMemberId]
     );
 
+    if (wasNewlyCancelled) {
+      // The doctor who is told is whoever HAD this slot before the edit, not
+      // the post-save assignee: if the same save also reassigns or clears the
+      // staff dropdown, the previous owner is the one whose schedule just
+      // lost an appointment — the new/cleared assignee never had it to lose.
+      await notifyStaffOfAppointmentChange(business.id, previousStaffMemberId, appointmentId!);
+    }
+
     return {
       ok: true,
       appointment: await hydrateAppointment(appointmentId!),
@@ -373,6 +388,10 @@ export async function cancelAppointmentAction(
 
   revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId]);
 
+  if (outcome.changed) {
+    await notifyStaffOfAppointmentChange(business.id, outcome.staffMemberId, outcome.appointmentId);
+  }
+
   return {
     ok: true,
     appointmentId: outcome.appointmentId,
@@ -405,6 +424,9 @@ export async function deleteAppointmentAction(
   }
 
   revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId]);
+
+  // No deep link — the row is gone, unlike a cancel which keeps it (status only).
+  await notifyStaffOfAppointmentChange(business.id, outcome.staffMemberId, null);
 
   return {
     ok: true,
