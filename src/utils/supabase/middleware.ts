@@ -29,7 +29,16 @@ function copyCookies(source: NextResponse, target: NextResponse) {
 }
 
 export async function updateSession(request: NextRequest) {
-  if (request.nextUrl.pathname === "/auth/confirm") {
+  // Token-verification surfaces manage their own Supabase client and need no
+  // middleware session; skipping them also keeps middleware token-refresh
+  // cookie writes from interleaving with the verify flow's own Set-Cookies:
+  // the confirm route, its continuation pages, and their Server Action POSTs.
+  const requestPath = request.nextUrl.pathname;
+  if (
+    requestPath === "/auth/confirm" ||
+    requestPath.startsWith("/auth/confirm/") ||
+    requestPath === "/reset-password/confirm"
+  ) {
     return NextResponse.next({
       request: {
         headers: request.headers,
