@@ -8,7 +8,7 @@ import {
   hashDeviceToken,
   normalizeCode,
   sha256Hex,
-} from "@/lib/staff-auth";
+} from "@/lib/staff-auth-crypto";
 
 describe("sha256Hex", () => {
   it("is deterministic and 64 hex chars", () => {

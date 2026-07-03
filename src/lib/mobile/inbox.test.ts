@@ -6,7 +6,7 @@ import {
   serializeConversation,
   serializeMessage,
   serializeNotification,
-} from "@/lib/mobile/inbox";
+} from "@/lib/mobile/inbox-serializers";
 import { dayLabel, relativeLabel } from "@/lib/mobile/relative-time";
 
 const NOW = new Date("2026-06-25T12:00:00.000Z");
