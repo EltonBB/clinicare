@@ -152,6 +152,18 @@ export async function cancelOwnAppointment(
         ctx.staffMember.id,
         `Cancelled the ${formatZonedTime(appointment.startAt)} appointment with ${appointment.client.name} — please reschedule.`
       );
+      // Closes the loop on the staff's own side too: confirms the admin was
+      // actually told, not just that the local cancel succeeded — generic,
+      // non-PHI (the thread message above already carries the detail).
+      await prisma.staffNotification.create({
+        data: {
+          businessId: ctx.business.id,
+          staffMemberId: ctx.staffMember.id,
+          kind: "APPOINTMENT",
+          title: "Cancellation sent",
+          body: "Your clinic admin has been notified and will reschedule.",
+        },
+      });
     }
   } catch (error) {
     logger.error("Failed to post cancellation notice to the admin thread.", error, {

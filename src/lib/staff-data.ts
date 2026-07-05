@@ -87,3 +87,25 @@ export async function getStaffDirectoryCounts(args: {
 
   return map;
 }
+
+/**
+ * Per-staff unread count in the staff↔admin thread (e.g. a mobile-side
+ * cancellation notice), for the directory's unread indicator. Summed rather
+ * than assumed-single-row: ensureAdminThread has no unique constraint
+ * preventing a race from creating two threads for the same staff member.
+ */
+export async function getStaffUnreadMessageCounts(
+  businessId: string
+): Promise<Map<string, number>> {
+  const rows = await prisma.staffThread.groupBy({
+    by: ["staffMemberId"],
+    where: { businessId, unreadForAdmin: { gt: 0 } },
+    _sum: { unreadForAdmin: true },
+  });
+
+  const map = new Map<string, number>();
+  for (const row of rows) {
+    map.set(row.staffMemberId, row._sum.unreadForAdmin ?? 0);
+  }
+  return map;
+}

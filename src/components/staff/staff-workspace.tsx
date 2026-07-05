@@ -242,14 +242,29 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                   staffTableGrid
                 )}
               >
-                <Link href={`/staff/${member.id}`} className="flex min-w-0 items-center gap-3">
+                <Link
+                  href={
+                    member.unreadMessages > 0
+                      ? `/staff/${member.id}?tab=messages`
+                      : `/staff/${member.id}`
+                  }
+                  className="flex min-w-0 items-center gap-3"
+                >
                   <Avatar size="lg" shape="square">
                     <AvatarFallback className="bg-white text-xs font-semibold text-primary">
                       {getInitials(member.name)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0">
-                    <p className="truncate font-semibold text-foreground">{member.name}</p>
+                    <p className="flex items-center gap-1.5 truncate font-semibold text-foreground">
+                      {member.name}
+                      {member.unreadMessages > 0 ? (
+                        <span
+                          className="size-1.5 shrink-0 rounded-full bg-primary"
+                          aria-label={`${member.unreadMessages} unread message${member.unreadMessages === 1 ? "" : "s"}`}
+                        />
+                      ) : null}
+                    </p>
                     <p className="truncate text-sm text-muted-foreground">
                       {member.email || member.phone || "No contact added"}
                     </p>

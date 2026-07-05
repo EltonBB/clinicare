@@ -32,6 +32,7 @@ type StaffDetailsPageProps = {
   initialStaff: StaffRecord;
   mobileAccess: MobileAccessStatus;
   adminThread: AdminThreadView;
+  initialTab?: "overview" | "messages";
 };
 
 const statusLabels: Record<StaffStatus, string> = {
@@ -50,11 +51,12 @@ export function StaffDetailsPage({
   initialStaff,
   mobileAccess,
   adminThread,
+  initialTab = "overview",
 }: StaffDetailsPageProps) {
   const [staff, setStaff] = useState(initialStaff);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [selectedTab, setSelectedTab] = useState("overview");
+  const [selectedTab, setSelectedTab] = useState(initialTab);
   const [isPending, startTransition] = useTransition();
 
   function toggleClock() {
@@ -220,6 +222,12 @@ export function StaffDetailsPage({
           </TabsTrigger>
           <TabsTrigger className="flex-none px-0 pb-3" value="messages">
             Messages
+            {adminThread.unreadForAdmin > 0 ? (
+              <span
+                className="size-2 rounded-full bg-primary"
+                aria-label={`${adminThread.unreadForAdmin} unread message${adminThread.unreadForAdmin === 1 ? "" : "s"}`}
+              />
+            ) : null}
           </TabsTrigger>
         </TabsList>
 
