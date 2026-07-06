@@ -146,7 +146,7 @@ export function WorkspaceToaster() {
               </p>
             </div>
             <Link
-              href={`/staff/${toast.staffId}`}
+              href={isCheckin ? `/staff/${toast.staffId}` : `/staff/${toast.staffId}?tab=messages`}
               className="shrink-0 rounded-(--radius-tile) bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/15"
             >
               {isCheckin ? "Verify" : "Reply"}

@@ -26,7 +26,7 @@ export default async function StaffDetailsRoute({
   searchParams,
 }: {
   params: Promise<{ staffId: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string | string[] }>;
 }) {
   const { business } = await requireCurrentWorkspace("/staff", {
     missingBusinessRedirect: "/onboarding",

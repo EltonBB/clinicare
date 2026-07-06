@@ -19,7 +19,7 @@ function staffTimeEntryCutoff() {
 export default async function StaffPage({
   searchParams,
 }: {
-  searchParams: Promise<{ staff?: string; new?: string }>;
+  searchParams: Promise<{ staff?: string | string[]; new?: string | string[] }>;
 }) {
   const { business } = await requireCurrentWorkspace("/staff", {
     missingBusinessRedirect: "/onboarding",

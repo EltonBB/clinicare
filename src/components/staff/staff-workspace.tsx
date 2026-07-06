@@ -256,8 +256,8 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                     </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0">
-                    <p className="flex items-center gap-1.5 truncate font-semibold text-foreground">
-                      {member.name}
+                    <p className="flex items-center gap-1.5 font-semibold text-foreground">
+                      <span className="min-w-0 truncate">{member.name}</span>
                       {member.unreadMessages > 0 ? (
                         <span
                           className="size-1.5 shrink-0 rounded-full bg-primary"
