@@ -27,6 +27,14 @@ export function NotificationsMenu({
   items,
 }: NotificationsMenuProps) {
   const hasUpdates = unreadCount > 0 && items.length > 0;
+  // The footer CTA should always land somewhere relevant to what's actually
+  // shown above it. "Open inbox" only makes sense while at least one visible
+  // item is inbox-sourced (href === "/inbox"); once the bell is showing
+  // staff-thread activity only, send the click to that instead of a page with
+  // nothing on it.
+  const hasInboxItem = items.some((item) => item.href === "/inbox");
+  const footerHref = hasInboxItem || items.length === 0 ? "/inbox" : items[0].href;
+  const footerLabel = hasInboxItem || items.length === 0 ? "Open inbox" : "Open staff messages";
 
   return (
     <DropdownMenu>
@@ -74,20 +82,20 @@ export function NotificationsMenu({
             ))
           ) : (
             <div className="rounded-(--radius-card) border border-border/75 bg-[#fbfcfe] px-3 py-3 text-xs leading-5 text-muted-foreground">
-              No new notifications yet. Check back later or open the inbox to
-              review recent conversations.
+              No new notifications yet. Check back later — new messages and
+              updates will show up here.
             </div>
           )}
         </div>
 
         <div className="border-t border-border/70 px-4 py-2.5">
           <Link
-            href="/inbox"
+            href={footerHref}
             className={cn(
               "inline-flex items-center gap-1.5 text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
             )}
           >
-            Open inbox
+            {footerLabel}
             <ArrowRight className="size-3.5" />
           </Link>
         </div>

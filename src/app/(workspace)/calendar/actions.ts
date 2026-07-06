@@ -361,9 +361,15 @@ export async function saveAppointmentAction(
       const recipients = new Set(
         [staffMemberId, previousStaffMemberId].filter((id): id is string => Boolean(id))
       );
-      for (const recipientId of recipients) {
-        await notifyStaffOfAppointmentChange(business.id, recipientId, appointmentId!);
-      }
+      // Concurrent, not sequential — this runs on every reassignment/reschedule
+      // save (not just the rare cancel/delete path), so awaiting recipients one
+      // at a time would let a slow push call stack up to ~2x the latency on a
+      // routine save.
+      await Promise.allSettled(
+        Array.from(recipients).map((recipientId) =>
+          notifyStaffOfAppointmentChange(business.id, recipientId, appointmentId!)
+        )
+      );
     }
 
     return {
