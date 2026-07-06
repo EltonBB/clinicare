@@ -28,6 +28,7 @@ type AppShellNotification = {
   id: string;
   title: string;
   detail: string;
+  href: string;
 };
 
 function navLinkClasses(isActive: boolean) {
