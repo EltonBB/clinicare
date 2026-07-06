@@ -347,6 +347,23 @@ export async function saveAppointmentAction(
       // staff dropdown, the previous owner is the one whose schedule just
       // lost an appointment — the new/cleared assignee never had it to lose.
       await notifyStaffOfAppointmentChange(business.id, previousStaffMemberId, appointmentId!);
+    } else if (!payload.id) {
+      // Brand-new booking — tell whoever it's assigned to, if anyone.
+      if (staffMemberId) {
+        await notifyStaffOfAppointmentChange(business.id, staffMemberId, appointmentId!, "new");
+      }
+    } else if (shouldResetReminders) {
+      // An existing appointment changed some other meaningful way (reschedule,
+      // a non-cancel status change, reassignment, or a service/title edit).
+      // Tell whoever is now assigned, and separately tell whoever had it
+      // before if the slot moved to someone else (or was unassigned) — each
+      // side of a reassignment needs to know their own schedule just changed.
+      const recipients = new Set(
+        [staffMemberId, previousStaffMemberId].filter((id): id is string => Boolean(id))
+      );
+      for (const recipientId of recipients) {
+        await notifyStaffOfAppointmentChange(business.id, recipientId, appointmentId!);
+      }
     }
 
     return {

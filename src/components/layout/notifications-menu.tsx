@@ -14,6 +14,7 @@ type NotificationItem = {
   id: string;
   title: string;
   detail: string;
+  href: string;
 };
 
 type NotificationsMenuProps = {
@@ -47,8 +48,8 @@ export function NotificationsMenu({
           <p className="text-sm font-semibold text-foreground">Notifications</p>
           <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
             {hasUpdates
-              ? `${unreadCount} unread message${unreadCount === 1 ? "" : "s"} in your inbox`
-              : "All clear. Your clinic inbox is quiet right now."}
+              ? `${unreadCount} unread message${unreadCount === 1 ? "" : "s"} waiting for you`
+              : "All clear. Nothing needs your attention right now."}
           </p>
         </div>
 
@@ -57,7 +58,7 @@ export function NotificationsMenu({
             items.map((item) => (
               <Link
                 key={item.id}
-                href="/inbox"
+                href={item.href}
                 className="flex items-start gap-2.5 rounded-(--radius-tile) px-2.5 py-2.5 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]"
               >
                 <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />

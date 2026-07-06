@@ -192,31 +192,56 @@ export function revalidateCalendarSurfaces(
 
 /**
  * Tell the assigned doctor's mobile app that the admin changed one of their
- * appointments (cancelled or deleted) — the reverse direction of the doctor's
- * own cancel, which already notifies the admin. Without this a doctor only
- * finds out by noticing their schedule looks different. Best-effort: never
- * blocks or fails the mutation it followed.
+ * appointments (cancelled, deleted, rescheduled, reassigned, or newly booked)
+ * — the reverse direction of the doctor's own cancel, which already notifies
+ * the admin. Without this a doctor only finds out by noticing their schedule
+ * looks different. Best-effort: never blocks or fails the mutation it followed.
  *
  * `deepLinkAppointmentId` should be omitted for a delete — the row is gone,
- * so a deep link to it would 404 in the app. A cancel keeps the row (status
- * only), so it's safe to link to.
+ * so a deep link to it would 404 in the app. Cancel/reschedule/reassign/create
+ * all keep the row, so it's safe to link to.
+ *
+ * `reason` only varies the copy: "new" for a booking that didn't exist before,
+ * "changed" (default) for everything else — the doctor already had this slot
+ * and something about it moved.
  */
 export async function notifyStaffOfAppointmentChange(
   businessId: string,
   staffMemberId: string | null,
-  deepLinkAppointmentId: string | null
+  deepLinkAppointmentId: string | null,
+  reason: "new" | "changed" = "changed"
 ): Promise<void> {
   if (!staffMemberId) {
     return;
   }
   try {
+    // Defense-in-depth: every current caller already resolves staffMemberId
+    // through a businessId-scoped lookup before reaching here, but this is a
+    // privileged sink (writes a notification + sends a push) — verify the
+    // pair itself rather than trusting callers to stay disciplined forever,
+    // matching the same staffMember.findFirst({ id, businessId }) guard used
+    // at every other call site that touches staff data.
+    const staffMember = await prisma.staffMember.findFirst({
+      where: { id: staffMemberId, businessId },
+      select: { id: true },
+    });
+    if (!staffMember) {
+      logger.error("notifyStaffOfAppointmentChange called with a staffMemberId outside businessId.", undefined, {
+        businessId,
+        staffMemberId,
+      });
+      return;
+    }
     await prisma.staffNotification.create({
       data: {
         businessId,
         staffMemberId,
         kind: "APPOINTMENT",
-        title: "Schedule updated",
-        body: "Your clinic changed one of your appointments.",
+        title: reason === "new" ? "New appointment" : "Schedule updated",
+        body:
+          reason === "new"
+            ? "Your clinic booked a new appointment for you."
+            : "Your clinic changed one of your appointments.",
         linkType: deepLinkAppointmentId ? "appointment" : null,
         linkId: deepLinkAppointmentId,
       },
