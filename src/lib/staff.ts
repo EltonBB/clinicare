@@ -39,6 +39,13 @@ export type StaffDirectoryItem = {
   clockLabel: string;
   clockDisabledReason: string;
   completedThisMonth: number;
+  // Unread messages from this staff member in the staff↔admin thread — e.g. a
+  // mobile-side cancellation notice. Separate from StaffDirectoryCounts (which
+  // is purely appointment-derived) since it comes from a different table and
+  // the detail-page builder (buildStaffRecord) has no thread data to compute
+  // it from; defaults to 0 there, where the page fetches the real value
+  // separately via getAdminThread instead.
+  unreadMessages: number;
 };
 
 export type StaffRecord = StaffDirectoryItem & {
@@ -340,7 +347,8 @@ function calculateCompletionRate(appointments: Pick<Appointment, "status">[]) {
 
 export function buildStaffDirectoryRecord(
   member: StaffDirectoryWithRelations,
-  counts: StaffDirectoryCounts = EMPTY_STAFF_COUNTS
+  counts: StaffDirectoryCounts = EMPTY_STAFF_COUNTS,
+  unreadMessages = 0
 ): StaffDirectoryItem {
   const todayKey = formatZonedDateKey();
   // For the "Today" column label only — a calendar-date match is the right
@@ -378,6 +386,7 @@ export function buildStaffDirectoryRecord(
     clockLabel: clock.clockLabel,
     clockDisabledReason: clock.clockDisabledReason,
     completedThisMonth: counts.completedThisMonth,
+    unreadMessages,
   };
 }
 
@@ -431,10 +440,15 @@ export function buildStaffRecord(member: StaffWithRelations): StaffRecord {
 
 export function buildStaffViewFromRecords(
   records: StaffDirectoryWithRelations[],
-  countsByStaff: Map<string, StaffDirectoryCounts> = new Map()
+  countsByStaff: Map<string, StaffDirectoryCounts> = new Map(),
+  unreadMessagesByStaff: Map<string, number> = new Map()
 ): StaffViewModel {
   const staff = records.map((member) =>
-    buildStaffDirectoryRecord(member, countsByStaff.get(member.id) ?? EMPTY_STAFF_COUNTS)
+    buildStaffDirectoryRecord(
+      member,
+      countsByStaff.get(member.id) ?? EMPTY_STAFF_COUNTS,
+      unreadMessagesByStaff.get(member.id) ?? 0
+    )
   );
 
   return {

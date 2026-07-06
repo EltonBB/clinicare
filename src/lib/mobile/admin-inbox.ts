@@ -21,6 +21,7 @@ export type AdminThreadMessage = {
 export type AdminThreadView = {
   threadId: string;
   messages: AdminThreadMessage[];
+  unreadForAdmin: number;
 };
 
 export async function getAdminThread(
@@ -33,7 +34,7 @@ export async function getAdminThread(
     orderBy: { createdAt: "asc" },
   });
   if (!thread) {
-    return { threadId: "", messages: [] };
+    return { threadId: "", messages: [], unreadForAdmin: 0 };
   }
   // Mirror of the take:100 cap in lib/mobile/inbox.ts's getConversation — same
   // table, same unbounded growth (system messages on every cancellation), just
@@ -59,6 +60,7 @@ export async function getAdminThread(
       timeLabel: clockLabel(message.createdAt),
       dayLabel: dayLabel(message.createdAt, now),
     })),
+    unreadForAdmin: thread.unreadForAdmin,
   };
 }
 

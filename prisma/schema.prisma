@@ -695,6 +695,7 @@ model StaffThread {
   createdAt      DateTime             @default(now())
   messages       StaffThreadMessage[]
 
+  @@unique([businessId, staffMemberId])
   @@index([businessId, lastMessageAt])
   @@index([staffMemberId, lastMessageAt])
 }

@@ -32,6 +32,7 @@ type StaffDetailsPageProps = {
   initialStaff: StaffRecord;
   mobileAccess: MobileAccessStatus;
   adminThread: AdminThreadView;
+  initialTab?: "overview" | "messages";
 };
 
 const statusLabels: Record<StaffStatus, string> = {
@@ -50,12 +51,28 @@ export function StaffDetailsPage({
   initialStaff,
   mobileAccess,
   adminThread,
+  initialTab = "overview",
 }: StaffDetailsPageProps) {
   const [staff, setStaff] = useState(initialStaff);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [selectedTab, setSelectedTab] = useState("overview");
+  const [selectedTab, setSelectedTab] = useState<string>(initialTab);
+  // Local mirror of adminThread.unreadForAdmin: the prop is an SSR snapshot
+  // that never changes after mount, but opening the Messages tab marks it
+  // read server-side — without this, the dot would stay lit for the rest of
+  // this page's client session even while the admin is looking at the read
+  // messages. Zeroed here (not just server-side) for instant feedback.
+  const [unreadForAdmin, setUnreadForAdmin] = useState(
+    initialTab === "messages" ? 0 : adminThread.unreadForAdmin
+  );
   const [isPending, startTransition] = useTransition();
+
+  function handleTabChange(value: string) {
+    setSelectedTab(value);
+    if (value === "messages") {
+      setUnreadForAdmin(0);
+    }
+  }
 
   function toggleClock() {
     startTransition(async () => {
@@ -205,7 +222,7 @@ export function StaffDetailsPage({
 
       <Tabs
         value={selectedTab}
-        onValueChange={setSelectedTab}
+        onValueChange={handleTabChange}
         className="section-reveal-delayed gap-3.5"
       >
         <TabsList
@@ -220,6 +237,12 @@ export function StaffDetailsPage({
           </TabsTrigger>
           <TabsTrigger className="flex-none px-0 pb-3" value="messages">
             Messages
+            {unreadForAdmin > 0 ? (
+              <span
+                className="size-2 rounded-full bg-primary"
+                aria-label={`${unreadForAdmin} unread message${unreadForAdmin === 1 ? "" : "s"}`}
+              />
+            ) : null}
           </TabsTrigger>
         </TabsList>
 

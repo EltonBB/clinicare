@@ -23,13 +23,16 @@ function staffShiftCutoff() {
 
 export default async function StaffDetailsRoute({
   params,
+  searchParams,
 }: {
   params: Promise<{ staffId: string }>;
+  searchParams: Promise<{ tab?: string | string[] }>;
 }) {
   const { business } = await requireCurrentWorkspace("/staff", {
     missingBusinessRedirect: "/onboarding",
   });
   const { staffId } = await params;
+  const { tab } = await searchParams;
 
   const staff = await prisma.staffMember.findFirst({
     where: {
@@ -99,6 +102,7 @@ export default async function StaffDetailsRoute({
       initialStaff={buildStaffRecord(staff)}
       mobileAccess={mobileAccess}
       adminThread={adminThread}
+      initialTab={tab === "messages" ? "messages" : "overview"}
     />
   );
 }

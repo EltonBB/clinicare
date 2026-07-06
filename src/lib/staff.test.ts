@@ -1,6 +1,34 @@
 import { describe, expect, it } from "vitest";
 
-import { CHECK_IN_EARLY_GRACE_MS, findActiveShiftWindow } from "@/lib/staff";
+import {
+  CHECK_IN_EARLY_GRACE_MS,
+  buildStaffDirectoryRecord,
+  buildStaffViewFromRecords,
+  findActiveShiftWindow,
+} from "@/lib/staff";
+
+// StaffDirectoryWithRelations isn't exported — infer the shape from the
+// function signature instead of importing an internal type.
+function fakeStaffMember(
+  overrides: Partial<Parameters<typeof buildStaffDirectoryRecord>[0]> = {}
+): Parameters<typeof buildStaffDirectoryRecord>[0] {
+  return {
+    id: "staff-1",
+    businessId: "biz-1",
+    name: "Dr. Test",
+    role: "Specialist",
+    email: null,
+    phone: null,
+    profileNote: null,
+    status: "ACTIVE",
+    isActive: true,
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    shifts: [],
+    timeEntries: [],
+    ...overrides,
+  };
+}
 
 describe("findActiveShiftWindow", () => {
   // A 09:00–17:00 shift on a fixed day; `now` is injected so the test is
@@ -54,5 +82,39 @@ describe("findActiveShiftWindow", () => {
     expect(
       findActiveShiftWindow([morning, evening], new Date("2026-06-30T13:00:00.000Z"))
     ).toBeUndefined();
+  });
+});
+
+describe("buildStaffDirectoryRecord — unreadMessages", () => {
+  it("defaults to 0 when omitted", () => {
+    const record = buildStaffDirectoryRecord(fakeStaffMember());
+    expect(record.unreadMessages).toBe(0);
+  });
+
+  it("passes through the given count", () => {
+    const record = buildStaffDirectoryRecord(fakeStaffMember(), undefined, 3);
+    expect(record.unreadMessages).toBe(3);
+  });
+});
+
+describe("buildStaffViewFromRecords — unreadMessagesByStaff", () => {
+  it("gives a member present in the map their count, and one absent from it 0", () => {
+    const withUnread = fakeStaffMember({ id: "staff-unread" });
+    const withoutUnread = fakeStaffMember({ id: "staff-quiet" });
+    const unreadMessagesByStaff = new Map([["staff-unread", 5]]);
+
+    const view = buildStaffViewFromRecords(
+      [withUnread, withoutUnread],
+      undefined,
+      unreadMessagesByStaff
+    );
+
+    expect(view.staff.find((member) => member.id === "staff-unread")?.unreadMessages).toBe(5);
+    expect(view.staff.find((member) => member.id === "staff-quiet")?.unreadMessages).toBe(0);
+  });
+
+  it("defaults every member to 0 when no map is given", () => {
+    const view = buildStaffViewFromRecords([fakeStaffMember()]);
+    expect(view.staff[0].unreadMessages).toBe(0);
   });
 });
