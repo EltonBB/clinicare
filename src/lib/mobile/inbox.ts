@@ -1,3 +1,5 @@
+import { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/prisma";
 import type { StaffContext } from "@/lib/staff-auth";
 
@@ -53,11 +55,27 @@ export async function ensureAdminThread(businessId: string, staffMemberId: strin
   // Atomic get-or-create backed by the @@unique([businessId, staffMemberId])
   // constraint — a plain findFirst-then-create here would race under
   // concurrent calls and create two threads for the same staff member.
-  return prisma.staffThread.upsert({
-    where: { businessId_staffMemberId: { businessId, staffMemberId } },
-    create: { businessId, staffMemberId, subtitle: "Front desk" },
-    update: {},
-  });
+  try {
+    return await prisma.staffThread.upsert({
+      where: { businessId_staffMemberId: { businessId, staffMemberId } },
+      create: { businessId, staffMemberId, subtitle: "Front desk" },
+      update: {},
+    });
+  } catch (error) {
+    // Two concurrent first-contact calls (e.g. a mobile cancellation and an
+    // admin reply landing at the same instant, before either thread exists
+    // yet) can both attempt the upsert's INSERT side; Postgres's own unique
+    // index lets only one win, and the loser gets P2002 instead of silently
+    // resolving. The constraint already guarantees a row now exists — the
+    // same pattern lib/mobile/clock.ts's openTimeEntryIfAbsent uses for its
+    // own concurrent check-in race.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return prisma.staffThread.findUniqueOrThrow({
+        where: { businessId_staffMemberId: { businessId, staffMemberId } },
+      });
+    }
+    throw error;
+  }
 }
 
 /**
