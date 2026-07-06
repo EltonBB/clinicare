@@ -50,15 +50,13 @@ export async function listConversations(ctx: StaffContext): Promise<MobileConver
  * with the admin (web) side so both perspectives operate on the same thread.
  */
 export async function ensureAdminThread(businessId: string, staffMemberId: string) {
-  const existing = await prisma.staffThread.findFirst({
-    where: { businessId, staffMemberId },
-    orderBy: { createdAt: "asc" },
-  });
-  if (existing) {
-    return existing;
-  }
-  return prisma.staffThread.create({
-    data: { businessId, staffMemberId, subtitle: "Front desk" },
+  // Atomic get-or-create backed by the @@unique([businessId, staffMemberId])
+  // constraint — a plain findFirst-then-create here would race under
+  // concurrent calls and create two threads for the same staff member.
+  return prisma.staffThread.upsert({
+    where: { businessId_staffMemberId: { businessId, staffMemberId } },
+    create: { businessId, staffMemberId, subtitle: "Front desk" },
+    update: {},
   });
 }
 

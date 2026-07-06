@@ -90,9 +90,12 @@ export async function getStaffDirectoryCounts(args: {
 
 /**
  * Per-staff unread count in the staff↔admin thread (e.g. a mobile-side
- * cancellation notice), for the directory's unread indicator. Summed rather
- * than assumed-single-row: ensureAdminThread has no unique constraint
- * preventing a race from creating two threads for the same staff member.
+ * cancellation notice), for the directory's unread indicator. Uses a summing
+ * aggregate (not findFirst) as defense-in-depth: the @@unique([businessId,
+ * staffMemberId]) constraint on StaffThread (enforced via ensureAdminThread's
+ * upsert) makes a second thread per staff member impossible today, but this
+ * stays resilient to any future write path that creates a StaffThread outside
+ * ensureAdminThread.
  */
 export async function getStaffUnreadMessageCounts(
   businessId: string
