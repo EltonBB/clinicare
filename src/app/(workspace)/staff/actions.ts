@@ -88,6 +88,10 @@ async function fetchStaffRecord(staffId: string, businessId: string) {
             gte: staffTimeEntryCutoff(),
           },
         },
+        select: {
+          checkedInAt: true,
+          checkedOutAt: true,
+        },
         orderBy: {
           checkedInAt: "desc",
         },
@@ -674,6 +678,11 @@ export async function markStaffCheckInsSeenAction(staffId: string): Promise<Staf
     logger.error("Failed to mark staff check-ins seen.", error, { staffId: owned.staffId });
     return { ok: false, error: "Something went wrong." };
   }
+  // The Staff directory's row dot now also reflects hasUnseenCheckIn, so
+  // clearing this needs to bust that page's Router Cache the same way
+  // markStaffThreadReadAction does for the message side — otherwise
+  // navigating back to /staff shortly after can still show the stale dot.
+  revalidateStaffSurfaces(owned.staffId);
   return { ok: true };
 }
 

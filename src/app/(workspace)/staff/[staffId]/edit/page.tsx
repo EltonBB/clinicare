@@ -43,6 +43,10 @@ export default async function EditStaffPage({
               gte: staffTimeEntryCutoff(),
             },
           },
+          select: {
+            checkedInAt: true,
+            checkedOutAt: true,
+          },
           orderBy: {
             checkedInAt: "desc",
           },

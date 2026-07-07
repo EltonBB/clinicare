@@ -112,3 +112,26 @@ export async function getStaffUnreadMessageCounts(
   }
   return map;
 }
+
+/**
+ * Per-staff count of check-ins the admin hasn't viewed yet
+ * (StaffTimeEntry.seenByAdminAt still null). Feeds the directory row dot so
+ * it agrees with the Staff nav dot (app-shell.tsx), which fires for this same
+ * signal — otherwise clicking the nav dot could land on a directory with no
+ * row indicating who triggered it.
+ */
+export async function getStaffUnseenCheckInCounts(
+  businessId: string
+): Promise<Map<string, number>> {
+  const rows = await prisma.staffTimeEntry.groupBy({
+    by: ["staffMemberId"],
+    where: { businessId, seenByAdminAt: null },
+    _count: { _all: true },
+  });
+
+  const map = new Map<string, number>();
+  for (const row of rows) {
+    map.set(row.staffMemberId, row._count._all);
+  }
+  return map;
+}

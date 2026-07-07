@@ -1,8 +1,8 @@
 "use server";
 
 import { requireCurrentWorkspace } from "@/lib/business";
+import { checkinDetail } from "@/lib/notification-copy";
 import { prisma } from "@/lib/prisma";
-import { formatZonedTime } from "@/lib/time-zone";
 
 export type WorkspaceNotificationsView = {
   // Combined total across all three sources — feeds ONLY the bell's own badge
@@ -144,7 +144,7 @@ export async function refreshWorkspaceNotificationsAction(): Promise<{
   const checkinItems = checkInRows.map((row) => ({
     id: `checkin:${row.id}`,
     title: row.staffMember.name,
-    detail: `Checked in at ${formatZonedTime(row.checkedInAt)} — verify they're in.`,
+    detail: checkinDetail(row.checkedInAt),
     href: `/staff/${row.staffMemberId}`,
     atMs: row.checkedInAt.getTime(),
   }));

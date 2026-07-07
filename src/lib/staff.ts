@@ -46,6 +46,13 @@ export type StaffDirectoryItem = {
   // it from; defaults to 0 there, where the page fetches the real value
   // separately via getAdminThread instead.
   unreadMessages: number;
+  // A check-in the admin hasn't viewed yet (StaffTimeEntry.seenByAdminAt still
+  // null). Kept separate from unreadMessages (different table, different
+  // "seen" trigger) but folded into the SAME row dot in staff-workspace.tsx —
+  // the Staff nav dot (app-shell.tsx) fires for either signal, so the
+  // directory row dot needs to as well or clicking the nav dot can land on a
+  // list with no row showing who triggered it.
+  hasUnseenCheckIn: boolean;
 };
 
 export type StaffRecord = StaffDirectoryItem & {
@@ -348,7 +355,8 @@ function calculateCompletionRate(appointments: Pick<Appointment, "status">[]) {
 export function buildStaffDirectoryRecord(
   member: StaffDirectoryWithRelations,
   counts: StaffDirectoryCounts = EMPTY_STAFF_COUNTS,
-  unreadMessages = 0
+  unreadMessages = 0,
+  hasUnseenCheckIn = false
 ): StaffDirectoryItem {
   const todayKey = formatZonedDateKey();
   // For the "Today" column label only — a calendar-date match is the right
@@ -387,6 +395,7 @@ export function buildStaffDirectoryRecord(
     clockDisabledReason: clock.clockDisabledReason,
     completedThisMonth: counts.completedThisMonth,
     unreadMessages,
+    hasUnseenCheckIn,
   };
 }
 
@@ -441,13 +450,15 @@ export function buildStaffRecord(member: StaffWithRelations): StaffRecord {
 export function buildStaffViewFromRecords(
   records: StaffDirectoryWithRelations[],
   countsByStaff: Map<string, StaffDirectoryCounts> = new Map(),
-  unreadMessagesByStaff: Map<string, number> = new Map()
+  unreadMessagesByStaff: Map<string, number> = new Map(),
+  unseenCheckInsByStaff: Map<string, number> = new Map()
 ): StaffViewModel {
   const staff = records.map((member) =>
     buildStaffDirectoryRecord(
       member,
       countsByStaff.get(member.id) ?? EMPTY_STAFF_COUNTS,
-      unreadMessagesByStaff.get(member.id) ?? 0
+      unreadMessagesByStaff.get(member.id) ?? 0,
+      (unseenCheckInsByStaff.get(member.id) ?? 0) > 0
     )
   );
 

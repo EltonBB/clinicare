@@ -258,10 +258,16 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                   <div className="min-w-0">
                     <p className="flex items-center gap-1.5 font-semibold text-foreground">
                       <span className="min-w-0 truncate">{member.name}</span>
-                      {member.unreadMessages > 0 ? (
+                      {member.unreadMessages > 0 || member.hasUnseenCheckIn ? (
                         <span
                           className="size-1.5 shrink-0 rounded-full bg-primary"
-                          aria-label={`${member.unreadMessages} unread message${member.unreadMessages === 1 ? "" : "s"}`}
+                          aria-label={
+                            member.unreadMessages > 0 && member.hasUnseenCheckIn
+                              ? `${member.unreadMessages} unread message${member.unreadMessages === 1 ? "" : "s"} and a check-in to review`
+                              : member.unreadMessages > 0
+                                ? `${member.unreadMessages} unread message${member.unreadMessages === 1 ? "" : "s"}`
+                                : "Check-in to review"
+                          }
                         />
                       ) : null}
                     </p>

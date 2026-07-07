@@ -97,6 +97,18 @@ describe("buildStaffDirectoryRecord — unreadMessages", () => {
   });
 });
 
+describe("buildStaffDirectoryRecord — hasUnseenCheckIn", () => {
+  it("defaults to false when omitted", () => {
+    const record = buildStaffDirectoryRecord(fakeStaffMember());
+    expect(record.hasUnseenCheckIn).toBe(false);
+  });
+
+  it("passes through true when the caller has an unseen check-in", () => {
+    const record = buildStaffDirectoryRecord(fakeStaffMember(), undefined, 0, true);
+    expect(record.hasUnseenCheckIn).toBe(true);
+  });
+});
+
 describe("buildStaffViewFromRecords — unreadMessagesByStaff", () => {
   it("gives a member present in the map their count, and one absent from it 0", () => {
     const withUnread = fakeStaffMember({ id: "staff-unread" });
@@ -116,5 +128,30 @@ describe("buildStaffViewFromRecords — unreadMessagesByStaff", () => {
   it("defaults every member to 0 when no map is given", () => {
     const view = buildStaffViewFromRecords([fakeStaffMember()]);
     expect(view.staff[0].unreadMessages).toBe(0);
+  });
+});
+
+describe("buildStaffViewFromRecords — unseenCheckInsByStaff", () => {
+  it("gives a member present in the map hasUnseenCheckIn=true, and one absent false", () => {
+    const withCheckIn = fakeStaffMember({ id: "staff-checked-in" });
+    const withoutCheckIn = fakeStaffMember({ id: "staff-quiet" });
+    const unseenCheckInsByStaff = new Map([["staff-checked-in", 2]]);
+
+    const view = buildStaffViewFromRecords(
+      [withCheckIn, withoutCheckIn],
+      undefined,
+      undefined,
+      unseenCheckInsByStaff
+    );
+
+    expect(view.staff.find((member) => member.id === "staff-checked-in")?.hasUnseenCheckIn).toBe(
+      true
+    );
+    expect(view.staff.find((member) => member.id === "staff-quiet")?.hasUnseenCheckIn).toBe(false);
+  });
+
+  it("defaults every member to false when no map is given", () => {
+    const view = buildStaffViewFromRecords([fakeStaffMember()]);
+    expect(view.staff[0].hasUnseenCheckIn).toBe(false);
   });
 });
