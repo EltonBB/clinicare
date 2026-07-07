@@ -88,6 +88,10 @@ async function fetchStaffRecord(staffId: string, businessId: string) {
             gte: staffTimeEntryCutoff(),
           },
         },
+        select: {
+          checkedInAt: true,
+          checkedOutAt: true,
+        },
         orderBy: {
           checkedInAt: "desc",
         },
@@ -643,6 +647,41 @@ export async function markStaffThreadReadAction(staffId: string): Promise<StaffM
     logger.error("Failed to mark staff thread read.", error, { staffId: owned.staffId });
     return { ok: false, error: "Something went wrong." };
   }
+  revalidateStaffSurfaces(owned.staffId);
+  return { ok: true };
+}
+
+/**
+ * Opening a staff member's detail page acknowledges their pending check-ins —
+ * same "viewing the page marks it seen" convention as markStaffThreadReadAction,
+ * so a check-in the admin missed stops surfacing in the notification bell once
+ * they've actually looked at that staff member.
+ *
+ * Best-effort, not airtight: a brand-new check-in landing in the narrow window
+ * between this page mounting and this sweep running gets marked seen without
+ * ever having shown up in the bell for it specifically. Accepted — the
+ * dashboard toaster's own independent poll still surfaces it as a live toast,
+ * so the admin isn't blind to it, only the durable backstop misses this one
+ * instance (same tradeoff as the bell's per-category visible-list cap).
+ */
+export async function markStaffCheckInsSeenAction(staffId: string): Promise<StaffMessageResult> {
+  const owned = await requireOwnedStaff(staffId);
+  if ("error" in owned) {
+    return { ok: false, error: owned.error };
+  }
+  try {
+    await prisma.staffTimeEntry.updateMany({
+      where: { businessId: owned.businessId, staffMemberId: owned.staffId, seenByAdminAt: null },
+      data: { seenByAdminAt: new Date() },
+    });
+  } catch (error) {
+    logger.error("Failed to mark staff check-ins seen.", error, { staffId: owned.staffId });
+    return { ok: false, error: "Something went wrong." };
+  }
+  // The Staff directory's row dot now also reflects hasUnseenCheckIn, so
+  // clearing this needs to bust that page's Router Cache the same way
+  // markStaffThreadReadAction does for the message side — otherwise
+  // navigating back to /staff shortly after can still show the stale dot.
   revalidateStaffSurfaces(owned.staffId);
   return { ok: true };
 }

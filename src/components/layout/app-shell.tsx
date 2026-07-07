@@ -49,8 +49,13 @@ type AppShellProps = {
   planStatus?: string;
   brandAccentColor?: string | null;
   logoUrl?: string | null;
+  // Combined bell total (inbox + staff messages + check-ins) — the bell badge only.
   unreadCount?: number;
+  // Patient-inbox-only unread — feeds WorkspaceLiveContext (dashboard KPI, Messages card).
+  inboxUnreadCount?: number;
   notifications?: AppShellNotification[];
+  hasInboxUnread?: boolean;
+  hasStaffUnread?: boolean;
 };
 
 export function AppShell({
@@ -62,7 +67,10 @@ export function AppShell({
   brandAccentColor = null,
   logoUrl = null,
   unreadCount = 0,
+  inboxUnreadCount = 0,
   notifications = [],
+  hasInboxUnread = false,
+  hasStaffUnread = false,
 }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -90,17 +98,39 @@ export function AppShell({
     }),
     [accent]
   );
+  // The bell's own combined total (inbox + staff messages + check-ins) — feeds
+  // ONLY the bell badge/header, never WorkspaceLiveContext (see below).
   const [liveUnreadCount, setLiveUnreadCount] = useState(unreadCount);
+  // Patient-inbox-only unread — this, not the combined total above, is what
+  // WorkspaceLiveContext publishes: its existing consumers (dashboard "Unread
+  // messages" KPI, the Messages card badge) specifically mean unread
+  // conversations, and would silently start counting staff chatter/check-ins
+  // as messages needing a reply if fed the combined total instead.
+  const [liveInboxUnreadCount, setLiveInboxUnreadCount] = useState(inboxUnreadCount);
   const [unreadInitialized, setUnreadInitialized] = useState(false);
   const [liveNotifications, setLiveNotifications] = useState(notifications);
+  const [liveHasInboxUnread, setLiveHasInboxUnread] = useState(hasInboxUnread);
+  const [liveHasStaffUnread, setLiveHasStaffUnread] = useState(hasStaffUnread);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const logoutFormRef = useRef<HTMLFormElement>(null);
   const businessInitial = (businessName || "V").charAt(0).toUpperCase();
+  // Which nav item (sidebar + mobile bottom nav) gets the small unread dot —
+  // Inbox for patient-conversation unread, Staff for staff-thread messages or
+  // unseen check-ins. Neither source drives any other nav item.
+  const navDotHref = useCallback(
+    (href: string) => {
+      if (href === "/inbox") return liveHasInboxUnread;
+      if (href === "/staff") return liveHasStaffUnread;
+      return false;
+    },
+    [liveHasInboxUnread, liveHasStaffUnread]
+  );
   // Published to descendants (e.g. the dashboard Messages card) so they read
-  // this single poll instead of starting their own.
+  // this single poll instead of starting their own. Inbox-only count — see
+  // liveInboxUnreadCount above.
   const liveUnread = useMemo(
-    () => ({ unreadCount: liveUnreadCount, initialized: unreadInitialized }),
-    [liveUnreadCount, unreadInitialized]
+    () => ({ unreadCount: liveInboxUnreadCount, initialized: unreadInitialized }),
+    [liveInboxUnreadCount, unreadInitialized]
   );
 
   useEffect(() => {
@@ -150,7 +180,10 @@ export function AppShell({
       }
 
       setLiveUnreadCount(result.view.unreadCount);
+      setLiveInboxUnreadCount(result.view.inboxUnreadCount);
       setLiveNotifications(result.view.notifications);
+      setLiveHasInboxUnread(result.view.hasInboxUnread);
+      setLiveHasStaffUnread(result.view.hasStaffUnread);
       setUnreadInitialized(true);
     }
 
@@ -199,7 +232,18 @@ export function AppShell({
                     onFocus={() => prefetchRoute(item.href)}
                     onMouseEnter={() => prefetchRoute(item.href)}
                   >
-                    <Icon className="size-4" />
+                    <span className="relative inline-flex">
+                      <Icon className="size-4" />
+                      {navDotHref(item.href) ? (
+                        <span
+                          className={cn(
+                            "absolute -right-0.5 -top-0.5 size-1.5 rounded-full",
+                            isActive ? "bg-white" : "bg-primary"
+                          )}
+                          aria-hidden="true"
+                        />
+                      ) : null}
+                    </span>
                     {item.label}
                   </Link>
                 );
@@ -264,7 +308,12 @@ export function AppShell({
               </div>
               <GlobalSearch className="hidden min-w-0 w-full max-w-3xl justify-self-center md:block" />
               <div className="flex items-center gap-1.5">
-                <NotificationsMenu unreadCount={liveUnreadCount} items={liveNotifications} />
+                <NotificationsMenu
+                  unreadCount={liveUnreadCount}
+                  items={liveNotifications}
+                  hasInboxUnread={liveHasInboxUnread}
+                  hasStaffUnread={liveHasStaffUnread}
+                />
                 <div className="lg:hidden">
                   <LogoutButton />
                 </div>
@@ -314,7 +363,18 @@ export function AppShell({
                 onFocus={() => prefetchRoute(item.href)}
                 onMouseEnter={() => prefetchRoute(item.href)}
               >
-                <Icon className="size-4" />
+                <span className="relative inline-flex">
+                  <Icon className="size-4" />
+                  {navDotHref(item.href) ? (
+                    <span
+                      className={cn(
+                        "absolute -right-0.5 -top-0.5 size-1.5 rounded-full",
+                        isActive ? "bg-white" : "bg-primary"
+                      )}
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                </span>
                 <span className="truncate">{item.label}</span>
               </Link>
             );

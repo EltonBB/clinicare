@@ -79,7 +79,10 @@ export default async function WorkspaceLayout({
       brandAccentColor={business.brandAccentColor}
       logoUrl={logoDisplayUrl}
       unreadCount={0}
+      inboxUnreadCount={0}
       notifications={[]}
+      hasInboxUnread={false}
+      hasStaffUnread={false}
     >
       {children}
       <WorkspaceToaster />

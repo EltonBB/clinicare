@@ -46,6 +46,10 @@ export default async function StaffDetailsRoute({
             gte: staffTimeEntryCutoff(),
           },
         },
+        select: {
+          checkedInAt: true,
+          checkedOutAt: true,
+        },
         orderBy: {
           checkedInAt: "desc",
         },

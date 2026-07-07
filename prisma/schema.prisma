@@ -90,11 +90,17 @@ model StaffTimeEntry {
   staffMember   StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
   checkedInAt   DateTime
   checkedOutAt  DateTime?
+  // Null until the admin views this staff member's detail page — the durable
+  // backing for the admin notification bell (the dashboard toaster's 10-minute
+  // rolling window has nothing to persist once it scrolls past, so a check-in
+  // the admin missed would otherwise vanish with no record anywhere).
+  seenByAdminAt DateTime?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
   @@index([businessId, staffMemberId, checkedInAt])
   @@index([staffMemberId, checkedOutAt])
+  @@index([businessId, seenByAdminAt])
 }
 
 model Client {

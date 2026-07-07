@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ComponentType } from "react";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import {
   ArrowLeft,
   BriefcaseBusiness,
@@ -15,7 +15,11 @@ import {
   UserRoundPen,
 } from "lucide-react";
 
-import { checkInStaffAction, checkOutStaffAction } from "@/app/(workspace)/staff/actions";
+import {
+  checkInStaffAction,
+  checkOutStaffAction,
+  markStaffCheckInsSeenAction,
+} from "@/app/(workspace)/staff/actions";
 import { MobileAccessCard } from "@/components/staff/mobile-access-card";
 import { StaffMessagesTab } from "@/components/staff/staff-messages-tab";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -66,6 +70,14 @@ export function StaffDetailsPage({
     initialTab === "messages" ? 0 : adminThread.unreadForAdmin
   );
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    // Viewing this staff member's page (their checked-in status is in the
+    // header regardless of tab) acknowledges any pending check-in the bell
+    // is holding for them.
+    void markStaffCheckInsSeenAction(staff.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handleTabChange(value: string) {
     setSelectedTab(value);

@@ -4,7 +4,11 @@ import { StaffWorkspace } from "@/components/staff/staff-workspace";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
 import { buildStaffViewFromRecords } from "@/lib/staff";
-import { getStaffDirectoryCounts, getStaffUnreadMessageCounts } from "@/lib/staff-data";
+import {
+  getStaffDirectoryCounts,
+  getStaffUnreadMessageCounts,
+  getStaffUnseenCheckInCounts,
+} from "@/lib/staff-data";
 import { getZonedDayWindow, getZonedMonthWindow } from "@/lib/time-zone";
 
 function staffShiftCutoff() {
@@ -52,7 +56,7 @@ export default async function StaffPage({
 
   // Per-staff appointment counts are aggregated in the DB (see lib/staff-data.ts)
   // instead of loading every month-to-date appointment per member just to count.
-  const [records, countsByStaff, unreadMessagesByStaff] = await Promise.all([
+  const [records, countsByStaff, unreadMessagesByStaff, unseenCheckInsByStaff] = await Promise.all([
     prisma.staffMember.findMany({
       where: {
         businessId: business.id,
@@ -111,9 +115,15 @@ export default async function StaffPage({
       todayEnd: todayWindow.end,
     }),
     getStaffUnreadMessageCounts(business.id),
+    getStaffUnseenCheckInCounts(business.id),
   ]);
 
-  const initialView = buildStaffViewFromRecords(records, countsByStaff, unreadMessagesByStaff);
+  const initialView = buildStaffViewFromRecords(
+    records,
+    countsByStaff,
+    unreadMessagesByStaff,
+    unseenCheckInsByStaff
+  );
 
   return <StaffWorkspace initialView={initialView} />;
 }
