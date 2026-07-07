@@ -20,21 +20,29 @@ type NotificationItem = {
 type NotificationsMenuProps = {
   unreadCount: number;
   items: NotificationItem[];
+  hasInboxUnread: boolean;
+  hasStaffUnread: boolean;
 };
 
 export function NotificationsMenu({
   unreadCount,
   items,
+  hasInboxUnread,
+  hasStaffUnread,
 }: NotificationsMenuProps) {
   const hasUpdates = unreadCount > 0 && items.length > 0;
   // The footer CTA should always land somewhere relevant to what's actually
-  // shown above it. "Open inbox" only makes sense while at least one visible
-  // item is inbox-sourced (href === "/inbox"); once the bell is showing
-  // staff-thread activity only, send the click to that instead of a page with
-  // nothing on it.
-  const hasInboxItem = items.some((item) => item.href === "/inbox");
-  const footerHref = hasInboxItem || items.length === 0 ? "/inbox" : items[0].href;
-  const footerLabel = hasInboxItem || items.length === 0 ? "Open inbox" : "Open staff messages";
+  // outstanding — driven by the true (uncapped) per-source flags, not the
+  // capped visible list, so a busy source can't make this pick a destination
+  // that doesn't match what's really pending. "Open inbox" only makes sense
+  // while inbox unread is nonzero; once ALL that's pending is staff activity
+  // (messages or check-ins), send the click there instead of a page with
+  // nothing relevant on it.
+  const hasOnlyStaffUnread = !hasInboxUnread && hasStaffUnread;
+  const footerHref = hasOnlyStaffUnread
+    ? (items.find((item) => item.href !== "/inbox")?.href ?? "/staff")
+    : "/inbox";
+  const footerLabel = hasOnlyStaffUnread ? "Open staff messages" : "Open inbox";
 
   return (
     <DropdownMenu>
