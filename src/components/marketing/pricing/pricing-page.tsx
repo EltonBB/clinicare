@@ -99,19 +99,19 @@ export function PricingPageContent() {
           <h2 className="mt-3 display-3 text-[var(--brand-ink)]">Everything in Basic, and more in Pro.</h2>
         </Reveal>
         <Reveal className="overflow-hidden rounded-(--radius-hero) border border-border/80 bg-white shadow-[0_24px_80px_rgba(20,21,47,0.06)]">
-          <div className="grid grid-cols-[1.5fr_0.7fr_0.7fr] border-b border-border/70 bg-[var(--brand-wash)]/55 px-5 py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-            <span>Feature</span>
-            <span className="text-center">Basic</span>
-            <span className="text-center text-primary">Pro</span>
+          <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,0.7fr)_minmax(0,0.7fr)] border-b border-border/70 bg-[var(--brand-wash)]/55 px-3 py-3 text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground sm:px-5 sm:text-[11px] sm:tracking-[0.14em]">
+            <span className="truncate">Feature</span>
+            <span className="truncate text-center">Basic</span>
+            <span className="truncate text-center text-primary">Pro</span>
           </div>
           {comparison.map(([feature, basic, pro]) => (
             <div
               key={feature}
-              className="grid grid-cols-[1.5fr_0.7fr_0.7fr] items-center border-b border-border/70 px-5 py-3.5 text-sm font-semibold text-foreground transition-colors duration-(--duration-base) last:border-b-0 hover:bg-[var(--brand-wash)]/45"
+              className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,0.7fr)_minmax(0,0.7fr)] items-center border-b border-border/70 px-3 py-3.5 text-[13px] font-semibold text-foreground transition-colors duration-(--duration-base) last:border-b-0 hover:bg-[var(--brand-wash)]/45 sm:px-5 sm:text-sm"
             >
-              <span>{feature}</span>
-              <span className="text-center text-muted-foreground">{cell(basic)}</span>
-              <span className="text-center">{cell(pro, true)}</span>
+              <span className="truncate pr-2">{feature}</span>
+              <span className="truncate text-center text-muted-foreground">{cell(basic)}</span>
+              <span className="truncate text-center">{cell(pro, true)}</span>
             </div>
           ))}
         </Reveal>
@@ -123,7 +123,7 @@ export function PricingPageContent() {
           <p className="eyebrow text-primary">Questions</p>
           <h2 className="mt-3 display-3 text-[var(--brand-ink)]">Pricing, answered.</h2>
         </Reveal>
-        <RevealGroup className="grid gap-4 md:grid-cols-2">
+        <RevealGroup className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {faqs.map((faq) => (
             <RevealItem key={faq.q} className="rounded-(--radius-hero) border border-border/80 bg-white p-6 shadow-[0_16px_44px_rgba(20,21,47,0.045)]">
               <h3 className="text-base font-bold text-[var(--brand-ink)]">{faq.q}</h3>

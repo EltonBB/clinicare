@@ -53,6 +53,7 @@ export function ProductPage() {
             stage
             glow
             nav="dashboard"
+            className="w-full"
             bodyClassName="min-h-[19rem]"
             float={
               <FloatingToast className="-bottom-4 left-1 sm:-bottom-6 sm:left-4">
@@ -73,7 +74,7 @@ export function ProductPage() {
 
       {/* pillars */}
       <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
-        <RevealGroup className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <RevealGroup className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           {pillars.map(({ icon: Icon, title, copy, stat }) => (
             <RevealItem
               key={title}
@@ -109,7 +110,7 @@ export function ProductPage() {
 
       {/* workflow */}
       <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
-        <div className="grid gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
           <Reveal>
             <h2 className="display-2 text-balance text-[var(--brand-ink)]">From booking to follow-up in one flow.</h2>
             <p className="mt-5 max-w-xl text-lg leading-8 text-muted-foreground">

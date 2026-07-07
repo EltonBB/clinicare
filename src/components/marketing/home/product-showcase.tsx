@@ -109,19 +109,19 @@ export function ProductShowcase() {
         <div aria-hidden className="vela-grid-texture pointer-events-none absolute inset-0 opacity-40" />
         <div className="relative mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
           {Header}
-          <div className="mt-12 grid gap-8 sm:grid-cols-2">
+          <div className="mt-12 grid grid-cols-1 gap-8 sm:grid-cols-2">
             {FEATURES.map((f) => (
-              <div key={f.key} className="flex flex-col gap-4">
+              <div key={f.key} className="flex min-w-0 flex-col gap-4">
                 <div className="flex items-center gap-3">
-                  <span className="flex size-9 items-center justify-center rounded-(--radius-tile) border border-white/15 bg-white/10 p-2 text-[#9ec3ff]">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-(--radius-tile) border border-white/15 bg-white/10 p-2 text-[#9ec3ff]">
                     <f.icon className="size-4" />
                   </span>
-                  <div>
+                  <div className="min-w-0">
                     <h3 className="text-sm font-bold text-white">{f.title}</h3>
                     <p className="text-xs leading-5 text-white/55">{f.copy}</p>
                   </div>
                 </div>
-                <AppFrame chrome="app" nav={f.nav} glow bodyClassName="min-h-[16rem]">
+                <AppFrame chrome="app" nav={f.nav} glow bodyClassName="min-h-[16rem]" className="w-full">
                   <f.Body />
                 </AppFrame>
               </div>
@@ -166,7 +166,7 @@ export function ProductShowcase() {
       <div className="relative mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
         {Header}
         <div
-          className="mt-14 grid items-center gap-8 lg:grid-cols-[19rem_minmax(0,1fr)]"
+          className="mt-14 grid grid-cols-1 items-center gap-8 lg:grid-cols-[19rem_minmax(0,1fr)]"
           onMouseEnter={() => setPaused(true)}
           onMouseLeave={() => setPaused(false)}
           onFocusCapture={() => setPaused(true)}
@@ -223,11 +223,12 @@ export function ProductShowcase() {
           </div>
 
           {/* live pane */}
-          <div className="relative">
+          <div className="relative min-w-0">
             <AppFrame
               chrome="app"
               nav={FEATURES[active].nav}
               glow
+              className="w-full"
               bodyClassName="min-h-[19rem]"
               float={
                 <FloatingToast className="-bottom-7 -left-4 sm:-left-10">

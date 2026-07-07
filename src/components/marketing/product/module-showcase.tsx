@@ -137,14 +137,14 @@ export function ModuleShowcase() {
         {Heading}
         <div className="mt-16 flex flex-col gap-20">
           {MODULES.map((mod, i) => (
-            <div key={mod.key} className="grid items-center gap-8 lg:grid-cols-2 lg:gap-14">
+            <div key={mod.key} className="grid grid-cols-1 items-center gap-8 lg:grid-cols-2 lg:gap-14">
               <div className={i % 2 === 1 ? "lg:order-2" : ""}>
                 <p className="text-xs font-bold text-primary">{mod.n}</p>
                 <h3 className="mt-2 display-3 text-[var(--brand-ink)]">{mod.title}</h3>
                 <p className="mt-4 max-w-xl text-base leading-8 text-muted-foreground">{mod.copy}</p>
               </div>
               <div className={i % 2 === 1 ? "lg:order-1" : ""}>
-                <AppPane chrome="app" nav={mod.nav} title={mod.frameTitle} stage glow>
+                <AppPane chrome="app" nav={mod.nav} title={mod.frameTitle} stage glow className="w-full">
                   <mod.Body />
                 </AppPane>
               </div>
@@ -160,7 +160,7 @@ export function ModuleShowcase() {
   return (
     <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
       {Heading}
-      <div ref={sectionRef} className="mt-8 grid gap-12 lg:grid-cols-[22rem_minmax(0,1fr)]">
+      <div ref={sectionRef} className="mt-8 grid grid-cols-1 gap-12 lg:grid-cols-[22rem_minmax(0,1fr)]">
         {/* scrolling blurbs */}
         <div>
           {MODULES.map((mod, i) => (
@@ -270,7 +270,7 @@ function Blurb({
           inline — pure CSS (lg:hidden), so it's present on first paint and with
           no JS, never a text-only tour. */}
       <div className="mt-8 lg:hidden">
-        <AppPane chrome="app" nav={mod.nav} title={mod.frameTitle} stage glow>
+        <AppPane chrome="app" nav={mod.nav} title={mod.frameTitle} stage glow className="w-full">
           <mod.Body />
         </AppPane>
       </div>

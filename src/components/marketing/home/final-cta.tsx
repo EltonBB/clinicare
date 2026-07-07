@@ -39,7 +39,7 @@ export function FinalCta() {
           aria-hidden
           className="pointer-events-none absolute -bottom-28 -left-16 size-[26rem] rounded-full bg-[radial-gradient(circle,rgba(100,182,255,0.4),transparent_65%)] blur-3xl"
         />
-        <div className="relative grid items-center gap-12 lg:grid-cols-[1.1fr_minmax(0,0.9fr)]">
+        <div className="relative grid grid-cols-1 items-center gap-12 lg:grid-cols-[1.1fr_minmax(0,0.9fr)]">
           {/* copy */}
           <div className="text-center lg:text-left">
             <h2 className="display-2 text-white">Bring your whole clinic into one calm workspace.</h2>

@@ -82,7 +82,14 @@ export function AppFrame({
   const reduce = useReducedMotion();
   const night = tone === "night";
 
-  const body = <div className={cn("p-5 sm:p-6", night && "text-white", bodyClassName)}>{children}</div>;
+  // A named container, not a viewport breakpoint: this pane is reused inside
+  // wildly different widths at the same viewport (full-width hero, a bento
+  // tile, a 2-up card in a coarse-pointer grid) — @sm:/@md: below react to
+  // *this box's* rendered width, not the window's, so "enough room" is never
+  // decided by how many unrelated columns share the row.
+  const body = (
+    <div className={cn("@container/pane p-5 sm:p-6", night && "text-white", bodyClassName)}>{children}</div>
+  );
 
   const frame = (
     <div
@@ -115,7 +122,7 @@ export function AppFrame({
   const staged = stage ? (
     <div
       className={cn(
-        "relative overflow-hidden rounded-[1.8rem] p-6 sm:p-9",
+        "relative w-full overflow-hidden rounded-[1.8rem] p-6 sm:p-9",
         night
           ? "bg-[linear-gradient(135deg,#111d44_0%,#0b1430_55%,#070d22_100%)] ring-1 ring-white/[0.06]"
           : "bg-[linear-gradient(120deg,#eef2ff_0%,#dde6ff_38%,#e4ddff_72%,#d6ecff_100%)] ring-1 ring-primary/[0.08]",

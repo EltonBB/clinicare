@@ -22,7 +22,7 @@ export function AiInsightBand() {
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(135%_115%_at_44%_46%,transparent_50%,rgba(3,6,18,0.56))]"
       />
       <Reveal className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 sm:py-32 lg:px-8">
-        <div className="grid items-center gap-12 lg:grid-cols-[0.95fr_1.05fr]">
+        <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-[0.95fr_1.05fr]">
           <div>
             <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3.5 py-1.5 text-xs font-bold text-white/80 backdrop-blur">
               <Sparkles className="size-3.5 text-[#64B6FF]" />

@@ -39,7 +39,7 @@ export function MarketingFooter() {
         className="pointer-events-none absolute -top-24 left-1/2 h-64 w-[42rem] max-w-full -translate-x-1/2 bg-[radial-gradient(circle,rgba(100,182,255,0.22),transparent_65%)] blur-3xl"
       />
       <div className="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8">
-        <div className="grid gap-12 lg:grid-cols-[1.5fr_1fr_1fr_1fr]">
+        <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1.5fr_1fr_1fr_1fr]">
           <div className="max-w-xs">
             <BrandMark href="/" includeSubtitle={false} tone="light" />
             <p className="mt-5 text-sm leading-7 text-white/55">

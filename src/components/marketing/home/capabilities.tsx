@@ -36,7 +36,7 @@ export function Capabilities() {
           </p>
         </Reveal>
 
-        <RevealGroup className="mt-14 grid gap-4 md:grid-cols-6">
+        <RevealGroup className="mt-14 grid grid-cols-1 gap-4 md:grid-cols-6">
           {/* Hero tile — live calendar */}
           <BentoTile
             icon={CalendarDays}
@@ -113,9 +113,9 @@ export function Capabilities() {
                   ["11", "Done"],
                   ["€60", "Balance"],
                 ].map(([v, l]) => (
-                  <div key={l} className="px-2 py-2 text-center">
+                  <div key={l} className="min-w-0 px-2 py-2 text-center">
                     <p className="text-[15px] font-semibold leading-none text-[var(--brand-ink)]">{v}</p>
-                    <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.06em] text-muted-foreground">{l}</p>
+                    <p className="mt-1 truncate text-[9px] font-bold uppercase tracking-[0.06em] text-muted-foreground">{l}</p>
                   </div>
                 ))}
               </div>

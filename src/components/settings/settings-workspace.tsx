@@ -950,7 +950,7 @@ export function SettingsWorkspace({
                 return (
                   <div
                     key={day}
-                    className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+                    className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                   >
                     <div className="flex items-center gap-3">
                       <Toggle
@@ -960,7 +960,7 @@ export function SettingsWorkspace({
                       <p className="text-sm font-medium text-foreground">{weekdayLabels[day]}</p>
                     </div>
                     {item.enabled ? (
-                      <div className="flex shrink-0 items-center gap-2">
+                      <div className="flex shrink-0 items-center gap-2 pl-[52px] sm:pl-0">
                         <NativeSelect
                           value={item.start}
                           options={timeOptions}
@@ -978,7 +978,7 @@ export function SettingsWorkspace({
                         />
                       </div>
                     ) : (
-                      <span className="text-sm font-medium text-muted-foreground">Closed</span>
+                      <span className="pl-[52px] text-sm font-medium text-muted-foreground sm:pl-0">Closed</span>
                     )}
                   </div>
                 );
