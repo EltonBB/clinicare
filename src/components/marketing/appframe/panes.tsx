@@ -405,7 +405,7 @@ export function RecordBody() {
             </span>
             <span
               className={cn(
-                "w-12 text-right font-bold tabular-nums",
+                "text-right font-bold tabular-nums",
                 r.paid ? "text-emerald-600 @sm/pane:text-foreground" : "text-amber-600 @sm/pane:text-foreground",
               )}
             >
