@@ -174,6 +174,23 @@ export async function recordConnectionState(event: {
  * stored outbound message, keyed on its provider message id. A no-op if the id
  * matches nothing.
  */
+// Delivery receipts can arrive out of order or be re-pushed by the worker (a
+// retried SENT after a READ, a stale FAILED). Only advance the stored status
+// forward along QUEUED → SENT → DELIVERED → READ (and let FAILED win only from a
+// pre-delivery state), so a late/duplicated receipt can't regress a message's
+// status in the Inbox. The `deliveryStatus: { in: … }` predicate makes this an
+// atomic compare-and-set — no read-modify-write race.
+const DELIVERY_STATUS_ADVANCE_FROM: Record<
+  MessageDeliveryStatus,
+  MessageDeliveryStatus[]
+> = {
+  QUEUED: [],
+  SENT: ["QUEUED"],
+  DELIVERED: ["QUEUED", "SENT"],
+  READ: ["QUEUED", "SENT", "DELIVERED"],
+  FAILED: ["QUEUED", "SENT"],
+};
+
 export async function recordDeliveryStatus(event: {
   providerMessageId: string;
   status: MessageDeliveryStatus;
@@ -182,8 +199,15 @@ export async function recordDeliveryStatus(event: {
   if (!event.providerMessageId) {
     return;
   }
+  const advanceFrom = DELIVERY_STATUS_ADVANCE_FROM[event.status];
+  if (advanceFrom.length === 0) {
+    return; // never regress a message back to QUEUED
+  }
   await prisma.message.updateMany({
-    where: { providerMessageSid: event.providerMessageId },
+    where: {
+      providerMessageSid: event.providerMessageId,
+      deliveryStatus: { in: advanceFrom },
+    },
     data: {
       deliveryStatus: event.status,
       deliveryErrorCode: event.errorCode || null,

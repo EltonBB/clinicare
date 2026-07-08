@@ -44,17 +44,26 @@ function buildDatabaseSslConfig() {
 
 const connectionString = normalizeConnectionString(getDatabaseUrl());
 
+// Each authenticated page fans out 5–13 queries via Promise.all; with a single
+// connection they were forced to run serially — the dominant page-render
+// latency. A small pool lets them run concurrently. The default is kept low so
+// the per-instance connection count stays well within the Supabase *session*
+// pooler's budget under the pilot's traffic. To scale, move the runtime
+// DATABASE_URL to the transaction pooler (:6543) and raise DATABASE_POOL_MAX —
+// tuning the ceiling then takes a deploy env change, not a code change.
+function resolvePoolMax(): number {
+  const parsed = Number.parseInt(process.env.DATABASE_POOL_MAX ?? "", 10);
+  if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 20) {
+    return parsed;
+  }
+  return 3;
+}
+
 const pool =
   global.prismaPool ??
   new Pool({
     connectionString,
-    // Each authenticated page fans out 5–13 queries via Promise.all; with a
-    // single connection they were forced to run serially — the dominant
-    // page-render latency. A small pool lets them run concurrently. Kept low so
-    // the per-instance connection count stays well within the Supabase session
-    // pooler's budget under the pilot's traffic (raise cautiously, or move to the
-    // transaction pooler on :6543, only if connection headroom allows).
-    max: 3,
+    max: resolvePoolMax(),
     idleTimeoutMillis: 10_000,
     ssl: buildDatabaseSslConfig(),
   });

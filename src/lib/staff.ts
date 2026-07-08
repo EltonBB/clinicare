@@ -108,7 +108,7 @@ export type SaveStaffPayload = {
 };
 
 type StaffWithRelations = StaffMember & {
-  timeEntries: Pick<StaffTimeEntry, "checkedInAt" | "checkedOutAt">[];
+  timeEntries: Pick<StaffTimeEntry, "id" | "checkedInAt" | "checkedOutAt">[];
   shifts: Pick<StaffShift, "id" | "startsAt" | "endsAt" | "status">[];
   appointments: Array<
     Pick<Appointment, "id" | "title" | "startAt" | "endAt" | "status"> & {
@@ -434,7 +434,7 @@ export function buildStaffRecord(member: StaffWithRelations): StaffRecord {
       .filter((entry) => (entry.checkedOutAt ?? new Date()) >= weekStart)
       .sort((left, right) => right.checkedInAt.getTime() - left.checkedInAt.getTime())
       .map((entry) => ({
-        id: entry.checkedInAt.toISOString(),
+        id: entry.id,
         day: `${formatZonedDayName(entry.checkedInAt)}, ${formatZonedShortDate(entry.checkedInAt)}`,
         checkedIn: formatZonedTime(entry.checkedInAt),
         checkedOut: entry.checkedOutAt ? formatZonedTime(entry.checkedOutAt) : "",

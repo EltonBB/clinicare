@@ -21,16 +21,6 @@ type WorkspaceHeaderProps = {
   className?: string;
 };
 
-type WorkspaceKpiCardProps = {
-  icon?: ComponentType<{ className?: string }>;
-  label: string;
-  value: ReactNode;
-  helper?: ReactNode;
-  tone?: "default" | "good" | "warning" | "danger";
-  className?: string;
-  compact?: boolean;
-};
-
 type WorkspaceCardProps = {
   title?: ReactNode;
   description?: ReactNode;
@@ -66,12 +56,6 @@ type WorkspaceToolbarProps = {
   children: ReactNode;
   className?: string;
   contentClassName?: string;
-};
-
-type WorkspaceSectionGridProps = {
-  children: ReactNode;
-  className?: string;
-  columns?: 1 | 2 | 3;
 };
 
 type WorkspaceFormSectionProps = {
@@ -111,19 +95,6 @@ const mainGridTypes = {
   overview: "grid grid-cols-1 items-start gap-3",
   directory: "grid grid-cols-1 items-start gap-3",
   detail: "grid grid-cols-1 items-start gap-3 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]",
-};
-
-const toneStyles = {
-  default: "text-muted-foreground",
-  good: "text-emerald-600",
-  warning: "text-amber-600",
-  danger: "text-destructive",
-};
-
-const sectionGridColumns = {
-  1: "grid-cols-1",
-  2: "grid-cols-1 xl:grid-cols-2",
-  3: "grid-cols-1 lg:grid-cols-2 xl:grid-cols-3",
 };
 
 // Canonical form-control styling — shared so every workspace form/select matches the
@@ -193,64 +164,6 @@ export function WorkspaceHeader({
           </div>
         ) : null}
       </div>
-    </section>
-  );
-}
-
-export function WorkspaceKpiGrid({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cn("grid auto-rows-fr items-stretch gap-3 md:grid-cols-2 xl:grid-cols-4", className)}>
-      {children}
-    </div>
-  );
-}
-
-export function WorkspaceKpiCard({
-  icon: Icon,
-  label,
-  value,
-  helper,
-  tone = "default",
-  className,
-  compact = false,
-}: WorkspaceKpiCardProps) {
-  return (
-    <section
-      className={cn(
-        "surface-card flex h-full flex-col justify-between",
-        compact ? "min-h-[84px] p-3" : "min-h-[92px] p-3.5",
-        className
-      )}
-    >
-      <div className="flex items-start gap-3">
-        {Icon ? (
-          <span className="vela-icon-tile size-9 rounded-(--radius-tile)">
-            <Icon className="size-[17px]" />
-          </span>
-        ) : null}
-        <div className="min-w-0">
-          <p className="break-words text-[10px] font-semibold uppercase leading-3 tracking-[0.1em] text-muted-foreground">
-            {label}
-          </p>
-          <p
-            className={cn(
-              "mt-1.5 font-semibold leading-none tracking-tight text-foreground",
-            compact ? "text-xl" : "text-[1.6rem]"
-            )}
-          >
-            {value}
-          </p>
-        </div>
-      </div>
-      {helper ? (
-        <p className={cn(compact ? "mt-1.5 text-[11px]" : "mt-2 text-xs", "font-medium leading-4", toneStyles[tone])}>{helper}</p>
-      ) : null}
     </section>
   );
 }
@@ -334,18 +247,6 @@ export function WorkspaceToolbar({ children, className, contentClassName }: Work
       <div className={cn("flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between", contentClassName)}>
         {children}
       </div>
-    </div>
-  );
-}
-
-export function WorkspaceSectionGrid({
-  children,
-  className,
-  columns = 2,
-}: WorkspaceSectionGridProps) {
-  return (
-    <div className={cn("grid items-stretch gap-3", sectionGridColumns[columns], className)}>
-      {children}
     </div>
   );
 }

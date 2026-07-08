@@ -5,6 +5,7 @@ import {
   useDeferredValue,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
 } from "react";
@@ -137,6 +138,13 @@ export function InboxWorkspace({
     : "/calendar/new";
   const connectionLine = connection.statusLabel;
 
+  // Conversations the operator opened this session (marked read optimistically).
+  // The 10s poll replaces the whole list from the DB; without this, a poll that
+  // resolves before the async mark-read commits would flip a just-opened thread
+  // back to "unread" for up to a cycle. We keep overriding it to read until the
+  // server itself reports 0, then stop (so a genuine later reply still shows).
+  const locallyReadIdsRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     let cancelled = false;
 
@@ -151,7 +159,19 @@ export function InboxWorkspace({
         return;
       }
 
-      setConversations(result.view.conversations);
+      setConversations(
+        result.view.conversations.map((conversation) => {
+          if (!locallyReadIdsRef.current.has(conversation.id)) {
+            return conversation;
+          }
+          if (conversation.unreadCount === 0) {
+            // The read committed server-side — stop overriding this thread.
+            locallyReadIdsRef.current.delete(conversation.id);
+            return conversation;
+          }
+          return { ...conversation, unreadCount: 0 };
+        })
+      );
       setSelectedConversationId((current) => {
         if (
           current &&
@@ -187,6 +207,7 @@ export function InboxWorkspace({
 
   function openConversation(conversationId: string) {
     setSelectedConversationId(conversationId);
+    locallyReadIdsRef.current.add(conversationId);
     setConversations((current) =>
       current.map((conversation) =>
         conversation.id === conversationId
@@ -195,14 +216,22 @@ export function InboxWorkspace({
       )
     );
     startTransition(async () => {
-      const result = await markConversationReadAction(conversationId);
+      try {
+        const result = await markConversationReadAction(conversationId);
 
-      if (!result.ok) {
-        setErrorMessage(result.error ?? "We couldn't open the conversation.");
-        return;
+        if (!result.ok) {
+          setErrorMessage(result.error ?? "We couldn't open the conversation.");
+          return;
+        }
+
+        setErrorMessage("");
+      } finally {
+        // The override only needs to bridge the window until mark-read resolves.
+        // Clearing it here (on success OR failure) stops it from outliving the
+        // race: otherwise a genuine reply arriving after the read committed would
+        // be force-masked to 0 forever, since the server never reports 0 again.
+        locallyReadIdsRef.current.delete(conversationId);
       }
-
-      setErrorMessage("");
     });
   }
 

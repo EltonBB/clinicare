@@ -208,6 +208,48 @@ export async function syncAppointmentRemindersForBusiness(
       continue;
     }
 
+    // The send succeeded (the patient received the WhatsApp). Persist the SENT
+    // marker FIRST and on its own: it is the ONLY dedup key for reminders, so it
+    // must not be coupled to the secondary inbox/connection writes below. If it
+    // were part of one transaction, a failure in those secondary writes would
+    // roll back the SENT row too, leaving a delivered reminder un-recorded — and
+    // the next cron run would re-send it to the patient.
+    try {
+      await prisma.appointmentReminder.upsert({
+        where: {
+          appointmentId_type: {
+            appointmentId: appointment.id,
+            type: reminderType,
+          },
+        },
+        create: {
+          appointmentId: appointment.id,
+          type: reminderType,
+          status: "SENT",
+        },
+        update: {
+          status: "SENT",
+          sentAt: new Date(),
+        },
+      });
+      sent += 1;
+      consecutiveProviderErrors = 0;
+    } catch (error) {
+      // Couldn't even record the SENT marker — count as failed. It may re-send
+      // on the next run: the minimal, irreducible at-least-once window, far
+      // rarer than a multi-write transaction failing.
+      failed += 1;
+      logger.error("Failed to record sent reminder.", error, {
+        businessId,
+        appointmentId: appointment.id,
+        reminderType,
+      });
+      continue;
+    }
+
+    // Secondary, best-effort: mirror the reminder into the patient's inbox
+    // thread and refresh the connection heartbeat. A failure here must NOT cause
+    // a re-send — the SENT marker above already dedups — so it is swallowed.
     try {
       await prisma.$transaction(async (tx) => {
         const clientConversation = await tx.conversation.upsert({
@@ -248,24 +290,6 @@ export async function syncAppointmentRemindersForBusiness(
           },
         });
 
-        await tx.appointmentReminder.upsert({
-          where: {
-            appointmentId_type: {
-              appointmentId: appointment.id,
-              type: reminderType,
-            },
-          },
-          create: {
-            appointmentId: appointment.id,
-            type: reminderType,
-            status: "SENT",
-          },
-          update: {
-            status: "SENT",
-            sentAt: new Date(),
-          },
-        });
-
         await tx.whatsAppConnection.update({
           where: {
             businessId,
@@ -276,12 +300,8 @@ export async function syncAppointmentRemindersForBusiness(
           },
         });
       });
-
-      sent += 1;
-      consecutiveProviderErrors = 0;
     } catch (error) {
-      failed += 1;
-      logger.error("Failed to record sent reminder.", error, {
+      logger.error("Recorded the reminder but couldn't mirror it to the inbox.", error, {
         businessId,
         appointmentId: appointment.id,
         reminderType,
