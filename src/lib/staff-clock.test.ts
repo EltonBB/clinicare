@@ -130,4 +130,27 @@ describe("planStaleEntryCloses", () => {
     );
     expect(pastGrace.get(checkedInMs + TWELVE_HOURS_MS)).toEqual(["e1"]);
   });
+
+  it("keeps an entry open at exactly its boundary, and closes it one ms past", () => {
+    const shiftEnd = "2026-01-01T17:00:00Z";
+    const shiftEndMs = new Date(shiftEnd).getTime();
+
+    // The guard is `now <= boundary`, so an entry whose `now` equals the boundary
+    // to the millisecond is still a legitimately-open session and is left out —
+    // this pins the inclusive side of that comparison.
+    const atBoundary = planStaleEntryCloses(
+      [entry("e1", "2026-01-01T09:00:00Z")],
+      [shift("2026-01-01T09:00:00Z", shiftEnd)],
+      new Date(shiftEndMs)
+    );
+    expect(atBoundary.size).toBe(0);
+
+    // One millisecond past the boundary, it closes (at the shift end).
+    const pastBoundary = planStaleEntryCloses(
+      [entry("e1", "2026-01-01T09:00:00Z")],
+      [shift("2026-01-01T09:00:00Z", shiftEnd)],
+      new Date(shiftEndMs + 1)
+    );
+    expect(pastBoundary.get(shiftEndMs)).toEqual(["e1"]);
+  });
 });
