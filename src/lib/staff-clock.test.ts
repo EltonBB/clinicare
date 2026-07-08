@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { CHECK_IN_EARLY_GRACE_MS } from "./staff";
-import { planStaleEntryCloses } from "./staff-clock";
+import { planStaleEntryCloses } from "./staff-clock-core";
 
 // Mirrors the module-private cap in staff-clock.ts (a documented product value).
 const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
