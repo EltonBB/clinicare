@@ -98,11 +98,15 @@ export async function autoCloseStaleTimeEntries(
 
   let closed = 0;
   for (const [closeAtMs, ids] of closeGroups) {
-    await prisma.staffTimeEntry.updateMany({
-      where: { id: { in: ids } },
+    // Compare-and-set: only close entries still open at write time, so a real
+    // check-out that landed between the read above and this write isn't
+    // overwritten with the computed stale boundary. Count the rows actually
+    // closed (updateMany returns the affected count).
+    const { count } = await prisma.staffTimeEntry.updateMany({
+      where: { id: { in: ids }, checkedOutAt: null },
       data: { checkedOutAt: new Date(closeAtMs) },
     });
-    closed += ids.length;
+    closed += count;
   }
 
   return { closed };
