@@ -154,7 +154,6 @@ export { ChannelRegistry } from "./registry";
 export {
   buildConfiguredRegistry,
   getMessagingRegistry,
-  resetMessagingRegistry,
 } from "./configure";
 export { DEFAULT_REMINDER_TEMPLATE, renderReminder } from "./render";
 export { EchoAdapter } from "./adapters/echo";

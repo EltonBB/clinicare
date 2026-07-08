@@ -37,6 +37,9 @@ export function WorkspaceToaster() {
   // null until the first poll establishes each stream's baseline.
   const seenCheckins = useRef<Set<string> | null>(null);
   const seenMessages = useRef<Set<string> | null>(null);
+  // Track auto-dismiss timers so they can be cleared on unmount — otherwise a
+  // pending timer fires setToasts after the shell unmounts (React 19 warns).
+  const dismissTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
   const pushFresh = useCallback((fresh: Toast[]) => {
     if (fresh.length === 0) {
@@ -44,10 +47,20 @@ export function WorkspaceToaster() {
     }
     setToasts((prev) => [...fresh, ...prev].slice(0, 4));
     fresh.forEach((toast) => {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
+        dismissTimersRef.current.delete(timer);
         setToasts((prev) => prev.filter((t) => t.id !== toast.id));
       }, DISMISS_MS);
+      dismissTimersRef.current.add(timer);
     });
+  }, []);
+
+  useEffect(() => {
+    const timers = dismissTimersRef.current;
+    return () => {
+      timers.forEach((id) => clearTimeout(id));
+      timers.clear();
+    };
   }, []);
 
   const poll = useCallback(async () => {

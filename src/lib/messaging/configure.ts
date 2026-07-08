@@ -34,8 +34,3 @@ export function getMessagingRegistry(): ChannelRegistry {
   }
   return cached;
 }
-
-/** Test-only: drop the memoized registry so env changes take effect. */
-export function resetMessagingRegistry(): void {
-  cached = null;
-}

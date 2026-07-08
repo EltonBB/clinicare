@@ -44,6 +44,7 @@ export default async function EditStaffPage({
             },
           },
           select: {
+            id: true,
             checkedInAt: true,
             checkedOutAt: true,
           },

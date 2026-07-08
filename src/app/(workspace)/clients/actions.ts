@@ -581,9 +581,22 @@ export async function addClientGalleryItemAction(
     };
   }
 
-  const normalizedImageUrl = normalizeStorageReference(payload.imageUrl);
+  // Mirror the guard on every other stored-URL sink (documents, payments, logo):
+  // only a Supabase storage ref or a safe HTTPS URL may be persisted, since the
+  // value is later rendered into an <img src>. Without it a crafted external URL
+  // could beacon out from — or track views of — a PHI page.
+  if (hasUnsafePublicUrl(payload.imageUrl)) {
+    return {
+      ok: false,
+      error: "Upload the photo again before adding it to the gallery.",
+    };
+  }
 
-  if (normalizedImageUrl.startsWith("data:")) {
+  const normalizedImageUrl = normalizeOptionalPublicUrl(
+    normalizeStorageReference(payload.imageUrl)
+  );
+
+  if (!normalizedImageUrl) {
     return {
       ok: false,
       error: "Upload the photo again before adding it to the gallery.",
@@ -611,9 +624,17 @@ async function syncClientInboxThread(businessId: string, clientId: string) {
     return;
   }
 
+  // Only claim messages that aren't already linked to a client. Conversations are
+  // keyed on the phone digits, so two client records that share a phone (a family
+  // landline, a duplicate/mis-entered record) resolve to one conversation — an
+  // unconditional reassignment would silently move the *other* client's whole
+  // message history onto whoever was saved last. Unlinked (clientId: null)
+  // messages are the inbound ones that arrived before this record existed, which
+  // is exactly what we want to attach here.
   await prisma.message.updateMany({
     where: {
       conversationId: conversation.id,
+      clientId: null,
     },
     data: {
       clientId,

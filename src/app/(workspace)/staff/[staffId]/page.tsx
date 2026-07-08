@@ -47,6 +47,7 @@ export default async function StaffDetailsRoute({
           },
         },
         select: {
+          id: true,
           checkedInAt: true,
           checkedOutAt: true,
         },

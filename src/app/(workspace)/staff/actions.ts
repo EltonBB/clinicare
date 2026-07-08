@@ -89,6 +89,7 @@ async function fetchStaffRecord(staffId: string, businessId: string) {
           },
         },
         select: {
+          id: true,
           checkedInAt: true,
           checkedOutAt: true,
         },
@@ -285,56 +286,66 @@ export async function saveStaffAction(payload: SaveStaffPayload): Promise<SaveSt
     isActive: status !== "INACTIVE",
   };
 
-  let staffId = payload.id;
+  try {
+    let staffId = payload.id;
 
-  if (payload.id) {
-    const existing = await prisma.staffMember.findFirst({
-      where: {
-        id: payload.id,
-        businessId: business.id,
-      },
-      select: {
-        id: true,
-      },
-    });
+    if (payload.id) {
+      const existing = await prisma.staffMember.findFirst({
+        where: {
+          id: payload.id,
+          businessId: business.id,
+        },
+        select: {
+          id: true,
+        },
+      });
 
-    if (!existing) {
-      return {
-        ok: false,
-        error: "Staff member not found in this workspace.",
-      };
+      if (!existing) {
+        return {
+          ok: false,
+          error: "Staff member not found in this workspace.",
+        };
+      }
+
+      await prisma.staffMember.update({
+        where: {
+          id: payload.id,
+        },
+        data,
+      });
+    } else {
+      const created = await prisma.staffMember.create({
+        data: {
+          businessId: business.id,
+          ...data,
+        },
+      });
+      staffId = created.id;
     }
 
-    await prisma.staffMember.update({
-      where: {
-        id: payload.id,
-      },
-      data,
-    });
-  } else {
-    const created = await prisma.staffMember.create({
-      data: {
+    if (payload.weeklySchedule) {
+      await replaceWeeklySchedule({
         businessId: business.id,
-        ...data,
-      },
-    });
-    staffId = created.id;
+        staffMemberId: staffId!,
+        weeklySchedule: payload.weeklySchedule,
+      });
+    }
+
+    revalidateStaffRosterSurfaces(staffId);
+
+    return {
+      ok: true,
+      staff: await fetchStaffRecord(staffId!, business.id),
+    };
+  } catch {
+    // A failed schedule replace (or member write) would otherwise surface as an
+    // unhandled rejection with no typed result and skip revalidation — mirror
+    // saveClientAction and return the app's generic customer-facing error.
+    return {
+      ok: false,
+      error: "We couldn't save the staff member.",
+    };
   }
-
-  if (payload.weeklySchedule) {
-    await replaceWeeklySchedule({
-      businessId: business.id,
-      staffMemberId: staffId!,
-      weeklySchedule: payload.weeklySchedule,
-    });
-  }
-
-  revalidateStaffRosterSurfaces(staffId);
-
-  return {
-    ok: true,
-    staff: await fetchStaffRecord(staffId!, business.id),
-  };
 }
 
 export async function deleteStaffAction(staffId: string): Promise<DeleteStaffResult> {

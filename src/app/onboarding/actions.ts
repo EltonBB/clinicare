@@ -196,6 +196,35 @@ async function bootstrapWorkspaceFromOnboarding(user: {
   });
 }
 
+// This server action is directly callable, so client-side step validation isn't
+// sufficient. Mirror the guard the *other* write path for these same fields
+// already has (settings/actions.ts validates BusinessHours times): reject
+// malformed opening hours (which would silently break calendar/hours math) and
+// bound the free-text name/role fields before the bootstrap persists them.
+const ONBOARDING_CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+const MAX_ONBOARDING_TEXT = 120;
+
+function validateOnboardingForBootstrap(state: OnboardingState): string | null {
+  const overLong = [
+    state.owner.name,
+    state.clinic.name,
+    state.staffMember.name,
+    state.staffMember.role,
+  ].some((value) => value.length > MAX_ONBOARDING_TEXT);
+  if (overLong) {
+    return "That name is too long — please shorten it.";
+  }
+  for (const day of Object.values(state.workingHours)) {
+    if (
+      day.enabled &&
+      (!ONBOARDING_CLOCK_TIME.test(day.start) || !ONBOARDING_CLOCK_TIME.test(day.end))
+    ) {
+      return "Please set valid opening hours (24-hour HH:MM) for every open day.";
+    }
+  }
+  return null;
+}
+
 export async function saveOnboardingStateAction(
   nextState: OnboardingState
 ): Promise<SaveOnboardingStateResult> {
@@ -228,6 +257,10 @@ export async function saveOnboardingStateAction(
   }
 
   if (normalizedState.completed) {
+    const validationError = validateOnboardingForBootstrap(normalizedState);
+    if (validationError) {
+      return { ok: false, error: validationError, state: normalizedState };
+    }
     try {
       await bootstrapWorkspaceFromOnboarding(user, normalizedState);
     } catch {

@@ -31,19 +31,55 @@ export async function autoCloseStaleTimeEntries(
     take: 1000,
   });
 
-  let closed = 0;
+  if (open.length === 0) {
+    return { closed: 0 };
+  }
+
+  // Batch every covering-shift lookup into ONE query instead of a findFirst per
+  // open entry (the global cron sweep could otherwise fire up to 1000 sequential
+  // round-trips). Fetch a superset — every shift for the involved staff whose
+  // window could overlap any open check-in — then match each entry precisely in
+  // memory below, reproducing the per-entry predicate exactly.
+  const staffMemberIds = [...new Set(open.map((entry) => entry.staffMemberId))];
+  let earliestCheckIn = open[0].checkedInAt.getTime();
+  let latestCheckIn = earliestCheckIn;
   for (const entry of open) {
-    // The shift the check-in belongs to (its 30-min early grace through its end).
-    const shift = await prisma.staffShift.findFirst({
-      where: {
-        businessId: entry.businessId,
-        staffMemberId: entry.staffMemberId,
-        startsAt: { lte: new Date(entry.checkedInAt.getTime() + CHECK_IN_EARLY_GRACE_MS) },
-        endsAt: { gte: entry.checkedInAt },
-      },
-      orderBy: { endsAt: "asc" },
-      select: { endsAt: true },
-    });
+    const t = entry.checkedInAt.getTime();
+    if (t < earliestCheckIn) earliestCheckIn = t;
+    if (t > latestCheckIn) latestCheckIn = t;
+  }
+
+  const shifts = await prisma.staffShift.findMany({
+    where: {
+      staffMemberId: { in: staffMemberIds },
+      startsAt: { lte: new Date(latestCheckIn + CHECK_IN_EARLY_GRACE_MS) },
+      endsAt: { gte: new Date(earliestCheckIn) },
+    },
+    select: { businessId: true, staffMemberId: true, startsAt: true, endsAt: true },
+  });
+
+  const shiftsByStaff = new Map<string, typeof shifts>();
+  for (const shift of shifts) {
+    const list = shiftsByStaff.get(shift.staffMemberId) ?? [];
+    list.push(shift);
+    shiftsByStaff.set(shift.staffMemberId, list);
+  }
+
+  // Collect entries to close, grouped by their close instant, so we can write one
+  // `updateMany` per distinct boundary (entries under the same shift share it).
+  const closeGroups = new Map<number, string[]>();
+  for (const entry of open) {
+    // The shift the check-in belongs to (its 30-min early grace through its end),
+    // earliest-ending first — identical selection to the former findFirst.
+    const graceLimit = entry.checkedInAt.getTime() + CHECK_IN_EARLY_GRACE_MS;
+    const shift = (shiftsByStaff.get(entry.staffMemberId) ?? [])
+      .filter(
+        (candidate) =>
+          candidate.businessId === entry.businessId &&
+          candidate.startsAt.getTime() <= graceLimit &&
+          candidate.endsAt.getTime() >= entry.checkedInAt.getTime()
+      )
+      .sort((left, right) => left.endsAt.getTime() - right.endsAt.getTime())[0];
 
     const boundary = shift
       ? shift.endsAt
@@ -54,12 +90,19 @@ export async function autoCloseStaleTimeEntries(
     }
 
     // Never record a checkout before the check-in (clamp defensively).
-    const closeAt = boundary > entry.checkedInAt ? boundary : entry.checkedInAt;
-    await prisma.staffTimeEntry.update({
-      where: { id: entry.id },
-      data: { checkedOutAt: closeAt },
+    const closeAt = boundary > entry.checkedInAt ? boundary.getTime() : entry.checkedInAt.getTime();
+    const group = closeGroups.get(closeAt) ?? [];
+    group.push(entry.id);
+    closeGroups.set(closeAt, group);
+  }
+
+  let closed = 0;
+  for (const [closeAtMs, ids] of closeGroups) {
+    await prisma.staffTimeEntry.updateMany({
+      where: { id: { in: ids } },
+      data: { checkedOutAt: new Date(closeAtMs) },
     });
-    closed += 1;
+    closed += ids.length;
   }
 
   return { closed };
