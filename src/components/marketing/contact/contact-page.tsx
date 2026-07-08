@@ -79,7 +79,7 @@ export function ContactPage() {
       />
 
       <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[0.8fr_1.2fr]">
           <Reveal className="vela-night relative overflow-hidden rounded-(--radius-hero) p-6 text-white shadow-[0_28px_90px_rgba(20,21,47,0.2)] sm:p-8">
             <div aria-hidden className="vela-grid-texture pointer-events-none absolute inset-0 opacity-40" />
             <div className="relative">
@@ -127,11 +127,11 @@ export function ContactPage() {
               </div>
             ) : (
               <form className="grid gap-4" onSubmit={handleSubmit}>
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <Field label="Full name" placeholder="Your name" value={name} onChange={setName} required />
                   <Field label="Email" placeholder="you@example.com" type="email" value={email} onChange={setEmail} required />
                 </div>
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <Field label="Clinic / business name" placeholder="Your clinic name" value={clinicName} onChange={setClinicName} />
                   <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
                     How can we help?

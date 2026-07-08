@@ -78,7 +78,7 @@ export function AboutPage() {
 
       {/* context + stats */}
       <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
-        <RevealGroup className="grid gap-5 lg:grid-cols-3">
+        <RevealGroup className="grid grid-cols-1 gap-5 lg:grid-cols-3">
           {context.map((c) => (
             <RevealItem key={c.title} className="rounded-(--radius-hero) border border-border/80 bg-white p-6 shadow-[0_18px_54px_rgba(20,21,47,0.05)]">
               <h2 className="text-xl font-semibold text-[var(--brand-ink)]">{c.title}</h2>
@@ -86,7 +86,7 @@ export function AboutPage() {
             </RevealItem>
           ))}
         </RevealGroup>
-        <Reveal className="mt-6 grid gap-3 rounded-(--radius-hero) border border-border/80 bg-[var(--brand-wash)]/40 p-4 sm:grid-cols-3">
+        <Reveal className="mt-6 grid grid-cols-1 gap-3 rounded-(--radius-hero) border border-border/80 bg-[var(--brand-wash)]/40 p-4 sm:grid-cols-3">
           {stats.map(([value, label]) => (
             <div key={label} className="rounded-(--radius-field) bg-white p-5 text-center shadow-[0_12px_30px_rgba(20,21,47,0.04)]">
               <p className="text-4xl font-semibold text-primary">{value}</p>
@@ -102,7 +102,7 @@ export function AboutPage() {
           <p className="eyebrow text-primary">The operating model</p>
           <h2 className="mt-3 display-2 text-[var(--brand-ink)]">A workspace that gives the clinic its focus back.</h2>
         </Reveal>
-        <RevealGroup className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <RevealGroup className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           {model.map(([title, copy], i) => (
             <RevealItem key={title} className="relative rounded-(--radius-panel) border border-border/80 bg-white p-6 shadow-[0_16px_44px_rgba(20,21,47,0.045)]">
               <span className="flex size-9 items-center justify-center rounded-(--radius-tile) vela-gradient text-sm font-bold text-white">{i + 1}</span>
@@ -120,7 +120,7 @@ export function AboutPage() {
       <section className="vela-night relative overflow-hidden text-white">
         <div aria-hidden className="vela-grid-texture pointer-events-none absolute inset-0 opacity-50" />
         <Reveal className="relative mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
-          <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
+          <div className="grid grid-cols-1 gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
             <div>
               <p className="eyebrow text-white/55">How Vela thinks</p>
               <h2 className="mt-4 display-2">Calm software for busy appointment teams.</h2>
@@ -129,7 +129,7 @@ export function AboutPage() {
                 without turning the clinic into a technical project.
               </p>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {principles.map((p) => (
                 <article key={p.title} className="rounded-(--radius-field) border border-white/12 bg-white/[0.05] p-5 backdrop-blur">
                   <span className="flex size-9 items-center justify-center rounded-(--radius-tile) bg-white/10 text-[#9ec3ff]">
@@ -146,7 +146,7 @@ export function AboutPage() {
 
       {/* legal */}
       <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-        <Reveal className="grid gap-4 rounded-(--radius-hero) border border-border/80 bg-white p-5 shadow-[0_24px_80px_rgba(20,21,47,0.06)] sm:grid-cols-3">
+        <Reveal className="grid grid-cols-1 gap-4 rounded-(--radius-hero) border border-border/80 bg-white p-5 shadow-[0_24px_80px_rgba(20,21,47,0.06)] sm:grid-cols-3">
           {legal.map(([label, href]) => (
             <Link
               key={href}

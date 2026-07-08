@@ -95,7 +95,7 @@ export function DashboardBody() {
         <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">Tuesday · June 24</p>
       </div>
       <m.div
-        className="mt-3.5 grid grid-cols-5 divide-x divide-black/[0.05] overflow-hidden rounded-[0.9rem] border border-black/[0.06] shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_1px_2px_rgba(10,34,255,0.04)]"
+        className="mt-3.5 grid grid-cols-3 divide-x divide-y divide-black/[0.05] overflow-hidden rounded-[0.9rem] border border-black/[0.06] shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_1px_2px_rgba(10,34,255,0.04)] @sm/pane:grid-cols-5 @sm/pane:divide-y-0"
         variants={container}
         initial="hidden"
         animate={active ? "show" : "hidden"}
@@ -123,8 +123,8 @@ export function DashboardBody() {
           </m.div>
         ))}
       </m.div>
-      <div className="mt-3.5 grid grid-cols-[1.1fr_1fr] gap-3.5">
-        <div className="rounded-[0.9rem] border border-black/[0.05] bg-white p-4">
+      <div className="mt-3.5 grid grid-cols-1 gap-3.5 @sm/pane:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+        <div className="min-w-0 rounded-[0.9rem] border border-black/[0.05] bg-white p-4">
           <div className="flex items-center justify-between">
             <p className="text-[14px] font-bold">Visits</p>
             <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-600">+9%</span>
@@ -137,18 +137,18 @@ export function DashboardBody() {
             <span>Sun</span>
           </div>
         </div>
-        <div className="rounded-[0.9rem] border border-black/[0.05] bg-white p-4">
+        <div className="min-w-0 rounded-[0.9rem] border border-black/[0.05] bg-white p-4">
           <p className="text-[14px] font-bold">Today’s schedule</p>
           <div className="mt-2.5 flex items-center gap-2 rounded-[0.6rem] bg-primary/5 px-3 py-2">
-            <StatusDot className="size-2" />
-            <span className="text-[13px] font-bold text-primary">Next up · 14:30</span>
-            <span className="ml-auto text-[12px] font-semibold text-muted-foreground">Dr. Carter</span>
+            <StatusDot className="size-2 shrink-0" />
+            <span className="shrink-0 text-[13px] font-bold text-primary">Next up · 14:30</span>
+            <span className="ml-auto min-w-0 truncate text-[12px] font-semibold text-muted-foreground">Dr. Carter</span>
           </div>
           {schedule.map(([t, n, i, tone]) => (
             <div key={t} className="mt-2.5 flex items-center gap-2.5">
-              <span className="w-10 text-[12px] font-bold tabular-nums text-muted-foreground">{t}</span>
-              <Tile initials={i} tone={tone} className="size-7 text-[11px]" />
-              <span className="text-[13px] font-semibold">{n}</span>
+              <span className="w-10 shrink-0 text-[12px] font-bold tabular-nums text-muted-foreground">{t}</span>
+              <Tile initials={i} tone={tone} className="size-7 shrink-0 text-[11px]" />
+              <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{n}</span>
             </div>
           ))}
         </div>
@@ -184,24 +184,30 @@ export function CalendarBody() {
           <span className="rounded-full px-2.5 py-1 text-muted-foreground">Month</span>
         </div>
       </div>
-      <div className="mt-3 grid grid-cols-[2rem_repeat(5,1fr)] gap-2 text-center">
+      <div className="mt-3 grid grid-cols-[1.5rem_repeat(5,1fr)] gap-1 text-center @sm/pane:grid-cols-[2rem_repeat(5,1fr)] @sm/pane:gap-2">
         <span />
         {cols.map((c, i) => (
-          <span key={c} className={cn("text-[12px] font-bold", i === 1 ? "text-primary" : "text-muted-foreground")}>
+          <span
+            key={c}
+            className={cn(
+              "min-w-0 truncate text-[11px] font-bold @sm/pane:text-[12px]",
+              i === 1 ? "text-primary" : "text-muted-foreground",
+            )}
+          >
             {c}
-            <span className="ml-1 text-muted-foreground/60">{22 + i}</span>
+            <span className="ml-1 hidden text-muted-foreground/60 @sm/pane:inline">{22 + i}</span>
           </span>
         ))}
       </div>
-      <div className="relative mt-1.5 grid grid-cols-[2rem_repeat(5,1fr)] gap-2">
+      <div className="relative mt-1.5 grid grid-cols-[1.5rem_repeat(5,1fr)] gap-1 @sm/pane:grid-cols-[2rem_repeat(5,1fr)] @sm/pane:gap-2">
         {/* time gutter */}
-        <div className="flex h-64 flex-col justify-between py-1 text-right text-[10px] font-bold text-muted-foreground/70">
+        <div className="flex h-64 flex-col justify-between py-1 text-right text-[9px] font-bold text-muted-foreground/70 @sm/pane:text-[10px]">
           {hours.map((h) => (
             <span key={h}>{h}:00</span>
           ))}
         </div>
         {/* day columns */}
-        <div className="relative col-span-5 grid h-64 grid-cols-5 gap-2">
+        <div className="relative col-span-5 grid h-64 grid-cols-5 gap-1 @sm/pane:gap-2">
           {cols.map((c) => (
             <div key={c} className="rounded-[0.55rem] border border-black/[0.04] bg-[var(--brand-wash)]/40" />
           ))}
@@ -221,15 +227,15 @@ export function CalendarBody() {
                 key={i}
                 variants={itemDrop}
                 className={cn(
-                  "absolute z-20 overflow-hidden rounded-[0.5rem] border-l-[3px] px-2 py-1.5 text-[12px] font-bold leading-tight shadow-[0_2px_8px_rgba(10,34,255,0.09)] transition-shadow",
+                  "absolute z-20 overflow-hidden rounded-[0.5rem] border-l-[3px] px-1.5 py-1 text-[10px] font-bold leading-tight shadow-[0_2px_8px_rgba(10,34,255,0.09)] transition-shadow @sm/pane:px-2 @sm/pane:py-1.5 @sm/pane:text-[12px]",
                   e.tone,
                   hi === i && "ring-2 ring-primary/45",
                 )}
                 style={{ left: `calc(${e.col} * 20% + 4px)`, width: "calc(20% - 8px)", top: `${e.top}%`, height: `${e.h}%` }}
               >
-                <span className="block opacity-80">{e.time}</span>
+                <span className="block truncate opacity-80">{e.time}</span>
                 <span className="block truncate">{e.label}</span>
-                <span className="block truncate text-[11px] font-semibold opacity-65">{e.svc}</span>
+                <span className="block truncate text-[9px] font-semibold opacity-65 @sm/pane:text-[11px]">{e.svc}</span>
               </m.span>
             ))}
           </m.div>
@@ -272,27 +278,40 @@ export function FinanceBody() {
         <p className="text-base font-bold">June overview</p>
         <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[12px] font-bold text-emerald-600">Healthy</span>
       </div>
-      <m.div className="mt-3.5 grid grid-cols-3 gap-2.5" variants={container} initial="hidden" animate={active ? "show" : "hidden"}>
+      <m.div
+        className="mt-3.5 grid grid-cols-1 gap-2.5 @sm/pane:grid-cols-3"
+        variants={container}
+        initial="hidden"
+        animate={active ? "show" : "hidden"}
+      >
         {tiles.map((t) => (
-          <m.div key={t.label} variants={itemUp} className="rounded-[0.8rem] border border-black/[0.05] bg-white p-3">
-            <p className="text-[11px] font-bold uppercase tracking-[0.05em] text-muted-foreground">{t.label}</p>
-            <p className="mt-1 text-xl font-semibold leading-none">
-              <CountUp value={t.value} prefix={t.prefix} />
+          <m.div
+            key={t.label}
+            variants={itemUp}
+            className="flex items-center justify-between gap-3 rounded-[0.8rem] border border-black/[0.05] bg-white p-3 @sm/pane:block"
+          >
+            <p className="min-w-0 flex-1 truncate text-[11px] font-bold uppercase tracking-[0.05em] text-muted-foreground @sm/pane:flex-none">
+              {t.label}
             </p>
-            <p
-              className={cn(
-                "mt-1.5 inline-flex items-center gap-0.5 text-[11px] font-bold",
-                t.tone === "up" ? "text-emerald-600" : t.tone === "warn" ? "text-amber-600" : "text-muted-foreground",
-              )}
-            >
-              {t.tone === "up" ? <ArrowUpRight className="size-3" /> : t.tone === "warn" ? <ArrowDownRight className="size-3" /> : null}
-              {t.note}
-            </p>
+            <div className="flex shrink-0 items-baseline gap-1.5 @sm/pane:mt-1 @sm/pane:block">
+              <p className="text-xl font-semibold leading-none">
+                <CountUp value={t.value} prefix={t.prefix} />
+              </p>
+              <p
+                className={cn(
+                  "inline-flex items-center gap-0.5 text-[11px] font-bold @sm/pane:mt-1.5",
+                  t.tone === "up" ? "text-emerald-600" : t.tone === "warn" ? "text-amber-600" : "text-muted-foreground",
+                )}
+              >
+                {t.tone === "up" ? <ArrowUpRight className="size-3" /> : t.tone === "warn" ? <ArrowDownRight className="size-3" /> : null}
+                {t.note}
+              </p>
+            </div>
           </m.div>
         ))}
       </m.div>
-      <div className="mt-3.5 grid grid-cols-[1.25fr_1fr] gap-3.5">
-        <div className="rounded-[0.9rem] border border-black/[0.05] bg-white p-4">
+      <div className="mt-3.5 grid grid-cols-1 gap-3.5 @sm/pane:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+        <div className="min-w-0 rounded-[0.9rem] border border-black/[0.05] bg-white p-4">
           <div className="flex items-center justify-between">
             <p className="text-[14px] font-bold">Revenue trend</p>
             <span className="text-[11px] font-bold text-muted-foreground">6 weeks</span>
@@ -303,7 +322,7 @@ export function FinanceBody() {
             <span>Jun 16</span>
           </div>
         </div>
-        <div className="rounded-[0.9rem] border border-black/[0.05] bg-white p-4">
+        <div className="min-w-0 rounded-[0.9rem] border border-black/[0.05] bg-white p-4">
           <p className="text-[14px] font-bold">Appointments</p>
           <div className="mt-2.5 flex items-center gap-3">
             <SweepDonut className="size-[5rem] shrink-0" total={142} label="visits" segments={legend} />
@@ -352,49 +371,58 @@ export function RecordBody() {
           </p>
         </div>
         <span className="ml-auto rounded-full bg-emerald-50 px-2.5 py-1 text-[12px] font-bold text-emerald-600">Active</span>
-        <span className="vela-gradient hidden rounded-full px-3.5 py-1.5 text-[12px] font-bold text-white sm:inline">Book</span>
+        <span className="vela-gradient hidden rounded-full px-3.5 py-1.5 text-[12px] font-bold text-white @sm/pane:inline">Book</span>
       </div>
-      <div className="mt-3.5 flex gap-4 border-b border-black/[0.06] pb-2 text-[13px] font-bold">
-        <span className="text-muted-foreground">Overview</span>
-        <span className="relative text-primary">
+      <div className="mt-3.5 flex gap-2.5 overflow-x-hidden border-b border-black/[0.06] pb-2 text-[12px] font-bold [mask-image:linear-gradient(90deg,#000_82%,transparent)] @sm/pane:gap-4 @sm/pane:text-[13px] @sm/pane:[mask-image:none]">
+        <span className="shrink-0 text-muted-foreground">Overview</span>
+        <span className="relative shrink-0 text-primary">
           History
           <span className="absolute -bottom-2 inset-x-0 h-0.5 rounded-full bg-primary" />
         </span>
-        <span className="text-muted-foreground">Medical</span>
-        <span className="text-muted-foreground">Docs</span>
-        <span className="text-muted-foreground">Payments</span>
+        <span className="shrink-0 text-muted-foreground">Medical</span>
+        <span className="shrink-0 text-muted-foreground">Docs</span>
+        <span className="shrink-0 text-muted-foreground">Payments</span>
       </div>
       <m.div className="mt-2 space-y-0.5" variants={container} initial="hidden" animate={active ? "show" : "hidden"}>
         {rows.map((r) => (
           <m.div
             key={r.d}
             variants={itemUp}
-            className="grid grid-cols-[4rem_1fr_auto_auto] items-center gap-2.5 rounded-[0.55rem] px-2 py-2 text-[13px] odd:bg-[var(--brand-wash)]/50"
+            className="grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-2.5 rounded-[0.55rem] px-2 py-2 text-[13px] odd:bg-[var(--brand-wash)]/50 @sm/pane:grid-cols-[4rem_minmax(0,1fr)_auto_auto]"
           >
-            <span className="font-bold text-muted-foreground">{r.d}</span>
-            <span className="flex items-center gap-2 truncate">
-              <Tile initials={r.prov} tone={r.tone} className="size-6 text-[10px]" />
-              <span className="truncate font-semibold">{r.t}</span>
+            <span className="truncate font-bold text-muted-foreground">{r.d}</span>
+            <span className="flex min-w-0 items-center gap-2 truncate">
+              <Tile initials={r.prov} tone={r.tone} className="size-6 shrink-0 text-[10px]" />
+              <span className="min-w-0 flex-1 truncate font-semibold">{r.t}</span>
             </span>
             <span
               className={cn(
-                "rounded-full px-2 py-0.5 text-[11px] font-bold",
+                "hidden rounded-full px-2 py-0.5 text-[11px] font-bold @sm/pane:inline",
                 r.paid ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600",
               )}
             >
               {r.paid ? "Paid" : "Due"}
             </span>
-            <span className="w-12 text-right font-bold tabular-nums">{r.amt}</span>
+            <span
+              className={cn(
+                "text-right font-bold tabular-nums",
+                r.paid ? "text-emerald-600 @sm/pane:text-foreground" : "text-amber-600 @sm/pane:text-foreground",
+              )}
+            >
+              {r.amt}
+            </span>
           </m.div>
         ))}
       </m.div>
-      <div className="mt-3 grid grid-cols-4 divide-x divide-black/[0.06] overflow-hidden rounded-[0.8rem] border border-black/[0.06] bg-[var(--brand-wash)]/40">
+      <div className="mt-3 grid grid-cols-2 divide-x divide-y divide-black/[0.06] overflow-hidden rounded-[0.8rem] border border-black/[0.06] bg-[var(--brand-wash)]/40 @sm/pane:grid-cols-4 @sm/pane:divide-y-0">
         {stats.map(([v, l, p]) => (
-          <div key={l} className="px-2 py-2.5 text-center">
+          <div key={l} className="min-w-0 px-1.5 py-2.5 text-center @sm/pane:px-2">
             <p className="text-base font-semibold leading-none">
               <CountUp value={v} prefix={p} />
             </p>
-            <p className="mt-1.5 text-[11px] font-bold uppercase tracking-[0.05em] text-muted-foreground">{l}</p>
+            <p className="mt-1.5 truncate text-[10px] font-bold uppercase tracking-[0.05em] text-muted-foreground @sm/pane:text-[11px]">
+              {l}
+            </p>
           </div>
         ))}
       </div>
@@ -439,11 +467,11 @@ export function ClientsBody() {
           </span>
         ))}
       </div>
-      <div className="mt-3 grid grid-cols-[1.7fr_4.5rem_3rem_4.75rem_3.75rem] gap-2 border-b border-black/[0.06] px-2 pb-1.5 text-[10px] font-bold uppercase tracking-[0.05em] text-muted-foreground/70">
+      <div className="mt-3 grid grid-cols-[1fr_3.75rem] gap-2 border-b border-black/[0.06] px-2 pb-1.5 text-[10px] font-bold uppercase tracking-[0.05em] text-muted-foreground/70 @sm/pane:grid-cols-[1.7fr_4.5rem_3rem_4.75rem_3.75rem]">
         <span>Patient</span>
-        <span>Status</span>
-        <span>Last</span>
-        <span>Provider</span>
+        <span className="hidden @sm/pane:block">Status</span>
+        <span className="hidden @sm/pane:block">Last</span>
+        <span className="hidden @sm/pane:block">Provider</span>
         <span className="text-right">Balance</span>
       </div>
       <m.div variants={container} initial="hidden" animate={active ? "show" : "hidden"}>
@@ -451,7 +479,7 @@ export function ClientsBody() {
           <m.div
             key={r.name}
             variants={itemUp}
-            className="grid grid-cols-[1fr_5rem_3.5rem_5.5rem_4.25rem] items-center gap-2.5 rounded-[0.55rem] px-2 py-2.5 text-[13px] hover:bg-[var(--brand-wash)]/50"
+            className="grid grid-cols-[1fr_3.75rem] items-center gap-2.5 rounded-[0.55rem] px-2 py-2.5 text-[13px] hover:bg-[var(--brand-wash)]/50 @sm/pane:grid-cols-[minmax(0,1fr)_5rem_3.5rem_5.5rem_4.25rem]"
           >
             <span className="flex min-w-0 items-center gap-2.5">
               <Tile initials={r.initials} tone={r.tone} />
@@ -460,7 +488,7 @@ export function ClientsBody() {
                 <span className="block truncate text-[11px] font-semibold leading-tight text-muted-foreground">{r.sub}</span>
               </span>
             </span>
-            <span>
+            <span className="hidden @sm/pane:block">
               <span
                 className={cn(
                   "inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-bold",
@@ -474,8 +502,8 @@ export function ClientsBody() {
                 {r.status}
               </span>
             </span>
-            <span className="font-semibold text-muted-foreground tabular-nums">{r.last}</span>
-            <span className="truncate font-semibold text-muted-foreground">{r.prov}</span>
+            <span className="hidden font-semibold text-muted-foreground tabular-nums @sm/pane:block">{r.last}</span>
+            <span className="hidden truncate font-semibold text-muted-foreground @sm/pane:block">{r.prov}</span>
             <span className={cn("text-right font-bold tabular-nums", r.owing ? "text-amber-600" : "text-emerald-600")}>{r.bal}</span>
           </m.div>
         ))}
@@ -500,9 +528,9 @@ export function InboxBody() {
     { name: "Drita Shala", initials: "DS", tone: "teal", snip: "See you Thursday.", time: "3h" },
   ];
   return (
-    <div aria-hidden className="grid grid-cols-[1fr_1.45fr] gap-3.5 text-[var(--brand-ink)]">
+    <div aria-hidden className="grid grid-cols-1 gap-3.5 text-[var(--brand-ink)] @sm/pane:grid-cols-[minmax(0,1fr)_minmax(0,1.45fr)]">
       {/* conversation list */}
-      <div className="space-y-1 border-r border-black/[0.06] pr-3">
+      <div className="min-w-0 space-y-1 border-b border-black/[0.06] pb-3 @sm/pane:border-b-0 @sm/pane:border-r @sm/pane:pb-0 @sm/pane:pr-3">
         <div className="flex items-center justify-between px-1 pb-1.5">
           <p className="text-[14px] font-bold">Inbox</p>
           <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">3 new</span>
@@ -532,7 +560,7 @@ export function InboxBody() {
         ))}
       </div>
       {/* active thread */}
-      <div className="flex flex-col">
+      <div className="flex min-w-0 flex-col">
         <div className="flex items-center gap-2.5 pb-2.5">
           <Tile initials="MN" tone="cobalt" />
           <div className="min-w-0">
@@ -583,14 +611,23 @@ export function StaffBody() {
               </p>
             </div>
             {s.on ? (
-              <span className="inline-flex items-center gap-1.5 text-[12px] font-bold text-emerald-600">
-                <StatusDot className="size-2" /> On shift
+              <span
+                title="On shift"
+                className="inline-flex shrink-0 items-center gap-1.5 text-[12px] font-bold text-emerald-600"
+              >
+                <StatusDot className="size-2" /> <span className="hidden @sm/pane:inline">On shift</span>
               </span>
             ) : (
-              <span className="text-[12px] font-bold text-muted-foreground">Off</span>
+              <span
+                title="Off"
+                className="inline-flex shrink-0 items-center gap-1.5 text-[12px] font-bold text-muted-foreground"
+              >
+                <span className="size-2 rounded-full bg-muted-foreground/40" />{" "}
+                <span className="hidden @sm/pane:inline">Off</span>
+              </span>
             )}
             {s.rate > 0 ? (
-              <div className="hidden w-16 sm:block">
+              <div className="hidden w-16 @sm/pane:block">
                 <div className="h-1.5 overflow-hidden rounded-full bg-[var(--brand-wash)]">
                   <span
                     className="block h-full rounded-full bg-gradient-to-r from-primary to-[#64B6FF]"
@@ -646,23 +683,32 @@ export function DocumentsBody() {
             </span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-bold leading-tight">{d.name}</p>
-              <p className="text-[11px] font-semibold leading-tight text-muted-foreground">
+              <p className="truncate text-[11px] font-semibold leading-tight text-muted-foreground">
                 {d.cat} · {d.size}
               </p>
             </div>
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
-              <Lock className="size-2.5" /> Signed
+            <span
+              title="Signed"
+              className="flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 @sm/pane:inline-flex @sm/pane:h-auto @sm/pane:w-auto @sm/pane:gap-1 @sm/pane:rounded-full @sm/pane:px-2 @sm/pane:py-0.5 @sm/pane:text-[10px] @sm/pane:font-bold"
+            >
+              <Lock className="size-2.5" />
+              <span className="hidden @sm/pane:inline">Signed</span>
             </span>
           </m.div>
         ))}
       </m.div>
-      <div className="mt-3.5 grid grid-cols-3 divide-x divide-black/[0.06] overflow-hidden rounded-[0.8rem] border border-black/[0.06] bg-[var(--brand-wash)]/40">
+      <div className="mt-3.5 divide-y divide-black/[0.06] overflow-hidden rounded-[0.8rem] border border-black/[0.06] bg-[var(--brand-wash)]/40 @sm/pane:grid @sm/pane:grid-cols-3 @sm/pane:divide-x @sm/pane:divide-y-0">
         {pay.map(([v, l]) => (
-          <div key={l} className="px-2 py-2.5 text-center">
-            <p className="text-base font-semibold leading-none">
+          <div
+            key={l}
+            className="flex items-center justify-between gap-2 px-3 py-2 @sm/pane:flex-col @sm/pane:items-center @sm/pane:justify-start @sm/pane:px-2 @sm/pane:py-2.5"
+          >
+            <p className="order-1 min-w-0 truncate text-[11px] font-bold uppercase tracking-[0.05em] text-muted-foreground @sm/pane:order-2 @sm/pane:mt-1.5">
+              {l}
+            </p>
+            <p className="order-2 shrink-0 text-base font-semibold leading-none @sm/pane:order-1">
               <CountUp value={v} prefix="€" />
             </p>
-            <p className="mt-1.5 text-[11px] font-bold uppercase tracking-[0.05em] text-muted-foreground">{l}</p>
           </div>
         ))}
       </div>

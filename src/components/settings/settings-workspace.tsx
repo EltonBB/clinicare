@@ -950,7 +950,7 @@ export function SettingsWorkspace({
                 return (
                   <div
                     key={day}
-                    className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+                    className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                   >
                     <div className="flex items-center gap-3">
                       <Toggle
@@ -960,7 +960,7 @@ export function SettingsWorkspace({
                       <p className="text-sm font-medium text-foreground">{weekdayLabels[day]}</p>
                     </div>
                     {item.enabled ? (
-                      <div className="flex shrink-0 items-center gap-2">
+                      <div className="flex shrink-0 items-center gap-2 pl-[52px] sm:pl-0">
                         <NativeSelect
                           value={item.start}
                           options={timeOptions}
@@ -978,7 +978,7 @@ export function SettingsWorkspace({
                         />
                       </div>
                     ) : (
-                      <span className="text-sm font-medium text-muted-foreground">Closed</span>
+                      <span className="pl-[52px] text-sm font-medium text-muted-foreground sm:pl-0">Closed</span>
                     )}
                   </div>
                 );
@@ -993,7 +993,7 @@ export function SettingsWorkspace({
             active={activeSection === "reminders"}
           >
             <div className="divide-y divide-border/65">
-              <div className="flex h-[52px] items-center justify-between gap-3">
+              <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                 <div className="flex min-w-0 items-center gap-3">
                   <Toggle
                     checked={state.reminders.twentyFourHour}
@@ -1010,25 +1010,27 @@ export function SettingsWorkspace({
                   <p className="text-sm font-medium text-foreground">First reminder</p>
                 </div>
                 {state.reminders.twentyFourHour ? (
-                  <HourSelect
-                    value={state.reminders.firstReminderHours}
-                    onChange={(value) =>
-                      setState((current) => ({
-                        ...current,
-                        reminders: {
-                          ...current.reminders,
-                          firstReminderHours: value,
-                        },
-                      }))
-                    }
-                    ariaLabel="First reminder send time"
-                  />
+                  <div className="pl-[52px] sm:pl-0">
+                    <HourSelect
+                      value={state.reminders.firstReminderHours}
+                      onChange={(value) =>
+                        setState((current) => ({
+                          ...current,
+                          reminders: {
+                            ...current.reminders,
+                            firstReminderHours: value,
+                          },
+                        }))
+                      }
+                      ariaLabel="First reminder send time"
+                    />
+                  </div>
                 ) : (
-                  <span className="text-xs text-muted-foreground">Off</span>
+                  <span className="pl-[52px] text-xs text-muted-foreground sm:pl-0">Off</span>
                 )}
               </div>
 
-              <div className="flex h-[52px] items-center justify-between gap-3">
+              <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                 <div className="flex min-w-0 items-center gap-3">
                   <Toggle
                     checked={state.reminders.twoHour}
@@ -1045,21 +1047,23 @@ export function SettingsWorkspace({
                   <p className="text-sm font-medium text-foreground">Second reminder</p>
                 </div>
                 {state.reminders.twoHour ? (
-                  <HourSelect
-                    value={state.reminders.secondReminderHours}
-                    onChange={(value) =>
-                      setState((current) => ({
-                        ...current,
-                        reminders: {
-                          ...current.reminders,
-                          secondReminderHours: value,
-                        },
-                      }))
-                    }
-                    ariaLabel="Second reminder send time"
-                  />
+                  <div className="pl-[52px] sm:pl-0">
+                    <HourSelect
+                      value={state.reminders.secondReminderHours}
+                      onChange={(value) =>
+                        setState((current) => ({
+                          ...current,
+                          reminders: {
+                            ...current.reminders,
+                            secondReminderHours: value,
+                          },
+                        }))
+                      }
+                      ariaLabel="Second reminder send time"
+                    />
+                  </div>
                 ) : (
-                  <span className="text-xs text-muted-foreground">Off</span>
+                  <span className="pl-[52px] text-xs text-muted-foreground sm:pl-0">Off</span>
                 )}
               </div>
 
