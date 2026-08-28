@@ -104,6 +104,19 @@ export async function GET(request: Request) {
       }
     }
 
+    // A per-message failure (bad number, provider refusal) leaves the run
+    // otherwise clean: HTTP 200, nothing skipped, nothing errored. Reported
+    // HERE rather than only in the caller so the signal survives whatever
+    // triggers the cron — a patient not getting a reminder must not be
+    // invisible just because the scheduler changed.
+    if (result.failed > 0) {
+      logger.warn("Reminder deliveries failed this run.", {
+        failed: result.failed,
+        sent: result.sent,
+        processedBusinesses: result.processedBusinesses,
+      });
+    }
+
     return NextResponse.json(
       {
         ok: true,

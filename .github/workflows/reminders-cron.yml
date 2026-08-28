@@ -91,6 +91,15 @@ jobs:
             echo "::warning::The reminder run hit its hard timeout. Some clinics were not processed; they retry next hour."
           fi
 
+          # Individual undelivered messages. Distinct from both counters above:
+          # the run can be fully complete, nothing skipped or errored, and still
+          # have failed to reach a patient.
+          FAILED=$(printf '%s' "${HTTP_BODY}" | grep -o '"failed":[0-9]*' | cut -d: -f2 || true)
+          FAILED=${FAILED:-0}
+          if [ "${FAILED}" -gt 0 ]; then
+            echo "::warning::${FAILED} reminder(s) could not be delivered (bad number or provider refusal). They retry next hour; a persistent count needs investigating."
+          fi
+
           # A bug, not a capacity limit. `::error::` only annotates — it does
           # NOT change the step's exit status — so without the explicit exit the
           # run still concludes green and failure-based alerting never fires.

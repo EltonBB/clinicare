@@ -70,12 +70,23 @@ const SEND_RESERVE_MS = 27_000;
 // send is attempted.
 const TENANT_QUERY_RESERVE_MS = 2 * QUERY_RESERVE_MS;
 
-// Upper bound on appointments handled for one tenant in one run. The fan-out is
-// one external send per appointment, so without a cap a single busy clinic can
-// exceed the function cap on its own regardless of when it started. Ordered
-// `startAt: "asc"`, so the cap drops the furthest-out reminders, which are
-// still inside the window on the next hourly run.
-const MAX_APPOINTMENTS_PER_TENANT = 200;
+// The window query is a SUPERSET of sendable work — it cannot filter out
+// already-reminded appointments, because `firstReminderHours` and
+// `secondReminderHours` are independently clamped and the reminder enum is
+// POSITIONAL, so "has a SENT row" does not mean "owes nothing".
+//
+// That is why this scans in PAGES rather than taking a fixed prefix. A fixed
+// `take: 200` re-read the same 200 rows every run, so a clinic with more than
+// 200 appointments in the window could have a genuinely due reminder sit past
+// the cap until its appointment started — repeatedly warning about truncation
+// while never making progress. Paging advances a cursor past the already-done
+// rows instead.
+const APPOINTMENT_PAGE_SIZE = 200;
+
+// Bounds the scan itself, separately from the send budget: a clinic whose
+// window is full of already-reminded appointments would otherwise page through
+// all of them looking for work.
+const MAX_APPOINTMENT_PAGES = 10;
 
 export async function syncAppointmentRemindersForBusiness(
   businessId: string,
@@ -158,141 +169,205 @@ export async function syncAppointmentRemindersForBusiness(
     return { sent: 0, failed: 0, truncated: true };
   }
 
-  const appointments = await prisma.appointment.findMany({
-    // One EXTRA row purely to detect the cap. A bare `take:` silently drops the
-    // remainder while still reporting a completed tenant — the same defect the
-    // stale sweep had with its own cap. The predicate here is a SUPERSET of
-    // sendable work, so the omitted rows may include the only genuinely due
-    // reminder, which makes silent truncation worse than it looks.
-    take: MAX_APPOINTMENTS_PER_TENANT + 1,
-    where: {
-      businessId,
-      status: {
-        not: "CANCELLED",
-      },
-      startAt: {
-        gt: now,
-        lte: addHours(now, maxReminderHours),
+  const appointmentWindow = {
+    businessId,
+    status: {
+      not: "CANCELLED" as const,
+    },
+    startAt: {
+      gt: now,
+      lte: addHours(now, maxReminderHours),
+    },
+  };
+
+  const appointmentInclude = {
+    client: {
+      select: {
+        id: true,
+        name: true,
+        phone: true,
       },
     },
-    include: {
-      client: {
-        select: {
-          id: true,
-          name: true,
-          phone: true,
-        },
-      },
-      staffMember: {
-        select: {
-          name: true,
-        },
-      },
-      reminders: {
-        select: {
-          type: true,
-          status: true,
-        },
+    staffMember: {
+      select: {
+        name: true,
       },
     },
-    orderBy: {
-      startAt: "asc",
+    reminders: {
+      select: {
+        type: true,
+        status: true,
+      },
     },
-  });
+  };
 
   let sent = 0;
   let failed = 0;
+  let truncated = false;
   // Circuit breaker: each failed send burns the adapter's ~25s worker timeout.
   // If the worker is down, stop after a couple of consecutive provider failures
   // so one unreachable worker can't exhaust the cron budget and starve other
   // tenants — the unsent reminders simply retry on the next run.
-  // Cap reached: process what we have and tell the caller more remain, so the
-  // run can't report skippedBusinesses: 0 while leaving reminders unsent.
-  let truncated = appointments.length > MAX_APPOINTMENTS_PER_TENANT;
-  if (truncated) {
-    appointments.length = MAX_APPOINTMENTS_PER_TENANT;
-  }
-
   let consecutiveProviderErrors = 0;
   const MAX_CONSECUTIVE_PROVIDER_ERRORS = 2;
 
-  for (const appointment of appointments) {
-    const reminderType = reminderTypeForAppointment({
-      startsAt: appointment.startAt,
-      now,
-      send24HourReminder: reminderSettings?.send24HourReminder ?? true,
-      send2HourReminder: reminderSettings?.send2HourReminder ?? true,
-      firstReminderHours,
-      secondReminderHours,
-      // Only delivered reminders suppress a re-send; a FAILED row retries.
-      sentTypes: new Set(
-        appointment.reminders
-          .filter((reminder) => reminder.status === "SENT")
-          .map((reminder) => reminder.type)
-      ),
-    });
+  // Paged scan. `stopScanning` exists because the inner breaks below must end
+  // the WHOLE scan, not just the current page.
+  let cursorId: string | undefined;
+  let pagesScanned = 0;
+  let stopScanning = false;
 
-    if (!reminderType) {
-      continue;
-    }
-
-    // Out of time: stop before starting another external send rather than
-    // being killed partway through one (send-then-record means a kill can
-    // deliver a message whose row never gets written, and the next run would
-    // send it again).
-    //
-    // Reserving the WORST CASE matters: a bare `now >= deadlineAt` check
-    // passes at deadline-1ms and then blocks for the adapter's full send
-    // timeout, recreating exactly the kill-after-delivery window this guard
-    // exists to prevent.
-    //
-    // Placed AFTER eligibility on purpose. `reminderTypeForAppointment` is
-    // pure and cheap, and checking first would flag the tenant as truncated
-    // merely because the query returned rows — the window query is a superset
-    // that can include appointments with nothing currently due. That would
-    // report dropped work where none existed and make `skippedBusinesses`
-    // useless as a signal.
-    if (!hasTimeFor(deadlineAt, SEND_RESERVE_MS)) {
+  while (!stopScanning && pagesScanned < MAX_APPOINTMENT_PAGES) {
+    // Room for the page query AND a send after it — fetching a page we have no
+    // time to act on just burns budget other tenants could use.
+    if (!hasTimeFor(deadlineAt, QUERY_RESERVE_MS + SEND_RESERVE_MS)) {
       truncated = true;
       break;
     }
 
-    const clientPhone = normalizePhone(appointment.client.phone);
-    // Canonical dedup key (digits only) — the conversation is keyed on this so a
-    // reminder and the patient's later inbound reply resolve to the SAME row.
-    const clientPhoneKey = phoneLookupKey(appointment.client.phone);
-
-    if (!clientPhone || !clientPhoneKey) {
-      failed += 1;
-      continue;
-    }
-
-    // Outbound reminders flow through the messaging seam, which renders a HIPAA
-    // minimum-necessary body (name + appointment time only — never the
-    // service/treatment) and routes to the active WhatsApp provider.
-    const result = await sendMessage({
-      channel: "WHATSAPP",
-      businessId,
-      to: clientPhone,
-      message: {
-        kind: "appointment_reminder",
-        recipientName: appointment.client.name,
-        appointmentDate: formatZonedFullDate(appointment.startAt),
-        appointmentTime: formatZonedTime(appointment.startAt),
-        staffName: appointment.staffMember?.name ?? business.name,
-        template,
-      },
+    const appointments = await prisma.appointment.findMany({
+      take: APPOINTMENT_PAGE_SIZE,
+      // `id` is the cursor because it is unique; `startAt` alone is not, so
+      // same-instant appointments could repeat or be skipped between pages.
+      ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
+      where: appointmentWindow,
+      include: appointmentInclude,
+      orderBy: [{ startAt: "asc" as const }, { id: "asc" as const }],
     });
 
-    if (!result.ok) {
-      failed += 1;
-      // Only a worker/connection failure signals "the worker is down"; a bad
-      // recipient or empty body is per-message and shouldn't trip the breaker.
-      consecutiveProviderErrors =
-        result.reason === "provider_error" ? consecutiveProviderErrors + 1 : 0;
-      // Persist the failure so it's visible and retried on the next run.
-      await prisma.appointmentReminder
-        .upsert({
+    pagesScanned += 1;
+
+    if (appointments.length === 0) {
+      break;
+    }
+
+    cursorId = appointments[appointments.length - 1]!.id;
+    const wasLastPage = appointments.length < APPOINTMENT_PAGE_SIZE;
+
+    for (const appointment of appointments) {
+      const reminderType = reminderTypeForAppointment({
+        startsAt: appointment.startAt,
+        now,
+        send24HourReminder: reminderSettings?.send24HourReminder ?? true,
+        send2HourReminder: reminderSettings?.send2HourReminder ?? true,
+        firstReminderHours,
+        secondReminderHours,
+        // Only delivered reminders suppress a re-send; a FAILED row retries.
+        sentTypes: new Set(
+          appointment.reminders
+            .filter((reminder) => reminder.status === "SENT")
+            .map((reminder) => reminder.type)
+        ),
+      });
+
+      if (!reminderType) {
+        continue;
+      }
+
+      // Out of time: stop before starting another external send rather than
+      // being killed partway through one (send-then-record means a kill can
+      // deliver a message whose row never gets written, and the next run would
+      // send it again).
+      //
+      // Reserving the WORST CASE matters: a bare `now >= deadlineAt` check
+      // passes at deadline-1ms and then blocks for the adapter's full send
+      // timeout, recreating exactly the kill-after-delivery window this guard
+      // exists to prevent.
+      //
+      // Placed AFTER eligibility on purpose. `reminderTypeForAppointment` is
+      // pure and cheap, and checking first would flag the tenant as truncated
+      // merely because the query returned rows — the window query is a superset
+      // that can include appointments with nothing currently due. That would
+      // report dropped work where none existed and make `skippedBusinesses`
+      // useless as a signal.
+      if (!hasTimeFor(deadlineAt, SEND_RESERVE_MS)) {
+        truncated = true;
+        break;
+      }
+
+      const clientPhone = normalizePhone(appointment.client.phone);
+      // Canonical dedup key (digits only) — the conversation is keyed on this so a
+      // reminder and the patient's later inbound reply resolve to the SAME row.
+      const clientPhoneKey = phoneLookupKey(appointment.client.phone);
+
+      if (!clientPhone || !clientPhoneKey) {
+        failed += 1;
+        continue;
+      }
+
+      // Outbound reminders flow through the messaging seam, which renders a HIPAA
+      // minimum-necessary body (name + appointment time only — never the
+      // service/treatment) and routes to the active WhatsApp provider.
+      const result = await sendMessage({
+        channel: "WHATSAPP",
+        businessId,
+        to: clientPhone,
+        message: {
+          kind: "appointment_reminder",
+          recipientName: appointment.client.name,
+          appointmentDate: formatZonedFullDate(appointment.startAt),
+          appointmentTime: formatZonedTime(appointment.startAt),
+          staffName: appointment.staffMember?.name ?? business.name,
+          template,
+        },
+      });
+
+      if (!result.ok) {
+        failed += 1;
+        // Only a worker/connection failure signals "the worker is down"; a bad
+        // recipient or empty body is per-message and shouldn't trip the breaker.
+        consecutiveProviderErrors =
+          result.reason === "provider_error" ? consecutiveProviderErrors + 1 : 0;
+        // Persist the failure so it's visible and retried on the next run.
+        await prisma.appointmentReminder
+          .upsert({
+            where: {
+              appointmentId_type: {
+                appointmentId: appointment.id,
+                type: reminderType,
+              },
+            },
+            create: {
+              appointmentId: appointment.id,
+              type: reminderType,
+              status: "FAILED",
+            },
+            update: {
+              status: "FAILED",
+            },
+          })
+          .catch((error) => {
+            logger.error("Failed to record reminder failure.", error, {
+              businessId,
+              appointmentId: appointment.id,
+              reminderType,
+            });
+          });
+        if (consecutiveProviderErrors >= MAX_CONSECUTIVE_PROVIDER_ERRORS) {
+          logger.warn(
+            "Stopping reminder run early — WhatsApp worker appears unavailable.",
+            { businessId, attempted: sent + failed }
+          );
+          // Also a truncation: the loop stops with reminders still pending, the
+          // same user-visible outcome as running out of budget. `failed` is what
+          // distinguishes the two in the cron response — truncated with failures
+          // means the worker is down, truncated with none means the run needs
+          // more capacity.
+          truncated = true;
+          stopScanning = true;
+          break;
+        }
+        continue;
+      }
+
+      // The send succeeded (the patient received the WhatsApp). Persist the SENT
+      // marker FIRST and on its own: it is the ONLY dedup key for reminders, so it
+      // must not be coupled to the secondary inbox/connection writes below. If it
+      // were part of one transaction, a failure in those secondary writes would
+      // roll back the SENT row too, leaving a delivered reminder un-recorded — and
+      // the next cron run would re-send it to the patient.
+      try {
+        await prisma.appointmentReminder.upsert({
           where: {
             appointmentId_type: {
               appointmentId: appointment.id,
@@ -302,134 +377,99 @@ export async function syncAppointmentRemindersForBusiness(
           create: {
             appointmentId: appointment.id,
             type: reminderType,
-            status: "FAILED",
+            status: "SENT",
           },
           update: {
-            status: "FAILED",
+            status: "SENT",
+            sentAt: new Date(),
           },
-        })
-        .catch((error) => {
-          logger.error("Failed to record reminder failure.", error, {
-            businessId,
-            appointmentId: appointment.id,
-            reminderType,
+        });
+        sent += 1;
+        consecutiveProviderErrors = 0;
+      } catch (error) {
+        // Couldn't even record the SENT marker — count as failed. It may re-send
+        // on the next run: the minimal, irreducible at-least-once window, far
+        // rarer than a multi-write transaction failing.
+        failed += 1;
+        logger.error("Failed to record sent reminder.", error, {
+          businessId,
+          appointmentId: appointment.id,
+          reminderType,
+        });
+        continue;
+      }
+
+      // Secondary, best-effort: mirror the reminder into the patient's inbox
+      // thread and refresh the connection heartbeat. A failure here must NOT cause
+      // a re-send — the SENT marker above already dedups — so it is swallowed.
+      try {
+        await prisma.$transaction(async (tx) => {
+          const clientConversation = await tx.conversation.upsert({
+            where: {
+              businessId_phoneKey: {
+                businessId,
+                phoneKey: clientPhoneKey,
+              },
+            },
+            update: {
+              // Never touch unreadCount here — this is an outbound reminder, not
+              // a read receipt; resetting it would silently clear real unread
+              // patient replies (see messaging/inbound.ts for the read-vs-write
+              // split this mirrors).
+              contactName: appointment.client.name,
+            },
+            create: {
+              businessId,
+              phoneNumber: clientPhone,
+              phoneKey: clientPhoneKey,
+              contactName: appointment.client.name,
+              unreadCount: 0,
+            },
+            select: {
+              id: true,
+            },
+          });
+
+          await tx.message.create({
+            data: {
+              conversationId: clientConversation.id,
+              clientId: appointment.client.id,
+              direction: "OUTBOUND",
+              body: result.body,
+              providerMessageSid: result.providerMessageId,
+              deliveryStatus: result.status,
+              deliveryUpdatedAt: new Date(),
+            },
+          });
+
+          await tx.whatsAppConnection.update({
+            where: {
+              businessId,
+            },
+            data: {
+              status: "CONNECTED",
+              lastSyncedAt: new Date(),
+            },
           });
         });
-      if (consecutiveProviderErrors >= MAX_CONSECUTIVE_PROVIDER_ERRORS) {
-        logger.warn(
-          "Stopping reminder run early — WhatsApp worker appears unavailable.",
-          { businessId, attempted: sent + failed }
-        );
-        // Also a truncation: the loop stops with reminders still pending, the
-        // same user-visible outcome as running out of budget. `failed` is what
-        // distinguishes the two in the cron response — truncated with failures
-        // means the worker is down, truncated with none means the run needs
-        // more capacity.
-        truncated = true;
-        break;
-      }
-      continue;
-    }
-
-    // The send succeeded (the patient received the WhatsApp). Persist the SENT
-    // marker FIRST and on its own: it is the ONLY dedup key for reminders, so it
-    // must not be coupled to the secondary inbox/connection writes below. If it
-    // were part of one transaction, a failure in those secondary writes would
-    // roll back the SENT row too, leaving a delivered reminder un-recorded — and
-    // the next cron run would re-send it to the patient.
-    try {
-      await prisma.appointmentReminder.upsert({
-        where: {
-          appointmentId_type: {
-            appointmentId: appointment.id,
-            type: reminderType,
-          },
-        },
-        create: {
+      } catch (error) {
+        logger.error("Recorded the reminder but couldn't mirror it to the inbox.", error, {
+          businessId,
           appointmentId: appointment.id,
-          type: reminderType,
-          status: "SENT",
-        },
-        update: {
-          status: "SENT",
-          sentAt: new Date(),
-        },
-      });
-      sent += 1;
-      consecutiveProviderErrors = 0;
-    } catch (error) {
-      // Couldn't even record the SENT marker — count as failed. It may re-send
-      // on the next run: the minimal, irreducible at-least-once window, far
-      // rarer than a multi-write transaction failing.
-      failed += 1;
-      logger.error("Failed to record sent reminder.", error, {
-        businessId,
-        appointmentId: appointment.id,
-        reminderType,
-      });
-      continue;
+          reminderType,
+        });
+      }
     }
 
-    // Secondary, best-effort: mirror the reminder into the patient's inbox
-    // thread and refresh the connection heartbeat. A failure here must NOT cause
-    // a re-send — the SENT marker above already dedups — so it is swallowed.
-    try {
-      await prisma.$transaction(async (tx) => {
-        const clientConversation = await tx.conversation.upsert({
-          where: {
-            businessId_phoneKey: {
-              businessId,
-              phoneKey: clientPhoneKey,
-            },
-          },
-          update: {
-            // Never touch unreadCount here — this is an outbound reminder, not
-            // a read receipt; resetting it would silently clear real unread
-            // patient replies (see messaging/inbound.ts for the read-vs-write
-            // split this mirrors).
-            contactName: appointment.client.name,
-          },
-          create: {
-            businessId,
-            phoneNumber: clientPhone,
-            phoneKey: clientPhoneKey,
-            contactName: appointment.client.name,
-            unreadCount: 0,
-          },
-          select: {
-            id: true,
-          },
-        });
-
-        await tx.message.create({
-          data: {
-            conversationId: clientConversation.id,
-            clientId: appointment.client.id,
-            direction: "OUTBOUND",
-            body: result.body,
-            providerMessageSid: result.providerMessageId,
-            deliveryStatus: result.status,
-            deliveryUpdatedAt: new Date(),
-          },
-        });
-
-        await tx.whatsAppConnection.update({
-          where: {
-            businessId,
-          },
-          data: {
-            status: "CONNECTED",
-            lastSyncedAt: new Date(),
-          },
-        });
-      });
-    } catch (error) {
-      logger.error("Recorded the reminder but couldn't mirror it to the inbox.", error, {
-        businessId,
-        appointmentId: appointment.id,
-        reminderType,
-      });
+    if (wasLastPage) {
+      break;
     }
+  }
+
+  // Hit the scan ceiling with rows still unexamined: report it rather than
+  // letting a clinic look complete while later appointments were never read.
+  if (!stopScanning && pagesScanned >= MAX_APPOINTMENT_PAGES) {
+    truncated = true;
   }
 
   return { sent, failed, truncated };
