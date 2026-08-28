@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getCached, invalidateCache } from "@/lib/cache";
 
@@ -50,5 +50,64 @@ describe("getCached (in-memory fallback)", () => {
 
     expect(await getCached(`test:a:${suffix}`, 60, produceA)).toBe("A");
     expect(await getCached(`test:b:${suffix}`, 60, produceB)).toBe("B");
+  });
+});
+
+/**
+ * Which cache operations may count as breaker-recovery evidence.
+ *
+ * `SET` is denyoom-flagged, so it fails exactly when the store is full — the
+ * condition the breaker guards — which makes a completed SET valid proof the
+ * store works again. `DEL` is NOT denyoom-flagged: Redis keeps accepting it so
+ * space can be freed, and deleting an absent key resolves with 0 regardless. A
+ * DEL that "succeeds" therefore proves nothing, and reporting it would close the
+ * breaker over a still-broken store.
+ */
+describe("cache operations as breaker evidence", () => {
+  const store = vi.fn();
+  const failure = vi.fn();
+  const del = vi.fn().mockResolvedValue(1);
+  const set = vi.fn().mockResolvedValue("OK");
+  const get = vi.fn().mockResolvedValue(null);
+
+  beforeEach(() => {
+    vi.resetModules();
+    store.mockClear();
+    failure.mockClear();
+    vi.doMock("@/lib/redis", () => ({
+      getRedis: () => ({ get, set, del }),
+      noteRedisStoreSucceeded: store,
+      noteRedisFailure: failure,
+    }));
+  });
+
+  afterEach(() => {
+    vi.doUnmock("@/lib/redis");
+  });
+
+  it("does not count a successful delete as a store", async () => {
+    const cache = await import("@/lib/cache");
+    await cache.invalidateCache("evidence:del");
+
+    expect(del).toHaveBeenCalled();
+    expect(store).not.toHaveBeenCalled();
+    expect(failure).not.toHaveBeenCalled();
+  });
+
+  it("counts a completed set as a store", async () => {
+    const cache = await import("@/lib/cache");
+    await cache.getCached("evidence:set", 60, async () => "fresh");
+
+    expect(set).toHaveBeenCalled();
+    expect(store).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a failed set as a failure, never as a store", async () => {
+    set.mockRejectedValueOnce(new Error("OOM command not allowed"));
+    const cache = await import("@/lib/cache");
+    await cache.getCached("evidence:set-fail", 60, async () => "fresh");
+
+    expect(store).not.toHaveBeenCalled();
+    expect(failure).toHaveBeenCalledTimes(1);
   });
 });

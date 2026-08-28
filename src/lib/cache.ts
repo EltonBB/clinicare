@@ -1,4 +1,8 @@
-import { getRedis } from "@/lib/redis";
+import {
+  getRedis,
+  noteRedisFailure,
+  noteRedisStoreSucceeded,
+} from "@/lib/redis";
 
 /**
  * Provider-agnostic cache seam (cache-aside).
@@ -92,7 +96,10 @@ export async function getCached<T>(
         return cached;
       }
     } catch {
-      // Cache read fault — fall through to the producer.
+      // Cache read fault — fall through to the producer. Reported so a run of
+      // these opens the breaker; otherwise every miss re-pays the timeout AND
+      // callers using this as a throttle lock lose their throttle entirely.
+      noteRedisFailure();
     }
   } else {
     const cached = memoryGet<T>(namespaced);
@@ -103,11 +110,20 @@ export async function getCached<T>(
 
   const fresh = await producer();
 
+  // Reuses the client resolved above rather than re-asking the seam. Doing so
+  // deliberately: this write is how a half-open probe learns whether Redis
+  // accepts writes at all. Re-resolving would hand back null the moment the
+  // breaker re-armed, the SET would never run, and a Redis that reads fine but
+  // rejects writes would look healthy — the breaker would close on the read
+  // and reopen only after fresh failures, cycling forever.
   if (redis) {
     try {
       await redis.set(namespaced, fresh, { ex: ttlSeconds });
+      // A stored SET is the breaker's recovery signal (see lib/redis.ts).
+      noteRedisStoreSucceeded();
     } catch {
       // Cache write fault — the value is still returned to the caller.
+      noteRedisFailure();
     }
   } else {
     memorySet(namespaced, fresh, ttlSeconds);
@@ -124,8 +140,11 @@ export async function invalidateCache(key: string): Promise<void> {
   if (redis) {
     try {
       await redis.del(namespaced);
+      // Deliberately NOT reported as a store: DEL is not denyoom-flagged, so it
+      // keeps succeeding while the store is full and every SET fails.
     } catch {
       // Best-effort; a stale entry expires on its own TTL.
+      noteRedisFailure();
     }
     return;
   }

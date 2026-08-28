@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { noteRedisFailure, resetRedisForTests } from "./redis";
 import { checkRateLimit, clientIpFromHeaders } from "./rate-limit";
 
 describe("clientIpFromHeaders", () => {
@@ -43,4 +47,64 @@ describe("checkRateLimit (in-memory fallback)", () => {
     expect((await checkRateLimit(key, rule)).remaining).toBe(1);
     expect((await checkRateLimit(key, rule)).remaining).toBe(0);
   });
+});
+
+describe("checkRateLimit under an open circuit breaker", () => {
+  const KEYS = [
+    "KV_REST_API_URL",
+    "KV_REST_API_TOKEN",
+    "UPSTASH_REDIS_REST_URL",
+    "UPSTASH_REDIS_REST_TOKEN",
+  ] as const;
+  const saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
+
+  afterEach(() => {
+    resetRedisForTests();
+    for (const k of KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * The limiter is cached per rule, so it is tempting to return the cached
+   * instance before consulting `getRedis()`. That would let `checkRateLimit`
+   * keep hitting a Redis the breaker has already given up on — every call
+   * paying the full request timeout again — because a cached limiter still
+   * issues a real command. The breaker must gate every call, hit or miss.
+   *
+   * The endpoint must HANG rather than refuse: a refused connection fails
+   * instantly, so the bypass would be as fast as the guard and the timing below
+   * would prove nothing.
+   */
+  it("stops using Redis once the breaker opens, even for a cached limiter", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const server = http.createServer(() => {}); // accepts, never responds
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+    const { port } = server.address() as AddressInfo;
+
+    try {
+      resetRedisForTests();
+      for (const k of KEYS) delete process.env[k];
+      process.env.UPSTASH_REDIS_REST_URL = `http://127.0.0.1:${port}`;
+      process.env.UPSTASH_REDIS_REST_TOKEN = "t";
+
+      const rule = { limit: 5, windowMs: 60_000 };
+      // Warm the limiter cache (this call hits the hanging server and times out).
+      await checkRateLimit("vitest-breaker-warm", rule);
+      for (let i = 0; i < 3; i++) noteRedisFailure();
+
+      const startedAt = Date.now();
+      const result = await checkRateLimit("vitest-breaker-open", rule);
+      const elapsed = Date.now() - startedAt;
+
+      expect(result.allowed).toBe(true);
+      // No network call ran. A bypass would have paid the ~500ms timeout.
+      expect(elapsed).toBeLessThan(200);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((r) => server.close(() => r()));
+    }
+  }, 15_000);
 });

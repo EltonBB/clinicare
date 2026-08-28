@@ -1,6 +1,11 @@
 import { Ratelimit } from "@upstash/ratelimit";
 
-import { getRedis } from "@/lib/redis";
+import { logger } from "@/lib/logger";
+import {
+  getRedis,
+  noteRedisFailure,
+  noteRedisStoreSucceeded,
+} from "@/lib/redis";
 
 /**
  * Rate limiter with two backings behind one async API:
@@ -52,17 +57,43 @@ export type RateLimitResult = {
 // construction), cached so we don't rebuild it per request.
 const limiterCache = new Map<string, Ratelimit>();
 
+// Rules whose limiter could not be built. A construction failure is a fixed
+// config error, not a transient one, so it is remembered: retrying per request
+// would re-log to Sentry on every call AND burn a half-open breaker probe
+// without ever issuing a Redis command.
+const limiterBuildFailed = new Set<string>();
+
 function getRedisLimiter(rule: RateLimitRule): Ratelimit | null {
+  const cacheKey = `${rule.limit}:${rule.windowMs}`;
+
+  // Checked before `getRedis()` on purpose — see the note above.
+  if (limiterBuildFailed.has(cacheKey)) {
+    return null;
+  }
+
+  // The breaker is consulted on EVERY call, including cache hits below: a
+  // cached limiter still issues a real Redis command, so short-circuiting
+  // before this would let `checkRateLimit` bypass an open breaker entirely.
+  // The breaker is consulted on EVERY call, including cache hits below: a
+  // cached limiter still issues a real Redis command, so short-circuiting
+  // before this would let `checkRateLimit` bypass an open breaker entirely.
+  // `rate-limit.test.ts` pins this.
   const redis = getRedis();
   if (!redis) {
     return null;
   }
 
-  const cacheKey = `${rule.limit}:${rule.windowMs}`;
-  let limiter = limiterCache.get(cacheKey);
+  const cached = limiterCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
 
-  if (!limiter) {
-    limiter = new Ratelimit({
+  // Construction is guarded because `checkRateLimit` calls this OUTSIDE its try
+  // block: a throw here would propagate into every login, signup and search
+  // rather than degrading to the in-memory limiter. Same reason `getRedis()`
+  // guards the Upstash constructor.
+  try {
+    const limiter = new Ratelimit({
       redis,
       // Sliding window avoids the boundary burst a fixed window allows.
       limiter: Ratelimit.slidingWindow(rule.limit, `${rule.windowMs} ms`),
@@ -71,9 +102,16 @@ function getRedisLimiter(rule: RateLimitRule): Ratelimit | null {
       analytics: false,
     });
     limiterCache.set(cacheKey, limiter);
+    return limiter;
+  } catch (error) {
+    limiterBuildFailed.add(cacheKey);
+    // Logged once per rule, not once per request.
+    logger.error(
+      "Rate limiter could not be constructed; falling back to PER-INSTANCE in-memory limiting.",
+      error
+    );
+    return null;
   }
-
-  return limiter;
 }
 
 /** Drop expired buckets when the map grows large, to bound memory. */
@@ -136,6 +174,9 @@ export async function checkRateLimit(
       // the function alive until the response flushes. If any route ever moves to
       // the Edge runtime, await it via `context.waitUntil(result.pending)`.
       const result = await limiter.limit(key);
+      // `limit` runs an eval whose ZADD/INCR are denyoom-flagged, so it fails
+      // under the same store-full condition as SET — valid recovery evidence.
+      noteRedisStoreSucceeded();
       const now = Date.now();
 
       return {
@@ -147,6 +188,10 @@ export async function checkRateLimit(
       };
     } catch {
       // Redis fault — degrade to the in-memory limiter rather than failing open.
+      // Reported so the breaker opens and warns: the fallback is PER-INSTANCE,
+      // so across N warm instances the effective limit is N x the rule. That
+      // must not degrade silently.
+      noteRedisFailure();
     }
   }
 
