@@ -28,11 +28,8 @@ export type ReminderDecisionArgs = {
  *    (appointment exactly N hours away) fires.
  *
  * NOTE: the 2-hour ("second") reminder only fires when the cron runs often
- * enough to land inside its window. The deploy is on Vercel Hobby, which caps
- * crons at once/day (`vercel.json` runs daily at 08:00), so today the 2-hour
- * reminder reaches only appointments shortly after that run. Reliable 2-hour
- * reminders need a sub-daily trigger (Vercel Pro cron or an external scheduler
- * hitting /api/cron/reminders) — an owner/infra decision, not a code change.
+ * enough to land inside its window — `vercel.json` runs this hourly (Vercel
+ * Pro; Hobby caps crons at once/day, which is why this used to be broken).
  */
 export function reminderTypeForAppointment(
   args: ReminderDecisionArgs

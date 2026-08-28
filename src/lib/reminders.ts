@@ -15,6 +15,12 @@ type ReminderSyncResult = {
 
 export type ReminderCronResult = ReminderSyncResult & {
   processedBusinesses: number;
+  /**
+   * Businesses not attempted because the run was out of time. Retried next
+   * hour — nothing here was lost, only deferred. Distinct from `failed`
+   * (a send that was attempted and didn't go through).
+   */
+  skippedBusinesses: number;
 };
 
 export async function syncAppointmentRemindersForBusiness(
@@ -173,6 +179,25 @@ export async function syncAppointmentRemindersForBusiness(
       // recipient or empty body is per-message and shouldn't trip the breaker.
       consecutiveProviderErrors =
         result.reason === "provider_error" ? consecutiveProviderErrors + 1 : 0;
+
+      // `provider_error` means the pipeline itself is unhealthy (worth
+      // Sentry); the other reasons are a problem with one client's data (bad
+      // phone, an overlong custom template) — visible in logs, no page.
+      // result.error is the seam's customer-safe, provider-neutral copy (see
+      // SendMessageResult) — safe to log verbatim, never PHI or a provider name.
+      const failureContext = {
+        businessId,
+        appointmentId: appointment.id,
+        reminderType,
+        reason: result.reason,
+        detail: result.error,
+      };
+      if (result.reason === "provider_error") {
+        logger.error("Reminder send failed — provider error.", undefined, failureContext);
+      } else {
+        logger.warn("Reminder send failed.", failureContext);
+      }
+
       // Persist the failure so it's visible and retried on the next run.
       await prisma.appointmentReminder
         .upsert({
@@ -315,7 +340,45 @@ export async function syncAppointmentRemindersForBusiness(
 // A few clinics at a time — bounds concurrent outbound sends across tenants.
 const REMINDER_BUSINESS_CONCURRENCY = 3;
 
-export async function syncAppointmentRemindersJob(): Promise<ReminderCronResult> {
+/**
+ * Wall-clock budget for STARTING new businesses, comfortably under the 300s
+ * platform cap. Reminders now run hourly, so a business skipped here is
+ * retried within the hour — deferred, not dropped. This is a single cheap
+ * check between businesses, not a per-operation deadline: at pilot scale the
+ * realistic risk is every business hitting the provider-error circuit breaker
+ * at once (the WhatsApp worker itself down), which the breaker already bounds
+ * to a couple of adapter timeouts per business — this budget is what stops
+ * that from compounding across every tenant in one run.
+ */
+export const REMINDER_RUN_BUDGET_MS = 240_000;
+
+/**
+ * Live counters, mutated as each business finishes — not just the final
+ * totals computed after everything resolves. With concurrency > 1, a caller
+ * racing this job against a hard deadline (the cron route) can be abandoned
+ * mid-run: if it only had access to the return value, a timeout would report
+ * zeros even though other workers may have already sent real reminders. This
+ * object is what lets the caller report what actually happened instead, using
+ * the SAME field meanings the normal return uses — `total` stays "eligible
+ * businesses found" whether the run finished or was abandoned, so a reader
+ * never has to know which path produced a given response to interpret it.
+ */
+export type ReminderRunProgress = {
+  /** Eligible businesses found. 0 until the initial query resolves. */
+  total: number;
+  skipped: number;
+  sent: number;
+  failed: number;
+};
+
+export function createReminderRunProgress(): ReminderRunProgress {
+  return { total: 0, skipped: 0, sent: 0, failed: 0 };
+}
+
+export async function syncAppointmentRemindersJob(
+  runDeadlineAt: number = Date.now() + REMINDER_RUN_BUDGET_MS,
+  progress: ReminderRunProgress = createReminderRunProgress()
+): Promise<ReminderCronResult> {
   const businesses = await prisma.business.findMany({
     where: {
       whatsappEnabled: true,
@@ -332,28 +395,40 @@ export async function syncAppointmentRemindersJob(): Promise<ReminderCronResult>
     },
   });
 
-  const results = await mapWithConcurrency(
-    businesses,
-    REMINDER_BUSINESS_CONCURRENCY,
-    async (business) => {
-      try {
-        return await syncAppointmentRemindersForBusiness(business.id);
-      } catch (error) {
-        // Isolate per-tenant failures so one clinic can't abort the whole run.
-        logger.error("Reminder sync failed for business.", error, {
-          businessId: business.id,
-        });
-        return { sent: 0, failed: 0 };
-      }
-    }
-  );
+  progress.total = businesses.length;
 
-  const sent = results.reduce((total, result) => total + result.sent, 0);
-  const failed = results.reduce((total, result) => total + result.failed, 0);
+  await mapWithConcurrency(businesses, REMINDER_BUSINESS_CONCURRENCY, async (business) => {
+    if (Date.now() >= runDeadlineAt) {
+      progress.skipped += 1;
+      return;
+    }
+
+    let result: ReminderSyncResult;
+    try {
+      result = await syncAppointmentRemindersForBusiness(business.id);
+    } catch (error) {
+      // Isolate per-tenant failures so one clinic can't abort the whole run.
+      logger.error("Reminder sync failed for business.", error, {
+        businessId: business.id,
+      });
+      result = { sent: 0, failed: 0 };
+    }
+
+    progress.sent += result.sent;
+    progress.failed += result.failed;
+  });
+
+  if (progress.skipped > 0) {
+    logger.warn("Reminder run out of time; some clinics deferred to next hour.", {
+      skippedBusinesses: progress.skipped,
+      processedBusinesses: progress.total,
+    });
+  }
 
   return {
-    processedBusinesses: businesses.length,
-    sent,
-    failed,
+    processedBusinesses: progress.total,
+    sent: progress.sent,
+    failed: progress.failed,
+    skippedBusinesses: progress.skipped,
   };
 }
