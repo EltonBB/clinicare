@@ -39,8 +39,9 @@ export type ReminderCronResult = ReminderSyncResult & {
 };
 
 export async function syncAppointmentRemindersForBusiness(
-  businessId: string
-): Promise<ReminderSyncResult> {
+  businessId: string,
+  progress: Pick<ReminderRunProgress, "sent" | "failed">
+): Promise<void> {
   const now = new Date();
   const business = await prisma.business.findUnique({
     where: {
@@ -78,7 +79,7 @@ export async function syncAppointmentRemindersForBusiness(
     !business.whatsappEnabled ||
     (connectionStatus !== "CONNECTED" && connectionStatus !== "ERRORED")
   ) {
-    return { sent: 0, failed: 0 };
+    return;
   }
 
   const reminderSettings = business.reminderSettings;
@@ -168,6 +169,7 @@ export async function syncAppointmentRemindersForBusiness(
 
     if (!clientPhone || !clientPhoneKey) {
       failed += 1;
+      progress.failed += 1;
       continue;
     }
 
@@ -190,6 +192,7 @@ export async function syncAppointmentRemindersForBusiness(
 
     if (!result.ok) {
       failed += 1;
+      progress.failed += 1;
       // Only a worker/connection failure signals "the worker is down"; a bad
       // recipient or empty body is per-message and shouldn't trip the breaker.
       consecutiveProviderErrors =
@@ -273,12 +276,14 @@ export async function syncAppointmentRemindersForBusiness(
         },
       });
       sent += 1;
+      progress.sent += 1;
       consecutiveProviderErrors = 0;
     } catch (error) {
       // Couldn't even record the SENT marker — count as failed. It may re-send
       // on the next run: the minimal, irreducible at-least-once window, far
       // rarer than a multi-write transaction failing.
       failed += 1;
+      progress.failed += 1;
       logger.error("Failed to record sent reminder.", error, {
         businessId,
         appointmentId: appointment.id,
@@ -348,8 +353,6 @@ export async function syncAppointmentRemindersForBusiness(
       });
     }
   }
-
-  return { sent, failed };
 }
 
 // A few clinics at a time — bounds concurrent outbound sends across tenants.
@@ -425,28 +428,30 @@ export async function syncAppointmentRemindersJob(
       return;
     }
 
-    const result = await withDeadline(
-      syncAppointmentRemindersForBusiness(business.id).catch((error): ReminderSyncResult => {
+    // syncAppointmentRemindersForBusiness mutates `progress.sent`/`.failed`
+    // live, per appointment — not via a return value collected at the end —
+    // specifically so a business that sends 2 of its 3 due reminders before
+    // hanging on the 3rd still has those 2 counted. A return-value-only
+    // design would discard them: the timeout branch below has no result to
+    // report, only whatever `progress` already reflects at the moment it
+    // gives up.
+    await withDeadline(
+      syncAppointmentRemindersForBusiness(business.id, progress).catch((error) => {
         // Isolate per-tenant failures so one clinic can't abort the whole run.
         logger.error("Reminder sync failed for business.", error, {
           businessId: business.id,
         });
-        return { sent: 0, failed: 0 };
       }),
       PER_BUSINESS_TIMEOUT_MS,
-      (): ReminderSyncResult => {
+      () => {
         progress.abandoned += 1;
         logger.error(
           "Reminder sync exceeded its per-business timeout — likely a hung database call. Moving on so this run (and its cursor) keeps making progress, but the abandoned call may still be running.",
           undefined,
           { businessId: business.id, timeoutMs: PER_BUSINESS_TIMEOUT_MS }
         );
-        return { sent: 0, failed: 0 };
       }
     );
-
-    progress.sent += result.sent;
-    progress.failed += result.failed;
   });
 
   // Advance to the id of the LAST business given a turn this run (attempted,
