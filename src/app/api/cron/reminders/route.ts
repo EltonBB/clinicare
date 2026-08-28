@@ -104,6 +104,7 @@ export async function GET(request: Request) {
           sent: progress.sent,
           failed: progress.failed,
           skippedBusinesses: progress.skipped,
+          abandonedBusinesses: progress.abandoned,
           closedTimeEntries: 0,
           timedOut: true as const,
         };
@@ -119,6 +120,17 @@ export async function GET(request: Request) {
         "Reminder cron invocation hit its hard deadline — the platform would otherwise have killed it silently.",
         undefined,
         { hardDeadlineMs: HARD_RESPONSE_DEADLINE_MS }
+      );
+    } else if (outcome.abandonedBusinesses > 0) {
+      // Not a hard-deadline timeout — the invocation completed within
+      // budget — but at least one business individually exceeded its
+      // per-business timeout (see PER_BUSINESS_TIMEOUT_MS in reminders.ts)
+      // and may still be running in the background. The `finally` block
+      // below keeps the lock held for the same reason a real timeout does.
+      logger.error(
+        "Reminder run completed, but abandoned business(es) to their per-business timeout — keeping the cron lock held until its TTL as a precaution.",
+        undefined,
+        { abandonedBusinesses: outcome.abandonedBusinesses }
       );
     } else if (outcome.failed > 0) {
       // Aggregate signal in addition to the per-failure logs in reminders.ts —
@@ -153,13 +165,16 @@ export async function GET(request: Request) {
       { status: 500 }
     );
   } finally {
-    // Deliberately NOT released on a timeout: the abandoned job may still be
-    // writing (Prisma calls have no abort handle), and releasing here would
-    // defeat the longer TTL above — a manual re-trigger could then overlap
-    // that still-running work. The TTL is what actually protects this case;
-    // an early release only happens on a genuine completion (success or a
-    // caught error), where nothing is left running behind it.
-    if (!timedOut) {
+    // Deliberately NOT released when this invocation hit its hard deadline
+    // OR any business was individually abandoned to its own per-business
+    // timeout (reminders.ts) — either way something may still be writing
+    // (Prisma calls have no abort handle), and releasing here would defeat
+    // the TTL above and let a manual re-trigger overlap that still-running
+    // work. `progress` is read directly (not `outcome`, which is out of
+    // scope here and wouldn't exist if the try block threw) because it is
+    // live-mutated by the job regardless of which path this function took.
+    // An early release only happens when NOTHING was left running behind it.
+    if (!timedOut && progress.abandoned === 0) {
       await releaseCronLock(LOCK_NAME, lock.token);
     }
   }

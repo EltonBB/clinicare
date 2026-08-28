@@ -18,7 +18,13 @@ vi.mock("@/lib/staff-clock", () => ({ autoCloseStaleTimeEntries }));
 // is trivial enough to reimplement rather than import.
 vi.mock("@/lib/reminders", () => ({
   syncAppointmentRemindersJob,
-  createReminderRunProgress: () => ({ total: 0, skipped: 0, sent: 0, failed: 0 }),
+  createReminderRunProgress: () => ({
+    total: 0,
+    skipped: 0,
+    sent: 0,
+    failed: 0,
+    abandoned: 0,
+  }),
   REMINDER_RUN_BUDGET_MS: 240_000,
 }));
 
@@ -65,6 +71,7 @@ describe("reminders cron route", () => {
       sent: 2,
       failed: 0,
       skippedBusinesses: 0,
+      abandonedBusinesses: 0,
     });
     const { GET } = await import("./route");
 
@@ -89,6 +96,7 @@ describe("reminders cron route", () => {
       sent: 0,
       failed: 0,
       skippedBusinesses: 0,
+      abandonedBusinesses: 0,
     });
     const { GET } = await import("./route");
 
@@ -115,6 +123,37 @@ describe("reminders cron route", () => {
 
     expect(body).toMatchObject({ ok: true, timedOut: true });
     expect(acquireCronLock).toHaveBeenCalledTimes(1);
+    expect(releaseCronLock).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Regression test for the P2 Codex found on this round: the job's own
+   * per-business timeout (reminders.ts) can abandon a business's still-
+   * running work while the OVERALL invocation still finishes comfortably
+   * within its 270s hard deadline — `outcome.timedOut` is false. Releasing
+   * the lock in that case would let an overlapping invocation read the
+   * abandoned business's still-in-flight appointment as not-yet-reminded and
+   * send it twice.
+   */
+  it("does NOT release the lock when a business was abandoned to its per-business timeout, even on a clean completion", async () => {
+    syncAppointmentRemindersJob.mockImplementation(async (_deadline, progress) => {
+      progress.total = 3;
+      progress.sent = 2;
+      progress.abandoned = 1;
+      return {
+        processedBusinesses: 3,
+        sent: 2,
+        failed: 0,
+        skippedBusinesses: 0,
+        abandonedBusinesses: 1,
+      };
+    });
+    const { GET } = await import("./route");
+
+    const res = await GET(request());
+    const body = await res.json();
+
+    expect(body).toMatchObject({ ok: true, timedOut: false, abandonedBusinesses: 1 });
     expect(releaseCronLock).not.toHaveBeenCalled();
   });
 

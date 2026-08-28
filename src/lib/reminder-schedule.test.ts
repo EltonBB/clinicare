@@ -40,10 +40,20 @@ describe("reminderTypeForAppointment", () => {
     expect(decide({ startsAt: hoursFromNow(1) })).toBe("TWO_HOUR");
   });
 
-  it("falls back to the 24-hour reminder when the 2-hour one was already sent", () => {
+  /**
+   * Regression test: this originally asserted TWENTY_FOUR_HOUR here, encoding
+   * a real bug (Codex found it) rather than catching it. An appointment
+   * discovered already inside the 2-hour window sends TWO_HOUR first (its
+   * own window is narrower, so it opens later); the OLD code then let a
+   * later hourly run fall through to TWENTY_FOUR_HOUR once TWO_HOUR was
+   * marked sent, sending the longer-lead-time reminder AFTER the more
+   * urgent one — backwards, and possibly minutes before the appointment.
+   * Once the 2-hour reminder is out, the 24-hour one must never follow.
+   */
+  it("suppresses the 24-hour reminder once the more urgent 2-hour one was already sent", () => {
     expect(
       decide({ startsAt: hoursFromNow(1), sentTypes: new Set(["TWO_HOUR"]) })
-    ).toBe("TWENTY_FOUR_HOUR");
+    ).toBeNull();
   });
 
   it("returns null once both reminders have been sent", () => {
@@ -98,5 +108,44 @@ describe("reminderTypeForAppointment", () => {
         secondReminderHours: 4,
       })
     ).toBe("TWENTY_FOUR_HOUR");
+  });
+
+  /**
+   * Codex's exact reported scenario, run as two sequential hourly cron
+   * passes rather than one static call. NOW is 08:00; the appointment is
+   * fixed at 10:30 (hoursFromNow(2.5)). The first pass runs at 09:00 — 1.5h
+   * out, inside the 2h window — and sends TWO_HOUR. The next hourly pass, an
+   * hour later at 10:00 (0.5h out, TWO_HOUR now in sentTypes), must NOT then
+   * send TWENTY_FOUR_HOUR — that would arrive 30 minutes before the
+   * appointment, after the more urgent reminder already went out.
+   */
+  it("does not backfill the 24-hour reminder on a later run after the 2-hour one already fired", () => {
+    const startsAt = hoursFromNow(2.5); // 10:30, fixed for both simulated runs
+    const sentTypes = new Set<string>();
+
+    const firstRun = reminderTypeForAppointment({
+      startsAt,
+      now: hoursFromNow(1), // 09:00 — appointment is 1.5h out
+      send24HourReminder: true,
+      send2HourReminder: true,
+      firstReminderHours: 24,
+      secondReminderHours: 2,
+      sentTypes,
+    });
+    expect(firstRun).toBe("TWO_HOUR");
+    if (firstRun) {
+      sentTypes.add(firstRun);
+    }
+
+    const secondRun = reminderTypeForAppointment({
+      startsAt,
+      now: hoursFromNow(2), // 10:00, an hour later — appointment is 0.5h out
+      send24HourReminder: true,
+      send2HourReminder: true,
+      firstReminderHours: 24,
+      secondReminderHours: 2,
+      sentTypes,
+    });
+    expect(secondRun).toBeNull();
   });
 });

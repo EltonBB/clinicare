@@ -23,6 +23,18 @@ export type ReminderCronResult = ReminderSyncResult & {
    * (a send that was attempted and didn't go through).
    */
   skippedBusinesses: number;
+  /**
+   * Businesses given up on after PER_BUSINESS_TIMEOUT_MS. Distinct from both
+   * `skipped` (never started) and `failed` (started, produced a result): an
+   * abandoned business's `syncAppointmentRemindersForBusiness` call is still
+   * running in the background with no way to cancel it (Prisma has no abort
+   * handle) — it may still send or write after this function returns. The
+   * caller (the cron route) must treat this the same as its own hard-deadline
+   * timeout for lock-release purposes: releasing the lock while background
+   * work might still be sending would let an overlapping invocation read the
+   * same appointment as not-yet-reminded and send it twice.
+   */
+  abandonedBusinesses: number;
 };
 
 export async function syncAppointmentRemindersForBusiness(
@@ -388,10 +400,11 @@ export type ReminderRunProgress = {
   skipped: number;
   sent: number;
   failed: number;
+  abandoned: number;
 };
 
 export function createReminderRunProgress(): ReminderRunProgress {
-  return { total: 0, skipped: 0, sent: 0, failed: 0 };
+  return { total: 0, skipped: 0, sent: 0, failed: 0, abandoned: 0 };
 }
 
 export async function syncAppointmentRemindersJob(
@@ -444,8 +457,9 @@ export async function syncAppointmentRemindersJob(
       }),
       PER_BUSINESS_TIMEOUT_MS,
       (): ReminderSyncResult => {
+        progress.abandoned += 1;
         logger.error(
-          "Reminder sync exceeded its per-business timeout — likely a hung database call. Moving on so this run (and its cursor) keeps making progress.",
+          "Reminder sync exceeded its per-business timeout — likely a hung database call. Moving on so this run (and its cursor) keeps making progress, but the abandoned call may still be running.",
           undefined,
           { businessId: business.id, timeoutMs: PER_BUSINESS_TIMEOUT_MS }
         );
@@ -483,5 +497,6 @@ export async function syncAppointmentRemindersJob(
     sent: progress.sent,
     failed: progress.failed,
     skippedBusinesses: progress.skipped,
+    abandonedBusinesses: progress.abandoned,
   };
 }
