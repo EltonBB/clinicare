@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { withDeadline } from "@/lib/concurrency";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { logger } from "@/lib/logger";
@@ -37,35 +38,6 @@ const HARD_RESPONSE_DEADLINE_MS = 270_000;
 // the two can't silently drift apart if one is ever changed alone.
 const LOCK_TTL_SECONDS = Math.ceil(HARD_RESPONSE_DEADLINE_MS / 1_000) + 60;
 
-const TIMED_OUT: unique symbol = Symbol("reminders-cron-timed-out");
-
-// Two type parameters, not one: the success and timeout branches here return
-// differently-shaped objects (`timedOut: false` vs `timedOut: true` as
-// literals), and forcing both through a single T made the timeout branch a
-// type error — TS unified T from the first argument, then rejected the
-// second as not assignable to it.
-async function withHardDeadline<T, F>(
-  work: Promise<T>,
-  onTimeout: () => F
-): Promise<T | F> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<typeof TIMED_OUT>((resolve) => {
-    timer = setTimeout(() => resolve(TIMED_OUT), HARD_RESPONSE_DEADLINE_MS);
-  });
-
-  try {
-    const result = await Promise.race([work, timeout]);
-    if (result === TIMED_OUT) {
-      void work.catch(() => {});
-      return onTimeout();
-    }
-    return result as T;
-  } finally {
-    // clearTimeout accepts undefined as a no-op — no guard needed.
-    clearTimeout(timer);
-  }
-}
-
 export async function GET(request: Request) {
   if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized cron request." }, { status: 401 });
@@ -75,8 +47,8 @@ export async function GET(request: Request) {
   // flight when the next hourly trigger fires. Without this, an overlapping
   // run could read the same due appointment before either has written its
   // SENT marker and send the reminder twice.
-  const gotLock = await acquireCronLock(LOCK_NAME, LOCK_TTL_SECONDS);
-  if (!gotLock) {
+  const lock = await acquireCronLock(LOCK_NAME, LOCK_TTL_SECONDS);
+  if (!lock.proceed) {
     logger.warn("Reminder cron skipped — a previous run is still in progress.");
     return NextResponse.json(
       { ok: true, skipped: true, reason: "previous_run_in_progress" },
@@ -92,7 +64,7 @@ export async function GET(request: Request) {
   let timedOut = false;
 
   try {
-    const outcome = await withHardDeadline(
+    const outcome = await withDeadline(
       (async () => {
         const result = await syncAppointmentRemindersJob(
           Date.now() + REMINDER_RUN_BUDGET_MS,
@@ -119,6 +91,7 @@ export async function GET(request: Request) {
 
         return { ...result, closedTimeEntries, timedOut: false as const };
       })(),
+      HARD_RESPONSE_DEADLINE_MS,
       () => {
         timedOut = true;
         return {
@@ -187,7 +160,7 @@ export async function GET(request: Request) {
     // an early release only happens on a genuine completion (success or a
     // caught error), where nothing is left running behind it.
     if (!timedOut) {
-      await releaseCronLock(LOCK_NAME);
+      await releaseCronLock(LOCK_NAME, lock.token);
     }
   }
 }

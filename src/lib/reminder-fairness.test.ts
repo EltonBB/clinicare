@@ -1,99 +1,132 @@
 import { describe, expect, it } from "vitest";
 
-import { rotateForFairness } from "./reminder-fairness";
+import { lastAttemptedId, rotateForFairness } from "./reminder-fairness";
+
+function ids(...values: string[]) {
+  return values.map((id) => ({ id }));
+}
 
 describe("rotateForFairness", () => {
-  it("returns an empty list unchanged (no modulo-by-zero)", () => {
-    expect(rotateForFairness([], 5)).toEqual([]);
+  it("returns an empty list unchanged", () => {
+    expect(rotateForFairness([], "a")).toEqual([]);
+    expect(rotateForFairness([], null)).toEqual([]);
   });
 
-  it("does not rotate at offset 0", () => {
-    expect(rotateForFairness(["a", "b", "c"], 0)).toEqual(["a", "b", "c"]);
+  it("does not rotate when there is no prior cursor (null afterId)", () => {
+    expect(rotateForFairness(ids("a", "b", "c"), null)).toEqual(ids("a", "b", "c"));
   });
 
-  it("starts from the given offset", () => {
-    const businesses = ["a", "b", "c"];
-    expect(rotateForFairness(businesses, 1)).toEqual(["b", "c", "a"]);
-    expect(rotateForFairness(businesses, 2)).toEqual(["c", "a", "b"]);
+  it("starts right after the given id", () => {
+    const businesses = ids("a", "b", "c", "d");
+    expect(rotateForFairness(businesses, "a")).toEqual(ids("b", "c", "d", "a"));
+    expect(rotateForFairness(businesses, "b")).toEqual(ids("c", "d", "a", "b"));
   });
 
-  it("wraps around after a full cycle", () => {
-    expect(rotateForFairness(["a", "b", "c"], 3)).toEqual(["a", "b", "c"]);
+  it("wraps to the start when afterId was the last id in the list", () => {
+    expect(rotateForFairness(ids("a", "b", "c"), "c")).toEqual(ids("a", "b", "c"));
   });
 
   it("never mutates the input", () => {
-    const businesses = ["a", "b", "c"];
-    rotateForFairness(businesses, 2);
-    expect(businesses).toEqual(["a", "b", "c"]);
+    const businesses = ids("a", "b", "c");
+    rotateForFairness(businesses, "a");
+    expect(businesses).toEqual(ids("a", "b", "c"));
   });
 
   it("preserves every element exactly once", () => {
-    const businesses = ["a", "b", "c", "d", "e"];
-    const rotated = rotateForFairness(businesses, 3);
-    expect([...rotated].sort()).toEqual([...businesses].sort());
+    const businesses = ids("a", "b", "c", "d", "e");
+    const rotated = rotateForFairness(businesses, "c");
+    expect([...rotated].sort((x, y) => x.id.localeCompare(y.id))).toEqual(
+      [...businesses].sort((x, y) => x.id.localeCompare(y.id))
+    );
     expect(rotated).toHaveLength(businesses.length);
   });
 
   it("handles a single-element list", () => {
-    expect(rotateForFairness(["only"], 7)).toEqual(["only"]);
-  });
-
-  it("stays in range for a negative offset", () => {
-    // Guards the naive `offset % length`, which would yield a negative slice
-    // index and silently reorder the list.
-    expect(rotateForFairness(["a", "b", "c"], -1)).toEqual(["c", "a", "b"]);
-  });
-
-  it("truncates a non-integer offset instead of producing holes", () => {
-    expect(rotateForFairness(["a", "b", "c"], 1.9)).toEqual(["b", "c", "a"]);
-  });
-
-  it("handles an offset stale relative to a list that shrank since it was set", () => {
-    // The persisted cursor can outlive the exact list it was computed
-    // against (a business disabled WhatsApp between runs). Must not throw or
-    // produce an out-of-bounds slice.
-    expect(rotateForFairness(["a", "b"], 47)).toEqual(["b", "a"]);
+    expect(rotateForFairness(ids("only"), null)).toEqual(ids("only"));
+    expect(rotateForFairness(ids("only"), "only")).toEqual(ids("only"));
   });
 
   /**
-   * The property Codex's finding is actually about. A caller that advances
-   * the offset by a FIXED amount per run (the original, wrong version of
-   * this fix) barely moves under sustained low throughput: with 50 items and
-   * capacity for 3, +1 per run reaches item 49 only after ~47 runs. Advancing
-   * by the ACTUAL number attempted each run reaches every item within
-   * ceil(n / k) runs regardless of throughput — this is what makes "retried
-   * next run" true rather than aspirational.
+   * The exact scenario Codex found: A processed, cursor persisted as "A".
+   * Between runs A becomes ineligible (WhatsApp disabled, connection status
+   * changed) and drops out of the query. An ordinal offset of 1 into the new
+   * 3-item list [B,C,D] would rotate to [C,D,B] — pushing B, which was never
+   * attempted, to the BACK of the queue behind C and D. Resolving "after A"
+   * by id instead finds the smallest remaining id greater than "a" — B — and
+   * starts there, exactly where the rotation should resume.
    */
-  it("reaches every business within ceil(n/k) runs when the offset advances by the attempted count", () => {
+  it("resumes at the correct next business when the last-attempted one is no longer eligible", () => {
+    const remaining = ids("b", "c", "d"); // "a" dropped out between runs
+    expect(rotateForFairness(remaining, "a")).toEqual(ids("b", "c", "d"));
+  });
+
+  it("resumes at the smallest id greater than a removed middle business", () => {
+    const remaining = ids("a", "c", "d"); // "b" (the last-attempted) dropped out
+    expect(rotateForFairness(remaining, "b")).toEqual(ids("c", "d", "a"));
+  });
+
+  it("is unaffected by a NEW business inserted after the cursor", () => {
+    // "b2" newly eligible, sorting between the last-attempted "b" and "c".
+    const withInsertion = ids("a", "b", "b2", "c", "d");
+    expect(rotateForFairness(withInsertion, "b")).toEqual(ids("b2", "c", "d", "a", "b"));
+  });
+
+  it("wraps to the start when the last-attempted id's whole tail is gone", () => {
+    // Everything after "b" (c, d) became ineligible; only a and b remain.
+    expect(rotateForFairness(ids("a", "b"), "d")).toEqual(ids("a", "b"));
+  });
+
+  /**
+   * The property behind the earlier Codex finding still holds after
+   * switching from an ordinal offset to an id anchor: every business is
+   * reached within ceil(n / k) runs when nothing else changes.
+   */
+  it("reaches every business within ceil(n/k) runs with a stable list", () => {
     const n = 50;
-    const k = 3; // only 3 businesses fit in a budget-constrained run
-    const businesses = Array.from({ length: n }, (_, i) => i);
-    const reached = new Set<number>();
-    let cursor = 0;
+    const k = 3;
+    const businesses = Array.from({ length: n }, (_, i) => ({
+      id: String(i).padStart(3, "0"),
+    }));
+    const reached = new Set<string>();
+    let afterId: string | null = null;
 
     let runs = 0;
     while (reached.size < n) {
-      const attempted = rotateForFairness(businesses, cursor).slice(0, k);
-      attempted.forEach((b) => reached.add(b));
-      cursor = (cursor + attempted.length) % n;
+      const attempted = rotateForFairness(businesses, afterId).slice(0, k);
+      attempted.forEach((b) => reached.add(b.id));
+      afterId = attempted.length > 0 ? attempted[attempted.length - 1]!.id : afterId;
       runs += 1;
       if (runs > n) {
-        throw new Error("did not converge — this is the bug Codex found");
+        throw new Error("did not converge");
       }
     }
 
     expect(runs).toBe(Math.ceil(n / k));
   });
+});
 
-  it("still reaches every business when a slow-starting run attempts 0", () => {
-    // The advance amount can legitimately be 0 (deadline hit before a single
-    // business started) — must not get stuck advancing by 0 forever.
-    const businesses = ["a", "b", "c", "d"];
-    let cursor = 0;
-    cursor = (cursor + 0) % businesses.length; // a fully-starved run
-    expect(rotateForFairness(businesses, cursor)).toEqual(["a", "b", "c", "d"]);
+describe("lastAttemptedId", () => {
+  it("returns null when nothing was attempted", () => {
+    expect(lastAttemptedId(ids("a", "b", "c"), 0)).toBeNull();
+  });
 
-    cursor = (cursor + 2) % businesses.length; // next run attempts 2
-    expect(rotateForFairness(businesses, cursor)).toEqual(["c", "d", "a", "b"]);
+  it("returns null for a negative count (defensive — should never happen)", () => {
+    expect(lastAttemptedId(ids("a", "b", "c"), -1)).toBeNull();
+  });
+
+  it("returns the id at the end of the attempted prefix", () => {
+    expect(lastAttemptedId(ids("a", "b", "c", "d"), 2)).toBe("b");
+  });
+
+  it("returns the last id when everything was attempted", () => {
+    expect(lastAttemptedId(ids("a", "b", "c"), 3)).toBe("c");
+  });
+
+  it("returns null rather than reading out of bounds when attemptedCount exceeds the list", () => {
+    expect(lastAttemptedId(ids("a", "b"), 5)).toBeNull();
+  });
+
+  it("returns null for an empty list", () => {
+    expect(lastAttemptedId([], 0)).toBeNull();
   });
 });

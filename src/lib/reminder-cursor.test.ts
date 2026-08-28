@@ -26,50 +26,57 @@ describe("reminder cursor", () => {
     vi.mocked(getRedis).mockReturnValue({ get, set } as never);
   });
 
-  it("reads back a stored value", async () => {
-    get.mockResolvedValue(7);
+  it("reads back a stored business id", async () => {
+    get.mockResolvedValue("biz_123");
     const { getReminderCursor } = await importFresh();
 
-    await expect(getReminderCursor()).resolves.toBe(7);
+    await expect(getReminderCursor()).resolves.toBe("biz_123");
   });
 
-  it("defaults to 0 when nothing has been stored yet", async () => {
+  it("defaults to null when nothing has been stored yet", async () => {
     get.mockResolvedValue(null);
     const { getReminderCursor } = await importFresh();
 
-    await expect(getReminderCursor()).resolves.toBe(0);
+    await expect(getReminderCursor()).resolves.toBeNull();
   });
 
-  it("defaults to 0 on a malformed stored value, rather than propagating garbage", async () => {
-    get.mockResolvedValue("not-a-number");
+  it("defaults to null on a malformed stored value, rather than propagating garbage", async () => {
+    get.mockResolvedValue(42);
     const { getReminderCursor } = await importFresh();
 
-    await expect(getReminderCursor()).resolves.toBe(0);
+    await expect(getReminderCursor()).resolves.toBeNull();
   });
 
-  it("defaults to 0 when Redis is not configured", async () => {
+  it("defaults to null on an empty string, rather than treating it as a real id", async () => {
+    get.mockResolvedValue("");
+    const { getReminderCursor } = await importFresh();
+
+    await expect(getReminderCursor()).resolves.toBeNull();
+  });
+
+  it("defaults to null when Redis is not configured", async () => {
     const { getRedis } = await import("@/lib/redis");
     vi.mocked(getRedis).mockReturnValue(null);
     const { getReminderCursor } = await importFresh();
 
-    await expect(getReminderCursor()).resolves.toBe(0);
+    await expect(getReminderCursor()).resolves.toBeNull();
     expect(get).not.toHaveBeenCalled();
   });
 
-  it("defaults to 0 and reports the failure on a Redis fault", async () => {
+  it("defaults to null and reports the failure on a Redis fault", async () => {
     get.mockRejectedValue(new Error("timeout"));
     const { getReminderCursor } = await importFresh();
 
-    await expect(getReminderCursor()).resolves.toBe(0);
+    await expect(getReminderCursor()).resolves.toBeNull();
     expect(failure).toHaveBeenCalledTimes(1);
   });
 
-  it("stores the value and reports it as breaker evidence", async () => {
+  it("stores the business id and reports it as breaker evidence", async () => {
     set.mockResolvedValue("OK");
     const { setReminderCursor } = await importFresh();
 
-    await setReminderCursor(12);
-    expect(set).toHaveBeenCalledWith("vela:reminder-cursor", 12);
+    await setReminderCursor("biz_456");
+    expect(set).toHaveBeenCalledWith("vela:reminder-cursor", "biz_456");
     expect(store).toHaveBeenCalledTimes(1);
   });
 
@@ -78,7 +85,7 @@ describe("reminder cursor", () => {
     vi.mocked(getRedis).mockReturnValue(null);
     const { setReminderCursor } = await importFresh();
 
-    await setReminderCursor(12);
+    await setReminderCursor("biz_456");
     expect(set).not.toHaveBeenCalled();
   });
 
@@ -86,7 +93,7 @@ describe("reminder cursor", () => {
     set.mockRejectedValue(new Error("timeout"));
     const { setReminderCursor } = await importFresh();
 
-    await expect(setReminderCursor(12)).resolves.toBeUndefined();
+    await expect(setReminderCursor("biz_456")).resolves.toBeUndefined();
     expect(failure).toHaveBeenCalledTimes(1);
   });
 });

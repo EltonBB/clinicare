@@ -30,7 +30,7 @@ function request() {
 
 describe("reminders cron route", () => {
   beforeEach(() => {
-    acquireCronLock.mockReset().mockResolvedValue(true);
+    acquireCronLock.mockReset().mockResolvedValue({ proceed: true, token: "test-token" });
     releaseCronLock.mockReset().mockResolvedValue(undefined);
     syncAppointmentRemindersJob.mockReset();
     autoCloseStaleTimeEntries.mockReset().mockResolvedValue({ closed: 0 });
@@ -47,7 +47,7 @@ describe("reminders cron route", () => {
   });
 
   it("skips the run and never calls the job when the lock is held", async () => {
-    acquireCronLock.mockResolvedValue(false);
+    acquireCronLock.mockResolvedValue({ proceed: false, token: null });
     const { GET } = await import("./route");
 
     const res = await GET(request());
@@ -58,7 +58,8 @@ describe("reminders cron route", () => {
     expect(releaseCronLock).not.toHaveBeenCalled();
   });
 
-  it("acquires and releases the lock on a normal completion", async () => {
+  it("acquires and releases the lock on a normal completion, passing this invocation's token", async () => {
+    acquireCronLock.mockResolvedValue({ proceed: true, token: "held-token" });
     syncAppointmentRemindersJob.mockResolvedValue({
       processedBusinesses: 2,
       sent: 2,
@@ -72,7 +73,30 @@ describe("reminders cron route", () => {
 
     expect(body).toMatchObject({ ok: true, sent: 2, timedOut: false });
     expect(acquireCronLock).toHaveBeenCalledTimes(1);
-    expect(releaseCronLock).toHaveBeenCalledTimes(1);
+    expect(releaseCronLock).toHaveBeenCalledWith(expect.any(String), "held-token");
+  });
+
+  /**
+   * Regression test for the P2 Codex found: a fail-open acquisition (Redis
+   * faulted, so this invocation never confirmed it holds the lock) must not
+   * release anything — releasing would risk evicting a DIFFERENT
+   * invocation's real, still-held lock.
+   */
+  it("still runs but releases nothing when the lock was fail-open (no token)", async () => {
+    acquireCronLock.mockResolvedValue({ proceed: true, token: null });
+    syncAppointmentRemindersJob.mockResolvedValue({
+      processedBusinesses: 0,
+      sent: 0,
+      failed: 0,
+      skippedBusinesses: 0,
+    });
+    const { GET } = await import("./route");
+
+    const res = await GET(request());
+    const body = await res.json();
+
+    expect(body).toMatchObject({ ok: true });
+    expect(releaseCronLock).toHaveBeenCalledWith(expect.any(String), null);
   });
 
   /**

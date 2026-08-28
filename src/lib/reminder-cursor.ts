@@ -11,30 +11,39 @@ import { getRedis, noteRedisFailure, noteRedisStoreSucceeded } from "@/lib/redis
  * reminder window has long passed. Advancing by the actual count attempted
  * each run is what makes "retried next time" true regardless of throughput.
  *
- * Fails safe: without Redis configured or on a fault, the cursor reads as 0
- * and writes are silently dropped. Every run then starts from the same
- * position — fairness is lost, correctness is not. A missing safety net must
- * never be the reason reminders stop sending.
+ * NOT a numeric ordinal either: an offset into the eligible-business list is
+ * only meaningful if that list's membership never changes between runs. It
+ * does — a business toggling WhatsApp on/off, or its connection flipping
+ * CONNECTED/ERRORED, changes who's eligible on the very next run. Storing the
+ * ID of the last-attempted business instead survives that: reminder-fairness.ts
+ * resumes at the smallest remaining ID greater than this one, so a removed or
+ * reordered business degrades to "skip one id," never "lose your place in
+ * the rotation."
+ *
+ * Fails safe: without Redis configured or on a fault, the cursor reads as
+ * null (start of the list) and writes are silently dropped. Every run then
+ * starts from the same position — fairness is lost, correctness is not. A
+ * missing safety net must never be the reason reminders stop sending.
  */
 
 const CURSOR_KEY = "vela:reminder-cursor";
 
-export async function getReminderCursor(): Promise<number> {
+export async function getReminderCursor(): Promise<string | null> {
   const redis = getRedis();
   if (!redis) {
-    return 0;
+    return null;
   }
 
   try {
-    const raw = await redis.get<number>(CURSOR_KEY);
-    return typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
+    const raw = await redis.get<string>(CURSOR_KEY);
+    return typeof raw === "string" && raw.length > 0 ? raw : null;
   } catch {
     noteRedisFailure();
-    return 0;
+    return null;
   }
 }
 
-export async function setReminderCursor(value: number): Promise<void> {
+export async function setReminderCursor(businessId: string): Promise<void> {
   const redis = getRedis();
   if (!redis) {
     return;
@@ -42,7 +51,7 @@ export async function setReminderCursor(value: number): Promise<void> {
 
   try {
     // SET is denyoom-flagged — valid breaker-recovery evidence, see lib/redis.ts.
-    await redis.set(CURSOR_KEY, value);
+    await redis.set(CURSOR_KEY, businessId);
     noteRedisStoreSucceeded();
   } catch {
     noteRedisFailure();

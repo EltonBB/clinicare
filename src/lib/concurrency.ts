@@ -27,3 +27,40 @@ export async function mapWithConcurrency<T, R>(
 
   return results;
 }
+
+const TIMED_OUT: unique symbol = Symbol("with-deadline-timed-out");
+
+/**
+ * Race `work` against `timeoutMs`. On timeout, `onTimeout()` supplies the
+ * fallback return value — `work` is NOT cancelled (promises can't be; a
+ * Prisma call or fetch already in flight keeps running with no abort handle),
+ * only given up on, so its eventual settlement is swallowed.
+ *
+ * Two type parameters, not one: callers commonly return differently-shaped
+ * literal-discriminated objects from the success and timeout branches (e.g.
+ * `timedOut: false` vs `timedOut: true`). Forcing both through a single T
+ * makes the timeout branch a type error — TS unifies T from the first
+ * argument, then rejects the second as not assignable to it.
+ */
+export async function withDeadline<T, F>(
+  work: Promise<T>,
+  timeoutMs: number,
+  onTimeout: () => F
+): Promise<T | F> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<typeof TIMED_OUT>((resolve) => {
+    timer = setTimeout(() => resolve(TIMED_OUT), timeoutMs);
+  });
+
+  try {
+    const result = await Promise.race([work, timeout]);
+    if (result === TIMED_OUT) {
+      void work.catch(() => {});
+      return onTimeout();
+    }
+    return result as T;
+  } finally {
+    // clearTimeout accepts undefined as a no-op — no guard needed.
+    clearTimeout(timer);
+  }
+}

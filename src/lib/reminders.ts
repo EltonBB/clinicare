@@ -1,12 +1,12 @@
 import { addHours } from "date-fns";
 
-import { mapWithConcurrency } from "@/lib/concurrency";
+import { mapWithConcurrency, withDeadline } from "@/lib/concurrency";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
 import { prisma } from "@/lib/prisma";
 import { getReminderCursor, setReminderCursor } from "@/lib/reminder-cursor";
-import { rotateForFairness } from "@/lib/reminder-fairness";
+import { lastAttemptedId, rotateForFairness } from "@/lib/reminder-fairness";
 import { reminderTypeForAppointment } from "@/lib/reminder-schedule";
 import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 
@@ -343,6 +343,23 @@ export async function syncAppointmentRemindersForBusiness(
 const REMINDER_BUSINESS_CONCURRENCY = 3;
 
 /**
+ * Wall-clock cap on ONE business's processing. Prisma calls have no abort
+ * handle, so a stuck query (a connection-pool wait, a hung transaction)
+ * would otherwise block its worker's `await` forever — and since
+ * mapWithConcurrency's pool resolves via `Promise.all(workers)`, ONE
+ * permanently-stuck worker means the whole call never resolves, so the
+ * cursor-persist code after it never runs either: every later run would keep
+ * resuming from the SAME stale position, forever re-attempting whatever
+ * finished before the hang instead of moving on to the deferred suffix. This
+ * bounds that to a single business, at a cost well under the run budget.
+ *
+ * ~25s (WORKER_SEND_TIMEOUT_MS in the Baileys adapter) doubled for the
+ * provider-error breaker's 2-consecutive-failure cap, plus headroom for the
+ * database work around each send.
+ */
+const PER_BUSINESS_TIMEOUT_MS = 90_000;
+
+/**
  * Wall-clock budget for STARTING new businesses, comfortably under the 300s
  * platform cap. Reminders now run hourly, so a business skipped here is
  * retried within the hour — deferred, not dropped. This is a single cheap
@@ -404,9 +421,12 @@ export async function syncAppointmentRemindersJob(
 
   // Resume from wherever the LAST run left off, not from a clock-derived
   // guess: under sustained low throughput (few businesses fit per run), a
-  // fixed per-hour advance barely moves — see reminder-cursor.ts.
-  const startCursor = await getReminderCursor();
-  const orderedBusinesses = rotateForFairness(businesses, startCursor);
+  // fixed per-hour advance barely moves — see reminder-cursor.ts. Anchored to
+  // a business id, not an ordinal position, so a membership change between
+  // runs (WhatsApp toggled, a connection flipping status) can't silently
+  // skip whoever was actually next — see reminder-fairness.ts.
+  const startAfterId = await getReminderCursor();
+  const orderedBusinesses = rotateForFairness(businesses, startAfterId);
 
   await mapWithConcurrency(orderedBusinesses, REMINDER_BUSINESS_CONCURRENCY, async (business) => {
     if (Date.now() >= runDeadlineAt) {
@@ -414,31 +434,41 @@ export async function syncAppointmentRemindersJob(
       return;
     }
 
-    let result: ReminderSyncResult;
-    try {
-      result = await syncAppointmentRemindersForBusiness(business.id);
-    } catch (error) {
-      // Isolate per-tenant failures so one clinic can't abort the whole run.
-      logger.error("Reminder sync failed for business.", error, {
-        businessId: business.id,
-      });
-      result = { sent: 0, failed: 0 };
-    }
+    const result = await withDeadline(
+      syncAppointmentRemindersForBusiness(business.id).catch((error): ReminderSyncResult => {
+        // Isolate per-tenant failures so one clinic can't abort the whole run.
+        logger.error("Reminder sync failed for business.", error, {
+          businessId: business.id,
+        });
+        return { sent: 0, failed: 0 };
+      }),
+      PER_BUSINESS_TIMEOUT_MS,
+      (): ReminderSyncResult => {
+        logger.error(
+          "Reminder sync exceeded its per-business timeout — likely a hung database call. Moving on so this run (and its cursor) keeps making progress.",
+          undefined,
+          { businessId: business.id, timeoutMs: PER_BUSINESS_TIMEOUT_MS }
+        );
+        return { sent: 0, failed: 0 };
+      }
+    );
 
     progress.sent += result.sent;
     progress.failed += result.failed;
   });
 
-  // Advance by exactly how many businesses were GIVEN A TURN this run
-  // (attempted, whether they succeeded, failed, or threw — all took a turn;
-  // only `skipped` never got one) — not by a fixed amount. That is what
-  // makes the next run start at the actual skipped suffix instead of
-  // re-covering ground already attempted. Guarded on progress.total > 0:
-  // rotateForFairness itself guards the empty-list case, but there is no
-  // cursor worth persisting when nothing was eligible this run.
-  if (progress.total > 0) {
-    const attempted = progress.total - progress.skipped;
-    await setReminderCursor((startCursor + attempted) % progress.total);
+  // Advance to the id of the LAST business given a turn this run (attempted,
+  // whether it succeeded, failed, or timed out — all took a turn; only
+  // `skipped` never got one) — not by a fixed count over a mutable list. That
+  // is what makes the next run start at the actual skipped suffix instead of
+  // re-covering ground already attempted or silently skipping ahead when the
+  // eligible set changed. lastAttemptedId returns null when nothing was
+  // attempted, in which case the persisted cursor is deliberately left
+  // untouched — the next run resumes from the same place.
+  const attempted = progress.total - progress.skipped;
+  const nextCursor = lastAttemptedId(orderedBusinesses, attempted);
+  if (nextCursor !== null) {
+    await setReminderCursor(nextCursor);
   }
 
   if (progress.skipped > 0) {
