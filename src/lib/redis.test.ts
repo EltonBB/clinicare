@@ -276,8 +276,10 @@ describe("circuit breaker", () => {
 
   it("clears the window on recovery, so a later blip starts from zero", () => {
     fail(3);
-    vi.advanceTimersByTime(60_000);
-    expect(getRedis()).not.toBeNull(); // recovered
+    vi.advanceTimersByTime(30_000);
+    getRedis(); // probe 1
+    vi.advanceTimersByTime(30_000);
+    getRedis(); // probe 2 -> recovered
 
     fail(2);
     expect(getRedis()).not.toBeNull();
@@ -341,13 +343,40 @@ describe("circuit breaker", () => {
     expect(console.warn).toHaveBeenCalledTimes(1);
   });
 
-  it("closes once a full window passes with no new failure", () => {
+  it("closes after enough probes come back without a failure", () => {
     fail(3);
     expect(getRedis()).toBeNull();
 
-    vi.advanceTimersByTime(60_000);
-    expect(getRedis()).not.toBeNull();
+    vi.advanceTimersByTime(30_000);
+    expect(getRedis()).not.toBeNull(); // probe 1, still gated for others
+    expect(getRedis()).toBeNull();
+
+    vi.advanceTimersByTime(30_000);
+    expect(getRedis()).not.toBeNull(); // probe 2 closes it
+    expect(getRedis()).not.toBeNull(); // now open to everyone
     expect(vi.mocked(console.warn).mock.calls.at(-1)![0]).toContain("Recovered");
+  });
+
+  /**
+   * While the breaker is open no traffic reaches Redis, so an idle period
+   * produces no failures REGARDLESS of health — the silence is manufactured by
+   * the breaker itself. Recovery keyed on elapsed quiet time therefore closed
+   * on idleness alone, and the first burst after it all got the client, all
+   * paid the timeout, and all re-ran their producers.
+   */
+  it("does not mistake an idle period for recovery", () => {
+    fail(3);
+    vi.advanceTimersByTime(10 * 60_000); // long quiet spell, still broken
+
+    // A burst arrives: exactly one probe, everyone else on the fallback.
+    expect(getRedis()).not.toBeNull();
+    expect(getRedis()).toBeNull();
+    expect(getRedis()).toBeNull();
+    expect(
+      vi.mocked(console.warn).mock.calls.filter((c) =>
+        String(c[0]).includes("Recovered")
+      )
+    ).toHaveLength(0);
   });
 
   it("does not close early while failures keep arriving", () => {
@@ -371,6 +400,18 @@ describe("circuit breaker", () => {
     vi.advanceTimersByTime(120_000);
     expect(getRedis()).not.toBeNull();
     expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it("needs a fresh probe run after each failure, not a cumulative count", () => {
+    fail(3);
+    for (let cycle = 0; cycle < 4; cycle++) {
+      vi.advanceTimersByTime(30_000);
+      getRedis(); // probe admitted
+      fail(1); // and it failed, so the evidence resets
+    }
+    vi.advanceTimersByTime(30_000);
+    expect(getRedis()).not.toBeNull(); // one probe
+    expect(getRedis()).toBeNull(); // but still not closed
   });
 
   it("returns null for an unconfigured Redis regardless of breaker state", () => {

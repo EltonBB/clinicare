@@ -51,29 +51,32 @@ export const REDIS_REQUEST_TIMEOUT_MS = 500;
  * health, because it isn't: Redis can be readable while writes fail — the free
  * tier rejects writes once the size cap is hit, and a read-only token behaves
  * the same way — so `getCached`'s GET succeeds immediately before its SET
- * fails. Any design that lets a success reset state gets defeated by that
- * interleaving; recovery is therefore proven by the ABSENCE of failures for a
- * full window, not by anything succeeding.
+ * fails. Any design where a success resets state loses to that interleaving.
  *
  * Failures accumulate in a rolling window and age out, so blips spread further
  * apart than the window never trip it.
  *
- * Recovery is half-open: when the cooldown lapses exactly ONE caller is handed
- * the client and the window re-arms immediately, so a burst arriving at that
- * moment keeps using the fallback instead of all paying the timeout. Admission
- * re-arms on a clock rather than waiting for the probe to report, so a caller
- * that takes the client and never reports costs one extra cooldown — it cannot
- * wedge the breaker open.
+ * Recovery is half-open: each time the cooldown lapses exactly ONE caller is
+ * handed the client and the window re-arms immediately, so a burst arriving at
+ * that moment keeps using the fallback instead of all paying the timeout. The
+ * breaker closes only after enough ADMITTED PROBES have come and gone without
+ * reporting a failure. Probes, not elapsed quiet time: while the breaker is
+ * open no traffic reaches Redis at all, so silence is manufactured by the
+ * breaker itself and says nothing about the backend — an idle period must not
+ * be mistaken for recovery. Admission re-arms on a clock rather than waiting
+ * for a probe to report, so a caller that takes the client and never reports
+ * costs one extra cooldown and cannot wedge the breaker open.
  */
 const BREAKER_THRESHOLD = 3;
 const BREAKER_WINDOW_MS = 60_000;
 const BREAKER_COOLDOWN_MS = 30_000;
+const BREAKER_CLOSE_PROBES = 2;
 
 let failuresInWindow = 0;
 let windowStartedAt = 0;
-let lastFailureAt = 0;
 let breakerOpenUntil = 0;
 let lastWarnedAt = 0;
+let cleanProbes = 0;
 
 // `undefined` = not yet resolved; `null` = resolved but unconfigured.
 let client: Redis | null | undefined;
@@ -99,26 +102,30 @@ export function getRedis(): Redis | null {
 
   const now = Date.now();
 
-  // Closed again once a full window has passed with NO new failure. Recovery is
-  // the absence of failures, never the presence of a success — a probe's read
-  // can succeed while the write that follows it in the same call still fails.
-  if (now - lastFailureAt >= BREAKER_WINDOW_MS) {
-    breakerOpenUntil = 0;
-    failuresInWindow = 0;
-    windowStartedAt = 0;
-    lastWarnedAt = 0;
-    console.warn("[redis] Recovered; resuming shared cache and rate limiting.");
-    return client;
-  }
-
   if (now < breakerOpenUntil) {
     return null;
   }
 
   // Half-open. Re-arming here — a deliberate write from a getter — is what
   // makes this single-flight: the next caller sees an unexpired window and
-  // takes the fallback, so only this one probe pays the timeout.
+  // takes the fallback, so only this one probe pays the timeout. An idle period
+  // therefore admits ONE caller, never a whole burst.
   breakerOpenUntil = now + BREAKER_COOLDOWN_MS;
+  cleanProbes += 1;
+
+  // Close only once enough probes have been admitted without any of them
+  // reporting a failure. `noteRedisFailure` resets this, so the count is
+  // evidence gathered from real calls rather than from the quiet the breaker
+  // itself creates.
+  if (cleanProbes >= BREAKER_CLOSE_PROBES) {
+    breakerOpenUntil = 0;
+    failuresInWindow = 0;
+    windowStartedAt = 0;
+    lastWarnedAt = 0;
+    cleanProbes = 0;
+    console.warn("[redis] Recovered; resuming shared cache and rate limiting.");
+  }
+
   return client;
 }
 
@@ -163,7 +170,9 @@ function buildClient(url: string, token: string): Redis | null {
  */
 export function noteRedisFailure(): void {
   const now = Date.now();
-  lastFailureAt = now;
+
+  // Any failure invalidates the probe evidence gathered so far.
+  cleanProbes = 0;
 
   // Failures age out, so blips spread further apart than the window never
   // accumulate into a trip.
@@ -199,7 +208,7 @@ export function resetRedisForTests(): void {
   client = undefined;
   failuresInWindow = 0;
   windowStartedAt = 0;
-  lastFailureAt = 0;
   breakerOpenUntil = 0;
   lastWarnedAt = 0;
+  cleanProbes = 0;
 }
