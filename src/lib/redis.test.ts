@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   getRedis,
-  noteRedisResult,
+  noteRedisFailure,
   REDIS_REQUEST_TIMEOUT_MS,
   resetRedisForTests,
 } from "./redis";
@@ -195,7 +195,7 @@ describe("circuit breaker", () => {
 
   const fail = (times: number) => {
     for (let i = 0; i < times; i++) {
-      noteRedisResult(false);
+      noteRedisFailure();
     }
   };
 
@@ -224,11 +224,29 @@ describe("circuit breaker", () => {
    * its producer. A success must not erase a persistent failure streak.
    */
   it("opens when reads succeed but writes keep failing", () => {
+    // Only the SET failures are reported; the GET successes are not a signal.
     for (let request = 0; request < 3; request++) {
-      noteRedisResult(true); // GET succeeded
-      noteRedisResult(false); // SET failed
+      fail(1);
     }
     expect(getRedis()).toBeNull();
+  });
+
+  /**
+   * The case Codex caught twice. With reads fine and writes failing, the
+   * half-open probe's GET succeeds and its SET fails. Any design that lets a
+   * success clear state closed the breaker on that GET — before the SET failed
+   * — so it cycled open/closed every cooldown, leaking requests and logging a
+   * false recovery each time. Recovery must need an absence of failures.
+   */
+  it("stays open across probes when every probe's write still fails", () => {
+    fail(3);
+    for (let cycle = 0; cycle < 5; cycle++) {
+      vi.advanceTimersByTime(30_000);
+      expect(getRedis()).not.toBeNull(); // the one admitted probe
+      fail(1); // its write failed
+      expect(getRedis()).toBeNull(); // everyone else still on the fallback
+    }
+    expect(vi.mocked(console.warn).mock.calls.filter((c) => String(c[0]).includes("Recovered"))).toHaveLength(0);
   });
 
   it("does not trip on blips spread wider than the failure window", () => {
@@ -258,9 +276,8 @@ describe("circuit breaker", () => {
 
   it("clears the window on recovery, so a later blip starts from zero", () => {
     fail(3);
-    vi.advanceTimersByTime(30_000);
-    noteRedisResult(true); // probe recovers
-    expect(getRedis()).not.toBeNull();
+    vi.advanceTimersByTime(60_000);
+    expect(getRedis()).not.toBeNull(); // recovered
 
     fail(2);
     expect(getRedis()).not.toBeNull();
@@ -314,7 +331,7 @@ describe("circuit breaker", () => {
     fail(3);
     vi.advanceTimersByTime(30_000);
 
-    noteRedisResult(false);
+    noteRedisFailure();
     expect(getRedis()).toBeNull();
   });
 
@@ -324,24 +341,42 @@ describe("circuit breaker", () => {
     expect(console.warn).toHaveBeenCalledTimes(1);
   });
 
-  it("closes and logs recovery when the probe succeeds", () => {
+  it("closes once a full window passes with no new failure", () => {
     fail(3);
-    vi.advanceTimersByTime(30_000);
+    expect(getRedis()).toBeNull();
 
-    noteRedisResult(true);
+    vi.advanceTimersByTime(60_000);
     expect(getRedis()).not.toBeNull();
     expect(vi.mocked(console.warn).mock.calls.at(-1)![0]).toContain("Recovered");
   });
 
+  it("does not close early while failures keep arriving", () => {
+    fail(3);
+    for (let i = 0; i < 4; i++) {
+      vi.advanceTimersByTime(30_000);
+      getRedis(); // the one probe this cooldown admits
+      fail(1); // which fails too
+    }
+    // Everyone other than the probe is still on the fallback, and nothing has
+    // claimed recovery.
+    expect(getRedis()).toBeNull();
+    expect(
+      vi.mocked(console.warn).mock.calls.filter((c) =>
+        String(c[0]).includes("Recovered")
+      )
+    ).toHaveLength(0);
+  });
+
   it("stays quiet about recovery when it never opened", () => {
-    noteRedisResult(true);
+    vi.advanceTimersByTime(120_000);
+    expect(getRedis()).not.toBeNull();
     expect(console.warn).not.toHaveBeenCalled();
   });
 
   it("returns null for an unconfigured Redis regardless of breaker state", () => {
     unconfigureRedis();
     expect(getRedis()).toBeNull();
-    noteRedisResult(true);
+    noteRedisFailure();
     expect(getRedis()).toBeNull();
   });
 });

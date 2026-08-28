@@ -1,4 +1,4 @@
-import { getRedis, noteRedisResult } from "@/lib/redis";
+import { getRedis, noteRedisFailure } from "@/lib/redis";
 
 /**
  * Provider-agnostic cache seam (cache-aside).
@@ -88,7 +88,6 @@ export async function getCached<T>(
   if (redis) {
     try {
       const cached = await redis.get<T>(namespaced);
-      noteRedisResult(true);
       if (cached !== null && cached !== undefined) {
         return cached;
       }
@@ -96,7 +95,7 @@ export async function getCached<T>(
       // Cache read fault — fall through to the producer. Reported so a run of
       // these opens the breaker; otherwise every miss re-pays the timeout AND
       // callers using this as a throttle lock lose their throttle entirely.
-      noteRedisResult(false);
+      noteRedisFailure();
     }
   } else {
     const cached = memoryGet<T>(namespaced);
@@ -107,20 +106,18 @@ export async function getCached<T>(
 
   const fresh = await producer();
 
-  // Re-resolved rather than reusing `redis`: the read above may have been the
-  // failure that opened the breaker, and the decision is now stale. Asking
-  // again skips a write already known to be doomed and, more usefully, seeds
-  // the in-memory cache a full request earlier — which is what re-arms the
-  // throttle for callers using this as a lock.
-  const writeTo = getRedis();
-
-  if (writeTo) {
+  // Reuses the client resolved above rather than re-asking the seam. Doing so
+  // deliberately: this write is how a half-open probe learns whether Redis
+  // accepts writes at all. Re-resolving would hand back null the moment the
+  // breaker re-armed, the SET would never run, and a Redis that reads fine but
+  // rejects writes would look healthy — the breaker would close on the read
+  // and reopen only after fresh failures, cycling forever.
+  if (redis) {
     try {
-      await writeTo.set(namespaced, fresh, { ex: ttlSeconds });
-      noteRedisResult(true);
+      await redis.set(namespaced, fresh, { ex: ttlSeconds });
     } catch {
       // Cache write fault — the value is still returned to the caller.
-      noteRedisResult(false);
+      noteRedisFailure();
     }
   } else {
     memorySet(namespaced, fresh, ttlSeconds);
@@ -137,10 +134,9 @@ export async function invalidateCache(key: string): Promise<void> {
   if (redis) {
     try {
       await redis.del(namespaced);
-      noteRedisResult(true);
     } catch {
       // Best-effort; a stale entry expires on its own TTL.
-      noteRedisResult(false);
+      noteRedisFailure();
     }
     return;
   }

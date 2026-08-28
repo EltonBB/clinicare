@@ -1,6 +1,6 @@
 import { Ratelimit } from "@upstash/ratelimit";
 
-import { getRedis, noteRedisResult } from "@/lib/redis";
+import { getRedis, noteRedisFailure } from "@/lib/redis";
 
 /**
  * Rate limiter with two backings behind one async API:
@@ -136,8 +136,6 @@ export async function checkRateLimit(
       // the function alive until the response flushes. If any route ever moves to
       // the Edge runtime, await it via `context.waitUntil(result.pending)`.
       const result = await limiter.limit(key);
-      // A denied request still means Redis answered — only a throw is a fault.
-      noteRedisResult(true);
       const now = Date.now();
 
       return {
@@ -152,7 +150,7 @@ export async function checkRateLimit(
       // Reported so the breaker opens and warns: the fallback is PER-INSTANCE,
       // so across N warm instances the effective limit is N x the rule. That
       // must not degrade silently.
-      noteRedisResult(false);
+      noteRedisFailure();
     }
   }
 

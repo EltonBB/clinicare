@@ -47,14 +47,16 @@ export const REDIS_REQUEST_TIMEOUT_MS = 500;
  * from a miss and re-runs the producer every time — turning the workspace sweep
  * throttle off exactly when the database is already struggling.
  *
- * Failures are counted in a rolling window rather than consecutively, and a
- * success does NOT clear them. Redis can be readable while writes fail — the
- * free tier rejects writes once the size cap is hit, and a read-only token
- * behaves the same way — and every `getCached` miss then reports a successful
- * GET immediately before its SET fails. A consecutive count would oscillate
- * between 0 and 1 forever, so the breaker would never open while every request
- * kept paying the write timeout and re-running its producer. Ageing failures
- * out of the window instead keeps the isolated-blip case from tripping it.
+ * It is driven by FAILURES ONLY. A success is never taken as evidence of
+ * health, because it isn't: Redis can be readable while writes fail — the free
+ * tier rejects writes once the size cap is hit, and a read-only token behaves
+ * the same way — so `getCached`'s GET succeeds immediately before its SET
+ * fails. Any design that lets a success reset state gets defeated by that
+ * interleaving; recovery is therefore proven by the ABSENCE of failures for a
+ * full window, not by anything succeeding.
+ *
+ * Failures accumulate in a rolling window and age out, so blips spread further
+ * apart than the window never trip it.
  *
  * Recovery is half-open: when the cooldown lapses exactly ONE caller is handed
  * the client and the window re-arms immediately, so a burst arriving at that
@@ -69,6 +71,7 @@ const BREAKER_COOLDOWN_MS = 30_000;
 
 let failuresInWindow = 0;
 let windowStartedAt = 0;
+let lastFailureAt = 0;
 let breakerOpenUntil = 0;
 let lastWarnedAt = 0;
 
@@ -94,14 +97,28 @@ export function getRedis(): Redis | null {
     return client;
   }
 
-  if (Date.now() < breakerOpenUntil) {
+  const now = Date.now();
+
+  // Closed again once a full window has passed with NO new failure. Recovery is
+  // the absence of failures, never the presence of a success — a probe's read
+  // can succeed while the write that follows it in the same call still fails.
+  if (now - lastFailureAt >= BREAKER_WINDOW_MS) {
+    breakerOpenUntil = 0;
+    failuresInWindow = 0;
+    windowStartedAt = 0;
+    lastWarnedAt = 0;
+    console.warn("[redis] Recovered; resuming shared cache and rate limiting.");
+    return client;
+  }
+
+  if (now < breakerOpenUntil) {
     return null;
   }
 
   // Half-open. Re-arming here — a deliberate write from a getter — is what
   // makes this single-flight: the next caller sees an unexpired window and
   // takes the fallback, so only this one probe pays the timeout.
-  breakerOpenUntil = Date.now() + BREAKER_COOLDOWN_MS;
+  breakerOpenUntil = now + BREAKER_COOLDOWN_MS;
   return client;
 }
 
@@ -138,28 +155,15 @@ function buildClient(url: string, token: string): Redis | null {
 }
 
 /**
- * Feed the breaker with the outcome of a Redis call.
+ * Report a failed Redis call to the breaker.
  *
- * Every caller that catches a Redis fault must report it — an unreported
- * failure leaves the breaker closed and the outage cost unbounded.
+ * Every caller that catches a Redis fault must call this — an unreported
+ * failure leaves the breaker closed and the outage cost unbounded. There is
+ * deliberately no success counterpart: see the breaker note above.
  */
-export function noteRedisResult(ok: boolean): void {
+export function noteRedisFailure(): void {
   const now = Date.now();
-
-  if (ok) {
-    // Clears state only on RECOVERY from an open breaker. A success must not
-    // erase the failure window otherwise: a read-ok/write-failing Redis reports
-    // one success per failure, and clearing here would hold the count below the
-    // threshold forever while every request kept paying the write timeout.
-    if (breakerOpenUntil !== 0) {
-      console.warn("[redis] Recovered; resuming shared cache and rate limiting.");
-      breakerOpenUntil = 0;
-      failuresInWindow = 0;
-      windowStartedAt = 0;
-      lastWarnedAt = 0;
-    }
-    return;
-  }
+  lastFailureAt = now;
 
   // Failures age out, so blips spread further apart than the window never
   // accumulate into a trip.
@@ -185,8 +189,8 @@ export function noteRedisResult(ok: boolean): void {
   lastWarnedAt = now;
   console.warn(
     `[redis] Unavailable after ${failuresInWindow} failures in ${BREAKER_WINDOW_MS / 1000}s. ` +
-      `Falling back to in-memory cache and PER-INSTANCE rate limiting for ` +
-      `${BREAKER_COOLDOWN_MS / 1000}s — the shared limit is not enforced meanwhile.`
+      `Falling back to in-memory cache and PER-INSTANCE rate limiting — ` +
+      `the shared limit is not enforced meanwhile.`
   );
 }
 
@@ -195,6 +199,7 @@ export function resetRedisForTests(): void {
   client = undefined;
   failuresInWindow = 0;
   windowStartedAt = 0;
+  lastFailureAt = 0;
   breakerOpenUntil = 0;
   lastWarnedAt = 0;
 }
