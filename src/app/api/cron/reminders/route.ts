@@ -4,11 +4,8 @@ import { withDeadline } from "@/lib/concurrency";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { logger } from "@/lib/logger";
-import {
-  createReminderRunProgress,
-  REMINDER_RUN_BUDGET_MS,
-  syncAppointmentRemindersJob,
-} from "@/lib/reminders";
+import { createReminderRunProgress, syncAppointmentRemindersJob } from "@/lib/reminders";
+import { HARD_RESPONSE_DEADLINE_MS, REMINDER_RUN_BUDGET_MS } from "@/lib/reminder-timing";
 import { autoCloseStaleTimeEntries } from "@/lib/staff-clock";
 
 export const dynamic = "force-dynamic";
@@ -22,12 +19,12 @@ export const maxDuration = 300;
 // that window.
 const LOCK_NAME = "reminders";
 
-// Comfortably under the 300s platform cap, covering the reminders job AND the
-// stale-entry sweep after it, so a genuine hang still returns a response
-// instead of being silently killed. This is a backstop for the rare case the
-// job's own internal budget check doesn't reach (e.g. one query hanging
-// mid-business) — normal runs finish in seconds and never touch it.
-const HARD_RESPONSE_DEADLINE_MS = 270_000;
+// HARD_RESPONSE_DEADLINE_MS itself now lives in lib/reminders.ts — comfortably
+// under the 300s platform cap, covering the reminders job AND the stale-entry
+// sweep after it, so a genuine hang still returns a response instead of being
+// silently killed. It moved there because REMINDER_RUN_BUDGET_MS (the job's
+// own internal "stop starting new businesses" threshold) has to be derived
+// from it — see that constant's comment in reminders.ts.
 
 // Derived from the hard deadline, not an independent number: if that backstop
 // fires, the losing work is left running (Prisma calls have no abort handle)

@@ -25,7 +25,8 @@ vi.mock("@/lib/reminders", () => ({
     failed: 0,
     abandoned: 0,
   }),
-  REMINDER_RUN_BUDGET_MS: 240_000,
+  REMINDER_RUN_BUDGET_MS: 165_000,
+  HARD_RESPONSE_DEADLINE_MS: 270_000,
 }));
 
 function request() {

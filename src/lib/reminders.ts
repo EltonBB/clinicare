@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { getReminderCursor, setReminderCursor } from "@/lib/reminder-cursor";
 import { lastAttemptedId, rotateForFairness } from "@/lib/reminder-fairness";
 import { reminderTypeForAppointment } from "@/lib/reminder-schedule";
+import { PER_BUSINESS_TIMEOUT_MS, REMINDER_RUN_BUDGET_MS } from "@/lib/reminder-timing";
 import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 
 type ReminderSyncResult = {
@@ -354,34 +355,11 @@ export async function syncAppointmentRemindersForBusiness(
 // A few clinics at a time — bounds concurrent outbound sends across tenants.
 const REMINDER_BUSINESS_CONCURRENCY = 3;
 
-/**
- * Wall-clock cap on ONE business's processing. Prisma calls have no abort
- * handle, so a stuck query (a connection-pool wait, a hung transaction)
- * would otherwise block its worker's `await` forever — and since
- * mapWithConcurrency's pool resolves via `Promise.all(workers)`, ONE
- * permanently-stuck worker means the whole call never resolves, so the
- * cursor-persist code after it never runs either: every later run would keep
- * resuming from the SAME stale position, forever re-attempting whatever
- * finished before the hang instead of moving on to the deferred suffix. This
- * bounds that to a single business, at a cost well under the run budget.
- *
- * ~25s (WORKER_SEND_TIMEOUT_MS in the Baileys adapter) doubled for the
- * provider-error breaker's 2-consecutive-failure cap, plus headroom for the
- * database work around each send.
- */
-const PER_BUSINESS_TIMEOUT_MS = 90_000;
-
-/**
- * Wall-clock budget for STARTING new businesses, comfortably under the 300s
- * platform cap. Reminders now run hourly, so a business skipped here is
- * retried within the hour — deferred, not dropped. This is a single cheap
- * check between businesses, not a per-operation deadline: at pilot scale the
- * realistic risk is every business hitting the provider-error circuit breaker
- * at once (the WhatsApp worker itself down), which the breaker already bounds
- * to a couple of adapter timeouts per business — this budget is what stops
- * that from compounding across every tenant in one run.
- */
-export const REMINDER_RUN_BUDGET_MS = 240_000;
+// PER_BUSINESS_TIMEOUT_MS and REMINDER_RUN_BUDGET_MS (and the
+// HARD_RESPONSE_DEADLINE_MS the latter is derived from) live in
+// reminder-timing.ts — a prisma-free module so their relationship can be
+// unit-tested — and the cron route imports HARD_RESPONSE_DEADLINE_MS from
+// there directly rather than through here.
 
 /**
  * Live counters, mutated as each business finishes — not just the final
