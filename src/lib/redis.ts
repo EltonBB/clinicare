@@ -49,44 +49,46 @@ export const REDIS_REQUEST_TIMEOUT_MS = 500;
  * from a miss and re-runs the producer every time — turning the workspace sweep
  * throttle off exactly when the database is already struggling.
  *
- * It is driven by FAILURES ONLY. A success is never taken as evidence of
- * health, because it isn't: Redis can be readable while writes fail — the free
- * tier rejects writes once the size cap is hit, and a read-only token behaves
- * the same way — so `getCached`'s GET succeeds immediately before its SET
- * fails. Any design where a success resets state loses to that interleaving.
+ * A success NEVER resets failure state. Redis can be readable while writes
+ * fail — the free tier rejects writes once the size cap is hit, and a read-only
+ * token behaves the same way — so `getCached`'s GET succeeds immediately before
+ * its SET fails; any design where a success clears the failure count loses to
+ * that interleaving.
  *
  * Failures accumulate in a rolling window and age out, so blips spread further
  * apart than the window never trip it.
  *
  * Recovery is half-open: each time the cooldown lapses exactly ONE caller is
  * handed the client and the window re-arms immediately, so a burst arriving at
- * that moment keeps using the fallback instead of all paying the timeout. The
- * breaker closes only after enough ADMITTED PROBES have come and gone without
- * reporting a failure. Probes, not elapsed quiet time: while the breaker is
- * open no traffic reaches Redis at all, so silence is manufactured by the
- * breaker itself and says nothing about the backend — an idle period must not
- * be mistaken for recovery. Admission re-arms on a clock rather than waiting
- * for a probe to report, so a caller that takes the client and never reports
- * costs one extra cooldown and cannot wedge the breaker open.
+ * that moment keeps using the fallback instead of all paying the timeout.
+ * Admission re-arms on a clock rather than waiting for a probe to report, so a
+ * caller that takes the client and never reports costs one extra cooldown and
+ * cannot wedge the breaker open.
  *
- * KNOWN LIMIT: a probe that happens to be a `getCached` HIT exercises only the
- * read path, so against a read-ok/write-failing Redis two such probes can close
- * the breaker without ever testing a write. Bounded — the next writes reopen it
- * — and narrow, because with writes failing nothing is being cached, entries
- * expire, and `checkRateLimit` (an `eval`, i.e. a write) reports the failures.
- * Closing it properly means threading operation kind through this seam, which
- * is more surface than the residual oscillation is worth.
+ * The ONLY thing that closes it is `noteRedisWriteSucceeded` — a WRITE that
+ * actually completed. Three narrower signals were each tried and each failed:
+ *
+ *  - any success (it resets nothing now, but a read succeeds while writes fail,
+ *    so reads must not count);
+ *  - elapsed quiet time (while open, no traffic reaches Redis, so silence is
+ *    manufactured by the breaker and an idle spell looked like recovery);
+ *  - probe ADMISSION (the admitted caller has not run its command yet, so
+ *    closing there released a burst on no evidence at all).
+ *
+ * A completed write is the one signal none of those defeat: it cannot be
+ * produced by silence, by the breaker's own gating, or by a Redis that serves
+ * reads while rejecting every write.
  */
 const BREAKER_THRESHOLD = 3;
 const BREAKER_WINDOW_MS = 60_000;
 const BREAKER_COOLDOWN_MS = 30_000;
-const BREAKER_CLOSE_PROBES = 2;
+const BREAKER_CLOSE_WRITES = 2;
 
 let failuresInWindow = 0;
 let windowStartedAt = 0;
 let breakerOpenUntil = 0;
 let lastWarnedAt = 0;
-let cleanProbes = 0;
+let cleanWrites = 0;
 
 // `undefined` = not yet resolved; `null` = resolved but unconfigured.
 let client: Redis | null | undefined;
@@ -120,22 +122,11 @@ export function getRedis(): Redis | null {
   // makes this single-flight: the next caller sees an unexpired window and
   // takes the fallback, so only this one probe pays the timeout. An idle period
   // therefore admits ONE caller, never a whole burst.
+  //
+  // Admission deliberately does NOT close the breaker: this caller has not run
+  // its command yet, so there is nothing to conclude from being let through.
+  // Only `noteRedisWriteSucceeded` closes it.
   breakerOpenUntil = now + BREAKER_COOLDOWN_MS;
-  cleanProbes += 1;
-
-  // Close only once enough probes have been admitted without any of them
-  // reporting a failure. `noteRedisFailure` resets this, so the count is
-  // evidence gathered from real calls rather than from the quiet the breaker
-  // itself creates.
-  if (cleanProbes >= BREAKER_CLOSE_PROBES) {
-    breakerOpenUntil = 0;
-    failuresInWindow = 0;
-    windowStartedAt = 0;
-    lastWarnedAt = 0;
-    cleanProbes = 0;
-    logger.warn("Redis recovered; resuming shared cache and rate limiting.");
-  }
-
   return client;
 }
 
@@ -181,14 +172,14 @@ function buildClient(url: string, token: string): Redis | null {
  * Report a failed Redis call to the breaker.
  *
  * Every caller that catches a Redis fault must call this — an unreported
- * failure leaves the breaker closed and the outage cost unbounded. There is
- * deliberately no success counterpart: see the breaker note above.
+ * failure leaves the breaker closed and the outage cost unbounded. Applies to
+ * reads and writes alike; only CLOSING is write-only.
  */
 export function noteRedisFailure(): void {
   const now = Date.now();
 
-  // Any failure invalidates the probe evidence gathered so far.
-  cleanProbes = 0;
+  // Any failure invalidates the write evidence gathered so far.
+  cleanWrites = 0;
 
   // Failures age out, so blips spread further apart than the window never
   // accumulate into a trip.
@@ -221,6 +212,33 @@ export function noteRedisFailure(): void {
   );
 }
 
+/**
+ * Report a Redis WRITE that completed successfully.
+ *
+ * The only signal that closes the breaker, and only writes qualify — a read can
+ * succeed against a Redis that rejects every write. Reads deliberately report
+ * nothing on success. This never touches the failure window: a success must not
+ * be able to erase a failure streak, only to prove the write path works again.
+ */
+export function noteRedisWriteSucceeded(): void {
+  // Nothing to prove while closed.
+  if (breakerOpenUntil === 0) {
+    return;
+  }
+
+  cleanWrites += 1;
+  if (cleanWrites < BREAKER_CLOSE_WRITES) {
+    return;
+  }
+
+  breakerOpenUntil = 0;
+  failuresInWindow = 0;
+  windowStartedAt = 0;
+  lastWarnedAt = 0;
+  cleanWrites = 0;
+  logger.warn("Redis recovered; resuming shared cache and rate limiting.");
+}
+
 /** Test seam: drop the memoized client and reset the breaker. */
 export function resetRedisForTests(): void {
   client = undefined;
@@ -228,5 +246,5 @@ export function resetRedisForTests(): void {
   windowStartedAt = 0;
   breakerOpenUntil = 0;
   lastWarnedAt = 0;
-  cleanProbes = 0;
+  cleanWrites = 0;
 }

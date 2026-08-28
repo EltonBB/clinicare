@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getRedis,
   noteRedisFailure,
+  noteRedisWriteSucceeded,
   REDIS_REQUEST_TIMEOUT_MS,
   resetRedisForTests,
 } from "./redis";
@@ -277,9 +278,9 @@ describe("circuit breaker", () => {
   it("clears the window on recovery, so a later blip starts from zero", () => {
     fail(3);
     vi.advanceTimersByTime(30_000);
-    getRedis(); // probe 1
-    vi.advanceTimersByTime(30_000);
-    getRedis(); // probe 2 -> recovered
+    getRedis();
+    noteRedisWriteSucceeded();
+    noteRedisWriteSucceeded(); // recovered
 
     fail(2);
     expect(getRedis()).not.toBeNull();
@@ -343,18 +344,47 @@ describe("circuit breaker", () => {
     expect(console.warn).toHaveBeenCalledTimes(1);
   });
 
-  it("closes after enough probes come back without a failure", () => {
+  it("closes only after completed writes, not on probe admission", () => {
     fail(3);
     expect(getRedis()).toBeNull();
 
     vi.advanceTimersByTime(30_000);
-    expect(getRedis()).not.toBeNull(); // probe 1, still gated for others
+    expect(getRedis()).not.toBeNull(); // probe admitted...
+    expect(getRedis()).toBeNull(); // ...but admission alone proves nothing
+
+    noteRedisWriteSucceeded(); // 1st completed write
     expect(getRedis()).toBeNull();
 
-    vi.advanceTimersByTime(30_000);
-    expect(getRedis()).not.toBeNull(); // probe 2 closes it
-    expect(getRedis()).not.toBeNull(); // now open to everyone
+    noteRedisWriteSucceeded(); // 2nd closes it
+    expect(getRedis()).not.toBeNull();
     expect(String(vi.mocked(console.warn).mock.calls.at(-1)![0])).toMatch(/recovered/i);
+  });
+
+  /**
+   * The read-ok / write-failing case, end to end. A read succeeding proves
+   * nothing, so reads report no success at all; only the failing writes are
+   * reported, and the breaker must never close.
+   */
+  it("never closes while writes keep failing, however many reads succeed", () => {
+    fail(3);
+    for (let cycle = 0; cycle < 6; cycle++) {
+      vi.advanceTimersByTime(30_000);
+      getRedis(); // probe admitted; its GET succeeds and reports nothing
+      fail(1); // its SET failed
+      expect(getRedis()).toBeNull();
+    }
+    expect(
+      vi.mocked(console.warn).mock.calls.filter((c) => /recovered/i.test(String(c[0])))
+    ).toHaveLength(0);
+  });
+
+  it("discards write evidence when a failure intervenes", () => {
+    fail(3);
+    vi.advanceTimersByTime(30_000);
+    noteRedisWriteSucceeded(); // 1 of 2
+    fail(1); // resets the evidence
+    noteRedisWriteSucceeded(); // back to 1 of 2
+    expect(getRedis()).toBeNull();
   });
 
   /**
@@ -377,6 +407,17 @@ describe("circuit breaker", () => {
         /recovered/i.test(String(c[0]))
       )
     ).toHaveLength(0);
+  });
+
+  it("ignores write successes reported while it is already closed", () => {
+    noteRedisWriteSucceeded();
+    noteRedisWriteSucceeded();
+    noteRedisWriteSucceeded();
+    expect(console.warn).not.toHaveBeenCalled();
+
+    // Those must not have banked credit toward a future close.
+    fail(3);
+    expect(getRedis()).toBeNull();
   });
 
   it("does not close early while failures keep arriving", () => {
@@ -402,16 +443,14 @@ describe("circuit breaker", () => {
     expect(console.warn).not.toHaveBeenCalled();
   });
 
-  it("needs a fresh probe run after each failure, not a cumulative count", () => {
+  it("keeps admitting exactly one probe per cooldown while broken", () => {
     fail(3);
     for (let cycle = 0; cycle < 4; cycle++) {
       vi.advanceTimersByTime(30_000);
-      getRedis(); // probe admitted
-      fail(1); // and it failed, so the evidence resets
+      expect(getRedis()).not.toBeNull(); // the one probe
+      expect(getRedis()).toBeNull(); // everyone else gated
+      fail(1);
     }
-    vi.advanceTimersByTime(30_000);
-    expect(getRedis()).not.toBeNull(); // one probe
-    expect(getRedis()).toBeNull(); // but still not closed
   });
 
   it("returns null for an unconfigured Redis regardless of breaker state", () => {

@@ -1,7 +1,11 @@
 import { Ratelimit } from "@upstash/ratelimit";
 
 import { logger } from "@/lib/logger";
-import { getRedis, noteRedisFailure } from "@/lib/redis";
+import {
+  getRedis,
+  noteRedisFailure,
+  noteRedisWriteSucceeded,
+} from "@/lib/redis";
 
 /**
  * Rate limiter with two backings behind one async API:
@@ -53,15 +57,33 @@ export type RateLimitResult = {
 // construction), cached so we don't rebuild it per request.
 const limiterCache = new Map<string, Ratelimit>();
 
+// Rules whose limiter could not be built. A construction failure is a fixed
+// config error, not a transient one, so it is remembered: retrying per request
+// would re-log to Sentry on every call AND burn a half-open breaker probe
+// without ever issuing a Redis command.
+const limiterBuildFailed = new Set<string>();
+
 function getRedisLimiter(rule: RateLimitRule): Ratelimit | null {
+  const cacheKey = `${rule.limit}:${rule.windowMs}`;
+
+  // Checked before `getRedis()` on purpose — see the note above.
+  if (limiterBuildFailed.has(cacheKey)) {
+    return null;
+  }
+
+  // The breaker is consulted on EVERY call, including cache hits below: a
+  // cached limiter still issues a real Redis command, so short-circuiting
+  // before this would let `checkRateLimit` bypass an open breaker entirely.
+  // The breaker is consulted on EVERY call, including cache hits below: a
+  // cached limiter still issues a real Redis command, so short-circuiting
+  // before this would let `checkRateLimit` bypass an open breaker entirely.
+  // `rate-limit.test.ts` pins this.
   const redis = getRedis();
   if (!redis) {
     return null;
   }
 
-  const cacheKey = `${rule.limit}:${rule.windowMs}`;
   const cached = limiterCache.get(cacheKey);
-
   if (cached) {
     return cached;
   }
@@ -82,7 +104,12 @@ function getRedisLimiter(rule: RateLimitRule): Ratelimit | null {
     limiterCache.set(cacheKey, limiter);
     return limiter;
   } catch (error) {
-    logger.error("Rate limiter could not be constructed; using in-memory.", error);
+    limiterBuildFailed.add(cacheKey);
+    // Logged once per rule, not once per request.
+    logger.error(
+      "Rate limiter could not be constructed; falling back to PER-INSTANCE in-memory limiting.",
+      error
+    );
     return null;
   }
 }
@@ -147,6 +174,9 @@ export async function checkRateLimit(
       // the function alive until the response flushes. If any route ever moves to
       // the Edge runtime, await it via `context.waitUntil(result.pending)`.
       const result = await limiter.limit(key);
+      // `limit` runs an eval that increments the window — a real write, so it
+      // is valid evidence that the write path works again.
+      noteRedisWriteSucceeded();
       const now = Date.now();
 
       return {

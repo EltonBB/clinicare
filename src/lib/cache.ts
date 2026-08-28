@@ -1,4 +1,8 @@
-import { getRedis, noteRedisFailure } from "@/lib/redis";
+import {
+  getRedis,
+  noteRedisFailure,
+  noteRedisWriteSucceeded,
+} from "@/lib/redis";
 
 /**
  * Provider-agnostic cache seam (cache-aside).
@@ -115,6 +119,7 @@ export async function getCached<T>(
   if (redis) {
     try {
       await redis.set(namespaced, fresh, { ex: ttlSeconds });
+      noteRedisWriteSucceeded();
     } catch {
       // Cache write fault — the value is still returned to the caller.
       noteRedisFailure();
@@ -134,6 +139,7 @@ export async function invalidateCache(key: string): Promise<void> {
   if (redis) {
     try {
       await redis.del(namespaced);
+      noteRedisWriteSucceeded();
     } catch {
       // Best-effort; a stale entry expires on its own TTL.
       noteRedisFailure();
