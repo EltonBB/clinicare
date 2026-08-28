@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { rotateForFairness, utcHourIndex } from "./reminder-fairness";
+import { rotateForFairness } from "./reminder-fairness";
 
 describe("rotateForFairness", () => {
   it("returns an empty list unchanged (no modulo-by-zero)", () => {
     expect(rotateForFairness([], 5)).toEqual([]);
   });
 
-  it("does not rotate on hour 0", () => {
+  it("does not rotate at offset 0", () => {
     expect(rotateForFairness(["a", "b", "c"], 0)).toEqual(["a", "b", "c"]);
   });
 
-  it("advances the start by one business per hour", () => {
+  it("starts from the given offset", () => {
     const businesses = ["a", "b", "c"];
     expect(rotateForFairness(businesses, 1)).toEqual(["b", "c", "a"]);
     expect(rotateForFairness(businesses, 2)).toEqual(["c", "a", "b"]);
@@ -38,71 +38,62 @@ describe("rotateForFairness", () => {
     expect(rotateForFairness(["only"], 7)).toEqual(["only"]);
   });
 
-  it("stays in range for a negative hour index", () => {
-    // Guards the naive `hourIndex % length`, which would yield a negative
-    // slice index and silently reorder the list.
+  it("stays in range for a negative offset", () => {
+    // Guards the naive `offset % length`, which would yield a negative slice
+    // index and silently reorder the list.
     expect(rotateForFairness(["a", "b", "c"], -1)).toEqual(["c", "a", "b"]);
   });
 
-  it("truncates a non-integer hour index instead of producing holes", () => {
+  it("truncates a non-integer offset instead of producing holes", () => {
     expect(rotateForFairness(["a", "b", "c"], 1.9)).toEqual(["b", "c", "a"]);
   });
 
-  /**
-   * The property the whole fix exists for: with a truncated run that only
-   * ever reaches the first `budget` businesses, every business must still be
-   * reached within one full cycle. Before rotation, the same tail was skipped
-   * forever — not "retried next hour" as the code's own comments claimed.
-   */
-  it("reaches every business within one full cycle even when runs are truncated", () => {
-    const businesses = ["a", "b", "c", "d", "e", "f"];
-    const budget = 2; // only the first 2 businesses get processed each run
-    const reached = new Set<string>();
+  it("handles an offset stale relative to a list that shrank since it was set", () => {
+    // The persisted cursor can outlive the exact list it was computed
+    // against (a business disabled WhatsApp between runs). Must not throw or
+    // produce an out-of-bounds slice.
+    expect(rotateForFairness(["a", "b"], 47)).toEqual(["b", "a"]);
+  });
 
-    for (let hour = 0; hour < businesses.length; hour++) {
-      for (const business of rotateForFairness(businesses, hour).slice(0, budget)) {
-        reached.add(business);
+  /**
+   * The property Codex's finding is actually about. A caller that advances
+   * the offset by a FIXED amount per run (the original, wrong version of
+   * this fix) barely moves under sustained low throughput: with 50 items and
+   * capacity for 3, +1 per run reaches item 49 only after ~47 runs. Advancing
+   * by the ACTUAL number attempted each run reaches every item within
+   * ceil(n / k) runs regardless of throughput — this is what makes "retried
+   * next run" true rather than aspirational.
+   */
+  it("reaches every business within ceil(n/k) runs when the offset advances by the attempted count", () => {
+    const n = 50;
+    const k = 3; // only 3 businesses fit in a budget-constrained run
+    const businesses = Array.from({ length: n }, (_, i) => i);
+    const reached = new Set<number>();
+    let cursor = 0;
+
+    let runs = 0;
+    while (reached.size < n) {
+      const attempted = rotateForFairness(businesses, cursor).slice(0, k);
+      attempted.forEach((b) => reached.add(b));
+      cursor = (cursor + attempted.length) % n;
+      runs += 1;
+      if (runs > n) {
+        throw new Error("did not converge — this is the bug Codex found");
       }
     }
 
-    expect(reached.size).toBe(businesses.length);
+    expect(runs).toBe(Math.ceil(n / k));
   });
 
-  it("starves nobody even when only one business fits per run", () => {
+  it("still reaches every business when a slow-starting run attempts 0", () => {
+    // The advance amount can legitimately be 0 (deadline hit before a single
+    // business started) — must not get stuck advancing by 0 forever.
     const businesses = ["a", "b", "c", "d"];
-    const reached = new Set<string>();
+    let cursor = 0;
+    cursor = (cursor + 0) % businesses.length; // a fully-starved run
+    expect(rotateForFairness(businesses, cursor)).toEqual(["a", "b", "c", "d"]);
 
-    for (let hour = 0; hour < businesses.length; hour++) {
-      reached.add(rotateForFairness(businesses, hour)[0]!);
-    }
-
-    expect(reached.size).toBe(businesses.length);
-  });
-});
-
-describe("utcHourIndex", () => {
-  it("counts whole UTC hours since the epoch", () => {
-    expect(utcHourIndex(Date.UTC(1970, 0, 1, 0, 0, 0))).toBe(0);
-    expect(utcHourIndex(Date.UTC(1970, 0, 1, 1, 0, 0))).toBe(1);
-  });
-
-  it("is stable across a single UTC hour", () => {
-    const start = Date.UTC(2026, 7, 28, 10, 0, 0);
-    const end = Date.UTC(2026, 7, 28, 10, 59, 59);
-    expect(utcHourIndex(start)).toBe(utcHourIndex(end));
-  });
-
-  it("advances by exactly one at the UTC hour boundary", () => {
-    const before = Date.UTC(2026, 7, 28, 10, 59, 59);
-    const after = Date.UTC(2026, 7, 28, 11, 0, 0);
-    expect(utcHourIndex(after) - utcHourIndex(before)).toBe(1);
-  });
-
-  it("advances by exactly one across a DST transition", () => {
-    // Europe/Berlin shifts on 2026-10-25. A local-time hour index could
-    // repeat or skip an hour here; the UTC index must not.
-    const before = Date.UTC(2026, 9, 25, 0, 0, 0);
-    const after = Date.UTC(2026, 9, 25, 1, 0, 0);
-    expect(utcHourIndex(after) - utcHourIndex(before)).toBe(1);
+    cursor = (cursor + 2) % businesses.length; // next run attempts 2
+    expect(rotateForFairness(businesses, cursor)).toEqual(["c", "d", "a", "b"]);
   });
 });

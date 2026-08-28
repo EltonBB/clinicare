@@ -45,14 +45,20 @@ describe("cron lock", () => {
   /**
    * Redis returns null (not a throw) when NX finds the key already set — the
    * exact "another run is in progress" case this lock exists to catch.
+   *
+   * Regression test: this originally asserted `store` WAS called on
+   * contention, encoding the bug Codex found rather than catching it —
+   * evaluating an NX precondition needs no memory allocation, so a contended
+   * result proves nothing about whether Redis can actually store data.
+   * Reporting it as evidence would let repeated contended probes satisfy the
+   * breaker's recovery threshold while Redis is still genuinely degraded.
    */
-  it("reports contention, not a fault, when another run holds the lock", async () => {
+  it("does not report contention as store evidence, and it isn't a fault either", async () => {
     set.mockResolvedValue(null);
     const { acquireCronLock } = await importFresh();
 
     await expect(acquireCronLock("reminders", 300)).resolves.toBe(false);
-    // Finding the lock held is not a Redis fault — the call still answered.
-    expect(store).toHaveBeenCalledTimes(1);
+    expect(store).not.toHaveBeenCalled();
     expect(failure).not.toHaveBeenCalled();
   });
 

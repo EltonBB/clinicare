@@ -5,7 +5,8 @@ import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
 import { prisma } from "@/lib/prisma";
-import { rotateForFairness, utcHourIndex } from "@/lib/reminder-fairness";
+import { getReminderCursor, setReminderCursor } from "@/lib/reminder-cursor";
+import { rotateForFairness } from "@/lib/reminder-fairness";
 import { reminderTypeForAppointment } from "@/lib/reminder-schedule";
 import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 
@@ -401,7 +402,11 @@ export async function syncAppointmentRemindersJob(
 
   progress.total = businesses.length;
 
-  const orderedBusinesses = rotateForFairness(businesses, utcHourIndex());
+  // Resume from wherever the LAST run left off, not from a clock-derived
+  // guess: under sustained low throughput (few businesses fit per run), a
+  // fixed per-hour advance barely moves — see reminder-cursor.ts.
+  const startCursor = await getReminderCursor();
+  const orderedBusinesses = rotateForFairness(businesses, startCursor);
 
   await mapWithConcurrency(orderedBusinesses, REMINDER_BUSINESS_CONCURRENCY, async (business) => {
     if (Date.now() >= runDeadlineAt) {
@@ -423,6 +428,18 @@ export async function syncAppointmentRemindersJob(
     progress.sent += result.sent;
     progress.failed += result.failed;
   });
+
+  // Advance by exactly how many businesses were GIVEN A TURN this run
+  // (attempted, whether they succeeded, failed, or threw — all took a turn;
+  // only `skipped` never got one) — not by a fixed amount. That is what
+  // makes the next run start at the actual skipped suffix instead of
+  // re-covering ground already attempted. Guarded on progress.total > 0:
+  // rotateForFairness itself guards the empty-list case, but there is no
+  // cursor worth persisting when nothing was eligible this run.
+  if (progress.total > 0) {
+    const attempted = progress.total - progress.skipped;
+    await setReminderCursor((startCursor + attempted) % progress.total);
+  }
 
   if (progress.skipped > 0) {
     logger.warn("Reminder run out of time; some clinics deferred to next hour.", {

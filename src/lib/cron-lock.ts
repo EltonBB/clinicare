@@ -30,14 +30,21 @@ export async function acquireCronLock(
   }
 
   try {
-    // NX: only set if absent. `SET` is denyoom-flagged (fails when Redis is
-    // out of memory), so a completed one is valid breaker-recovery evidence —
-    // same rule as the cache's SET, see lib/redis.ts.
+    // NX: only set if absent. Redis evaluates the NX precondition (does the
+    // key exist?) without attempting to allocate anything, so a contended
+    // result (`null`) proves nothing about whether Redis can currently store
+    // data — only a result of "OK" means the write itself went through.
+    // Reporting contention as store evidence would let two lock probes that
+    // both lose to contention — needing no memory at all — satisfy the
+    // breaker's recovery threshold while Redis is still genuinely unable to
+    // write, reopening traffic to a store that isn't actually healthy.
     const result = await redis.set(LOCK_PREFIX + name, "1", {
       nx: true,
       ex: ttlSeconds,
     });
-    noteRedisStoreSucceeded();
+    if (result !== null) {
+      noteRedisStoreSucceeded();
+    }
     return result !== null;
   } catch {
     noteRedisFailure();
