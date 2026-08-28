@@ -11,7 +11,7 @@
 |---|---|
 | **Market** | Free pilot to ~50 **Kosovo** clinics, then **Balkans/Europe**. **US entry is paused as of 2026-08-28** — not cancelled, just not being scheduled or built toward right now. If it reopens, resume from §3 Step 5 below. |
 | **Compliance** | **GDPR is the active regime** — Kosovo's GDPR-aligned law, plus any EU clinic. The HIPAA plan (§3 Step 5, §5) is kept intact for if the US reopens, but nothing should be scheduled or blocked on it while it's paused. |
-| **Host** | **AWS indefinitely — no cloud migration.** Stay on the current AWS-backed stack (Supabase / Vercel / Baileys / OpenAI; Supabase + Vercel are AWS-hosted). Provider seams are kept for portability, not for a planned migration. |
+| **Host** | **AWS indefinitely for the core app — no cloud migration planned.** Supabase + Vercel (both AWS-hosted) run everything except one piece: the WhatsApp worker (`services/whatsapp-worker/`) runs on **Railway — a deliberate, indefinite exception, not a staging step.** Baileys needs an always-on process Vercel's serverless functions can't provide, and Railway is the cost-effective pilot-scale choice for that. It's a portable Docker container (`DEPLOY.md`), so moving it to AWS ECS/Fargate is a low-effort *option* if it's ever worth doing (e.g. consolidating billing, a BAA) — not a scheduled migration. Provider seams elsewhere are kept for portability, not for a planned migration. |
 | **Why AWS** | Stay on the stack the product already runs on — no migration cost or risk. Cost is a non-issue at pilot scale (~$150–400/mo). If the US reopens, US/PHI coverage means a **BAA with each PHI-handling provider** (Supabase, Vercel, the SMS/email provider) — see §5. |
 | **Sequencing** | Build the product to "done" on the current stack, with the app-level safeguards below built in alongside it, not retrofitted after. |
 
@@ -69,14 +69,15 @@
 
 ## 4. Provider portability (reference)
 
-No cloud migration is planned — the stack stays on AWS-backed providers (Supabase + Vercel are AWS-hosted) indefinitely. The seams from §1 exist so that **if** a single provider ever needs swapping (for a BAA, pricing, or reliability reason), it's a contained adapter change, not a rewrite:
+No cloud migration is planned for the core app — Supabase + Vercel (AWS-hosted) run it indefinitely. The WhatsApp worker's Railway hosting is the one deliberate, accepted exception (see §1's Host row). The seams below exist so that **if** a single provider ever needs swapping (for a BAA, pricing, or reliability reason), it's a contained adapter change, not a rewrite:
 
 | Seam | Today | Swap effort if ever needed |
 |---|---|---|
 | Database | Supabase Postgres (via Prisma, `lib/prisma.ts`) | Low — connection string + data copy to another Postgres host (e.g. AWS RDS) |
 | Storage | Supabase Storage (`lib/media-storage*.ts`) | Low — one module |
 | Auth | Supabase Auth (`@supabase/ssr`) behind `lib/auth.ts` / `lib/business.ts` | **High — the hard part** |
-| Hosting / cron | Vercel + `vercel.json` cron | Medium |
+| Hosting / cron (app) | Vercel + `vercel.json` cron | Medium |
+| Hosting (WhatsApp worker) | Railway, `services/whatsapp-worker/` — a portable Docker container | Low — same image runs on AWS ECS/Fargate unchanged (`DEPLOY.md`) |
 | AI | OpenAI (`lib/analytics-ai.ts`) | Low |
 | Messaging | Baileys (WhatsApp) behind `sendMessage()`; SMS/email adapters not yet built | Low — swap or add an adapter |
 
