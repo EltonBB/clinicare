@@ -5,6 +5,7 @@ import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
 import { prisma } from "@/lib/prisma";
+import { rotateForFairness, utcHourIndex } from "@/lib/reminder-fairness";
 import { reminderTypeForAppointment } from "@/lib/reminder-schedule";
 import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 
@@ -393,11 +394,16 @@ export async function syncAppointmentRemindersJob(
     select: {
       id: true,
     },
+    // Stable base order; the rotation below is only meaningful if the
+    // underlying order doesn't shuffle between runs.
+    orderBy: { id: "asc" },
   });
 
   progress.total = businesses.length;
 
-  await mapWithConcurrency(businesses, REMINDER_BUSINESS_CONCURRENCY, async (business) => {
+  const orderedBusinesses = rotateForFairness(businesses, utcHourIndex());
+
+  await mapWithConcurrency(orderedBusinesses, REMINDER_BUSINESS_CONCURRENCY, async (business) => {
     if (Date.now() >= runDeadlineAt) {
       progress.skipped += 1;
       return;

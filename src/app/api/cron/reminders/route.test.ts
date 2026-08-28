@@ -12,15 +12,15 @@ vi.mock("@/lib/logger", () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
 vi.mock("@/lib/staff-clock", () => ({ autoCloseStaleTimeEntries }));
-vi.mock("@/lib/reminders", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/reminders")>(
-    "@/lib/reminders"
-  );
-  return {
-    ...actual,
-    syncAppointmentRemindersJob,
-  };
-});
+// Fully self-contained — NOT vi.importActual. reminders.ts imports lib/prisma,
+// which reads DATABASE_URL at module load time; CI has no .env, so pulling in
+// the real module here throws before a single test runs. createReminderRunProgress
+// is trivial enough to reimplement rather than import.
+vi.mock("@/lib/reminders", () => ({
+  syncAppointmentRemindersJob,
+  createReminderRunProgress: () => ({ total: 0, skipped: 0, sent: 0, failed: 0 }),
+  REMINDER_RUN_BUDGET_MS: 240_000,
+}));
 
 function request() {
   return new Request("https://x.test/api/cron/reminders", {
