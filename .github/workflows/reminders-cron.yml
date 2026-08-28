@@ -1,0 +1,100 @@
+name: Reminders cron
+
+# Vercel Hobby caps cron at once daily, so a reminder run that doesn't finish
+# DROPS reminders rather than delaying them — a reminder is only useful in the
+# <=24h before its appointment. Hourly turns truncation back into a delay.
+#
+# This is the ONLY reminder schedule; the daily vercel.json entry was removed
+# with it. They must not both run: suppression is read-then-send-then-write, so
+# two overlapping invocations can both deliver the same reminder.
+
+on:
+  schedule:
+    # Hourly, on the hour (UTC). GitHub may delay scheduled runs under load;
+    # acceptable here because a delayed run still lands well inside the <=24h
+    # reminder window, and the concurrency group below keeps runs serialised.
+    - cron: "0 * * * *"
+  # Lets you trigger a run by hand from the Actions tab without waiting.
+  workflow_dispatch:
+
+# Never let a slow run overlap the next hour's; the route is safe to re-enter
+# but stacking runs would just contend for the same tenants.
+concurrency:
+  group: reminders-cron
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call the reminders cron endpoint
+        env:
+          APP_URL: ${{ vars.APP_URL || 'https://clinicare-vela.space' }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CRON_SECRET}" ]; then
+            echo "::error::CRON_SECRET is not set in this repository's Actions secrets."
+            exit 1
+          fi
+
+          # --fail-with-body so a non-2xx is a workflow failure (visible in the
+          # Actions tab) instead of a silent success. -sS keeps it quiet on
+          # success but still prints transport errors.
+          #
+          # The secret goes in a header, never the URL, so it cannot leak into
+          # logs, redirects, or an access log. GitHub also masks it in output.
+          #
+          # DELIBERATELY NO --retry. This endpoint is not idempotent: it
+          # suppresses duplicates via a non-atomic read -> send -> mark SENT, so
+          # a second invocation overlapping the first can deliver the same
+          # patient reminder twice. curl retries timeouts and 408/429/5xx —
+          # exactly the cases where the first request may have been accepted and
+          # is still running. The hourly schedule IS the retry: a missed trigger
+          # costs at most an hour, well inside the <=24h reminder window. The
+          # concurrency group above serialises workflow runs, not repeated
+          # requests inside one curl process.
+          HTTP_BODY=$(curl -sS --fail-with-body \
+            --max-time 120 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL}/api/cron/reminders")
+
+          echo "Response: ${HTTP_BODY}"
+
+          # Both counts are optional in the body, so normalise before any
+          # arithmetic — `set -u` would abort on an unset one.
+          SKIPPED=$(printf '%s' "${HTTP_BODY}" | grep -o '"skippedBusinesses":[0-9]*' | cut -d: -f2 || true)
+          ERRORED=$(printf '%s' "${HTTP_BODY}" | grep -o '"erroredBusinesses":[0-9]*' | cut -d: -f2 || true)
+          SKIPPED=${SKIPPED:-0}
+          ERRORED=${ERRORED:-0}
+
+          # The route counts errored clinics INSIDE skippedBusinesses, so
+          # subtract them here: the two messages below prescribe opposite
+          # remedies, and reporting one clinic in both would tell the operator
+          # to add capacity and that capacity won't help, for the same clinic.
+          TRUNCATED=$(( SKIPPED - ERRORED ))
+          if [ "${TRUNCATED}" -lt 0 ]; then
+            TRUNCATED=0
+          fi
+
+          # Ran out of budget: a real capacity signal.
+          if [ "${TRUNCATED}" -gt 0 ]; then
+            echo "::warning::${TRUNCATED} clinic(s) were truncated this run — they retry next hour. Sustained non-zero values mean the run needs more capacity."
+          fi
+
+          # Independent of the counts. A run that times out before it knows its
+          # tenant count reports 0 skipped, so keying the alarm solely off that
+          # count would stay silent for the worst runs.
+          if printf '%s' "${HTTP_BODY}" | grep -q '"timedOut":true'; then
+            echo "::warning::The reminder run hit its hard timeout. Some clinics were not processed; they retry next hour."
+          fi
+
+          # A bug, not a capacity limit. `::error::` only annotates — it does
+          # NOT change the step's exit status — so without the explicit exit the
+          # run still concludes green and failure-based alerting never fires.
+          if [ "${ERRORED}" -gt 0 ]; then
+            echo "::error::${ERRORED} clinic(s) failed with an error, not a capacity limit. Check the reminder logs — more capacity will not fix this."
+            exit 1
+          fi

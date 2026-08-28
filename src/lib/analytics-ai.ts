@@ -2,10 +2,33 @@ import { Prisma, type AnalyticsSnapshotPeriod } from "@prisma/client";
 
 import { buildReportsViewFromWorkspace, type ReportPeriodKey } from "@/lib/reports";
 import { getReportWorkspaceData } from "@/lib/report-data";
+import { hasTimeFor } from "@/lib/deadline";
 import { prisma } from "@/lib/prisma";
 
 const manualRefreshCooldownMs = 10 * 60 * 1000;
 const analyticsRequestTimeoutMs = 50 * 1000;
+
+/**
+ * Headroom held back from the caller's deadline so the snapshot writes that
+ * follow every AI attempt still fit inside it.
+ *
+ * Both branches below persist unconditionally — the rule-based FALLBACK row is
+ * the auditable record that AI was unavailable, so skipping it would be worse
+ * than writing it late. Without this reserve, a budget consumed by the
+ * workspace fetch and report build leaves the AI calls returning instantly and
+ * three concurrent upserts starting AT the deadline, which on a slow database
+ * can cross the platform's function cap and leave a partial snapshot set with
+ * no cron response at all.
+ */
+const SNAPSHOT_PERSIST_RESERVE_MS = 5 * 1000;
+
+/**
+ * Least usable AI time worth starting a tenant for. Mirrors the floor inside
+ * `requestOpenAIInsight`, which refuses to begin a model attempt with under
+ * five seconds left — below this every period is guaranteed to take the
+ * failure path.
+ */
+const MIN_USABLE_AI_MS = 5 * 1000;
 const analyticsModelAttemptTimeoutMs = 22 * 1000;
 
 const AI_PERIOD_SCHEMA = {
@@ -260,6 +283,14 @@ export type GenerateAnalyticsSnapshotResult = {
   message: string;
   rateLimited?: boolean;
   nextRefreshAt?: string;
+  /**
+   * The run ran out of time before it could genuinely attempt AI, so NOTHING
+   * was persisted. Distinct from a real fallback: writing one would refresh
+   * `generatedAt` and make the tenant look freshly analysed to the cron's
+   * stalest-first ordering, sending it to the back of the queue without ever
+   * having produced analysis.
+   */
+  deadlineSkipped?: boolean;
 };
 
 function periodKeyToSnapshotPeriod(period: ReportPeriodKey): AnalyticsSnapshotPeriod {
@@ -378,6 +409,12 @@ async function requestOpenAIInsight(
     schema?: typeof AI_PERIOD_SCHEMA;
     schemaName?: string;
     maxOutputTokens?: number;
+    /**
+     * Caller-imposed ceiling, used by the analytics cron so a tenant that
+     * starts late can't outlive the platform's function cap. Only ever
+     * shortens the default budget, never extends it.
+     */
+    budgetMs?: number;
   }
 ) {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
@@ -389,13 +426,17 @@ async function requestOpenAIInsight(
   }
 
   const startedAt = Date.now();
+  const budgetMs = Math.min(
+    analyticsRequestTimeoutMs,
+    options?.budgetMs ?? analyticsRequestTimeoutMs
+  );
   const models = getAnalyticsModels();
   let lastModel = models[0] ?? getAnalyticsModel();
   let lastError = "OpenAI analytics request failed.";
 
   for (const model of models) {
     lastModel = model;
-    const remainingTimeoutMs = analyticsRequestTimeoutMs - (Date.now() - startedAt);
+    const remainingTimeoutMs = budgetMs - (Date.now() - startedAt);
 
     if (remainingTimeoutMs < 5000) {
       lastError = "OpenAI analytics request timed out before a backup model could finish.";
@@ -593,17 +634,68 @@ async function getManualCooldownResults(args: {
 
 export async function generateAnalyticsSnapshotsForBusiness(
   businessId: string,
-  options?: { force?: boolean }
+  options?: {
+    force?: boolean;
+    /**
+     * Absolute deadline (epoch ms) for this tenant's AI calls. Absolute rather
+     * than a duration on purpose: the workspace fetch and report build below
+     * happen before the first AI call, so a duration captured by the caller
+     * would not count them and the request could still outlive the platform's
+     * function cap. Omitted by the manual-refresh path, which isn't running
+     * under a batch clock.
+     */
+    deadlineAt?: number;
+  }
 ): Promise<GenerateAnalyticsSnapshotResult[]> {
   const workspace = await getReportWorkspaceData(businessId);
   const report = buildReportsViewFromWorkspace(workspace);
   const periods: ReportPeriodKey[] = ["daily", "weekly", "monthly"];
+  // Between the prep awaits: the workspace fetch and report build are the slow
+  // part, so gate before spending more on the cooldown lookup. The fuller
+  // recheck below still runs — this only avoids paying for another query when
+  // the answer is already known.
+  if (
+    !hasTimeFor(
+      options?.deadlineAt,
+      SNAPSHOT_PERSIST_RESERVE_MS + MIN_USABLE_AI_MS
+    )
+  ) {
+    return periods.map((period) => ({
+      ok: false,
+      period,
+      usedAi: false,
+      deadlineSkipped: true,
+      message: "Not enough time remained in this run to refresh insights.",
+    }));
+  }
+
   const cooldownResults = options?.force
     ? []
     : await getManualCooldownResults({ businessId, report });
 
   if (allPeriodsRateLimited(cooldownResults)) {
     return cooldownResults;
+  }
+
+  // Recheck the deadline AFTER the workspace fetch and report build. Gating
+  // only at the caller couldn't account for those queries, so on a slow
+  // database a tenant could be admitted, spend its whole allowance here, and
+  // then write three fallback snapshots that reset its own staleness.
+  // Returning without persisting keeps `generatedAt` untouched, so the tenant
+  // stays stale and sorts FIRST on the next run instead of last.
+  if (options?.deadlineAt !== undefined) {
+    const usableAiMs =
+      options.deadlineAt - SNAPSHOT_PERSIST_RESERVE_MS - Date.now();
+
+    if (usableAiMs < MIN_USABLE_AI_MS) {
+      return periods.map((period) => ({
+        ok: false,
+        period,
+        usedAi: false,
+        deadlineSkipped: true,
+        message: "Not enough time remained in this run to refresh insights.",
+      }));
+    }
   }
 
   const periodPromptPayloads = periods.reduce(
@@ -631,6 +723,17 @@ export async function generateAnalyticsSnapshotsForBusiness(
           schema: AI_PERIOD_SCHEMA,
           schemaName: `clinic_${period}_analytics_snapshot`,
           maxOutputTokens: 1400,
+          // Derived HERE, not by the caller, so everything above (workspace
+          // fetch, report build, cooldown lookup) is already counted. The
+          // persistence reserve is held back so the upsert below still fits
+          // inside the caller's deadline rather than running past it.
+          budgetMs:
+            options?.deadlineAt === undefined
+              ? undefined
+              : Math.max(
+                  0,
+                  options.deadlineAt - SNAPSHOT_PERSIST_RESERVE_MS - Date.now()
+                ),
         });
 
         if (!aiResult.ok) {
