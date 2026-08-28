@@ -47,18 +47,28 @@ export const REDIS_REQUEST_TIMEOUT_MS = 500;
  * from a miss and re-runs the producer every time — turning the workspace sweep
  * throttle off exactly when the database is already struggling.
  *
- * Any success resets the count, so an isolated blip can't trip it. Recovery is
- * half-open: when the cooldown lapses exactly ONE caller is handed the client
- * and the window re-arms immediately, so a burst arriving at that moment keeps
- * using the fallback instead of all paying the timeout and all re-running their
- * producers. Admission re-arms on a clock rather than waiting for the probe to
- * report, so a caller that takes the client and never reports costs one extra
- * cooldown — it cannot wedge the breaker open.
+ * Failures are counted in a rolling window rather than consecutively, and a
+ * success does NOT clear them. Redis can be readable while writes fail — the
+ * free tier rejects writes once the size cap is hit, and a read-only token
+ * behaves the same way — and every `getCached` miss then reports a successful
+ * GET immediately before its SET fails. A consecutive count would oscillate
+ * between 0 and 1 forever, so the breaker would never open while every request
+ * kept paying the write timeout and re-running its producer. Ageing failures
+ * out of the window instead keeps the isolated-blip case from tripping it.
+ *
+ * Recovery is half-open: when the cooldown lapses exactly ONE caller is handed
+ * the client and the window re-arms immediately, so a burst arriving at that
+ * moment keeps using the fallback instead of all paying the timeout. Admission
+ * re-arms on a clock rather than waiting for the probe to report, so a caller
+ * that takes the client and never reports costs one extra cooldown — it cannot
+ * wedge the breaker open.
  */
 const BREAKER_THRESHOLD = 3;
+const BREAKER_WINDOW_MS = 60_000;
 const BREAKER_COOLDOWN_MS = 30_000;
 
-let consecutiveFailures = 0;
+let failuresInWindow = 0;
+let windowStartedAt = 0;
 let breakerOpenUntil = 0;
 let lastWarnedAt = 0;
 
@@ -134,34 +144,47 @@ function buildClient(url: string, token: string): Redis | null {
  * failure leaves the breaker closed and the outage cost unbounded.
  */
 export function noteRedisResult(ok: boolean): void {
+  const now = Date.now();
+
   if (ok) {
+    // Clears state only on RECOVERY from an open breaker. A success must not
+    // erase the failure window otherwise: a read-ok/write-failing Redis reports
+    // one success per failure, and clearing here would hold the count below the
+    // threshold forever while every request kept paying the write timeout.
     if (breakerOpenUntil !== 0) {
       console.warn("[redis] Recovered; resuming shared cache and rate limiting.");
+      breakerOpenUntil = 0;
+      failuresInWindow = 0;
+      windowStartedAt = 0;
+      lastWarnedAt = 0;
     }
-    consecutiveFailures = 0;
-    breakerOpenUntil = 0;
-    lastWarnedAt = 0;
     return;
   }
 
-  consecutiveFailures += 1;
+  // Failures age out, so blips spread further apart than the window never
+  // accumulate into a trip.
+  if (now - windowStartedAt > BREAKER_WINDOW_MS) {
+    windowStartedAt = now;
+    failuresInWindow = 0;
+  }
+  failuresInWindow += 1;
 
-  if (consecutiveFailures < BREAKER_THRESHOLD) {
+  if (failuresInWindow < BREAKER_THRESHOLD) {
     return;
   }
 
   // A failure while open means the half-open probe failed, so hold the window.
-  breakerOpenUntil = Date.now() + BREAKER_COOLDOWN_MS;
+  breakerOpenUntil = now + BREAKER_COOLDOWN_MS;
 
   // Logged on its own clock, not per failure: a sustained outage should stay
   // visible in the log without one line per request.
-  if (lastWarnedAt !== 0 && Date.now() - lastWarnedAt < BREAKER_COOLDOWN_MS) {
+  if (lastWarnedAt !== 0 && now - lastWarnedAt < BREAKER_COOLDOWN_MS) {
     return;
   }
 
-  lastWarnedAt = Date.now();
+  lastWarnedAt = now;
   console.warn(
-    `[redis] Unavailable after ${consecutiveFailures} consecutive failures. ` +
+    `[redis] Unavailable after ${failuresInWindow} failures in ${BREAKER_WINDOW_MS / 1000}s. ` +
       `Falling back to in-memory cache and PER-INSTANCE rate limiting for ` +
       `${BREAKER_COOLDOWN_MS / 1000}s — the shared limit is not enforced meanwhile.`
   );
@@ -170,7 +193,8 @@ export function noteRedisResult(ok: boolean): void {
 /** Test seam: drop the memoized client and reset the breaker. */
 export function resetRedisForTests(): void {
   client = undefined;
-  consecutiveFailures = 0;
+  failuresInWindow = 0;
+  windowStartedAt = 0;
   breakerOpenUntil = 0;
   lastWarnedAt = 0;
 }

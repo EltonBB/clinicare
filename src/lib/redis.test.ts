@@ -215,9 +215,53 @@ describe("circuit breaker", () => {
     expect(vi.mocked(console.warn).mock.calls[0]![0]).toContain("PER-INSTANCE");
   });
 
-  it("resets the count on any success, so scattered faults never trip it", () => {
+  /**
+   * The read-ok / write-failing case: Upstash rejects writes once the free-tier
+   * size cap is hit (a read-only token behaves the same), so every getCached
+   * miss reports a successful GET immediately before its SET fails. Under a
+   * consecutive-failure count this oscillated 0 -> 1 -> 0 forever, the breaker
+   * never opened, and every request kept paying the write timeout AND re-running
+   * its producer. A success must not erase a persistent failure streak.
+   */
+  it("opens when reads succeed but writes keep failing", () => {
+    for (let request = 0; request < 3; request++) {
+      noteRedisResult(true); // GET succeeded
+      noteRedisResult(false); // SET failed
+    }
+    expect(getRedis()).toBeNull();
+  });
+
+  it("does not trip on blips spread wider than the failure window", () => {
     fail(2);
-    noteRedisResult(true);
+    vi.advanceTimersByTime(60_001);
+    fail(2);
+    expect(getRedis()).not.toBeNull();
+  });
+
+  it("ages failures out of the window rather than counting them forever", () => {
+    fail(2);
+    vi.advanceTimersByTime(60_001);
+    fail(2);
+    vi.advanceTimersByTime(60_001);
+    fail(2);
+    expect(getRedis()).not.toBeNull();
+  });
+
+  it("counts failures that fall inside one window", () => {
+    fail(1);
+    vi.advanceTimersByTime(20_000);
+    fail(1);
+    vi.advanceTimersByTime(20_000);
+    fail(1);
+    expect(getRedis()).toBeNull();
+  });
+
+  it("clears the window on recovery, so a later blip starts from zero", () => {
+    fail(3);
+    vi.advanceTimersByTime(30_000);
+    noteRedisResult(true); // probe recovers
+    expect(getRedis()).not.toBeNull();
+
     fail(2);
     expect(getRedis()).not.toBeNull();
   });
