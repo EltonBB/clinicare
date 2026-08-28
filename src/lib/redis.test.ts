@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getRedis,
   noteRedisFailure,
-  noteRedisWriteSucceeded,
+  noteRedisStoreSucceeded,
   REDIS_REQUEST_TIMEOUT_MS,
   resetRedisForTests,
 } from "./redis";
@@ -279,8 +279,8 @@ describe("circuit breaker", () => {
     fail(3);
     vi.advanceTimersByTime(30_000);
     getRedis();
-    noteRedisWriteSucceeded();
-    noteRedisWriteSucceeded(); // recovered
+    noteRedisStoreSucceeded();
+    noteRedisStoreSucceeded(); // recovered
 
     fail(2);
     expect(getRedis()).not.toBeNull();
@@ -352,10 +352,10 @@ describe("circuit breaker", () => {
     expect(getRedis()).not.toBeNull(); // probe admitted...
     expect(getRedis()).toBeNull(); // ...but admission alone proves nothing
 
-    noteRedisWriteSucceeded(); // 1st completed write
+    noteRedisStoreSucceeded(); // 1st completed store
     expect(getRedis()).toBeNull();
 
-    noteRedisWriteSucceeded(); // 2nd closes it
+    noteRedisStoreSucceeded(); // 2nd closes it
     expect(getRedis()).not.toBeNull();
     expect(String(vi.mocked(console.warn).mock.calls.at(-1)![0])).toMatch(/recovered/i);
   });
@@ -381,9 +381,9 @@ describe("circuit breaker", () => {
   it("discards write evidence when a failure intervenes", () => {
     fail(3);
     vi.advanceTimersByTime(30_000);
-    noteRedisWriteSucceeded(); // 1 of 2
+    noteRedisStoreSucceeded(); // 1 of 2
     fail(1); // resets the evidence
-    noteRedisWriteSucceeded(); // back to 1 of 2
+    noteRedisStoreSucceeded(); // back to 1 of 2
     expect(getRedis()).toBeNull();
   });
 
@@ -410,9 +410,9 @@ describe("circuit breaker", () => {
   });
 
   it("ignores write successes reported while it is already closed", () => {
-    noteRedisWriteSucceeded();
-    noteRedisWriteSucceeded();
-    noteRedisWriteSucceeded();
+    noteRedisStoreSucceeded();
+    noteRedisStoreSucceeded();
+    noteRedisStoreSucceeded();
     expect(console.warn).not.toHaveBeenCalled();
 
     // Those must not have banked credit toward a future close.

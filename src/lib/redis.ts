@@ -65,19 +65,28 @@ export const REDIS_REQUEST_TIMEOUT_MS = 500;
  * caller that takes the client and never reports costs one extra cooldown and
  * cannot wedge the breaker open.
  *
- * The ONLY thing that closes it is `noteRedisWriteSucceeded` — a WRITE that
- * actually completed. Three narrower signals were each tried and each failed:
+ * The ONLY thing that closes it is `noteRedisStoreSucceeded` — a completed
+ * operation that STORED data. Four narrower signals were each tried and each
+ * turned out to be producible while the seam was still broken:
  *
- *  - any success (it resets nothing now, but a read succeeds while writes fail,
- *    so reads must not count);
- *  - elapsed quiet time (while open, no traffic reaches Redis, so silence is
- *    manufactured by the breaker and an idle spell looked like recovery);
- *  - probe ADMISSION (the admitted caller has not run its command yet, so
- *    closing there released a burst on no evidence at all).
+ *  - any success: a read succeeds against a Redis that rejects every write;
+ *  - elapsed quiet time: while open, no traffic reaches Redis at all, so the
+ *    silence is manufactured by the breaker and an idle spell looked like
+ *    recovery;
+ *  - probe ADMISSION: the admitted caller has not run its command yet, so
+ *    closing there released a burst on no evidence whatsoever;
+ *  - any completed WRITE: `DEL` is not denyoom-flagged, so it keeps succeeding
+ *    when the store is full and `SET` is failing — and deleting an absent key
+ *    resolves happily with 0.
  *
- * A completed write is the one signal none of those defeat: it cannot be
- * produced by silence, by the breaker's own gating, or by a Redis that serves
- * reads while rejecting every write.
+ * The trade this makes: with no storing traffic at all, the breaker stays open
+ * rather than guessing. That is the intended direction — staying open costs the
+ * in-memory fallback, which works, while closing on weak evidence costs every
+ * request a timeout. `checkRateLimit` and `getCached` misses both store, so
+ * anything with real traffic recovers within two cooldowns.
+ *
+ * A completed STORE is the one signal none of those defeat: it is exactly the
+ * operation that fails under the conditions this breaker exists for.
  */
 const BREAKER_THRESHOLD = 3;
 const BREAKER_WINDOW_MS = 60_000;
@@ -125,7 +134,7 @@ export function getRedis(): Redis | null {
   //
   // Admission deliberately does NOT close the breaker: this caller has not run
   // its command yet, so there is nothing to conclude from being let through.
-  // Only `noteRedisWriteSucceeded` closes it.
+  // Only `noteRedisStoreSucceeded` closes it.
   breakerOpenUntil = now + BREAKER_COOLDOWN_MS;
   return client;
 }
@@ -213,14 +222,21 @@ export function noteRedisFailure(): void {
 }
 
 /**
- * Report a Redis WRITE that completed successfully.
+ * Report a Redis operation that completed AND stored data.
  *
- * The only signal that closes the breaker, and only writes qualify — a read can
- * succeed against a Redis that rejects every write. Reads deliberately report
- * nothing on success. This never touches the failure window: a success must not
- * be able to erase a failure streak, only to prove the write path works again.
+ * The only signal that closes the breaker. Call it after a `SET` or the rate
+ * limiter's `eval` — commands Redis marks `denyoom` and therefore rejects when
+ * the store is full, which is precisely the failure this breaker guards.
+ *
+ * Do NOT call it after `DEL`: deletes are not `denyoom`, so they keep
+ * succeeding while every `SET` fails (and deleting an absent key resolves with
+ * 0 regardless), which would close the breaker on a still-broken store. Reads
+ * report nothing on success either.
+ *
+ * This never touches the failure window: a success must not be able to erase a
+ * failure streak, only to prove the store path works again.
  */
-export function noteRedisWriteSucceeded(): void {
+export function noteRedisStoreSucceeded(): void {
   // Nothing to prove while closed.
   if (breakerOpenUntil === 0) {
     return;

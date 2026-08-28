@@ -1,7 +1,7 @@
 import {
   getRedis,
   noteRedisFailure,
-  noteRedisWriteSucceeded,
+  noteRedisStoreSucceeded,
 } from "@/lib/redis";
 
 /**
@@ -119,7 +119,8 @@ export async function getCached<T>(
   if (redis) {
     try {
       await redis.set(namespaced, fresh, { ex: ttlSeconds });
-      noteRedisWriteSucceeded();
+      // A stored SET is the breaker's recovery signal (see lib/redis.ts).
+      noteRedisStoreSucceeded();
     } catch {
       // Cache write fault — the value is still returned to the caller.
       noteRedisFailure();
@@ -139,7 +140,8 @@ export async function invalidateCache(key: string): Promise<void> {
   if (redis) {
     try {
       await redis.del(namespaced);
-      noteRedisWriteSucceeded();
+      // Deliberately NOT reported as a store: DEL is not denyoom-flagged, so it
+      // keeps succeeding while the store is full and every SET fails.
     } catch {
       // Best-effort; a stale entry expires on its own TTL.
       noteRedisFailure();

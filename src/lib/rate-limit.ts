@@ -4,7 +4,7 @@ import { logger } from "@/lib/logger";
 import {
   getRedis,
   noteRedisFailure,
-  noteRedisWriteSucceeded,
+  noteRedisStoreSucceeded,
 } from "@/lib/redis";
 
 /**
@@ -174,9 +174,9 @@ export async function checkRateLimit(
       // the function alive until the response flushes. If any route ever moves to
       // the Edge runtime, await it via `context.waitUntil(result.pending)`.
       const result = await limiter.limit(key);
-      // `limit` runs an eval that increments the window — a real write, so it
-      // is valid evidence that the write path works again.
-      noteRedisWriteSucceeded();
+      // `limit` runs an eval whose ZADD/INCR are denyoom-flagged, so it fails
+      // under the same store-full condition as SET — valid recovery evidence.
+      noteRedisStoreSucceeded();
       const now = Date.now();
 
       return {
