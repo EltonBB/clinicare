@@ -246,7 +246,7 @@ describe("circuit breaker", () => {
       fail(1); // its write failed
       expect(getRedis()).toBeNull(); // everyone else still on the fallback
     }
-    expect(vi.mocked(console.warn).mock.calls.filter((c) => String(c[0]).includes("Recovered"))).toHaveLength(0);
+    expect(vi.mocked(console.warn).mock.calls.filter((c) => /recovered/i.test(String(c[0])))).toHaveLength(0);
   });
 
   it("does not trip on blips spread wider than the failure window", () => {
@@ -354,7 +354,7 @@ describe("circuit breaker", () => {
     vi.advanceTimersByTime(30_000);
     expect(getRedis()).not.toBeNull(); // probe 2 closes it
     expect(getRedis()).not.toBeNull(); // now open to everyone
-    expect(vi.mocked(console.warn).mock.calls.at(-1)![0]).toContain("Recovered");
+    expect(String(vi.mocked(console.warn).mock.calls.at(-1)![0])).toMatch(/recovered/i);
   });
 
   /**
@@ -374,7 +374,7 @@ describe("circuit breaker", () => {
     expect(getRedis()).toBeNull();
     expect(
       vi.mocked(console.warn).mock.calls.filter((c) =>
-        String(c[0]).includes("Recovered")
+        /recovered/i.test(String(c[0]))
       )
     ).toHaveLength(0);
   });
@@ -391,7 +391,7 @@ describe("circuit breaker", () => {
     expect(getRedis()).toBeNull();
     expect(
       vi.mocked(console.warn).mock.calls.filter((c) =>
-        String(c[0]).includes("Recovered")
+        /recovered/i.test(String(c[0]))
       )
     ).toHaveLength(0);
   });

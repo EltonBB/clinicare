@@ -1,5 +1,6 @@
 import { Ratelimit } from "@upstash/ratelimit";
 
+import { logger } from "@/lib/logger";
 import { getRedis, noteRedisFailure } from "@/lib/redis";
 
 /**
@@ -59,10 +60,18 @@ function getRedisLimiter(rule: RateLimitRule): Ratelimit | null {
   }
 
   const cacheKey = `${rule.limit}:${rule.windowMs}`;
-  let limiter = limiterCache.get(cacheKey);
+  const cached = limiterCache.get(cacheKey);
 
-  if (!limiter) {
-    limiter = new Ratelimit({
+  if (cached) {
+    return cached;
+  }
+
+  // Construction is guarded because `checkRateLimit` calls this OUTSIDE its try
+  // block: a throw here would propagate into every login, signup and search
+  // rather than degrading to the in-memory limiter. Same reason `getRedis()`
+  // guards the Upstash constructor.
+  try {
+    const limiter = new Ratelimit({
       redis,
       // Sliding window avoids the boundary burst a fixed window allows.
       limiter: Ratelimit.slidingWindow(rule.limit, `${rule.windowMs} ms`),
@@ -71,9 +80,11 @@ function getRedisLimiter(rule: RateLimitRule): Ratelimit | null {
       analytics: false,
     });
     limiterCache.set(cacheKey, limiter);
+    return limiter;
+  } catch (error) {
+    logger.error("Rate limiter could not be constructed; using in-memory.", error);
+    return null;
   }
-
-  return limiter;
 }
 
 /** Drop expired buckets when the map grows large, to bound memory. */

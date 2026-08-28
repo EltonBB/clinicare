@@ -1,5 +1,7 @@
 import { Redis } from "@upstash/redis";
 
+import { logger } from "@/lib/logger";
+
 /**
  * Redis provider seam — the ONLY module that constructs the Upstash client.
  * Everything else (cache, rate limiting) depends on `getRedis()`, so running
@@ -66,6 +68,14 @@ export const REDIS_REQUEST_TIMEOUT_MS = 500;
  * be mistaken for recovery. Admission re-arms on a clock rather than waiting
  * for a probe to report, so a caller that takes the client and never reports
  * costs one extra cooldown and cannot wedge the breaker open.
+ *
+ * KNOWN LIMIT: a probe that happens to be a `getCached` HIT exercises only the
+ * read path, so against a read-ok/write-failing Redis two such probes can close
+ * the breaker without ever testing a write. Bounded — the next writes reopen it
+ * — and narrow, because with writes failing nothing is being cached, entries
+ * expire, and `checkRateLimit` (an `eval`, i.e. a write) reports the failures.
+ * Closing it properly means threading operation kind through this seam, which
+ * is more surface than the residual oscillation is worth.
  */
 const BREAKER_THRESHOLD = 3;
 const BREAKER_WINDOW_MS = 60_000;
@@ -123,7 +133,7 @@ export function getRedis(): Redis | null {
     windowStartedAt = 0;
     lastWarnedAt = 0;
     cleanProbes = 0;
-    console.warn("[redis] Recovered; resuming shared cache and rate limiting.");
+    logger.warn("Redis recovered; resuming shared cache and rate limiting.");
   }
 
   return client;
@@ -151,11 +161,17 @@ function buildClient(url: string, token: string): Redis | null {
       // `redis.test.ts` pins this.
       signal: () => AbortSignal.timeout(REDIS_REQUEST_TIMEOUT_MS),
     });
-  } catch {
-    // No cause/url in the log: the url carries the Upstash credentials' host.
-    console.error(
-      "[redis] Client configuration is invalid; continuing with in-memory " +
-        "cache and PER-INSTANCE rate limiting. Check the Redis env vars."
+  } catch (error) {
+    // logger.error, not warn: this is a deploy-time misconfiguration that
+    // silently drops rate limiting to per-instance and will not fix itself, so
+    // it should reach Sentry. Fires once per instance, not per call.
+    //
+    // The error is passed WITHOUT the url: it carries the Upstash credentials'
+    // host, and the scrubber shouldn't be the only thing standing between that
+    // and an error report.
+    logger.error(
+      "Redis client configuration is invalid; continuing with in-memory cache and PER-INSTANCE rate limiting.",
+      error instanceof Error ? new Error(error.name) : undefined
     );
     return null;
   }
@@ -196,10 +212,12 @@ export function noteRedisFailure(): void {
   }
 
   lastWarnedAt = now;
-  console.warn(
-    `[redis] Unavailable after ${failuresInWindow} failures in ${BREAKER_WINDOW_MS / 1000}s. ` +
-      `Falling back to in-memory cache and PER-INSTANCE rate limiting — ` +
-      `the shared limit is not enforced meanwhile.`
+  // warn, not error: with Upstash archiving idle free-tier databases this is an
+  // expected recurring state, and at one line per cooldown an error would bury
+  // Sentry for the whole outage. Promote it if breaker-open should page.
+  logger.warn(
+    "Redis unavailable; falling back to in-memory cache and PER-INSTANCE rate limiting. The shared rate limit is not enforced meanwhile.",
+    { failures: failuresInWindow, windowSeconds: BREAKER_WINDOW_MS / 1000 }
   );
 }
 
