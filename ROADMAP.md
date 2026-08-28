@@ -1,7 +1,6 @@
 # Vela / Clinicare — Roadmap & Infrastructure Plan
 
-> Strategic plan agreed 2026-06-10. This is the durable "where we're going and why" doc.
-> `PROJECT_STATUS.md` = what's done. `AGENTS.md` = product direction. This = the forward plan.
+> Strategic plan agreed 2026-06-10, revised 2026-08-28 (US market paused). `PROJECT_STATUS.md` = what's done. `AGENTS.md` = product direction. This = the forward plan.
 > **Note:** not in active execution yet — recorded so it survives across sessions.
 
 ---
@@ -10,50 +9,47 @@
 
 | Topic | Decision |
 |---|---|
-| **Market** | Free pilot to ~50 **Kosovo** clinics first, then **US-first**. Europe/GDPR is acceptable-to-have but low priority. |
-| **Compliance** | **HIPAA is the primary concern** (US market). Build HIPAA-ready from the start. |
-| **Host** | **AWS indefinitely — no cloud migration.** Stay on the current AWS-backed stack (Supabase / Vercel / Twilio / OpenAI; Supabase + Vercel are AWS-hosted). Provider seams are kept for portability, not for a planned migration. |
-| **Why AWS** | Stay on the AWS-backed stack the product already runs on — no migration cost or risk. Cost is a non-issue at pilot scale (~$150–400/mo). **HIPAA note:** with no single cloud BAA, US/PHI coverage means a **BAA with each PHI-handling provider** (Supabase, Vercel, Twilio, production email) — confirm this approach (see §5). |
-| **Sequencing** | Build the product to "done" on the current stack → HIPAA compliance gate (BAAs + app safeguards, all on the current stack) → first US clinic. |
+| **Market** | Free pilot to ~50 **Kosovo** clinics, then **Balkans/Europe**. **US entry is paused as of 2026-08-28** — not cancelled, just not being scheduled or built toward right now. If it reopens, resume from §3 Step 5 below. |
+| **Compliance** | **GDPR is the active regime** — Kosovo's GDPR-aligned law, plus any EU clinic. The HIPAA plan (§3 Step 5, §5) is kept intact for if the US reopens, but nothing should be scheduled or blocked on it while it's paused. |
+| **Host** | **AWS indefinitely — no cloud migration.** Stay on the current AWS-backed stack (Supabase / Vercel / Baileys / OpenAI; Supabase + Vercel are AWS-hosted). Provider seams are kept for portability, not for a planned migration. |
+| **Why AWS** | Stay on the stack the product already runs on — no migration cost or risk. Cost is a non-issue at pilot scale (~$150–400/mo). If the US reopens, US/PHI coverage means a **BAA with each PHI-handling provider** (Supabase, Vercel, the SMS/email provider) — see §5. |
+| **Sequencing** | Build the product to "done" on the current stack, with the app-level safeguards below built in alongside it, not retrofitted after. |
 
 ### Two guardrails
-1. **Build HIPAA app-safeguards NOW.** Audit logging, auto-logoff, RBAC, and minimum-necessary messaging are *app work*, not infra work. Retrofitting them after "done" = the expensive trap. The remaining gate is the **BAA + compliance** work, not an infra migration.
+1. **Build the app-level safeguards NOW, regardless of regime.** Audit logging, auto-logoff, RBAC, and minimum-necessary messaging are *app work*, not infra work — and they satisfy GDPR today while keeping the HIPAA path cheap to resume later. Retrofitting them after "done" is the expensive trap either way.
 2. **Build behind seams** so any future provider swap is a swap, not a rewrite:
    - Auth → always via `requireCurrentUser()` / `getCurrentWorkspaceContext()`, never raw `@supabase/ssr` in features.
    - Media → always via `lib/media-storage*.ts`.
    - AI → always via `lib/analytics-ai.ts`.
-   - Messaging → behind a new `sendMessage(channel, …)` interface from day one.
+   - Messaging → behind `sendMessage(channel, …)` — built, see §2.
 
 ---
 
-## 2. Messaging channel decisions
+## 2. Messaging channels
 
-| Channel | Pilot (now) | Production / US phase |
+| Channel | Current | If the US reopens |
 |---|---|---|
-| **Email** | **Resend** (best DX; pilot is non-PHI so no BAA needed) | **BAA-covered email** for US/PHI — confirm provider (e.g. AWS SES under the AWS BAA) |
-| **SMS** | **Reuse existing Twilio** (barely used in Kosovo phase; already wired) | **Twilio with a signed BAA** (Twilio supports HIPAA) |
-| **WhatsApp** | **Baileys** (`@whiskeysockets/baileys`) — **Kosovo-only, non-PHI, throwaway**, isolated behind the abstraction | **Official WhatsApp** (via Twilio or another approved BSP), once a US entity + Meta access exist |
+| **WhatsApp** | **Baileys** (`@whiskeysockets/baileys`), the only wired channel — Kosovo-only, non-PHI, disposable, isolated behind the `sendMessage()` seam. Confirmed working end-to-end 2026-08-29 (QR-paired, sent + received real messages). | **Official WhatsApp** via Twilio or another approved BSP, once a US entity + Meta access exist. |
+| **SMS** | Not wired. Reserved for phone/SMS, never WhatsApp (see CLAUDE.md). | Twilio with a signed BAA (Twilio supports HIPAA). |
+| **Email** | Supabase Auth's built-in SMTP handles transactional auth email; no separate provider wired for reminders/marketing. | BAA-covered email for US/PHI — confirm provider (e.g. AWS SES under the AWS BAA). |
 
-**Why these / what was ruled out:**
-- **No official WhatsApp without Meta.** Every official route (Twilio, 360dialog, etc.) requires a verified Meta Business account, which is currently unavailable (likely the Kosovo entity; expected to unblock once a US entity exists). So Kosovo WhatsApp uses the unofficial Baileys library — accepted as disposable, ban-prone, **never touches the US or PHI**.
-- **iMessage is not buildable** — no business send API; SMS already reaches iPhones. The richer "blue-bubble" experience could come later via **RCS** (through Twilio or another provider).
-- **Sent.dm rejected** — no email channel, its WhatsApp/iMessage need the Meta/Apple approvals we lack, and no confirmed BAA. Collapses to "just SMS" for us, which Twilio already covers.
+**Why Baileys / what was ruled out:**
+- **No official WhatsApp without Meta.** Every official route (Twilio, 360dialog, etc.) requires a verified Meta Business account, currently unavailable (likely the Kosovo entity; expected to unblock once a US entity exists). So Kosovo WhatsApp uses the unofficial Baileys library — accepted as disposable, ban-prone, **never touches the US or PHI**.
+- **iMessage is not buildable** — no business send API; SMS already reaches iPhones. The richer "blue-bubble" experience could come later via **RCS** if SMS is ever wired.
+- **Sent.dm rejected** — no email channel, its WhatsApp/iMessage need Meta/Apple approvals not available, and no confirmed BAA.
 
 ---
 
 ## 3. Build order (forward steps)
 
-### Step 1 — Messaging foundation *(first concrete build)*
-- Define `sendMessage(channel, payload)` interface + thin provider-adapter layer.
-- Adapters: Resend (email), Twilio (SMS), Baileys (WhatsApp, isolated).
-- Bake in **minimum-necessary** content rules (name + time; no clinical detail over SMS/WhatsApp).
+### Step 1 — Messaging foundation ✅ *(built)*
+`sendMessage(channel, payload)` + a thin adapter layer (`lib/messaging/`), with minimum-necessary content baked in (name + time; no clinical detail over SMS/WhatsApp). Baileys is the live adapter.
 
-### Step 2 — Reminder automations
-- Wire `lib/reminders.ts` + `/api/cron/reminders` to the messaging layer.
-- Connect existing reminder settings (first/second reminder timing, template).
+### Step 2 — Reminder automations ✅ *(built)*
+`lib/reminders.ts` + `/api/cron/reminders`, wired to the messaging layer and to the existing reminder settings (timing, template). Hourly cron + distributed lock + fair rotation shipped 2026-08-28/29.
 
-### Step 3 — HIPAA safeguards *(build alongside Steps 1–2)*
-- Audit logging of PHI access (who viewed which patient record, when).
+### Step 3 — Patient-data safeguards *(build alongside product work, not gated on a regime)*
+- Audit logging of patient-data access (who viewed which record, when).
 - Auto-logoff / session timeout.
 - Role-based / minimum-necessary access within a clinic.
 - (Encryption in transit/at rest already covered.)
@@ -63,11 +59,11 @@
 - Reusable signed-in test session (unblocks signed-in QA — long-standing blocker).
 - UI/UX + performance polish over the completed surface.
 
-### Step 5 — HIPAA compliance gate *(finish line)*
-- **No cloud migration** — stay on the current AWS-backed stack (Supabase / Vercel / Twilio / OpenAI).
-- Sign a **BAA with every PHI-handling provider** (Supabase, Vercel, Twilio, and the production email provider); confine PHI to BAA-covered services only.
-- Verify the Step 3 app safeguards (audit logging, auto-logoff, RBAC, minimum-necessary messaging) are live across all PHI paths.
-- HIPAA risk assessment + your clinic-facing BAA (counsel-reviewed) → **then** onboard the first US clinic.
+### Step 5 — HIPAA compliance gate *(paused with the US market — resume only if it reopens)*
+- No cloud migration — stay on the current AWS-backed stack.
+- Sign a **BAA with every PHI-handling provider** (Supabase, Vercel, the SMS/email provider); confine PHI to BAA-covered services only.
+- Verify the Step 3 safeguards are live across all PHI paths.
+- Formal HIPAA risk assessment + a clinic-facing BAA (counsel-reviewed) → **then** onboard the first US clinic.
 
 ---
 
@@ -82,14 +78,13 @@ No cloud migration is planned — the stack stays on AWS-backed providers (Supab
 | Auth | Supabase Auth (`@supabase/ssr`) behind `lib/auth.ts` / `lib/business.ts` | **High — the hard part** |
 | Hosting / cron | Vercel + `vercel.json` cron | Medium |
 | AI | OpenAI (`lib/analytics-ai.ts`) | Low |
-| Messaging | Resend / Twilio / Baileys behind `sendMessage()` | Low — swap adapter |
+| Messaging | Baileys (WhatsApp) behind `sendMessage()`; SMS/email adapters not yet built | Low — swap or add an adapter |
 
 ---
 
-## 5. HIPAA gate checklist (must clear before the first US clinic)
+## 5. HIPAA gate checklist (paused — only relevant if the US market reopens)
 
-- [ ] BAA signed with every PHI-handling provider (Supabase, Vercel, production email)
-- [ ] Twilio BAA (for WhatsApp/SMS)
+- [ ] BAA signed with every PHI-handling provider (Supabase, Vercel, the SMS/email provider)
 - [ ] Audit logging live across all PHI access paths
 - [ ] Auto-logoff / session timeout enforced
 - [ ] Role-based / minimum-necessary access verified
@@ -98,4 +93,4 @@ No cloud migration is planned — the stack stays on AWS-backed providers (Supab
 - [ ] Clinic-facing BAA drafted + reviewed by counsel
 - [ ] PHI confined to BAA-covered services only
 
-> ⚠️ This is an engineering plan, not legal advice. A real HIPAA risk assessment and counsel review are required before handling US PHI.
+> ⚠️ This is an engineering plan, not legal advice. A real HIPAA risk assessment and counsel review are required before handling US PHI — and a GDPR-specific review before scaling EU clinics, since Kosovo/GDPR compliance today is engineering best-effort, not a formal legal assessment.
