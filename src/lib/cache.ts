@@ -1,4 +1,4 @@
-import { getRedis } from "@/lib/redis";
+import { getRedis, noteRedisResult } from "@/lib/redis";
 
 /**
  * Provider-agnostic cache seam (cache-aside).
@@ -88,11 +88,15 @@ export async function getCached<T>(
   if (redis) {
     try {
       const cached = await redis.get<T>(namespaced);
+      noteRedisResult(true);
       if (cached !== null && cached !== undefined) {
         return cached;
       }
     } catch {
-      // Cache read fault — fall through to the producer.
+      // Cache read fault — fall through to the producer. Reported so a run of
+      // these opens the breaker; otherwise every miss re-pays the timeout AND
+      // callers using this as a throttle lock lose their throttle entirely.
+      noteRedisResult(false);
     }
   } else {
     const cached = memoryGet<T>(namespaced);
@@ -103,11 +107,20 @@ export async function getCached<T>(
 
   const fresh = await producer();
 
-  if (redis) {
+  // Re-resolved rather than reusing `redis`: the read above may have been the
+  // failure that opened the breaker, and the decision is now stale. Asking
+  // again skips a write already known to be doomed and, more usefully, seeds
+  // the in-memory cache a full request earlier — which is what re-arms the
+  // throttle for callers using this as a lock.
+  const writeTo = getRedis();
+
+  if (writeTo) {
     try {
-      await redis.set(namespaced, fresh, { ex: ttlSeconds });
+      await writeTo.set(namespaced, fresh, { ex: ttlSeconds });
+      noteRedisResult(true);
     } catch {
       // Cache write fault — the value is still returned to the caller.
+      noteRedisResult(false);
     }
   } else {
     memorySet(namespaced, fresh, ttlSeconds);
@@ -124,8 +137,10 @@ export async function invalidateCache(key: string): Promise<void> {
   if (redis) {
     try {
       await redis.del(namespaced);
+      noteRedisResult(true);
     } catch {
       // Best-effort; a stale entry expires on its own TTL.
+      noteRedisResult(false);
     }
     return;
   }
