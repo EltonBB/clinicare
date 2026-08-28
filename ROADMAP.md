@@ -16,7 +16,7 @@
 | **Sequencing** | Build the product to "done" on the current stack, with the app-level safeguards below built in alongside it, not retrofitted after. |
 
 ### Two guardrails
-1. **Build the app-level safeguards NOW, regardless of regime.** Audit logging, auto-logoff, RBAC, and minimum-necessary messaging are *app work*, not infra work — and they satisfy GDPR today while keeping the HIPAA path cheap to resume later. Retrofitting them after "done" is the expensive trap either way.
+1. **Build the app-level safeguards NOW, regardless of regime.** Audit logging, auto-logoff, RBAC, and minimum-necessary messaging are *app work*, not infra work — and they move GDPR readiness forward today (a full GDPR legal assessment is still outstanding, see §5's disclaimer) while keeping the HIPAA path cheap to resume later. Retrofitting them after "done" is the expensive trap either way.
 2. **Build behind seams** so any future provider swap is a swap, not a rewrite:
    - Auth → always via `requireCurrentUser()` / `getCurrentWorkspaceContext()`, never raw `@supabase/ssr` in features.
    - Media → always via `lib/media-storage*.ts`.
@@ -31,7 +31,7 @@
 |---|---|---|
 | **WhatsApp** | **Baileys** (`@whiskeysockets/baileys`), the only wired channel — Kosovo-only, non-PHI, disposable, isolated behind the `sendMessage()` seam. Confirmed working end-to-end 2026-08-29 (QR-paired, sent + received real messages). | **Official WhatsApp** via Twilio or another approved BSP, once a US entity + Meta access exist. |
 | **SMS** | Not wired. Reserved for phone/SMS, never WhatsApp (see CLAUDE.md). | Twilio with a signed BAA (Twilio supports HIPAA). |
-| **Email** | Supabase Auth's built-in SMTP handles transactional auth email; no separate provider wired for reminders/marketing. | BAA-covered email for US/PHI — confirm provider (e.g. AWS SES under the AWS BAA). |
+| **Email** | **Resend**, configured as Supabase Auth's custom SMTP — handles transactional auth email (signup/reset) today. No application-level email channel adapter exists yet for reminders/marketing. | BAA-covered email for US/PHI — confirm provider (e.g. AWS SES under the AWS BAA, or a BAA with Resend). |
 
 **Why Baileys / what was ruled out:**
 - **No official WhatsApp without Meta.** Every official route (Twilio, 360dialog, etc.) requires a verified Meta Business account, currently unavailable (likely the Kosovo entity; expected to unblock once a US entity exists). So Kosovo WhatsApp uses the unofficial Baileys library — accepted as disposable, ban-prone, **never touches the US or PHI**.

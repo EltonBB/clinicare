@@ -7,7 +7,8 @@ product
 ## Users
 
 Clinic owners and front-desk / clinical staff at small appointment-based healthcare
-businesses. The pilot cohort is ~50 Kosovo clinics; the scaling target is US clinics.
+businesses. The pilot cohort is ~50 Kosovo clinics; the scaling target is Balkans/Europe
+clinics (the US market is paused as of 2026-08-28, not cancelled — see ROADMAP.md §1).
 They are **not technical**. They run the day from this one workspace, in short glances
 between patient interactions — often a few seconds at a time, sometimes on a phone at the
 front desk.
