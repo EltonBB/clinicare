@@ -36,6 +36,16 @@ npm run media:normalize-storage-refs  # scripts/normalize-media-storage-refs.mjs
 
 **Responding to code review — fix the _class_, not the flagged line.** When a reviewer (the Codex bot or a person) flags one instance of a pattern, grep the whole codebase for siblings and fix them all in the same push before re-pushing — and audit the privileged sink up front. Reactive one-line patches just feed the review loop: an un-timed-out `fetch` flagged on one bridge call meant *every* cross-process call needed the same `AbortSignal`; a server-side auth fix needed its client-side twin.
 
+**Task workflow — the review loop.** This is the default shape for any non-trivial change in this repo, not a one-off:
+
+1. Break work into **mini tasks** — tackle one focused piece at a time, not one big objective in a single pass.
+2. After finishing a mini task's implementation: run `/code-review`, **3 passes** (review → fix findings → review again → fix → review again).
+3. Run `/ponytail-review` to cut complexity/over-engineering the implementation introduced.
+4. Run `/code-review` again, **2 more passes**.
+5. Push / open the PR.
+6. Wait for Codex's PR review.
+7. Codex clean → merge. Codex finds something → repeat the full cycle from step 2 (not a narrow reactive patch) until Codex is clean.
+
 ## Architecture
 
 ```
