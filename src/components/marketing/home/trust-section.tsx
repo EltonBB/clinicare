@@ -115,15 +115,15 @@ export function TrustSection() {
             </span>
             <h3 className="mt-5 text-base font-bold text-[var(--brand-ink)]">Built privacy-first</h3>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Designed to be HIPAA-ready before the first US clinic goes live.
+              Built with GDPR&apos;s data-protection principles in mind from day one, not bolted on later.
             </p>
             <div className="mt-5 space-y-2">
               <div className="flex items-center gap-2 rounded-(--radius-field) border border-black/[0.06] bg-[var(--brand-wash)]/50 px-3 py-2.5">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary">
                   <ShieldCheck className="size-3.5" />
-                  Building toward HIPAA
+                  GDPR-minded by design
                 </span>
-                <span className="ml-auto text-[11px] font-semibold text-muted-foreground">Before the first US clinic</span>
+                <span className="ml-auto text-[11px] font-semibold text-muted-foreground">From day one</span>
               </div>
               <div className="flex items-center gap-2 rounded-(--radius-field) border border-black/[0.06] bg-[var(--brand-wash)]/50 px-3 py-2.5">
                 <ShieldCheck className="size-4 text-primary" />

@@ -45,7 +45,7 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: "Is my clinic data private?",
-    a: "Records live in authenticated, access-controlled storage, and Vela is built to be HIPAA-ready before the first US clinic goes live.",
+    a: "Records live in authenticated, access-controlled storage, built with GDPR's data-protection principles in mind from day one.",
   },
   {
     q: "Do you offer refunds?",

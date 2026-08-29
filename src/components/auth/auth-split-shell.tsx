@@ -71,7 +71,7 @@ export function AuthSplitShell({ children }: { children: ReactNode }) {
         {/* bottom — trust line */}
         <div className="relative flex items-center gap-2 text-xs font-semibold text-white/60 [animation-delay:320ms] motion-safe:animate-[vela-fade-up_0.6s_var(--ease-out-expo)_both]">
           <ShieldCheck className="size-4 text-white/50" />
-          Privacy-conscious by design · HIPAA-ready engineering
+          Privacy-conscious by design · GDPR-minded engineering
         </div>
       </aside>
 
