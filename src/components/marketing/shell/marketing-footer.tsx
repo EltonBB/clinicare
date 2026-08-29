@@ -79,7 +79,7 @@ export function MarketingFooter() {
             © {year} Vela. The clinic operating system.
           </p>
           <p className="text-xs font-semibold text-white/45">
-            Privacy-conscious by design · HIPAA-ready before the first US clinic.
+            Privacy-conscious by design · Built for patient trust.
           </p>
         </div>
       </div>
