@@ -93,9 +93,9 @@ The stack stays on AWS indefinitely — there is no planned cloud migration (ROA
 
 If a task seems to require breaking a seam, stop and flag it — that's a roadmap decision, not an implementation detail.
 
-## HIPAA-ready engineering rules (apply now, not "later")
+## Patient-data engineering rules (apply now, not "later")
 
-Pilot (Kosovo) data is non-PHI by design, but the app must be HIPAA-ready before the first US clinic (ROADMAP.md Step 3 + gate checklist). These are standing rules for all new code:
+Pilot (Kosovo) data is non-PHI by design. GDPR is the active compliance regime (ROADMAP.md §1) — the US/HIPAA plan is kept ready but paused, not active work. These rules serve GDPR today and keep the HIPAA path cheap to resume if the US reopens, so they apply regardless of which regime is active:
 
 - **No patient-identifying data in logs, error messages, analytics events, or third-party services.** Log record IDs, not names/diagnoses. The existing "generic customer-facing errors" rule is also a compliance rule.
 - **Minimum-necessary messaging:** outbound SMS/WhatsApp/email reminders carry name + appointment time only — never clinical content. Bake this into templates and the messaging layer, don't rely on operator discipline.

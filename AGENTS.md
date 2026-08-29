@@ -69,9 +69,9 @@ Vela should hide operational complexity. Customers should not need to understand
 
 ## Strategic Context (locked decisions — see ROADMAP.md for full detail)
 
-- **Market sequencing:** free pilot to ~50 **Kosovo** clinics first, then **US-first**. Europe/GDPR is low priority.
-- **Compliance:** **HIPAA is the primary target.** The app must be HIPAA-ready before the first US clinic. App-level safeguards (audit logging, auto-logoff, role-based/minimum-necessary access) are built **now, alongside features** — never retrofitted later.
-- **Infrastructure:** **AWS indefinitely — no cloud migration planned.** Stay on the current AWS-backed stack (Supabase / Vercel / Twilio / OpenAI; Supabase + Vercel are AWS-hosted). Features still go behind the provider seams defined in CLAUDE.md — for portability and to avoid vendor lock-in (keeping any future provider swap cheap), not for a planned migration.
+- **Market sequencing:** free pilot to ~50 **Kosovo** clinics, then **Balkans/Europe**. The US market is paused (not cancelled) as of 2026-08-28 — see ROADMAP.md §1.
+- **Compliance:** **GDPR is the active regime** (Kosovo's GDPR-aligned law + any EU clinic). App-level safeguards (audit logging, auto-logoff, role-based/minimum-necessary access) are built **now, alongside features, not retrofitted later** — they move GDPR readiness forward today (a full GDPR legal assessment is still outstanding — see ROADMAP.md §5's disclaimer) and keep the HIPAA path (ROADMAP.md §5, kept ready for if the US reopens) cheap to resume.
+- **Infrastructure:** **AWS indefinitely — no cloud migration planned.** Stay on the current AWS-backed stack (Supabase / Vercel / Baileys / OpenAI; Supabase + Vercel are AWS-hosted). Features still go behind the provider seams defined in CLAUDE.md — for portability and to avoid vendor lock-in (keeping any future provider swap cheap), not for a planned migration.
 - **Pilot data is non-PHI by design.** Never design a feature that puts clinical detail into SMS/WhatsApp messages or third-party services.
 
 What this means for everyday product decisions:
@@ -144,7 +144,7 @@ If a component does not help the user make a decision, take action, or understan
 
 ## Messaging and Communication Rules
 
-- **Channel plan** (ROADMAP.md): pilot uses Resend (email), Twilio (SMS), and Baileys WhatsApp (Kosovo-only, disposable, isolated). The official WhatsApp upgrade (once a US entity + Meta access exist) is a later, BAA-gated step — independent of any cloud migration; all channels stay behind the messaging seam so a provider can be swapped if needed.
+- **Channel plan** (ROADMAP.md): **Baileys WhatsApp is the only wired messaging channel today** (Kosovo-only, disposable, isolated) — confirmed sending and receiving real messages 2026-08-29. Resend already handles transactional auth email as Supabase Auth's custom SMTP, but has no application-level channel adapter yet for reminders/marketing; Twilio (SMS) isn't wired at all. The official WhatsApp upgrade (once a US entity + Meta access exist) is a later step, paused alongside the US market rather than actively gated; all channels stay behind the messaging seam so a provider can be swapped if needed.
 - All outbound messaging must flow through the messaging abstraction (`sendMessage(channel, payload)` — ROADMAP Step 1). Never call a provider directly from feature code.
 - **Minimum-necessary content** on every patient-facing message: name + appointment time. No clinical details over SMS/WhatsApp, ever.
 - **Customer-facing language hides providers.** Never surface Twilio, Meta, Supabase, Prisma, Baileys, or OpenAI names, internals, or raw errors in UI. Connection states, errors, and settings use simple product language with support-friendly fallbacks.
