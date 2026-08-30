@@ -55,6 +55,15 @@ export async function refreshClientLastVisitAt(
   });
 }
 
+// A completed visit already happened — moving it to CANCELLED would corrupt
+// the completion-rate metric and the client's last-visit date. Shared so the
+// dedicated Cancel action (cancelAppointmentCore, below) and the edit-save
+// path (saveAppointmentAction in calendar/actions.ts, which enforces the
+// same rule for the Status dropdown) show one consistent message instead of
+// two independently-typed copies drifting apart.
+export const APPOINTMENT_ALREADY_COMPLETED_ERROR =
+  "This visit is already completed and can't be cancelled.";
+
 export type AppointmentMutationOutcome =
   | {
       ok: true;
@@ -68,11 +77,14 @@ export type AppointmentMutationOutcome =
   | { ok: false; status: 404 | 409; error: string };
 
 /**
- * Cancel an appointment: ownership-scoped lookup, refuses to cancel a
- * COMPLETED visit (the visit already happened — flipping it to CANCELLED
- * would corrupt completion-rate metrics and the client's last-visit date),
- * and runs the status update + reminder cleanup + lastVisitAt refresh as one
- * atomic transaction. Shared by the web calendar action and the mobile staff
+ * Cancel an appointment via compare-and-set: the terminal-state guard
+ * (refuses COMPLETED — the visit already happened, flipping it to CANCELLED
+ * would corrupt completion-rate metrics and the client's last-visit date —
+ * and no-ops idempotently on an already-CANCELLED row) is folded into the
+ * update's own WHERE clause, not a separate read, so a concurrent status
+ * change can't be silently overwritten. Runs the status update + reminder
+ * cleanup + lastVisitAt refresh as one atomic transaction. Shared by the web
+ * calendar action and the mobile staff
  * API so both enforce the same rule. `where` carries whatever scoping the
  * caller needs — the mobile API additionally scopes by staffMemberId so a
  * doctor can only cancel their own appointments; the web admin action scopes
@@ -83,48 +95,71 @@ export async function cancelAppointmentCore(where: {
   businessId: string;
   staffMemberId?: string;
 }): Promise<AppointmentMutationOutcome> {
-  const existing = await prisma.appointment.findFirst({
-    where,
-    select: { id: true, clientId: true, staffMemberId: true, status: true },
-  });
+  return prisma.$transaction(async (tx) => {
+    // Compare-and-set: the terminal-state guard is folded into the update's
+    // WHERE clause so Postgres evaluates it against the row's current
+    // committed state, not a possibly-stale earlier read. Without this, a
+    // concurrent completePastConfirmedAppointments sweep landing between a
+    // read and a separate write could flip a visit to COMPLETED and then
+    // have this cancel silently overwrite it back to CANCELLED. CANCELLED
+    // is excluded too — otherwise a re-cancel of an already-cancelled row
+    // still matches (Postgres counts a matched no-op UPDATE as affected),
+    // so `count` would be 1 and the idempotent branch below could never run.
+    const { count } = await tx.appointment.updateMany({
+      where: { ...where, status: { notIn: ["COMPLETED", "CANCELLED"] } },
+      data: { status: "CANCELLED" },
+    });
 
-  if (!existing) {
-    return { ok: false, status: 404, error: "Appointment not found." };
-  }
+    if (count === 0) {
+      // The guarded update didn't apply — read-only lookup (no race risk)
+      // just to tell the caller why: not found, blocked by COMPLETED, or
+      // already CANCELLED (idempotent).
+      const existing = await tx.appointment.findFirst({
+        where,
+        select: { id: true, clientId: true, staffMemberId: true, status: true },
+      });
 
-  if (existing.status === "CANCELLED") {
-    // Idempotent — nothing left to do.
+      if (!existing) {
+        return { ok: false, status: 404, error: "Appointment not found." };
+      }
+
+      if (existing.status === "COMPLETED") {
+        return {
+          ok: false,
+          status: 409,
+          error: APPOINTMENT_ALREADY_COMPLETED_ERROR,
+        };
+      }
+
+      // Only remaining case the guard excludes from the update: already
+      // CANCELLED — idempotent, nothing left to do.
+      return {
+        ok: true,
+        appointmentId: existing.id,
+        clientId: existing.clientId,
+        staffMemberId: existing.staffMemberId,
+        changed: false,
+      };
+    }
+
+    // The guarded update applied — this call is the one that just cancelled it.
+    const cancelled = await tx.appointment.findFirstOrThrow({
+      where: { id: where.id },
+      select: { id: true, clientId: true, staffMemberId: true },
+    });
+
+    // Clear any pending reminder rows so a later re-confirm starts clean.
+    await tx.appointmentReminder.deleteMany({ where: { appointmentId: cancelled.id } });
+    await refreshClientLastVisitAt(cancelled.clientId, where.businessId, tx);
+
     return {
       ok: true,
-      appointmentId: existing.id,
-      clientId: existing.clientId,
-      staffMemberId: existing.staffMemberId,
-      changed: false,
+      appointmentId: cancelled.id,
+      clientId: cancelled.clientId,
+      staffMemberId: cancelled.staffMemberId,
+      changed: true,
     };
-  }
-
-  if (existing.status === "COMPLETED") {
-    return {
-      ok: false,
-      status: 409,
-      error: "This visit is already completed and can't be cancelled.",
-    };
-  }
-
-  await prisma.$transaction(async (tx) => {
-    await tx.appointment.update({ where: { id: existing.id }, data: { status: "CANCELLED" } });
-    // Clear any pending reminder rows so a later re-confirm starts clean.
-    await tx.appointmentReminder.deleteMany({ where: { appointmentId: existing.id } });
-    await refreshClientLastVisitAt(existing.clientId, where.businessId, tx);
   });
-
-  return {
-    ok: true,
-    appointmentId: existing.id,
-    clientId: existing.clientId,
-    staffMemberId: existing.staffMemberId,
-    changed: true,
-  };
 }
 
 /**

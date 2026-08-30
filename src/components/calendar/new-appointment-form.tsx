@@ -124,7 +124,22 @@ export function NewAppointmentForm({
   const [status, setStatus] = useState<CalendarAppointmentStatus>(
     initialAppointment?.status ?? "confirmed"
   );
+  // Frozen at mount, never updated by the Status dropdown — this is what the
+  // server's concurrent-edit guard compares against, so it must reflect what
+  // this form actually loaded with, not the user's in-progress selection.
+  const [baselineStatus] = useState<CalendarAppointmentStatus>(
+    initialAppointment?.status ?? "confirmed"
+  );
   const isEditing = Boolean(initialAppointment);
+  // A completed visit already happened — offering "Cancelled" here would let
+  // someone pick an option the server refuses outright (see
+  // saveAppointmentAction's matching guard). Other corrections away from
+  // completed stay available. No useMemo: baselineStatus is frozen at mount
+  // (no setter), so this can never recompute to a different value anyway.
+  const editStatusOptions =
+    baselineStatus === "completed"
+      ? statusOptions.filter((option) => option !== "cancelled")
+      : statusOptions;
   const selectedHours = useMemo(
     () => businessHoursForDate(date, businessHours),
     [businessHours, date]
@@ -167,6 +182,7 @@ export function NewAppointmentForm({
         endTime,
         notes: String(formData.get("notes") ?? ""),
         status,
+        baselineStatus,
       });
 
       if (!result.ok || !result.appointment) {
@@ -322,7 +338,7 @@ export function NewAppointmentForm({
             >
               {/* A new booking can only be confirmed or pending; completed/cancelled
                   are reached later from the calendar, not at creation. */}
-              {(isEditing ? statusOptions : createStatusOptions).map((option) => (
+              {(isEditing ? editStatusOptions : createStatusOptions).map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
@@ -355,7 +371,7 @@ export function NewAppointmentForm({
               variant="destructive"
               className="rounded-(--radius-card)"
               onClick={() => setConfirmingAction("cancel")}
-              disabled={isPending || status === "cancelled"}
+              disabled={isPending || status === "cancelled" || baselineStatus === "completed"}
             >
               <XCircle className="size-4" />
               Cancel booking
