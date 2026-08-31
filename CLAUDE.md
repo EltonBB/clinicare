@@ -36,15 +36,21 @@ npm run media:normalize-storage-refs  # scripts/normalize-media-storage-refs.mjs
 
 **Responding to code review — fix the _class_, not the flagged line.** When a reviewer (the Codex bot or a person) flags one instance of a pattern, grep the whole codebase for siblings and fix them all in the same push before re-pushing — and audit the privileged sink up front. Reactive one-line patches just feed the review loop: an un-timed-out `fetch` flagged on one bridge call meant *every* cross-process call needed the same `AbortSignal`; a server-side auth fix needed its client-side twin.
 
-**Task workflow — the review loop.** This is the default shape for any non-trivial change in this repo, not a one-off:
+**Task workflow — the review loop (token-efficient version, 2026-08-31).** This is the default shape for any non-trivial change in this repo, not a one-off. Supersedes an earlier fixed-pass version that burned a full session's usage in ~10 minutes on one mini-task (10 parallel review subagents per pass, several individually spending 100K+ tokens) — see the `deep-review-before-push` memory for the full incident and reasoning:
 
 1. Break work into **mini tasks** — tackle one focused piece at a time, not one big objective in a single pass.
-2. After finishing a mini task's implementation: run `/code-review`, **3 passes** (review → fix findings → review again → fix → review again).
-3. Run `/ponytail-review` to cut complexity/over-engineering the implementation introduced.
-4. Run `/code-review` again, **2 more passes**.
-5. Push / open the PR.
-6. Wait for Codex's PR review.
-7. Codex clean → merge. Codex finds something → repeat the full cycle from step 2 (not a narrow reactive patch) until Codex is clean.
+2. **Implement carefully, not quickly.** Read the actual current code before editing (not a stale plan/memory note) and verify assumptions with a targeted Grep/Read, not a broad agent dispatch. Match existing patterns. Run the fast mechanical gates (`tsc`, lint, existing tests) right after editing — the cheapest available bug-catcher, before any review step. Minimize what a reviewer would even find; don't lean on the review loop as the primary correctness mechanism.
+3. **One review pass on the diff**, sized to match its risk — don't default to the highest effort level:
+   - Small, contained diff: review it directly yourself, no subagent dispatch.
+   - Larger or higher-risk diff (auth/security/data-integrity, many files, genuine uncertainty): `/code-review` at **low or medium** effort — always pass the level explicitly rather than relying on "reuses the level you typed last."
+   - Reserve `high`/`max`/`ultra` for changes that genuinely justify the cost — rare, not the default.
+4. If real issues turn up: fix them, then review again. Repeat until a pass finds nothing further.
+5. Run `/ponytail-review` once.
+6. One more review pass, same sizing rule as step 3. Finds something → fix and loop back to step 4 until clean. Clean immediately → stop.
+7. Push / open the PR. Wait for Codex's review.
+8. Codex clean → merge. Codex finds something → fix it, then re-enter the loop from step 3 (not a narrow reactive patch) before pushing again.
+
+**Token efficiency applies throughout, not just review passes:** default to the cheapest tool that answers the question — direct Grep/Read over a dispatched agent for a simple lookup, one targeted agent over ten parallel ones for a small diff. Spend fully when a task genuinely needs it to get a correct result — that's still what matters most — but treat that as the exception, not the default.
 
 ## Architecture
 
