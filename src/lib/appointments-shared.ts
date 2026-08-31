@@ -72,6 +72,12 @@ export const APPOINTMENT_ALREADY_COMPLETED_ERROR =
 export const APPOINTMENT_CONFLICT_ERROR =
   "This appointment was changed elsewhere. Refresh and try again.";
 
+// Shared by every guarded-mutation miss that means "no row matched — never
+// existed, out of scope, or already removed by a concurrent request" (as
+// opposed to the terminal-state/conflict messages above, which mean the row
+// exists but the requested change isn't allowed).
+export const APPOINTMENT_NOT_FOUND_ERROR = "Appointment not found.";
+
 export type AppointmentMutationOutcome =
   | {
       ok: true;
@@ -128,7 +134,7 @@ export async function cancelAppointmentCore(where: {
       });
 
       if (!existing) {
-        return { ok: false, status: 404, error: "Appointment not found." };
+        return { ok: false, status: 404, error: APPOINTMENT_NOT_FOUND_ERROR };
       }
 
       if (existing.status === "COMPLETED") {
@@ -184,11 +190,19 @@ export async function cancelAppointmentCore(where: {
 }
 
 /**
- * Delete an appointment: ownership-scoped lookup, then the delete and
- * lastVisitAt refresh as one atomic transaction (previously two separate
- * writes — a fault between them could leave a stale lastVisitAt pointing past
- * a now-deleted appointment). AppointmentReminder rows cascade-delete at the
- * DB level (schema `onDelete: Cascade`), so no separate cleanup is needed here.
+ * Delete an appointment via compare-and-set: the existence check is folded
+ * into the delete's own WHERE clause (`deleteMany`, not `.delete`), so a
+ * concurrent delete of the same row (a double-click, or two admin tabs)
+ * reports `count: 0` instead of `.delete` throwing Prisma's P2025 "Record
+ * not found" for a row that's already gone. Unlike cancelAppointmentCore
+ * there's no terminal-state business rule to enforce here (no "can't delete
+ * a COMPLETED appointment") and no idempotent-success case, so a guard miss
+ * is always reported as not-found — no diagnostic re-read needed. The
+ * initial read only captures clientId/staffMemberId for the return value and
+ * lastVisitAt refresh; it never gates the delete itself, so a stale read
+ * here can't cause an incorrect delete. AppointmentReminder rows
+ * cascade-delete at the DB level (schema `onDelete: Cascade`), so no
+ * separate cleanup is needed here.
  */
 export async function deleteAppointmentCore(where: {
   id: string;
@@ -197,25 +211,34 @@ export async function deleteAppointmentCore(where: {
 }): Promise<AppointmentMutationOutcome> {
   const existing = await prisma.appointment.findFirst({
     where,
-    select: { id: true, clientId: true, staffMemberId: true },
+    select: { clientId: true, staffMemberId: true },
   });
 
   if (!existing) {
-    return { ok: false, status: 404, error: "Appointment not found." };
+    return { ok: false, status: 404, error: APPOINTMENT_NOT_FOUND_ERROR };
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.appointment.delete({ where: { id: existing.id } });
-    await refreshClientLastVisitAt(existing.clientId, where.businessId, tx);
-  });
+  return prisma.$transaction(async (tx) => {
+    // Compare-and-set: scope the delete by the same `where` used to find the
+    // row above. If a concurrent request already deleted it between that
+    // read and this statement, `count` is 0 and this call becomes a no-op
+    // instead of throwing.
+    const { count } = await tx.appointment.deleteMany({ where });
 
-  return {
-    ok: true,
-    appointmentId: existing.id,
-    clientId: existing.clientId,
-    staffMemberId: existing.staffMemberId,
-    changed: true,
-  };
+    if (count === 0) {
+      return { ok: false, status: 404, error: APPOINTMENT_NOT_FOUND_ERROR };
+    }
+
+    await refreshClientLastVisitAt(existing.clientId, where.businessId, tx);
+
+    return {
+      ok: true,
+      appointmentId: where.id,
+      clientId: existing.clientId,
+      staffMemberId: existing.staffMemberId,
+      changed: true,
+    };
+  });
 }
 
 // Invalidate the Router Cache for every surface an appointment mutation touches

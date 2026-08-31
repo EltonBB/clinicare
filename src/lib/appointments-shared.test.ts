@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const appointment = {
     updateMany: vi.fn(),
+    deleteMany: vi.fn(),
     findFirst: vi.fn(),
     findFirstOrThrow: vi.fn(),
   };
@@ -31,11 +32,17 @@ vi.mock("@/lib/mobile/push", () => ({
 import {
   APPOINTMENT_ALREADY_COMPLETED_ERROR,
   APPOINTMENT_CONFLICT_ERROR,
+  APPOINTMENT_NOT_FOUND_ERROR,
   cancelAppointmentCore,
+  deleteAppointmentCore,
 } from "./appointments-shared";
 
 const WHERE = { id: "appt_1", businessId: "biz_1" };
 const RECORD = { id: "appt_1", clientId: "client_1", staffMemberId: "staff_1" };
+// deleteAppointmentCore's pre-read select drops `id` (it returns `where.id`
+// instead) — a narrower fixture so a future regression reintroducing a read
+// of `existing.id` can't hide behind an over-permissive mock.
+const DELETE_EXISTING = { clientId: "client_1", staffMemberId: "staff_1" };
 
 /** The guarded update matched a row and cancelled it — the success path. */
 function mockGuardHit() {
@@ -178,7 +185,7 @@ describe("cancelAppointmentCore", () => {
 
     const result = await cancelAppointmentCore(WHERE);
 
-    expect(result).toEqual({ ok: false, status: 404, error: "Appointment not found." });
+    expect(result).toEqual({ ok: false, status: 404, error: APPOINTMENT_NOT_FOUND_ERROR });
   });
 
   it("scopes the guarded update by staffMemberId when the mobile caller provides it", async () => {
@@ -189,6 +196,71 @@ describe("cancelAppointmentCore", () => {
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith({
       where: { ...WHERE, staffMemberId: "staff_1", status: { notIn: ["COMPLETED", "CANCELLED"] } },
       data: { status: "CANCELLED" },
+    });
+  });
+});
+
+/** The pre-read finds the row, and the guarded delete matches it — success. */
+function mockDeleteGuardHit() {
+  mocks.appointment.findFirst
+    .mockResolvedValueOnce(DELETE_EXISTING) // the pre-read
+    .mockResolvedValueOnce(null); // refreshClientLastVisitAt's latest-visit lookup
+  mocks.appointment.deleteMany.mockResolvedValue({ count: 1 });
+  mocks.client.updateMany.mockResolvedValue({ count: 1 });
+}
+
+describe("deleteAppointmentCore", () => {
+  it("deletes an appointment and refreshes lastVisitAt", async () => {
+    mockDeleteGuardHit();
+
+    const result = await deleteAppointmentCore(WHERE);
+
+    expect(result).toEqual({
+      ok: true,
+      appointmentId: "appt_1",
+      clientId: "client_1",
+      staffMemberId: "staff_1",
+      changed: true,
+    });
+    expect(mocks.appointment.deleteMany).toHaveBeenCalledWith({ where: WHERE });
+    expect(mocks.client.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "client_1", businessId: "biz_1" } })
+    );
+  });
+
+  it("closes the race: a concurrent delete that already won makes this one a typed 404, not an unhandled Prisma throw", async () => {
+    // Two admin tabs (or a double-click) both pass the pre-read's existence
+    // check; the first request's delete wins and removes the row before this
+    // second request's guarded delete runs. Because the guard is the
+    // deleteMany's own WHERE match (not `.delete` by id), this call reports
+    // `count: 0` instead of Prisma throwing P2025 "Record not found" — the
+    // exact throw deleteAppointmentAction has no try/catch for.
+    mocks.appointment.findFirst.mockResolvedValueOnce(DELETE_EXISTING); // the pre-read
+    mocks.appointment.deleteMany.mockResolvedValue({ count: 0 });
+
+    const result = await deleteAppointmentCore(WHERE);
+
+    expect(result).toEqual({ ok: false, status: 404, error: APPOINTMENT_NOT_FOUND_ERROR });
+    // The loser must not refresh lastVisitAt for a delete that didn't happen.
+    expect(mocks.client.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the appointment doesn't exist (or isn't in scope)", async () => {
+    mocks.appointment.findFirst.mockResolvedValueOnce(null);
+
+    const result = await deleteAppointmentCore(WHERE);
+
+    expect(result).toEqual({ ok: false, status: 404, error: APPOINTMENT_NOT_FOUND_ERROR });
+    expect(mocks.appointment.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("scopes the guarded delete by staffMemberId when the mobile caller provides it", async () => {
+    mockDeleteGuardHit();
+
+    await deleteAppointmentCore({ ...WHERE, staffMemberId: "staff_1" });
+
+    expect(mocks.appointment.deleteMany).toHaveBeenCalledWith({
+      where: { ...WHERE, staffMemberId: "staff_1" },
     });
   });
 });
