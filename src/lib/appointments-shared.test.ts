@@ -28,7 +28,11 @@ vi.mock("@/lib/mobile/push", () => ({
   sendStaffPush: vi.fn(),
 }));
 
-import { APPOINTMENT_ALREADY_COMPLETED_ERROR, cancelAppointmentCore } from "./appointments-shared";
+import {
+  APPOINTMENT_ALREADY_COMPLETED_ERROR,
+  APPOINTMENT_CONFLICT_ERROR,
+  cancelAppointmentCore,
+} from "./appointments-shared";
 
 const WHERE = { id: "appt_1", businessId: "biz_1" };
 const RECORD = { id: "appt_1", clientId: "client_1", staffMemberId: "staff_1" };
@@ -42,7 +46,7 @@ function mockGuardHit() {
 }
 
 /** The guarded update matched nothing — diagnostic lookup returns `status`. */
-function mockGuardMiss(status: "COMPLETED" | "CANCELLED" | null) {
+function mockGuardMiss(status: "COMPLETED" | "CANCELLED" | "CONFIRMED" | null) {
   mocks.appointment.updateMany.mockResolvedValue({ count: 0 });
   mocks.appointment.findFirst.mockResolvedValue(status ? { ...RECORD, status } : null);
 }
@@ -144,6 +148,29 @@ describe("cancelAppointmentCore", () => {
       changed: false,
     });
     expect(mocks.appointmentReminder.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("refuses with a conflict — not a fake success — when the diagnostic read races past CANCELLED", async () => {
+    // Codex P2 finding: the guarded update can miss because the row was
+    // COMPLETED, but by the time the read-only diagnostic lookup below runs
+    // (a separate statement — under READ COMMITTED it can see a later
+    // commit than the update did), a concurrent edit has already undone the
+    // auto-complete back to CONFIRMED. The old code assumed "not COMPLETED"
+    // meant "must be CANCELLED" and returned a fake ok:true/changed:false —
+    // silently NOT cancelling an appointment that was actually still
+    // CONFIRMED. It must report a conflict instead, exactly like
+    // saveAppointmentAction's own guard-miss.
+    mockGuardMiss("CONFIRMED");
+
+    const result = await cancelAppointmentCore(WHERE);
+
+    expect(result).toEqual({
+      ok: false,
+      status: 409,
+      error: APPOINTMENT_CONFLICT_ERROR,
+    });
+    expect(mocks.appointmentReminder.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.client.updateMany).not.toHaveBeenCalled();
   });
 
   it("returns 404 when the appointment doesn't exist (or isn't in scope)", async () => {

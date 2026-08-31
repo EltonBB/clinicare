@@ -52,6 +52,7 @@ vi.mock("@/lib/appointments-shared", async () => {
     await vi.importActual<typeof import("@/lib/appointments-shared")>("@/lib/appointments-shared");
   return {
     APPOINTMENT_ALREADY_COMPLETED_ERROR: actual.APPOINTMENT_ALREADY_COMPLETED_ERROR,
+    APPOINTMENT_CONFLICT_ERROR: actual.APPOINTMENT_CONFLICT_ERROR,
     cancelAppointmentCore: vi.fn(),
     deleteAppointmentCore: vi.fn(),
     refreshClientLastVisitAt: mocks.refreshClientLastVisitAt,
@@ -61,7 +62,10 @@ vi.mock("@/lib/appointments-shared", async () => {
 });
 
 import { saveAppointmentAction, type SaveAppointmentPayload } from "./actions";
-import { APPOINTMENT_ALREADY_COMPLETED_ERROR } from "@/lib/appointments-shared";
+import {
+  APPOINTMENT_ALREADY_COMPLETED_ERROR,
+  APPOINTMENT_CONFLICT_ERROR,
+} from "@/lib/appointments-shared";
 
 const BUSINESS = { id: "biz_1" };
 const EXISTING = {
@@ -117,7 +121,7 @@ describe("saveAppointmentAction — concurrent-edit guard", () => {
 
     expect(result).toEqual({
       ok: false,
-      error: "This appointment was changed elsewhere. Refresh and try again.",
+      error: APPOINTMENT_CONFLICT_ERROR,
     });
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -178,7 +182,7 @@ describe("saveAppointmentAction — concurrent-edit guard", () => {
     );
     expect(result).toEqual({
       ok: false,
-      error: "This appointment was changed elsewhere. Refresh and try again.",
+      error: APPOINTMENT_CONFLICT_ERROR,
     });
   });
 

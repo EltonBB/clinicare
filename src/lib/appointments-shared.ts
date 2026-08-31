@@ -64,6 +64,14 @@ export async function refreshClientLastVisitAt(
 export const APPOINTMENT_ALREADY_COMPLETED_ERROR =
   "This visit is already completed and can't be cancelled.";
 
+// Generic "something else changed this row between when we checked and when
+// we wrote" conflict — distinct from the terminal-state-specific message
+// above. Shared so cancelAppointmentCore's own race-disambiguation fallback
+// (below) and saveAppointmentAction's guard-miss (calendar/actions.ts) show
+// one consistent message instead of two independently-typed copies.
+export const APPOINTMENT_CONFLICT_ERROR =
+  "This appointment was changed elsewhere. Refresh and try again.";
+
 export type AppointmentMutationOutcome =
   | {
       ok: true;
@@ -131,8 +139,21 @@ export async function cancelAppointmentCore(where: {
         };
       }
 
-      // Only remaining case the guard excludes from the update: already
-      // CANCELLED — idempotent, nothing left to do.
+      if (existing.status !== "CANCELLED") {
+        // Under READ COMMITTED, this read is a separate statement from the
+        // guarded update above and can observe a LATER commit than it did:
+        // the row may have been COMPLETED when the update ran (hence count
+        // 0), but a concurrent edit already moved it back to CONFIRMED
+        // (undoing an accidental auto-complete is a supported flow) by the
+        // time this diagnostic read runs. Assuming CANCELLED here would
+        // report a fake success without ever cancelling the appointment, so
+        // any status that's neither COMPLETED nor CANCELLED is a conflict —
+        // same as saveAppointmentAction's guard-miss, and the caller retries
+        // the same way.
+        return { ok: false, status: 409, error: APPOINTMENT_CONFLICT_ERROR };
+      }
+
+      // existing.status === "CANCELLED": idempotent, nothing left to do.
       return {
         ok: true,
         appointmentId: existing.id,

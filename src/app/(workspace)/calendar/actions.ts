@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import {
   APPOINTMENT_ALREADY_COMPLETED_ERROR,
+  APPOINTMENT_CONFLICT_ERROR,
   cancelAppointmentCore,
   deleteAppointmentCore,
   notifyStaffOfAppointmentChange,
@@ -399,7 +400,7 @@ export async function saveAppointmentAction(
     if (txResult.conflict) {
       return {
         ok: false,
-        error: "This appointment was changed elsewhere. Refresh and try again.",
+        error: APPOINTMENT_CONFLICT_ERROR,
       };
     }
 
