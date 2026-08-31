@@ -45,6 +45,46 @@ export async function openTimeEntryIfAbsent(
 }
 
 /**
+ * Close the currently-open time entry, if any, via compare-and-set — shared
+ * by the mobile self check-out (below) and the admin check-out action
+ * (staff/actions.ts) so both close the same race: a plain find-then-update
+ * (no guard) lets a concurrent closer — the other of admin/mobile, a second
+ * tap, or the stale-entry sweep (staff-clock.ts's autoCloseStaleTimeEntries,
+ * which runs on every workspace page render and via cron) silently
+ * overwrite checkedOutAt with a fresh timestamp after the row was already
+ * closed. The checkedOutAt: null guard is folded into the update's own
+ * WHERE clause (not a separate read) so Postgres evaluates it against the
+ * row's current committed state — no Serializable transaction needed here
+ * (unlike openTimeEntryIfAbsent's create race above): this is a guarded
+ * UPDATE of an already-identified existing row, not a conditional INSERT.
+ *
+ * Returns whether an entry was open to close — true even if a concurrent
+ * closer's write is the one that actually won, since either way the
+ * caller's goal (checked out) is satisfied; checkedOutAt only ever moves
+ * null -> set, never back, so a guard-miss can only mean "already closed,"
+ * no other state is reachable. Callers that need to distinguish "nothing
+ * was open" (e.g. to show an error) branch on the returned boolean; callers
+ * that don't can ignore it.
+ */
+export async function closeOpenTimeEntryIfPresent(
+  businessId: string,
+  staffMemberId: string
+): Promise<boolean> {
+  const openEntry = await prisma.staffTimeEntry.findFirst({
+    where: { businessId, staffMemberId, checkedOutAt: null },
+    orderBy: { checkedInAt: "desc" },
+  });
+  if (!openEntry) {
+    return false;
+  }
+  await prisma.staffTimeEntry.updateMany({
+    where: { id: openEntry.id, checkedOutAt: null },
+    data: { checkedOutAt: new Date() },
+  });
+  return true;
+}
+
+/**
  * Mobile self check-in / check-out. The staff member asserts their own presence
  * from the app; the admin is notified on the dashboard to verify it (see the
  * WorkspaceToaster). Check-in is allowed ONLY inside a scheduled shift window
@@ -92,20 +132,7 @@ export async function clockStaff(
   if (action === "in") {
     await openTimeEntryIfAbsent(ctx.business.id, ctx.staffMember.id);
   } else {
-    const openEntry = await prisma.staffTimeEntry.findFirst({
-      where: {
-        businessId: ctx.business.id,
-        staffMemberId: ctx.staffMember.id,
-        checkedOutAt: null,
-      },
-      orderBy: { checkedInAt: "desc" },
-    });
-    if (openEntry) {
-      await prisma.staffTimeEntry.update({
-        where: { id: openEntry.id },
-        data: { checkedOutAt: new Date() },
-      });
-    }
+    await closeOpenTimeEntryIfPresent(ctx.business.id, ctx.staffMember.id);
   }
 
   // The admin's "Staff today" card + staff pages reflect the new clock state.
