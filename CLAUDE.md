@@ -46,7 +46,7 @@ npm run media:normalize-storage-refs  # scripts/normalize-media-storage-refs.mjs
    - Reserve `high`/`max`/`ultra` for changes that genuinely justify the cost — rare, not the default.
 4. If real issues turn up: fix them, then review again. Repeat until a pass finds nothing further.
 5. Run `/ponytail-review` once.
-6. One more review pass, same sizing rule as step 3. Finds something → fix and loop back to step 4 until clean. Clean immediately → stop.
+6. One more review pass, same sizing rule as step 3. Finds something → fix it and repeat this step until clean — without re-running step 5, which only runs once per cycle. Clean immediately → stop.
 7. Push / open the PR. Wait for Codex's review.
 8. Codex clean → merge. Codex finds something → fix it, then re-enter the loop from step 3 (not a narrow reactive patch) before pushing again.
 
