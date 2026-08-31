@@ -1,4 +1,28 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => {
+  const staffDevice = { findUnique: vi.fn(), update: vi.fn() };
+  const checkRateLimit = vi.fn();
+  const loggerError = vi.fn();
+  return { staffDevice, checkRateLimit, loggerError };
+});
+
+vi.mock("@/lib/prisma", () => ({
+  prisma: { staffDevice: mocks.staffDevice },
+}));
+
+vi.mock("@/lib/rate-limit", async () => {
+  // Real clientIpFromHeaders (pure); mocked checkRateLimit — the real one
+  // keeps in-memory counters in a module-level global that would otherwise
+  // accumulate across every test in this file sharing the same "unknown" IP
+  // key, eventually 429-ing an unrelated later test.
+  const actual = await vi.importActual<typeof import("@/lib/rate-limit")>("@/lib/rate-limit");
+  return { ...actual, checkRateLimit: mocks.checkRateLimit };
+});
+
+vi.mock("@/lib/logger", () => ({
+  logger: { error: mocks.loggerError, warn: vi.fn(), info: vi.fn() },
+}));
 
 import {
   bearerToken,
@@ -9,6 +33,7 @@ import {
   normalizeCode,
   sha256Hex,
 } from "@/lib/staff-auth-crypto";
+import { DEVICE_TOKEN_TTL_MS, requireStaffContext } from "./staff-auth";
 
 describe("sha256Hex", () => {
   it("is deterministic and 64 hex chars", () => {
@@ -90,5 +115,154 @@ describe("bearerToken", () => {
     expect(bearerToken(req({}))).toBeNull();
     expect(bearerToken(req({ authorization: "Basic abc" }))).toBeNull();
     expect(bearerToken(req({ authorization: "Bearer" }))).toBeNull();
+  });
+});
+
+describe("requireStaffContext", () => {
+  const NOW = new Date("2026-06-01T12:00:00.000Z");
+  const RAW_TOKEN = "test-raw-device-token";
+  const TOKEN_HASH = hashDeviceToken(RAW_TOKEN);
+  const BUSINESS = { id: "biz_1", name: "Test Clinic" };
+  const STAFF_MEMBER = { id: "staff_1", isActive: true, status: "ACTIVE" };
+
+  function makeDevice(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "device_1",
+      tokenHash: TOKEN_HASH,
+      revokedAt: null,
+      expiresAt: new Date(NOW.getTime() + 24 * 60 * 60 * 1000), // 1 day out
+      createdAt: new Date(NOW.getTime() - 24 * 60 * 60 * 1000), // enrolled yesterday
+      lastSeenAt: NOW, // just seen — under the refresh threshold by default
+      staffMember: STAFF_MEMBER,
+      business: BUSINESS,
+      ...overrides,
+    };
+  }
+
+  function req(token: string | null = RAW_TOKEN) {
+    return new Request("https://example.test/api/mobile/v1/me", {
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    mocks.checkRateLimit.mockResolvedValue({ allowed: true, remaining: 599, retryAfterSeconds: 0 });
+    mocks.staffDevice.update.mockResolvedValue({});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("refuses a rate-limited caller before any DB lookup", async () => {
+    mocks.checkRateLimit.mockResolvedValue({ allowed: false, remaining: 0, retryAfterSeconds: 12 });
+
+    const result = await requireStaffContext(req());
+
+    expect(result).toMatchObject({ status: 429 });
+    expect(mocks.staffDevice.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("refuses with no bearer token, before any DB lookup", async () => {
+    const result = await requireStaffContext(req(null));
+
+    expect(result).toMatchObject({ status: 401 });
+    expect(mocks.staffDevice.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("refuses when no device matches the token", async () => {
+    mocks.staffDevice.findUnique.mockResolvedValue(null);
+
+    const result = await requireStaffContext(req());
+
+    expect(result).toMatchObject({ status: 401 });
+  });
+
+  it("refuses a revoked device", async () => {
+    mocks.staffDevice.findUnique.mockResolvedValue(makeDevice({ revokedAt: NOW }));
+
+    const result = await requireStaffContext(req());
+
+    expect(result).toMatchObject({ status: 401 });
+  });
+
+  it("refuses an expired device", async () => {
+    mocks.staffDevice.findUnique.mockResolvedValue(
+      makeDevice({ expiresAt: new Date(NOW.getTime() - 1000) })
+    );
+
+    const result = await requireStaffContext(req());
+
+    expect(result).toMatchObject({ status: 401 });
+  });
+
+  it("refuses once the absolute 90-day cap is exceeded, even with recent activity", async () => {
+    // Enrolled 91 days ago but actively used since (expiresAt/lastSeenAt both
+    // look fresh) — the absolute cap must still reject it on its own, since
+    // it exists precisely to stop an active device sliding forever.
+    mocks.staffDevice.findUnique.mockResolvedValue(
+      makeDevice({ createdAt: new Date(NOW.getTime() - 91 * 24 * 60 * 60 * 1000) })
+    );
+
+    const result = await requireStaffContext(req());
+
+    expect(result).toMatchObject({ status: 401 });
+  });
+
+  it("refuses when the staff member is inactive", async () => {
+    mocks.staffDevice.findUnique.mockResolvedValue(
+      makeDevice({ staffMember: { ...STAFF_MEMBER, isActive: false } })
+    );
+
+    const result = await requireStaffContext(req());
+
+    expect(result).toMatchObject({ status: 401 });
+  });
+
+  it("refuses when the staff member's status is INACTIVE", async () => {
+    mocks.staffDevice.findUnique.mockResolvedValue(
+      makeDevice({ staffMember: { ...STAFF_MEMBER, status: "INACTIVE" } })
+    );
+
+    const result = await requireStaffContext(req());
+
+    expect(result).toMatchObject({ status: 401 });
+  });
+
+  it("returns the staff context for a valid device, without writing when the session isn't stale", async () => {
+    mocks.staffDevice.findUnique.mockResolvedValue(makeDevice({ lastSeenAt: NOW }));
+
+    const result = await requireStaffContext(req());
+
+    expect("error" in result).toBe(false);
+    expect(result).toMatchObject({ staffMember: STAFF_MEMBER, business: BUSINESS });
+    expect(mocks.staffDevice.update).not.toHaveBeenCalled();
+  });
+
+  it("extends the session once it's past the sliding-refresh threshold", async () => {
+    const stale = new Date(NOW.getTime() - 2 * 60 * 60 * 1000); // 2h ago > 1h threshold
+    mocks.staffDevice.findUnique.mockResolvedValue(makeDevice({ lastSeenAt: stale }));
+
+    const result = await requireStaffContext(req());
+
+    expect("error" in result).toBe(false);
+    expect(mocks.staffDevice.update).toHaveBeenCalledWith({
+      where: { id: "device_1" },
+      data: { lastSeenAt: NOW, expiresAt: new Date(NOW.getTime() + DEVICE_TOKEN_TTL_MS) },
+    });
+  });
+
+  it("still returns the valid context when the best-effort session-refresh write fails", async () => {
+    const stale = new Date(NOW.getTime() - 2 * 60 * 60 * 1000);
+    mocks.staffDevice.findUnique.mockResolvedValue(makeDevice({ lastSeenAt: stale }));
+    mocks.staffDevice.update.mockRejectedValue(new Error("db down"));
+
+    const result = await requireStaffContext(req());
+
+    expect("error" in result).toBe(false);
+    expect(mocks.loggerError).toHaveBeenCalled();
   });
 });
