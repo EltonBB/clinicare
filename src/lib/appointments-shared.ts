@@ -19,6 +19,16 @@ import { prisma } from "@/lib/prisma";
  * future confirmed booking is never read as a past visit (which would mask
  * the "no visit in 90+ days" attention segment and disagree with the detail
  * page, which shows this same field).
+ *
+ * Known narrow race, accepted rather than guarded: this is a read then a
+ * separate write, not a compare-and-set, so two concurrent callers refreshing
+ * the SAME client from DIFFERENT appointments (e.g. a cancel racing the
+ * completePastConfirmedAppointments sweep on another visit) could have the
+ * one that read first also write last, leaving a stale value. Closing this
+ * fully needs either raw SQL (an atomic `UPDATE ... SET x = (subquery)` —
+ * this codebase has none today) or a schema change for optimistic
+ * concurrency; not worth either for a display field that self-corrects on
+ * this client's next appointment mutation and never corrupts data.
  */
 export async function refreshClientLastVisitAt(
   clientId: string,
