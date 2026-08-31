@@ -3,6 +3,8 @@
 import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import {
+  APPOINTMENT_ALREADY_COMPLETED_ERROR,
+  APPOINTMENT_CONFLICT_ERROR,
   cancelAppointmentCore,
   deleteAppointmentCore,
   notifyStaffOfAppointmentChange,
@@ -31,6 +33,15 @@ export type SaveAppointmentPayload = {
   endTime: string;
   notes: string;
   status: CalendarAppointmentStatus;
+  /**
+   * The status this form was loaded/last-synced with — NOT re-read from the
+   * database at submit time. The compare-and-set guard below matches the
+   * row's live status against THIS value, not a fresh read, because a fresh
+   * read would already reflect a concurrent change made while the form sat
+   * open and defeat the whole point of the guard. Ignored for new bookings
+   * (no existing row to guard against).
+   */
+  baselineStatus: CalendarAppointmentStatus;
 };
 
 export type SaveAppointmentResult = {
@@ -268,7 +279,31 @@ export async function saveAppointmentAction(
 
       previousClientId = existing.clientId;
       previousStaffMemberId = existing.staffMemberId;
+      // existing.status (fresh, just read above) drives the bookkeeping
+      // below — it should describe what's actually in the DB right now, not
+      // what the client's stale form last saw. That's a deliberately
+      // different source than payload.baselineStatus, which the guarded
+      // write further down compares against instead of this fresh read —
+      // see that guard's comment for why. The two are expected to agree
+      // outside of a sub-millisecond window between this read and the
+      // transaction starting.
       const newStatus = toPrismaAppointmentStatus(payload.status);
+
+      // Same rule cancelAppointmentCore enforces for the dedicated Cancel
+      // button (409 there) — a completed visit already happened, so flipping
+      // it to CANCELLED would corrupt the completion-rate metric and the
+      // client's last-visit date. The Status dropdown offers every status,
+      // so this is reachable with no race at all — just picking "Cancelled"
+      // while editing an old completed visit. (Other corrections away from
+      // COMPLETED, e.g. reverting an accidental auto-complete back to
+      // CONFIRMED, stay allowed — only the CANCELLED destination is barred.)
+      if (existing.status === "COMPLETED" && newStatus === "CANCELLED") {
+        return {
+          ok: false,
+          error: APPOINTMENT_ALREADY_COMPLETED_ERROR,
+        };
+      }
+
       wasNewlyCancelled = existing.status !== "CANCELLED" && newStatus === "CANCELLED";
       shouldResetReminders =
         existing.clientId !== payload.clientId ||
@@ -282,11 +317,31 @@ export async function saveAppointmentAction(
     // The appointment write, reminder reset, and last-visit refresh commit
     // together. Payment is intentionally NOT collected here — it's recorded
     // separately on the client's Payments tab, after the visit.
-    await prisma.$transaction(async (tx) => {
+    const txResult = await prisma.$transaction(async (tx) => {
       if (payload.id) {
-        await tx.appointment.update({
+        // Compare-and-set: guard the write on the status the CLIENT'S form
+        // was built from (payload.baselineStatus), not a status re-read
+        // here at submit time — a fresh read would already reflect a
+        // concurrent change made while the form sat open (most commonly
+        // completePastConfirmedAppointments' sweep flipping CONFIRMED to
+        // COMPLETED), so the guard would just match the new value and wave
+        // the stale save straight through. Comparing against what the
+        // client actually saw is what makes this a real compare-and-set —
+        // the same class of race cancelAppointmentCore closes for the
+        // dedicated cancel action, just keyed on the client's baseline
+        // instead of an exclusion set (a save can legitimately move status
+        // to any value, unlike a cancel which only ever moves to CANCELLED).
+        // Scope: this guards `status` only, not clientId/staffMemberId/
+        // title/startAt/endAt/notes — two concurrent saves that leave
+        // status untouched can still clobber each other's other fields.
+        // Closing that fully would be general optimistic-concurrency
+        // control for the whole edit form, a materially bigger feature;
+        // this fix targets the specific status-vs-completion-sweep race.
+        const { count } = await tx.appointment.updateMany({
           where: {
             id: payload.id,
+            businessId: business.id,
+            status: toPrismaAppointmentStatus(payload.baselineStatus),
           },
           data: {
             clientId: payload.clientId,
@@ -298,6 +353,10 @@ export async function saveAppointmentAction(
             status: toPrismaAppointmentStatus(payload.status),
           },
         });
+
+        if (count === 0) {
+          return { conflict: true as const };
+        }
 
         if (shouldResetReminders) {
           await tx.appointmentReminder.deleteMany({
@@ -334,7 +393,16 @@ export async function saveAppointmentAction(
         appointmentId = created.id;
         await refreshClientLastVisitAt(payload.clientId, business.id, tx);
       }
+
+      return { conflict: false as const };
     });
+
+    if (txResult.conflict) {
+      return {
+        ok: false,
+        error: APPOINTMENT_CONFLICT_ERROR,
+      };
+    }
 
     revalidateCalendarSurfaces(
       [payload.clientId, previousClientId],
