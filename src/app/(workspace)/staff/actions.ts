@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
-import { openTimeEntryIfAbsent } from "@/lib/mobile/clock";
+import { closeOpenTimeEntryIfPresent, openTimeEntryIfAbsent } from "@/lib/mobile/clock";
 import { prisma } from "@/lib/prisma";
 import {
   formatZonedTime,
@@ -481,32 +481,14 @@ export async function checkOutStaffAction(staffId: string): Promise<StaffClockRe
   }
 
   const business = context.business;
-  const openEntry = await prisma.staffTimeEntry.findFirst({
-    where: {
-      businessId: business.id,
-      staffMemberId: staffId,
-      checkedOutAt: null,
-    },
-    orderBy: {
-      checkedInAt: "desc",
-    },
-  });
+  const closed = await closeOpenTimeEntryIfPresent(business.id, staffId);
 
-  if (!openEntry) {
+  if (!closed) {
     return {
       ok: false,
       error: "This staff member is not checked in.",
     };
   }
-
-  await prisma.staffTimeEntry.update({
-    where: {
-      id: openEntry.id,
-    },
-    data: {
-      checkedOutAt: new Date(),
-    },
-  });
 
   revalidateStaffSurfaces(staffId);
 
