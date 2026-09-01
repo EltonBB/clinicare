@@ -376,11 +376,24 @@ export async function deleteStaffAction(staffId: string): Promise<DeleteStaffRes
     };
   }
 
-  await prisma.staffMember.delete({
+  // Compare-and-set: scope the delete by the same id+businessId used to find
+  // the row above. If a concurrent request already deleted it, `count` is 0
+  // and this call becomes a typed not-found instead of `.delete` throwing
+  // Prisma's P2025 for a row that's already gone — mirrors
+  // deleteAppointmentCore's fix (src/lib/appointments-shared.ts).
+  const { count } = await prisma.staffMember.deleteMany({
     where: {
       id: staffId,
+      businessId: business.id,
     },
   });
+
+  if (count === 0) {
+    return {
+      ok: false,
+      error: "Staff member not found in this workspace.",
+    };
+  }
 
   revalidateStaffRosterSurfaces();
 
