@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => {
   const clientTreatmentPlanItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientFollowUpReminder = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientPayment = { findFirst: vi.fn(), deleteMany: vi.fn() };
+  const clientDocument = { findFirst: vi.fn(), deleteMany: vi.fn() };
+  const clientGalleryItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const getAuthedBusiness = vi.fn();
   const deleteStorageReferences = vi.fn();
   const loggerError = vi.fn();
@@ -22,6 +24,8 @@ const mocks = vi.hoisted(() => {
     clientTreatmentPlanItem,
     clientFollowUpReminder,
     clientPayment,
+    clientDocument,
+    clientGalleryItem,
     getAuthedBusiness,
     deleteStorageReferences,
     loggerError,
@@ -37,6 +41,8 @@ vi.mock("@/lib/prisma", () => ({
     clientTreatmentPlanItem: mocks.clientTreatmentPlanItem,
     clientFollowUpReminder: mocks.clientFollowUpReminder,
     clientPayment: mocks.clientPayment,
+    clientDocument: mocks.clientDocument,
+    clientGalleryItem: mocks.clientGalleryItem,
   },
 }));
 
@@ -62,6 +68,8 @@ import {
   deleteClientFollowUpReminderAction,
   deleteClientPaymentAction,
   deleteClientTreatmentPlanItemAction,
+  deleteClientDocumentAction,
+  deleteClientGalleryItemAction,
 } from "./actions";
 
 const BUSINESS = { id: "biz_1" };
@@ -240,5 +248,54 @@ describe.each([
 
     expect(result).toEqual({ ok: false, error: SUB_RECORD_NOT_FOUND_ERROR });
     expect(mocks[model].deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+// deleteClientDocumentAction/deleteClientGalleryItemAction use
+// requireOwnedClient + their own inline findFirst directly, not
+// requireOwnedSubRecord — a pre-existing structural difference from the
+// other sub-record actions, not something this fix changes. Same testing
+// boundary as the other batches: only the failure paths (which return
+// before ever reaching respondWithClientRecord) are covered here.
+describe.each([
+  {
+    name: "deleteClientDocumentAction",
+    action: deleteClientDocumentAction,
+    model: "clientDocument" as const,
+    urlField: "storageUrl",
+  },
+  {
+    name: "deleteClientGalleryItemAction",
+    action: deleteClientGalleryItemAction,
+    model: "clientGalleryItem" as const,
+    urlField: "imageUrl",
+  },
+])("$name", ({ action, model, urlField }) => {
+  it("closes the race: a concurrent delete that already won makes this one a typed not-found, not an unhandled Prisma throw — and skips storage cleanup", async () => {
+    mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID });
+    mocks[model].findFirst.mockResolvedValue({ id: SUB_RECORD_ID, [urlField]: "file.pdf" });
+    mocks[model].deleteMany.mockResolvedValue({ count: 0 });
+
+    const result = await action(SUB_RECORD_PAYLOAD);
+
+    expect(result).toEqual({ ok: false, error: SUB_RECORD_NOT_FOUND_ERROR });
+    expect(mocks[model].deleteMany).toHaveBeenCalledWith({
+      where: { id: SUB_RECORD_ID, clientId: CLIENT_ID, businessId: "biz_1" },
+    });
+    // The guard-miss return happens before the storage-cleanup block, so a
+    // losing request must never attempt to delete files the winner (if any)
+    // is responsible for.
+    expect(mocks.deleteStorageReferences).not.toHaveBeenCalled();
+  });
+
+  it("returns not-found when the record doesn't exist (or isn't in scope)", async () => {
+    mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID });
+    mocks[model].findFirst.mockResolvedValue(null);
+
+    const result = await action(SUB_RECORD_PAYLOAD);
+
+    expect(result).toEqual({ ok: false, error: SUB_RECORD_NOT_FOUND_ERROR });
+    expect(mocks[model].deleteMany).not.toHaveBeenCalled();
+    expect(mocks.deleteStorageReferences).not.toHaveBeenCalled();
   });
 });
