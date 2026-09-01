@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 import { requireCurrentBusiness, requireCurrentWorkspace } from "@/lib/business";
 import { getCurrentUser, updateCurrentUserMetadata } from "@/lib/auth";
 import { sanitizeAuthMetadataForSession } from "@/lib/auth-metadata";
@@ -245,7 +246,18 @@ export async function saveSettingsAction(
   }
 
   if (previousLogoUrl && previousLogoUrl !== nextLogoUrl) {
-    await deleteStorageReferences([previousLogoUrl]);
+    // The settings save already committed and revalidated above — this is
+    // best-effort cleanup of the now-unused old logo, not part of the save
+    // itself. deleteStorageReferences throws on a real storage failure; let
+    // that fail the whole save (telling the operator their settings didn't
+    // save) would be wrong when they actually did. Log it instead.
+    try {
+      await deleteStorageReferences([previousLogoUrl]);
+    } catch (error) {
+      logger.error("Failed to clean up a business's old logo file.", error, {
+        businessId: business.id,
+      });
+    }
   }
 
   const updatedBusiness = await prisma.business.findUniqueOrThrow({
