@@ -7,7 +7,8 @@ const mocks = vi.hoisted(() => {
   };
   const getAuthedBusiness = vi.fn();
   const deleteStorageReferences = vi.fn();
-  return { client, getAuthedBusiness, deleteStorageReferences };
+  const loggerError = vi.fn();
+  return { client, getAuthedBusiness, deleteStorageReferences, loggerError };
 });
 
 vi.mock("@/lib/prisma", () => ({
@@ -22,6 +23,10 @@ vi.mock("@/lib/business", () => ({
 
 vi.mock("@/lib/media-storage-server", () => ({
   deleteStorageReferences: mocks.deleteStorageReferences,
+}));
+
+vi.mock("@/lib/logger", () => ({
+  logger: { error: mocks.loggerError, warn: vi.fn(), info: vi.fn() },
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -79,5 +84,28 @@ describe("deleteClientAction", () => {
     expect(result).toEqual({ ok: false, error: "Client not found in this clinic workspace." });
     expect(mocks.client.deleteMany).not.toHaveBeenCalled();
     expect(mocks.deleteStorageReferences).not.toHaveBeenCalled();
+  });
+
+  it("still reports success when the delete succeeded but storage cleanup failed, and logs the failure", async () => {
+    // The client record is already gone once deleteMany wins — a retry
+    // through this same action would just see "not found" before ever
+    // reaching cleanup again, so there's no path back to a failed cleanup.
+    // Reporting failure here would be misleading: the delete the admin
+    // asked for did happen. Log it instead so it's discoverable.
+    mocks.client.findFirst.mockResolvedValue(EXISTING);
+    mocks.client.deleteMany.mockResolvedValue({ count: 1 });
+    mocks.deleteStorageReferences.mockRejectedValue(new Error("storage unavailable"));
+
+    const result = await deleteClientAction(CLIENT_ID);
+
+    expect(result).toEqual({ ok: true, clientId: CLIENT_ID });
+    // Client ID only, never the storage paths themselves: documents/gallery
+    // items accept arbitrary external URLs (hasUnsafePublicUrl), which can
+    // carry a patient name or clinical filename — unsafe for logs/Sentry.
+    expect(mocks.loggerError).toHaveBeenCalledWith(
+      "Failed to clean up a deleted client's storage files.",
+      expect.any(Error),
+      { clientId: CLIENT_ID }
+    );
   });
 });
