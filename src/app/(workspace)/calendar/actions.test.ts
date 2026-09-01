@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
@@ -270,5 +271,38 @@ describe("saveAppointmentAction — concurrent-edit guard", () => {
     });
 
     expect(result.ok).toBe(true);
+  });
+});
+
+describe("saveAppointmentAction — referenced client/staff deleted mid-save", () => {
+  it("gives a specific message instead of the generic save failure on a foreign-key violation (P2003)", async () => {
+    // The client/staff ownership checks run before the transaction opens, so
+    // a concurrent delete of either one in that window survives them and
+    // only surfaces here, as Prisma rejecting the create/update with a
+    // foreign-key constraint error.
+    mocks.appointment.updateMany.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Foreign key constraint failed", {
+        code: "P2003",
+        clientVersion: "test",
+      })
+    );
+
+    const result = await saveAppointmentAction(PAYLOAD);
+
+    expect(result).toEqual({
+      ok: false,
+      error: "The selected client or staff member no longer exists. Refresh and try again.",
+    });
+  });
+
+  it("still falls back to the generic message for any other error", async () => {
+    mocks.appointment.updateMany.mockRejectedValue(new Error("connection reset"));
+
+    const result = await saveAppointmentAction(PAYLOAD);
+
+    expect(result).toEqual({
+      ok: false,
+      error: "We couldn't save the appointment.",
+    });
   });
 });

@@ -1,5 +1,7 @@
 "use server";
 
+import { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import {
@@ -444,7 +446,16 @@ export async function saveAppointmentAction(
       ok: true,
       appointment: await hydrateAppointment(appointmentId!),
     };
-  } catch {
+  } catch (error) {
+    // The client/staff ownership checks above run before the transaction, so
+    // a concurrent delete of either one in that window survives them and
+    // only fails here, as a foreign-key violation on the create/update.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+      return {
+        ok: false,
+        error: "The selected client or staff member no longer exists. Refresh and try again.",
+      };
+    }
     return {
       ok: false,
       error: "We couldn't save the appointment.",
