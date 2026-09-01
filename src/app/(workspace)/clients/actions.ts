@@ -1644,7 +1644,19 @@ export async function deleteClientDocumentAction(
   await prisma.clientDocument.delete({ where: { id: payload.id } });
 
   if (record.storageUrl) {
-    await deleteStorageReferences([record.storageUrl]);
+    // The document row is already gone at this point, so a cleanup failure
+    // can't be retried through this action again — log it (record/client
+    // IDs only, never the raw URL: it can be an arbitrary external link
+    // carrying a patient name or clinical filename) but still report the
+    // delete as successful, since it was.
+    try {
+      await deleteStorageReferences([record.storageUrl]);
+    } catch (error) {
+      logger.error("Failed to clean up a deleted client document's storage file.", error, {
+        clientId: payload.clientId,
+        documentId: payload.id,
+      });
+    }
   }
 
   return respondWithClientRecord(context.business.id, payload.clientId);
@@ -1675,7 +1687,17 @@ export async function deleteClientGalleryItemAction(
   await prisma.clientGalleryItem.delete({ where: { id: payload.id } });
 
   if (record.imageUrl) {
-    await deleteStorageReferences([record.imageUrl]);
+    // Same reasoning as deleteClientDocumentAction above: the row is
+    // already gone, log safely (IDs only, never the raw URL) and still
+    // report success.
+    try {
+      await deleteStorageReferences([record.imageUrl]);
+    } catch (error) {
+      logger.error("Failed to clean up a deleted client gallery item's storage file.", error, {
+        clientId: payload.clientId,
+        galleryItemId: payload.id,
+      });
+    }
   }
 
   return respondWithClientRecord(context.business.id, payload.clientId);
