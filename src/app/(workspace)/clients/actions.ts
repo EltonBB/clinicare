@@ -1149,25 +1149,24 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
   // don't clean themselves up — without this, patient documents (the most
   // PHI-laden objects in the system) would sit in the private bucket forever
   // with no surviving reference to find and remove them later. The client
-  // record (and its cascaded document/gallery rows) is already gone at this
-  // point, so a cleanup failure here can't be retried through this action
-  // again — a retry just sees "not found" before ever reaching cleanup, and
-  // `existing` is the only place these paths still exist once this function
-  // returns. Log them (opaque `userId/folder/uuid.ext` paths — not PHI, see
-  // media-storage-client.ts) so they're still manually recoverable, but
-  // still report the delete the admin asked for as successful, since it was.
-  const storagePaths = [
-    ...existing.galleryItems.map((item) => item.imageUrl),
-    ...existing.documents.map((document) => document.storageUrl ?? document.fileUrl),
-  ];
-
+  // record is already gone at this point, so a cleanup failure here can't be
+  // retried through this action again (a retry just sees "not found") — log
+  // it so it's discoverable, but still report the delete the admin asked for
+  // as successful, since it was. Logging only the client ID, not the storage
+  // paths themselves: `documents`/`galleryItems` accept arbitrary external
+  // URLs (see hasUnsafePublicUrl above), which can carry a patient name or
+  // clinical filename in the path — unsafe to send to logs/Sentry, unlike
+  // the app's own opaque `userId/folder/uuid.ext` uploads. Recovering the
+  // actual orphaned paths after the fact needs a durable pre-delete record
+  // (an outbox/reconciliation approach), not a log line — tracked separately,
+  // out of scope here.
   try {
-    await deleteStorageReferences(storagePaths);
+    await deleteStorageReferences([
+      ...existing.galleryItems.map((item) => item.imageUrl),
+      ...existing.documents.map((document) => document.storageUrl ?? document.fileUrl),
+    ]);
   } catch (error) {
-    logger.error("Failed to clean up a deleted client's storage files.", error, {
-      clientId,
-      paths: storagePaths.join(", "),
-    });
+    logger.error("Failed to clean up a deleted client's storage files.", error, { clientId });
   }
 
   revalidateClientDirectory();
