@@ -207,8 +207,13 @@ describe("attemptStorageCleanup", () => {
     expect(mocks.loggerError).toHaveBeenCalledWith(
       "Storage cleanup attempt failed; will retry within the hour.",
       expect.any(Error),
-      { pendingStorageCleanupId: "pending_1", attempts: 2 }
+      { pendingStorageCleanupId: "pending_1", attempts: 2, buckets: "clinic-media (1)" }
     );
+    // Exactly this one call — removeStorageObjects (not
+    // deleteStorageReferences) is what runs the actual removal here, so
+    // there's no separate, unsuppressable per-bucket error log underneath
+    // this one (the exact duplication Codex flagged).
+    expect(mocks.loggerError).toHaveBeenCalledTimes(1);
   });
 
   it("fires exactly one alert-level log at the hourly-to-daily transition, and reschedules a day out", async () => {
@@ -224,8 +229,9 @@ describe("attemptStorageCleanup", () => {
     expect(mocks.loggerError).toHaveBeenCalledWith(
       "Storage cleanup has failed repeatedly and is moving to a daily retry cadence — investigate.",
       expect.any(Error),
-      { pendingStorageCleanupId: "pending_1", attempts: 5 }
+      { pendingStorageCleanupId: "pending_1", attempts: 5, buckets: "clinic-media (1)" }
     );
+    expect(mocks.loggerError).toHaveBeenCalledTimes(1);
     const { nextAttemptAt } = mocks.pendingStorageCleanup.updateMany.mock.calls[0][0].data;
     expect(nextAttemptAt.getTime() - Date.now()).toBeGreaterThan(23 * 60 * 60 * 1000);
   });
@@ -240,12 +246,12 @@ describe("attemptStorageCleanup", () => {
       values: [createStorageReference("clinic-media", "biz_1/client-documents/doc.pdf")],
     });
 
-    // logger.error still fires once here — that's deleteStorageReferences's
-    // own pre-existing per-bucket failure log, unrelated to this tiering.
-    // What must NOT happen is a second, alert-level logger.error call for
-    // the attempt bookkeeping past the transition — that's logger.warn below
-    // instead, which (unlike logger.error) never forwards to Sentry.
-    expect(mocks.loggerError).toHaveBeenCalledTimes(1);
+    // Zero error-level (Sentry-forwarding) calls past the transition — this
+    // is the actual fix for the Codex P2: attemptStorageCleanup calls
+    // removeStorageObjects directly, not deleteStorageReferences, so there's
+    // no separate per-bucket error log underneath to undermine the warn-only
+    // tiering here.
+    expect(mocks.loggerError).not.toHaveBeenCalled();
     expect(mocks.loggerWarn).toHaveBeenCalledWith(
       "Storage cleanup attempt failed; will retry tomorrow.",
       { pendingStorageCleanupId: "pending_1", attempts: 6, lastError: expect.any(String) }

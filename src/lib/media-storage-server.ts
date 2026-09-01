@@ -107,19 +107,21 @@ export async function resolveMediaDisplayUrls(
   return result;
 }
 
+type StorageRemovalFailure = { bucket: string; count: number; error: unknown };
+
 /**
- * Throws if any bucket's removal fails, instead of swallowing the error —
- * callers need to know a delete didn't fully happen (e.g. to log it
- * somewhere findable), since there's no return value that could carry
- * partial-failure detail without leaking storage paths to call sites that
- * don't need them. Each caller decides its own fallback (log-and-continue
- * for a cleanup that has nothing left to roll back to, or something more
- * visible for a user-initiated action) — this function's job is only to
- * make the failure observable, not to decide what a caller does with it.
+ * The actual Supabase Storage removal, grouped by bucket — no logging, so
+ * every caller controls its own severity/Sentry behavior instead of
+ * inheriting a fixed one. `deleteStorageReferences` below is the
+ * log-and-throw wrapper most callers want; the retry-tiered outbox path
+ * further down calls this directly because it needs to choose its own log
+ * level per attempt (see the P2 Codex flagged: reusing
+ * deleteStorageReferences there logged an unsuppressable Sentry error on
+ * every attempt regardless of retry phase, defeating the tiering entirely).
  */
-export async function deleteStorageReferences(
+async function removeStorageObjects(
   values: Array<string | null | undefined>
-) {
+): Promise<{ failedCount: number; failures: StorageRemovalFailure[] }> {
   const referencesByBucket = values.reduce<Map<string, Set<string>>>((result, value) => {
     if (!value) {
       return result;
@@ -138,11 +140,12 @@ export async function deleteStorageReferences(
   }, new Map<string, Set<string>>());
 
   if (referencesByBucket.size === 0) {
-    return;
+    return { failedCount: 0, failures: [] };
   }
 
   const supabase = await createClient();
   let failedCount = 0;
+  const failures: StorageRemovalFailure[] = [];
 
   await Promise.all(
     Array.from(referencesByBucket.entries()).map(async ([bucket, paths]) => {
@@ -150,13 +153,33 @@ export async function deleteStorageReferences(
 
       if (error) {
         failedCount += paths.size;
-        // Bucket name + count only — never the paths themselves here, so
-        // this stays safe to send to Sentry regardless of what a caller
-        // passed in (some callers accept arbitrary external URLs).
-        logger.error("Failed to delete media objects.", error, { bucket, count: paths.size });
+        failures.push({ bucket, count: paths.size, error });
       }
     })
   );
+
+  return { failedCount, failures };
+}
+
+/**
+ * Throws if any bucket's removal fails, instead of swallowing the error —
+ * callers need to know a delete didn't fully happen (e.g. to log it
+ * somewhere findable), since there's no return value that could carry
+ * partial-failure detail without leaking storage paths to call sites that
+ * don't need them. Each caller decides its own fallback (log-and-continue
+ * for a cleanup that has nothing left to roll back to, or something more
+ * visible for a user-initiated action) — this function's job is only to
+ * make the failure observable, not to decide what a caller does with it.
+ */
+export async function deleteStorageReferences(values: Array<string | null | undefined>) {
+  const { failedCount, failures } = await removeStorageObjects(values);
+
+  for (const { bucket, count, error } of failures) {
+    // Bucket name + count only — never the paths themselves here, so this
+    // stays safe to send to Sentry regardless of what a caller passed in
+    // (some callers accept arbitrary external URLs).
+    logger.error("Failed to delete media objects.", error, { bucket, count });
+  }
 
   if (failedCount > 0) {
     throw new Error(`Failed to delete ${failedCount} media object(s) from storage.`);
@@ -214,6 +237,11 @@ export async function recordPendingStorageCleanup(
  * `nextAttemptAt`/`attempts` already tracked, ready for that sweep to use
  * once it's written). Clears the row on success; records the failure and
  * reschedules on failure. Never throws.
+ *
+ * Calls removeStorageObjects directly rather than deleteStorageReferences:
+ * the latter always logs each failure at error level, which would page
+ * Sentry on every retry regardless of phase and defeat the tiering below
+ * (Codex P2). This function owns all of the logging for its own retries.
  */
 export async function attemptStorageCleanup(
   pending: PendingStorageCleanupHandle | null
@@ -222,22 +250,34 @@ export async function attemptStorageCleanup(
     return;
   }
 
-  try {
-    await deleteStorageReferences(pending.values);
+  const { failedCount, failures } = await removeStorageObjects(pending.values);
+
+  if (failedCount === 0) {
     // Guarded, like every other delete in this codebase: if a concurrent
     // sweep already cleared this same row, this is just a harmless no-op
     // instead of a P2025 throw.
     await prisma.pendingStorageCleanup.deleteMany({ where: { id: pending.id } });
-  } catch (error) {
-    await recordCleanupAttemptFailure(pending.id, pending.attempts, error);
+    return;
   }
+
+  await recordCleanupAttemptFailure(pending.id, pending.attempts, failures);
 }
 
-async function recordCleanupAttemptFailure(id: string, previousAttempts: number, error: unknown) {
+async function recordCleanupAttemptFailure(
+  id: string,
+  previousAttempts: number,
+  failures: StorageRemovalFailure[]
+) {
   const attempts = previousAttempts + 1;
   const isHourlyPhase = attempts < CLEANUP_HOURLY_RETRY_LIMIT;
   const nextAttemptAt = new Date(Date.now() + (isHourlyPhase ? ONE_HOUR_MS : ONE_DAY_MS));
-  const lastError = error instanceof Error ? error.message : String(error);
+  // Bucket name + count only, same as every other log in this file — never
+  // the paths, which can carry a patient name or filename.
+  const lastError = failures
+    .map(({ bucket, count, error }) => `${bucket} (${count}): ${describeStorageError(error)}`)
+    .join("; ");
+  const primaryError = failures[0]?.error;
+  const buckets = failures.map(({ bucket, count }) => `${bucket} (${count})`).join(", ");
 
   // updateMany (unlike .update()) never throws for zero matches — if a
   // concurrent attempt already cleared this row, this is just a no-op count
@@ -257,16 +297,17 @@ async function recordCleanupAttemptFailure(id: string, previousAttempts: number,
     // moving to a daily cadence indefinitely — worth a human looking at it.
     logger.error(
       "Storage cleanup has failed repeatedly and is moving to a daily retry cadence — investigate.",
-      error,
-      { pendingStorageCleanupId: id, attempts }
+      primaryError,
+      { pendingStorageCleanupId: id, attempts, buckets }
     );
     return;
   }
 
   if (isHourlyPhase) {
-    logger.error("Storage cleanup attempt failed; will retry within the hour.", error, {
+    logger.error("Storage cleanup attempt failed; will retry within the hour.", primaryError, {
       pendingStorageCleanupId: id,
       attempts,
+      buckets,
     });
     return;
   }
@@ -279,4 +320,8 @@ async function recordCleanupAttemptFailure(id: string, previousAttempts: number,
     attempts,
     lastError,
   });
+}
+
+function describeStorageError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
