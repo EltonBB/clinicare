@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { ensureConversationForClient, normalizeConversationsForBusiness } from "@/lib/inbox-server";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
@@ -1147,11 +1148,19 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
   // Deleting the client cascades the DB rows, but the actual files in storage
   // don't clean themselves up — without this, patient documents (the most
   // PHI-laden objects in the system) would sit in the private bucket forever
-  // with no surviving reference to find and remove them later.
-  await deleteStorageReferences([
-    ...existing.galleryItems.map((item) => item.imageUrl),
-    ...existing.documents.map((document) => document.storageUrl ?? document.fileUrl),
-  ]);
+  // with no surviving reference to find and remove them later. The client
+  // record is already gone at this point, so a cleanup failure here can't be
+  // retried through this action again (a retry just sees "not found") — log
+  // it so it's discoverable instead of silently lost, but still report the
+  // delete the admin asked for as successful, since it was.
+  try {
+    await deleteStorageReferences([
+      ...existing.galleryItems.map((item) => item.imageUrl),
+      ...existing.documents.map((document) => document.storageUrl ?? document.fileUrl),
+    ]);
+  } catch (error) {
+    logger.error("Failed to clean up a deleted client's storage files.", error, { clientId });
+  }
 
   revalidateClientDirectory();
 
