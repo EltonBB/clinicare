@@ -426,11 +426,23 @@ export async function deleteConversationAction(
       })
     : null;
 
-  await prisma.conversation.delete({
+  // Compare-and-set: scope the delete by the same id/businessId used to find
+  // the row above, so a concurrent delete of this same conversation can't
+  // make `.delete` throw Prisma's P2025 — it's just a typed not-found
+  // instead, same class of race already closed for appointments/clients/staff.
+  const { count } = await prisma.conversation.deleteMany({
     where: {
       id: conversationId,
+      businessId: context.business.id,
     },
   });
+
+  if (count === 0) {
+    return {
+      ok: false,
+      error: "Conversation not found in this clinic workspace.",
+    };
+  }
 
   revalidatePath("/dashboard");
   if (linkedClient) {
