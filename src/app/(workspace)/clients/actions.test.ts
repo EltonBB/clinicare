@@ -5,15 +5,29 @@ const mocks = vi.hoisted(() => {
     findFirst: vi.fn(),
     deleteMany: vi.fn(),
   };
+  const clientTreatmentPlanItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
+  const clientFollowUpReminder = { findFirst: vi.fn(), deleteMany: vi.fn() };
+  const clientPayment = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const getAuthedBusiness = vi.fn();
   const deleteStorageReferences = vi.fn();
   const loggerError = vi.fn();
-  return { client, getAuthedBusiness, deleteStorageReferences, loggerError };
+  return {
+    client,
+    clientTreatmentPlanItem,
+    clientFollowUpReminder,
+    clientPayment,
+    getAuthedBusiness,
+    deleteStorageReferences,
+    loggerError,
+  };
 });
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     client: mocks.client,
+    clientTreatmentPlanItem: mocks.clientTreatmentPlanItem,
+    clientFollowUpReminder: mocks.clientFollowUpReminder,
+    clientPayment: mocks.clientPayment,
   },
 }));
 
@@ -31,10 +45,18 @@ vi.mock("@/lib/logger", () => ({
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
-import { deleteClientAction } from "./actions";
+import {
+  deleteClientAction,
+  deleteClientFollowUpReminderAction,
+  deleteClientPaymentAction,
+  deleteClientTreatmentPlanItemAction,
+} from "./actions";
 
 const BUSINESS = { id: "biz_1" };
 const CLIENT_ID = "client_1";
+const SUB_RECORD_ID = "record_1";
+const SUB_RECORD_PAYLOAD = { id: SUB_RECORD_ID, clientId: CLIENT_ID };
+const SUB_RECORD_NOT_FOUND_ERROR = "This record was not found in the patient file.";
 const EXISTING = {
   galleryItems: [{ imageUrl: "gallery_1.png" }],
   documents: [{ storageUrl: "doc_1.pdf", fileUrl: null }],
@@ -107,5 +129,54 @@ describe("deleteClientAction", () => {
       expect.any(Error),
       { clientId: CLIENT_ID }
     );
+  });
+});
+
+// Same shape and same tradeoff as the medication/health-item/care-note batch:
+// only the failure paths are tested — success also calls
+// respondWithClientRecord, whose fetchClientRecord issues a large
+// multi-relation Prisma query that would need a disproportionate mock just
+// to verify a delete guard.
+describe.each([
+  {
+    name: "deleteClientTreatmentPlanItemAction",
+    action: deleteClientTreatmentPlanItemAction,
+    model: "clientTreatmentPlanItem" as const,
+  },
+  {
+    name: "deleteClientFollowUpReminderAction",
+    action: deleteClientFollowUpReminderAction,
+    model: "clientFollowUpReminder" as const,
+  },
+  {
+    name: "deleteClientPaymentAction",
+    action: deleteClientPaymentAction,
+    model: "clientPayment" as const,
+  },
+])("$name", ({ action, model }) => {
+  it("closes the race: a concurrent delete that already won makes this one a typed not-found, not an unhandled Prisma throw", async () => {
+    // requireOwnedSubRecord's own existence check (a separate, earlier read)
+    // must see the record as present, or this test would exercise THAT
+    // check's not-found branch instead of the new guarded delete below it.
+    mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID });
+    mocks[model].findFirst.mockResolvedValue({ id: SUB_RECORD_ID });
+    mocks[model].deleteMany.mockResolvedValue({ count: 0 });
+
+    const result = await action(SUB_RECORD_PAYLOAD);
+
+    expect(result).toEqual({ ok: false, error: SUB_RECORD_NOT_FOUND_ERROR });
+    expect(mocks[model].deleteMany).toHaveBeenCalledWith({
+      where: { id: SUB_RECORD_ID, clientId: CLIENT_ID, businessId: "biz_1" },
+    });
+  });
+
+  it("returns not-found when the record doesn't exist (or isn't in scope)", async () => {
+    mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID });
+    mocks[model].findFirst.mockResolvedValue(null);
+
+    const result = await action(SUB_RECORD_PAYLOAD);
+
+    expect(result).toEqual({ ok: false, error: SUB_RECORD_NOT_FOUND_ERROR });
+    expect(mocks[model].deleteMany).not.toHaveBeenCalled();
   });
 });
