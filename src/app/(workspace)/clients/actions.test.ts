@@ -8,6 +8,9 @@ const mocks = vi.hoisted(() => {
   const clientMedication = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientHealthItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientCareNote = { findFirst: vi.fn(), deleteMany: vi.fn() };
+  const clientTreatmentPlanItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
+  const clientFollowUpReminder = { findFirst: vi.fn(), deleteMany: vi.fn() };
+  const clientPayment = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const getAuthedBusiness = vi.fn();
   const deleteStorageReferences = vi.fn();
   const loggerError = vi.fn();
@@ -16,6 +19,9 @@ const mocks = vi.hoisted(() => {
     clientMedication,
     clientHealthItem,
     clientCareNote,
+    clientTreatmentPlanItem,
+    clientFollowUpReminder,
+    clientPayment,
     getAuthedBusiness,
     deleteStorageReferences,
     loggerError,
@@ -28,6 +34,9 @@ vi.mock("@/lib/prisma", () => ({
     clientMedication: mocks.clientMedication,
     clientHealthItem: mocks.clientHealthItem,
     clientCareNote: mocks.clientCareNote,
+    clientTreatmentPlanItem: mocks.clientTreatmentPlanItem,
+    clientFollowUpReminder: mocks.clientFollowUpReminder,
+    clientPayment: mocks.clientPayment,
   },
 }));
 
@@ -50,6 +59,9 @@ import {
   deleteClientCareNoteAction,
   deleteClientHealthItemAction,
   deleteClientMedicationAction,
+  deleteClientFollowUpReminderAction,
+  deleteClientPaymentAction,
+  deleteClientTreatmentPlanItemAction,
 } from "./actions";
 
 const BUSINESS = { id: "biz_1" };
@@ -153,6 +165,55 @@ describe.each([
     name: "deleteClientCareNoteAction",
     action: deleteClientCareNoteAction,
     model: "clientCareNote" as const,
+  },
+])("$name", ({ action, model }) => {
+  it("closes the race: a concurrent delete that already won makes this one a typed not-found, not an unhandled Prisma throw", async () => {
+    // requireOwnedSubRecord's own existence check (a separate, earlier read)
+    // must see the record as present, or this test would exercise THAT
+    // check's not-found branch instead of the new guarded delete below it.
+    mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID });
+    mocks[model].findFirst.mockResolvedValue({ id: SUB_RECORD_ID });
+    mocks[model].deleteMany.mockResolvedValue({ count: 0 });
+
+    const result = await action(SUB_RECORD_PAYLOAD);
+
+    expect(result).toEqual({ ok: false, error: SUB_RECORD_NOT_FOUND_ERROR });
+    expect(mocks[model].deleteMany).toHaveBeenCalledWith({
+      where: { id: SUB_RECORD_ID, clientId: CLIENT_ID, businessId: "biz_1" },
+    });
+  });
+
+  it("returns not-found when the record doesn't exist (or isn't in scope)", async () => {
+    mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID });
+    mocks[model].findFirst.mockResolvedValue(null);
+
+    const result = await action(SUB_RECORD_PAYLOAD);
+
+    expect(result).toEqual({ ok: false, error: SUB_RECORD_NOT_FOUND_ERROR });
+    expect(mocks[model].deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+// Same shape and same tradeoff as the medication/health-item/care-note batch:
+// only the failure paths are tested — success also calls
+// respondWithClientRecord, whose fetchClientRecord issues a large
+// multi-relation Prisma query that would need a disproportionate mock just
+// to verify a delete guard.
+describe.each([
+  {
+    name: "deleteClientTreatmentPlanItemAction",
+    action: deleteClientTreatmentPlanItemAction,
+    model: "clientTreatmentPlanItem" as const,
+  },
+  {
+    name: "deleteClientFollowUpReminderAction",
+    action: deleteClientFollowUpReminderAction,
+    model: "clientFollowUpReminder" as const,
+  },
+  {
+    name: "deleteClientPaymentAction",
+    action: deleteClientPaymentAction,
+    model: "clientPayment" as const,
   },
 ])("$name", ({ action, model }) => {
   it("closes the race: a concurrent delete that already won makes this one a typed not-found, not an unhandled Prisma throw", async () => {

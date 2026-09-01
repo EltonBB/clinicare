@@ -1472,7 +1472,17 @@ export async function deleteClientTreatmentPlanItemAction(
     return { ok: false, error: context.error };
   }
 
-  await prisma.clientTreatmentPlanItem.delete({ where: { id: payload.id } });
+  // Compare-and-set: scope the delete by the same id/clientId/businessId
+  // requireOwnedSubRecord already verified above, so a concurrent delete of
+  // this record can't make `.delete` throw Prisma's P2025 — it's just a
+  // typed not-found instead.
+  const { count } = await prisma.clientTreatmentPlanItem.deleteMany({
+    where: { id: payload.id, clientId: payload.clientId, businessId: context.business.id },
+  });
+
+  if (count === 0) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
 
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
@@ -1534,7 +1544,17 @@ export async function deleteClientFollowUpReminderAction(
     return { ok: false, error: context.error };
   }
 
-  await prisma.clientFollowUpReminder.delete({ where: { id: payload.id } });
+  // Compare-and-set: scope the delete by the same id/clientId/businessId
+  // requireOwnedSubRecord already verified above, so a concurrent delete of
+  // this record can't make `.delete` throw Prisma's P2025 — it's just a
+  // typed not-found instead.
+  const { count } = await prisma.clientFollowUpReminder.deleteMany({
+    where: { id: payload.id, clientId: payload.clientId, businessId: context.business.id },
+  });
+
+  if (count === 0) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
 
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
@@ -1605,7 +1625,18 @@ export async function deleteClientPaymentAction(
     return { ok: false, error: context.error };
   }
 
-  await prisma.clientPayment.delete({ where: { id: payload.id } });
+  // Compare-and-set: scope the delete by the same id/clientId/businessId
+  // requireOwnedSubRecord already verified above, so a concurrent delete of
+  // this record can't make `.delete` throw Prisma's P2025 — it's just a
+  // typed not-found instead. Revalidation stays gated behind the guard
+  // actually winning — nothing to revalidate for a delete that didn't happen.
+  const { count } = await prisma.clientPayment.deleteMany({
+    where: { id: payload.id, clientId: payload.clientId, businessId: context.business.id },
+  });
+
+  if (count === 0) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
 
   revalidatePaymentSurfaces();
 
