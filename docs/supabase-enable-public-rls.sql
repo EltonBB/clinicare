@@ -23,6 +23,7 @@ alter table public."ClientTreatmentPlanItem" enable row level security;
 alter table public."Conversation" enable row level security;
 alter table public."EmailVerificationReceipt" enable row level security;
 alter table public."Message" enable row level security;
+alter table public."PendingStorageCleanup" enable row level security;
 alter table public."ReminderSettings" enable row level security;
 alter table public."StaffMember" enable row level security;
 alter table public."StaffShift" enable row level security;

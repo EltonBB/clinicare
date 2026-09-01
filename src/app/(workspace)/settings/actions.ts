@@ -5,7 +5,6 @@ import { after } from "next/server";
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
-import { logger } from "@/lib/logger";
 import { requireCurrentBusiness, requireCurrentWorkspace } from "@/lib/business";
 import { getCurrentUser, updateCurrentUserMetadata } from "@/lib/auth";
 import { sanitizeAuthMetadataForSession } from "@/lib/auth-metadata";
@@ -21,7 +20,7 @@ import type { WorkerConnectionStatus } from "@/lib/messaging/baileys-contract";
 import { normalizePhone } from "@/lib/inbox";
 import { normalizeStorageReference } from "@/lib/media-storage";
 import { hasUnsafePublicUrl, normalizeOptionalPublicUrl } from "@/lib/safe-url";
-import { deleteStorageReferences } from "@/lib/media-storage-server";
+import { attemptStorageCleanup, recordPendingStorageCleanup } from "@/lib/media-storage-server";
 import { normalizeBrandHexColor, resolveBrandAccentPreset } from "@/lib/branding";
 import {
   type SaveSettingsPayload,
@@ -155,8 +154,12 @@ export async function saveSettingsAction(
   );
 
   const previousLogoUrl = business.logoUrl ?? "";
+  // recordPendingStorageCleanup already no-ops on an empty/falsy value, so an
+  // unset previous logo (previousLogoUrl === "") correctly records nothing
+  // without a separate check here.
+  const logoChanged = previousLogoUrl !== nextLogoUrl;
 
-  await prisma.$transaction(async (tx) => {
+  const pendingLogoCleanup = await prisma.$transaction(async (tx) => {
     await tx.business.update({
       where: {
         id: business.id,
@@ -222,6 +225,13 @@ export async function saveSettingsAction(
         template: payload.reminders.template.trim(),
       },
     });
+
+    // Recorded in the same transaction as the save above, so the outbox row
+    // exists if and only if this save actually committed with a changed
+    // logo — see lib/media-storage-server.ts.
+    return logoChanged
+      ? recordPendingStorageCleanup(tx, business.id, [previousLogoUrl])
+      : null;
   });
 
   // The transaction above already committed — business name, logo, brand
@@ -239,26 +249,25 @@ export async function saveSettingsAction(
   const { error } = await updateCurrentUserMetadata(nextMetadata);
 
   if (error) {
+    // Returning here means the deferred cleanup attempt below never gets
+    // scheduled for this request — but the outbox row already committed as
+    // part of the transaction above, so a changed logo still isn't lost:
+    // it just waits for a retry sweep to pick up instead of getting one
+    // immediate attempt now. Same tradeoff as any other early return after
+    // the save itself has already succeeded.
     return {
       ok: false,
       error: "Settings saved, but we couldn't update your account name. Try again from Settings.",
     };
   }
 
-  if (previousLogoUrl && previousLogoUrl !== nextLogoUrl) {
-    // The settings save already committed and revalidated above — this is
-    // best-effort cleanup of the now-unused old logo, not part of the save
-    // itself. deleteStorageReferences throws on a real storage failure; let
-    // that fail the whole save (telling the operator their settings didn't
-    // save) would be wrong when they actually did. Log it instead.
-    try {
-      await deleteStorageReferences([previousLogoUrl]);
-    } catch (error) {
-      logger.error("Failed to clean up a business's old logo file.", error, {
-        businessId: business.id,
-      });
-    }
-  }
+  // The settings save already committed and revalidated above — this is
+  // best-effort cleanup of the now-unused old logo, not part of the save
+  // itself, so it's deferred until after the response (same reasoning as
+  // the WhatsApp status refresh above). A failure here can't fail the save
+  // retroactively (the operator's settings did save); the outbox row
+  // recorded above survives for a retry cron to pick up instead.
+  after(() => attemptStorageCleanup(pendingLogoCleanup));
 
   const updatedBusiness = await prisma.business.findUniqueOrThrow({
     where: {

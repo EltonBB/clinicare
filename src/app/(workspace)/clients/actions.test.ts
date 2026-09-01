@@ -13,9 +13,11 @@ const mocks = vi.hoisted(() => {
   const clientPayment = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientDocument = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientGalleryItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
+  const $transaction = vi.fn();
   const getAuthedBusiness = vi.fn();
-  const deleteStorageReferences = vi.fn();
-  const loggerError = vi.fn();
+  const attemptStorageCleanup = vi.fn();
+  const recordPendingStorageCleanup = vi.fn();
+  const after = vi.fn();
   return {
     client,
     clientMedication,
@@ -26,9 +28,11 @@ const mocks = vi.hoisted(() => {
     clientPayment,
     clientDocument,
     clientGalleryItem,
+    $transaction,
     getAuthedBusiness,
-    deleteStorageReferences,
-    loggerError,
+    attemptStorageCleanup,
+    recordPendingStorageCleanup,
+    after,
   };
 });
 
@@ -43,6 +47,7 @@ vi.mock("@/lib/prisma", () => ({
     clientPayment: mocks.clientPayment,
     clientDocument: mocks.clientDocument,
     clientGalleryItem: mocks.clientGalleryItem,
+    $transaction: mocks.$transaction,
   },
 }));
 
@@ -51,14 +56,21 @@ vi.mock("@/lib/business", () => ({
 }));
 
 vi.mock("@/lib/media-storage-server", () => ({
-  deleteStorageReferences: mocks.deleteStorageReferences,
-}));
-
-vi.mock("@/lib/logger", () => ({
-  logger: { error: mocks.loggerError, warn: vi.fn(), info: vi.fn() },
+  attemptStorageCleanup: mocks.attemptStorageCleanup,
+  recordPendingStorageCleanup: mocks.recordPendingStorageCleanup,
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/server", () => ({ after: mocks.after }));
+
+// after() defers its callback until after the response — production code
+// never awaits it. To assert on what it defers, capture the callback each
+// action registered and run it explicitly, matching how Next.js eventually
+// runs it for real.
+async function flushAfter() {
+  const calls = mocks.after.mock.calls;
+  await Promise.all(calls.map(([callback]) => callback()));
+}
 
 import {
   deleteClientAction,
@@ -85,12 +97,21 @@ const EXISTING = {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.getAuthedBusiness.mockResolvedValue({ business: BUSINESS, user: {} });
+  mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) =>
+    cb({
+      client: mocks.client,
+      clientDocument: mocks.clientDocument,
+      clientGalleryItem: mocks.clientGalleryItem,
+    })
+  );
 });
 
 describe("deleteClientAction", () => {
-  it("deletes a client, cleans up its storage files, and revalidates", async () => {
+  it("deletes a client, records a storage-cleanup outbox entry, defers the attempt, and revalidates", async () => {
     mocks.client.findFirst.mockResolvedValue(EXISTING);
     mocks.client.deleteMany.mockResolvedValue({ count: 1 });
+    const pending = { id: "pending_1", attempts: 0, values: ["gallery_1.png", "doc_1.pdf"] };
+    mocks.recordPendingStorageCleanup.mockResolvedValue(pending);
 
     const result = await deleteClientAction(CLIENT_ID);
 
@@ -98,57 +119,58 @@ describe("deleteClientAction", () => {
     expect(mocks.client.deleteMany).toHaveBeenCalledWith({
       where: { id: CLIENT_ID, businessId: "biz_1" },
     });
-    expect(mocks.deleteStorageReferences).toHaveBeenCalledWith(["gallery_1.png", "doc_1.pdf"]);
+    // Recorded inside the same transaction as the delete (the tx passed
+    // through is whatever $transaction's callback received above), using a
+    // fresh in-transaction re-read rather than the earlier existence check.
+    expect(mocks.recordPendingStorageCleanup).toHaveBeenCalledWith(expect.anything(), "biz_1", [
+      "gallery_1.png",
+      "doc_1.pdf",
+    ]);
+    // The action itself must not wait on the Storage round-trip — only
+    // after() should have been called before the action returned.
+    expect(mocks.attemptStorageCleanup).not.toHaveBeenCalled();
+    expect(mocks.after).toHaveBeenCalledTimes(1);
+
+    // The actual Storage call happens only once that deferred callback runs —
+    // attemptStorageCleanup's own contract (tested in
+    // media-storage-server.test.ts) covers success/failure/retry-scheduling.
+    await flushAfter();
+    expect(mocks.attemptStorageCleanup).toHaveBeenCalledWith(pending);
   });
 
-  it("closes the race: a concurrent delete that already won makes this one a typed not-found — not an unhandled Prisma throw — and skips storage cleanup", async () => {
+  it("closes the race: a concurrent delete that already won makes this one a typed not-found — not an unhandled Prisma throw — and never records a cleanup entry", async () => {
     // Two admin tabs (or a double-click) both pass the pre-read's existence
     // check; the first request's delete wins and removes the row before this
     // second request's guarded delete runs. Because the guard is the
     // deleteMany's own WHERE match (not `.delete` by id), this call reports
     // `count: 0` instead of Prisma throwing P2025 "Record not found" — and,
-    // critically, the loser never attempts deleteStorageReferences, since the
-    // winner already ran it for the same files.
+    // critically, the loser never records or attempts cleanup, since the
+    // winner already owns it for the same files.
     mocks.client.findFirst.mockResolvedValue(EXISTING);
     mocks.client.deleteMany.mockResolvedValue({ count: 0 });
 
     const result = await deleteClientAction(CLIENT_ID);
 
     expect(result).toEqual({ ok: false, error: "Client not found in this clinic workspace." });
-    expect(mocks.deleteStorageReferences).not.toHaveBeenCalled();
+    expect(mocks.recordPendingStorageCleanup).not.toHaveBeenCalled();
+    expect(mocks.after).not.toHaveBeenCalled();
+    expect(mocks.attemptStorageCleanup).not.toHaveBeenCalled();
   });
 
   it("returns not-found when the client doesn't exist (or isn't in scope)", async () => {
+    // The existence check now happens via the same in-transaction read used
+    // for the storage-cleanup values (closing the upload-vs-delete race), so
+    // this no longer short-circuits before opening a transaction — deleteMany
+    // is simply never reached within it.
     mocks.client.findFirst.mockResolvedValue(null);
 
     const result = await deleteClientAction(CLIENT_ID);
 
     expect(result).toEqual({ ok: false, error: "Client not found in this clinic workspace." });
     expect(mocks.client.deleteMany).not.toHaveBeenCalled();
-    expect(mocks.deleteStorageReferences).not.toHaveBeenCalled();
-  });
-
-  it("still reports success when the delete succeeded but storage cleanup failed, and logs the failure", async () => {
-    // The client record is already gone once deleteMany wins — a retry
-    // through this same action would just see "not found" before ever
-    // reaching cleanup again, so there's no path back to a failed cleanup.
-    // Reporting failure here would be misleading: the delete the admin
-    // asked for did happen. Log it instead so it's discoverable.
-    mocks.client.findFirst.mockResolvedValue(EXISTING);
-    mocks.client.deleteMany.mockResolvedValue({ count: 1 });
-    mocks.deleteStorageReferences.mockRejectedValue(new Error("storage unavailable"));
-
-    const result = await deleteClientAction(CLIENT_ID);
-
-    expect(result).toEqual({ ok: true, clientId: CLIENT_ID });
-    // Client ID only, never the storage paths themselves: documents/gallery
-    // items accept arbitrary external URLs (hasUnsafePublicUrl), which can
-    // carry a patient name or clinical filename — unsafe for logs/Sentry.
-    expect(mocks.loggerError).toHaveBeenCalledWith(
-      "Failed to clean up a deleted client's storage files.",
-      expect.any(Error),
-      { clientId: CLIENT_ID }
-    );
+    expect(mocks.recordPendingStorageCleanup).not.toHaveBeenCalled();
+    expect(mocks.after).not.toHaveBeenCalled();
+    expect(mocks.attemptStorageCleanup).not.toHaveBeenCalled();
   });
 });
 
@@ -271,7 +293,7 @@ describe.each([
     urlField: "imageUrl",
   },
 ])("$name", ({ action, model, urlField }) => {
-  it("closes the race: a concurrent delete that already won makes this one a typed not-found, not an unhandled Prisma throw — and skips storage cleanup", async () => {
+  it("closes the race: a concurrent delete that already won makes this one a typed not-found, not an unhandled Prisma throw — and never records a cleanup entry", async () => {
     mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID });
     mocks[model].findFirst.mockResolvedValue({ id: SUB_RECORD_ID, [urlField]: "file.pdf" });
     mocks[model].deleteMany.mockResolvedValue({ count: 0 });
@@ -282,10 +304,10 @@ describe.each([
     expect(mocks[model].deleteMany).toHaveBeenCalledWith({
       where: { id: SUB_RECORD_ID, clientId: CLIENT_ID, businessId: "biz_1" },
     });
-    // The guard-miss return happens before the storage-cleanup block, so a
-    // losing request must never attempt to delete files the winner (if any)
-    // is responsible for.
-    expect(mocks.deleteStorageReferences).not.toHaveBeenCalled();
+    // The guard-miss return happens before recording anything, so a losing
+    // request must never queue cleanup for files the winner (if any) already
+    // owns.
+    expect(mocks.recordPendingStorageCleanup).not.toHaveBeenCalled();
   });
 
   it("returns not-found when the record doesn't exist (or isn't in scope)", async () => {
@@ -296,6 +318,6 @@ describe.each([
 
     expect(result).toEqual({ ok: false, error: SUB_RECORD_NOT_FOUND_ERROR });
     expect(mocks[model].deleteMany).not.toHaveBeenCalled();
-    expect(mocks.deleteStorageReferences).not.toHaveBeenCalled();
+    expect(mocks.recordPendingStorageCleanup).not.toHaveBeenCalled();
   });
 });
