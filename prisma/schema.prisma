@@ -9,38 +9,39 @@ datasource db {
 }
 
 model Business {
-  id                  String               @id @default(cuid())
-  ownerId             String               @unique
-  name                String
-  businessType        String
-  logoUrl             String?
+  id                     String                  @id @default(cuid())
+  ownerId                String                  @unique
+  name                   String
+  businessType           String
+  logoUrl                String?
   // Orphaned 2026-06: the dashboard customizer was removed; no code reads or
   // writes this. Safe to drop in the next schema migration.
-  dashboardFocus      String               @default("appointments")
-  brandAccentColor    String?
-  plan                BusinessPlan         @default(BASIC)
-  planStatus          BusinessPlanStatus   @default(ACTIVE)
-  whatsappNumber      String?
-  whatsappEnabled     Boolean              @default(false)
-  trialEndsAt         DateTime?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  staffMembers        StaffMember[]
-  clients             Client[]
-  appointments        Appointment[]
-  scheduleBlocks      ScheduleBlock[]
-  staffShifts         StaffShift[]
-  businessHours       BusinessHours[]
-  conversations       Conversation[]
-  reminderSettings    ReminderSettings?
-  whatsappConnection  WhatsAppConnection?
-  whatsappSession     WhatsAppSession?
-  whatsappSessionKeys WhatsAppSessionKey[]
-  analyticsSnapshots  AnalyticsSnapshot[]
-  staffAccessCodes    StaffAccessCode[]
-  staffDevices        StaffDevice[]
-  staffThreads        StaffThread[]
-  staffNotifications  StaffNotification[]
+  dashboardFocus         String                  @default("appointments")
+  brandAccentColor       String?
+  plan                   BusinessPlan            @default(BASIC)
+  planStatus             BusinessPlanStatus      @default(ACTIVE)
+  whatsappNumber         String?
+  whatsappEnabled        Boolean                 @default(false)
+  trialEndsAt            DateTime?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  staffMembers           StaffMember[]
+  clients                Client[]
+  appointments           Appointment[]
+  scheduleBlocks         ScheduleBlock[]
+  staffShifts            StaffShift[]
+  businessHours          BusinessHours[]
+  conversations          Conversation[]
+  reminderSettings       ReminderSettings?
+  whatsappConnection     WhatsAppConnection?
+  whatsappSession        WhatsAppSession?
+  whatsappSessionKeys    WhatsAppSessionKey[]
+  analyticsSnapshots     AnalyticsSnapshot[]
+  staffAccessCodes       StaffAccessCode[]
+  staffDevices           StaffDevice[]
+  staffThreads           StaffThread[]
+  staffNotifications     StaffNotification[]
+  pendingStorageCleanups PendingStorageCleanup[]
 }
 
 model BusinessHours {
@@ -755,4 +756,34 @@ enum StaffNotificationKind {
   APPOINTMENT
   REMINDER
   SYSTEM
+}
+
+// Outbox for storage cleanup: written in the same transaction as the guarded
+// delete that made these files orphaned, so a row exists if and only if the
+// delete actually happened. The immediate cleanup attempt (right after that
+// transaction commits) clears the row on success; on failure it survives,
+// with `attempts`/`nextAttemptAt` already tracked, for a retry sweep to pick
+// up once one is written (not built yet). `values` are the same raw storage
+// references passed to deleteStorageReferences — never log them (documents/
+// gallery items accept arbitrary external URLs that can carry a patient name
+// or filename; this table is inside the trust boundary the same way
+// ClientDocument/ClientGalleryItem already are, but logs/Sentry are not).
+// No FK back to the specific client/document/business-logo that produced a
+// row — `values` (the actual paths) plus `businessId` are enough to trace
+// one by hand today; not worth a generic sourceType/sourceId pair for a
+// single current producer (client deletes, sub-record deletes, logo swaps).
+// Cascades with its Business: a pending row for a business that gets deleted
+// is deleted with it, same as everything else the business owns — acceptable
+// today since there's no delete-business feature to actually trigger it.
+model PendingStorageCleanup {
+  id            String   @id @default(cuid())
+  businessId    String
+  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  values        String[]
+  attempts      Int      @default(0)
+  lastError     String?
+  nextAttemptAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  @@index([nextAttemptAt])
 }

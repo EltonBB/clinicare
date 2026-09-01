@@ -1,10 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
-import { logger } from "@/lib/logger";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { ensureConversationForClient, normalizeConversationsForBusiness } from "@/lib/inbox-server";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
@@ -19,7 +19,7 @@ import {
   type SaveClientPayload,
 } from "@/lib/clients";
 import { normalizeStorageReference } from "@/lib/media-storage";
-import { deleteStorageReferences } from "@/lib/media-storage-server";
+import { attemptStorageCleanup, recordPendingStorageCleanup } from "@/lib/media-storage-server";
 
 export type SaveClientResult = {
   ok: boolean;
@@ -1097,77 +1097,78 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
 
   const business = context.business;
 
-  const existing = await prisma.client.findFirst({
-    where: {
-      id: clientId,
-      businessId: business.id,
-    },
-    select: {
-      galleryItems: {
-        select: {
-          imageUrl: true,
-        },
-      },
-      documents: {
-        select: {
-          storageUrl: true,
-          fileUrl: true,
-        },
-      },
-    },
-  });
-
-  if (!existing) {
-    return {
-      ok: false,
-      error: "Client not found in this clinic workspace.",
-    };
-  }
-
   // Compare-and-set: scope the delete by the same id+businessId used to find
-  // the row above. If a concurrent request already deleted it, `count` is 0
-  // and this call becomes a typed not-found instead of `.delete` throwing
-  // Prisma's P2025 for a row that's already gone — mirrors
-  // deleteAppointmentCore's fix (src/lib/appointments-shared.ts). Gating the
-  // storage cleanup below on `count > 0` also means only the request that
-  // actually won the race attempts it, not both.
-  const { count } = await prisma.client.deleteMany({
-    where: {
-      id: clientId,
-      businessId: business.id,
-    },
+  // the row read below. If a concurrent request already deleted it, `count`
+  // is 0 and this call becomes a typed not-found instead of `.delete`
+  // throwing Prisma's P2025 for a row that's already gone — mirrors
+  // deleteAppointmentCore's fix (src/lib/appointments-shared.ts). The
+  // storage-cleanup outbox row is written in the SAME transaction as the
+  // delete, so it exists if and only if this request actually won the race —
+  // the loser's `count` is 0 and it returns before recording anything.
+  const result = await prisma.$transaction(async (tx) => {
+    // Read the storage-bearing fields here, inside the transaction and
+    // immediately before the delete, rather than beforehand: a document or
+    // gallery item uploaded between an earlier read and this statement would
+    // otherwise be cascade-deleted from the DB without ever being included
+    // in the outbox row below — silently orphaning its file with no record
+    // anywhere that it needs cleanup. This narrows that window to the gap
+    // between two statements in one open transaction rather than closing it
+    // to zero (Postgres's READ COMMITTED gives each statement its own
+    // snapshot), but that's a sub-millisecond gap instead of an arbitrary one.
+    const current = await tx.client.findFirst({
+      where: { id: clientId, businessId: business.id },
+      select: {
+        galleryItems: { select: { imageUrl: true } },
+        documents: { select: { storageUrl: true, fileUrl: true } },
+      },
+    });
+
+    if (!current) {
+      return { deleted: false as const };
+    }
+
+    const { count } = await tx.client.deleteMany({
+      where: {
+        id: clientId,
+        businessId: business.id,
+      },
+    });
+
+    if (count === 0) {
+      return { deleted: false as const };
+    }
+
+    // Deleting the client cascades the DB rows, but the actual files in
+    // storage don't clean themselves up — without this, patient documents
+    // (the most PHI-laden objects in the system) would sit in the private
+    // bucket forever with no surviving reference to find and remove them
+    // later. Only DB writes happen inside this transaction — the actual
+    // Storage API call happens after it commits (see below), never in here,
+    // so a slow network round-trip can't hold one of this app's few pooled
+    // DB connections open.
+    const pending = await recordPendingStorageCleanup(tx, business.id, [
+      ...current.galleryItems.map((item) => item.imageUrl),
+      ...current.documents.map((document) => document.storageUrl ?? document.fileUrl),
+    ]);
+
+    return { deleted: true as const, pending };
   });
 
-  if (count === 0) {
+  if (!result.deleted) {
     return {
       ok: false,
       error: "Client not found in this clinic workspace.",
     };
   }
 
-  // Deleting the client cascades the DB rows, but the actual files in storage
-  // don't clean themselves up — without this, patient documents (the most
-  // PHI-laden objects in the system) would sit in the private bucket forever
-  // with no surviving reference to find and remove them later. The client
-  // record is already gone at this point, so a cleanup failure here can't be
-  // retried through this action again (a retry just sees "not found") — log
-  // it so it's discoverable, but still report the delete the admin asked for
-  // as successful, since it was. Logging only the client ID, not the storage
-  // paths themselves: `documents`/`galleryItems` accept arbitrary external
-  // URLs (see hasUnsafePublicUrl above), which can carry a patient name or
-  // clinical filename in the path — unsafe to send to logs/Sentry, unlike
-  // the app's own opaque `userId/folder/uuid.ext` uploads. Recovering the
-  // actual orphaned paths after the fact needs a durable pre-delete record
-  // (an outbox/reconciliation approach), not a log line — tracked separately,
-  // out of scope here.
-  try {
-    await deleteStorageReferences([
-      ...existing.galleryItems.map((item) => item.imageUrl),
-      ...existing.documents.map((document) => document.storageUrl ?? document.fileUrl),
-    ]);
-  } catch (error) {
-    logger.error("Failed to clean up a deleted client's storage files.", error, { clientId });
-  }
+  // Deferred until after the response: the outbox row above already commits
+  // durably regardless of when (or whether) this attempt succeeds, so the
+  // admin doesn't need to wait on a Storage round-trip for a delete that, as
+  // far as the DB is concerned, already happened. If it fails, the row
+  // survives for a retry cron to pick up later — see
+  // lib/media-storage-server.ts (that cron isn't built yet; this row just
+  // waits until it is, same as it would waiting between retries once it is).
+  after(() => attemptStorageCleanup(result.pending));
 
   revalidateClientDirectory();
 
@@ -1711,30 +1712,31 @@ export async function deleteClientDocumentAction(
   // Compare-and-set: scope the delete by the same id/clientId/businessId
   // used by the read above, so a concurrent delete of this same record
   // can't make `.delete` throw Prisma's P2025 — it's just a typed
-  // not-found instead.
-  const { count } = await prisma.clientDocument.deleteMany({
-    where: { id: payload.id, clientId: payload.clientId, businessId: context.business.id },
+  // not-found instead. The storage-cleanup outbox row (if any) is written
+  // in the same transaction, so it exists if and only if this request
+  // actually won the race.
+  const result = await prisma.$transaction(async (tx) => {
+    const { count } = await tx.clientDocument.deleteMany({
+      where: { id: payload.id, clientId: payload.clientId, businessId: context.business.id },
+    });
+
+    if (count === 0) {
+      return { deleted: false as const };
+    }
+
+    const pending = await recordPendingStorageCleanup(tx, context.business.id, [
+      record.storageUrl,
+    ]);
+    return { deleted: true as const, pending };
   });
 
-  if (count === 0) {
+  if (!result.deleted) {
     return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
   }
 
-  if (record.storageUrl) {
-    // The document row is already gone at this point, so a cleanup failure
-    // can't be retried through this action again — log it (record/client
-    // IDs only, never the raw URL: it can be an arbitrary external link
-    // carrying a patient name or clinical filename) but still report the
-    // delete as successful, since it was.
-    try {
-      await deleteStorageReferences([record.storageUrl]);
-    } catch (error) {
-      logger.error("Failed to clean up a deleted client document's storage file.", error, {
-        clientId: payload.clientId,
-        documentId: payload.id,
-      });
-    }
-  }
+  // Deferred until after the response — see deleteClientAction above for why
+  // this doesn't need to block on a Storage round-trip.
+  after(() => attemptStorageCleanup(result.pending));
 
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
@@ -1764,28 +1766,31 @@ export async function deleteClientGalleryItemAction(
   // Compare-and-set: scope the delete by the same id/clientId/businessId
   // used by the read above, so a concurrent delete of this same record
   // can't make `.delete` throw Prisma's P2025 — it's just a typed
-  // not-found instead.
-  const { count } = await prisma.clientGalleryItem.deleteMany({
-    where: { id: payload.id, clientId: payload.clientId, businessId: context.business.id },
+  // not-found instead. The storage-cleanup outbox row (if any) is written
+  // in the same transaction, so it exists if and only if this request
+  // actually won the race.
+  const result = await prisma.$transaction(async (tx) => {
+    const { count } = await tx.clientGalleryItem.deleteMany({
+      where: { id: payload.id, clientId: payload.clientId, businessId: context.business.id },
+    });
+
+    if (count === 0) {
+      return { deleted: false as const };
+    }
+
+    const pending = await recordPendingStorageCleanup(tx, context.business.id, [
+      record.imageUrl,
+    ]);
+    return { deleted: true as const, pending };
   });
 
-  if (count === 0) {
+  if (!result.deleted) {
     return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
   }
 
-  if (record.imageUrl) {
-    // Same reasoning as deleteClientDocumentAction above: the row is
-    // already gone, log safely (IDs only, never the raw URL) and still
-    // report success.
-    try {
-      await deleteStorageReferences([record.imageUrl]);
-    } catch (error) {
-      logger.error("Failed to clean up a deleted client gallery item's storage file.", error, {
-        clientId: payload.clientId,
-        galleryItemId: payload.id,
-      });
-    }
-  }
+  // Deferred until after the response — see deleteClientAction above for why
+  // this doesn't need to block on a Storage round-trip.
+  after(() => attemptStorageCleanup(result.pending));
 
   return respondWithClientRecord(context.business.id, payload.clientId);
 }

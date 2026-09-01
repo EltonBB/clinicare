@@ -5,7 +5,9 @@ const mocks = vi.hoisted(() => {
   const from = vi.fn(() => ({ remove }));
   const createClient = vi.fn(async () => ({ storage: { from } }));
   const loggerError = vi.fn();
-  return { remove, from, createClient, loggerError };
+  const loggerWarn = vi.fn();
+  const pendingStorageCleanup = { create: vi.fn(), deleteMany: vi.fn(), updateMany: vi.fn() };
+  return { remove, from, createClient, loggerError, loggerWarn, pendingStorageCleanup };
 });
 
 vi.mock("@/utils/supabase/server", () => ({
@@ -13,14 +15,24 @@ vi.mock("@/utils/supabase/server", () => ({
 }));
 
 vi.mock("@/lib/logger", () => ({
-  logger: { error: mocks.loggerError, warn: vi.fn(), info: vi.fn() },
+  logger: { error: mocks.loggerError, warn: mocks.loggerWarn, info: vi.fn() },
 }));
 
-import { deleteStorageReferences } from "./media-storage-server";
+vi.mock("@/lib/prisma", () => ({
+  prisma: { pendingStorageCleanup: mocks.pendingStorageCleanup },
+}));
+
+import {
+  attemptStorageCleanup,
+  deleteStorageReferences,
+  recordPendingStorageCleanup,
+} from "./media-storage-server";
 import { createStorageReference } from "./media-storage";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.pendingStorageCleanup.deleteMany.mockResolvedValue({ count: 1 });
+  mocks.pendingStorageCleanup.updateMany.mockResolvedValue({ count: 1 });
 });
 
 describe("deleteStorageReferences", () => {
@@ -64,5 +76,126 @@ describe("deleteStorageReferences", () => {
 
     expect(mocks.createClient).not.toHaveBeenCalled();
     expect(mocks.remove).not.toHaveBeenCalled();
+  });
+});
+
+describe("recordPendingStorageCleanup", () => {
+  it("writes nothing and returns null when there are no real values", async () => {
+    const create = vi.fn();
+    const tx = { pendingStorageCleanup: { create } } as never;
+
+    const result = await recordPendingStorageCleanup(tx, "biz_1", [null, undefined, ""]);
+
+    expect(result).toBeNull();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("writes the filtered values inside the caller's own transaction and returns the row handle", async () => {
+    const create = vi.fn().mockResolvedValue({ id: "pending_1", attempts: 0 });
+    const tx = { pendingStorageCleanup: { create } } as never;
+
+    const result = await recordPendingStorageCleanup(tx, "biz_1", ["doc.pdf", null, "photo.png"]);
+
+    expect(create).toHaveBeenCalledWith({
+      data: { businessId: "biz_1", values: ["doc.pdf", "photo.png"] },
+      select: { id: true, attempts: true },
+    });
+    expect(result).toEqual({ id: "pending_1", attempts: 0, values: ["doc.pdf", "photo.png"] });
+  });
+});
+
+describe("attemptStorageCleanup", () => {
+  it("is a no-op when there's nothing pending", async () => {
+    await attemptStorageCleanup(null);
+
+    expect(mocks.remove).not.toHaveBeenCalled();
+  });
+
+  it("clears the row via a guarded deleteMany on success", async () => {
+    mocks.remove.mockResolvedValue({ error: null });
+
+    await attemptStorageCleanup({
+      id: "pending_1",
+      attempts: 0,
+      values: [createStorageReference("clinic-media", "biz_1/client-documents/doc.pdf")],
+    });
+
+    expect(mocks.remove).toHaveBeenCalledWith(["biz_1/client-documents/doc.pdf"]);
+    expect(mocks.pendingStorageCleanup.deleteMany).toHaveBeenCalledWith({
+      where: { id: "pending_1" },
+    });
+    expect(mocks.pendingStorageCleanup.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("reschedules roughly an hour out and logs at error level while under the retry limit", async () => {
+    mocks.remove.mockResolvedValue({ error: new Error("permission denied") });
+
+    await attemptStorageCleanup({
+      id: "pending_1",
+      attempts: 1,
+      values: [createStorageReference("clinic-media", "biz_1/client-documents/doc.pdf")],
+    });
+
+    expect(mocks.pendingStorageCleanup.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.pendingStorageCleanup.updateMany).toHaveBeenCalledWith({
+      where: { id: "pending_1" },
+      data: {
+        attempts: { increment: 1 },
+        lastError: expect.any(String),
+        nextAttemptAt: expect.any(Date),
+      },
+    });
+    // Roughly an hour out — a range, not an exact match, to avoid a flaky
+    // time-based assertion.
+    const { nextAttemptAt } = mocks.pendingStorageCleanup.updateMany.mock.calls[0][0].data;
+    const deltaMs = nextAttemptAt.getTime() - Date.now();
+    expect(deltaMs).toBeGreaterThan(55 * 60 * 1000);
+    expect(deltaMs).toBeLessThan(65 * 60 * 1000);
+    expect(mocks.loggerError).toHaveBeenCalledWith(
+      "Storage cleanup attempt failed; will retry within the hour.",
+      expect.any(Error),
+      { pendingStorageCleanupId: "pending_1", attempts: 2 }
+    );
+  });
+
+  it("fires exactly one alert-level log at the hourly-to-daily transition, and reschedules a day out", async () => {
+    mocks.remove.mockResolvedValue({ error: new Error("permission denied") });
+
+    // previousAttempts=4 -> attempts becomes 5, the configured hourly limit.
+    await attemptStorageCleanup({
+      id: "pending_1",
+      attempts: 4,
+      values: [createStorageReference("clinic-media", "biz_1/client-documents/doc.pdf")],
+    });
+
+    expect(mocks.loggerError).toHaveBeenCalledWith(
+      "Storage cleanup has failed repeatedly and is moving to a daily retry cadence — investigate.",
+      expect.any(Error),
+      { pendingStorageCleanupId: "pending_1", attempts: 5 }
+    );
+    const { nextAttemptAt } = mocks.pendingStorageCleanup.updateMany.mock.calls[0][0].data;
+    expect(nextAttemptAt.getTime() - Date.now()).toBeGreaterThan(23 * 60 * 60 * 1000);
+  });
+
+  it("downgrades to a warn-level log (never forwarded to Sentry) past the transition, without re-alerting", async () => {
+    mocks.remove.mockResolvedValue({ error: new Error("permission denied") });
+
+    // previousAttempts=5 -> attempts becomes 6, already past the transition.
+    await attemptStorageCleanup({
+      id: "pending_1",
+      attempts: 5,
+      values: [createStorageReference("clinic-media", "biz_1/client-documents/doc.pdf")],
+    });
+
+    // logger.error still fires once here — that's deleteStorageReferences's
+    // own pre-existing per-bucket failure log, unrelated to this tiering.
+    // What must NOT happen is a second, alert-level logger.error call for
+    // the attempt bookkeeping past the transition — that's logger.warn below
+    // instead, which (unlike logger.error) never forwards to Sentry.
+    expect(mocks.loggerError).toHaveBeenCalledTimes(1);
+    expect(mocks.loggerWarn).toHaveBeenCalledWith(
+      "Storage cleanup attempt failed; will retry tomorrow.",
+      { pendingStorageCleanupId: "pending_1", attempts: 6, lastError: expect.any(String) }
+    );
   });
 });
