@@ -99,10 +99,14 @@ describe("deleteClientAction", () => {
     const result = await deleteClientAction(CLIENT_ID);
 
     expect(result).toEqual({ ok: true, clientId: CLIENT_ID });
+    // The client row (and its cascaded document/gallery rows) is already
+    // gone by this point — the log is the only surviving record of which
+    // storage paths need manual cleanup, so it must carry them, not just
+    // the (now-orphaned) client ID.
     expect(mocks.loggerError).toHaveBeenCalledWith(
       "Failed to clean up a deleted client's storage files.",
       expect.any(Error),
-      { clientId: CLIENT_ID }
+      { clientId: CLIENT_ID, paths: "gallery_1.png, doc_1.pdf" }
     );
   });
 });

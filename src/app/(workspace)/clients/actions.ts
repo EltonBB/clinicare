@@ -1149,17 +1149,25 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
   // don't clean themselves up — without this, patient documents (the most
   // PHI-laden objects in the system) would sit in the private bucket forever
   // with no surviving reference to find and remove them later. The client
-  // record is already gone at this point, so a cleanup failure here can't be
-  // retried through this action again (a retry just sees "not found") — log
-  // it so it's discoverable instead of silently lost, but still report the
-  // delete the admin asked for as successful, since it was.
+  // record (and its cascaded document/gallery rows) is already gone at this
+  // point, so a cleanup failure here can't be retried through this action
+  // again — a retry just sees "not found" before ever reaching cleanup, and
+  // `existing` is the only place these paths still exist once this function
+  // returns. Log them (opaque `userId/folder/uuid.ext` paths — not PHI, see
+  // media-storage-client.ts) so they're still manually recoverable, but
+  // still report the delete the admin asked for as successful, since it was.
+  const storagePaths = [
+    ...existing.galleryItems.map((item) => item.imageUrl),
+    ...existing.documents.map((document) => document.storageUrl ?? document.fileUrl),
+  ];
+
   try {
-    await deleteStorageReferences([
-      ...existing.galleryItems.map((item) => item.imageUrl),
-      ...existing.documents.map((document) => document.storageUrl ?? document.fileUrl),
-    ]);
+    await deleteStorageReferences(storagePaths);
   } catch (error) {
-    logger.error("Failed to clean up a deleted client's storage files.", error, { clientId });
+    logger.error("Failed to clean up a deleted client's storage files.", error, {
+      clientId,
+      paths: storagePaths.join(", "),
+    });
   }
 
   revalidateClientDirectory();
