@@ -242,6 +242,18 @@ export async function recordPendingStorageCleanup(
  * the latter always logs each failure at error level, which would page
  * Sentry on every retry regardless of phase and defeat the tiering below
  * (Codex P2). This function owns all of the logging for its own retries.
+ *
+ * IMPORTANT for whoever builds the retry sweep (Codex P2, verified against
+ * docs/media-storage.md): removeStorageObjects resolves its Supabase client
+ * via createClient() (the cookie-backed SSR client), which needs a signed-in
+ * user's session — fine here, since this is always called from within an
+ * authenticated request. A cron invocation has no such session, and the
+ * bucket's delete policy is scoped to `auth.uid()`, so an unauthenticated
+ * cron call would fail every single row, forever, with nothing surfacing the
+ * failure as anything other than an ordinary retry. The sweep needs its own
+ * authenticated path to Storage (a service-role client scoped to exactly
+ * this operation, or another explicit worker credential) before it can
+ * actually drain this table — not a hand-me-down of this function as-is.
  */
 export async function attemptStorageCleanup(
   pending: PendingStorageCleanupHandle | null
@@ -293,8 +305,14 @@ async function recordCleanupAttemptFailure(
   });
 
   if (attempts === CLEANUP_HOURLY_RETRY_LIMIT) {
-    // The one deliberate alert: hourly retries are exhausted and this row is
-    // moving to a daily cadence indefinitely — worth a human looking at it.
+    // The one deliberate alert, ever, for this row: hourly retries are
+    // exhausted and it's moving to a daily cadence indefinitely — worth a
+    // human looking at it now that it's confirmed non-transient. Every other
+    // attempt (both before and after this one) logs at warn instead, which
+    // (unlike error) never forwards to Sentry — an early hourly failure might
+    // still be transient, and a day-6 failure is already known, so neither
+    // needs its own page; this is the one moment that's actually new
+    // information.
     logger.error(
       "Storage cleanup has failed repeatedly and is moving to a daily retry cadence — investigate.",
       primaryError,
@@ -303,23 +321,12 @@ async function recordCleanupAttemptFailure(
     return;
   }
 
-  if (isHourlyPhase) {
-    logger.error("Storage cleanup attempt failed; will retry within the hour.", primaryError, {
-      pendingStorageCleanupId: id,
-      attempts,
-      buckets,
-    });
-    return;
-  }
-
-  // Past the alert above, logger.warn (unlike logger.error) never forwards to
-  // Sentry — stays visible in logs without re-alerting on the same
-  // already-flagged row every day.
-  logger.warn("Storage cleanup attempt failed; will retry tomorrow.", {
-    pendingStorageCleanupId: id,
-    attempts,
-    lastError,
-  });
+  logger.warn(
+    isHourlyPhase
+      ? "Storage cleanup attempt failed; will retry within the hour."
+      : "Storage cleanup attempt failed; will retry tomorrow.",
+    { pendingStorageCleanupId: id, attempts, lastError }
+  );
 }
 
 function describeStorageError(error: unknown): string {

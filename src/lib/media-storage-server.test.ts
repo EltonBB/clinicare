@@ -180,7 +180,10 @@ describe("attemptStorageCleanup", () => {
     expect(mocks.pendingStorageCleanup.updateMany).not.toHaveBeenCalled();
   });
 
-  it("reschedules roughly an hour out and logs at error level while under the retry limit", async () => {
+  it("reschedules roughly an hour out and logs at warn level (not error) while under the retry limit", async () => {
+    // Attempts 1 through LIMIT-1 stay quiet (warn, no Sentry) — an early
+    // hourly failure might still be transient, so it doesn't get its own
+    // page. Only the exact transition to daily (tested below) does.
     mocks.remove.mockResolvedValue({ error: new Error("permission denied") });
 
     await attemptStorageCleanup({
@@ -204,16 +207,15 @@ describe("attemptStorageCleanup", () => {
     const deltaMs = nextAttemptAt.getTime() - Date.now();
     expect(deltaMs).toBeGreaterThan(55 * 60 * 1000);
     expect(deltaMs).toBeLessThan(65 * 60 * 1000);
-    expect(mocks.loggerError).toHaveBeenCalledWith(
+    expect(mocks.loggerWarn).toHaveBeenCalledWith(
       "Storage cleanup attempt failed; will retry within the hour.",
-      expect.any(Error),
-      { pendingStorageCleanupId: "pending_1", attempts: 2, buckets: "clinic-media (1)" }
+      { pendingStorageCleanupId: "pending_1", attempts: 2, lastError: expect.any(String) }
     );
-    // Exactly this one call — removeStorageObjects (not
-    // deleteStorageReferences) is what runs the actual removal here, so
-    // there's no separate, unsuppressable per-bucket error log underneath
-    // this one (the exact duplication Codex flagged).
-    expect(mocks.loggerError).toHaveBeenCalledTimes(1);
+    // No error-level (Sentry-forwarding) call at all for this attempt — a
+    // second peer-caught instance of the same "unconditional error call
+    // defeats the tiering" shape Codex flagged, one level up: the tiering
+    // itself must not call logger.error outside the one deliberate branch.
+    expect(mocks.loggerError).not.toHaveBeenCalled();
   });
 
   it("fires exactly one alert-level log at the hourly-to-daily transition, and reschedules a day out", async () => {
