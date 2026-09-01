@@ -254,6 +254,22 @@ export async function recordPendingStorageCleanup(
  * authenticated path to Storage (a service-role client scoped to exactly
  * this operation, or another explicit worker credential) before it can
  * actually drain this table — not a hand-me-down of this function as-is.
+ *
+ * A SECOND requirement for that same sweep, a step further (Codex P1,
+ * verified against the actual add-actions): a service-role client bypasses
+ * RLS entirely, and nothing validates today that a queued `values` entry
+ * actually belongs to the business that queued it —
+ * addClientDocumentAction/addClientGalleryItemAction/saveSettingsAction all
+ * accept any syntactically-valid storage reference as user input
+ * (normalizeStorageReference only parses the `bucket`+`path` shape; it
+ * checks nothing about who owns that path). Today that's harmless because
+ * Storage RLS still gates the actual delete — a malicious business could
+ * store another tenant's known path, but the delete attempt would just be
+ * rejected. A service-role sweep removes that safety net, so it must
+ * re-validate ownership itself before deleting: confirm the bucket is the
+ * configured media bucket and the path's owning-user prefix corresponds to
+ * this row's `businessId`, and skip (log, don't silently drop) anything that
+ * doesn't match rather than deleting it anyway.
  */
 export async function attemptStorageCleanup(
   pending: PendingStorageCleanupHandle | null
