@@ -2,12 +2,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const remove = vi.fn();
-  const from = vi.fn(() => ({ remove }));
+  const createSignedUrls = vi.fn();
+  const from = vi.fn(() => ({ remove, createSignedUrls }));
   const createClient = vi.fn(async () => ({ storage: { from } }));
   const loggerError = vi.fn();
   const loggerWarn = vi.fn();
   const pendingStorageCleanup = { create: vi.fn(), deleteMany: vi.fn(), updateMany: vi.fn() };
-  return { remove, from, createClient, loggerError, loggerWarn, pendingStorageCleanup };
+  return {
+    remove,
+    createSignedUrls,
+    from,
+    createClient,
+    loggerError,
+    loggerWarn,
+    pendingStorageCleanup,
+  };
 });
 
 vi.mock("@/utils/supabase/server", () => ({
@@ -26,6 +35,7 @@ import {
   attemptStorageCleanup,
   deleteStorageReferences,
   recordPendingStorageCleanup,
+  resolveMediaDisplayUrls,
 } from "./media-storage-server";
 import { createStorageReference } from "./media-storage";
 
@@ -76,6 +86,49 @@ describe("deleteStorageReferences", () => {
 
     expect(mocks.createClient).not.toHaveBeenCalled();
     expect(mocks.remove).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveMediaDisplayUrls", () => {
+  it("signs values across multiple buckets and maps each back to its own signed URL", async () => {
+    // Exercises the bucket+path join used as this function's internal Map
+    // key (previously a literal NUL byte between the two — a pre-existing,
+    // invisible landmine that made this file unreadable as a diff; fixed to
+    // a plain space here). Two buckets so a same-named path in each bucket
+    // can't collide if that join were ever wrong.
+    mocks.createSignedUrls.mockImplementation(async (paths: string[]) => ({
+      data: paths.map((path) => ({ path, signedUrl: `signed://${path}`, error: null })),
+      error: null,
+    }));
+
+    const result = await resolveMediaDisplayUrls([
+      createStorageReference("clinic-media", "biz_1/client-documents/doc.pdf"),
+      createStorageReference("clinic-logos", "biz_1/client-documents/doc.pdf"),
+      "https://example.com/external.pdf",
+      null,
+    ]);
+
+    expect(result.get(createStorageReference("clinic-media", "biz_1/client-documents/doc.pdf"))).toBe(
+      "signed://biz_1/client-documents/doc.pdf"
+    );
+    expect(
+      result.get(createStorageReference("clinic-logos", "biz_1/client-documents/doc.pdf"))
+    ).toBe("signed://biz_1/client-documents/doc.pdf");
+    expect(result.get("https://example.com/external.pdf")).toBe("https://example.com/external.pdf");
+    expect(mocks.from).toHaveBeenCalledWith("clinic-media");
+    expect(mocks.from).toHaveBeenCalledWith("clinic-logos");
+  });
+
+  it("maps a value to an empty string when its bucket's signing call fails", async () => {
+    mocks.createSignedUrls.mockResolvedValue({ data: null, error: new Error("network error") });
+
+    const result = await resolveMediaDisplayUrls([
+      createStorageReference("clinic-media", "biz_1/client-documents/doc.pdf"),
+    ]);
+
+    expect(result.get(createStorageReference("clinic-media", "biz_1/client-documents/doc.pdf"))).toBe(
+      ""
+    );
   });
 });
 
