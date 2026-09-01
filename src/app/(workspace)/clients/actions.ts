@@ -1263,7 +1263,17 @@ export async function deleteClientMedicationAction(
     return { ok: false, error: context.error };
   }
 
-  await prisma.clientMedication.delete({ where: { id: payload.id } });
+  // Compare-and-set: scope the delete by the same id/clientId/businessId
+  // requireOwnedSubRecord already verified above, so a concurrent delete of
+  // this record can't make `.delete` throw Prisma's P2025 — it's just a
+  // typed not-found instead.
+  const { count } = await prisma.clientMedication.deleteMany({
+    where: { id: payload.id, clientId: payload.clientId, businessId: context.business.id },
+  });
+
+  if (count === 0) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
 
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
@@ -1324,7 +1334,17 @@ export async function deleteClientHealthItemAction(
     return { ok: false, error: context.error };
   }
 
-  await prisma.clientHealthItem.delete({ where: { id: payload.id } });
+  // Compare-and-set: scope the delete by the same id/clientId/businessId
+  // requireOwnedSubRecord already verified above, so a concurrent delete of
+  // this record can't make `.delete` throw Prisma's P2025 — it's just a
+  // typed not-found instead.
+  const { count } = await prisma.clientHealthItem.deleteMany({
+    where: { id: payload.id, clientId: payload.clientId, businessId: context.business.id },
+  });
+
+  if (count === 0) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
 
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
@@ -1382,7 +1402,17 @@ export async function deleteClientCareNoteAction(
     return { ok: false, error: context.error };
   }
 
-  await prisma.clientCareNote.delete({ where: { id: payload.id } });
+  // Compare-and-set: scope the delete by the same id/clientId/businessId
+  // requireOwnedSubRecord already verified above, so a concurrent delete of
+  // this record can't make `.delete` throw Prisma's P2025 — it's just a
+  // typed not-found instead.
+  const { count } = await prisma.clientCareNote.deleteMany({
+    where: { id: payload.id, clientId: payload.clientId, businessId: context.business.id },
+  });
+
+  if (count === 0) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
 
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
