@@ -1102,7 +1102,6 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
       businessId: business.id,
     },
     select: {
-      id: true,
       galleryItems: {
         select: {
           imageUrl: true,
@@ -1124,11 +1123,26 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
     };
   }
 
-  await prisma.client.delete({
+  // Compare-and-set: scope the delete by the same id+businessId used to find
+  // the row above. If a concurrent request already deleted it, `count` is 0
+  // and this call becomes a typed not-found instead of `.delete` throwing
+  // Prisma's P2025 for a row that's already gone — mirrors
+  // deleteAppointmentCore's fix (src/lib/appointments-shared.ts). Gating the
+  // storage cleanup below on `count > 0` also means only the request that
+  // actually won the race attempts it, not both.
+  const { count } = await prisma.client.deleteMany({
     where: {
       id: clientId,
+      businessId: business.id,
     },
   });
+
+  if (count === 0) {
+    return {
+      ok: false,
+      error: "Client not found in this clinic workspace.",
+    };
+  }
 
   // Deleting the client cascades the DB rows, but the actual files in storage
   // don't clean themselves up — without this, patient documents (the most
