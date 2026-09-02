@@ -4,7 +4,7 @@ import { createClient as createSupabaseJsClient, type SupabaseClient } from "@su
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { getSupabaseServiceRoleKey, getSupabaseUrl } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { mediaBucket, parseStorageReference } from "@/lib/media-storage";
+import { isValidUploadShape, mediaBucket, parseStorageReference } from "@/lib/media-storage";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/utils/supabase/server";
 
@@ -506,10 +506,11 @@ function getStorageCleanupServiceClient(): SupabaseClient | null {
  * every upload path as `${userId}/${folder}/${uuid}.${ext}` where `userId`
  * is the uploader's Supabase auth id — Business.ownerId, NOT Business.id —
  * so a value only counts as valid when its bucket matches the configured
- * media bucket, its path has exactly that three-segment shape, AND its first
- * segment matches the row's business's `ownerId` (the segment-count check
- * closes a gap a prefix-only compare would leave: a path extended with extra
- * segments past a genuine owner prefix). Anything else is dropped (never
+ * media bucket, its path has exactly that three-segment shape (`isValidUploadShape`,
+ * shared with safe-url.ts's own input-side validation of the same shape), AND
+ * its first segment matches the row's business's `ownerId` — the one check
+ * that's specific to this function, since safe-url.ts has no caller identity
+ * to compare against. Anything else is dropped (never
  * deleted) and logged once, loudly — but the found bucket/prefix are only
  * ever logged when independently verified safe (the real configured bucket;
  * a value with the shape a real ownerId actually has), never raw. A value
@@ -607,19 +608,14 @@ async function processPendingStorageCleanupRow(
       // Non-empty by construction — parseStorageReference rejects a
       // reference whose path would be empty — so this always has a first
       // segment.
-      const segments = reference.path.split("/");
-      const foundPrefix = segments[0];
+      const foundPrefix = reference.path.split("/")[0];
 
-      // Bucket + first segment + exact shape: every real upload path is
-      // precisely `${ownerId}/${folder}/${uuid}.${ext}` (media-storage-client.ts)
-      // — three segments, never more. Requiring that shape, not just a
-      // prefix match, means a path extended past a genuine owner prefix
-      // with unexpected extra segments can't slip through as valid.
-      if (
-        reference.bucket === mediaBucket &&
-        segments.length === 3 &&
-        foundPrefix === row.business.ownerId
-      ) {
+      // isValidUploadShape (lib/media-storage.ts) is the same bucket+3-segment
+      // check safe-url.ts uses on the input side — shared so the two can't
+      // silently drift on what "well-formed" means. This layer adds the one
+      // check that's specifically this function's job: the first segment
+      // must match the row's OWN business, not just look plausible.
+      if (isValidUploadShape(reference.bucket, reference.path) && foundPrefix === row.business.ownerId) {
         valid.push(value);
       } else {
         // Neither reference.bucket nor foundPrefix is safe to log raw here

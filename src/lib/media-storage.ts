@@ -88,3 +88,19 @@ export function normalizeStorageReference(value: string) {
 export function isStorageReference(value: string) {
   return parseStorageReference(value) !== null;
 }
+
+/**
+ * True when `bucket`+`path` have the exact shape every real upload produces
+ * (media-storage-client.ts: `${ownerId}/${folder}/${uuid}.${ext}`) — the
+ * configured media bucket, and exactly three path segments. Structural
+ * plausibility only, not an ownership check: it says nothing about whose
+ * ownerId the first segment actually is. Shared by safe-url.ts's input-side
+ * validation (a value must at least look like a real upload before it's
+ * accepted at all) and the storage-cleanup sweep's delete-side revalidation
+ * (media-storage-server.ts, which layers its own ownerId-prefix match on
+ * top) — kept as one function so the two never silently drift apart on what
+ * "well-formed" means.
+ */
+export function isValidUploadShape(bucket: string, path: string): boolean {
+  return bucket === mediaBucket && path.split("/").length === 3;
+}
