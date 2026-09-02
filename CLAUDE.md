@@ -135,7 +135,7 @@ Everything is scoped to a `Business` (the workspace/tenant). Plan state lives on
 - **WhatsApp (Baileys)** — the only WhatsApp integration. A separate always-on worker (`services/whatsapp-worker/`, deployed off-Vercel) holds the WhatsApp socket; the app pairs it by QR from Settings, sends through `sendMessage` → the worker's HTTP bridge (`lib/messaging/adapters/baileys.ts`, control plane in `lib/messaging/baileys-control.ts`), and receives inbound messages + delivery receipts at `/api/webhooks/whatsapp/baileys` → `Conversation`/`Message`. Link credentials live in `WhatsAppSession`/`WhatsAppSessionKey` (non-PHI, RLS-enabled). Kosovo-only, disposable, isolated behind the messaging seam (ROADMAP.md §2). Official WhatsApp (via an approved BSP) and Twilio **SMS/phone** are later, separate channels — not wired today.
 - **OpenAI analytics** (`lib/analytics-ai.ts`, `lib/reports.ts`): Reports AI snapshots need a server-side OpenAI key in prod; without it the app writes an auditable **rule-based fallback** snapshot and shows that rules were used. A short cooldown rate-limits manual refresh.
 - **Billing (planned):** Paddle behind `/checkout` — session creation, webhook verification, and plan activation are not implemented; the checkout page is preparation-only.
-- **Cron:** `vercel.json` → `/api/cron/reminders` (daily 08:00) and `/api/cron/analytics` (daily 02:30).
+- **Cron:** `vercel.json` → `/api/cron/reminders` (hourly, `0 * * * *` — moved from daily 08:00 on 2026-08-28 so a "N hours before" reminder setting reliably falls inside its window), `/api/cron/analytics` (daily 02:30), and `/api/cron/storage-cleanup` (hourly, `20 * * * *` — the storage-cleanup outbox's retry sweep).
 
 ## Not built yet — don't assume these exist
 

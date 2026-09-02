@@ -7,7 +7,20 @@ const mocks = vi.hoisted(() => {
   const createClient = vi.fn(async () => ({ storage: { from } }));
   const loggerError = vi.fn();
   const loggerWarn = vi.fn();
-  const pendingStorageCleanup = { create: vi.fn(), deleteMany: vi.fn(), updateMany: vi.fn() };
+  const pendingStorageCleanup = {
+    create: vi.fn(),
+    deleteMany: vi.fn(),
+    updateMany: vi.fn(),
+    findMany: vi.fn(),
+  };
+  // A second, separate client for the service-role (sweep) path — kept
+  // distinct from `from`/`remove` above so a test can assert the sweep used
+  // the service-role client specifically, never the cookie-backed one.
+  const serviceRoleRemove = vi.fn();
+  const serviceRoleFrom = vi.fn(() => ({ remove: serviceRoleRemove }));
+  const createServiceRoleClient = vi.fn(() => ({ storage: { from: serviceRoleFrom } }));
+  const getSupabaseServiceRoleKey = vi.fn();
+  const getSupabaseUrl = vi.fn();
   return {
     remove,
     createSignedUrls,
@@ -16,11 +29,25 @@ const mocks = vi.hoisted(() => {
     loggerError,
     loggerWarn,
     pendingStorageCleanup,
+    serviceRoleRemove,
+    serviceRoleFrom,
+    createServiceRoleClient,
+    getSupabaseServiceRoleKey,
+    getSupabaseUrl,
   };
 });
 
 vi.mock("@/utils/supabase/server", () => ({
   createClient: mocks.createClient,
+}));
+
+vi.mock("@supabase/supabase-js", () => ({
+  createClient: mocks.createServiceRoleClient,
+}));
+
+vi.mock("@/lib/env", () => ({
+  getSupabaseServiceRoleKey: mocks.getSupabaseServiceRoleKey,
+  getSupabaseUrl: mocks.getSupabaseUrl,
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -36,6 +63,7 @@ import {
   deleteStorageReferences,
   recordPendingStorageCleanup,
   resolveMediaDisplayUrls,
+  sweepPendingStorageCleanup,
 } from "./media-storage-server";
 import { createStorageReference } from "./media-storage";
 
@@ -43,6 +71,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.pendingStorageCleanup.deleteMany.mockResolvedValue({ count: 1 });
   mocks.pendingStorageCleanup.updateMany.mockResolvedValue({ count: 1 });
+  mocks.pendingStorageCleanup.findMany.mockResolvedValue([]);
+  mocks.getSupabaseServiceRoleKey.mockReturnValue("service-role-key");
+  mocks.getSupabaseUrl.mockReturnValue("https://project.supabase.co");
 });
 
 describe("deleteStorageReferences", () => {
@@ -194,7 +225,7 @@ describe("attemptStorageCleanup", () => {
 
     expect(mocks.pendingStorageCleanup.deleteMany).not.toHaveBeenCalled();
     expect(mocks.pendingStorageCleanup.updateMany).toHaveBeenCalledWith({
-      where: { id: "pending_1" },
+      where: { id: "pending_1", attempts: 1 },
       data: {
         attempts: { increment: 1 },
         lastError: expect.any(String),
@@ -209,7 +240,7 @@ describe("attemptStorageCleanup", () => {
     expect(deltaMs).toBeLessThan(65 * 60 * 1000);
     expect(mocks.loggerWarn).toHaveBeenCalledWith(
       "Storage cleanup attempt failed; will retry within the hour.",
-      { pendingStorageCleanupId: "pending_1", attempts: 2, lastError: expect.any(String) }
+      { pendingStorageCleanupId: "pending_1", attempts: 2, lastError: expect.any(String), kind: "storage" }
     );
     // No error-level (Sentry-forwarding) call at all for this attempt — a
     // second peer-caught instance of the same "unconditional error call
@@ -231,7 +262,7 @@ describe("attemptStorageCleanup", () => {
     expect(mocks.loggerError).toHaveBeenCalledWith(
       "Storage cleanup has failed repeatedly and is moving to a daily retry cadence — investigate.",
       expect.any(Error),
-      { pendingStorageCleanupId: "pending_1", attempts: 5, buckets: "clinic-media (1)" }
+      { pendingStorageCleanupId: "pending_1", attempts: 5, buckets: "clinic-media (1)", kind: "storage" }
     );
     expect(mocks.loggerError).toHaveBeenCalledTimes(1);
     const { nextAttemptAt } = mocks.pendingStorageCleanup.updateMany.mock.calls[0][0].data;
@@ -256,7 +287,390 @@ describe("attemptStorageCleanup", () => {
     expect(mocks.loggerError).not.toHaveBeenCalled();
     expect(mocks.loggerWarn).toHaveBeenCalledWith(
       "Storage cleanup attempt failed; will retry tomorrow.",
-      { pendingStorageCleanupId: "pending_1", attempts: 6, lastError: expect.any(String) }
+      { pendingStorageCleanupId: "pending_1", attempts: 6, lastError: expect.any(String), kind: "storage" }
+    );
+  });
+});
+
+describe("sweepPendingStorageCleanup", () => {
+  it("does nothing and reports serviceRoleConfigured: false when the service-role key isn't set", async () => {
+    mocks.getSupabaseServiceRoleKey.mockReturnValue(null);
+
+    const result = await sweepPendingStorageCleanup();
+
+    expect(result).toEqual({
+      serviceRoleConfigured: false,
+      due: 0,
+      cleaned: 0,
+      invalidRowsDropped: 0,
+      retryScheduled: 0,
+      errored: 0,
+    });
+    expect(mocks.pendingStorageCleanup.findMany).not.toHaveBeenCalled();
+    expect(mocks.createServiceRoleClient).not.toHaveBeenCalled();
+  });
+
+  it("builds the service-role client with a fetch timeout wrapper, not the raw platform fetch", async () => {
+    // A regression guard for the timeout fix itself: without this, a
+    // refactor could silently drop the AbortSignal.timeout wrapping and
+    // reintroduce the exact silent-hang failure mode it exists to prevent —
+    // nothing else in this suite would catch that, since it's otherwise only
+    // exercised inside a real network call.
+    await sweepPendingStorageCleanup();
+
+    expect(mocks.createServiceRoleClient).toHaveBeenCalledWith(
+      expect.any(String),
+      "service-role-key",
+      expect.objectContaining({
+        global: expect.objectContaining({ fetch: expect.any(Function) }),
+      })
+    );
+  });
+
+  it("queries due rows oldest-first with a capped batch size", async () => {
+    await sweepPendingStorageCleanup();
+
+    expect(mocks.pendingStorageCleanup.findMany).toHaveBeenCalledWith({
+      where: { nextAttemptAt: { lte: expect.any(Date) } },
+      orderBy: { nextAttemptAt: "asc" },
+      take: 50,
+      select: {
+        id: true,
+        businessId: true,
+        values: true,
+        attempts: true,
+        business: { select: { ownerId: true } },
+      },
+    });
+  });
+
+  it("cleans a row via the service-role client when every value belongs to the queuing business", async () => {
+    mocks.pendingStorageCleanup.findMany.mockResolvedValue([
+      {
+        id: "pending_1",
+        businessId: "biz_1",
+        attempts: 0,
+        values: [createStorageReference("clinic-media", "owner_1/client-documents/doc.pdf")],
+        business: { ownerId: "owner_1" },
+      },
+    ]);
+    mocks.serviceRoleRemove.mockResolvedValue({ error: null });
+
+    const result = await sweepPendingStorageCleanup();
+
+    // The service-role client, never the cookie-backed request-path one.
+    expect(mocks.serviceRoleFrom).toHaveBeenCalledWith("clinic-media");
+    expect(mocks.serviceRoleRemove).toHaveBeenCalledWith(["owner_1/client-documents/doc.pdf"]);
+    expect(mocks.remove).not.toHaveBeenCalled();
+    expect(mocks.pendingStorageCleanup.deleteMany).toHaveBeenCalledWith({ where: { id: "pending_1" } });
+    expect(result).toMatchObject({ serviceRoleConfigured: true, due: 1, cleaned: 1 });
+  });
+
+  it("drops a row whose only value doesn't belong to the queuing business, without ever calling remove", async () => {
+    mocks.pendingStorageCleanup.findMany.mockResolvedValue([
+      {
+        id: "pending_2",
+        businessId: "biz_2",
+        attempts: 0,
+        values: [createStorageReference("clinic-media", "owner_other/client-documents/doc.pdf")],
+        business: { ownerId: "owner_2" },
+      },
+    ]);
+
+    const result = await sweepPendingStorageCleanup();
+
+    expect(mocks.serviceRoleRemove).not.toHaveBeenCalled();
+    expect(mocks.pendingStorageCleanup.deleteMany).toHaveBeenCalledWith({ where: { id: "pending_2" } });
+    // The found prefix isn't UUID-shaped, so it's redacted rather than
+    // logged raw (Codex + peer: a mismatched value didn't come from the
+    // legitimate upload path, so it could be arbitrary text, not an opaque
+    // auth uid) — see the dedicated redaction tests below for both halves.
+    expect(mocks.loggerError).toHaveBeenCalledWith(
+      "Storage cleanup sweep found queued value(s) that don't belong to the business that queued them — dropped without deleting.",
+      undefined,
+      {
+        pendingStorageCleanupId: "pending_2",
+        businessId: "biz_2",
+        expectedOwnerId: "owner_2",
+        found: "clinic-media:<non-uuid>",
+      }
+    );
+    expect(result).toMatchObject({ invalidRowsDropped: 1 });
+  });
+
+  it("removes only the valid subset of a mixed row, still logs the mismatched entry once, and clears the row", async () => {
+    mocks.pendingStorageCleanup.findMany.mockResolvedValue([
+      {
+        id: "pending_3",
+        businessId: "biz_3",
+        attempts: 0,
+        values: [
+          createStorageReference("clinic-media", "owner_3/client-documents/legit.pdf"),
+          createStorageReference("clinic-media", "owner_other/client-documents/mismatch.pdf"),
+        ],
+        business: { ownerId: "owner_3" },
+      },
+    ]);
+    mocks.serviceRoleRemove.mockResolvedValue({ error: null });
+
+    const result = await sweepPendingStorageCleanup();
+
+    expect(mocks.serviceRoleRemove).toHaveBeenCalledWith(["owner_3/client-documents/legit.pdf"]);
+    expect(mocks.loggerError).toHaveBeenCalledTimes(1);
+    expect(mocks.pendingStorageCleanup.deleteMany).toHaveBeenCalledWith({ where: { id: "pending_3" } });
+    expect(result).toMatchObject({ cleaned: 1 });
+  });
+
+  it("persists just the mismatch-narrowed value set when the valid subset still fails to remove", async () => {
+    mocks.pendingStorageCleanup.findMany.mockResolvedValue([
+      {
+        id: "pending_4",
+        businessId: "biz_4",
+        attempts: 0,
+        values: [
+          createStorageReference("clinic-media", "owner_4/client-documents/legit.pdf"),
+          createStorageReference("clinic-media", "owner_other/client-documents/mismatch.pdf"),
+        ],
+        business: { ownerId: "owner_4" },
+      },
+    ]);
+    mocks.serviceRoleRemove.mockResolvedValue({ error: new Error("permission denied") });
+
+    const result = await sweepPendingStorageCleanup();
+
+    expect(mocks.pendingStorageCleanup.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.pendingStorageCleanup.updateMany).toHaveBeenCalledWith({
+      where: { id: "pending_4", attempts: 0 },
+      data: {
+        attempts: { increment: 1 },
+        lastError: expect.any(String),
+        nextAttemptAt: expect.any(Date),
+        // Narrowed to just the still-legitimate entry — the mismatched one
+        // was already logged and must never be re-examined on retry.
+        values: [createStorageReference("clinic-media", "owner_4/client-documents/legit.pdf")],
+      },
+    });
+    expect(result).toMatchObject({ retryScheduled: 1 });
+  });
+
+  it("does not log a duplicate alert when a concurrent writer already advanced this row's attempts", async () => {
+    // Simulates the race attemptStorageCleanup's post-commit attempt and
+    // this sweep can now genuinely have on a freshly-created row (nextAttemptAt
+    // defaults to now()): both read attempts=4 and both fail, but only the
+    // first writer's compare-and-set (`where: { id, attempts: 4 }`) actually
+    // matches — count comes back 0 for the loser.
+    mocks.pendingStorageCleanup.findMany.mockResolvedValue([
+      {
+        id: "pending_race",
+        businessId: "biz_race",
+        attempts: 4,
+        values: [createStorageReference("clinic-media", "owner_race/client-documents/doc.pdf")],
+        business: { ownerId: "owner_race" },
+      },
+    ]);
+    mocks.serviceRoleRemove.mockResolvedValue({ error: new Error("permission denied") });
+    mocks.pendingStorageCleanup.updateMany.mockResolvedValue({ count: 0 });
+
+    const result = await sweepPendingStorageCleanup();
+
+    // The count:0 mock only proves this test's *point* if the code actually
+    // sent the compare-and-set value it's supposed to — assert the `where`
+    // clause directly, not just the pre-programmed return.
+    expect(mocks.pendingStorageCleanup.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "pending_race", attempts: 4 } })
+    );
+    // Would otherwise be the hourly->daily transition (attempts 4 -> 5) and
+    // fire the one deliberate alert — must not, since this call lost the race.
+    expect(mocks.loggerError).not.toHaveBeenCalled();
+    expect(mocks.loggerWarn).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ retryScheduled: 1 });
+  });
+
+  it("does not touch `values` in the retry write when nothing was narrowed", async () => {
+    mocks.pendingStorageCleanup.findMany.mockResolvedValue([
+      {
+        id: "pending_5",
+        businessId: "biz_5",
+        attempts: 0,
+        values: [createStorageReference("clinic-media", "owner_5/client-documents/legit.pdf")],
+        business: { ownerId: "owner_5" },
+      },
+    ]);
+    mocks.serviceRoleRemove.mockResolvedValue({ error: new Error("permission denied") });
+
+    await sweepPendingStorageCleanup();
+
+    const { data } = mocks.pendingStorageCleanup.updateMany.mock.calls[0][0];
+    expect(data).not.toHaveProperty("values");
+  });
+
+  it("silently drops a non-storage-reference value (e.g. a legacy external URL), unlike a real ownership mismatch", async () => {
+    mocks.pendingStorageCleanup.findMany.mockResolvedValue([
+      {
+        id: "pending_6",
+        businessId: "biz_6",
+        attempts: 0,
+        values: ["https://example.com/legacy-external.pdf"],
+        business: { ownerId: "owner_6" },
+      },
+    ]);
+
+    const result = await sweepPendingStorageCleanup();
+
+    expect(mocks.loggerError).not.toHaveBeenCalled();
+    expect(mocks.serviceRoleRemove).not.toHaveBeenCalled();
+    expect(mocks.pendingStorageCleanup.deleteMany).toHaveBeenCalledWith({ where: { id: "pending_6" } });
+    expect(result).toMatchObject({ invalidRowsDropped: 1 });
+  });
+
+  it("treats a matching prefix with an unexpected extra path segment as mismatched, not valid", async () => {
+    // Every real upload path is exactly 3 segments (media-storage-client.ts:
+    // `${ownerId}/${folder}/${uuid}.${ext}`). A value whose first segment
+    // matches but which carries extra segments doesn't get a pass on the
+    // prefix check alone.
+    mocks.pendingStorageCleanup.findMany.mockResolvedValue([
+      {
+        id: "pending_7",
+        businessId: "biz_7",
+        attempts: 0,
+        values: [createStorageReference("clinic-media", "owner_7/client-documents/nested/doc.pdf")],
+        business: { ownerId: "owner_7" },
+      },
+    ]);
+
+    const result = await sweepPendingStorageCleanup();
+
+    expect(mocks.serviceRoleRemove).not.toHaveBeenCalled();
+    expect(mocks.loggerError).toHaveBeenCalledWith(
+      "Storage cleanup sweep found queued value(s) that don't belong to the business that queued them — dropped without deleting.",
+      undefined,
+      expect.objectContaining({ found: "clinic-media:<non-uuid>" })
+    );
+    expect(result).toMatchObject({ invalidRowsDropped: 1 });
+  });
+
+  it("logs a mismatched prefix only when it has the shape a real ownerId actually has — a genuine cross-tenant hit stays visible", async () => {
+    const realOtherOwnerId = "11111111-2222-4333-8444-555555555555";
+    mocks.pendingStorageCleanup.findMany.mockResolvedValue([
+      {
+        id: "pending_uuid",
+        businessId: "biz_uuid",
+        attempts: 0,
+        values: [createStorageReference("clinic-media", `${realOtherOwnerId}/client-documents/doc.pdf`)],
+        business: { ownerId: "22222222-3333-4444-8555-666666666666" },
+      },
+    ]);
+
+    await sweepPendingStorageCleanup();
+
+    // A real UUID carries no PHI regardless of whose it is — logging it is
+    // exactly the diagnostic value this log line exists for (telling a real
+    // cross-tenant hit apart from a data/logic bug).
+    expect(mocks.loggerError).toHaveBeenCalledWith(
+      "Storage cleanup sweep found queued value(s) that don't belong to the business that queued them — dropped without deleting.",
+      undefined,
+      expect.objectContaining({ found: `clinic-media:${realOtherOwnerId}` })
+    );
+  });
+
+  it("never lets an unvalidated bucket or prefix reach the log — the actual PHI-leak path Codex and the peer traced", async () => {
+    // normalizeStorageReference's fast path (lib/media-storage.ts) and
+    // normalizePublicUrl's isValidStorageReference check (lib/safe-url.ts,
+    // which runs BEFORE its HTTPS-only gate) both accept a
+    // `supabase-storage://<anything>/<anything>`-shaped value with no
+    // validation of the bucket or path content — so a submitted document
+    // fileUrl really can end up stored with an arbitrary bucket name and
+    // path, including PHI, by the time it reaches this row.
+    const businessName = "Jane Doe Has Diabetes";
+    mocks.pendingStorageCleanup.findMany.mockResolvedValue([
+      {
+        id: "pending_phi",
+        businessId: "biz_phi",
+        attempts: 0,
+        values: [createStorageReference(businessName, "x/y/z.pdf")],
+        business: { ownerId: "owner_phi" },
+      },
+    ]);
+
+    await sweepPendingStorageCleanup();
+
+    expect(mocks.loggerError).toHaveBeenCalledWith(
+      "Storage cleanup sweep found queued value(s) that don't belong to the business that queued them — dropped without deleting.",
+      undefined,
+      expect.objectContaining({ found: "<unexpected-bucket>:<non-uuid>" })
+    );
+    // The actual PHI-shaped string must never appear in any logger call at all.
+    for (const call of [...mocks.loggerError.mock.calls, ...mocks.loggerWarn.mock.calls]) {
+      expect(JSON.stringify(call)).not.toContain(businessName);
+    }
+  });
+
+  it("isolates a per-row failure — one row throwing unexpectedly doesn't abort the rest of the sweep", async () => {
+    mocks.pendingStorageCleanup.findMany.mockResolvedValue([
+      {
+        id: "pending_bad",
+        businessId: "biz_bad",
+        attempts: 0,
+        values: [createStorageReference("clinic-media", "owner_bad/client-documents/doc.pdf")],
+        business: { ownerId: "owner_bad" },
+      },
+      {
+        id: "pending_ok",
+        businessId: "biz_ok",
+        attempts: 0,
+        values: [createStorageReference("clinic-media", "owner_ok/client-documents/doc.pdf")],
+        business: { ownerId: "owner_ok" },
+      },
+    ]);
+    // The first row's deleteMany throws (e.g. a DB pool timeout); the second
+    // row's own deleteMany call should still run and succeed independently.
+    mocks.pendingStorageCleanup.deleteMany.mockRejectedValueOnce(new Error("pool timeout"));
+    mocks.serviceRoleRemove.mockResolvedValue({ error: null });
+
+    const result = await sweepPendingStorageCleanup();
+
+    // Routed through recordCleanupAttemptFailure (the actual fix for the
+    // "pages Sentry every tick, forever" bug) rather than a bare log: a
+    // first-time failure gets the same warn-tier as any other first Storage
+    // failure, not its own separate error-level message.
+    expect(mocks.pendingStorageCleanup.updateMany).toHaveBeenCalledWith({
+      where: { id: "pending_bad", attempts: 0 },
+      data: { attempts: { increment: 1 }, lastError: expect.any(String), nextAttemptAt: expect.any(Date) },
+    });
+    expect(mocks.loggerWarn).toHaveBeenCalledWith(
+      "Storage cleanup attempt failed; will retry within the hour.",
+      { pendingStorageCleanupId: "pending_bad", attempts: 1, lastError: expect.any(String), kind: "unexpected" }
+    );
+    expect(mocks.loggerError).not.toHaveBeenCalled();
+    // The other row is unaffected — its own deleteMany still ran and succeeded.
+    expect(mocks.pendingStorageCleanup.deleteMany).toHaveBeenCalledWith({ where: { id: "pending_ok" } });
+    expect(result).toMatchObject({ due: 2, errored: 1, cleaned: 1 });
+  });
+
+  it("still records the failure via a plain log, without throwing, when recordCleanupAttemptFailure's own write also fails", async () => {
+    // A double failure — the same DB outage hitting both the row's own
+    // deleteMany AND the recovery write inside recordCleanupAttemptFailure —
+    // must not re-escape the row's isolation boundary.
+    mocks.pendingStorageCleanup.findMany.mockResolvedValue([
+      {
+        id: "pending_bad",
+        businessId: "biz_bad",
+        attempts: 0,
+        values: [createStorageReference("clinic-media", "owner_bad/client-documents/doc.pdf")],
+        business: { ownerId: "owner_bad" },
+      },
+    ]);
+    mocks.serviceRoleRemove.mockResolvedValue({ error: null });
+    mocks.pendingStorageCleanup.deleteMany.mockRejectedValueOnce(new Error("pool timeout"));
+    mocks.pendingStorageCleanup.updateMany.mockRejectedValueOnce(new Error("pool timeout again"));
+
+    const result = await sweepPendingStorageCleanup();
+
+    expect(result).toMatchObject({ due: 1, errored: 1 });
+    expect(mocks.loggerError).toHaveBeenCalledWith(
+      "Storage cleanup sweep failed unexpectedly for one row, and recording that failure also failed.",
+      expect.any(Error),
+      { pendingStorageCleanupId: "pending_bad", businessId: "biz_bad" }
     );
   });
 });

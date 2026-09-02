@@ -29,6 +29,16 @@ export function getSupabasePublishableKey() {
   ]);
 }
 
+/**
+ * Unlike the accessors above, not required: only the storage-cleanup sweep
+ * (a cron path with no user session) needs it, and its absence should degrade
+ * that one feature, not fail the whole app's boot. Returns null instead of
+ * throwing so callers can decide how to skip.
+ */
+export function getSupabaseServiceRoleKey(): string | null {
+  return process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || null;
+}
+
 const requiredEnvSchema = z.object({
   DATABASE_URL: z.string().trim().min(1, "DATABASE_URL is required"),
   NEXT_PUBLIC_SUPABASE_URL: z
@@ -51,6 +61,8 @@ const importantOptionalEnv: Record<string, string> = {
   NEXT_PUBLIC_SENTRY_DSN: "client-side error monitoring is silently disabled",
   EXPO_ACCESS_TOKEN:
     "staff push notifications send unauthenticated (fine until Expo enforces enhanced push security on this account)",
+  SUPABASE_SERVICE_ROLE_KEY:
+    "the storage-cleanup retry sweep can't authenticate to Storage; pending cleanup rows accumulate until it's set",
 };
 
 // Rate limiting (login/signup/mobile-redeem throttles, etc. — see lib/rate-limit.ts)
