@@ -120,7 +120,7 @@ Pilot (Kosovo) data is non-PHI by design. GDPR is the active compliance regime (
 
 ## Data model (`prisma/schema.prisma`)
 
-Core entities: `Business`, `BusinessHours`, `StaffMember`, `StaffTimeEntry`, `StaffShift`, `ScheduleBlock`, `Client` (+ `ClientMedication`, `ClientDocument`, `ClientPayment`, `ClientHealthItem`, `ClientCareNote`, `ClientTreatmentPlanItem`, `ClientFollowUpReminder`, `ClientGalleryItem`), `Appointment` (+ `AppointmentReminder`, which carries a `status` of `SENT`/`FAILED`), `Conversation` + `Message`, `ReminderSettings`, `WhatsAppConnection`, `WhatsAppSession` + `WhatsAppSessionKey` (Baileys link credentials, non-PHI), `EmailVerificationReceipt`, `AnalyticsSnapshot`.
+Core entities: `Business`, `BusinessHours`, `StaffMember`, `StaffTimeEntry`, `StaffShift`, `ScheduleBlock`, `Client` (+ `ClientMedication`, `ClientDocument`, `ClientPayment`, `ClientHealthItem`, `ClientCareNote`, `ClientTreatmentPlanItem`, `ClientFollowUpReminder`, `ClientGalleryItem`), `Appointment` (+ `AppointmentReminder`, which carries a `status` of `SENT`/`FAILED`), `Conversation` + `Message`, `ReminderSettings`, `WhatsAppConnection`, `WhatsAppSession` + `WhatsAppSessionKey` (Baileys link credentials, non-PHI), `EmailVerificationReceipt`, `AnalyticsSnapshot`, `StaffAccessCode`, `StaffDevice`, `StaffThread` + `StaffThreadMessage`, `StaffNotification` (mobile staff app auth/messaging), `PendingStorageCleanup` (storage-cleanup outbox).
 
 Everything is scoped to a `Business` (the workspace/tenant). Plan state lives on `Business` (`BusinessPlan` / `BusinessPlanStatus`; `isProBusinessPlan()` in `lib/billing.ts` gates Pro features like full Reports; public plan copy in `lib/public-plans.ts`).
 
