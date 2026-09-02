@@ -397,6 +397,12 @@ function describeStorageError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+// A Supabase auth id (what a legitimate ownerId prefix always is) is a v4
+// UUID. Used only to decide whether a mismatched entry's prefix is safe to
+// log — see processPendingStorageCleanupRow — never for the actual
+// ownership check itself, which always compares the raw value.
+const OWNER_ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Keeps one cron tick from firing 50 concurrent Storage calls + DB writes at
 // once against DATABASE_POOL_MAX (default 3 — see prisma.ts) — normally
 // irrelevant (this table is usually near-empty), but the one time it isn't
@@ -504,12 +510,20 @@ function getStorageCleanupServiceClient(): SupabaseClient | null {
  * segment matches the row's business's `ownerId` (the segment-count check
  * closes a gap a prefix-only compare would leave: a path extended with extra
  * segments past a genuine owner prefix). Anything else is dropped (never
- * deleted) and logged once, loudly, with the found-vs-expected prefix and
- * bucket — not PHI, just an opaque auth uid (same category as the
- * businessId already logged everywhere else in this file) — specifically so
- * a human can tell a real cross-tenant hit (the found prefix is a real,
- * different business's ownerId) apart from a data/logic bug (it isn't).
- * Dropped permanently, not requeued: there is no ownership-transfer feature
+ * deleted) and logged once, loudly — but the found bucket/prefix are only
+ * ever logged when independently verified safe (the real configured bucket;
+ * a value with the shape a real ownerId actually has), never raw. A value
+ * that reaches this branch didn't come from the legitimate upload path, so
+ * there's no guarantee it's the opaque auth uid it would normally be — both
+ * `normalizeStorageReference`'s and `normalizePublicUrl`'s own fast paths
+ * (Codex + peer-verified) accept a `supabase-storage://`-shaped value with
+ * an unvalidated bucket and path, so a crafted value's bucket or path
+ * segment could be arbitrary text, including a patient name, by the time it
+ * gets here. Logging only what's independently known-safe still lets a
+ * human tell a real cross-tenant hit (the found prefix is a real, different
+ * business's ownerId) apart from a data/logic bug or a malicious value,
+ * without ever risking PHI in the log line itself. Dropped permanently, not
+ * requeued: there is no ownership-transfer feature
  * and no code path that writes to `Business.ownerId` after creation, so a
  * mismatched prefix can never newly become valid on a later sweep — but this
  * whole check assumes the uploader is always the business owner, which holds
@@ -608,7 +622,27 @@ async function processPendingStorageCleanupRow(
       ) {
         valid.push(value);
       } else {
-        mismatched.push(`${reference.bucket}:${foundPrefix}`);
+        // Neither reference.bucket nor foundPrefix is safe to log raw here
+        // (Codex P2 + peer-verified): normalizeStorageReference's fast path
+        // (lib/media-storage.ts) reconstructs a submitted bucket+path
+        // verbatim with no validation, and normalizePublicUrl's own
+        // isValidStorageReference check (lib/safe-url.ts) runs BEFORE its
+        // HTTPS-only gate — so a value shaped like
+        // `supabase-storage://<anything>/<anything>` skips that gate
+        // entirely and can reach a document/gallery/logo field un-normalized
+        // beyond this shape. A crafted value's bucket or path segment could
+        // be arbitrary text, including a patient name, by the time it
+        // reaches this branch — the "opaque auth uid" safety argument only
+        // ever held for the LEGITIMATE upload path, not for values that hit
+        // this exact else because they didn't come from it. Redact anything
+        // that isn't independently known-safe before it touches a log line:
+        // the bucket only when it's the one real configured bucket, the
+        // prefix only when it has the shape every real ownerId actually
+        // has. The equality/shape checks above already used the raw values;
+        // only the logged representation changes here.
+        const safeBucket = reference.bucket === mediaBucket ? reference.bucket : "<unexpected-bucket>";
+        const safePrefix = OWNER_ID_SHAPE.test(foundPrefix) ? foundPrefix : "<non-uuid>";
+        mismatched.push(`${safeBucket}:${safePrefix}`);
       }
     }
 

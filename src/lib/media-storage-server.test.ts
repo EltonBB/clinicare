@@ -381,8 +381,10 @@ describe("sweepPendingStorageCleanup", () => {
 
     expect(mocks.serviceRoleRemove).not.toHaveBeenCalled();
     expect(mocks.pendingStorageCleanup.deleteMany).toHaveBeenCalledWith({ where: { id: "pending_2" } });
-    // Found-vs-expected prefix + bucket, never the full path — lets a human
-    // tell a real cross-tenant hit apart from a data/logic bug.
+    // The found prefix isn't UUID-shaped, so it's redacted rather than
+    // logged raw (Codex + peer: a mismatched value didn't come from the
+    // legitimate upload path, so it could be arbitrary text, not an opaque
+    // auth uid) — see the dedicated redaction tests below for both halves.
     expect(mocks.loggerError).toHaveBeenCalledWith(
       "Storage cleanup sweep found queued value(s) that don't belong to the business that queued them — dropped without deleting.",
       undefined,
@@ -390,7 +392,7 @@ describe("sweepPendingStorageCleanup", () => {
         pendingStorageCleanupId: "pending_2",
         businessId: "biz_2",
         expectedOwnerId: "owner_2",
-        found: "clinic-media:owner_other",
+        found: "clinic-media:<non-uuid>",
       }
     );
     expect(result).toMatchObject({ invalidRowsDropped: 1 });
@@ -542,9 +544,65 @@ describe("sweepPendingStorageCleanup", () => {
     expect(mocks.loggerError).toHaveBeenCalledWith(
       "Storage cleanup sweep found queued value(s) that don't belong to the business that queued them — dropped without deleting.",
       undefined,
-      expect.objectContaining({ found: "clinic-media:owner_7" })
+      expect.objectContaining({ found: "clinic-media:<non-uuid>" })
     );
     expect(result).toMatchObject({ invalidRowsDropped: 1 });
+  });
+
+  it("logs a mismatched prefix only when it has the shape a real ownerId actually has — a genuine cross-tenant hit stays visible", async () => {
+    const realOtherOwnerId = "11111111-2222-4333-8444-555555555555";
+    mocks.pendingStorageCleanup.findMany.mockResolvedValue([
+      {
+        id: "pending_uuid",
+        businessId: "biz_uuid",
+        attempts: 0,
+        values: [createStorageReference("clinic-media", `${realOtherOwnerId}/client-documents/doc.pdf`)],
+        business: { ownerId: "22222222-3333-4444-8555-666666666666" },
+      },
+    ]);
+
+    await sweepPendingStorageCleanup();
+
+    // A real UUID carries no PHI regardless of whose it is — logging it is
+    // exactly the diagnostic value this log line exists for (telling a real
+    // cross-tenant hit apart from a data/logic bug).
+    expect(mocks.loggerError).toHaveBeenCalledWith(
+      "Storage cleanup sweep found queued value(s) that don't belong to the business that queued them — dropped without deleting.",
+      undefined,
+      expect.objectContaining({ found: `clinic-media:${realOtherOwnerId}` })
+    );
+  });
+
+  it("never lets an unvalidated bucket or prefix reach the log — the actual PHI-leak path Codex and the peer traced", async () => {
+    // normalizeStorageReference's fast path (lib/media-storage.ts) and
+    // normalizePublicUrl's isValidStorageReference check (lib/safe-url.ts,
+    // which runs BEFORE its HTTPS-only gate) both accept a
+    // `supabase-storage://<anything>/<anything>`-shaped value with no
+    // validation of the bucket or path content — so a submitted document
+    // fileUrl really can end up stored with an arbitrary bucket name and
+    // path, including PHI, by the time it reaches this row.
+    const businessName = "Jane Doe Has Diabetes";
+    mocks.pendingStorageCleanup.findMany.mockResolvedValue([
+      {
+        id: "pending_phi",
+        businessId: "biz_phi",
+        attempts: 0,
+        values: [createStorageReference(businessName, "x/y/z.pdf")],
+        business: { ownerId: "owner_phi" },
+      },
+    ]);
+
+    await sweepPendingStorageCleanup();
+
+    expect(mocks.loggerError).toHaveBeenCalledWith(
+      "Storage cleanup sweep found queued value(s) that don't belong to the business that queued them — dropped without deleting.",
+      undefined,
+      expect.objectContaining({ found: "<unexpected-bucket>:<non-uuid>" })
+    );
+    // The actual PHI-shaped string must never appear in any logger call at all.
+    for (const call of [...mocks.loggerError.mock.calls, ...mocks.loggerWarn.mock.calls]) {
+      expect(JSON.stringify(call)).not.toContain(businessName);
+    }
   });
 
   it("isolates a per-row failure — one row throwing unexpectedly doesn't abort the rest of the sweep", async () => {
