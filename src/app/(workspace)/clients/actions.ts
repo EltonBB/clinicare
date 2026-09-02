@@ -1165,9 +1165,8 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
   // durably regardless of when (or whether) this attempt succeeds, so the
   // admin doesn't need to wait on a Storage round-trip for a delete that, as
   // far as the DB is concerned, already happened. If it fails, the row
-  // survives for a retry cron to pick up later — see
-  // lib/media-storage-server.ts (that cron isn't built yet; this row just
-  // waits until it is, same as it would waiting between retries once it is).
+  // survives for the /api/cron/storage-cleanup sweep to retry later (see
+  // lib/media-storage-server.ts).
   after(() => attemptStorageCleanup(result.pending));
 
   revalidateClientDirectory();

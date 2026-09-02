@@ -1,7 +1,10 @@
 import { Prisma } from "@prisma/client";
+import { createClient as createSupabaseJsClient, type SupabaseClient } from "@supabase/supabase-js";
 
+import { mapWithConcurrency } from "@/lib/concurrency";
+import { getSupabaseServiceRoleKey, getSupabaseUrl } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { parseStorageReference } from "@/lib/media-storage";
+import { mediaBucket, parseStorageReference } from "@/lib/media-storage";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/utils/supabase/server";
 
@@ -118,9 +121,15 @@ type StorageRemovalFailure = { bucket: string; count: number; error: unknown };
  * level per attempt (see the P2 Codex flagged: reusing
  * deleteStorageReferences there logged an unsuppressable Sentry error on
  * every attempt regardless of retry phase, defeating the tiering entirely).
+ *
+ * `client` defaults to the cookie-backed SSR client (the existing behavior
+ * for every request-path caller). The storage-cleanup sweep is the one
+ * caller that passes its own service-role client — a cron invocation has no
+ * user session for the default client to authenticate with.
  */
 async function removeStorageObjects(
-  values: Array<string | null | undefined>
+  values: Array<string | null | undefined>,
+  client?: SupabaseClient
 ): Promise<{ failedCount: number; failures: StorageRemovalFailure[] }> {
   const referencesByBucket = values.reduce<Map<string, Set<string>>>((result, value) => {
     if (!value) {
@@ -143,7 +152,7 @@ async function removeStorageObjects(
     return { failedCount: 0, failures: [] };
   }
 
-  const supabase = await createClient();
+  const supabase = client ?? (await createClient());
   let failedCount = 0;
   const failures: StorageRemovalFailure[] = [];
 
@@ -232,60 +241,20 @@ export async function recordPendingStorageCleanup(
  * the transaction that created it commits (never from inside that
  * transaction: this makes a Storage API round-trip, and holding a DB
  * connection open for it risks exhausting the small serverless pool), and
- * again from a retry sweep for anything still pending (not built yet — until
- * it exists, a row that fails here just waits in the table with its
- * `nextAttemptAt`/`attempts` already tracked, ready for that sweep to use
- * once it's written). Clears the row on success; records the failure and
- * reschedules on failure. Never throws.
+ * again from `sweepPendingStorageCleanup`'s retry sweep for anything still
+ * pending. Clears the row on success; records the failure and reschedules on
+ * failure. Never throws.
  *
  * Calls removeStorageObjects directly rather than deleteStorageReferences:
  * the latter always logs each failure at error level, which would page
  * Sentry on every retry regardless of phase and defeat the tiering below
  * (Codex P2). This function owns all of the logging for its own retries.
  *
- * IMPORTANT for whoever builds the retry sweep (Codex P2, verified against
- * docs/media-storage.md): removeStorageObjects resolves its Supabase client
- * via createClient() (the cookie-backed SSR client), which needs a signed-in
- * user's session — fine here, since this is always called from within an
- * authenticated request. A cron invocation has no such session, and the
- * bucket's delete policy is scoped to `auth.uid()`, so an unauthenticated
- * cron call would fail every single row, forever, with nothing surfacing the
- * failure as anything other than an ordinary retry. The sweep needs its own
- * authenticated path to Storage (a service-role client scoped to exactly
- * this operation, or another explicit worker credential) before it can
- * actually drain this table — not a hand-me-down of this function as-is.
- *
- * A SECOND requirement for that same sweep, a step further (Codex P1,
- * verified against the actual add-actions): a service-role client bypasses
- * RLS entirely, and nothing validates today that a queued `values` entry
- * actually belongs to the business that queued it —
- * addClientDocumentAction/addClientGalleryItemAction/saveSettingsAction all
- * accept any syntactically-valid storage reference as user input
- * (normalizeStorageReference only parses the `bucket`+`path` shape; it
- * checks nothing about who owns that path). Today that's harmless because
- * Storage RLS still gates the actual delete — a malicious business could
- * store another tenant's known path, but the delete attempt would just be
- * rejected. A service-role sweep removes that safety net, so it must
- * re-validate ownership itself before deleting.
- *
- * The exact check (Codex P2 + peer-verified, not just "compare to
- * businessId" — that field is the wrong one): media-storage-client.ts's
- * createStoragePath/createMediaStoragePath build every path as
- * `${userId}/${folder}/${uuid}.${ext}`, where `userId` is the uploader's
- * Supabase auth id — Business.ownerId, NOT Business.id. Resolve the row's
- * business, compare the path's first segment against that business's
- * `ownerId` (and the bucket against the configured media bucket), and skip
- * — loudly logging it, never silently — anything that doesn't match rather
- * than deleting it anyway. This holds because every current caller of the
- * three add-actions above requires an authenticated web session that
- * resolves to a business via `getCurrentBusiness`'s strict
- * `findUnique({ where: { ownerId: authUserId } })` — there is no code path
- * today where the uploader is anyone other than that business's owner (the
- * mobile staff app has its own separate auth and doesn't call these
- * actions at all). If a future feature ever lets someone other than the
- * owner upload through this same flow under their own distinct id, this
- * single-prefix check stops being sufficient and needs revisiting before
- * that feature ships, not after.
+ * Uses the cookie-backed SSR client (removeStorageObjects' default) because
+ * this is always called from within an authenticated request. The sweep
+ * below is the cron counterpart — no user session, so it needs (and has) its
+ * own authenticated path plus its own ownership re-validation; see that
+ * function's docstring for why both are required.
  */
 export async function attemptStorageCleanup(
   pending: PendingStorageCleanupHandle | null
@@ -307,10 +276,31 @@ export async function attemptStorageCleanup(
   await recordCleanupAttemptFailure(pending.id, pending.attempts, failures);
 }
 
+/**
+ * `narrowedValues`, when passed, replaces the row's stored `values` in the
+ * same write — used only by the sweep (below) when it has just permanently
+ * dropped one or more ownership-mismatched entries, so the next retry
+ * re-examines just the still-legitimate subset instead of re-detecting (and
+ * re-logging) the same permanent mismatch every cycle. Omitted by the
+ * request-path caller above, which never narrows anything.
+ *
+ * `previousAttempts` also gates the write itself now (`where: { id, attempts:
+ * previousAttempts }`), not just `id`: this function has two callers that can
+ * now genuinely race on the same row — attemptStorageCleanup's post-commit
+ * attempt (a row's nextAttemptAt defaults to now(), so it's immediately due)
+ * and the sweep below, if an hourly tick lands while that attempt is still
+ * in flight. Both would otherwise compute their own `attempts`/backoff/alert
+ * decision from the same stale read, risking the one deliberate alert below
+ * firing twice for one row. The compare-and-set makes exactly one concurrent
+ * caller's write land — whichever matches the row's current `attempts` first
+ * — and the loser's `count` comes back 0 (same "no-op, not an error" shape
+ * every guarded write in this file already uses).
+ */
 async function recordCleanupAttemptFailure(
   id: string,
   previousAttempts: number,
-  failures: StorageRemovalFailure[]
+  failures: StorageRemovalFailure[],
+  narrowedValues?: string[]
 ) {
   const attempts = previousAttempts + 1;
   const isHourlyPhase = attempts < CLEANUP_HOURLY_RETRY_LIMIT;
@@ -323,18 +313,25 @@ async function recordCleanupAttemptFailure(
   const primaryError = failures[0]?.error;
   const buckets = failures.map(({ bucket, count }) => `${bucket} (${count})`).join(", ");
 
-  // updateMany (unlike .update()) never throws for zero matches — if a
-  // concurrent attempt already cleared this row, this is just a no-op count
-  // of 0, not an error to swallow. The counter itself is a DB-level atomic
-  // increment (not writing the locally-computed `attempts`), so the
-  // persisted total is correct even if this ever races another writer on the
-  // same row; the phase/backoff decision below still uses this call's own
-  // view of `attempts`, which is fine with today's single caller per row and
-  // becomes a real design question only once a concurrent retry sweep exists.
-  await prisma.pendingStorageCleanup.updateMany({
-    where: { id },
-    data: { attempts: { increment: 1 }, lastError, nextAttemptAt },
+  const { count: matched } = await prisma.pendingStorageCleanup.updateMany({
+    where: { id, attempts: previousAttempts },
+    data: {
+      attempts: { increment: 1 },
+      lastError,
+      nextAttemptAt,
+      ...(narrowedValues ? { values: narrowedValues } : {}),
+    },
   });
+
+  if (matched === 0) {
+    // Someone else already moved this row past the attempts count this call
+    // read — a concurrent recordCleanupAttemptFailure call that won the
+    // race, or the row was cleared entirely by a successful removal. Either
+    // way that other write already recorded (or made moot) this exact
+    // transition; logging here too would double the very alert this tiering
+    // exists to keep singular.
+    return;
+  }
 
   if (attempts === CLEANUP_HOURLY_RETRY_LIMIT) {
     // The one deliberate alert, ever, for this row: hourly retries are
@@ -363,4 +360,276 @@ async function recordCleanupAttemptFailure(
 
 function describeStorageError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+// Keeps one cron tick from firing 50 concurrent Storage calls + DB writes at
+// once against DATABASE_POOL_MAX (default 3 — see prisma.ts) — normally
+// irrelevant (this table is usually near-empty), but the one time it isn't
+// (a real Storage outage backing up rows) is exactly when the DB shouldn't
+// also be contending with live user requests on the same instance.
+const CLEANUP_SWEEP_BATCH_LIMIT = 50;
+const CLEANUP_SWEEP_CONCURRENCY = 5;
+
+// select, not include: only the columns processPendingStorageCleanupRow
+// actually reads. lastError especially is unbounded (a growing joined string
+// of past failures) and not worth carrying over the wire for up to 50 rows on
+// every sweep tick, most of which never touch it.
+type DueCleanupRow = Prisma.PendingStorageCleanupGetPayload<{
+  select: {
+    id: true;
+    businessId: true;
+    values: true;
+    attempts: true;
+    business: { select: { ownerId: true } };
+  };
+}>;
+
+export type StorageCleanupSweepResult = {
+  /** False when SUPABASE_SERVICE_ROLE_KEY isn't set — every other field is 0. */
+  serviceRoleConfigured: boolean;
+  due: number;
+  cleaned: number;
+  /**
+   * A row dropped with nothing left to retry — either a genuine ownership
+   * mismatch (already logged loudly, see processPendingStorageCleanupRow) or
+   * a row whose values were all non-storage references to begin with (never
+   * logged, nothing anomalous). This counter doesn't distinguish the two; the
+   * error log is the precise signal for a real cross-tenant hit, not this
+   * count.
+   */
+  invalidRowsDropped: number;
+  retryScheduled: number;
+  errored: number;
+};
+
+// The Baileys HTTP bridge already needed this exact lesson (CLAUDE.md): an
+// un-timed-out call to an external service, hung rather than erroring, stalls
+// silently instead of failing loudly. Scoped to just this client — the
+// cookie-backed one (createClient, used everywhere else in this file) is
+// always called from within a live user request, which already has its own
+// platform-level timeout; this one backs a cron invocation with no such
+// backstop, so a hang here would otherwise run out maxDuration in complete
+// silence (a kill, not a return, skips this route's own try/catch/finally).
+const STORAGE_CALL_TIMEOUT_MS = 20_000;
+
+/**
+ * A narrow service-role client for the storage-cleanup sweep only. The sweep
+ * runs from a cron invocation with no signed-in session, and the bucket's
+ * delete policy is scoped to `auth.uid()`, so the cookie-backed client
+ * (createClient, used everywhere else in this file) can never authenticate
+ * there. `persistSession`/`autoRefreshToken` are off — this client is built
+ * fresh per sweep, not held across requests, and has no session to persist.
+ *
+ * Returns null when the key isn't configured, so the sweep can degrade to
+ * "leave rows pending" instead of throwing — nothing time-sensitive depends
+ * on this running promptly. This key bypasses RLS entirely; the only caller
+ * (sweepPendingStorageCleanup) re-validates ownership itself before ever
+ * calling .remove() with it — see that function.
+ */
+function getStorageCleanupServiceClient(): SupabaseClient | null {
+  const serviceRoleKey = getSupabaseServiceRoleKey();
+
+  if (!serviceRoleKey) {
+    return null;
+  }
+
+  return createSupabaseJsClient(getSupabaseUrl(), serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      fetch: (input, init) =>
+        fetch(input, { ...init, signal: AbortSignal.timeout(STORAGE_CALL_TIMEOUT_MS) }),
+    },
+  });
+}
+
+/**
+ * The retry-sweep half of the storage-cleanup outbox — call from a cron
+ * route. Drains rows whose `nextAttemptAt` is due, using a service-role
+ * client since a cron invocation has no user session (see
+ * getStorageCleanupServiceClient). Never throws; a per-row problem — an
+ * ownership mismatch, a Storage failure, or an unexpected exception — is
+ * recorded on (or logged against) that row and does not stop the batch, the
+ * same per-row isolation the analytics cron already uses for its own
+ * per-business fan-out.
+ *
+ * Because a service-role client bypasses RLS entirely, this is also the
+ * enforcement point for a requirement `attemptStorageCleanup` cannot make on
+ * its own: nothing today validates that a queued value actually belongs to
+ * the business that queued it (addClientDocumentAction/
+ * addClientGalleryItemAction/saveSettingsAction accept any syntactically
+ * valid storage reference as user input — normalizeStorageReference only
+ * parses the bucket+path shape, it checks no ownership). Under the request
+ * path that's harmless because Storage RLS still gates the actual delete; a
+ * service-role sweep removes that safety net, so every row is re-validated
+ * here before anything is deleted. The check: media-storage-client.ts builds
+ * every upload path as `${userId}/${folder}/${uuid}.${ext}` where `userId`
+ * is the uploader's Supabase auth id — Business.ownerId, NOT Business.id —
+ * so a value only counts as valid when its bucket matches the configured
+ * media bucket, its path has exactly that three-segment shape, AND its first
+ * segment matches the row's business's `ownerId` (the segment-count check
+ * closes a gap a prefix-only compare would leave: a path extended with extra
+ * segments past a genuine owner prefix). Anything else is dropped (never
+ * deleted) and logged once, loudly, with the found-vs-expected prefix and
+ * bucket — not PHI, just an opaque auth uid (same category as the
+ * businessId already logged everywhere else in this file) — specifically so
+ * a human can tell a real cross-tenant hit (the found prefix is a real,
+ * different business's ownerId) apart from a data/logic bug (it isn't).
+ * Dropped permanently, not requeued: there is no ownership-transfer feature
+ * and no code path that writes to `Business.ownerId` after creation, so a
+ * mismatched prefix can never newly become valid on a later sweep — but this
+ * whole check assumes the uploader is always the business owner, which holds
+ * only because every current caller of the three add-actions above resolves
+ * through `getCurrentBusiness`'s strict `ownerId`-keyed lookup. If a future
+ * feature ever lets someone other than the owner (e.g. a staff member, under
+ * their own distinct auth id) upload through this same flow, this check
+ * needs revisiting before that feature ships, not after — it would otherwise
+ * either wrongly drop that uploader's legitimate files as "mismatched," or,
+ * if loosened carelessly, reopen the cross-tenant hole this check exists to
+ * close.
+ */
+export async function sweepPendingStorageCleanup(): Promise<StorageCleanupSweepResult> {
+  const serviceClient = getStorageCleanupServiceClient();
+
+  if (!serviceClient) {
+    return {
+      serviceRoleConfigured: false,
+      due: 0,
+      cleaned: 0,
+      invalidRowsDropped: 0,
+      retryScheduled: 0,
+      errored: 0,
+    };
+  }
+
+  const rows = await prisma.pendingStorageCleanup.findMany({
+    where: { nextAttemptAt: { lte: new Date() } },
+    orderBy: { nextAttemptAt: "asc" },
+    take: CLEANUP_SWEEP_BATCH_LIMIT,
+    select: {
+      id: true,
+      businessId: true,
+      values: true,
+      attempts: true,
+      business: { select: { ownerId: true } },
+    },
+  });
+
+  const result: StorageCleanupSweepResult = {
+    serviceRoleConfigured: true,
+    due: rows.length,
+    cleaned: 0,
+    invalidRowsDropped: 0,
+    retryScheduled: 0,
+    errored: 0,
+  };
+
+  const outcomes = await mapWithConcurrency(rows, CLEANUP_SWEEP_CONCURRENCY, (row) =>
+    processPendingStorageCleanupRow(row, serviceClient)
+  );
+
+  for (const outcome of outcomes) {
+    if (outcome === "cleaned") result.cleaned += 1;
+    else if (outcome === "invalid-dropped") result.invalidRowsDropped += 1;
+    else if (outcome === "retry-scheduled") result.retryScheduled += 1;
+    else result.errored += 1;
+  }
+
+  return result;
+}
+
+async function processPendingStorageCleanupRow(
+  row: DueCleanupRow,
+  serviceClient: SupabaseClient
+): Promise<"cleaned" | "invalid-dropped" | "retry-scheduled" | "errored"> {
+  try {
+    const valid: string[] = [];
+    const mismatched: string[] = [];
+
+    for (const value of row.values) {
+      const reference = parseStorageReference(value);
+
+      if (!reference) {
+        // Not a recognized storage object at all (e.g. a legacy external URL)
+        // — nothing to delete and nothing anomalous to flag, same as every
+        // other function in this file that filters these silently.
+        continue;
+      }
+
+      // Non-empty by construction — parseStorageReference rejects a
+      // reference whose path would be empty — so this always has a first
+      // segment.
+      const segments = reference.path.split("/");
+      const foundPrefix = segments[0];
+
+      // Bucket + first segment + exact shape: every real upload path is
+      // precisely `${ownerId}/${folder}/${uuid}.${ext}` (media-storage-client.ts)
+      // — three segments, never more. Requiring that shape, not just a
+      // prefix match, means a path extended past a genuine owner prefix
+      // with unexpected extra segments can't slip through as valid.
+      if (
+        reference.bucket === mediaBucket &&
+        segments.length === 3 &&
+        foundPrefix === row.business.ownerId
+      ) {
+        valid.push(value);
+      } else {
+        mismatched.push(`${reference.bucket}:${foundPrefix}`);
+      }
+    }
+
+    if (mismatched.length > 0) {
+      logger.error(
+        "Storage cleanup sweep found queued value(s) that don't belong to the business that queued them — dropped without deleting.",
+        undefined,
+        {
+          pendingStorageCleanupId: row.id,
+          businessId: row.businessId,
+          expectedOwnerId: row.business.ownerId,
+          found: mismatched.join(", "),
+        }
+      );
+    }
+
+    let failedCount = 0;
+    let failures: StorageRemovalFailure[] = [];
+
+    if (valid.length > 0) {
+      ({ failedCount, failures } = await removeStorageObjects(valid, serviceClient));
+
+      if (failedCount > 0) {
+        // Pass `valid` as the narrowed set whenever it differs from what was
+        // originally stored, so a dropped mismatch is never re-examined (and
+        // re-logged) on the next retry. Doesn't persist if this write loses
+        // the compare-and-set race in recordCleanupAttemptFailure (a rare
+        // window — see that function's docstring) — a next tick would then
+        // re-detect and re-log the same mismatch once more. Not a security
+        // issue (nothing gets deleted incorrectly, and it's already rare),
+        // just occasional duplicate log noise; not worth a second write to
+        // close given how narrow the window already is.
+        const narrowedValues = valid.length === row.values.length ? undefined : valid;
+        await recordCleanupAttemptFailure(row.id, row.attempts, failures, narrowedValues);
+        return "retry-scheduled";
+      }
+    }
+
+    // Reached with either a clean removal or nothing valid to remove in the
+    // first place (every value was non-storage and/or a mismatch just logged
+    // above) — either way there's nothing left this row could ever retry.
+    await prisma.pendingStorageCleanup.deleteMany({ where: { id: row.id } });
+    return valid.length === 0 ? "invalid-dropped" : "cleaned";
+  } catch (error) {
+    // Isolate per-row failures so one bad row (a DB pool timeout under
+    // exactly the contention CLEANUP_SWEEP_CONCURRENCY exists to bound, a
+    // Storage call outliving its own timeout, anything unexpected) can't
+    // abort the rest of the sweep — same pattern as the analytics cron's
+    // per-business isolation. Nothing rescheduled here: this row's
+    // nextAttemptAt/attempts are untouched, so it's still "due" and the next
+    // sweep tick picks it back up on its own — no bookkeeping needed for a
+    // failure this generic.
+    logger.error("Storage cleanup sweep failed unexpectedly for one row.", error, {
+      pendingStorageCleanupId: row.id,
+      businessId: row.businessId,
+    });
+    return "errored";
+  }
 }
