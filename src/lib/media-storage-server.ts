@@ -273,45 +273,80 @@ export async function attemptStorageCleanup(
     return;
   }
 
-  await recordCleanupAttemptFailure(pending.id, pending.attempts, failures);
+  await recordCleanupAttemptFailure(pending.id, pending.attempts, { kind: "storage", failures });
 }
+
+/**
+ * What went wrong on one attempt, in exactly the two shapes that currently
+ * reach recordCleanupAttemptFailure. A tagged union rather than widening
+ * StorageRemovalFailure to allow a null bucket/count (or synthesizing a fake
+ * bucket name for the generic case): either would leak a non-bucket concept
+ * through a bucket-shaped type, and a fabricated bucket name is exactly the
+ * kind of thing that could misread as real months later in a log search.
+ */
+type CleanupAttemptFailure =
+  | { kind: "storage"; failures: StorageRemovalFailure[] }
+  | { kind: "unexpected"; error: unknown };
 
 /**
  * `narrowedValues`, when passed, replaces the row's stored `values` in the
  * same write — used only by the sweep (below) when it has just permanently
  * dropped one or more ownership-mismatched entries, so the next retry
  * re-examines just the still-legitimate subset instead of re-detecting (and
- * re-logging) the same permanent mismatch every cycle. Omitted by the
- * request-path caller above, which never narrows anything.
+ * re-logging) the same permanent mismatch every cycle. Omitted by callers
+ * that never narrow anything.
  *
  * `previousAttempts` also gates the write itself now (`where: { id, attempts:
- * previousAttempts }`), not just `id`: this function has two callers that can
- * now genuinely race on the same row — attemptStorageCleanup's post-commit
- * attempt (a row's nextAttemptAt defaults to now(), so it's immediately due)
- * and the sweep below, if an hourly tick lands while that attempt is still
- * in flight. Both would otherwise compute their own `attempts`/backoff/alert
- * decision from the same stale read, risking the one deliberate alert below
- * firing twice for one row. The compare-and-set makes exactly one concurrent
- * caller's write land — whichever matches the row's current `attempts` first
- * — and the loser's `count` comes back 0 (same "no-op, not an error" shape
- * every guarded write in this file already uses).
+ * previousAttempts }`), not just `id`: this function has multiple callers
+ * that can now genuinely race on the same row — attemptStorageCleanup's
+ * post-commit attempt (a row's nextAttemptAt defaults to now(), so it's
+ * immediately due) and the sweep below, if an hourly tick lands while that
+ * attempt is still in flight. Both would otherwise compute their own
+ * `attempts`/backoff/alert decision from the same stale read, risking the
+ * one deliberate alert below firing twice for one row. The compare-and-set
+ * makes exactly one concurrent caller's write land — whichever matches the
+ * row's current `attempts` first — and the loser's `count` comes back 0
+ * (same "no-op, not an error" shape every guarded write in this file uses).
+ *
+ * Takes a `CleanupAttemptFailure`, not just a Storage failure list: every
+ * attempt that didn't succeed — a Storage removal failure OR an unexpected
+ * exception from processPendingStorageCleanupRow's catch (a DB pool timeout
+ * under contention, or anything else) — goes through the same backoff/
+ * one-alert-ever tiering below. Routing an unexpected exception around this
+ * function instead (a bare, untiered log) was the actual bug this shape
+ * closes: with attempts/nextAttemptAt untouched, a row that persistently
+ * throws would page Sentry on every single sweep tick, forever — the same
+ * "unconditional logger.error defeats the tiering" bug this file already
+ * closed twice elsewhere (deleteStorageReferences's per-bucket log, then
+ * this function's own hourly-phase branch).
  */
 async function recordCleanupAttemptFailure(
   id: string,
   previousAttempts: number,
-  failures: StorageRemovalFailure[],
+  failure: CleanupAttemptFailure,
   narrowedValues?: string[]
 ) {
   const attempts = previousAttempts + 1;
   const isHourlyPhase = attempts < CLEANUP_HOURLY_RETRY_LIMIT;
   const nextAttemptAt = new Date(Date.now() + (isHourlyPhase ? ONE_HOUR_MS : ONE_DAY_MS));
-  // Bucket name + count only, same as every other log in this file — never
-  // the paths, which can carry a patient name or filename.
-  const lastError = failures
-    .map(({ bucket, count, error }) => `${bucket} (${count}): ${describeStorageError(error)}`)
-    .join("; ");
-  const primaryError = failures[0]?.error;
-  const buckets = failures.map(({ bucket, count }) => `${bucket} (${count})`).join(", ");
+
+  // Bucket name + count only for a Storage failure, same as every other log
+  // in this file — never the paths, which can carry a patient name or
+  // filename. An unexpected exception has no path/bucket to withhold in the
+  // first place.
+  const lastError =
+    failure.kind === "storage"
+      ? failure.failures
+          .map(({ bucket, count, error }) => `${bucket} (${count}): ${describeStorageError(error)}`)
+          .join("; ")
+      : describeStorageError(failure.error);
+  // The raw Error object for Sentry's stack trace, not the stringified
+  // lastError built above from the same value.
+  const primaryError = failure.kind === "storage" ? failure.failures[0]?.error : failure.error;
+  const buckets =
+    failure.kind === "storage"
+      ? failure.failures.map(({ bucket, count }) => `${bucket} (${count})`).join(", ")
+      : "n/a (unexpected exception, not a Storage removal failure)";
 
   const { count: matched } = await prisma.pendingStorageCleanup.updateMany({
     where: { id, attempts: previousAttempts },
@@ -345,7 +380,7 @@ async function recordCleanupAttemptFailure(
     logger.error(
       "Storage cleanup has failed repeatedly and is moving to a daily retry cadence — investigate.",
       primaryError,
-      { pendingStorageCleanupId: id, attempts, buckets }
+      { pendingStorageCleanupId: id, attempts, buckets, kind: failure.kind }
     );
     return;
   }
@@ -354,7 +389,7 @@ async function recordCleanupAttemptFailure(
     isHourlyPhase
       ? "Storage cleanup attempt failed; will retry within the hour."
       : "Storage cleanup attempt failed; will retry tomorrow.",
-    { pendingStorageCleanupId: id, attempts, lastError }
+    { pendingStorageCleanupId: id, attempts, lastError, kind: failure.kind }
   );
 }
 
@@ -607,7 +642,12 @@ async function processPendingStorageCleanupRow(
         // just occasional duplicate log noise; not worth a second write to
         // close given how narrow the window already is.
         const narrowedValues = valid.length === row.values.length ? undefined : valid;
-        await recordCleanupAttemptFailure(row.id, row.attempts, failures, narrowedValues);
+        await recordCleanupAttemptFailure(
+          row.id,
+          row.attempts,
+          { kind: "storage", failures },
+          narrowedValues
+        );
         return "retry-scheduled";
       }
     }
@@ -622,14 +662,35 @@ async function processPendingStorageCleanupRow(
     // exactly the contention CLEANUP_SWEEP_CONCURRENCY exists to bound, a
     // Storage call outliving its own timeout, anything unexpected) can't
     // abort the rest of the sweep — same pattern as the analytics cron's
-    // per-business isolation. Nothing rescheduled here: this row's
-    // nextAttemptAt/attempts are untouched, so it's still "due" and the next
-    // sweep tick picks it back up on its own — no bookkeeping needed for a
-    // failure this generic.
-    logger.error("Storage cleanup sweep failed unexpectedly for one row.", error, {
-      pendingStorageCleanupId: row.id,
-      businessId: row.businessId,
-    });
+    // per-business isolation.
+    //
+    // Routed through recordCleanupAttemptFailure, not a bare log: this row's
+    // attempts/nextAttemptAt need the same backoff bookkeeping a Storage
+    // failure gets, or a row that persistently throws the same exception
+    // would page Sentry on every single sweep tick, forever, since nothing
+    // would ever advance it toward the daily cadence. "errored" (the outcome
+    // returned below) is purely this sweep's own tally label for "not a
+    // routine Storage failure" — the backoff/one-alert mechanics underneath
+    // are identical either way.
+    //
+    // Nested try/catch, not a bare await: recordCleanupAttemptFailure now
+    // makes its own DB write, which is exactly the kind of call that can
+    // throw under the same pool contention that likely caused the original
+    // error — plausibly the same outage hitting twice in a row. Before this
+    // fix the catch body was a pure log call that could never itself throw;
+    // now that it awaits a write, this row's own outer isolation boundary
+    // has to hold even if that write fails too, or a double failure would
+    // re-escape into mapWithConcurrency and abort the rest of the sweep —
+    // the exact thing this whole try/catch exists to prevent.
+    try {
+      await recordCleanupAttemptFailure(row.id, row.attempts, { kind: "unexpected", error });
+    } catch (recordError) {
+      logger.error(
+        "Storage cleanup sweep failed unexpectedly for one row, and recording that failure also failed.",
+        recordError,
+        { pendingStorageCleanupId: row.id, businessId: row.businessId }
+      );
+    }
     return "errored";
   }
 }

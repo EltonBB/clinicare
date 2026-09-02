@@ -240,7 +240,7 @@ describe("attemptStorageCleanup", () => {
     expect(deltaMs).toBeLessThan(65 * 60 * 1000);
     expect(mocks.loggerWarn).toHaveBeenCalledWith(
       "Storage cleanup attempt failed; will retry within the hour.",
-      { pendingStorageCleanupId: "pending_1", attempts: 2, lastError: expect.any(String) }
+      { pendingStorageCleanupId: "pending_1", attempts: 2, lastError: expect.any(String), kind: "storage" }
     );
     // No error-level (Sentry-forwarding) call at all for this attempt — a
     // second peer-caught instance of the same "unconditional error call
@@ -262,7 +262,7 @@ describe("attemptStorageCleanup", () => {
     expect(mocks.loggerError).toHaveBeenCalledWith(
       "Storage cleanup has failed repeatedly and is moving to a daily retry cadence — investigate.",
       expect.any(Error),
-      { pendingStorageCleanupId: "pending_1", attempts: 5, buckets: "clinic-media (1)" }
+      { pendingStorageCleanupId: "pending_1", attempts: 5, buckets: "clinic-media (1)", kind: "storage" }
     );
     expect(mocks.loggerError).toHaveBeenCalledTimes(1);
     const { nextAttemptAt } = mocks.pendingStorageCleanup.updateMany.mock.calls[0][0].data;
@@ -287,7 +287,7 @@ describe("attemptStorageCleanup", () => {
     expect(mocks.loggerError).not.toHaveBeenCalled();
     expect(mocks.loggerWarn).toHaveBeenCalledWith(
       "Storage cleanup attempt failed; will retry tomorrow.",
-      { pendingStorageCleanupId: "pending_1", attempts: 6, lastError: expect.any(String) }
+      { pendingStorageCleanupId: "pending_1", attempts: 6, lastError: expect.any(String), kind: "storage" }
     );
   });
 });
@@ -571,12 +571,48 @@ describe("sweepPendingStorageCleanup", () => {
 
     const result = await sweepPendingStorageCleanup();
 
+    // Routed through recordCleanupAttemptFailure (the actual fix for the
+    // "pages Sentry every tick, forever" bug) rather than a bare log: a
+    // first-time failure gets the same warn-tier as any other first Storage
+    // failure, not its own separate error-level message.
+    expect(mocks.pendingStorageCleanup.updateMany).toHaveBeenCalledWith({
+      where: { id: "pending_bad", attempts: 0 },
+      data: { attempts: { increment: 1 }, lastError: expect.any(String), nextAttemptAt: expect.any(Date) },
+    });
+    expect(mocks.loggerWarn).toHaveBeenCalledWith(
+      "Storage cleanup attempt failed; will retry within the hour.",
+      { pendingStorageCleanupId: "pending_bad", attempts: 1, lastError: expect.any(String), kind: "unexpected" }
+    );
+    expect(mocks.loggerError).not.toHaveBeenCalled();
+    // The other row is unaffected — its own deleteMany still ran and succeeded.
+    expect(mocks.pendingStorageCleanup.deleteMany).toHaveBeenCalledWith({ where: { id: "pending_ok" } });
+    expect(result).toMatchObject({ due: 2, errored: 1, cleaned: 1 });
+  });
+
+  it("still records the failure via a plain log, without throwing, when recordCleanupAttemptFailure's own write also fails", async () => {
+    // A double failure — the same DB outage hitting both the row's own
+    // deleteMany AND the recovery write inside recordCleanupAttemptFailure —
+    // must not re-escape the row's isolation boundary.
+    mocks.pendingStorageCleanup.findMany.mockResolvedValue([
+      {
+        id: "pending_bad",
+        businessId: "biz_bad",
+        attempts: 0,
+        values: [createStorageReference("clinic-media", "owner_bad/client-documents/doc.pdf")],
+        business: { ownerId: "owner_bad" },
+      },
+    ]);
+    mocks.serviceRoleRemove.mockResolvedValue({ error: null });
+    mocks.pendingStorageCleanup.deleteMany.mockRejectedValueOnce(new Error("pool timeout"));
+    mocks.pendingStorageCleanup.updateMany.mockRejectedValueOnce(new Error("pool timeout again"));
+
+    const result = await sweepPendingStorageCleanup();
+
+    expect(result).toMatchObject({ due: 1, errored: 1 });
     expect(mocks.loggerError).toHaveBeenCalledWith(
-      "Storage cleanup sweep failed unexpectedly for one row.",
+      "Storage cleanup sweep failed unexpectedly for one row, and recording that failure also failed.",
       expect.any(Error),
       { pendingStorageCleanupId: "pending_bad", businessId: "biz_bad" }
     );
-    expect(mocks.pendingStorageCleanup.deleteMany).toHaveBeenCalledWith({ where: { id: "pending_ok" } });
-    expect(result).toMatchObject({ due: 2, errored: 1, cleaned: 1 });
   });
 });
