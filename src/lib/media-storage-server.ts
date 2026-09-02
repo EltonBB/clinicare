@@ -254,6 +254,38 @@ export async function recordPendingStorageCleanup(
  * authenticated path to Storage (a service-role client scoped to exactly
  * this operation, or another explicit worker credential) before it can
  * actually drain this table — not a hand-me-down of this function as-is.
+ *
+ * A SECOND requirement for that same sweep, a step further (Codex P1,
+ * verified against the actual add-actions): a service-role client bypasses
+ * RLS entirely, and nothing validates today that a queued `values` entry
+ * actually belongs to the business that queued it —
+ * addClientDocumentAction/addClientGalleryItemAction/saveSettingsAction all
+ * accept any syntactically-valid storage reference as user input
+ * (normalizeStorageReference only parses the `bucket`+`path` shape; it
+ * checks nothing about who owns that path). Today that's harmless because
+ * Storage RLS still gates the actual delete — a malicious business could
+ * store another tenant's known path, but the delete attempt would just be
+ * rejected. A service-role sweep removes that safety net, so it must
+ * re-validate ownership itself before deleting.
+ *
+ * The exact check (Codex P2 + peer-verified, not just "compare to
+ * businessId" — that field is the wrong one): media-storage-client.ts's
+ * createStoragePath/createMediaStoragePath build every path as
+ * `${userId}/${folder}/${uuid}.${ext}`, where `userId` is the uploader's
+ * Supabase auth id — Business.ownerId, NOT Business.id. Resolve the row's
+ * business, compare the path's first segment against that business's
+ * `ownerId` (and the bucket against the configured media bucket), and skip
+ * — loudly logging it, never silently — anything that doesn't match rather
+ * than deleting it anyway. This holds because every current caller of the
+ * three add-actions above requires an authenticated web session that
+ * resolves to a business via `getCurrentBusiness`'s strict
+ * `findUnique({ where: { ownerId: authUserId } })` — there is no code path
+ * today where the uploader is anyone other than that business's owner (the
+ * mobile staff app has its own separate auth and doesn't call these
+ * actions at all). If a future feature ever lets someone other than the
+ * owner upload through this same flow under their own distinct id, this
+ * single-prefix check stops being sufficient and needs revisiting before
+ * that feature ships, not after.
  */
 export async function attemptStorageCleanup(
   pending: PendingStorageCleanupHandle | null
