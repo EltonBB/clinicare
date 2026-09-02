@@ -27,4 +27,33 @@ describe("normalizePublicUrl", () => {
       expect(normalizeOptionalPublicUrl(value)).toBe("");
     }
   });
+
+  // Regression coverage for the actual gap Codex + a peer session traced:
+  // a supabase-storage://-shaped value used to skip the HTTPS-only check
+  // entirely with zero validation of the bucket or path — meaning arbitrary,
+  // never-uploaded content (including PHI, if that's what someone put there)
+  // could reach a document/gallery/logo/receipt field just by wearing the
+  // right prefix. It has to keep accepting a REAL storage reference (the test
+  // above) while rejecting anything that doesn't actually look like one.
+  it("rejects a storage-reference-shaped value whose bucket isn't the real configured bucket", () => {
+    for (const value of [
+      "supabase-storage://not-a-real-bucket/user/client-documents/a.pdf",
+      "supabase-storage://Jane Doe Has Diabetes/x/y.pdf",
+    ]) {
+      expect(() => normalizePublicUrl(value)).toThrow(/safe HTTPS URL/);
+      expect(normalizeOptionalPublicUrl(value)).toBe("");
+    }
+  });
+
+  it("rejects a storage-reference-shaped value whose path doesn't have the real 3-segment upload shape", () => {
+    for (const value of [
+      // 2 segments (missing the folder) and 4 (an extra nested segment) —
+      // every real upload is exactly userId/folder/uuid.ext.
+      "supabase-storage://clinic-media/user/a.pdf",
+      "supabase-storage://clinic-media/user/client-documents/nested/a.pdf",
+    ]) {
+      expect(() => normalizePublicUrl(value)).toThrow(/safe HTTPS URL/);
+      expect(normalizeOptionalPublicUrl(value)).toBe("");
+    }
+  });
 });
