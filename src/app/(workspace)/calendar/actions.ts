@@ -251,12 +251,15 @@ export async function saveAppointmentAction(
   try {
     let appointmentId = payload.id;
     let shouldResetReminders = false;
-    // Whether this save is actually moving the appointment — different from
-    // shouldResetReminders (which also fires on a client/service/status-only
-    // change): a save that touches none of these three fields can't create a
-    // new scheduling conflict, so the conflict check below only needs to run
-    // when this is true (or there's no existing row to compare against yet).
-    let schedulingFieldsChanged = true;
+    // Whether this save could newly occupy a slot that wasn't occupied
+    // before — different from shouldResetReminders (which also fires on a
+    // client/service-only change with no bearing on conflicts). True when
+    // staff/start/end actually move, OR when the appointment is being
+    // reactivated out of CANCELLED (a cancelled appointment doesn't block
+    // other bookings, so something else may have taken the slot in the
+    // meantime — un-cancelling back onto it is exactly as conflict-prone as
+    // moving onto a fresh slot, even though staff/start/end never changed).
+    let needsConflictCheck = true;
     let previousClientId: string | null = null;
     let previousStaffMemberId: string | null = null;
     // The edit form's Status dropdown can cancel an appointment directly
@@ -316,10 +319,11 @@ export async function saveAppointmentAction(
       }
 
       wasNewlyCancelled = existing.status !== "CANCELLED" && newStatus === "CANCELLED";
-      schedulingFieldsChanged =
+      needsConflictCheck =
         existing.staffMemberId !== staffMemberId ||
         existing.startAt.getTime() !== startAt.getTime() ||
-        existing.endAt.getTime() !== endAt.getTime();
+        existing.endAt.getTime() !== endAt.getTime() ||
+        (existing.status === "CANCELLED" && newStatus !== "CANCELLED");
       shouldResetReminders =
         existing.clientId !== payload.clientId ||
         existing.staffMemberId !== staffMemberId ||
@@ -335,15 +339,22 @@ export async function saveAppointmentAction(
     const txResult = await prisma.$transaction<
       { conflict: true; error: string } | { conflict: false }
     >(async (tx) => {
-      // Only re-validate the slot when this save actually moves it — an edit
-      // that leaves staff/time untouched (e.g. cancelling via the Status
-      // dropdown, or correcting an auto-complete back to Confirmed) can't
-      // create a new conflict, and re-checking it anyway would wrongly block
-      // that save if some unrelated pre-existing overlap happens to already
-      // exist for this slot (legacy data, or data from before this check
-      // existed) — freeing or leaving a slot alone should never require the
-      // slot to currently be conflict-free.
-      if (!payload.id || schedulingFieldsChanged) {
+      // Only re-validate the slot when this save could newly occupy one —
+      // an edit that leaves staff/time untouched and isn't reactivating a
+      // cancelled appointment (e.g. cancelling via the Status dropdown, or
+      // correcting an auto-complete back to Confirmed — COMPLETED already
+      // occupies its slot same as CONFIRMED, so that transition changes
+      // nothing about who holds it) can't create a new conflict, and
+      // re-checking it anyway would wrongly block the save if some unrelated
+      // pre-existing overlap happens to already exist for this slot (legacy
+      // data, or data from before this check existed) — freeing or leaving a
+      // slot alone should never require the slot to currently be
+      // conflict-free. Un-cancelling back onto an unchanged slot, though,
+      // needs the same check as moving onto a fresh one: CANCELLED is the
+      // one status excluded from "occupies this slot" (see
+      // hasSchedulingConflict), so something else may have taken the slot
+      // while this one sat cancelled.
+      if (!payload.id || needsConflictCheck) {
         // Must acquire before the read below — this is what actually closes
         // the race between two concurrent saves for the same staff member,
         // not the read itself. See acquireSchedulingLock's own comment.

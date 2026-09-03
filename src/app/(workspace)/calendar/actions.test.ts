@@ -428,6 +428,34 @@ describe("saveAppointmentAction — time conflicts", () => {
     expect(mocks.$executeRaw).not.toHaveBeenCalled();
   });
 
+  it("re-checks when reactivating a cancelled appointment, even though staff/time never changed", async () => {
+    // Regression for a gap Codex caught on PR #75: a CANCELLED appointment
+    // doesn't occupy its slot, so another appointment may have taken it —
+    // un-cancelling back onto the same unchanged staff/time must not skip
+    // the check just because staff/start/end look unchanged.
+    mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_1" });
+    mocks.appointment.findFirst
+      .mockResolvedValueOnce({
+        ...EXISTING,
+        staffMemberId: "staff_1",
+        status: "CANCELLED",
+        startAt: parseZonedWallClock("2026-06-01", "09:00"),
+        endAt: parseZonedWallClock("2026-06-01", "09:30"),
+      })
+      .mockResolvedValueOnce({ id: "other_appt" });
+
+    const result = await saveAppointmentAction({
+      ...PAYLOAD,
+      staffMemberId: "staff_1",
+      status: "confirmed",
+      baselineStatus: "cancelled",
+    });
+
+    expect(result).toEqual({ ok: false, error: APPOINTMENT_TIME_CONFLICT_ERROR });
+    expect(mocks.$executeRaw).toHaveBeenCalled();
+    expect(mocks.appointment.updateMany).not.toHaveBeenCalled();
+  });
+
   it("rejects a booking that falls inside a blocked-off period, even with no staff assigned", async () => {
     mocks.scheduleBlock.findFirst.mockResolvedValue({ id: "block_1" });
 
