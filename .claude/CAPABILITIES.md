@@ -32,6 +32,22 @@ Marketing may be bold; the authenticated workspace stays calm. **Pick by surface
 | `high-end-visual-design` | Awwwards-tier, high-variance agency design | **Marketing only** (would break the calm-workspace law) | Me |
 | `redesign-existing-projects` | Audit-first premium upgrade of an existing site | **Marketing** redesigns | Me |
 
+## Skills — Superpowers plugin (obra/superpowers, installed globally 2026-09-03, user scope)
+
+14 skills, ~584 tok always-on per session (auto-injected via a `SessionStart` hook — read its source, it only prints its own `using-superpowers` skill text as context, nothing else). Applies to **every** Claude Code project on this machine, not just clinicare. Full writeup: memory `superpowers-skill-plugin`.
+
+| Skill | What it does | When it's the right call | Who |
+|---|---|---|---|
+| `systematic-debugging` | 4-phase root-cause debugging | Non-obvious bug — no equivalent exists in this repo | Me |
+| `brainstorming` | Socratic requirements refinement before code | Open-ended/underspecified feature ask, before a plan | Me |
+| `verification-before-completion` | Evidence-before-claims gate | Reinforces (doesn't replace) the existing browser-QA "prove it" rule | Me |
+| `writing-skills` | Author a new skill correctly | If/when formalizing a project practice (e.g. "fix the class not the line") into a real skill | Me |
+| `test-driven-development` | RED-GREEN-REFACTOR, test before implementation | Selectively, for new pure-logic modules — we have a real Vitest suite to write into. Not a strict mandate: UI/integration work still relies on manual browser QA, not test-first | Me |
+| `requesting-code-review` / `receiving-code-review` / `finishing-a-development-branch` | Generic review + merge workflow | **Don't** — `/code-review`, `/ponytail-review`, the Codex loop, and explicit merge-on-go-ahead already own this | — |
+| `subagent-driven-development` / `dispatching-parallel-agents` | Parallel-agent fan-out | **Don't default to this** — same shape as the token-burn incident that made the CLAUDE.md review loop get rewritten; size effort to risk instead | — |
+| `writing-plans` / `executing-plans` / `using-git-worktrees` | Plan authoring, worktree setup | Redundant here — Plan mode + already-worktreed sessions cover this | — |
+| `using-superpowers` | Entry-point skill, its own text auto-injected every session start | Not a gate here — its own docs say user/project instructions win, and AGENTS.md/CLAUDE.md are exactly that | — |
+
 ## User-only triggers (I cannot launch these)
 
 | Trigger | What it does | When | Who |
@@ -58,3 +74,4 @@ Marketing may be bold; the authenticated workspace stays calm. **Pick by surface
 
 ---
 _Last seeded 2026-06-19 — 13 skills installed at `~/.claude/skills/`. Update on install/remove._
+_2026-09-03: added the Superpowers plugin (14 more skills, installed via `~/.claude/plugins/`, separate mechanism from the skills above)._
