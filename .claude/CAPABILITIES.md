@@ -42,6 +42,7 @@ Marketing may be bold; the authenticated workspace stays calm. **Pick by surface
 | `brainstorming` | Socratic requirements refinement before code | Open-ended/underspecified feature ask, before a plan | Me |
 | `verification-before-completion` | Evidence-before-claims gate | Reinforces (doesn't replace) the existing browser-QA "prove it" rule | Me |
 | `writing-skills` | Author a new skill correctly | If/when formalizing a project practice (e.g. "fix the class not the line") into a real skill | Me |
+| `test-driven-development` | RED-GREEN-REFACTOR, test before implementation | Selectively, for new pure-logic modules — we have a real Vitest suite to write into. Not a strict mandate: UI/integration work still relies on manual browser QA, not test-first | Me |
 | `requesting-code-review` / `receiving-code-review` / `finishing-a-development-branch` | Generic review + merge workflow | **Don't** — `/code-review`, `/ponytail-review`, the Codex loop, and explicit merge-on-go-ahead already own this | — |
 | `subagent-driven-development` / `dispatching-parallel-agents` | Parallel-agent fan-out | **Don't default to this** — same shape as the token-burn incident that made the CLAUDE.md review loop get rewritten; size effort to risk instead | — |
 | `writing-plans` / `executing-plans` / `using-git-worktrees` | Plan authoring, worktree setup | Redundant here — Plan mode + already-worktreed sessions cover this | — |
