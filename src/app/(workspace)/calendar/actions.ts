@@ -5,10 +5,13 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import {
+  acquireSchedulingLock,
   APPOINTMENT_ALREADY_COMPLETED_ERROR,
   APPOINTMENT_CONFLICT_ERROR,
+  APPOINTMENT_TIME_CONFLICT_ERROR,
   cancelAppointmentCore,
   deleteAppointmentCore,
+  hasSchedulingConflict,
   notifyStaffOfAppointmentChange,
   refreshClientLastVisitAt,
   revalidateCalendarSurfaces,
@@ -248,6 +251,12 @@ export async function saveAppointmentAction(
   try {
     let appointmentId = payload.id;
     let shouldResetReminders = false;
+    // Whether this save is actually moving the appointment — different from
+    // shouldResetReminders (which also fires on a client/service/status-only
+    // change): a save that touches none of these three fields can't create a
+    // new scheduling conflict, so the conflict check below only needs to run
+    // when this is true (or there's no existing row to compare against yet).
+    let schedulingFieldsChanged = true;
     let previousClientId: string | null = null;
     let previousStaffMemberId: string | null = null;
     // The edit form's Status dropdown can cancel an appointment directly
@@ -307,6 +316,10 @@ export async function saveAppointmentAction(
       }
 
       wasNewlyCancelled = existing.status !== "CANCELLED" && newStatus === "CANCELLED";
+      schedulingFieldsChanged =
+        existing.staffMemberId !== staffMemberId ||
+        existing.startAt.getTime() !== startAt.getTime() ||
+        existing.endAt.getTime() !== endAt.getTime();
       shouldResetReminders =
         existing.clientId !== payload.clientId ||
         existing.staffMemberId !== staffMemberId ||
@@ -319,7 +332,36 @@ export async function saveAppointmentAction(
     // The appointment write, reminder reset, and last-visit refresh commit
     // together. Payment is intentionally NOT collected here — it's recorded
     // separately on the client's Payments tab, after the visit.
-    const txResult = await prisma.$transaction(async (tx) => {
+    const txResult = await prisma.$transaction<
+      { conflict: true; error: string } | { conflict: false }
+    >(async (tx) => {
+      // Only re-validate the slot when this save actually moves it — an edit
+      // that leaves staff/time untouched (e.g. cancelling via the Status
+      // dropdown, or correcting an auto-complete back to Confirmed) can't
+      // create a new conflict, and re-checking it anyway would wrongly block
+      // that save if some unrelated pre-existing overlap happens to already
+      // exist for this slot (legacy data, or data from before this check
+      // existed) — freeing or leaving a slot alone should never require the
+      // slot to currently be conflict-free.
+      if (!payload.id || schedulingFieldsChanged) {
+        // Must acquire before the read below — this is what actually closes
+        // the race between two concurrent saves for the same staff member,
+        // not the read itself. See acquireSchedulingLock's own comment.
+        await acquireSchedulingLock(tx, staffMemberId);
+
+        const conflict = await hasSchedulingConflict(tx, {
+          businessId: business.id,
+          staffMemberId,
+          startAt,
+          endAt,
+          excludeAppointmentId: payload.id,
+        });
+
+        if (conflict) {
+          return { conflict: true, error: APPOINTMENT_TIME_CONFLICT_ERROR };
+        }
+      }
+
       if (payload.id) {
         // Compare-and-set: guard the write on the status the CLIENT'S form
         // was built from (payload.baselineStatus), not a status re-read
@@ -357,7 +399,7 @@ export async function saveAppointmentAction(
         });
 
         if (count === 0) {
-          return { conflict: true as const };
+          return { conflict: true, error: APPOINTMENT_CONFLICT_ERROR };
         }
 
         if (shouldResetReminders) {
@@ -396,13 +438,13 @@ export async function saveAppointmentAction(
         await refreshClientLastVisitAt(payload.clientId, business.id, tx);
       }
 
-      return { conflict: false as const };
+      return { conflict: false };
     });
 
     if (txResult.conflict) {
       return {
         ok: false,
-        error: APPOINTMENT_CONFLICT_ERROR,
+        error: txResult.error,
       };
     }
 
