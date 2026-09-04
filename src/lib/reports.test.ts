@@ -59,6 +59,7 @@ const view = buildReportsViewFromWorkspace({
     startTime: "09:00",
     endTime: "17:00",
   })),
+  scheduleBlocks: [],
   staffMembers: [
     { id: "s1", name: "Dr. One", role: "Dentist", status: "ACTIVE", isActive: true },
     { id: "s2", name: "Dr. Two", role: "Hygienist", status: "ACTIVE", isActive: true },
@@ -79,5 +80,88 @@ describe("buildReportsViewFromWorkspace (characterization)", () => {
     expect(view.periods.daily).toBeDefined();
     expect(view.periods.weekly).toBeDefined();
     expect(view.periods.monthly).toBeDefined();
+  });
+});
+
+describe("buildReportsViewFromWorkspace — ScheduleBlock capacity", () => {
+  it("subtracts a business-wide ScheduleBlock from a day's available capacity", () => {
+    const dailyView = buildReportsViewFromWorkspace({
+      business: { name: "Blocked Clinic" },
+      appointments: [appt(0, 13, "COMPLETED", 90, "s1")],
+      clients: [],
+      clientMix: { active: 0, atRisk: 0, inactive: 0, archived: 0 },
+      messages: [],
+      businessHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+        weekday,
+        isOpen: weekday >= 1 && weekday <= 5,
+        startTime: "09:00",
+        endTime: "17:00",
+      })),
+      // 09:00-11:00 today (2h of the 8h open window) is blocked — nothing can
+      // be booked into it, so it isn't capacity.
+      scheduleBlocks: [
+        {
+          startsAt: new Date(now.getTime() - 3 * 3_600_000), // today 09:00Z
+          endsAt: new Date(now.getTime() - 1 * 3_600_000), // today 11:00Z
+        },
+      ],
+      staffMembers: [
+        { id: "s1", name: "Dr. One", role: "Dentist", status: "ACTIVE", isActive: true },
+      ],
+      conversations: [],
+      aiSnapshots: [],
+      now,
+      timeZone: "UTC",
+    });
+
+    const utilization = dailyView.periods.daily.metrics.find(
+      (metric) => metric.label === "Estimated utilization"
+    );
+
+    // 8h open - 2h blocked = 6h (360min) capacity; 90min booked / 360min = 25%.
+    expect(utilization?.value).toBe("25.0%");
+  });
+
+  it("merges overlapping ScheduleBlocks instead of double-subtracting their shared span", () => {
+    const dailyView = buildReportsViewFromWorkspace({
+      business: { name: "Blocked Clinic" },
+      appointments: [appt(0, 14, "COMPLETED", 60, "s1")],
+      clients: [],
+      clientMix: { active: 0, atRisk: 0, inactive: 0, archived: 0 },
+      messages: [],
+      businessHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+        weekday,
+        isOpen: weekday >= 1 && weekday <= 5,
+        startTime: "09:00",
+        endTime: "17:00",
+      })),
+      // 09:00-11:00 and 10:00-12:00 overlap on 10:00-11:00 — the real union is
+      // 09:00-12:00 (3h blocked), not 2h+2h = 4h double-counted.
+      scheduleBlocks: [
+        {
+          startsAt: new Date(now.getTime() - 3 * 3_600_000), // today 09:00Z
+          endsAt: new Date(now.getTime() - 1 * 3_600_000), // today 11:00Z
+        },
+        {
+          startsAt: new Date(now.getTime() - 2 * 3_600_000), // today 10:00Z
+          endsAt: new Date(now.getTime() + 0 * 3_600_000), // today 12:00Z
+        },
+      ],
+      staffMembers: [
+        { id: "s1", name: "Dr. One", role: "Dentist", status: "ACTIVE", isActive: true },
+      ],
+      conversations: [],
+      aiSnapshots: [],
+      now,
+      timeZone: "UTC",
+    });
+
+    const utilization = dailyView.periods.daily.metrics.find(
+      (metric) => metric.label === "Estimated utilization"
+    );
+
+    // 8h open - 3h merged-blocked = 5h (300min) capacity; 60min booked / 300min
+    // = 20%. A naive sum-of-overlaps bug would instead blocked 4h, giving 25%.
+    expect(utilization?.value).toBe("20.0%");
   });
 });

@@ -2,9 +2,12 @@ import { differenceInMinutes } from "date-fns";
 import type { Appointment, BusinessHours, Client, ScheduleBlock, StaffMember } from "@prisma/client";
 
 import {
+  addZonedDays,
   formatZonedDateKey,
   formatZonedTime24,
   getAppTimeZone,
+  getZonedDateParts,
+  zonedCalendarDaysBetween,
 } from "@/lib/time-zone";
 
 export type CalendarAppointmentStatus = "confirmed" | "pending" | "cancelled" | "completed";
@@ -131,6 +134,36 @@ export function toPrismaAppointmentStatus(status: CalendarAppointmentStatus) {
   return "CONFIRMED" as const;
 }
 
+// A single {date, startTime, endTime} entry can't represent a block that
+// spans multiple calendar days (e.g. a multi-day holiday closure) — every
+// consumer (capacity math, the day-grid block card) keys off one `date`, so
+// a multi-day block needs one entry per day it touches, each clamped to that
+// day's portion, or every day after the first silently loses the block.
+function expandScheduleBlockDays(
+  block: Pick<ScheduleBlock, "id" | "title" | "startsAt" | "endsAt" | "reason">
+): CalendarScheduleBlock[] {
+  // For a same-day block (the common case) this is 0 and the loop below
+  // produces exactly one entry, first === last day, with the real start/end
+  // times — no separate same-day branch needed.
+  const dayCount = zonedCalendarDaysBetween(block.startsAt, block.endsAt);
+  const startParts = getZonedDateParts(block.startsAt);
+
+  return Array.from({ length: dayCount + 1 }, (_, index) => {
+    const dayParts = addZonedDays(startParts, index);
+    const isFirstDay = index === 0;
+    const isLastDay = index === dayCount;
+
+    return {
+      id: block.id,
+      title: block.title,
+      date: `${dayParts.year}-${String(dayParts.month).padStart(2, "0")}-${String(dayParts.day).padStart(2, "0")}`,
+      startTime: isFirstDay ? formatZonedTime24(block.startsAt) : "00:00",
+      endTime: isLastDay ? formatZonedTime24(block.endsAt) : "23:59",
+      notes: block.reason ?? "",
+    };
+  });
+}
+
 export function buildCalendarViewFromRecords(args: {
   appointments: AppointmentWithRelations[];
   scheduleBlocks?: ScheduleBlockWithRelations[];
@@ -178,14 +211,7 @@ export function buildCalendarViewFromRecords(args: {
       status: toCalendarStatus(appointment.status),
       tone: toCalendarTone(appointment.status),
     })),
-    scheduleBlocks: scheduleBlocks.map((block) => ({
-      id: block.id,
-      title: block.title,
-      date: formatZonedDateKey(block.startsAt),
-      startTime: formatZonedTime24(block.startsAt),
-      endTime: formatZonedTime24(block.endsAt),
-      notes: block.reason ?? "",
-    })),
+    scheduleBlocks: scheduleBlocks.flatMap((block) => expandScheduleBlockDays(block)),
     clients: clientOptions,
     hasClients: hasClients ?? clientOptions.length > 0,
     staffMembers: staffMembers.map((member) => ({

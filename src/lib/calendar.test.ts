@@ -1,0 +1,87 @@
+import { describe, expect, it } from "vitest";
+
+import { buildCalendarViewFromRecords } from "@/lib/calendar";
+import { formatZonedDateKey, formatZonedTime24 } from "@/lib/time-zone";
+
+const BUSINESS_HOURS = [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+  weekday,
+  isOpen: weekday >= 1 && weekday <= 5,
+  startTime: "09:00",
+  endTime: "17:00",
+}));
+
+function scheduleBlock(overrides: { startsAt: Date; endsAt: Date; title?: string }) {
+  return {
+    id: "block_1",
+    businessId: "biz_1",
+    title: overrides.title ?? "Closure",
+    startsAt: overrides.startsAt,
+    endsAt: overrides.endsAt,
+    reason: null,
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+  };
+}
+
+// Expected date/time strings are derived from the same zoned formatters the
+// implementation uses (not hardcoded literals), so this suite doesn't depend
+// on which APP_TIME_ZONE happens to be configured when it runs.
+describe("buildCalendarViewFromRecords — ScheduleBlock day expansion", () => {
+  it("keeps a same-day block as a single entry with its real start/end times", () => {
+    const startsAt = new Date("2026-06-23T09:00:00.000Z");
+    const endsAt = new Date("2026-06-23T11:00:00.000Z");
+    const view = buildCalendarViewFromRecords({
+      appointments: [],
+      scheduleBlocks: [scheduleBlock({ startsAt, endsAt })],
+      staffMembers: [],
+      businessHours: BUSINESS_HOURS,
+      ownerName: "Owner",
+    });
+
+    expect(view.scheduleBlocks).toEqual([
+      {
+        id: "block_1",
+        title: "Closure",
+        date: formatZonedDateKey(startsAt),
+        startTime: formatZonedTime24(startsAt),
+        endTime: formatZonedTime24(endsAt),
+        notes: "",
+      },
+    ]);
+  });
+
+  it("splits a multi-day block into one entry per day, clamped to each day's portion", () => {
+    // A holiday closure spanning 3 calendar days — before this fix, the whole
+    // block collapsed onto its start day only, so the second day and the
+    // morning of the third day silently showed as full, unblocked capacity.
+    const startsAt = new Date("2026-12-24T20:00:00.000Z");
+    const endsAt = new Date("2026-12-26T08:00:00.000Z");
+    const view = buildCalendarViewFromRecords({
+      appointments: [],
+      scheduleBlocks: [scheduleBlock({ startsAt, endsAt, title: "Holiday closure" })],
+      staffMembers: [],
+      businessHours: BUSINESS_HOURS,
+      ownerName: "Owner",
+    });
+
+    expect(view.scheduleBlocks).toHaveLength(3);
+    const [first, middle, last] = view.scheduleBlocks;
+
+    expect(first.title).toBe("Holiday closure");
+    expect(first.date).toBe(formatZonedDateKey(startsAt));
+    expect(first.startTime).toBe(formatZonedTime24(startsAt));
+    expect(first.endTime).toBe("23:59");
+
+    expect(middle.startTime).toBe("00:00");
+    expect(middle.endTime).toBe("23:59");
+
+    expect(last.date).toBe(formatZonedDateKey(endsAt));
+    expect(last.startTime).toBe("00:00");
+    expect(last.endTime).toBe(formatZonedTime24(endsAt));
+
+    // Three distinct, chronologically ordered calendar days ("yyyy-MM-dd"
+    // strings sort chronologically), regardless of which day they land on.
+    expect(first.date < middle.date).toBe(true);
+    expect(middle.date < last.date).toBe(true);
+  });
+});

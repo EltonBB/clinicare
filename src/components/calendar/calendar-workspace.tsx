@@ -37,7 +37,7 @@ import {
   WorkspaceRail,
 } from "@/components/workspace/workspace-layout";
 import { MonthGrid } from "@/components/workspace/month-grid";
-import { cn } from "@/lib/utils";
+import { cn, sumMergedIntervals } from "@/lib/utils";
 import type {
   CalendarAppointment,
   CalendarAppointmentStatus,
@@ -116,7 +116,11 @@ function appointmentOffset(startTime: string) {
   return `${Math.max(((startMinute - firstMinute) / 60) * hourRowHeight, 0)}px`;
 }
 
-function dayCapacityMinutes(date: Date, businessHours: CalendarViewModel["businessHours"]) {
+function dayCapacityMinutes(
+  date: Date,
+  businessHours: CalendarViewModel["businessHours"],
+  scheduleBlocks: CalendarViewModel["scheduleBlocks"]
+) {
   const weekday = (date.getDay() + 6) % 7;
   const hours = businessHours.find((item) => item.weekday === weekday);
 
@@ -124,7 +128,29 @@ function dayCapacityMinutes(date: Date, businessHours: CalendarViewModel["busine
     return 0;
   }
 
-  return Math.max(timeToMinutes(hours.end) - timeToMinutes(hours.start), 0);
+  const openStart = timeToMinutes(hours.start);
+  const openEnd = timeToMinutes(hours.end);
+  const openMinutes = Math.max(openEnd - openStart, 0);
+
+  // A business-wide ScheduleBlock inside open hours isn't real capacity — an
+  // appointment can't be booked into it.
+  if (scheduleBlocks.length === 0) {
+    return openMinutes;
+  }
+
+  const dateKey = format(date, "yyyy-MM-dd");
+  // sumMergedIntervals merges overlapping blocks before summing, so two
+  // ScheduleBlocks covering the same hour don't get subtracted twice.
+  const blockedMinutes = sumMergedIntervals(
+    scheduleBlocks
+      .filter((block) => block.date === dateKey)
+      .map((block) => ({
+        start: Math.max(openStart, timeToMinutes(block.startTime)),
+        end: Math.min(openEnd, timeToMinutes(block.endTime)),
+      }))
+  );
+
+  return Math.max(openMinutes - blockedMinutes, 0);
 }
 
 function hourOpenForDay(
@@ -508,7 +534,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
     0
   );
   const capacityMinutes = visibleDates.reduce(
-    (sum, day) => sum + dayCapacityMinutes(day, initialView.businessHours),
+    (sum, day) => sum + dayCapacityMinutes(day, initialView.businessHours, scheduleBlocks),
     0
   );
   const availableMinutes = Math.max(capacityMinutes - activeBookedMinutes, 0);
@@ -653,7 +679,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                   const blocks = scheduleBlocks.filter((block) => block.date === key);
                   const isToday = isSameDay(day, todayDate);
                   const isSelected = isSameDay(day, activeDate);
-                  const isClosed = dayCapacityMinutes(day, initialView.businessHours) === 0;
+                  const isClosed = dayCapacityMinutes(day, initialView.businessHours, scheduleBlocks) === 0;
 
                   return (
                     <button

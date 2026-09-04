@@ -21,6 +21,7 @@ export async function getReportWorkspaceData(
     clients,
     messages,
     businessHours,
+    scheduleBlocks,
     staffMembers,
     conversations,
     clientStatusCounts,
@@ -95,6 +96,24 @@ export async function getReportWorkspaceData(
         endTime: true,
       },
     }),
+    // Business-wide blocked-off time — subtracted from capacity in
+    // buildCapacityMinutes since nothing can be booked into it regardless of
+    // BusinessHours saying the day is otherwise open.
+    prisma.scheduleBlock.findMany({
+      where: {
+        businessId,
+        startsAt: {
+          lte: reportEnd,
+        },
+        endsAt: {
+          gte: reportStart,
+        },
+      },
+      select: {
+        startsAt: true,
+        endsAt: true,
+      },
+    }),
     prisma.staffMember.findMany({
       where: {
         businessId,
@@ -155,6 +174,7 @@ export async function getReportWorkspaceData(
     clients,
     messages,
     businessHours,
+    scheduleBlocks,
     staffMembers,
     conversations,
     clientMix,

@@ -9,6 +9,7 @@ import type {
   Client,
   Conversation,
   Message,
+  ScheduleBlock,
   StaffMember,
 } from "@prisma/client";
 import {
@@ -24,7 +25,9 @@ import {
   getZonedDayWindowFromParts,
   getZonedMonthWindow,
   getZonedWeekWindow,
+  zonedDateTimeToUtc,
 } from "@/lib/time-zone";
+import { sumMergedIntervals } from "@/lib/utils";
 
 export type ReportMetricTrend = "up" | "down" | "flat";
 export type ReportSnapshotTone = "strong" | "healthy" | "watch" | "attention";
@@ -197,6 +200,7 @@ type ReportsWorkspaceArgs = {
   clientMix: ReportClientMix;
   messages: Array<Pick<Message, "direction" | "sentAt">>;
   businessHours: Array<Pick<BusinessHours, "weekday" | "isOpen" | "startTime" | "endTime">>;
+  scheduleBlocks: Array<Pick<ScheduleBlock, "startsAt" | "endsAt">>;
   staffMembers: Array<Pick<StaffMember, "id" | "name" | "role" | "status" | "isActive">>;
   conversations: Array<Pick<Conversation, "unreadCount">>;
   aiSnapshots?: ReportAiSnapshotInput[];
@@ -623,6 +627,7 @@ function filterClientsInRange(
 function buildCapacityMinutes(
   window: PeriodWindow,
   businessHours: Array<Pick<BusinessHours, "weekday" | "isOpen" | "startTime" | "endTime">>,
+  scheduleBlocks: Array<Pick<ScheduleBlock, "startsAt" | "endsAt">>,
   activeStaffCount: number,
   timeZone: string
 ) {
@@ -648,10 +653,41 @@ function buildCapacityMinutes(
 
       const dayStartMinutes = parseTimeToMinutes(schedule.startTime);
       const dayEndMinutes = parseTimeToMinutes(schedule.endTime);
-      const minutes = Math.max(
-        dayEndMinutes - dayStartMinutes,
-        0
-      );
+      const openMinutes = Math.max(dayEndMinutes - dayStartMinutes, 0);
+
+      // A business-wide ScheduleBlock inside open hours isn't real capacity —
+      // an appointment can't be booked into it. Skip the timezone conversion
+      // below entirely when there's nothing to check (the common case).
+      if (scheduleBlocks.length === 0) {
+        return total + openMinutes * safeStaffCount;
+      }
+
+      const dayOpenAt = zonedDateTimeToUtc({
+        year: dayParts.year,
+        month: dayParts.month,
+        day: dayParts.day,
+        hour: Math.floor(dayStartMinutes / 60),
+        minute: dayStartMinutes % 60,
+        timeZone,
+      });
+      const dayCloseAt = zonedDateTimeToUtc({
+        year: dayParts.year,
+        month: dayParts.month,
+        day: dayParts.day,
+        hour: Math.floor(dayEndMinutes / 60),
+        minute: dayEndMinutes % 60,
+        timeZone,
+      });
+      // sumMergedIntervals merges overlapping blocks before summing, so two
+      // ScheduleBlocks covering the same hour don't get subtracted twice.
+      const blockedMinutes =
+        sumMergedIntervals(
+          scheduleBlocks.map((block) => ({
+            start: Math.max(dayOpenAt.getTime(), block.startsAt.getTime()),
+            end: Math.min(dayCloseAt.getTime(), block.endsAt.getTime()),
+          }))
+        ) / 60_000;
+      const minutes = openMinutes - blockedMinutes;
 
       return total + minutes * safeStaffCount;
     },
@@ -664,13 +700,23 @@ function buildPeriodStats(args: {
   clients: Array<Pick<Client, "createdAt" | "isArchived">>;
   messages: Array<Pick<Message, "direction" | "sentAt">>;
   businessHours: Array<Pick<BusinessHours, "weekday" | "isOpen" | "startTime" | "endTime">>;
+  scheduleBlocks: Array<Pick<ScheduleBlock, "startsAt" | "endsAt">>;
   activeStaffCount: number;
   unreadMessages: number;
   window: PeriodWindow;
   timeZone: string;
 }): PeriodStats {
-  const { appointments, clients, messages, businessHours, activeStaffCount, unreadMessages, window, timeZone } =
-    args;
+  const {
+    appointments,
+    clients,
+    messages,
+    businessHours,
+    scheduleBlocks,
+    activeStaffCount,
+    unreadMessages,
+    window,
+    timeZone,
+  } = args;
   const scopedAppointments = filterAppointmentsInRange(appointments, window.start, window.end);
   const finalizedAppointments = scopedAppointments.filter(
     (appointment) =>
@@ -692,6 +738,7 @@ function buildPeriodStats(args: {
   const capacityMinutes = buildCapacityMinutes(
     window,
     businessHours,
+    scheduleBlocks,
     activeStaffCount,
     timeZone
   );
@@ -2162,6 +2209,7 @@ export function buildReportsViewFromWorkspace({
   clientMix,
   messages,
   businessHours,
+  scheduleBlocks,
   staffMembers,
   conversations,
   aiSnapshots = [],
@@ -2251,6 +2299,7 @@ export function buildReportsViewFromWorkspace({
     clients,
     messages,
     businessHours,
+    scheduleBlocks,
     activeStaffCount,
     unreadMessages,
     window: dailyWindow,
@@ -2268,6 +2317,7 @@ export function buildReportsViewFromWorkspace({
     clients,
     messages,
     businessHours,
+    scheduleBlocks,
     activeStaffCount,
     unreadMessages,
     window: {
@@ -2284,6 +2334,7 @@ export function buildReportsViewFromWorkspace({
     clients,
     messages,
     businessHours,
+    scheduleBlocks,
     activeStaffCount,
     unreadMessages,
     window: weeklyWindow,
@@ -2301,6 +2352,7 @@ export function buildReportsViewFromWorkspace({
     clients,
     messages,
     businessHours,
+    scheduleBlocks,
     activeStaffCount,
     unreadMessages,
     window: {
@@ -2317,6 +2369,7 @@ export function buildReportsViewFromWorkspace({
     clients,
     messages,
     businessHours,
+    scheduleBlocks,
     activeStaffCount,
     unreadMessages,
     window: monthlyWindow,
@@ -2334,6 +2387,7 @@ export function buildReportsViewFromWorkspace({
     clients,
     messages,
     businessHours,
+    scheduleBlocks,
     activeStaffCount,
     unreadMessages,
     window: {
@@ -2350,6 +2404,7 @@ export function buildReportsViewFromWorkspace({
         clients,
         messages,
         businessHours,
+        scheduleBlocks,
         activeStaffCount,
         unreadMessages,
         window: customWindow,
@@ -2371,6 +2426,7 @@ export function buildReportsViewFromWorkspace({
         clients,
         messages,
         businessHours,
+        scheduleBlocks,
         activeStaffCount,
         unreadMessages,
         window: {
