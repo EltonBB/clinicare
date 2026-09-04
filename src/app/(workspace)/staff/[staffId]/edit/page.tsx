@@ -3,13 +3,8 @@ import { notFound } from "next/navigation";
 import { NewStaffForm } from "@/components/staff/new-staff-form";
 import { CreatePageShell } from "@/components/workspace/create-page-shell";
 import { requireCurrentWorkspace } from "@/lib/business";
-import { buildStaffRecord } from "@/lib/staff";
+import { buildStaffRecord, completedAppointmentCutoff } from "@/lib/staff";
 import { prisma } from "@/lib/prisma";
-
-function completedAppointmentCutoff() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), 1);
-}
 
 function staffTimeEntryCutoff() {
   return new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);

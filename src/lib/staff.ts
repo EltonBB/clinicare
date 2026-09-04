@@ -6,6 +6,7 @@ import {
   formatZonedShortDate,
   formatZonedTime,
   formatZonedTime24,
+  getZonedMonthStart,
   getZonedWeekWindow,
 } from "@/lib/time-zone";
 
@@ -315,6 +316,15 @@ function clockState(args: {
     clockLabel: "No shift",
     clockDisabledReason: "Add a shift for today before check-in.",
   };
+}
+
+/**
+ * Start of the current month in the workspace's timezone, used to scope
+ * "completed this month" appointment queries. Zoned so early-on-the-1st
+ * visits in non-UTC clinics aren't dropped by a server-local-zone boundary.
+ */
+export function completedAppointmentCutoff() {
+  return getZonedMonthStart();
 }
 
 /** Early check-in grace before a scheduled shift's start. */
