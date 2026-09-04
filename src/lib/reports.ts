@@ -319,19 +319,6 @@ function cleanInsightImpact(value: unknown): "high" | "medium" | "low" {
   return cleanActionPriority(value);
 }
 
-function cleanSteps(value: unknown, fallback: string[]) {
-  if (!Array.isArray(value)) {
-    return fallback;
-  }
-
-  const steps = value
-    .filter((step): step is string => typeof step === "string" && step.trim().length > 0)
-    .slice(0, 5)
-    .map((step) => step.trim().slice(0, 160));
-
-  return steps.length > 0 ? steps : fallback;
-}
-
 function aiSnapshotForPeriod(
   snapshots: ReportAiSnapshotInput[],
   period: ReportPeriodKey,
@@ -351,7 +338,7 @@ function aiSnapshotForPeriod(
     .sort((left, right) => right.generatedAt.getTime() - left.generatedAt.getTime())[0];
 }
 
-function metricSignature(metrics: ReportMetric[]) {
+export function metricSignature(metrics: ReportMetric[]) {
   return metrics.map((metric) => ({
     label: metric.label,
     value: metric.value,
@@ -361,7 +348,7 @@ function metricSignature(metrics: ReportMetric[]) {
   }));
 }
 
-function chartSignature(points: ReportChartPoint[]) {
+export function chartSignature(points: ReportChartPoint[]) {
   return points.map((point) => ({
     label: point.label,
     value: point.value,
@@ -1464,19 +1451,16 @@ function applyAiSnapshot(
     return fallback;
   }
 
+  // rootCauses/actions are the only arrays the trimmed AI_PERIOD_SCHEMA
+  // (analytics-ai.ts) still emits (1 item each). statHighlights/opportunities/
+  // recommendedPlaybook/whatToMonitor/severity/confidence/strength/watch/
+  // deepDive, and actions[].metric/expectedImpact, were dropped from the
+  // schema — the AI can never send them again, so they fall through to the
+  // rule-based fallback unconditionally instead of being parsed from payload.
   const payload = snapshot.aiPayload as Record<string, unknown>;
   const rawActions = Array.isArray(payload.actions) ? payload.actions : [];
-  const rawStatHighlights = Array.isArray(payload.statHighlights)
-    ? payload.statHighlights
-    : [];
   const rawRootCauses = Array.isArray(payload.rootCauses)
     ? payload.rootCauses
-    : [];
-  const rawOpportunities = Array.isArray(payload.opportunities)
-    ? payload.opportunities
-    : [];
-  const rawMonitor = Array.isArray(payload.whatToMonitor)
-    ? payload.whatToMonitor
     : [];
   const rootCauses = rawRootCauses
     .filter((item): item is Record<string, unknown> => {
@@ -1496,79 +1480,6 @@ function applyAiSnapshot(
     })
     .filter((item): item is NonNullable<typeof item> => item !== null)
     .slice(0, 4);
-  const statHighlights = rawStatHighlights
-    .filter((item): item is Record<string, unknown> => {
-      return typeof item === "object" && item !== null;
-    })
-    .map((item) => {
-      const label = optionalCleanText(item.label, 72);
-      const value = optionalCleanText(item.value, 40);
-      const readout = optionalCleanText(item.readout, 180);
-
-      return label && value && readout
-        ? {
-            label,
-            value,
-            readout,
-          }
-        : null;
-    })
-    .filter((item): item is NonNullable<typeof item> => item !== null)
-    .slice(0, 4);
-  const opportunities = rawOpportunities
-    .filter((item): item is Record<string, unknown> => {
-      return typeof item === "object" && item !== null;
-    })
-    .map((item) => {
-      const title = optionalCleanText(item.title, 96);
-      const detail = optionalCleanText(item.detail, 240);
-
-      return title && detail
-        ? {
-            title,
-            detail,
-            impact: cleanInsightImpact(item.impact),
-          }
-        : null;
-    })
-    .filter((item): item is NonNullable<typeof item> => item !== null)
-    .slice(0, 4);
-  const recommendedPlaybook =
-    typeof payload.recommendedPlaybook === "object" && payload.recommendedPlaybook !== null
-      ? {
-          name: cleanText(
-            (payload.recommendedPlaybook as Record<string, unknown>).name,
-            fallback.recommendedPlaybook?.name ?? "Recommended playbook",
-            96
-          ),
-          why: cleanText(
-            (payload.recommendedPlaybook as Record<string, unknown>).why,
-            fallback.recommendedPlaybook?.why ?? fallback.focus,
-            240
-          ),
-          steps: cleanSteps(
-            (payload.recommendedPlaybook as Record<string, unknown>).steps,
-            fallback.recommendedPlaybook?.steps ?? []
-          ),
-        }
-      : fallback.recommendedPlaybook;
-  const whatToMonitor = rawMonitor
-    .filter((item): item is Record<string, unknown> => {
-      return typeof item === "object" && item !== null;
-    })
-    .map((item) => {
-      const metric = optionalCleanText(item.metric, 72);
-      const target = optionalCleanText(item.target, 120);
-
-      return metric && target
-        ? {
-            metric,
-            target,
-          }
-        : null;
-    })
-    .filter((item): item is NonNullable<typeof item> => item !== null)
-    .slice(0, 4);
   const actions = rawActions
     .filter((action): action is Record<string, unknown> => {
       return typeof action === "object" && action !== null;
@@ -1576,16 +1487,14 @@ function applyAiSnapshot(
     .map((action) => {
       const title = optionalCleanText(action.title, 96);
       const detail = optionalCleanText(action.detail ?? action.why, 280);
-      const metric = optionalCleanText(action.metric, 72);
-      const expectedImpact = optionalCleanText(action.expectedImpact, 180);
 
       return title && detail
         ? {
             title,
             detail,
             priority: cleanActionPriority(action.priority),
-            metric: metric ?? fallback.actions?.[0]?.metric,
-            expectedImpact: expectedImpact ?? undefined,
+            metric: fallback.actions?.[0]?.metric,
+            expectedImpact: undefined,
           }
         : null;
     })
@@ -1598,17 +1507,17 @@ function applyAiSnapshot(
     headline: cleanText(payload.headline, fallback.headline, 160),
     summary: cleanText(payload.summary, fallback.summary, 420),
     diagnosis: cleanText(payload.diagnosis, fallback.diagnosis ?? fallback.watch, 420),
-    severity: cleanInsightImpact(payload.severity),
-    confidence: cleanInsightImpact(payload.confidence),
-    strength: cleanText(payload.strength, fallback.strength, 420),
-    watch: cleanText(payload.watch, fallback.watch, 420),
+    severity: fallback.severity,
+    confidence: fallback.confidence,
+    strength: fallback.strength,
+    watch: fallback.watch,
     focus: cleanText(payload.focus, fallback.focus, 420),
-    deepDive: cleanText(payload.deepDive, fallback.deepDive ?? fallback.summary, 700),
+    deepDive: fallback.deepDive ?? fallback.summary,
     rootCauses: rootCauses.length > 0 ? rootCauses : fallback.rootCauses,
-    statHighlights: statHighlights.length > 0 ? statHighlights : fallback.statHighlights,
-    opportunities: opportunities.length > 0 ? opportunities : fallback.opportunities,
-    recommendedPlaybook,
-    whatToMonitor: whatToMonitor.length > 0 ? whatToMonitor : fallback.whatToMonitor,
+    statHighlights: fallback.statHighlights,
+    opportunities: fallback.opportunities,
+    recommendedPlaybook: fallback.recommendedPlaybook,
+    whatToMonitor: fallback.whatToMonitor,
     source: "ai",
     status: "generated",
     statusLabel: "AI generated",
