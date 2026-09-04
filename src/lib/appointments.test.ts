@@ -159,4 +159,37 @@ describe("completePastConfirmedAppointments", () => {
     );
     expect(mocks.refreshClientLastVisitAt).toHaveBeenCalledWith("client_stale", BUSINESS_ID);
   });
+
+  it("splits a large backlog of newly-due clients into separate, smaller transactions instead of one unbounded one", async () => {
+    // Codex finding: the throttled sweep only runs once per 5 minutes per
+    // business and only when someone navigates, so a quiet clinic (a
+    // multi-day closure) can accumulate far more than a handful of newly-due
+    // clients before the next run — one giant transaction over all of them
+    // risks Prisma's default 5s interactive-transaction timeout.
+    const dueClientIds = Array.from({ length: 30 }, (_, index) => `client_${index}`);
+    mocks.appointment.findMany.mockResolvedValue(
+      dueClientIds.map((clientId) => ({ clientId }))
+    );
+    mocks.appointment.updateMany.mockResolvedValue({ count: 30 });
+
+    await completePastConfirmedAppointments(BUSINESS_ID);
+
+    // 30 clients at a batch size of 25 -> two transactions, not one.
+    expect(mocks.$transaction).toHaveBeenCalledTimes(2);
+    expect(mocks.refreshClientLastVisitAt).toHaveBeenCalledTimes(30);
+
+    const updateManyWhereClauses = mocks.appointment.updateMany.mock.calls.map(
+      ([args]) => args.where
+    );
+    expect(updateManyWhereClauses).toHaveLength(2);
+    // Each batch's completion update is scoped to only that batch's clients,
+    // not a blanket update over every due appointment in one go.
+    expect(updateManyWhereClauses[0].clientId.in).toHaveLength(25);
+    expect(updateManyWhereClauses[1].clientId.in).toHaveLength(5);
+    const allBatchedClientIds = [
+      ...updateManyWhereClauses[0].clientId.in,
+      ...updateManyWhereClauses[1].clientId.in,
+    ];
+    expect(new Set(allBatchedClientIds)).toEqual(new Set(dueClientIds));
+  });
 });
