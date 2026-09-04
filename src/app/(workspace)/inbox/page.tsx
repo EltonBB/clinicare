@@ -32,7 +32,7 @@ export default async function InboxPage({
     }
   });
 
-  const [clients, clientCount, conversations, whatsappConnection] = await Promise.all([
+  const [clients, clientCount, conversations, totalUnreadAggregate, whatsappConnection] = await Promise.all([
     prisma.client.findMany({
       where: {
         businessId: business.id,
@@ -91,6 +91,19 @@ export default async function InboxPage({
       ],
       take: 50,
     }),
+    // The list above is capped to the 50 most-recently-updated conversations,
+    // so summing its own unreadCount values undercounts once a business has
+    // more than that — this aggregate matches the uncapped total the
+    // dashboard KPI and sidebar badge already use (see dashboard/page.tsx and
+    // (workspace)/actions.ts's refreshWorkspaceNotificationsAction).
+    prisma.conversation.aggregate({
+      where: {
+        businessId: business.id,
+      },
+      _sum: {
+        unreadCount: true,
+      },
+    }),
     prisma.whatsAppConnection.findUnique({
       where: {
         businessId: business.id,
@@ -100,6 +113,7 @@ export default async function InboxPage({
   const inboxView = buildInboxViewFromWorkspace({
     conversations,
     clients,
+    totalUnreadCount: totalUnreadAggregate._sum.unreadCount ?? 0,
   });
   const requestedConversationId =
     typeof conversation === "string" &&

@@ -1,5 +1,7 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+
 import { prisma } from "@/lib/prisma";
 import { businessTypes } from "@/lib/constants";
 import { normalizeStorageReference } from "@/lib/media-storage";
@@ -263,6 +265,18 @@ export async function saveOnboardingStateAction(
     }
     try {
       await bootstrapWorkspaceFromOnboarding(user, normalizedState);
+      // The Business row now exists. (workspace)/layout.tsx server-fetches
+      // owner/business identity on every authenticated route, so anything
+      // already cached — including a Router-Cache entry from this page's own
+      // BrandMark link prefetching /dashboard before the row existed, which
+      // would have cached a redirect-to-onboarding — needs invalidating now.
+      // Placed right after bootstrap succeeds, not after the metadata update
+      // below: the Business row's existence is what workspace access
+      // actually depends on, and that update can independently fail without
+      // undoing the bootstrap.
+      revalidatePath("/", "layout");
+      revalidatePath("/onboarding");
+      revalidatePath("/dashboard");
     } catch {
       return {
         ok: false,

@@ -1,6 +1,12 @@
 import { Prisma, type AnalyticsSnapshotPeriod } from "@prisma/client";
 
-import { buildReportsViewFromWorkspace, type ReportPeriodKey } from "@/lib/reports";
+import {
+  buildKeyMetrics,
+  buildReportsViewFromWorkspace,
+  chartSignature,
+  metricSignature,
+  type ReportPeriodKey,
+} from "@/lib/reports";
 import { getReportWorkspaceData } from "@/lib/report-data";
 import { prisma } from "@/lib/prisma";
 
@@ -8,28 +14,19 @@ const manualRefreshCooldownMs = 10 * 60 * 1000;
 const analyticsRequestTimeoutMs = 50 * 1000;
 const analyticsModelAttemptTimeoutMs = 22 * 1000;
 
+// Narrowed to exactly what the Reports UI reads (reports-overview.tsx's AI
+// insight card: headline/summary, rootCauses[0], actions[0], focus/diagnosis
+// as their fallback text, tone + score for the dot/footer pill) — the prior
+// schema also asked for statHighlights, opportunities, recommendedPlaybook,
+// deepDive, whatToMonitor, and top-level severity/confidence/strength/watch,
+// none of which any consumer ever reads (verified: only lib/reports.ts's own
+// parsing touched them, nothing downstream of that). rootCauses/actions were
+// also generated 2-3 deep though only index 0 is ever shown. Real, ongoing
+// token savings on every refresh and every cron cycle, not a one-time cleanup.
 const AI_PERIOD_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: [
-    "score",
-    "tone",
-    "headline",
-    "summary",
-    "diagnosis",
-    "severity",
-    "confidence",
-    "strength",
-    "watch",
-    "focus",
-    "deepDive",
-    "rootCauses",
-    "statHighlights",
-    "opportunities",
-    "recommendedPlaybook",
-    "whatToMonitor",
-    "actions",
-  ],
+  required: ["score", "tone", "headline", "summary", "diagnosis", "focus", "rootCauses", "actions"],
   properties: {
     score: {
       type: "number",
@@ -52,34 +49,14 @@ const AI_PERIOD_SCHEMA = {
       type: "string",
       maxLength: 420,
     },
-    severity: {
-      type: "string",
-      enum: ["high", "medium", "low"],
-    },
-    confidence: {
-      type: "string",
-      enum: ["high", "medium", "low"],
-    },
-    strength: {
-      type: "string",
-      maxLength: 420,
-    },
-    watch: {
-      type: "string",
-      maxLength: 420,
-    },
     focus: {
       type: "string",
       maxLength: 420,
     },
-    deepDive: {
-      type: "string",
-      maxLength: 700,
-    },
     rootCauses: {
       type: "array",
-      minItems: 2,
-      maxItems: 3,
+      minItems: 1,
+      maxItems: 1,
       items: {
         type: "object",
         additionalProperties: false,
@@ -100,106 +77,14 @@ const AI_PERIOD_SCHEMA = {
         },
       },
     },
-    statHighlights: {
-      type: "array",
-      minItems: 2,
-      maxItems: 3,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["label", "value", "readout"],
-        properties: {
-          label: {
-            type: "string",
-            maxLength: 72,
-          },
-          value: {
-            type: "string",
-            maxLength: 40,
-          },
-          readout: {
-            type: "string",
-            maxLength: 180,
-          },
-        },
-      },
-    },
-    opportunities: {
-      type: "array",
-      minItems: 2,
-      maxItems: 3,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["title", "detail", "impact"],
-        properties: {
-          title: {
-            type: "string",
-            maxLength: 96,
-          },
-          detail: {
-            type: "string",
-            maxLength: 240,
-          },
-          impact: {
-            type: "string",
-            enum: ["high", "medium", "low"],
-          },
-        },
-      },
-    },
-    recommendedPlaybook: {
-      type: "object",
-      additionalProperties: false,
-      required: ["name", "why", "steps"],
-      properties: {
-        name: {
-          type: "string",
-          maxLength: 96,
-        },
-        why: {
-          type: "string",
-          maxLength: 240,
-        },
-        steps: {
-          type: "array",
-          minItems: 2,
-          maxItems: 3,
-          items: {
-            type: "string",
-            maxLength: 160,
-          },
-        },
-      },
-    },
-    whatToMonitor: {
-      type: "array",
-      minItems: 2,
-      maxItems: 3,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["metric", "target"],
-        properties: {
-          metric: {
-            type: "string",
-            maxLength: 72,
-          },
-          target: {
-            type: "string",
-            maxLength: 120,
-          },
-        },
-      },
-    },
     actions: {
       type: "array",
-      minItems: 2,
-      maxItems: 3,
+      minItems: 1,
+      maxItems: 1,
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["title", "detail", "priority", "metric", "expectedImpact"],
+        required: ["title", "detail", "priority"],
         properties: {
           title: {
             type: "string",
@@ -212,14 +97,6 @@ const AI_PERIOD_SCHEMA = {
           priority: {
             type: "string",
             enum: ["high", "medium", "low"],
-          },
-          metric: {
-            type: "string",
-            maxLength: 72,
-          },
-          expectedImpact: {
-            type: "string",
-            maxLength: 180,
           },
         },
       },
@@ -326,13 +203,7 @@ function buildAiPromptPayload(args: {
     },
     currentRuleSnapshot: period.snapshot,
     diagnostics: period.diagnostics,
-    metrics: period.metrics.map((metric) => ({
-      label: metric.label,
-      value: metric.value,
-      delta: metric.delta,
-      trend: metric.trend,
-      helper: metric.helper,
-    })),
+    keyMetrics: buildKeyMetrics(period),
     trend: period.chart.points,
     allTimeframes,
     guardrails: {
@@ -356,13 +227,7 @@ function buildAllTimeframesPayload(report: ReturnType<typeof buildReportsViewFro
         comparisonLabel: period.comparisonLabel,
         currentRuleSnapshot: period.snapshot,
         diagnostics: period.diagnostics,
-        metrics: period.metrics.map((metric) => ({
-          label: metric.label,
-          value: metric.value,
-          delta: metric.delta,
-          trend: metric.trend,
-          helper: metric.helper,
-        })),
+        keyMetrics: buildKeyMetrics(period),
         trend: period.chart.points,
       };
 
@@ -501,6 +366,16 @@ async function upsertSnapshot(args: {
   const periodStart = new Date(periodView.periodStart);
   const periodEnd = new Date(periodView.periodEnd);
   const aiPayload = args.aiPayload === null ? Prisma.JsonNull : asJson(args.aiPayload);
+  // Independent of promptPayload (what's actually sent to OpenAI) — this is
+  // read back only by reports.ts's isAiSnapshotFreshForView, which compares
+  // exactly these 3 fields to decide whether a saved snapshot is still fresh.
+  // Keeping it separate means trimming the OpenAI request body can't silently
+  // break that comparison again.
+  const kpiPayload = asJson({
+    metrics: metricSignature(periodView.metrics),
+    trend: chartSignature(periodView.chart.points),
+    diagnostics: periodView.diagnostics,
+  });
 
   await prisma.analyticsSnapshot.upsert({
     where: {
@@ -512,7 +387,7 @@ async function upsertSnapshot(args: {
       },
     },
     update: {
-      kpiPayload: asJson(args.promptPayload),
+      kpiPayload,
       aiPayload,
       provider: args.provider,
       model: args.model,
@@ -525,7 +400,7 @@ async function upsertSnapshot(args: {
       periodType,
       periodStart,
       periodEnd,
-      kpiPayload: asJson(args.promptPayload),
+      kpiPayload,
       aiPayload,
       provider: args.provider,
       model: args.model,

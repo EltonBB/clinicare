@@ -54,7 +54,7 @@ function buildFilterWhere(filter: ClientDirectoryFilter): Prisma.ClientWhereInpu
       return {
         isArchived: false,
         status: { not: "ARCHIVED" },
-        appointments: { none: {} },
+        lastVisitAt: null,
       };
     default:
       return {};

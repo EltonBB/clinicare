@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 import { isStorageReference } from "@/lib/media-storage";
 import { safeUploadErrorMessage, uploadWorkspaceImage } from "@/lib/media-storage-client";
 import {
+  REMINDER_TEMPLATE_MAX_LENGTH,
   timeOptions,
   weekdayLabels,
   type SaveSettingsPayload,
@@ -342,6 +343,25 @@ export function SettingsWorkspace({
         }
 
         accountMessage = profileResult.success ?? "";
+
+        // The profile update (including any password change) is already
+        // persisted server-side at this point. Reflect that in UI state
+        // immediately, independent of whether the settings save below also
+        // succeeds — otherwise a failure there would leave stale password
+        // fields on screen and a savedAccount mismatch that re-submits an
+        // already-changed password (against its now-stale currentPassword)
+        // on the next save attempt.
+        setAccount((current) => ({
+          ...current,
+          currentPassword: "",
+          newPassword: "",
+          confirmPassword: "",
+        }));
+        setSavedAccount({
+          fullName: account.fullName,
+          email: account.email,
+          phone: account.phone,
+        });
       }
 
       // Submit only the editable subset — derived/display fields stay server-owned.
@@ -1087,10 +1107,12 @@ export function SettingsWorkspace({
                       },
                     }))
                   }
+                  maxLength={REMINDER_TEMPLATE_MAX_LENGTH}
                   className="min-h-[128px] rounded-(--radius-card) bg-white px-3 py-2"
                 />
                 <p className="text-xs text-muted-foreground">
-                  {"{client_name}"}, {"{time}"}, and {"{date}"} are replaced automatically.
+                  {"{client_name}"}, {"{time}"}, and {"{date}"} are replaced automatically. (
+                  {state.reminders.template.length}/{REMINDER_TEMPLATE_MAX_LENGTH})
                 </p>
               </div>
             </div>

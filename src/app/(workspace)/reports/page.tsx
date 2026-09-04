@@ -6,6 +6,7 @@ import { buildReportsViewFromWorkspace } from "@/lib/reports";
 import { prisma } from "@/lib/prisma";
 import { getReportWorkspaceData } from "@/lib/report-data";
 import { getZonedDayWindowFromParts } from "@/lib/time-zone";
+import { logger } from "@/lib/logger";
 
 export const maxDuration = 60;
 
@@ -71,7 +72,11 @@ export default async function ReportsPage({
     );
   }
 
-  const [workspaceData, aiSnapshots] = await Promise.all([
+  // allSettled, not all: a snapshot-history hiccup shouldn't crash the whole
+  // page when buildReportsViewFromWorkspace already renders a full rule-based
+  // report for zero snapshots (a brand-new business hits that path today).
+  // workspaceData has no such fallback, so its rejection still propagates.
+  const [workspaceDataResult, aiSnapshotsResult] = await Promise.allSettled([
     getReportWorkspaceData(business.id, selectedRange),
     prisma.analyticsSnapshot.findMany({
       where: {
@@ -83,6 +88,19 @@ export default async function ReportsPage({
       take: 18,
     }),
   ]);
+
+  if (workspaceDataResult.status === "rejected") {
+    throw workspaceDataResult.reason;
+  }
+
+  if (aiSnapshotsResult.status === "rejected") {
+    logger.error("Failed to load AI analytics snapshots for Reports", aiSnapshotsResult.reason, {
+      businessId: business.id,
+    });
+  }
+
+  const workspaceData = workspaceDataResult.value;
+  const aiSnapshots = aiSnapshotsResult.status === "fulfilled" ? aiSnapshotsResult.value : [];
 
   const view = buildReportsViewFromWorkspace({
     ...workspaceData,
