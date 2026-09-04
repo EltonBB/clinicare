@@ -107,11 +107,10 @@ async function isInsideBusinessHours(args: {
   const start = timeToMinutes(args.startTime);
   const end = timeToMinutes(args.endTime);
 
-  if (!hours) {
-    return weekday < 5 && start >= timeToMinutes("09:00") && end <= timeToMinutes("17:00");
-  }
-
-  if (!hours.isOpen) {
+  // No configured row for this weekday means closed, not a guessed Mon-Fri
+  // 9-5 default — matches calendar-workspace.tsx, reports.ts, and the
+  // client-side businessHoursForDate in new-appointment-form.tsx.
+  if (!hours?.isOpen) {
     return false;
   }
 

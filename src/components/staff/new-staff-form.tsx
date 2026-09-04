@@ -53,9 +53,13 @@ function getBusinessHoursForDate(date: Date, businessHours: StaffBusinessHour[])
     return configured;
   }
 
+  // No configured row for this weekday is treated as closed everywhere else
+  // that reads BusinessHours (calendar-workspace.tsx, reports.ts) — match
+  // that instead of guessing a Mon-Fri 9-5 default with no basis in the
+  // clinic's actual settings.
   return {
     weekday,
-    isOpen: weekday < 5,
+    isOpen: false,
     startTime: "09:00",
     endTime: "17:00",
   };
