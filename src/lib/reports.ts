@@ -348,6 +348,28 @@ export function metricSignature(metrics: ReportMetric[]) {
   }));
 }
 
+// Reports' own KPI row shows exactly these three as headline numbers
+// (AGENTS.md) — analytics-ai.ts's prompt payload needs their deltas
+// specifically because currentRuleSnapshot's prose only ever narrates
+// whichever single metric the rule-based narration happened to pick (e.g.
+// completion rate when it's the standout), silently omitting the others'
+// change context (Codex finding on the OpenAI payload trim). Dropping the
+// full 8-entry metrics array from that payload was still correct — this
+// keeps only the 3 the AI is actually expected to explain "what changed"
+// for, and drops the display-only `helper` field.
+const KEY_METRIC_LABELS = ["Appointments", "Completion rate", "New clients"];
+
+export function buildKeyMetrics(period: Pick<ReportPeriodView, "metrics">) {
+  return period.metrics
+    .filter((metric) => KEY_METRIC_LABELS.includes(metric.label))
+    .map((metric) => ({
+      label: metric.label,
+      value: metric.value,
+      delta: metric.delta,
+      trend: metric.trend,
+    }));
+}
+
 export function chartSignature(points: ReportChartPoint[]) {
   return points.map((point) => ({
     label: point.label,
