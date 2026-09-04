@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CHECK_IN_EARLY_GRACE_MS,
   buildStaffDirectoryRecord,
   buildStaffViewFromRecords,
+  completedAppointmentCutoff,
   findActiveShiftWindow,
 } from "@/lib/staff";
 
@@ -153,5 +154,22 @@ describe("buildStaffViewFromRecords — unseenCheckInsByStaff", () => {
   it("defaults every member to false when no map is given", () => {
     const view = buildStaffViewFromRecords([fakeStaffMember()]);
     expect(view.staff[0].hasUnseenCheckIn).toBe(false);
+  });
+});
+
+describe("completedAppointmentCutoff", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("uses the clinic's zoned month start, not the server process's local timezone", () => {
+    // 2026-06-01T00:30:00Z is already 02:30 on June 1st in Europe/Budapest
+    // (UTC+2, CEST). A server-local-zone `new Date(now.getFullYear(),
+    // now.getMonth(), 1)` running with TZ=UTC would read the UTC month
+    // (May) here and return May 1st instead — a whole month off.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-01T00:30:00.000Z"));
+
+    expect(completedAppointmentCutoff().toISOString()).toBe("2026-05-31T22:00:00.000Z");
   });
 });
