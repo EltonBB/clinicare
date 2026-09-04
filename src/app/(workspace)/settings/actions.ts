@@ -352,8 +352,16 @@ export async function connectBaileysWhatsAppAction(options?: {
     // The upsert above optimistically set CONNECTING before this request —
     // undo it on failure so Settings doesn't keep showing "finishing the
     // connection" indefinitely for an attempt that never actually started.
+    // Compare-and-set on status: "CONNECTING" — requestBaileysPairing can
+    // return null on a lost/timed-out response even though the worker
+    // actually accepted the pairing, and a concurrent webhook could have
+    // already moved this row to CONNECTED/ERRORED in the meantime. Scoping
+    // the guard to the exact state we optimistically set makes this a no-op
+    // instead of silently rolling back a connection that's actually live
+    // (which would then also silently stop reminders — see lib/reminders.ts,
+    // which only selects CONNECTED/ERRORED rows).
     await prisma.whatsAppConnection.updateMany({
-      where: { businessId: business.id },
+      where: { businessId: business.id, status: "CONNECTING" },
       data: { status: "DISCONNECTED" },
     });
     return {
