@@ -349,6 +349,13 @@ export async function connectBaileysWhatsAppAction(options?: {
     force: options?.force === true,
   });
   if (!state) {
+    // The upsert above optimistically set CONNECTING before this request —
+    // undo it on failure so Settings doesn't keep showing "finishing the
+    // connection" indefinitely for an attempt that never actually started.
+    await prisma.whatsAppConnection.updateMany({
+      where: { businessId: business.id },
+      data: { status: "DISCONNECTED" },
+    });
     return {
       ok: false,
       error: "We couldn't start the WhatsApp connection. Please try again.",
