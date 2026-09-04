@@ -113,18 +113,17 @@ describe("completePastConfirmedAppointments", () => {
         }),
       })
     );
-    // Nothing is newly due, so there's no status update to run — only the
-    // backfill refresh.
+    // Nothing is newly due, so there's no status update to run and nothing
+    // needs the transaction — the backfill refresh runs standalone (no tx
+    // argument), matching the Codex finding that an unbounded historical
+    // backlog must not risk Prisma's default 5s transaction timeout.
     expect(mocks.appointment.updateMany).not.toHaveBeenCalled();
+    expect(mocks.$transaction).not.toHaveBeenCalled();
     expect(mocks.refreshClientLastVisitAt).toHaveBeenCalledTimes(1);
-    expect(mocks.refreshClientLastVisitAt).toHaveBeenCalledWith(
-      "client_stale",
-      BUSINESS_ID,
-      expect.anything()
-    );
+    expect(mocks.refreshClientLastVisitAt).toHaveBeenCalledWith("client_stale", BUSINESS_ID);
   });
 
-  it("dedupes a client that is both newly due and already stale", async () => {
+  it("dedupes a client that is both newly due and already stale, refreshing it once via the transaction path", async () => {
     mocks.appointment.findMany.mockResolvedValue([{ clientId: "client_1" }]);
     mocks.appointment.updateMany.mockResolvedValue({ count: 1 });
     mocks.client.findMany.mockResolvedValue([{ id: "client_1" }]);
@@ -132,5 +131,32 @@ describe("completePastConfirmedAppointments", () => {
     await completePastConfirmedAppointments(BUSINESS_ID);
 
     expect(mocks.refreshClientLastVisitAt).toHaveBeenCalledTimes(1);
+    // The due-path call carries a tx as its 3rd argument — confirms the
+    // stale-backlog loop correctly skipped this client rather than
+    // refreshing it a second time outside the transaction.
+    expect(mocks.refreshClientLastVisitAt).toHaveBeenCalledWith(
+      "client_1",
+      BUSINESS_ID,
+      expect.anything()
+    );
+  });
+
+  it("keeps the historical backfill outside the transaction even when appointments are also due", async () => {
+    // Two different clients: client_1 has a newly-due appointment,
+    // client_stale is a pre-existing, unrelated backlog entry. Both must be
+    // refreshed, but only client_1's refresh should carry a tx.
+    mocks.appointment.findMany.mockResolvedValue([{ clientId: "client_1" }]);
+    mocks.appointment.updateMany.mockResolvedValue({ count: 1 });
+    mocks.client.findMany.mockResolvedValue([{ id: "client_stale" }]);
+
+    await completePastConfirmedAppointments(BUSINESS_ID);
+
+    expect(mocks.refreshClientLastVisitAt).toHaveBeenCalledTimes(2);
+    expect(mocks.refreshClientLastVisitAt).toHaveBeenCalledWith(
+      "client_1",
+      BUSINESS_ID,
+      expect.anything()
+    );
+    expect(mocks.refreshClientLastVisitAt).toHaveBeenCalledWith("client_stale", BUSINESS_ID);
   });
 });

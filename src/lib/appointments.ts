@@ -41,29 +41,40 @@ export async function completePastConfirmedAppointments(businessId: string) {
     }),
   ]);
 
-  const clientIdsToRefresh = Array.from(
-    new Set([
-      ...dueClients.map((client) => client.clientId),
-      ...staleClients.map((client) => client.id),
-    ])
-  );
+  const dueClientIds = new Set(dueClients.map((client) => client.clientId));
 
-  if (clientIdsToRefresh.length === 0) {
-    return;
-  }
-
-  await prisma.$transaction(async (tx) => {
-    if (dueClients.length > 0) {
+  if (dueClientIds.size > 0) {
+    // The completion update and its own clients' refresh stay one atomic
+    // unit — a crash between them is exactly the bug this fix closes. Kept
+    // small and bounded (however many appointments are newly due this
+    // throttled pass), unlike the historical backlog below, so it can't
+    // approach Prisma's default 5s interactive-transaction timeout (no
+    // override is set in lib/prisma.ts).
+    await prisma.$transaction(async (tx) => {
       await tx.appointment.updateMany({
         where: dueWhere,
         data: {
           status: "COMPLETED",
         },
       });
-    }
 
-    for (const clientId of clientIdsToRefresh) {
-      await refreshClientLastVisitAt(clientId, businessId, tx);
+      for (const clientId of dueClientIds) {
+        await refreshClientLastVisitAt(clientId, businessId, tx);
+      }
+    });
+  }
+
+  // The historical backlog can be arbitrarily large (everyone this bug ever
+  // affected, all at once, the first time this runs) and each client here
+  // has no pending status change to stay atomic with — only the refresh
+  // itself. Run these outside any transaction so an oversized backlog can't
+  // time out and roll back the (already-committed, unrelated) completions
+  // above, and so a mid-loop failure only leaves the remaining clients
+  // exactly as stale as they already were, self-resuming on the next sweep.
+  for (const { id: clientId } of staleClients) {
+    if (dueClientIds.has(clientId)) {
+      continue;
     }
-  });
+    await refreshClientLastVisitAt(clientId, businessId);
+  }
 }
