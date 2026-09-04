@@ -391,6 +391,24 @@ export function SettingsWorkspace({
 
       setState(result.state);
       setSavedState(result.state);
+      setAccount((current) => ({
+        ...current,
+        // A changed email needs inbox confirmation before it's actually
+        // active — keep the field showing the still-confirmed old address
+        // rather than the just-submitted one, so it doesn't silently claim
+        // the change already took effect. The success message below already
+        // says to check the inbox; reopening Settings later re-fetches
+        // whatever the real (by then possibly confirmed) address is.
+        email: savedAccount.email,
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      }));
+      setSavedAccount({
+        fullName: account.fullName,
+        email: savedAccount.email,
+        phone: account.phone,
+      });
       setErrorMessage("");
       setMessage(accountDirty && accountMessage ? accountMessage : "Settings saved.");
       onSaved?.();
