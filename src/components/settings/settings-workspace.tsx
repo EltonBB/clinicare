@@ -282,7 +282,8 @@ export function SettingsWorkspace({
   const logoDisplayUrl =
     state.business.logoDisplayUrl ||
     (isStorageReference(state.business.logoUrl) ? "" : state.business.logoUrl);
-  const isConnected = state.whatsapp.connection.phase === "CONNECTED";
+  const whatsappPhase = state.whatsapp.connection.phase;
+  const isConnected = whatsappPhase === "CONNECTED";
   const settingsDirty = useMemo(
     () => JSON.stringify(state) !== JSON.stringify(savedState),
     [state, savedState]
@@ -1101,17 +1102,33 @@ export function SettingsWorkspace({
                   <span
                     className={cn(
                       "size-2.5 rounded-full",
-                      isConnected ? "bg-emerald-500" : "bg-muted-foreground/35"
+                      whatsappPhase === "CONNECTED"
+                        ? "bg-emerald-500"
+                        : whatsappPhase === "STARTING"
+                          ? "bg-amber-400"
+                          : whatsappPhase === "NEEDS_SUPPORT"
+                            ? "bg-destructive"
+                            : "bg-muted-foreground/35"
                     )}
                   />
-                  <p className="text-sm font-semibold text-foreground">
-                    {isConnected ? "Connected" : "Not connected"}
-                  </p>
+                  {whatsappPhase === "NEEDS_SUPPORT" ? (
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                      {state.whatsapp.connection.statusLabel}
+                    </span>
+                  ) : (
+                    <p className="text-sm font-semibold text-foreground">
+                      {state.whatsapp.connection.statusLabel}
+                    </p>
+                  )}
                 </div>
                 <p className="mt-2 text-sm leading-5 text-muted-foreground">
-                  {isConnected
+                  {whatsappPhase === "CONNECTED"
                     ? "Your clinic's WhatsApp is linked. Reminders and Inbox replies are active."
-                    : "Link your clinic's WhatsApp by scanning a QR code with the clinic phone — no number setup needed."}
+                    : whatsappPhase === "STARTING"
+                      ? "Finishing the connection — this should only take a moment."
+                      : whatsappPhase === "NEEDS_SUPPORT"
+                        ? "Your clinic's WhatsApp lost its connection. Reconnect below, or contact support if this keeps happening."
+                        : "Link your clinic's WhatsApp by scanning a QR code with the clinic phone — no number setup needed."}
                 </p>
               </div>
 
@@ -1158,7 +1175,11 @@ export function SettingsWorkspace({
                   onClick={() => handleConnectWhatsApp()}
                   disabled={isConnecting}
                 >
-                  {isConnecting ? "Starting…" : "Connect WhatsApp"}
+                  {isConnecting
+                    ? "Starting…"
+                    : whatsappPhase === "NEEDS_SUPPORT"
+                      ? "Reconnect WhatsApp"
+                      : "Connect WhatsApp"}
                 </Button>
               )}
 
