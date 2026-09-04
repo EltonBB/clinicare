@@ -4,6 +4,99 @@ import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 
+// Loaded for display, not the full history — the thread view lazily shows
+// more on scroll (kept in sync with the query in inbox/page.tsx's original
+// shape).
+const RECENT_CONVERSATION_LIMIT = 50;
+// A generous but bounded ceiling on how many older, off-screen unread
+// conversations get pulled in alongside the recent list — see
+// fetchInboxConversations below.
+const UNREAD_CONVERSATION_SAFETY_LIMIT = 200;
+
+const conversationListSelect = {
+  id: true,
+  phoneNumber: true,
+  contactName: true,
+  unreadCount: true,
+  updatedAt: true,
+  messages: {
+    select: {
+      id: true,
+      direction: true,
+      body: true,
+      deliveryStatus: true,
+      sentAt: true,
+    },
+    orderBy: {
+      sentAt: "desc",
+    },
+    take: 50,
+  },
+} satisfies Prisma.ConversationSelect;
+
+/**
+ * The conversation list for both the initial Inbox load and its polling
+ * refresh (inbox/page.tsx, inbox/actions.ts's loadInboxView) — kept in one
+ * place so both stay in sync.
+ *
+ * Recency-capped at RECENT_CONVERSATION_LIMIT for display, but a business
+ * with more conversations than that can have an unread one fall outside the
+ * cap entirely. The "Unread" filter chip's count reflects the business-wide
+ * total (see totalUnreadCount in inbox/page.tsx), so without this, the chip
+ * could show a positive — or higher — count than the filter could ever
+ * actually display, including an empty "Everything is read" result for a
+ * chip that says otherwise (Codex finding). Merging in any unread
+ * conversation regardless of recency guarantees every thread the count
+ * represents is one the operator can actually open.
+ */
+export async function fetchInboxConversations(businessId: string) {
+  const [recent, unread] = await Promise.all([
+    prisma.conversation.findMany({
+      where: {
+        businessId,
+      },
+      select: conversationListSelect,
+      orderBy: [
+        {
+          updatedAt: "desc",
+        },
+        {
+          createdAt: "desc",
+        },
+      ],
+      take: RECENT_CONVERSATION_LIMIT,
+    }),
+    prisma.conversation.findMany({
+      where: {
+        businessId,
+        unreadCount: { gt: 0 },
+      },
+      select: conversationListSelect,
+      orderBy: [
+        {
+          updatedAt: "desc",
+        },
+        {
+          createdAt: "desc",
+        },
+      ],
+      take: UNREAD_CONVERSATION_SAFETY_LIMIT,
+    }),
+  ]);
+
+  const byId = new Map(recent.map((conversation) => [conversation.id, conversation]));
+
+  for (const conversation of unread) {
+    if (!byId.has(conversation.id)) {
+      byId.set(conversation.id, conversation);
+    }
+  }
+
+  return Array.from(byId.values()).sort(
+    (left, right) => right.updatedAt.getTime() - left.updatedAt.getTime()
+  );
+}
+
 type SeedClient = {
   id: string;
   name: string;

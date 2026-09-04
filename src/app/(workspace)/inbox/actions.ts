@@ -14,6 +14,7 @@ import {
   type InboxConversation,
   type InboxViewModel,
 } from "@/lib/inbox";
+import { fetchInboxConversations } from "@/lib/inbox-server";
 import { sendMessage } from "@/lib/messaging";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 
@@ -127,43 +128,10 @@ async function loadInboxView(businessId: string) {
       ],
       take: 150,
     }),
-    prisma.conversation.findMany({
-      where: {
-        businessId,
-      },
-      select: {
-        id: true,
-        phoneNumber: true,
-        contactName: true,
-        unreadCount: true,
-        updatedAt: true,
-        messages: {
-          select: {
-            id: true,
-            direction: true,
-            body: true,
-            deliveryStatus: true,
-            sentAt: true,
-          },
-          orderBy: {
-            sentAt: "desc",
-          },
-          take: 50,
-        },
-      },
-      orderBy: [
-        {
-          updatedAt: "desc",
-        },
-        {
-          createdAt: "desc",
-        },
-      ],
-      take: 50,
-    }),
+    fetchInboxConversations(businessId),
     // Matches the page load's own aggregate (see (workspace)/inbox/page.tsx)
-    // — the conversations list above is capped, so its own unreadCount sum
-    // would undercount once a business has more than that many.
+    // — fetchInboxConversations merges in additionally unread conversations,
+    // but this aggregate is still the source of truth for the total.
     prisma.conversation.aggregate({
       where: {
         businessId,
