@@ -42,6 +42,10 @@ export type InboxConversation = {
 export type InboxViewModel = {
   conversations: InboxConversation[];
   initialConversationId: string;
+  // The business-wide unread total (see buildInboxViewFromWorkspace) — not
+  // derivable from `conversations` alone, which is capped to a page of the
+  // most-recently-updated ones and can be missing older unread conversations.
+  totalUnreadCount: number;
 };
 
 type InboxConversationRecord = Pick<
@@ -233,6 +237,10 @@ export function buildInboxConversation(
 export function buildInboxViewFromWorkspace(args: {
   conversations: InboxConversationRecord[];
   clients: InboxClientLink[];
+  // Fetched by the page via a separate, uncapped aggregate — this builder
+  // stays a pure passthrough for it rather than summing `conversations`
+  // itself, since that array is the same capped page the sum must not match.
+  totalUnreadCount: number;
 }): InboxViewModel {
   const now = new Date();
   const timeZone = getAppTimeZone();
@@ -244,5 +252,6 @@ export function buildInboxViewFromWorkspace(args: {
   return {
     conversations,
     initialConversationId: conversations[0]?.id ?? "",
+    totalUnreadCount: args.totalUnreadCount,
   };
 }

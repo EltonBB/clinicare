@@ -82,6 +82,17 @@ function deliveryTone(status?: SettingsState["whatsapp"]["connection"]["status"]
   return "bg-white/14 text-primary-foreground/85";
 }
 
+// The unread count sitting on conversations beyond the loaded page (older,
+// not recently updated) — the server's business-wide total minus what the
+// loaded conversations already account for.
+function hiddenUnreadCountFrom(view: Pick<InboxViewModel, "conversations" | "totalUnreadCount">) {
+  return Math.max(
+    view.totalUnreadCount -
+      view.conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0),
+    0
+  );
+}
+
 export function InboxWorkspace({
   initialView,
   ownerName,
@@ -107,6 +118,14 @@ export function InboxWorkspace({
     (sum, conversation) => sum + conversation.unreadCount,
     0
   );
+  // Re-synced on each successful poll below (see the refreshInbox effect).
+  // unreadTotal above stays live between polls so the chip still decrements
+  // immediately when the operator reads a loaded conversation, instead of
+  // waiting on the poll.
+  const [hiddenUnreadCount, setHiddenUnreadCount] = useState(() =>
+    hiddenUnreadCountFrom(initialView)
+  );
+  const displayedUnreadTotal = unreadTotal + hiddenUnreadCount;
 
   const filteredConversations = useMemo(() => {
     const normalized = deferredQuery.trim().toLowerCase();
@@ -172,6 +191,10 @@ export function InboxWorkspace({
           return { ...conversation, unreadCount: 0 };
         })
       );
+      // From the raw server values (before the locally-read override above),
+      // so a pending optimistic mark-as-read on a loaded conversation never
+      // throws this off.
+      setHiddenUnreadCount(hiddenUnreadCountFrom(result.view));
       setSelectedConversationId((current) => {
         if (
           current &&
@@ -424,7 +447,7 @@ export function InboxWorkspace({
                   <FilterChip
                     shape="pill"
                     active={filter === "unread"}
-                    count={unreadTotal}
+                    count={displayedUnreadTotal}
                     onClick={() => setFilter("unread")}
                   >
                     Unread
