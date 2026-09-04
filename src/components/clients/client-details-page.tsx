@@ -14,6 +14,7 @@ import {
   Download,
   FileText,
   HeartPulse,
+  ImageOff,
   ImagePlus,
   Mail,
   MessageSquare,
@@ -1450,12 +1451,19 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {client.gallery.map((item) => (
                   <figure key={item.id} className="overflow-hidden rounded-(--radius-card) border border-border/80 bg-white">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={item.imageUrl}
-                      alt={item.caption || "Client clinical image"}
-                      className="aspect-[4/3] w-full object-cover"
-                    />
+                    {item.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.imageUrl}
+                        alt={item.caption || "Client clinical image"}
+                        className="aspect-[4/3] w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex aspect-[4/3] w-full items-center justify-center bg-muted/40 text-muted-foreground">
+                        <ImageOff className="size-6" aria-hidden="true" />
+                        <span className="sr-only">Image unavailable</span>
+                      </div>
+                    )}
                     <figcaption className="flex items-start justify-between gap-2 px-3 py-2.5">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-foreground">{item.caption || "No note"}</p>
