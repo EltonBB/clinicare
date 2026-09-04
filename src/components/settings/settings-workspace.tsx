@@ -321,18 +321,34 @@ export function SettingsWorkspace({
     }
 
     startSaving(async () => {
+      // The account inputs stay editable while this save is in flight (no
+      // field-level disabling here), so the operator can keep typing into
+      // email/password across either await below. Snapshot exactly what's
+      // being submitted now — the two reconciliation points further down
+      // compare against this, not against whatever `account` holds by the
+      // time they run, so a newer in-progress edit never gets silently
+      // discarded by a save that started before it was typed.
+      const submittedAccount = {
+        fullName: account.fullName,
+        email: account.email,
+        phone: account.phone,
+        currentPassword: account.currentPassword,
+        newPassword: account.newPassword,
+        confirmPassword: account.confirmPassword,
+      };
+
       // Owner account (name, login email, phone, password) saves through the
       // auth profile action — only touch it when those fields actually changed
       // so a routine settings save never re-submits credentials.
       let accountMessage = "";
       if (accountDirty) {
         const profileData = new FormData();
-        profileData.set("fullName", account.fullName);
-        profileData.set("email", account.email);
-        profileData.set("phone", account.phone);
-        profileData.set("currentPassword", account.currentPassword);
-        profileData.set("newPassword", account.newPassword);
-        profileData.set("confirmPassword", account.confirmPassword);
+        profileData.set("fullName", submittedAccount.fullName);
+        profileData.set("email", submittedAccount.email);
+        profileData.set("phone", submittedAccount.phone);
+        profileData.set("currentPassword", submittedAccount.currentPassword);
+        profileData.set("newPassword", submittedAccount.newPassword);
+        profileData.set("confirmPassword", submittedAccount.confirmPassword);
 
         const profileResult = await updateOwnerProfileAction({}, profileData);
 
@@ -350,17 +366,26 @@ export function SettingsWorkspace({
         // succeeds — otherwise a failure there would leave stale password
         // fields on screen and a savedAccount mismatch that re-submits an
         // already-changed password (against its now-stale currentPassword)
-        // on the next save attempt.
+        // on the next save attempt. Only clear a field if it still holds
+        // exactly what was submitted — if the operator retyped it while this
+        // await was in flight, leave their newer edit alone.
         setAccount((current) => ({
           ...current,
-          currentPassword: "",
-          newPassword: "",
-          confirmPassword: "",
+          currentPassword:
+            current.currentPassword === submittedAccount.currentPassword
+              ? ""
+              : current.currentPassword,
+          newPassword:
+            current.newPassword === submittedAccount.newPassword ? "" : current.newPassword,
+          confirmPassword:
+            current.confirmPassword === submittedAccount.confirmPassword
+              ? ""
+              : current.confirmPassword,
         }));
         setSavedAccount({
-          fullName: account.fullName,
-          email: account.email,
-          phone: account.phone,
+          fullName: submittedAccount.fullName,
+          email: submittedAccount.email,
+          phone: submittedAccount.phone,
         });
       }
 
@@ -369,7 +394,7 @@ export function SettingsWorkspace({
         business: {
           businessName: state.business.businessName,
           businessType: state.business.businessType,
-          ownerName: account.fullName,
+          ownerName: submittedAccount.fullName,
           logoUrl: state.business.logoUrl,
         },
         appearance: state.appearance,
@@ -398,16 +423,26 @@ export function SettingsWorkspace({
         // rather than the just-submitted one, so it doesn't silently claim
         // the change already took effect. The success message below already
         // says to check the inbox; reopening Settings later re-fetches
-        // whatever the real (by then possibly confirmed) address is.
-        email: savedAccount.email,
-        currentPassword: "",
-        newPassword: "",
-        confirmPassword: "",
+        // whatever the real (by then possibly confirmed) address is. Only
+        // when the field still holds exactly what this save submitted —
+        // if the operator retyped the email while this second await was in
+        // flight, their newer edit stays and simply shows as unsaved again.
+        email: current.email === submittedAccount.email ? savedAccount.email : current.email,
+        currentPassword:
+          current.currentPassword === submittedAccount.currentPassword
+            ? ""
+            : current.currentPassword,
+        newPassword:
+          current.newPassword === submittedAccount.newPassword ? "" : current.newPassword,
+        confirmPassword:
+          current.confirmPassword === submittedAccount.confirmPassword
+            ? ""
+            : current.confirmPassword,
       }));
       setSavedAccount({
-        fullName: account.fullName,
+        fullName: submittedAccount.fullName,
         email: savedAccount.email,
-        phone: account.phone,
+        phone: submittedAccount.phone,
       });
       setErrorMessage("");
       setMessage(accountDirty && accountMessage ? accountMessage : "Settings saved.");
