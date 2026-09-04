@@ -284,6 +284,39 @@ export async function saveSettingsAction(
   };
 }
 
+/**
+ * Best-effort cleanup for a logo the operator uploaded (handleLogoUpload in
+ * settings-workspace.tsx writes it to Storage immediately, before Save) but
+ * then discarded without saving. Nothing else ever records that file for
+ * cleanup unless a save actually commits it as the new logoUrl (see
+ * saveSettingsAction above) — otherwise it sits in Storage as an orphan
+ * forever. Never deletes the business's currently-persisted logo, even if a
+ * caller passes its URL by mistake.
+ */
+export async function discardUnsavedLogoAction(uploadedLogoUrl: string): Promise<void> {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return;
+  }
+
+  const business = await requireCurrentBusiness(user, {
+    missingBusinessRedirect: "/onboarding",
+  });
+
+  const candidate = normalizeStorageReference(uploadedLogoUrl);
+
+  if (!candidate || candidate === (business.logoUrl ?? "")) {
+    return;
+  }
+
+  const pending = await prisma.$transaction((tx) =>
+    recordPendingStorageCleanup(tx, business.id, [candidate])
+  );
+
+  after(() => attemptStorageCleanup(pending));
+}
+
 export type BaileysPairingResult =
   | { ok: true; status: WorkerConnectionStatus; qr?: string }
   | { ok: false; error: string };

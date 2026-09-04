@@ -26,6 +26,7 @@ import {
 import { updateOwnerProfileAction } from "@/app/(auth)/actions";
 import {
   connectBaileysWhatsAppAction,
+  discardUnsavedLogoAction,
   getBaileysPairingStatusAction,
   saveSettingsAction,
 } from "@/app/(workspace)/settings/actions";
@@ -389,6 +390,13 @@ export function SettingsWorkspace({
   }
 
   function handleDiscard() {
+    // handleLogoUpload already wrote this file to Storage — discarding it here
+    // just resets local state, so without this the upload would sit orphaned
+    // in Storage forever. Best-effort: nothing in the UI depends on it landing.
+    if (state.business.logoUrl && state.business.logoUrl !== savedState.business.logoUrl) {
+      discardUnsavedLogoAction(state.business.logoUrl).catch(() => {});
+    }
+
     setState(savedState);
     setAccount({
       fullName: savedAccount.fullName,
@@ -421,11 +429,19 @@ export function SettingsWorkspace({
 
     setIsLogoUploading(true);
 
+    // Uploading again before saving the last upload abandons that file in
+    // Storage just as much as Discard does — same best-effort cleanup.
+    const previousUnsavedLogoUrl =
+      state.business.logoUrl !== savedState.business.logoUrl ? state.business.logoUrl : null;
+
     try {
       const uploadedLogo = await uploadWorkspaceImage(file, {
         folder: "logos",
         maxBytes: 750_000,
       });
+      if (previousUnsavedLogoUrl) {
+        discardUnsavedLogoAction(previousUnsavedLogoUrl).catch(() => {});
+      }
       setState((current) => ({
         ...current,
         business: {
