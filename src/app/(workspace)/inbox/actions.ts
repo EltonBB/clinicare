@@ -107,7 +107,7 @@ async function hydrateConversation(conversationId: string, businessId: string) {
 }
 
 async function loadInboxView(businessId: string) {
-  const [clients, conversations] = await Promise.all([
+  const [clients, conversations, totalUnreadAggregate] = await Promise.all([
     prisma.client.findMany({
       where: {
         businessId,
@@ -161,11 +161,23 @@ async function loadInboxView(businessId: string) {
       ],
       take: 50,
     }),
+    // Matches the page load's own aggregate (see (workspace)/inbox/page.tsx)
+    // — the conversations list above is capped, so its own unreadCount sum
+    // would undercount once a business has more than that many.
+    prisma.conversation.aggregate({
+      where: {
+        businessId,
+      },
+      _sum: {
+        unreadCount: true,
+      },
+    }),
   ]);
 
   return buildInboxViewFromWorkspace({
     conversations,
     clients,
+    totalUnreadCount: totalUnreadAggregate._sum.unreadCount ?? 0,
   });
 }
 
