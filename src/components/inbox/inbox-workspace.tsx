@@ -83,6 +83,14 @@ function deliveryTone(status?: SettingsState["whatsapp"]["connection"]["status"]
   return "bg-white/14 text-primary-foreground/85";
 }
 
+// A failed preview hydration (openConversation's lazy fetch for an "extra"
+// unread conversation) retries this many times, spaced this far apart,
+// before leaving the operator to recover by reselecting the conversation
+// themselves — bounded so a persistent failure (not a transient blip)
+// doesn't retry forever.
+const MAX_HYDRATION_RETRIES = 3;
+const HYDRATION_RETRY_DELAY_MS = 5000;
+
 // The unread count sitting on conversations beyond the loaded page (older,
 // not recently updated) — the server's business-wide total minus what the
 // loaded conversations already account for.
@@ -252,17 +260,52 @@ export function InboxWorkspace({
     };
   }, []);
 
+  // Fresh retry budget each time a different conversation is selected —
+  // independent of the retry-token effect below, which bumps within the
+  // same selection.
+  const hydrationRetryCountRef = useRef(0);
+  useEffect(() => {
+    hydrationRetryCountRef.current = 0;
+  }, [selectedConversationId]);
+
+  // Bumped by a failed hydration attempt below to trigger a bounded retry —
+  // an otherwise-inert dependency of the effect below.
+  const [hydrationRetryToken, setHydrationRetryToken] = useState(0);
+
   // Hydrates the selected conversation's full thread whenever it's only a
   // 1-message preview (hasFullHistory: false) — covers every way a
   // conversation becomes selected: a sidebar click, the initial load, or a
   // deep link (?conversation=/?client=) landing straight on an old, unread
   // conversation the recency cap left out.
   useEffect(() => {
-    if (!selectedConversationId || selectedConversationHasFullHistory) {
+    if (!selectedConversationId) {
+      return;
+    }
+
+    if (selectedConversationHasFullHistory) {
+      // The conversation can gain full history either from this effect's own
+      // hydrate succeeding below, or from the ordinary "recent" poll picking
+      // it up on its own (e.g. a fresh reply bumped its updatedAt back into
+      // the recency window) — either way, a stale hydration-failure error no
+      // longer applies.
+      setErrorMessage("");
       return;
     }
 
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+    function scheduleRetry() {
+      if (hydrationRetryCountRef.current >= MAX_HYDRATION_RETRIES) {
+        return;
+      }
+      hydrationRetryCountRef.current += 1;
+      retryTimer = setTimeout(() => {
+        if (!cancelled) {
+          setHydrationRetryToken((token) => token + 1);
+        }
+      }, HYDRATION_RETRY_DELAY_MS);
+    }
 
     hydrateConversationAction(selectedConversationId)
       .then((result) => {
@@ -272,15 +315,11 @@ export function InboxWorkspace({
 
         if (!result.ok || !result.conversation) {
           setErrorMessage(result.error ?? "We couldn't load the full conversation history.");
+          scheduleRetry();
           return;
         }
 
         const hydrated = result.conversation;
-        // A retry (the poll interval elapsing while hasFullHistory is still
-        // false re-fires this effect) can succeed after an earlier attempt
-        // failed — clear that stale error instead of leaving it on screen
-        // once the history it complained about has actually loaded.
-        setErrorMessage("");
         // unreadCount deliberately comes from local state, not the hydrate
         // fetch — the optimistic zero on open (or a concurrent mark-read
         // commit) is more current than whatever this read saw.
@@ -302,13 +341,17 @@ export function InboxWorkspace({
       .catch(() => {
         if (!cancelled) {
           setErrorMessage("We couldn't load the full conversation history.");
+          scheduleRetry();
         }
       });
 
     return () => {
       cancelled = true;
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+      }
     };
-  }, [selectedConversationId, selectedConversationHasFullHistory]);
+  }, [selectedConversationId, selectedConversationHasFullHistory, hydrationRetryToken]);
 
   function openConversation(conversationId: string) {
     setSelectedConversationId(conversationId);
