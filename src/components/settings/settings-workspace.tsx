@@ -468,6 +468,29 @@ export function SettingsWorkspace({
     setMessage("WhatsApp connected.");
   }, []);
 
+  // Mirrors markWhatsAppConnected for the in-progress case — without this,
+  // the status card above kept reading whatever state.whatsapp.connection
+  // said before this attempt started: a first-time connect kept showing
+  // "Not connected" while the QR was already up, and "Link a different
+  // device" kept showing a green "Connected" throughout the re-pair even
+  // once the worker had dropped the old session for it.
+  const markWhatsAppStarting = useCallback(() => {
+    const applyStarting = (current: SettingsState): SettingsState => ({
+      ...current,
+      whatsapp: {
+        ...current.whatsapp,
+        connection: {
+          ...current.whatsapp.connection,
+          phase: "STARTING",
+          status: "CONNECTING",
+          statusLabel: "Connecting",
+        },
+      },
+    });
+    setState(applyStarting);
+    setSavedState(applyStarting);
+  }, []);
+
   const pairingPollsRef = useRef(0);
 
   function handleConnectWhatsApp(options?: { force?: boolean }) {
@@ -487,6 +510,8 @@ export function SettingsWorkspace({
       setPairing({ status: result.status, qr: result.qr });
       if (result.status === "connected") {
         markWhatsAppConnected();
+      } else {
+        markWhatsAppStarting();
       }
     });
   }
