@@ -1,6 +1,27 @@
 import { prisma } from "@/lib/prisma";
 import { refreshClientLastVisitAt } from "@/lib/appointments-shared";
 
+// The sweep is throttled to once per 5 minutes per business (see
+// (workspace)/layout.tsx) and only runs when someone navigates the
+// workspace — so a quiet clinic (a multi-day closure, a lull in staff
+// logins) can accumulate a real backlog of newly-due appointments before the
+// next run, not just "however many ended in the last few minutes." Each
+// batch's completion update and its clients' refresh stay one atomic unit —
+// a crash between them is exactly the bug this fix closes — but capping the
+// batch size keeps every individual transaction well clear of Prisma's
+// default 5s interactive-transaction timeout regardless of backlog size.
+const DUE_CLIENT_BATCH_SIZE = 25;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+
+  return chunks;
+}
+
 export async function completePastConfirmedAppointments(businessId: string) {
   const dueWhere = {
     businessId,
@@ -43,22 +64,16 @@ export async function completePastConfirmedAppointments(businessId: string) {
 
   const dueClientIds = new Set(dueClients.map((client) => client.clientId));
 
-  if (dueClientIds.size > 0) {
-    // The completion update and its own clients' refresh stay one atomic
-    // unit — a crash between them is exactly the bug this fix closes. Kept
-    // small and bounded (however many appointments are newly due this
-    // throttled pass), unlike the historical backlog below, so it can't
-    // approach Prisma's default 5s interactive-transaction timeout (no
-    // override is set in lib/prisma.ts).
+  for (const batch of chunk([...dueClientIds], DUE_CLIENT_BATCH_SIZE)) {
     await prisma.$transaction(async (tx) => {
       await tx.appointment.updateMany({
-        where: dueWhere,
+        where: { ...dueWhere, clientId: { in: batch } },
         data: {
           status: "COMPLETED",
         },
       });
 
-      for (const clientId of dueClientIds) {
+      for (const clientId of batch) {
         await refreshClientLastVisitAt(clientId, businessId, tx);
       }
     });
