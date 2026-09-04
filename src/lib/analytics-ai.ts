@@ -1,6 +1,7 @@
 import { Prisma, type AnalyticsSnapshotPeriod } from "@prisma/client";
 
 import {
+  buildKeyMetrics,
   buildReportsViewFromWorkspace,
   chartSignature,
   metricSignature,
@@ -202,6 +203,7 @@ function buildAiPromptPayload(args: {
     },
     currentRuleSnapshot: period.snapshot,
     diagnostics: period.diagnostics,
+    keyMetrics: buildKeyMetrics(period),
     trend: period.chart.points,
     allTimeframes,
     guardrails: {
@@ -225,6 +227,7 @@ function buildAllTimeframesPayload(report: ReturnType<typeof buildReportsViewFro
         comparisonLabel: period.comparisonLabel,
         currentRuleSnapshot: period.snapshot,
         diagnostics: period.diagnostics,
+        keyMetrics: buildKeyMetrics(period),
         trend: period.chart.points,
       };
 
