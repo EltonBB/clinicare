@@ -23,6 +23,7 @@ import {
 import {
   convertConversationToClientAction,
   deleteConversationAction,
+  hydrateConversationAction,
   markConversationReadAction,
   refreshInboxAction,
   sendInboxMessageAction,
@@ -178,19 +179,34 @@ export function InboxWorkspace({
         return;
       }
 
-      setConversations(
-        result.view.conversations.map((conversation) => {
-          if (!locallyReadIdsRef.current.has(conversation.id)) {
-            return conversation;
+      setConversations((current) => {
+        const currentById = new Map(
+          current.map((conversation) => [conversation.id, conversation])
+        );
+
+        return result.view!.conversations.map((conversation) => {
+          const existing = currentById.get(conversation.id);
+          // A conversation already hydrated to full history locally must not
+          // be clobbered back down to a 1-message preview by a poll response
+          // that hasn't caught up yet — e.g. a mark-read that would promote
+          // it into the recency-capped "recent" bucket hasn't committed
+          // server-side by the time this poll ran.
+          const merged =
+            existing?.hasFullHistory && !conversation.hasFullHistory
+              ? { ...conversation, hasFullHistory: true, messages: existing.messages }
+              : conversation;
+
+          if (!locallyReadIdsRef.current.has(merged.id)) {
+            return merged;
           }
-          if (conversation.unreadCount === 0) {
+          if (merged.unreadCount === 0) {
             // The read committed server-side — stop overriding this thread.
-            locallyReadIdsRef.current.delete(conversation.id);
-            return conversation;
+            locallyReadIdsRef.current.delete(merged.id);
+            return merged;
           }
-          return { ...conversation, unreadCount: 0 };
-        })
-      );
+          return { ...merged, unreadCount: 0 };
+        });
+      });
       // From the raw server values (before the locally-read override above),
       // so a pending optimistic mark-as-read on a loaded conversation never
       // throws this off.
@@ -228,6 +244,67 @@ export function InboxWorkspace({
     };
   }, []);
 
+  // Hydrates the selected conversation's full thread whenever it's only a
+  // 1-message preview (hasFullHistory: false) — covers every way a
+  // conversation becomes selected: a sidebar click, the initial load, or a
+  // deep link (?conversation=/?client=) landing straight on an old, unread
+  // conversation the recency cap left out.
+  useEffect(() => {
+    if (!selectedConversationId) {
+      return;
+    }
+
+    const target = conversations.find(
+      (conversation) => conversation.id === selectedConversationId
+    );
+
+    if (!target || target.hasFullHistory) {
+      return;
+    }
+
+    let cancelled = false;
+
+    hydrateConversationAction(selectedConversationId)
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (!result.ok || !result.conversation) {
+          setErrorMessage(result.error ?? "We couldn't load the full conversation history.");
+          return;
+        }
+
+        const hydrated = result.conversation;
+        // unreadCount deliberately comes from local state, not the hydrate
+        // fetch — the optimistic zero on open (or a concurrent mark-read
+        // commit) is more current than whatever this read saw.
+        setConversations((current) =>
+          current.map((conversation) => {
+            if (conversation.id !== selectedConversationId) {
+              return conversation;
+            }
+            if (conversation.hasFullHistory) {
+              // Something else (a send, a convert, or a poll promotion)
+              // already delivered fresher full data — don't stomp it with
+              // this possibly-older read.
+              return conversation;
+            }
+            return { ...hydrated, unreadCount: conversation.unreadCount };
+          })
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setErrorMessage("We couldn't load the full conversation history.");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedConversationId, conversations]);
+
   function openConversation(conversationId: string) {
     setSelectedConversationId(conversationId);
     locallyReadIdsRef.current.add(conversationId);
@@ -238,6 +315,12 @@ export function InboxWorkspace({
           : conversation
       )
     );
+
+    // Hydrating a truncated preview (hasFullHistory: false) is handled by the
+    // effect above, keyed on selectedConversationId — it fires for this click
+    // and for any other way a conversation becomes selected (initial load,
+    // a deep link), so it isn't duplicated here.
+
     startTransition(async () => {
       try {
         const result = await markConversationReadAction(conversationId);

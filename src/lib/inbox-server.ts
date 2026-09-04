@@ -4,58 +4,81 @@ import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 
-// Loaded for display, not the full history — the thread view lazily shows
-// more on scroll (kept in sync with the query in inbox/page.tsx's original
-// shape).
+// How many of the most-recently-updated conversations load eagerly. Kept in
+// sync with the query in inbox/page.tsx's original shape.
 const RECENT_CONVERSATION_LIMIT = 50;
-// A generous but bounded ceiling on how many older, off-screen unread
-// conversations get pulled in alongside the recent list — see
-// fetchInboxConversations below.
-const UNREAD_CONVERSATION_SAFETY_LIMIT = 200;
+// Messages loaded per conversation in that same query — a separate constant
+// from RECENT_CONVERSATION_LIMIT (the conversation-count cap) even though
+// they share a value today, so retuning one can't silently retune the other.
+// There is no further pagination past this: opening a conversation always
+// shows its latest RECENT_MESSAGE_LIMIT messages, never literally every
+// message ever sent.
+export const RECENT_MESSAGE_LIMIT = 50;
+// Just enough for the list-row preview (AGENTS.md: "conversation previews
+// show the newest message") — an "extra" unread entry's full thread is
+// fetched on demand only if the operator actually opens it (see
+// hydrateConversationAction in inbox/actions.ts and hasFullHistory below),
+// so there's no reason to eagerly carry 50 messages for every one of them.
+const UNREAD_PREVIEW_MESSAGE_LIMIT = 1;
+// Not a cap — the unread merge query below is deliberately uncapped (see its
+// own comment). This only logs so an unusually large result stays visible in
+// ops instead of silently paying an ever-growing query cost unnoticed.
+const UNREAD_QUERY_SANITY_THRESHOLD = 200;
 
-const conversationListSelect = {
-  id: true,
-  phoneNumber: true,
-  contactName: true,
-  unreadCount: true,
-  updatedAt: true,
-  messages: {
-    select: {
-      id: true,
-      direction: true,
-      body: true,
-      deliveryStatus: true,
-      sentAt: true,
+export function conversationSelect(messageLimit: number) {
+  return {
+    id: true,
+    phoneNumber: true,
+    contactName: true,
+    unreadCount: true,
+    updatedAt: true,
+    messages: {
+      select: {
+        id: true,
+        direction: true,
+        body: true,
+        deliveryStatus: true,
+        sentAt: true,
+      },
+      orderBy: {
+        sentAt: "desc",
+      },
+      take: messageLimit,
     },
-    orderBy: {
-      sentAt: "desc",
-    },
-    take: 50,
-  },
-} satisfies Prisma.ConversationSelect;
+  } satisfies Prisma.ConversationSelect;
+}
 
 /**
- * The conversation list for both the initial Inbox load and its polling
- * refresh (inbox/page.tsx, inbox/actions.ts's loadInboxView) — kept in one
- * place so both stay in sync.
+ * The conversation list + business-wide unread total for both the initial
+ * Inbox load and its polling refresh (inbox/page.tsx, inbox/actions.ts's
+ * loadInboxView) — kept in one place so both stay in sync, and so callers
+ * don't each run their own copy of the totalUnreadCount aggregate.
  *
  * Recency-capped at RECENT_CONVERSATION_LIMIT for display, but a business
  * with more conversations than that can have an unread one fall outside the
  * cap entirely. The "Unread" filter chip's count reflects the business-wide
- * total (see totalUnreadCount in inbox/page.tsx), so without this, the chip
- * could show a positive — or higher — count than the filter could ever
- * actually display, including an empty "Everything is read" result for a
- * chip that says otherwise (Codex finding). Merging in any unread
- * conversation regardless of recency guarantees every thread the count
- * represents is one the operator can actually open.
+ * total, so without a second query, the chip could show a positive — or
+ * higher — count than the filter could ever actually display, including an
+ * empty "Everything is read" result for a chip that says otherwise (Codex
+ * finding).
+ *
+ * That second query is deliberately NOT capped by count — a numeric ceiling
+ * just moves the same bug to a higher threshold instead of closing it
+ * (Codex's follow-up finding on an earlier version of this fix that used
+ * `take: 200`). It's kept cheap per row instead: each "extra" conversation
+ * only carries its single latest message (UNREAD_PREVIEW_MESSAGE_LIMIT),
+ * tagged `hasFullHistory: false` so the client knows to hydrate the standard
+ * window on open (see openConversation in inbox-workspace.tsx) rather than
+ * rendering a silently-truncated one. It only runs at all when the aggregate
+ * proves `recent` doesn't already account for every unread conversation.
  */
 export async function fetchInboxConversations(businessId: string) {
-  const [recent, unread] = await Promise.all([
+  const [recent, totalUnreadAggregate] = await Promise.all([
     prisma.conversation.findMany({
       where: {
         businessId,
       },
-      select: conversationListSelect,
+      select: conversationSelect(RECENT_MESSAGE_LIMIT),
       orderBy: [
         {
           updatedAt: "desc",
@@ -66,35 +89,57 @@ export async function fetchInboxConversations(businessId: string) {
       ],
       take: RECENT_CONVERSATION_LIMIT,
     }),
-    prisma.conversation.findMany({
+    prisma.conversation.aggregate({
+      where: {
+        businessId,
+      },
+      _sum: {
+        unreadCount: true,
+      },
+    }),
+  ]);
+
+  const totalUnreadCount = totalUnreadAggregate._sum.unreadCount ?? 0;
+  const recentUnreadCount = recent.reduce(
+    (sum, conversation) => sum + conversation.unreadCount,
+    0
+  );
+
+  const byId = new Map(
+    recent.map((conversation) => [conversation.id, { ...conversation, hasFullHistory: true }])
+  );
+
+  // recent already carries every unread conversation there is — the total
+  // can't be any higher without one existing outside it, so skip the merge.
+  if (recentUnreadCount < totalUnreadCount) {
+    const unread = await prisma.conversation.findMany({
       where: {
         businessId,
         unreadCount: { gt: 0 },
       },
-      select: conversationListSelect,
-      orderBy: [
-        {
-          updatedAt: "desc",
-        },
-        {
-          createdAt: "desc",
-        },
-      ],
-      take: UNREAD_CONVERSATION_SAFETY_LIMIT,
-    }),
-  ]);
+      select: conversationSelect(UNREAD_PREVIEW_MESSAGE_LIMIT),
+    });
 
-  const byId = new Map(recent.map((conversation) => [conversation.id, conversation]));
+    if (unread.length > UNREAD_QUERY_SANITY_THRESHOLD) {
+      logger.warn("Inbox unread-conversation merge returned an unusually large result.", {
+        businessId,
+        count: unread.length,
+      });
+    }
 
-  for (const conversation of unread) {
-    if (!byId.has(conversation.id)) {
-      byId.set(conversation.id, conversation);
+    for (const conversation of unread) {
+      if (!byId.has(conversation.id)) {
+        byId.set(conversation.id, { ...conversation, hasFullHistory: false });
+      }
     }
   }
 
-  return Array.from(byId.values()).sort(
-    (left, right) => right.updatedAt.getTime() - left.updatedAt.getTime()
-  );
+  return {
+    conversations: Array.from(byId.values()).sort(
+      (left, right) => right.updatedAt.getTime() - left.updatedAt.getTime()
+    ),
+    totalUnreadCount,
+  };
 }
 
 type SeedClient = {

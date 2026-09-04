@@ -14,7 +14,7 @@ import {
   type InboxConversation,
   type InboxViewModel,
 } from "@/lib/inbox";
-import { fetchInboxConversations } from "@/lib/inbox-server";
+import { conversationSelect, fetchInboxConversations, RECENT_MESSAGE_LIMIT } from "@/lib/inbox-server";
 import { sendMessage } from "@/lib/messaging";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 
@@ -42,6 +42,12 @@ export type RefreshInboxResult = {
   view?: InboxViewModel;
 };
 
+export type HydrateConversationResult = {
+  ok: boolean;
+  error?: string;
+  conversation?: InboxConversation;
+};
+
 export type ConvertConversationToClientResult = {
   ok: boolean;
   error?: string;
@@ -56,59 +62,37 @@ function getAuthedBusiness() {
 }
 
 async function hydrateConversation(conversationId: string, businessId: string) {
-  const [conversation, clients] = await Promise.all([
-    prisma.conversation.findFirstOrThrow({
-      where: {
-        id: conversationId,
-        businessId,
-      },
-      select: {
-        id: true,
-        phoneNumber: true,
-        contactName: true,
-        unreadCount: true,
-        updatedAt: true,
-        messages: {
-          select: {
-            id: true,
-            direction: true,
-            body: true,
-            deliveryStatus: true,
-            sentAt: true,
-          },
-          orderBy: {
-            sentAt: "desc",
-          },
-          take: 50,
-        },
-      },
-    }),
-    prisma.client.findMany({
-      where: {
-        businessId,
-      },
-      select: {
-        id: true,
-        name: true,
-        phone: true,
-      },
-      orderBy: [
-        {
-          updatedAt: "desc",
-        },
-        {
-          createdAt: "desc",
-        },
-      ],
-      take: 150,
-    }),
-  ]);
+  const conversation = await prisma.conversation.findFirstOrThrow({
+    where: {
+      id: conversationId,
+      businessId,
+    },
+    select: conversationSelect(RECENT_MESSAGE_LIMIT),
+  });
 
-  return buildInboxConversation(conversation, clients);
+  // Indexed match on the canonical digit key instead of scanning the whole
+  // client table for one conversation's link (same pattern already used by
+  // sendInboxMessageAction/deleteConversationAction/convertConversationToClientAction).
+  const conversationPhoneKey = phoneLookupKey(conversation.phoneNumber);
+  const matchedClient = conversationPhoneKey
+    ? await prisma.client.findFirst({
+        where: {
+          businessId,
+          phoneKey: conversationPhoneKey,
+        },
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+        },
+      })
+    : null;
+
+  return buildInboxConversation(conversation, matchedClient ? [matchedClient] : []);
 }
 
 async function loadInboxView(businessId: string) {
-  const [clients, conversations, totalUnreadAggregate] = await Promise.all([
+  const [clients, { conversations, totalUnreadCount }] = await Promise.all([
     prisma.client.findMany({
       where: {
         businessId,
@@ -129,23 +113,12 @@ async function loadInboxView(businessId: string) {
       take: 150,
     }),
     fetchInboxConversations(businessId),
-    // Matches the page load's own aggregate (see (workspace)/inbox/page.tsx)
-    // — fetchInboxConversations merges in additionally unread conversations,
-    // but this aggregate is still the source of truth for the total.
-    prisma.conversation.aggregate({
-      where: {
-        businessId,
-      },
-      _sum: {
-        unreadCount: true,
-      },
-    }),
   ]);
 
   return buildInboxViewFromWorkspace({
     conversations,
     clients,
-    totalUnreadCount: totalUnreadAggregate._sum.unreadCount ?? 0,
+    totalUnreadCount,
   });
 }
 
@@ -162,6 +135,30 @@ export async function refreshInboxAction(): Promise<RefreshInboxResult> {
   return {
     ok: true,
     view: await loadInboxView(context.business.id),
+  };
+}
+
+/**
+ * Fetches a conversation's full message thread — used when the operator
+ * opens one that fetchInboxConversations only loaded as an "extra unread"
+ * preview (hasFullHistory: false), so its thread view never renders a
+ * silently-truncated 1-message history.
+ */
+export async function hydrateConversationAction(
+  conversationId: string
+): Promise<HydrateConversationResult> {
+  const context = await getAuthedBusiness();
+
+  if ("error" in context) {
+    return {
+      ok: false,
+      error: context.error,
+    };
+  }
+
+  return {
+    ok: true,
+    conversation: await hydrateConversation(conversationId, context.business.id),
   };
 }
 
