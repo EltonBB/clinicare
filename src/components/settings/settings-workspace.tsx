@@ -1107,7 +1107,7 @@ export function SettingsWorkspace({
                         : whatsappPhase === "STARTING"
                           ? "bg-amber-400"
                           : whatsappPhase === "NEEDS_SUPPORT"
-                            ? "bg-destructive"
+                            ? "bg-amber-500"
                             : "bg-muted-foreground/35"
                     )}
                   />
@@ -1127,7 +1127,7 @@ export function SettingsWorkspace({
                     : whatsappPhase === "STARTING"
                       ? "Finishing the connection — this should only take a moment."
                       : whatsappPhase === "NEEDS_SUPPORT"
-                        ? "Your clinic's WhatsApp lost its connection. Reconnect below, or contact support if this keeps happening."
+                        ? "We had trouble sending a recent WhatsApp message. This usually resolves on its own — reconnect below if it keeps happening, or contact support."
                         : "Link your clinic's WhatsApp by scanning a QR code with the clinic phone — no number setup needed."}
                 </p>
               </div>
