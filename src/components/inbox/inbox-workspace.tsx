@@ -152,6 +152,14 @@ export function InboxWorkspace({
     ) ??
     filteredConversations[0] ??
     conversations.find((conversation) => conversation.id === selectedConversationId);
+  // Looked up against the unfiltered list (not activeConversation, which can
+  // fall through to a different row when the search/unread filter hides the
+  // actual selection) and read as a plain boolean rather than depending on
+  // `conversations` itself — so a poll tick that leaves this specific value
+  // unchanged doesn't restart an in-flight hydration below.
+  const selectedConversationHasFullHistory =
+    conversations.find((conversation) => conversation.id === selectedConversationId)
+      ?.hasFullHistory ?? true;
   const hasClients = clientCount > 0;
   const bookingHref = recommendedClientId
     ? `/calendar/new?client=${recommendedClientId}`
@@ -250,15 +258,7 @@ export function InboxWorkspace({
   // deep link (?conversation=/?client=) landing straight on an old, unread
   // conversation the recency cap left out.
   useEffect(() => {
-    if (!selectedConversationId) {
-      return;
-    }
-
-    const target = conversations.find(
-      (conversation) => conversation.id === selectedConversationId
-    );
-
-    if (!target || target.hasFullHistory) {
+    if (!selectedConversationId || selectedConversationHasFullHistory) {
       return;
     }
 
@@ -276,6 +276,11 @@ export function InboxWorkspace({
         }
 
         const hydrated = result.conversation;
+        // A retry (the poll interval elapsing while hasFullHistory is still
+        // false re-fires this effect) can succeed after an earlier attempt
+        // failed — clear that stale error instead of leaving it on screen
+        // once the history it complained about has actually loaded.
+        setErrorMessage("");
         // unreadCount deliberately comes from local state, not the hydrate
         // fetch — the optimistic zero on open (or a concurrent mark-read
         // commit) is more current than whatever this read saw.
@@ -303,7 +308,7 @@ export function InboxWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [selectedConversationId, conversations]);
+  }, [selectedConversationId, selectedConversationHasFullHistory]);
 
   function openConversation(conversationId: string) {
     setSelectedConversationId(conversationId);
