@@ -394,6 +394,43 @@ describe("saveAppointmentAction — time conflicts", () => {
     );
   });
 
+  it("skips the conflict check when the save's destination status is CANCELLED, even if time also changes", async () => {
+    // Regression for a second gap Codex caught on the same PR: changing the
+    // time WHILE also cancelling doesn't need a free slot at the new time —
+    // a cancelled appointment never occupies one, so there's nothing to
+    // protect. Rejecting this would block a legitimate cancel for no reason.
+    mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_1" });
+    mocks.appointment.findFirst.mockResolvedValueOnce({
+      ...EXISTING,
+      staffMemberId: "staff_1",
+      status: "CONFIRMED",
+    });
+    mocks.appointment.updateMany.mockResolvedValue({ count: 1 });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      ...EXISTING,
+      staffMemberId: "staff_1",
+      client: { id: "client_1", name: "Mira" },
+      staffMember: { id: "staff_1", name: "Dr. Lee" },
+      status: "CANCELLED",
+    });
+
+    const result = await saveAppointmentAction({
+      ...PAYLOAD,
+      staffMemberId: "staff_1",
+      startTime: "09:15",
+      endTime: "09:45",
+      status: "cancelled",
+      baselineStatus: "confirmed",
+    });
+
+    expect(result.ok).toBe(true);
+    // Only the one pre-transaction existing-row read — no overlap check ran
+    // despite staff/time both differing from the existing row.
+    expect(mocks.appointment.findFirst).toHaveBeenCalledTimes(1);
+    expect(mocks.scheduleBlock.findFirst).not.toHaveBeenCalled();
+    expect(mocks.$executeRaw).not.toHaveBeenCalled();
+  });
+
   it("skips the conflict check entirely when the save doesn't touch staff or time", async () => {
     // Only the status changes (e.g. cancelling via the Status dropdown) — the
     // slot itself isn't moving, so an unrelated pre-existing overlap on this

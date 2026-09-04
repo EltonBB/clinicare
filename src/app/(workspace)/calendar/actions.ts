@@ -248,12 +248,19 @@ export async function saveAppointmentAction(
     staffMemberId = staff.id;
   }
 
+  // Computed once, outside the edit-only branch below, so the conflict-check
+  // gate (which applies to both new bookings and edits) can read it: a save
+  // whose DESTINATION status is CANCELLED never needs a free slot, no matter
+  // what else it changes — a cancelled appointment doesn't occupy one (see
+  // hasSchedulingConflict's own exclusion), so there's nothing to protect.
+  const newStatus = toPrismaAppointmentStatus(payload.status);
+
   try {
     let appointmentId = payload.id;
     let shouldResetReminders = false;
     // Whether this save could newly occupy a slot that wasn't occupied
-    // before — different from shouldResetReminders (which also fires on a
-    // client/service-only change with no bearing on conflicts). True when
+    // before, GIVEN that its destination status isn't CANCELLED (that part
+    // is handled by the newStatus check at the call site below). True when
     // staff/start/end actually move, OR when the appointment is being
     // reactivated out of CANCELLED (a cancelled appointment doesn't block
     // other bookings, so something else may have taken the slot in the
@@ -293,16 +300,6 @@ export async function saveAppointmentAction(
 
       previousClientId = existing.clientId;
       previousStaffMemberId = existing.staffMemberId;
-      // existing.status (fresh, just read above) drives the bookkeeping
-      // below — it should describe what's actually in the DB right now, not
-      // what the client's stale form last saw. That's a deliberately
-      // different source than payload.baselineStatus, which the guarded
-      // write further down compares against instead of this fresh read —
-      // see that guard's comment for why. The two are expected to agree
-      // outside of a sub-millisecond window between this read and the
-      // transaction starting.
-      const newStatus = toPrismaAppointmentStatus(payload.status);
-
       // Same rule cancelAppointmentCore enforces for the dedicated Cancel
       // button (409 there) — a completed visit already happened, so flipping
       // it to CANCELLED would corrupt the completion-rate metric and the
@@ -323,7 +320,7 @@ export async function saveAppointmentAction(
         existing.staffMemberId !== staffMemberId ||
         existing.startAt.getTime() !== startAt.getTime() ||
         existing.endAt.getTime() !== endAt.getTime() ||
-        (existing.status === "CANCELLED" && newStatus !== "CANCELLED");
+        existing.status === "CANCELLED";
       shouldResetReminders =
         existing.clientId !== payload.clientId ||
         existing.staffMemberId !== staffMemberId ||
@@ -339,22 +336,23 @@ export async function saveAppointmentAction(
     const txResult = await prisma.$transaction<
       { conflict: true; error: string } | { conflict: false }
     >(async (tx) => {
-      // Only re-validate the slot when this save could newly occupy one —
-      // an edit that leaves staff/time untouched and isn't reactivating a
-      // cancelled appointment (e.g. cancelling via the Status dropdown, or
-      // correcting an auto-complete back to Confirmed — COMPLETED already
-      // occupies its slot same as CONFIRMED, so that transition changes
-      // nothing about who holds it) can't create a new conflict, and
-      // re-checking it anyway would wrongly block the save if some unrelated
-      // pre-existing overlap happens to already exist for this slot (legacy
-      // data, or data from before this check existed) — freeing or leaving a
-      // slot alone should never require the slot to currently be
-      // conflict-free. Un-cancelling back onto an unchanged slot, though,
-      // needs the same check as moving onto a fresh one: CANCELLED is the
-      // one status excluded from "occupies this slot" (see
-      // hasSchedulingConflict), so something else may have taken the slot
-      // while this one sat cancelled.
-      if (!payload.id || needsConflictCheck) {
+      // Only re-validate the slot when this save could newly occupy one.
+      // Never needed when the destination status is CANCELLED — cancelling
+      // (new or edited, whatever else changes alongside it) doesn't occupy a
+      // slot, so blocking it on an unrelated overlap would refuse a save that
+      // was never going to conflict with anything. Otherwise: always check
+      // for a brand-new booking; for an edit, only when it could newly
+      // occupy a slot it didn't already hold — staff/time actually moving,
+      // or reactivating out of CANCELLED (which, like a fresh booking,
+      // doesn't occupy a slot, so something else may have taken it in the
+      // meantime). An edit that leaves staff/time untouched and wasn't
+      // cancelled (e.g. correcting an auto-complete back to Confirmed —
+      // COMPLETED already occupies its slot same as CONFIRMED, so that
+      // transition changes nothing about who holds it) can't create a new
+      // conflict, and re-checking it anyway would wrongly block the save if
+      // some unrelated pre-existing overlap happens to already exist for
+      // this slot (legacy data, or data from before this check existed).
+      if (newStatus !== "CANCELLED" && (!payload.id || needsConflictCheck)) {
         // Must acquire before the read below — this is what actually closes
         // the race between two concurrent saves for the same staff member,
         // not the read itself. See acquireSchedulingLock's own comment.
@@ -405,7 +403,7 @@ export async function saveAppointmentAction(
             startAt,
             endAt,
             notes: payload.notes.trim() || null,
-            status: toPrismaAppointmentStatus(payload.status),
+            status: newStatus,
           },
         });
 
@@ -441,7 +439,7 @@ export async function saveAppointmentAction(
             startAt,
             endAt,
             notes: payload.notes.trim() || null,
-            status: toPrismaAppointmentStatus(payload.status),
+            status: newStatus,
           },
         });
 
