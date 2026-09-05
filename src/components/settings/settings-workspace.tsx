@@ -1366,7 +1366,18 @@ export function SettingsWorkspace({
               ) : (
                 <Button
                   className="h-10 w-full rounded-(--radius-card)"
-                  onClick={() => handleConnectWhatsApp()}
+                  // NEEDS_SUPPORT means the worker socket can still be
+                  // reporting "connected" (the error was a send failure, not
+                  // a disconnect) — a non-forced call is idempotent against
+                  // that live session, so it just reports success and clears
+                  // the warning without restarting or repairing anything,
+                  // and the next send fails identically (Codex P2). Force
+                  // here so this button actually invalidates and re-pairs.
+                  onClick={() =>
+                    handleConnectWhatsApp(
+                      whatsappPhase === "NEEDS_SUPPORT" ? { force: true } : undefined
+                    )
+                  }
                   disabled={isConnecting}
                 >
                   {isConnecting
