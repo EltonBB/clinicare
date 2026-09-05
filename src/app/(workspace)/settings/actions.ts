@@ -363,7 +363,24 @@ export async function connectBaileysWhatsAppAction(options?: {
     // selects CONNECTED/ERRORED rows). Ask the worker directly first.
     const workerState = await fetchBaileysStatus(business.id);
 
-    if (workerState?.status === "connected") {
+    // "connecting"/"qr" are inherently transient, in-flight-only states — the
+    // worker only ever reports either one while a pairing attempt is
+    // genuinely live, so seeing one here proves /pair did land even though
+    // its own HTTP response to us got lost. Let the client keep polling/
+    // showing the QR instead of rolling back an attempt that's still
+    // actually in progress (Codex P2 — the first version of this fix only
+    // handled "connected", discarding these too).
+    if (workerState?.status === "connecting" || workerState?.status === "qr") {
+      return { ok: true, status: workerState.status, qr: await renderQrDataUrl(workerState.qr) };
+    }
+
+    // A forced re-pair specifically asks the worker to invalidate the old
+    // session and start a new one — if /pair's own response was lost,
+    // "connected" here could just be the stale pre-force session the worker
+    // never got a chance to tear down, not proof the new pairing succeeded
+    // (Codex P2). Only trust this shortcut for a non-forced attempt, where
+    // there's no old session for "connected" to ambiguously belong to.
+    if (!options?.force && workerState?.status === "connected") {
       await markWhatsAppConnected(business.id);
       revalidatePath("/inbox");
       revalidatePath("/settings");
@@ -371,11 +388,12 @@ export async function connectBaileysWhatsAppAction(options?: {
     }
 
     // The upsert above optimistically set CONNECTING before this request —
-    // undo it now that the worker itself doesn't report a live session, so
-    // Settings doesn't keep showing "finishing the connection" indefinitely
-    // for an attempt that never actually started. Still scoped to
-    // status: "CONNECTING" so a concurrent webhook that already moved this
-    // row to CONNECTED/ERRORED in the meantime makes this a no-op.
+    // undo it now that the worker doesn't report an in-progress/live session
+    // we can trust, so Settings doesn't keep showing "finishing the
+    // connection" indefinitely for an attempt that never actually started.
+    // Still scoped to status: "CONNECTING" so a concurrent webhook that
+    // already moved this row to CONNECTED/ERRORED in the meantime makes this
+    // a no-op.
     await prisma.whatsAppConnection.updateMany({
       where: { businessId: business.id, status: "CONNECTING" },
       data: { status: "DISCONNECTED" },
