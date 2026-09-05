@@ -289,7 +289,12 @@ export async function saveSettingsAction(
 
 export type BaileysPairingResult =
   | { ok: true; status: WorkerConnectionStatus; qr?: string }
-  | { ok: false; error: string };
+  // `rolledBack` distinguishes a failure that actually reset the persisted
+  // connection (the caller should reflect that locally too) from a preflight
+  // failure — expired session, worker not configured — that never touched
+  // the existing row, where a still-connected clinic's status must be left
+  // alone (Codex P2).
+  | { ok: false; error: string; rolledBack?: boolean };
 
 /** Renders a raw QR payload to a small PNG data URL for the pairing UI. */
 async function renderQrDataUrl(qr?: string): Promise<string | undefined> {
@@ -407,6 +412,7 @@ export async function connectBaileysWhatsAppAction(options?: {
     return {
       ok: false,
       error: "We couldn't start the WhatsApp connection. Please try again.",
+      rolledBack: true,
     };
   }
 

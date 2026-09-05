@@ -620,30 +620,48 @@ export function SettingsWorkspace({
     }
 
     let cancelled = false;
+    // A single transport/session failure here says nothing about the actual
+    // connection — the worker might still be sitting on a perfectly live,
+    // unscanned QR — so a lone failure must never collapse into
+    // markWhatsAppNotStarted() (Codex P2). But leaving it at only that,
+    // with nothing to trigger a second try, meant one timeout indefinitely
+    // parked the panel on "finishing" beside a fully working Connect button
+    // (Codex P2, fresh evidence). Retry a few times, a few seconds apart,
+    // before finally giving up and leaving STARTING for a later reopen or a
+    // fresh Connect attempt to resolve.
+    let attempt = 0;
+    const maxAttempts = 3;
+    const retryDelayMs = 3000;
 
-    getBaileysPairingStatusAction().then((result) => {
-      if (cancelled) {
-        return;
-      }
-      if (!result.ok) {
-        // A transport/session failure here says nothing about the actual
-        // connection — the worker might still be sitting on a perfectly
-        // live, unscanned QR. Collapsing this into markWhatsAppNotStarted()
-        // (Codex P2) hid that active attempt behind a fresh "Connect"
-        // button. Leave the phase at STARTING; reopening Settings (or a
-        // fresh Connect attempt) reconciles it again later.
-        return;
-      }
-      if (result.status === "disconnected") {
-        markWhatsAppNotStarted();
-        return;
-      }
-      if (result.status === "connected") {
-        markWhatsAppConnected();
-        return;
-      }
-      setPairing({ status: result.status, qr: result.qr });
-    });
+    function check() {
+      getBaileysPairingStatusAction().then((result) => {
+        if (cancelled) {
+          return;
+        }
+        if (!result.ok) {
+          attempt += 1;
+          if (attempt < maxAttempts) {
+            setTimeout(() => {
+              if (!cancelled) {
+                check();
+              }
+            }, retryDelayMs);
+          }
+          return;
+        }
+        if (result.status === "disconnected") {
+          markWhatsAppNotStarted();
+          return;
+        }
+        if (result.status === "connected") {
+          markWhatsAppConnected();
+          return;
+        }
+        setPairing({ status: result.status, qr: result.qr });
+      });
+    }
+
+    check();
 
     return () => {
       cancelled = true;
@@ -661,12 +679,15 @@ export function SettingsWorkspace({
       if (!result.ok) {
         setErrorMessage(result.error);
         setMessage("");
-        // The server already rolled the connection row back on this failure
-        // (connectBaileysWhatsAppAction) — reflect that locally too, so a
-        // failed "Link a different device" doesn't keep the status card
-        // claiming the old session (and its reminders/replies) are still
-        // active.
-        markWhatsAppNotStarted();
+        // Only reflect a disconnect locally when the server actually rolled
+        // the row back. A preflight failure (expired session, worker not
+        // configured) never touches an existing CONNECTED row, so an
+        // already-connected clinic clicking "Link a different device" into
+        // one of those must keep showing its still-live connection, not a
+        // false "not connected" (Codex P2).
+        if (result.rolledBack) {
+          markWhatsAppNotStarted();
+        }
         return;
       }
       setErrorMessage("");
