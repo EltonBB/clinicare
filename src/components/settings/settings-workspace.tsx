@@ -57,8 +57,13 @@ type SettingsWorkspaceProps = {
   flashMessage?: string;
   /** "page" renders the full route; "dialog" renders inside the settings popup. */
   variant?: "page" | "dialog";
-  /** Called after a successful save (the dialog uses this to refresh the app shell). */
-  onSaved?: () => void;
+  /**
+   * Called after a successful save (the dialog uses this to refresh the app
+   * shell) with whether the workspace still has unsaved changes — reconciling
+   * a save can preserve a newer in-flight account edit (see handleSave), so
+   * this is not always `false`.
+   */
+  onSaved?: (hasUnsavedChanges: boolean) => void;
   /** Notifies the host (the settings dialog) whenever unsaved edits appear or clear. */
   onDirtyChange?: (dirty: boolean) => void;
   /** Owner account details merged into the Business & account section. */
@@ -300,6 +305,31 @@ export function SettingsWorkspace({
     onDirtyChange?.(hasUnsavedChanges);
   }, [hasUnsavedChanges, onDirtyChange]);
 
+  // onSaved is read via a ref, not as a dependency below, so a prop-identity
+  // change on its own can't re-fire the completion effect.
+  const onSavedRef = useRef(onSaved);
+  onSavedRef.current = onSaved;
+
+  // Bumped once handleSave finishes reconciling account/settings state.
+  // Reported through this tick (rather than calling onSaved directly from
+  // handleSave) so the effect below reads hasUnsavedChanges fresh from the
+  // same render those reconciling setState calls land in — handleSave's own
+  // scope can't see their result, since setState is async. Preserving a
+  // newer in-flight account edit (see handleSave) can leave the workspace
+  // still dirty after a successful save, and the host needs to know that,
+  // not just "saved, so clean now".
+  const [saveCompletionTick, setSaveCompletionTick] = useState(0);
+
+  useEffect(() => {
+    if (saveCompletionTick === 0) {
+      return;
+    }
+    onSavedRef.current?.(hasUnsavedChanges);
+    // Must fire exactly once per completed save (the tick bump), not again
+    // on every later unrelated hasUnsavedChanges change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saveCompletionTick]);
+
   function updateDay(day: WeekdayKey, patch: Partial<(typeof state.workingHours)[WeekdayKey]>) {
     setState((current) => ({
       ...current,
@@ -446,7 +476,7 @@ export function SettingsWorkspace({
       });
       setErrorMessage("");
       setMessage(accountDirty && accountMessage ? accountMessage : "Settings saved.");
-      onSaved?.();
+      setSaveCompletionTick((tick) => tick + 1);
     });
   }
 
