@@ -251,6 +251,44 @@ describe("buildReportsViewFromWorkspace — ScheduleBlock capacity", () => {
     expect(snapshot.rootCauses?.[0]?.severity).toBe("low");
   });
 
+  it("prioritizes the unmeasured-capacity guidance over zero-booking guidance when both apply", () => {
+    // A fully closed period (no open business hours at all that day) with
+    // nothing booked — utilizationRate computes to a plain 0% here (no
+    // sentinel involved), but scheduledCount === 0 also being true meant the
+    // "0 booked appointments... open capacity is the main issue" guidance
+    // fired first, reading as capacity having existed and gone unused,
+    // rather than there having been no open capacity at all (Codex P2,
+    // fresh evidence: the earlier fix only reordered for the
+    // booking-exists-despite-zero-capacity case, not this zero-booking one).
+    const dailyView = buildReportsViewFromWorkspace({
+      business: { name: "Closed Clinic" },
+      appointments: [],
+      clients: [],
+      clientMix: { active: 0, atRisk: 0, inactive: 0, archived: 0 },
+      messages: [],
+      businessHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+        weekday,
+        isOpen: false,
+        startTime: "09:00",
+        endTime: "17:00",
+      })),
+      scheduleBlocks: [],
+      staffMembers: [
+        { id: "s1", name: "Dr. One", role: "Dentist", status: "ACTIVE", isActive: true },
+      ],
+      conversations: [],
+      aiSnapshots: [],
+      now,
+      timeZone: "UTC",
+    });
+
+    const { snapshot } = dailyView.periods.daily;
+
+    expect(snapshot.diagnosis).not.toMatch(/0 booked appointments/i);
+    expect(snapshot.focus).not.toMatch(/create measurable demand/i);
+    expect(snapshot.rootCauses?.[0]?.title).toBe("Utilization can't be measured for this period");
+  });
+
   it("measures blocked capacity in wall-clock minutes, not elapsed time across a DST transition", () => {
     // Europe/Budapest springs forward at 01:00 local on 2026-03-29 — the
     // wall-clock interval 00:00-08:00 that day is only 420 real elapsed

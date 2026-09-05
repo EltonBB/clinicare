@@ -1117,6 +1117,16 @@ function buildStrength(stats: PeriodStats, periodLabel: string) {
 }
 
 function buildWatch(stats: PeriodStats) {
+  // Checked before scheduledCount below — a fully closed/blocked period with
+  // nothing booked still needs this over "0 booked appointments... open
+  // capacity is the main issue", which reads as capacity existing and simply
+  // going unused, not as there having been no open capacity to book into at
+  // all (Codex P2, fresh evidence: the earlier fix only covered a booking
+  // existing despite zero capacity, not the zero-booking case too).
+  if (stats.capacityMinutes <= 0) {
+    return "Estimated utilization can't be measured this period — there's no configured open capacity to compare bookings against (closed hours, or a schedule block covering the window).";
+  }
+
   if (stats.scheduledCount === 0) {
     return `There are 0 booked appointments while utilization is ${formatPercent(stats.utilizationRate)}, so open capacity is the main issue.`;
   }
@@ -1129,15 +1139,6 @@ function buildWatch(stats: PeriodStats) {
     return `Lost-slot pressure is high at ${formatPercent(stats.lostSlotRate)} across ${stats.cancelledCount} cancelled visit${
       stats.cancelledCount === 1 ? "" : "s"
     }. Missed or cancelled visits are the clearest source of preventable leakage.`;
-  }
-
-  // A booking sitting inside a fully-blocked/closed window still forces
-  // utilizationRate to the 999% sentinel (see buildCapacityMinutes) — a
-  // configuration conflict, not a real demand-vs-capacity signal. Must never
-  // read as "near overload" below (Codex P1 — the earlier fix only gated the
-  // delta/comparison arrow, not this narration).
-  if (stats.capacityMinutes <= 0) {
-    return "Estimated utilization can't be measured this period — there's no configured open capacity to compare bookings against (closed hours, or a schedule block covering the window).";
   }
 
   if (stats.utilizationRate < 55) {
@@ -1160,6 +1161,13 @@ function buildWatch(stats: PeriodStats) {
 }
 
 function buildFocus(stats: PeriodStats) {
+  // Checked first — a closed/blocked period with zero bookings still needs
+  // this over "create measurable demand", which implies capacity existed
+  // and simply went unbooked (Codex P2, same class as buildWatch).
+  if (stats.capacityMinutes <= 0) {
+    return "Check business hours and schedule blocks for this period — utilization can't be estimated without real open capacity to compare against.";
+  }
+
   if (stats.scheduledCount === 0) {
     return "Create measurable demand first: book upcoming visits, reactivate existing clients, and fill the next available open slots.";
   }
@@ -1170,10 +1178,6 @@ function buildFocus(stats: PeriodStats) {
 
   if (stats.lostSlotRate > 10) {
     return "Tighten reminders, confirm uncertain appointments earlier, and use the inbox for same-day recovery when a slot is at risk.";
-  }
-
-  if (stats.capacityMinutes <= 0) {
-    return "Check business hours and schedule blocks for this period — utilization can't be estimated without real open capacity to compare against.";
   }
 
   if (stats.utilizationRate < 55 && stats.newClients === 0) {
@@ -1200,6 +1204,19 @@ function buildFocus(stats: PeriodStats) {
 }
 
 function buildPrimaryConstraint(stats: PeriodStats) {
+  // Checked first — a closed/blocked period with zero bookings still needs
+  // this over "no booked demand" (severity high, implying action to
+  // generate demand), when the real constraint is that no capacity ever
+  // existed to book into (Codex P2, same class as buildWatch/buildFocus).
+  if (stats.capacityMinutes <= 0) {
+    return {
+      title: "Utilization can't be measured for this period",
+      metric: "Estimated utilization",
+      value: "Unmeasured",
+      severity: "low" as const,
+    };
+  }
+
   if (stats.scheduledCount === 0) {
     return {
       title: "No booked demand in this timeframe",
@@ -1224,15 +1241,6 @@ function buildPrimaryConstraint(stats: PeriodStats) {
       metric: "Lost-slot rate",
       value: formatPercent(stats.lostSlotRate),
       severity: "high" as const,
-    };
-  }
-
-  if (stats.capacityMinutes <= 0) {
-    return {
-      title: "Utilization can't be measured for this period",
-      metric: "Estimated utilization",
-      value: "Unmeasured",
-      severity: "low" as const,
     };
   }
 
@@ -1281,6 +1289,18 @@ function buildPrimaryConstraint(stats: PeriodStats) {
 }
 
 function buildDynamicPlaybookSteps(stats: PeriodStats) {
+  // Checked first — a closed/blocked period with zero bookings still needs
+  // this over "book at least 1 appointment", which reads as a demand
+  // problem when no capacity ever existed to book into (Codex P2, same
+  // class as buildWatch/buildFocus/buildPrimaryConstraint).
+  if (stats.capacityMinutes <= 0) {
+    return [
+      "Check business hours and schedule blocks for this period before trusting utilization.",
+      "Confirm the closed hours or schedule block covering this window are intentional.",
+      "Re-run this report once real open capacity exists to measure utilization again.",
+    ];
+  }
+
   if (stats.scheduledCount === 0) {
     return [
       `Book at least 1 appointment into the open schedule for this period.`,
@@ -1302,17 +1322,6 @@ function buildDynamicPlaybookSteps(stats: PeriodStats) {
       `Review the ${stats.cancelledCount} cancelled visit${stats.cancelledCount === 1 ? "" : "s"} and identify avoidable causes.`,
       "Send confirmation messages earlier for appointments that look uncertain.",
       "Offer same-day rescheduling when a cancellation frees a slot.",
-    ];
-  }
-
-  // Same sentinel guard as buildWatch/buildFocus/buildPrimaryConstraint —
-  // otherwise this recommended "add staff coverage" for a config artifact,
-  // not a real capacity problem (Codex P1, same class).
-  if (stats.capacityMinutes <= 0) {
-    return [
-      "Check business hours and schedule blocks for this period before trusting utilization.",
-      "Confirm the closed hours or schedule block covering this window are intentional.",
-      "Re-run this report once real open capacity exists to measure utilization again.",
     ];
   }
 
