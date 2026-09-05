@@ -102,6 +102,33 @@ function hiddenUnreadCountFrom(view: Pick<InboxViewModel, "conversations" | "tot
   );
 }
 
+// A conversation already hydrated to full history locally must not be
+// clobbered back down to a 1-message preview by a poll response that
+// hasn't caught up yet — e.g. a mark-read that would promote it into the
+// recency-capped "recent" bucket hasn't committed server-side by the time
+// this poll ran. But if the preview's message isn't one we already have,
+// our local snapshot is stale (a new reply arrived while this conversation
+// stayed outside the recent window) — fall back to the preview's own
+// shape rather than hand-splicing a merged list, so the hydration effect
+// re-fetches the real full thread if this becomes the active conversation.
+function mergeHydratedPreview(
+  existing: InboxViewModel["conversations"][number] | undefined,
+  incoming: InboxViewModel["conversations"][number]
+): InboxViewModel["conversations"][number] {
+  if (!existing?.hasFullHistory || incoming.hasFullHistory) {
+    return incoming;
+  }
+
+  const incomingLatest = incoming.messages[0];
+  const existingLatest = existing.messages[existing.messages.length - 1];
+
+  if (incomingLatest && incomingLatest.id !== existingLatest?.id) {
+    return incoming;
+  }
+
+  return { ...incoming, hasFullHistory: true, messages: existing.messages };
+}
+
 export function InboxWorkspace({
   initialView,
   ownerName,
@@ -201,16 +228,7 @@ export function InboxWorkspace({
         );
 
         return result.view!.conversations.map((conversation) => {
-          const existing = currentById.get(conversation.id);
-          // A conversation already hydrated to full history locally must not
-          // be clobbered back down to a 1-message preview by a poll response
-          // that hasn't caught up yet — e.g. a mark-read that would promote
-          // it into the recency-capped "recent" bucket hasn't committed
-          // server-side by the time this poll ran.
-          const merged =
-            existing?.hasFullHistory && !conversation.hasFullHistory
-              ? { ...conversation, hasFullHistory: true, messages: existing.messages }
-              : conversation;
+          const merged = mergeHydratedPreview(currentById.get(conversation.id), conversation);
 
           if (!locallyReadIdsRef.current.has(merged.id)) {
             return merged;
@@ -320,6 +338,11 @@ export function InboxWorkspace({
         }
 
         const hydrated = result.conversation;
+        // Clear immediately on this success, rather than only relying on the
+        // early-return branch above catching it a render later (it still
+        // does, for the case where a poll — not this fetch — is what
+        // actually resolves hasFullHistory to true).
+        setErrorMessage("");
         // unreadCount deliberately comes from local state, not the hydrate
         // fetch — the optimistic zero on open (or a concurrent mark-read
         // commit) is more current than whatever this read saw.
