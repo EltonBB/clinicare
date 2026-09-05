@@ -86,7 +86,17 @@ export function getStatus(businessId: string): {
     // reconnectTimers entry means a retry is actually coming; a confirmed
     // logout or exhausted-retries give-up always clears it first, so its
     // presence alone safely distinguishes "still retrying" from terminal.
-    return { status: reconnectTimers.has(businessId) ? "connecting" : "disconnected" };
+    //
+    // `starting` covers the other gap: startSession reserves this slot
+    // synchronously (before reconnectTimers is even cleared, and well
+    // before the socket — and so the session entry — actually exists) and
+    // only releases it once the socket is created or startup fails. A slow
+    // credential/version load (or a timed-out first-time /pair still inside
+    // that same work) would otherwise report "disconnected" here too,
+    // fresh evidence beyond the reconnect-timer gap above (Codex P2).
+    return {
+      status: reconnectTimers.has(businessId) || starting.has(businessId) ? "connecting" : "disconnected",
+    };
   }
   return {
     status: session.status,
