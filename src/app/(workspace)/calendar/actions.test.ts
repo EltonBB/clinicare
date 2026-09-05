@@ -328,6 +328,23 @@ describe("saveAppointmentAction — referenced client/staff deleted mid-save", (
   });
 });
 
+describe("saveAppointmentAction — business hours validation", () => {
+  it("rejects a booking on a day with no configured business-hours row, instead of guessing Mon-Fri 9-5 is open", async () => {
+    // PAYLOAD's date (2026-06-01) is a Monday and its 09:00-09:30 window sits
+    // inside 9-5 — exactly the case the old fallback would have wrongly
+    // treated as open when no BusinessHours row exists for that weekday.
+    mocks.businessHours.findUnique.mockResolvedValue(null);
+
+    const result = await saveAppointmentAction(PAYLOAD);
+
+    expect(result).toEqual({
+      ok: false,
+      error: "This appointment is outside your operating hours. Choose a time inside the clinic schedule.",
+    });
+    expect(mocks.appointment.updateMany).not.toHaveBeenCalled();
+  });
+});
+
 describe("saveAppointmentAction — time conflicts", () => {
   const NEW_BOOKING: SaveAppointmentPayload = {
     clientId: "client_1",

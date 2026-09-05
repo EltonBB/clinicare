@@ -87,16 +87,7 @@ type SettingsWorkspaceData = {
   logoDisplayUrl?: string;
 };
 
-function normalizeWorkingHoursFromDatabase(hours: BusinessHours[]): WorkingHoursState {
-  const defaults = weekdayOrder.reduce<WorkingHoursState>((result, day, index) => {
-    result[day] = {
-      enabled: index < 5,
-      start: "09:00",
-      end: "17:00",
-    };
-    return result;
-  }, {} as WorkingHoursState);
-
+export function normalizeWorkingHoursFromDatabase(hours: BusinessHours[]): WorkingHoursState {
   return weekdayOrder.reduce<WorkingHoursState>((result, day, index) => {
     const match = hours.find((item) => item.weekday === index);
     result[day] = match
@@ -105,7 +96,18 @@ function normalizeWorkingHoursFromDatabase(hours: BusinessHours[]): WorkingHours
           start: match.startTime,
           end: match.endTime,
         }
-      : defaults[day];
+      : // No configured row for this weekday means closed, not a guessed
+        // Mon-Fri 9-5 default — matches calendar/actions.ts's
+        // isInsideBusinessHours, reports.ts, and new-appointment-form.tsx's
+        // businessHoursForDate. Settings previously synthesized a missing
+        // row as open, so opening Settings and saving any change silently
+        // recreated it — undoing this exact invariant on every save
+        // (Codex P2).
+        {
+          enabled: false,
+          start: "09:00",
+          end: "17:00",
+        };
     return result;
   }, {} as WorkingHoursState);
 }

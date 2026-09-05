@@ -81,10 +81,13 @@ function businessHoursForDate(date: string, hours: CalendarBusinessHours[]) {
       7
     : 0;
 
+  // No configured row for this weekday means closed, not a guessed Mon-Fri
+  // 9-5 default — matches calendar-workspace.tsx, reports.ts, and the
+  // server-side isInsideBusinessHours validation in calendar/actions.ts.
   return (
     hours.find((item) => item.weekday === weekday) ?? {
       weekday,
-      enabled: weekday < 5,
+      enabled: false,
       start: "09:00",
       end: "17:00",
     }
