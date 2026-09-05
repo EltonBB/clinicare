@@ -4,7 +4,10 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { getSettingsDataAction } from "@/app/(workspace)/settings/actions";
+import {
+  discardUnsavedLogoAction,
+  getSettingsDataAction,
+} from "@/app/(workspace)/settings/actions";
 import {
   Dialog,
   DialogContent,
@@ -43,6 +46,12 @@ export function SettingsDialog({
   const [error, setError] = useState("");
   const [isDirty, setIsDirty] = useState(false);
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  // A logo SettingsWorkspace has already uploaded to Storage but not yet
+  // saved. Closing here (Escape, backdrop, the confirm dialog below) never
+  // mounts through SettingsWorkspace's own handleDiscard, which is the only
+  // other place this same cleanup runs — so closeAndReset has to fire it
+  // directly, or the upload orphans in Storage.
+  const [pendingUnsavedLogoUrl, setPendingUnsavedLogoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -73,9 +82,16 @@ export function SettingsDialog({
   // Reset to the loading state when the dialog closes so the next open always
   // reflects current server state, never a stale snapshot.
   function closeAndReset() {
+    if (pendingUnsavedLogoUrl) {
+      // Best-effort, same as SettingsWorkspace's own handleDiscard — nothing
+      // in the UI depends on it landing.
+      discardUnsavedLogoAction(pendingUnsavedLogoUrl).catch(() => {});
+    }
+
     setState(null);
     setError("");
     setIsDirty(false);
+    setPendingUnsavedLogoUrl(null);
     setConfirmingDiscard(false);
     onOpenChange(false);
   }
@@ -97,6 +113,10 @@ export function SettingsDialog({
 
   const handleDirtyChange = useCallback((dirty: boolean) => {
     setIsDirty(dirty);
+  }, []);
+
+  const handleUnsavedLogoUrlChange = useCallback((url: string | null) => {
+    setPendingUnsavedLogoUrl(url);
   }, []);
 
   return (
@@ -122,6 +142,7 @@ export function SettingsDialog({
               router.refresh();
             }}
             onDirtyChange={handleDirtyChange}
+            onUnsavedLogoUrlChange={handleUnsavedLogoUrlChange}
           />
         ) : (
           <div className="flex flex-1 items-center justify-center px-5 py-16 text-sm text-muted-foreground">

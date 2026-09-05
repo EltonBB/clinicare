@@ -67,6 +67,13 @@ type SettingsWorkspaceProps = {
   onSaved?: (hasUnsavedChanges: boolean) => void;
   /** Notifies the host (the settings dialog) whenever unsaved edits appear or clear. */
   onDirtyChange?: (dirty: boolean) => void;
+  /**
+   * Notifies the host of a logo uploaded to Storage but not yet saved, so it
+   * can run the same orphan cleanup handleDiscard does below when the host's
+   * own close/discard path (Escape, backdrop, its confirm dialog) unmounts
+   * this component without ever calling handleDiscard itself.
+   */
+  onUnsavedLogoUrlChange?: (url: string | null) => void;
   /** Owner account details merged into the Business & account section. */
   ownerName?: string;
   ownerEmail?: string;
@@ -238,6 +245,7 @@ export function SettingsWorkspace({
   variant = "page",
   onSaved,
   onDirtyChange,
+  onUnsavedLogoUrlChange,
   ownerName = "",
   ownerEmail = "",
   ownerPhone = "",
@@ -305,6 +313,14 @@ export function SettingsWorkspace({
   useEffect(() => {
     onDirtyChange?.(hasUnsavedChanges);
   }, [hasUnsavedChanges, onDirtyChange]);
+
+  useEffect(() => {
+    onUnsavedLogoUrlChange?.(
+      state.business.logoUrl && state.business.logoUrl !== savedState.business.logoUrl
+        ? state.business.logoUrl
+        : null
+    );
+  }, [state.business.logoUrl, savedState.business.logoUrl, onUnsavedLogoUrlChange]);
 
   // onSaved is read via a ref, not as a dependency below, so a prop-identity
   // change on its own can't re-fire the completion effect.
