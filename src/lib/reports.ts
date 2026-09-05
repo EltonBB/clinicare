@@ -1091,6 +1091,14 @@ function buildPerformanceSummary(stats: PeriodStats, deltas: {
 }
 
 function buildStrength(stats: PeriodStats, periodLabel: string) {
+  // Checked first — a closed/blocked period with zero bookings still needs
+  // this over "unused capacity", which implies capacity existed and simply
+  // went unbooked (Codex P2, same class as buildWatch/buildFocus/
+  // buildPrimaryConstraint/buildDynamicPlaybookSteps).
+  if (stats.capacityMinutes <= 0) {
+    return `Utilization can't be measured ${periodLabel} — there's no configured open capacity to compare against.`;
+  }
+
   if (stats.scheduledCount === 0) {
     return `There are no booked appointments ${periodLabel}, so the clearest signal is unused capacity rather than visit execution.`;
   }
@@ -1532,26 +1540,39 @@ function buildSnapshot(
     auditLabel: "Generated from current clinic metrics without AI.",
     actions: [
       {
+        // capacityMinutes checked first, same as strength/watch/focus/
+        // primaryConstraint/playbookSteps above — otherwise a closed/blocked
+        // period with zero bookings still rendered "Create booked demand" as
+        // the Next move, recommending demand generation for a period that
+        // never had capacity to book into (Codex P2, fresh evidence: this
+        // action independently re-derives its own condition rather than
+        // reusing the already-corrected strength/focus text).
         title:
-          stats.scheduledCount === 0
-            ? "Create booked demand"
-            : stats.finalizedCount === 0
-              ? "Finalize booked visits"
-              : "Protect the strongest signal",
+          stats.capacityMinutes <= 0
+            ? "Confirm the closed period is intentional"
+            : stats.scheduledCount === 0
+              ? "Create booked demand"
+              : stats.finalizedCount === 0
+                ? "Finalize booked visits"
+                : "Protect the strongest signal",
         detail: strength,
         priority: "medium",
         metric:
-          stats.scheduledCount === 0
-            ? "Appointments"
-            : stats.finalizedCount === 0
-              ? "Finalized visits"
-              : "Completion and utilization",
+          stats.capacityMinutes <= 0
+            ? "Estimated utilization"
+            : stats.scheduledCount === 0
+              ? "Appointments"
+              : stats.finalizedCount === 0
+                ? "Finalized visits"
+                : "Completion and utilization",
         expectedImpact:
-          stats.scheduledCount === 0
-            ? "Creates the visit data needed for the next report to diagnose performance."
-            : stats.finalizedCount === 0
-              ? "Turns booked visits into measurable completion and lost-slot rates."
-              : `Protects the current ${score}/100 performance score by preserving the strongest metric signal.`,
+          stats.capacityMinutes <= 0
+            ? "Confirms the closed hours or schedule block for this period are correct before trusting utilization again."
+            : stats.scheduledCount === 0
+              ? "Creates the visit data needed for the next report to diagnose performance."
+              : stats.finalizedCount === 0
+                ? "Turns booked visits into measurable completion and lost-slot rates."
+                : `Protects the current ${score}/100 performance score by preserving the strongest metric signal.`,
       },
       {
         title: `Work ${primaryConstraint.metric.toLowerCase()}`,

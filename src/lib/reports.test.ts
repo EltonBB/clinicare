@@ -287,6 +287,12 @@ describe("buildReportsViewFromWorkspace — ScheduleBlock capacity", () => {
     expect(snapshot.diagnosis).not.toMatch(/0 booked appointments/i);
     expect(snapshot.focus).not.toMatch(/create measurable demand/i);
     expect(snapshot.rootCauses?.[0]?.title).toBe("Utilization can't be measured for this period");
+    // buildStrength and the rule-based actions[0] independently re-derive
+    // their own scheduledCount === 0 condition rather than reusing the
+    // already-corrected focus/diagnosis text, so they need the same guard
+    // (Codex P2, fresh evidence after the diagnosis/focus/rootCauses fix).
+    expect(snapshot.strength).not.toMatch(/unused capacity/i);
+    expect(snapshot.actions?.[0]?.title).not.toMatch(/create booked demand/i);
   });
 
   it("measures blocked capacity in wall-clock minutes, not elapsed time across a DST transition", () => {
