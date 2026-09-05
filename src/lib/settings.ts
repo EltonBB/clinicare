@@ -24,6 +24,12 @@ import {
 export const defaultReminderTemplate =
   "Hi {client_name}, this is a reminder for your appointment at {time} on {date}. Reply here if you need to reschedule.";
 
+// Matches saveSettingsSchema's z.string().max() in (workspace)/settings/actions.ts —
+// shared so the textarea can't accept input the server will reject as a whole
+// settings save (which would also leave an already-succeeded owner-profile
+// update stranded partway through, see the settings partial-save fix).
+export const REMINDER_TEMPLATE_MAX_LENGTH = 1000;
+
 export type SettingsReminders = {
   twentyFourHour: boolean;
   twoHour: boolean;

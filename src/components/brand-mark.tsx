@@ -10,6 +10,11 @@ type BrandMarkProps = {
   includeSubtitle?: boolean;
   size?: "default" | "lg";
   tone?: "default" | "light";
+  /** Passed through to next/link — leave unset for Next's default behavior.
+   *  Set false where the target route can depend on data that doesn't exist
+   *  yet at render time (e.g. onboarding linking to /dashboard before the
+   *  workspace is created), so a stale prefetched response can't be served. */
+  prefetch?: boolean;
 };
 
 export function BrandMark({
@@ -19,6 +24,7 @@ export function BrandMark({
   includeSubtitle = true,
   size = "default",
   tone = "default",
+  prefetch,
 }: BrandMarkProps) {
   const isLg = size === "lg";
   const isLight = tone === "light";
@@ -26,6 +32,7 @@ export function BrandMark({
   return (
     <Link
       href={href}
+      prefetch={prefetch}
       className={cn(
         "inline-flex items-center gap-2.5 rounded-[0.55rem] text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/40",
         className

@@ -113,8 +113,12 @@ export function SettingsDialog({
             ownerName={ownerName}
             ownerEmail={ownerEmail}
             ownerPhone={ownerPhone}
-            onSaved={() => {
-              setIsDirty(false);
+            onSaved={(stillDirty) => {
+              // Not always false — a save can preserve a newer in-flight
+              // account edit that's still genuinely unsaved (see handleSave
+              // in settings-workspace.tsx), and Escape/backdrop-close needs
+              // to still guard that with the discard confirmation.
+              setIsDirty(stillDirty);
               router.refresh();
             }}
             onDirtyChange={handleDirtyChange}

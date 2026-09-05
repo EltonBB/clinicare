@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AppointmentStatus, MessageDirection } from "@prisma/client";
 
-import { buildReportsViewFromWorkspace } from "@/lib/reports";
+import { buildKeyMetrics, buildReportsViewFromWorkspace } from "@/lib/reports";
 
 // Characterization harness: pins the entire reports view model for a fixed
 // dataset so a future DB-aggregation rewrite of the data layer can prove it
@@ -79,5 +79,24 @@ describe("buildReportsViewFromWorkspace (characterization)", () => {
     expect(view.periods.daily).toBeDefined();
     expect(view.periods.weekly).toBeDefined();
     expect(view.periods.monthly).toBeDefined();
+  });
+});
+
+describe("buildKeyMetrics", () => {
+  it("keeps only the three headline KPIs Reports' own KPI row shows, dropping the display-only helper field", () => {
+    // Codex finding on the OpenAI payload trim: currentRuleSnapshot's prose
+    // only narrates whichever single metric the rule-based narration picked,
+    // silently omitting the others' delta context — this restores just the
+    // three the AI is expected to explain "what changed" for.
+    const keyMetrics = buildKeyMetrics(view.periods.daily);
+
+    expect(keyMetrics.map((metric) => metric.label)).toEqual([
+      "Appointments",
+      "Completion rate",
+      "New clients",
+    ]);
+    for (const metric of keyMetrics) {
+      expect(metric).not.toHaveProperty("helper");
+    }
   });
 });
