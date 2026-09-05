@@ -4,7 +4,7 @@ import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { InboxWorkspace } from "@/components/inbox/inbox-workspace";
 import { buildInboxViewFromWorkspace } from "@/lib/inbox";
 import { buildWhatsAppConnectionSummary } from "@/lib/settings";
-import { ensureConversationForClient } from "@/lib/inbox-server";
+import { ensureConversationForClient, fetchInboxConversations } from "@/lib/inbox-server";
 import { prisma } from "@/lib/prisma";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 
@@ -32,7 +32,7 @@ export default async function InboxPage({
     }
   });
 
-  const [clients, clientCount, conversations, whatsappConnection] = await Promise.all([
+  const [clients, clientCount, { conversations, totalUnreadCount }, whatsappConnection] = await Promise.all([
     prisma.client.findMany({
       where: {
         businessId: business.id,
@@ -57,40 +57,10 @@ export default async function InboxPage({
         businessId: business.id,
       },
     }),
-    prisma.conversation.findMany({
-      where: {
-        businessId: business.id,
-      },
-      select: {
-        id: true,
-        phoneNumber: true,
-        contactName: true,
-        unreadCount: true,
-        updatedAt: true,
-        messages: {
-          select: {
-            id: true,
-            direction: true,
-            body: true,
-            deliveryStatus: true,
-            sentAt: true,
-          },
-          orderBy: {
-            sentAt: "desc",
-          },
-          take: 50,
-        },
-      },
-      orderBy: [
-        {
-          updatedAt: "desc",
-        },
-        {
-          createdAt: "desc",
-        },
-      ],
-      take: 50,
-    }),
+    // Owns the business-wide unread aggregate itself — matches what the
+    // dashboard KPI and sidebar badge already use (see dashboard/page.tsx and
+    // (workspace)/actions.ts's refreshWorkspaceNotificationsAction).
+    fetchInboxConversations(business.id),
     prisma.whatsAppConnection.findUnique({
       where: {
         businessId: business.id,
@@ -100,6 +70,7 @@ export default async function InboxPage({
   const inboxView = buildInboxViewFromWorkspace({
     conversations,
     clients,
+    totalUnreadCount,
   });
   const requestedConversationId =
     typeof conversation === "string" &&

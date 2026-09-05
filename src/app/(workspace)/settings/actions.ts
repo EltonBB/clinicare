@@ -32,6 +32,7 @@ import {
 import { logger } from "@/lib/logger";
 import { normalizeBrandHexColor, resolveBrandAccentPreset } from "@/lib/branding";
 import {
+  REMINDER_TEMPLATE_MAX_LENGTH,
   type SaveSettingsPayload,
   type SettingsState,
 } from "@/lib/settings";
@@ -74,7 +75,9 @@ const saveSettingsSchema = z.object({
     sunday: daySchema,
   }),
   reminders: z.object({
-    template: z.string().max(1000, "Reminder template is too long."),
+    template: z
+      .string()
+      .max(REMINDER_TEMPLATE_MAX_LENGTH, "Reminder template is too long."),
   }),
 });
 
