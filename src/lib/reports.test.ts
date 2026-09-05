@@ -164,6 +164,49 @@ describe("buildReportsViewFromWorkspace — ScheduleBlock capacity", () => {
     // = 20%. A naive sum-of-overlaps bug would instead blocked 4h, giving 25%.
     expect(utilization?.value).toBe("20.0%");
   });
+
+  it("reports maximum utilization instead of a false 0% when a ScheduleBlock covers the entire open window but a booking exists under it", () => {
+    // saveAppointmentAction validates against BusinessHours but never
+    // ScheduleBlock, and a block can also be created after a booking already
+    // exists — so a real booking can legitimately sit inside a block that,
+    // on its own, consumes the day's entire open window. Reporting flat 0%
+    // there (Codex P1) reads as "no capacity was used" when the opposite is
+    // true.
+    const dailyView = buildReportsViewFromWorkspace({
+      business: { name: "Blocked Clinic" },
+      appointments: [appt(0, 10, "COMPLETED", 60, "s1")],
+      clients: [],
+      clientMix: { active: 0, atRisk: 0, inactive: 0, archived: 0 },
+      messages: [],
+      businessHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+        weekday,
+        isOpen: weekday >= 1 && weekday <= 5,
+        startTime: "09:00",
+        endTime: "17:00",
+      })),
+      // Covers the entire 09:00-17:00 open window — capacity for the day is
+      // fully subtracted to 0, even though the booking above still exists.
+      scheduleBlocks: [
+        {
+          startsAt: new Date(now.getTime() - 3 * 3_600_000), // today 09:00Z
+          endsAt: new Date(now.getTime() + 5 * 3_600_000), // today 17:00Z
+        },
+      ],
+      staffMembers: [
+        { id: "s1", name: "Dr. One", role: "Dentist", status: "ACTIVE", isActive: true },
+      ],
+      conversations: [],
+      aiSnapshots: [],
+      now,
+      timeZone: "UTC",
+    });
+
+    const utilization = dailyView.periods.daily.metrics.find(
+      (metric) => metric.label === "Estimated utilization"
+    );
+
+    expect(utilization?.value).toBe("999.0%");
+  });
 });
 
 describe("buildKeyMetrics", () => {

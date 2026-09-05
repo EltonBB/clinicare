@@ -145,7 +145,17 @@ function expandScheduleBlockDays(
   // For a same-day block (the common case) this is 0 and the loop below
   // produces exactly one entry, first === last day, with the real start/end
   // times — no separate same-day branch needed.
-  const dayCount = zonedCalendarDaysBetween(block.startsAt, block.endsAt);
+  const rawDayCount = zonedCalendarDaysBetween(block.startsAt, block.endsAt);
+  const endsAtMidnight = formatZonedTime24(block.endsAt) === "00:00";
+  // An end of exactly midnight is the normal end-exclusive way to represent
+  // "blocked through the end of the previous day" — that instant belongs to
+  // the next calendar day but blocks none of it. Without this, the loop
+  // below emitted an extra {date: nextDay, startTime: "00:00", endTime:
+  // "00:00"} entry for it: a zero-duration segment BlockCard still renders
+  // (its minimum height applies regardless of duration) and the month
+  // view/day rail still list, falsely marking a fully open day as blocked
+  // (Codex P2).
+  const dayCount = endsAtMidnight && rawDayCount > 0 ? rawDayCount - 1 : rawDayCount;
   const startParts = getZonedDateParts(block.startsAt);
 
   return Array.from({ length: dayCount + 1 }, (_, index) => {
@@ -158,7 +168,11 @@ function expandScheduleBlockDays(
       title: block.title,
       date: `${dayParts.year}-${String(dayParts.month).padStart(2, "0")}-${String(dayParts.day).padStart(2, "0")}`,
       startTime: isFirstDay ? formatZonedTime24(block.startsAt) : "00:00",
-      endTime: isLastDay ? formatZonedTime24(block.endsAt) : "23:59",
+      // The dropped terminal day above means the new last day's own nominal
+      // end is midnight too whenever endsAtMidnight — but that day is genuinely
+      // blocked through its close, so render "23:59" (same as any other
+      // non-final continuation day), not the literal (misleading) "00:00".
+      endTime: isLastDay ? (endsAtMidnight ? "23:59" : formatZonedTime24(block.endsAt)) : "23:59",
       notes: block.reason ?? "",
     };
   });

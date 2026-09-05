@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { buildCalendarViewFromRecords } from "@/lib/calendar";
-import { formatZonedDateKey, formatZonedTime24 } from "@/lib/time-zone";
+import {
+  addZonedDays,
+  formatZonedDateKey,
+  formatZonedTime24,
+  getAppTimeZone,
+  getZonedDateParts,
+  zonedDateTimeToUtc,
+} from "@/lib/time-zone";
 
 const BUSINESS_HOURS = [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
   weekday,
@@ -83,5 +90,47 @@ describe("buildCalendarViewFromRecords — ScheduleBlock day expansion", () => {
     // strings sort chronologically), regardless of which day they land on.
     expect(first.date < middle.date).toBe(true);
     expect(middle.date < last.date).toBe(true);
+  });
+
+  it("omits the exclusive terminal day when a multi-day block ends exactly at midnight", () => {
+    // The normal end-exclusive way to represent "blocked through the end of
+    // the second day" — before this fix, the loop still emitted a third,
+    // zero-duration {date: thirdDay, startTime: "00:00", endTime: "00:00"}
+    // entry for the instant itself, which BlockCard's minimum-height
+    // rendering and the month view/day rail both still showed as a blocked
+    // third day, even though nothing on it is actually closed.
+    const startsAt = new Date("2026-12-24T20:00:00.000Z");
+    const timeZone = getAppTimeZone();
+    const startDayParts = getZonedDateParts(startsAt, timeZone);
+    const secondDayParts = addZonedDays(startDayParts, 1);
+    const endsAt = zonedDateTimeToUtc({
+      ...addZonedDays(startDayParts, 2),
+      hour: 0,
+      minute: 0,
+      timeZone,
+    });
+    const view = buildCalendarViewFromRecords({
+      appointments: [],
+      scheduleBlocks: [scheduleBlock({ startsAt, endsAt, title: "Holiday closure" })],
+      staffMembers: [],
+      businessHours: BUSINESS_HOURS,
+      ownerName: "Owner",
+    });
+
+    expect(view.scheduleBlocks).toHaveLength(2);
+    const [first, last] = view.scheduleBlocks;
+
+    expect(first.date).toBe(formatZonedDateKey(startsAt));
+    expect(first.startTime).toBe(formatZonedTime24(startsAt));
+    expect(first.endTime).toBe("23:59");
+
+    // The real last day of the closure, not the exclusive endpoint day —
+    // rendered through end of day, not the literal (misleading) "00:00" the
+    // block's raw endsAt would otherwise produce.
+    expect(last.date).toBe(
+      `${secondDayParts.year}-${String(secondDayParts.month).padStart(2, "0")}-${String(secondDayParts.day).padStart(2, "0")}`
+    );
+    expect(last.startTime).toBe("00:00");
+    expect(last.endTime).toBe("23:59");
   });
 });

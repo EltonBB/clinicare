@@ -790,8 +790,19 @@ function buildPeriodStats(args: {
         ? (cancelledAppointments.length / finalizedAppointments.length) * 100
         : 0,
     capacityMinutes,
+    // A ScheduleBlock can drive a day's capacity to exactly 0 while a real
+    // booking still exists under it — saveAppointmentAction validates against
+    // BusinessHours but never ScheduleBlock, and a block can also be created
+    // after the booking. Reporting flat 0% there (Codex P1) reads as "no
+    // capacity was used" when the opposite is true; treat it the same as any
+    // other over-capacity case (already reachable and already capped at 999,
+    // not a new class of value this introduces).
     utilizationRate:
-      capacityMinutes > 0 ? Math.min((bookedMinutes / capacityMinutes) * 100, 999) : 0,
+      capacityMinutes > 0
+        ? Math.min((bookedMinutes / capacityMinutes) * 100, 999)
+        : bookedMinutes > 0
+          ? 999
+          : 0,
     newClients: scopedClients.length,
     repeatVisitRate:
       distinctCompletedClients > 0 ? (repeatClients / distinctCompletedClients) * 100 : 0,

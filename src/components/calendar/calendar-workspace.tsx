@@ -105,15 +105,31 @@ function monthDays(activeDate: Date) {
   });
 }
 
+// The visible grid only ever renders slotHours[0]:00 through
+// (slotHours[last]+1):00 — a continuation ScheduleBlock segment can carry a
+// startTime/endTime well outside that (e.g. "00:00" for every day after a
+// multi-day block's first). Clipping both ends to the grid here, not just
+// the start, is what keeps a block that ends mid-day from rendering with the
+// height of its full (mostly invisible, before-the-grid) nominal duration —
+// previously only the start was clamped, so the visible block could overlay
+// hours past its real end and intercept clicks on open slots (Codex P2).
+const gridStartMinutes = slotHours[0] * 60;
+const gridEndMinutes = (slotHours[slotHours.length - 1] + 1) * 60;
+
+function clipMinutesToGrid(minutes: number) {
+  return Math.min(Math.max(minutes, gridStartMinutes), gridEndMinutes);
+}
+
 function appointmentHeight(startTime: string, endTime: string) {
-  const duration = Math.max(timeToMinutes(endTime) - timeToMinutes(startTime), 30);
+  const start = clipMinutesToGrid(timeToMinutes(startTime));
+  const end = clipMinutesToGrid(timeToMinutes(endTime));
+  const duration = Math.max(end - start, 30);
   return `${Math.max((duration / 60) * hourRowHeight, 42)}px`;
 }
 
 function appointmentOffset(startTime: string) {
-  const firstMinute = slotHours[0] * 60;
-  const startMinute = timeToMinutes(startTime);
-  return `${Math.max(((startMinute - firstMinute) / 60) * hourRowHeight, 0)}px`;
+  const start = clipMinutesToGrid(timeToMinutes(startTime));
+  return `${Math.max(((start - gridStartMinutes) / 60) * hourRowHeight, 0)}px`;
 }
 
 function dayCapacityMinutes(
