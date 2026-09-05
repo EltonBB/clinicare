@@ -113,6 +113,21 @@ export type AppointmentMutationOutcome =
  * caller needs — the mobile API additionally scopes by staffMemberId so a
  * doctor can only cancel their own appointments; the web admin action scopes
  * by business only.
+ *
+ * Investigated 2026-09-04: a report of "duplicate cancellation notifications"
+ * for one appointment turned out not to be a bug here. The CAS guard above
+ * makes `changed: true` mathematically impossible to return twice for one
+ * continuous CANCELLED state — a second `changed: true` for the same row
+ * requires an intervening write that moves status OFF CANCELLED first. The
+ * flagged incident's own data confirmed exactly that: each of the two
+ * "Cancellation sent" mobile notifications was immediately preceded (within
+ * ~1 minute) by a "Schedule updated" notification from saveAppointmentAction's
+ * shouldResetReminders branch — i.e. the appointment was reactivated via the
+ * web calendar shortly before each mobile cancel, making both cancellations
+ * genuine, independent events rather than one event double-reported. Every
+ * caller of this function (cancelAppointmentAction, cancelOwnAppointment)
+ * already gates its own notification on `outcome.changed`, so a truly
+ * redundant re-cancel of an unchanged CANCELLED row is provably silent.
  */
 export async function cancelAppointmentCore(where: {
   id: string;

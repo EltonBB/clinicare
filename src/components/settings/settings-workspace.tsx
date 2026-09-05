@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 import { isStorageReference } from "@/lib/media-storage";
 import { safeUploadErrorMessage, uploadWorkspaceImage } from "@/lib/media-storage-client";
 import {
+  REMINDER_TEMPLATE_MAX_LENGTH,
   timeOptions,
   weekdayLabels,
   type SaveSettingsPayload,
@@ -56,8 +57,13 @@ type SettingsWorkspaceProps = {
   flashMessage?: string;
   /** "page" renders the full route; "dialog" renders inside the settings popup. */
   variant?: "page" | "dialog";
-  /** Called after a successful save (the dialog uses this to refresh the app shell). */
-  onSaved?: () => void;
+  /**
+   * Called after a successful save (the dialog uses this to refresh the app
+   * shell) with whether the workspace still has unsaved changes — reconciling
+   * a save can preserve a newer in-flight account edit (see handleSave), so
+   * this is not always `false`.
+   */
+  onSaved?: (hasUnsavedChanges: boolean) => void;
   /** Notifies the host (the settings dialog) whenever unsaved edits appear or clear. */
   onDirtyChange?: (dirty: boolean) => void;
   /** Owner account details merged into the Business & account section. */
@@ -299,6 +305,31 @@ export function SettingsWorkspace({
     onDirtyChange?.(hasUnsavedChanges);
   }, [hasUnsavedChanges, onDirtyChange]);
 
+  // onSaved is read via a ref, not as a dependency below, so a prop-identity
+  // change on its own can't re-fire the completion effect.
+  const onSavedRef = useRef(onSaved);
+  onSavedRef.current = onSaved;
+
+  // Bumped once handleSave finishes reconciling account/settings state.
+  // Reported through this tick (rather than calling onSaved directly from
+  // handleSave) so the effect below reads hasUnsavedChanges fresh from the
+  // same render those reconciling setState calls land in — handleSave's own
+  // scope can't see their result, since setState is async. Preserving a
+  // newer in-flight account edit (see handleSave) can leave the workspace
+  // still dirty after a successful save, and the host needs to know that,
+  // not just "saved, so clean now".
+  const [saveCompletionTick, setSaveCompletionTick] = useState(0);
+
+  useEffect(() => {
+    if (saveCompletionTick === 0) {
+      return;
+    }
+    onSavedRef.current?.(hasUnsavedChanges);
+    // Must fire exactly once per completed save (the tick bump), not again
+    // on every later unrelated hasUnsavedChanges change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saveCompletionTick]);
+
   function updateDay(day: WeekdayKey, patch: Partial<(typeof state.workingHours)[WeekdayKey]>) {
     setState((current) => ({
       ...current,
@@ -320,18 +351,34 @@ export function SettingsWorkspace({
     }
 
     startSaving(async () => {
+      // The account inputs stay editable while this save is in flight (no
+      // field-level disabling here), so the operator can keep typing into
+      // email/password across either await below. Snapshot exactly what's
+      // being submitted now — the two reconciliation points further down
+      // compare against this, not against whatever `account` holds by the
+      // time they run, so a newer in-progress edit never gets silently
+      // discarded by a save that started before it was typed.
+      const submittedAccount = {
+        fullName: account.fullName,
+        email: account.email,
+        phone: account.phone,
+        currentPassword: account.currentPassword,
+        newPassword: account.newPassword,
+        confirmPassword: account.confirmPassword,
+      };
+
       // Owner account (name, login email, phone, password) saves through the
       // auth profile action — only touch it when those fields actually changed
       // so a routine settings save never re-submits credentials.
       let accountMessage = "";
       if (accountDirty) {
         const profileData = new FormData();
-        profileData.set("fullName", account.fullName);
-        profileData.set("email", account.email);
-        profileData.set("phone", account.phone);
-        profileData.set("currentPassword", account.currentPassword);
-        profileData.set("newPassword", account.newPassword);
-        profileData.set("confirmPassword", account.confirmPassword);
+        profileData.set("fullName", submittedAccount.fullName);
+        profileData.set("email", submittedAccount.email);
+        profileData.set("phone", submittedAccount.phone);
+        profileData.set("currentPassword", submittedAccount.currentPassword);
+        profileData.set("newPassword", submittedAccount.newPassword);
+        profileData.set("confirmPassword", submittedAccount.confirmPassword);
 
         const profileResult = await updateOwnerProfileAction({}, profileData);
 
@@ -342,6 +389,34 @@ export function SettingsWorkspace({
         }
 
         accountMessage = profileResult.success ?? "";
+
+        // The profile update (including any password change) is already
+        // persisted server-side at this point. Reflect that in UI state
+        // immediately, independent of whether the settings save below also
+        // succeeds — otherwise a failure there would leave stale password
+        // fields on screen and a savedAccount mismatch that re-submits an
+        // already-changed password (against its now-stale currentPassword)
+        // on the next save attempt. Only clear a field if it still holds
+        // exactly what was submitted — if the operator retyped it while this
+        // await was in flight, leave their newer edit alone.
+        setAccount((current) => ({
+          ...current,
+          currentPassword:
+            current.currentPassword === submittedAccount.currentPassword
+              ? ""
+              : current.currentPassword,
+          newPassword:
+            current.newPassword === submittedAccount.newPassword ? "" : current.newPassword,
+          confirmPassword:
+            current.confirmPassword === submittedAccount.confirmPassword
+              ? ""
+              : current.confirmPassword,
+        }));
+        setSavedAccount({
+          fullName: submittedAccount.fullName,
+          email: submittedAccount.email,
+          phone: submittedAccount.phone,
+        });
       }
 
       // Submit only the editable subset — derived/display fields stay server-owned.
@@ -349,7 +424,7 @@ export function SettingsWorkspace({
         business: {
           businessName: state.business.businessName,
           businessType: state.business.businessType,
-          ownerName: account.fullName,
+          ownerName: submittedAccount.fullName,
           logoUrl: state.business.logoUrl,
         },
         appearance: state.appearance,
@@ -373,18 +448,35 @@ export function SettingsWorkspace({
       setSavedState(result.state);
       setAccount((current) => ({
         ...current,
-        currentPassword: "",
-        newPassword: "",
-        confirmPassword: "",
+        // A changed email needs inbox confirmation before it's actually
+        // active — keep the field showing the still-confirmed old address
+        // rather than the just-submitted one, so it doesn't silently claim
+        // the change already took effect. The success message below already
+        // says to check the inbox; reopening Settings later re-fetches
+        // whatever the real (by then possibly confirmed) address is. Only
+        // when the field still holds exactly what this save submitted —
+        // if the operator retyped the email while this second await was in
+        // flight, their newer edit stays and simply shows as unsaved again.
+        email: current.email === submittedAccount.email ? savedAccount.email : current.email,
+        currentPassword:
+          current.currentPassword === submittedAccount.currentPassword
+            ? ""
+            : current.currentPassword,
+        newPassword:
+          current.newPassword === submittedAccount.newPassword ? "" : current.newPassword,
+        confirmPassword:
+          current.confirmPassword === submittedAccount.confirmPassword
+            ? ""
+            : current.confirmPassword,
       }));
       setSavedAccount({
-        fullName: account.fullName,
-        email: account.email,
-        phone: account.phone,
+        fullName: submittedAccount.fullName,
+        email: savedAccount.email,
+        phone: submittedAccount.phone,
       });
       setErrorMessage("");
       setMessage(accountDirty && accountMessage ? accountMessage : "Settings saved.");
-      onSaved?.();
+      setSaveCompletionTick((tick) => tick + 1);
     });
   }
 
@@ -1080,10 +1172,12 @@ export function SettingsWorkspace({
                       },
                     }))
                   }
+                  maxLength={REMINDER_TEMPLATE_MAX_LENGTH}
                   className="min-h-[128px] rounded-(--radius-card) bg-white px-3 py-2"
                 />
                 <p className="text-xs text-muted-foreground">
-                  {"{client_name}"}, {"{time}"}, and {"{date}"} are replaced automatically.
+                  {"{client_name}"}, {"{time}"}, and {"{date}"} are replaced automatically. (
+                  {state.reminders.template.length}/{REMINDER_TEMPLATE_MAX_LENGTH})
                 </p>
               </div>
             </div>
