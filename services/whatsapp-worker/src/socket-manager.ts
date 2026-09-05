@@ -78,7 +78,15 @@ export function getStatus(businessId: string): {
 } {
   const session = sessions.get(businessId);
   if (!session) {
-    return { status: "disconnected" };
+    // A non-logout close deletes the session and schedules an automatic
+    // reconnect (see scheduleReconnect) for the whole backoff window before
+    // the retry fires — reporting "disconnected" here would tell the app a
+    // still-retrying attempt failed outright, causing Settings to stop
+    // polling and hide the forthcoming QR mid-connect (Codex P2). A pending
+    // reconnectTimers entry means a retry is actually coming; a confirmed
+    // logout or exhausted-retries give-up always clears it first, so its
+    // presence alone safely distinguishes "still retrying" from terminal.
+    return { status: reconnectTimers.has(businessId) ? "connecting" : "disconnected" };
   }
   return {
     status: session.status,
