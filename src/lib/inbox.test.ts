@@ -50,4 +50,26 @@ describe("buildInboxViewFromWorkspace", () => {
 
     expect(view.totalUnreadCount).toBe(9);
   });
+
+  it("defaults hasFullHistory to true when the record omits it", () => {
+    // hydrateConversation (inbox/actions.ts) always fetches the standard
+    // window and never sets this field — only fetchInboxConversations's
+    // "extra unread" rows set it explicitly to false.
+    const view = buildInboxViewFromWorkspace({
+      conversations: [
+        {
+          id: "c1",
+          phoneNumber: "+15551234567",
+          contactName: "Mira",
+          unreadCount: 0,
+          updatedAt: new Date("2026-06-23T10:00:00.000Z"),
+          messages: [],
+        },
+      ],
+      clients: [],
+      totalUnreadCount: 0,
+    });
+
+    expect(view.conversations[0]?.hasFullHistory).toBe(true);
+  });
 });
