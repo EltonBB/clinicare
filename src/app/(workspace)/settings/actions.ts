@@ -469,6 +469,19 @@ export async function getBaileysPairingStatusAction(): Promise<BaileysPairingRes
   if (state.status === "connected") {
     await markWhatsAppConnected(business.id);
     revalidatePath("/inbox");
+  } else if (state.status === "disconnected") {
+    // The worker's own confirmation that pairing never completed / the
+    // session dropped — persist it, or the row stays CONNECTING and every
+    // later page load, save, or revalidation resurrects the misleading
+    // "Finishing the connection" phase even though the client already
+    // reconciled itself to not-started (Codex P2). Scoped to CONNECTING,
+    // same as connectBaileysWhatsAppAction's own rollback, so a concurrent
+    // webhook that already moved this row to CONNECTED/ERRORED is a no-op.
+    await prisma.whatsAppConnection.updateMany({
+      where: { businessId: business.id, status: "CONNECTING" },
+      data: { status: "DISCONNECTED" },
+    });
+    revalidatePath("/settings");
   }
 
   return { ok: true, status: state.status, qr: await renderQrDataUrl(state.qr) };
