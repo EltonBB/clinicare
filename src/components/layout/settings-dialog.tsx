@@ -52,6 +52,12 @@ export function SettingsDialog({
   // other place this same cleanup runs — so closeAndReset has to fire it
   // directly, or the upload orphans in Storage.
   const [pendingUnsavedLogoUrl, setPendingUnsavedLogoUrl] = useState<string | null>(null);
+  // Neither isDirty nor pendingUnsavedLogoUrl update until the upload
+  // resolves and state.business.logoUrl actually changes — so a close
+  // attempt in the window while it's still running would otherwise see
+  // nothing to protect and unmount this tree out from under it, orphaning
+  // the upload with no cleanup ever queued (Codex P2).
+  const [isLogoUploading, setIsLogoUploading] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -98,6 +104,13 @@ export function SettingsDialog({
 
   function handleOpenChange(next: boolean) {
     if (!next) {
+      // Refuse to close while a logo upload is still running — there's
+      // nothing yet for isDirty/pendingUnsavedLogoUrl to catch below, but
+      // unmounting now would still orphan the upload once it resolves.
+      if (isLogoUploading) {
+        return;
+      }
+
       // Guard against losing in-progress edits to an accidental Esc/backdrop
       // close — ask instead of silently discarding.
       if (isDirty) {
@@ -117,6 +130,10 @@ export function SettingsDialog({
 
   const handleUnsavedLogoUrlChange = useCallback((url: string | null) => {
     setPendingUnsavedLogoUrl(url);
+  }, []);
+
+  const handleLogoUploadingChange = useCallback((uploading: boolean) => {
+    setIsLogoUploading(uploading);
   }, []);
 
   return (
@@ -143,6 +160,7 @@ export function SettingsDialog({
             }}
             onDirtyChange={handleDirtyChange}
             onUnsavedLogoUrlChange={handleUnsavedLogoUrlChange}
+            onLogoUploadingChange={handleLogoUploadingChange}
           />
         ) : (
           <div className="flex flex-1 items-center justify-center px-5 py-16 text-sm text-muted-foreground">

@@ -343,9 +343,15 @@ export async function discardUnsavedLogoAction(uploadedLogoUrl: string): Promise
     // processPendingStorageCleanupRow for why a crafted value's segments
     // can't be assumed safe (could be arbitrary text, including a patient
     // name). Only log values already independently verified safe to show.
-    logger.error(
+    //
+    // logger.warn, not .error — this action is called from a client
+    // component, so its argument is untrusted input, and rejecting it is
+    // expected, not exceptional. logger.error forwards to Sentry, so any
+    // signed-in caller could otherwise page production alerts for free by
+    // repeatedly submitting a bad reference (Codex P2). Reserve .error for
+    // an actual invariant failure.
+    logger.warn(
       "discardUnsavedLogoAction received a candidate outside the logos/ folder — dropped without queueing.",
-      undefined,
       {
         businessId: business.id,
         foundOwnerId: ownerId && OWNER_ID_SHAPE.test(ownerId) ? ownerId : "<non-uuid>",

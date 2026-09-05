@@ -74,6 +74,15 @@ type SettingsWorkspaceProps = {
    * this component without ever calling handleDiscard itself.
    */
   onUnsavedLogoUrlChange?: (url: string | null) => void;
+  /**
+   * Notifies the host while a logo upload is still in flight — before it
+   * resolves, `state.business.logoUrl` (and so `onUnsavedLogoUrlChange`)
+   * hasn't changed yet, so without this signal the host's close path sees
+   * nothing to protect and unmounts this component out from under the
+   * still-running upload, orphaning it with no cleanup ever queued (Codex
+   * P2).
+   */
+  onLogoUploadingChange?: (uploading: boolean) => void;
   /** Owner account details merged into the Business & account section. */
   ownerName?: string;
   ownerEmail?: string;
@@ -246,6 +255,7 @@ export function SettingsWorkspace({
   onSaved,
   onDirtyChange,
   onUnsavedLogoUrlChange,
+  onLogoUploadingChange,
   ownerName = "",
   ownerEmail = "",
   ownerPhone = "",
@@ -321,6 +331,10 @@ export function SettingsWorkspace({
         : null
     );
   }, [state.business.logoUrl, savedState.business.logoUrl, onUnsavedLogoUrlChange]);
+
+  useEffect(() => {
+    onLogoUploadingChange?.(isLogoUploading);
+  }, [isLogoUploading, onLogoUploadingChange]);
 
   // onSaved is read via a ref, not as a dependency below, so a prop-identity
   // change on its own can't re-fire the completion effect.
@@ -734,7 +748,13 @@ export function SettingsWorkspace({
           <div className="mt-auto space-y-2 border-t border-border/70 p-2 pt-3">
             <Button
               className="h-10 w-full rounded-(--radius-card)"
-              disabled={isPending}
+              // Also blocked mid-upload — saving the not-yet-resolved logo
+              // URL here, then starting a second upload once this save
+              // completes, is exactly the ordering that let a discard
+              // queued against a stale pre-save logoUrl delete the logo a
+              // save had just committed (Codex P2). Keeping upload and save
+              // mutually exclusive removes the overlap entirely.
+              disabled={isPending || isLogoUploading}
               onClick={handleSave}
             >
               {isPending ? "Saving..." : "Save changes"}
@@ -859,7 +879,9 @@ export function SettingsWorkspace({
                     <input
                       type="file"
                       accept="image/*"
-                      disabled={isLogoUploading}
+                      // Also blocked while a save is in flight — see the
+                      // Save button's own disabled condition above.
+                      disabled={isLogoUploading || isPending}
                       className="sr-only"
                       onChange={(event) => handleLogoUpload(event.target.files?.[0] ?? null)}
                     />
