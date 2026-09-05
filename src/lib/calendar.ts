@@ -140,7 +140,8 @@ export function toPrismaAppointmentStatus(status: CalendarAppointmentStatus) {
 // a multi-day block needs one entry per day it touches, each clamped to that
 // day's portion, or every day after the first silently loses the block.
 function expandScheduleBlockDays(
-  block: Pick<ScheduleBlock, "id" | "title" | "startsAt" | "endsAt" | "reason">
+  block: Pick<ScheduleBlock, "id" | "title" | "startsAt" | "endsAt" | "reason">,
+  range?: { start: Date; end: Date }
 ): CalendarScheduleBlock[] {
   // For a same-day block (the common case) this is 0 and the loop below
   // produces exactly one entry, first === last day, with the real start/end
@@ -158,7 +159,28 @@ function expandScheduleBlockDays(
   const dayCount = endsAtMidnight && rawDayCount > 0 ? rawDayCount - 1 : rawDayCount;
   const startParts = getZonedDateParts(block.startsAt);
 
-  return Array.from({ length: dayCount + 1 }, (_, index) => {
+  // Clamp emission to the fetched calendar range — the query above now
+  // correctly fetches a block that started long before the visible window
+  // (interval overlap, not "starts inside range"), but without this, a
+  // years-old closure still expanded one entry per day from its ACTUAL
+  // start: thousands of off-screen entries no view can ever display,
+  // serialized in the RSC payload and scanned by the client for nothing
+  // (Codex P2). isFirstDay/isLastDay below still key off the unclamped
+  // index, so a clamped-in day correctly renders as a full 00:00–23:59
+  // continuation, never the block's true (possibly ancient) start/end time.
+  const minIndex = range
+    ? Math.max(0, zonedCalendarDaysBetween(block.startsAt, range.start))
+    : 0;
+  const maxIndex = range
+    ? Math.min(dayCount, zonedCalendarDaysBetween(block.startsAt, range.end))
+    : dayCount;
+
+  if (minIndex > maxIndex) {
+    return [];
+  }
+
+  return Array.from({ length: maxIndex - minIndex + 1 }, (_, offset) => {
+    const index = minIndex + offset;
     const dayParts = addZonedDays(startParts, index);
     const isFirstDay = index === 0;
     const isLastDay = index === dayCount;
@@ -189,6 +211,11 @@ export function buildCalendarViewFromRecords(args: {
   businessHours: Pick<BusinessHours, "weekday" | "isOpen" | "startTime" | "endTime">[];
   ownerName: string;
   initialDate?: string;
+  /** The fetched calendar window, so a schedule block starting well before it
+   * doesn't expand into thousands of off-screen day entries — see
+   * expandScheduleBlockDays. Omit only when scheduleBlocks is empty/absent. */
+  rangeStart?: Date;
+  rangeEnd?: Date;
 }): CalendarViewModel {
   const {
     appointments,
@@ -199,7 +226,10 @@ export function buildCalendarViewFromRecords(args: {
     businessHours,
     ownerName,
     initialDate,
+    rangeStart,
+    rangeEnd,
   } = args;
+  const expandRange = rangeStart && rangeEnd ? { start: rangeStart, end: rangeEnd } : undefined;
   const clientOptions = clients.map((client) => ({
     id: client.id,
     name: client.name,
@@ -225,7 +255,7 @@ export function buildCalendarViewFromRecords(args: {
       status: toCalendarStatus(appointment.status),
       tone: toCalendarTone(appointment.status),
     })),
-    scheduleBlocks: scheduleBlocks.flatMap((block) => expandScheduleBlockDays(block)),
+    scheduleBlocks: scheduleBlocks.flatMap((block) => expandScheduleBlockDays(block, expandRange)),
     clients: clientOptions,
     hasClients: hasClients ?? clientOptions.length > 0,
     staffMembers: staffMembers.map((member) => ({

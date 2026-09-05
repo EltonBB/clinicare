@@ -208,6 +208,49 @@ describe("buildReportsViewFromWorkspace — ScheduleBlock capacity", () => {
     expect(utilization?.value).toBe("999.0%");
   });
 
+  it("keeps the unmeasured-utilization sentinel out of the AI/rule-based insight narration", () => {
+    // Same fully-blocked-window-with-a-real-booking setup as the test above
+    // (999% sentinel is correct for the raw metric tile), but the insight
+    // narration (watch/focus/primaryConstraint, fed to the AI prompt and the
+    // rule-based fallback alike) must not read that sentinel as a genuine
+    // "near overload, add staff" signal — it's a configuration conflict, not
+    // a real demand-vs-capacity problem (Codex P1, fresh evidence after the
+    // earlier delta-only sentinel gate).
+    const dailyView = buildReportsViewFromWorkspace({
+      business: { name: "Blocked Clinic" },
+      appointments: [appt(0, 10, "COMPLETED", 60, "s1")],
+      clients: [],
+      clientMix: { active: 0, atRisk: 0, inactive: 0, archived: 0 },
+      messages: [],
+      businessHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+        weekday,
+        isOpen: weekday >= 1 && weekday <= 5,
+        startTime: "09:00",
+        endTime: "17:00",
+      })),
+      scheduleBlocks: [
+        {
+          startsAt: new Date(now.getTime() - 3 * 3_600_000),
+          endsAt: new Date(now.getTime() + 5 * 3_600_000),
+        },
+      ],
+      staffMembers: [
+        { id: "s1", name: "Dr. One", role: "Dentist", status: "ACTIVE", isActive: true },
+      ],
+      conversations: [],
+      aiSnapshots: [],
+      now,
+      timeZone: "UTC",
+    });
+
+    const { snapshot } = dailyView.periods.daily;
+
+    expect(snapshot.diagnosis).not.toMatch(/overload/i);
+    expect(snapshot.focus).not.toMatch(/staff coverage|extending open hours/i);
+    expect(snapshot.rootCauses?.[0]?.title).toBe("Utilization can't be measured for this period");
+    expect(snapshot.rootCauses?.[0]?.severity).toBe("low");
+  });
+
   it("measures blocked capacity in wall-clock minutes, not elapsed time across a DST transition", () => {
     // Europe/Budapest springs forward at 01:00 local on 2026-03-29 — the
     // wall-clock interval 00:00-08:00 that day is only 420 real elapsed

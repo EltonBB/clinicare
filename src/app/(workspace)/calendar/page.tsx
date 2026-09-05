@@ -135,6 +135,8 @@ export default async function CalendarPage({
     businessHours,
     ownerName,
     initialDate: format(initialDate, "yyyy-MM-dd"),
+    rangeStart,
+    rangeEnd,
   });
 
   return (

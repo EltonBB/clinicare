@@ -133,4 +133,34 @@ describe("buildCalendarViewFromRecords — ScheduleBlock day expansion", () => {
     expect(last.startTime).toBe("00:00");
     expect(last.endTime).toBe("23:59");
   });
+
+  it("clamps expansion to the fetched calendar range instead of the block's full span", () => {
+    // A closure starting long before the visible window and ending long
+    // after it — before this fix, expansion walked every day from the
+    // block's actual start, most of them off-screen and unrenderable.
+    const startsAt = new Date("2026-01-01T09:00:00.000Z");
+    const endsAt = new Date("2026-01-20T17:00:00.000Z");
+    const rangeStart = new Date("2026-01-05T12:00:00.000Z");
+    const rangeEnd = new Date("2026-01-07T12:00:00.000Z");
+    const view = buildCalendarViewFromRecords({
+      appointments: [],
+      scheduleBlocks: [scheduleBlock({ startsAt, endsAt, title: "Long closure" })],
+      staffMembers: [],
+      businessHours: BUSINESS_HOURS,
+      ownerName: "Owner",
+      rangeStart,
+      rangeEnd,
+    });
+
+    expect(view.scheduleBlocks).toHaveLength(3);
+    for (const entry of view.scheduleBlocks) {
+      // Neither range boundary is the block's true first/last day, so every
+      // clamped entry is a full continuation day, never the block's real
+      // (long-past/long-future) start/end time.
+      expect(entry.startTime).toBe("00:00");
+      expect(entry.endTime).toBe("23:59");
+    }
+    expect(view.scheduleBlocks[0].date).toBe(formatZonedDateKey(rangeStart));
+    expect(view.scheduleBlocks[2].date).toBe(formatZonedDateKey(rangeEnd));
+  });
 });

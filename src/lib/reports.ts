@@ -1131,6 +1131,15 @@ function buildWatch(stats: PeriodStats) {
     }. Missed or cancelled visits are the clearest source of preventable leakage.`;
   }
 
+  // A booking sitting inside a fully-blocked/closed window still forces
+  // utilizationRate to the 999% sentinel (see buildCapacityMinutes) — a
+  // configuration conflict, not a real demand-vs-capacity signal. Must never
+  // read as "near overload" below (Codex P1 — the earlier fix only gated the
+  // delta/comparison arrow, not this narration).
+  if (stats.capacityMinutes <= 0) {
+    return "Estimated utilization can't be measured this period — there's no configured open capacity to compare bookings against (closed hours, or a schedule block covering the window).";
+  }
+
   if (stats.utilizationRate < 55) {
     return `Estimated utilization is only ${formatPercent(stats.utilizationRate)}. Open hours are not turning into enough booked care time.`;
   }
@@ -1161,6 +1170,10 @@ function buildFocus(stats: PeriodStats) {
 
   if (stats.lostSlotRate > 10) {
     return "Tighten reminders, confirm uncertain appointments earlier, and use the inbox for same-day recovery when a slot is at risk.";
+  }
+
+  if (stats.capacityMinutes <= 0) {
+    return "Check business hours and schedule blocks for this period — utilization can't be estimated without real open capacity to compare against.";
   }
 
   if (stats.utilizationRate < 55 && stats.newClients === 0) {
@@ -1211,6 +1224,15 @@ function buildPrimaryConstraint(stats: PeriodStats) {
       metric: "Lost-slot rate",
       value: formatPercent(stats.lostSlotRate),
       severity: "high" as const,
+    };
+  }
+
+  if (stats.capacityMinutes <= 0) {
+    return {
+      title: "Utilization can't be measured for this period",
+      metric: "Estimated utilization",
+      value: "Unmeasured",
+      severity: "low" as const,
     };
   }
 
@@ -1283,6 +1305,17 @@ function buildDynamicPlaybookSteps(stats: PeriodStats) {
     ];
   }
 
+  // Same sentinel guard as buildWatch/buildFocus/buildPrimaryConstraint —
+  // otherwise this recommended "add staff coverage" for a config artifact,
+  // not a real capacity problem (Codex P1, same class).
+  if (stats.capacityMinutes <= 0) {
+    return [
+      "Check business hours and schedule blocks for this period before trusting utilization.",
+      "Confirm the closed hours or schedule block covering this window are intentional.",
+      "Re-run this report once real open capacity exists to measure utilization again.",
+    ];
+  }
+
   if (stats.utilizationRate < 55) {
     return [
       `Raise booked capacity from ${formatPercent(stats.utilizationRate)} toward 70%.`,
@@ -1337,7 +1370,10 @@ function buildWhatToMonitor(stats: PeriodStats) {
     },
     {
       metric: "Estimated utilization",
-      target: `Current estimated utilization is ${formatPercent(stats.utilizationRate)}; healthy range is 70-92%.`,
+      target:
+        stats.capacityMinutes <= 0
+          ? "Utilization can't be measured this period — there's no configured open capacity to compare against."
+          : `Current estimated utilization is ${formatPercent(stats.utilizationRate)}; healthy range is 70-92%.`,
     },
   ];
 
@@ -1430,11 +1466,18 @@ function buildSnapshot(
       },
       {
         label: "Estimated utilization",
-        value: formatPercent(stats.utilizationRate),
+        // This feeds the AI/rule-based insight payload, not the Reports KPI
+        // tile — showing the raw sentinel here (as opposed to the tile's own
+        // deliberate "999% = maximum" display) reads as a real, actionable
+        // imbalance rather than the configuration conflict it actually is
+        // (Codex P1, same class as buildWatch/buildFocus/buildPrimaryConstraint).
+        value: stats.capacityMinutes <= 0 ? "Unmeasured" : formatPercent(stats.utilizationRate),
         readout:
-          stats.utilizationRate >= 70 && stats.utilizationRate <= 92
-            ? "Booked time is sitting in a healthy operating range."
-            : "Capacity and demand are not yet balanced for this timeframe.",
+          stats.capacityMinutes <= 0
+            ? "No configured open capacity this period — utilization can't be measured."
+            : stats.utilizationRate >= 70 && stats.utilizationRate <= 92
+              ? "Booked time is sitting in a healthy operating range."
+              : "Capacity and demand are not yet balanced for this timeframe.",
       },
       {
         label: "Repeat visits",
