@@ -352,17 +352,30 @@ export async function connectBaileysWhatsAppAction(options?: {
     force: options?.force === true,
   });
   if (!state) {
+    // requestBaileysPairing can return null on a lost/timed-out HTTP response
+    // even though the worker actually accepted /pair — including reusing an
+    // existing live session, which the worker doesn't treat as a new
+    // connection event and so never emits a webhook for. Scoping the
+    // rollback to status: "CONNECTING" alone only guards against a webhook
+    // that already landed; it does nothing for a live session sitting on the
+    // worker with no webhook ever coming to correct a wrong rollback (Codex
+    // P1 — reminders would then silently stop, since lib/reminders.ts only
+    // selects CONNECTED/ERRORED rows). Ask the worker directly first.
+    const workerState = await fetchBaileysStatus(business.id);
+
+    if (workerState?.status === "connected") {
+      await markWhatsAppConnected(business.id);
+      revalidatePath("/inbox");
+      revalidatePath("/settings");
+      return { ok: true, status: "connected", qr: await renderQrDataUrl(workerState.qr) };
+    }
+
     // The upsert above optimistically set CONNECTING before this request —
-    // undo it on failure so Settings doesn't keep showing "finishing the
-    // connection" indefinitely for an attempt that never actually started.
-    // Compare-and-set on status: "CONNECTING" — requestBaileysPairing can
-    // return null on a lost/timed-out response even though the worker
-    // actually accepted the pairing, and a concurrent webhook could have
-    // already moved this row to CONNECTED/ERRORED in the meantime. Scoping
-    // the guard to the exact state we optimistically set makes this a no-op
-    // instead of silently rolling back a connection that's actually live
-    // (which would then also silently stop reminders — see lib/reminders.ts,
-    // which only selects CONNECTED/ERRORED rows).
+    // undo it now that the worker itself doesn't report a live session, so
+    // Settings doesn't keep showing "finishing the connection" indefinitely
+    // for an attempt that never actually started. Still scoped to
+    // status: "CONNECTING" so a concurrent webhook that already moved this
+    // row to CONNECTED/ERRORED in the meantime makes this a no-op.
     await prisma.whatsAppConnection.updateMany({
       where: { businessId: business.id, status: "CONNECTING" },
       data: { status: "DISCONNECTED" },

@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 import { isStorageReference } from "@/lib/media-storage";
 import { safeUploadErrorMessage, uploadWorkspaceImage } from "@/lib/media-storage-client";
 import {
+  phaseLabelMap,
   REMINDER_TEMPLATE_MAX_LENGTH,
   timeOptions,
   weekdayLabels,
@@ -537,53 +538,105 @@ export function SettingsWorkspace({
     }
   }
 
-  // Connection status is server state, not an edit — mirror "connected" into
-  // both snapshots so pairing never flips the dirty flag or gets rewound by
-  // Discard. Stable (useCallback) so the polling effect doesn't churn.
-  const markWhatsAppConnected = useCallback(() => {
-    const applyConnected = (current: SettingsState): SettingsState => ({
-      ...current,
-      whatsapp: {
-        ...current.whatsapp,
-        connection: {
-          ...current.whatsapp.connection,
-          phase: "CONNECTED",
-          status: "CONNECTED",
-          statusLabel: "Connected",
+  // Connection status is server state, not an edit — mirror it into both
+  // snapshots so pairing never flips the dirty flag or gets rewound by
+  // Discard. Deriving statusLabel from phaseLabelMap (the same map
+  // buildWhatsAppConnectionSummary uses server-side) rather than each call
+  // site hand-writing its own string is what keeps the two from drifting
+  // apart (Codex P1 on an earlier version of this — statusLabel disagreeing
+  // with the phase it renders beside).
+  const applyWhatsAppPhase = useCallback(
+    (
+      phase: SettingsState["whatsapp"]["connection"]["phase"],
+      status: SettingsState["whatsapp"]["connection"]["status"]
+    ) => {
+      const apply = (current: SettingsState): SettingsState => ({
+        ...current,
+        whatsapp: {
+          ...current.whatsapp,
+          connection: {
+            ...current.whatsapp.connection,
+            phase,
+            status,
+            statusLabel: phaseLabelMap[phase],
+          },
         },
-      },
-    });
-    setState(applyConnected);
-    setSavedState(applyConnected);
+      });
+      setState(apply);
+      setSavedState(apply);
+    },
+    []
+  );
+
+  const markWhatsAppConnected = useCallback(() => {
+    applyWhatsAppPhase("CONNECTED", "CONNECTED");
     // Clear the pairing state so the QR view yields to the connected view.
     setPairing(null);
     setMessage("WhatsApp connected.");
-  }, []);
+  }, [applyWhatsAppPhase]);
 
-  // Mirrors markWhatsAppConnected for the in-progress case — without this,
-  // the status card above kept reading whatever state.whatsapp.connection
-  // said before this attempt started: a first-time connect kept showing
-  // "Not connected" while the QR was already up, and "Link a different
-  // device" kept showing a green "Connected" throughout the re-pair even
-  // once the worker had dropped the old session for it.
+  // Without this, the status card above kept reading whatever
+  // state.whatsapp.connection said before this attempt started: a
+  // first-time connect kept showing "Not connected" while the QR was
+  // already up, and "Link a different device" kept showing a green
+  // "Connected" throughout the re-pair even once the worker had dropped the
+  // old session for it.
   const markWhatsAppStarting = useCallback(() => {
-    const applyStarting = (current: SettingsState): SettingsState => ({
-      ...current,
-      whatsapp: {
-        ...current.whatsapp,
-        connection: {
-          ...current.whatsapp.connection,
-          phase: "STARTING",
-          status: "CONNECTING",
-          statusLabel: "Connecting",
-        },
-      },
-    });
-    setState(applyStarting);
-    setSavedState(applyStarting);
-  }, []);
+    applyWhatsAppPhase("STARTING", "CONNECTING");
+  }, [applyWhatsAppPhase]);
+
+  // A failed connect/reconnect attempt (the server already rolled the row
+  // back — see connectBaileysWhatsAppAction) or a pairing attempt the
+  // operator's own poll gave up waiting on both leave the phase at whatever
+  // markWhatsAppStarting set it to, with nothing to revert it — the status
+  // card kept claiming the connection was still finishing indefinitely
+  // (Codex P1/P2). The underlying DB row may still say CONNECTING (e.g. an
+  // unscanned QR the worker hasn't expired yet) rather than the
+  // DISCONNECTED this mirrors, but a real subsequent event (a scan, a fresh
+  // Connect attempt) still resolves it correctly either way; this only
+  // fixes the local status card being stuck.
+  const markWhatsAppNotStarted = useCallback(() => {
+    applyWhatsAppPhase("NOT_STARTED", "DISCONNECTED");
+  }, [applyWhatsAppPhase]);
 
   const pairingPollsRef = useRef(0);
+
+  // A page load (or dialog reopen) can find phase already STARTING with no
+  // local pairing state — a previous attempt (this tab reloaded, or another
+  // tab/device started it) that nothing is actively polling. Without this,
+  // the status card claimed the connection was still finishing indefinitely
+  // with no poll ever running to resolve it (Codex P2). Reconciles once
+  // against the worker instead: resumes real polling if it's genuinely
+  // still pairing, or clears the stale phase otherwise. Guarded on
+  // `pairing !== null` so it never fires for a connect this session itself
+  // just started — handleConnectWhatsApp already seeds real pairing state
+  // for that case, and this effect no-ops as soon as it does.
+  useEffect(() => {
+    if (whatsappPhase !== "STARTING" || pairing !== null) {
+      return;
+    }
+
+    let cancelled = false;
+
+    getBaileysPairingStatusAction().then((result) => {
+      if (cancelled) {
+        return;
+      }
+      if (!result.ok || result.status === "disconnected") {
+        markWhatsAppNotStarted();
+        return;
+      }
+      if (result.status === "connected") {
+        markWhatsAppConnected();
+        return;
+      }
+      setPairing({ status: result.status, qr: result.qr });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [whatsappPhase, pairing, markWhatsAppConnected, markWhatsAppNotStarted]);
 
   function handleConnectWhatsApp(options?: { force?: boolean }) {
     startConnecting(async () => {
@@ -596,6 +649,12 @@ export function SettingsWorkspace({
       if (!result.ok) {
         setErrorMessage(result.error);
         setMessage("");
+        // The server already rolled the connection row back on this failure
+        // (connectBaileysWhatsAppAction) — reflect that locally too, so a
+        // failed "Link a different device" doesn't keep the status card
+        // claiming the old session (and its reminders/replies) are still
+        // active.
+        markWhatsAppNotStarted();
         return;
       }
       setErrorMessage("");
@@ -632,6 +691,10 @@ export function SettingsWorkspace({
         setErrorMessage(
           "Pairing timed out. Tap Connect WhatsApp to get a fresh code."
         );
+        // Nothing else ever reconciles the status card once this gives up —
+        // without this it kept claiming the connection was still finishing
+        // indefinitely, even across a reload.
+        markWhatsAppNotStarted();
         return;
       }
       const result = await getBaileysPairingStatusAction();
@@ -649,7 +712,7 @@ export function SettingsWorkspace({
       active = false;
       clearInterval(id);
     };
-  }, [isPairing, markWhatsAppConnected]);
+  }, [isPairing, markWhatsAppConnected, markWhatsAppNotStarted]);
 
   const content = (
     <LazyMotionProvider>

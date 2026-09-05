@@ -133,7 +133,11 @@ function buildBillingSummary(business: Business): SettingsState["billing"] {
   };
 }
 
-const phaseLabelMap: Record<SettingsState["whatsapp"]["connection"]["phase"], string> = {
+// Exported so settings-workspace.tsx's client-side pairing handlers can
+// derive statusLabel from phase the same way this module does — a shared
+// map instead of each side hand-writing its own strings, which is what let
+// them drift apart (Codex P1 on an earlier version of those handlers).
+export const phaseLabelMap: Record<SettingsState["whatsapp"]["connection"]["phase"], string> = {
   NOT_STARTED: "Not connected",
   STARTING: "Connecting",
   CONNECTED: "Connected",
