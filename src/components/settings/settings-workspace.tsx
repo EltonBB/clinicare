@@ -670,6 +670,15 @@ export function SettingsWorkspace({
         return;
       }
       setErrorMessage("");
+      if (result.status === "disconnected") {
+        // An explicit disconnect is terminal, not "still finishing" — the
+        // catch-all else below used to send this through markWhatsAppStarting,
+        // which then polled a session that was never actually pairing for the
+        // full two-minute timeout before giving up (Codex P2).
+        setPairing(null);
+        markWhatsAppNotStarted();
+        return;
+      }
       setPairing({ status: result.status, qr: result.qr });
       if (result.status === "connected") {
         markWhatsAppConnected();
@@ -711,6 +720,16 @@ export function SettingsWorkspace({
       }
       const result = await getBaileysPairingStatusAction();
       if (!active || !result.ok) {
+        return;
+      }
+      if (result.status === "disconnected") {
+        // Terminal, not "still finishing" — isPairing only excludes
+        // "connected" below, so without this a confirmed disconnect kept
+        // polling (and Settings kept hiding the Connect action) for the
+        // full two-minute timeout instead of stopping immediately (Codex
+        // P2, same class as the initial-response handling above).
+        setPairing(null);
+        markWhatsAppNotStarted();
         return;
       }
       setPairing((prev) =>
