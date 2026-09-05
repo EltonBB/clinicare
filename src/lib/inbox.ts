@@ -37,11 +37,23 @@ export type InboxConversation = {
   lastMessageAt: string;
   activeLabel: string;
   messages: InboxMessage[];
+  // False for an "extra" unread conversation fetchInboxConversations pulled
+  // in beyond the recency cap — its `messages` is a 1-entry preview, not the
+  // usual thread. True means the standard recent-window fetch (the latest
+  // RECENT_MESSAGE_LIMIT messages — not literally every message ever sent;
+  // there is no further pagination past that). The client hydrates the
+  // standard window on open instead of rendering the 1-message preview (see
+  // the hydration effect in inbox-workspace.tsx).
+  hasFullHistory: boolean;
 };
 
 export type InboxViewModel = {
   conversations: InboxConversation[];
   initialConversationId: string;
+  // The business-wide unread total (see buildInboxViewFromWorkspace) — not
+  // derivable from `conversations` alone, which is capped to a page of the
+  // most-recently-updated ones and can be missing older unread conversations.
+  totalUnreadCount: number;
 };
 
 type InboxConversationRecord = Pick<
@@ -54,6 +66,11 @@ type InboxConversationRecord = Pick<
       "id" | "direction" | "body" | "sentAt" | "deliveryStatus"
     >
   >;
+  // Omitted by callers that always fetch the standard recent-window thread
+  // (hydrateConversation in inbox/actions.ts) — only fetchInboxConversations
+  // sets this explicitly, since it's the only caller that can produce a
+  // truncated 1-message preview instead.
+  hasFullHistory?: boolean;
 };
 
 type InboxClientLink = Pick<Client, "id" | "name" | "phone">;
@@ -227,12 +244,18 @@ export function buildInboxConversation(
         : ""
       : "Reply first, then convert to client",
     messages,
+    hasFullHistory: conversation.hasFullHistory ?? true,
   };
 }
 
 export function buildInboxViewFromWorkspace(args: {
   conversations: InboxConversationRecord[];
   clients: InboxClientLink[];
+  // The business-wide unread total (see fetchInboxConversations) — this
+  // builder stays a pure passthrough for it rather than summing
+  // `conversations` itself, since that array is the same capped page the
+  // sum must not match.
+  totalUnreadCount: number;
 }): InboxViewModel {
   const now = new Date();
   const timeZone = getAppTimeZone();
@@ -244,5 +267,6 @@ export function buildInboxViewFromWorkspace(args: {
   return {
     conversations,
     initialConversationId: conversations[0]?.id ?? "",
+    totalUnreadCount: args.totalUnreadCount,
   };
 }

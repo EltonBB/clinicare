@@ -446,7 +446,10 @@ export function OnboardingFlow({
       <div className="relative mx-auto flex min-h-screen w-full max-w-5xl flex-col px-6 py-7 sm:px-8">
         {/* header */}
         <div className="flex items-center justify-center">
-          <BrandMark href="/dashboard" includeSubtitle={false} />
+          {/* No Business row exists until onboarding completes — prefetching
+              /dashboard here could cache a redirect-to-onboarding response
+              that outlives the moment bootstrap actually creates it. */}
+          <BrandMark href="/dashboard" includeSubtitle={false} prefetch={false} />
         </div>
 
         {/* stepper */}

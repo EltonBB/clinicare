@@ -10,11 +10,11 @@ import {
   getAppTimeZone,
   getZonedDayWindow,
   getZonedDayWindowFromParts,
-  getZonedMonthStart,
   parseZonedWallClock,
 } from "@/lib/time-zone";
 import {
   buildStaffRecord,
+  completedAppointmentCutoff,
   findActiveShiftWindow,
   staffStatuses,
   type SaveStaffPayload,
@@ -51,11 +51,6 @@ export type StaffClockResult = {
 
 function staffTimeEntryCutoff() {
   return new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
-}
-
-function completedAppointmentCutoff() {
-  // Zoned month start so early-on-the-1st visits aren't dropped in non-UTC clinics.
-  return getZonedMonthStart();
 }
 
 function staffShiftCutoff() {
