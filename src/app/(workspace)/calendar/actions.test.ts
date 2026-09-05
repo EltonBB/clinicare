@@ -1,6 +1,8 @@
 import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { parseZonedWallClock } from "@/lib/time-zone";
+
 const mocks = vi.hoisted(() => {
   const appointment = {
     findFirst: vi.fn(),
@@ -12,6 +14,8 @@ const mocks = vi.hoisted(() => {
   const staffMember = { findFirst: vi.fn() };
   const businessHours = { findUnique: vi.fn() };
   const appointmentReminder = { deleteMany: vi.fn() };
+  const scheduleBlock = { findFirst: vi.fn() };
+  const $executeRaw = vi.fn();
   const $transaction = vi.fn();
   const getAuthedBusiness = vi.fn();
   const refreshClientLastVisitAt = vi.fn();
@@ -23,6 +27,8 @@ const mocks = vi.hoisted(() => {
     staffMember,
     businessHours,
     appointmentReminder,
+    scheduleBlock,
+    $executeRaw,
     $transaction,
     getAuthedBusiness,
     refreshClientLastVisitAt,
@@ -38,6 +44,7 @@ vi.mock("@/lib/prisma", () => ({
     staffMember: mocks.staffMember,
     businessHours: mocks.businessHours,
     appointmentReminder: mocks.appointmentReminder,
+    scheduleBlock: mocks.scheduleBlock,
     $transaction: mocks.$transaction,
   },
 }));
@@ -54,6 +61,13 @@ vi.mock("@/lib/appointments-shared", async () => {
   return {
     APPOINTMENT_ALREADY_COMPLETED_ERROR: actual.APPOINTMENT_ALREADY_COMPLETED_ERROR,
     APPOINTMENT_CONFLICT_ERROR: actual.APPOINTMENT_CONFLICT_ERROR,
+    APPOINTMENT_TIME_CONFLICT_ERROR: actual.APPOINTMENT_TIME_CONFLICT_ERROR,
+    // Real implementations, not mocks — both take the (mocked) tx client as
+    // a plain argument rather than reaching for the top-level prisma import,
+    // so running the real query-construction logic here is what makes this
+    // suite's assertions on the exact `where` shape mean anything.
+    acquireSchedulingLock: actual.acquireSchedulingLock,
+    hasSchedulingConflict: actual.hasSchedulingConflict,
     cancelAppointmentCore: vi.fn(),
     deleteAppointmentCore: vi.fn(),
     refreshClientLastVisitAt: mocks.refreshClientLastVisitAt,
@@ -66,6 +80,7 @@ import { saveAppointmentAction, type SaveAppointmentPayload } from "./actions";
 import {
   APPOINTMENT_ALREADY_COMPLETED_ERROR,
   APPOINTMENT_CONFLICT_ERROR,
+  APPOINTMENT_TIME_CONFLICT_ERROR,
 } from "@/lib/appointments-shared";
 
 const BUSINESS = { id: "biz_1" };
@@ -103,10 +118,16 @@ beforeEach(() => {
     endTime: "23:59",
   });
   mocks.appointment.findFirst.mockResolvedValue(EXISTING);
+  // No overlap by default — tests for the conflict-detection path itself
+  // override these to a truthy row.
+  mocks.scheduleBlock.findFirst.mockResolvedValue(null);
+  mocks.$executeRaw.mockResolvedValue(undefined);
   mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) =>
     cb({
       appointment: mocks.appointment,
       appointmentReminder: mocks.appointmentReminder,
+      scheduleBlock: mocks.scheduleBlock,
+      $executeRaw: mocks.$executeRaw,
     })
   );
 });
@@ -304,5 +325,208 @@ describe("saveAppointmentAction — referenced client/staff deleted mid-save", (
       ok: false,
       error: "We couldn't save the appointment.",
     });
+  });
+});
+
+describe("saveAppointmentAction — time conflicts", () => {
+  const NEW_BOOKING: SaveAppointmentPayload = {
+    clientId: "client_1",
+    service: "Cleaning",
+    staffMemberId: "staff_1",
+    date: "2026-06-01",
+    startTime: "10:00",
+    endTime: "10:30",
+    notes: "",
+    status: "confirmed",
+    baselineStatus: "confirmed",
+  };
+
+  it("rejects a new booking that overlaps another appointment for the same staff member", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_1" });
+    mocks.appointment.findFirst.mockResolvedValue({ id: "other_appt" });
+
+    const result = await saveAppointmentAction(NEW_BOOKING);
+
+    expect(result).toEqual({ ok: false, error: APPOINTMENT_TIME_CONFLICT_ERROR });
+    expect(mocks.appointment.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          businessId: "biz_1",
+          staffMemberId: "staff_1",
+          status: { not: "CANCELLED" },
+        }),
+      })
+    );
+    expect(mocks.appointment.create).not.toHaveBeenCalled();
+  });
+
+  it("excludes the appointment's own row when editing its time, not just other appointments", async () => {
+    // Reschedules to a different time for the same staff member — the
+    // conflict check must run (schedulingFieldsChanged) and must not treat
+    // this appointment's own pre-move row as a conflict with itself.
+    mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_1" });
+    mocks.appointment.findFirst.mockResolvedValueOnce({ ...EXISTING, staffMemberId: "staff_1" });
+    mocks.appointment.findFirst.mockResolvedValueOnce(null);
+    mocks.appointment.updateMany.mockResolvedValue({ count: 1 });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      ...EXISTING,
+      staffMemberId: "staff_1",
+      client: { id: "client_1", name: "Mira" },
+      staffMember: { id: "staff_1", name: "Dr. Lee" },
+    });
+
+    const result = await saveAppointmentAction({
+      ...PAYLOAD,
+      staffMemberId: "staff_1",
+      startTime: "09:15",
+      endTime: "09:45",
+    });
+
+    expect(result.ok).toBe(true);
+    // Second call is the overlap check (the first is the pre-transaction
+    // "existing row" read) — must exclude this appointment's own id, or
+    // moving it would conflict with its own pre-move row.
+    expect(mocks.appointment.findFirst).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({ id: { not: "appt_1" } }),
+      })
+    );
+  });
+
+  it("skips the conflict check when the save's destination status is CANCELLED, even if time also changes", async () => {
+    // Regression for a second gap Codex caught on the same PR: changing the
+    // time WHILE also cancelling doesn't need a free slot at the new time —
+    // a cancelled appointment never occupies one, so there's nothing to
+    // protect. Rejecting this would block a legitimate cancel for no reason.
+    mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_1" });
+    mocks.appointment.findFirst.mockResolvedValueOnce({
+      ...EXISTING,
+      staffMemberId: "staff_1",
+      status: "CONFIRMED",
+    });
+    mocks.appointment.updateMany.mockResolvedValue({ count: 1 });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      ...EXISTING,
+      staffMemberId: "staff_1",
+      client: { id: "client_1", name: "Mira" },
+      staffMember: { id: "staff_1", name: "Dr. Lee" },
+      status: "CANCELLED",
+    });
+
+    const result = await saveAppointmentAction({
+      ...PAYLOAD,
+      staffMemberId: "staff_1",
+      startTime: "09:15",
+      endTime: "09:45",
+      status: "cancelled",
+      baselineStatus: "confirmed",
+    });
+
+    expect(result.ok).toBe(true);
+    // Only the one pre-transaction existing-row read — no overlap check ran
+    // despite staff/time both differing from the existing row.
+    expect(mocks.appointment.findFirst).toHaveBeenCalledTimes(1);
+    expect(mocks.scheduleBlock.findFirst).not.toHaveBeenCalled();
+    expect(mocks.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it("skips the conflict check entirely when the save doesn't touch staff or time", async () => {
+    // Only the status changes (e.g. cancelling via the Status dropdown) — the
+    // slot itself isn't moving, so an unrelated pre-existing overlap on this
+    // same slot must not block this save. The "existing" row's start/end
+    // must be the real parsed values (not EXISTING's UTC-literal fixture,
+    // which parseZonedWallClock's timezone offset makes NOT actually equal
+    // to a payload of "09:00"/"09:30" — that mismatch would itself register
+    // as a scheduling change and defeat the point of this test).
+    mocks.appointment.findFirst.mockResolvedValueOnce({
+      ...EXISTING,
+      startAt: parseZonedWallClock("2026-06-01", "09:00"),
+      endAt: parseZonedWallClock("2026-06-01", "09:30"),
+    });
+    mocks.appointment.updateMany.mockResolvedValue({ count: 1 });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      ...EXISTING,
+      client: { id: "client_1", name: "Mira" },
+      staffMember: null,
+      status: "CANCELLED",
+    });
+
+    const result = await saveAppointmentAction({
+      ...PAYLOAD,
+      status: "cancelled",
+      baselineStatus: "confirmed",
+    });
+
+    expect(result.ok).toBe(true);
+    // Only the one pre-transaction existing-row read — no overlap check ran.
+    expect(mocks.appointment.findFirst).toHaveBeenCalledTimes(1);
+    expect(mocks.scheduleBlock.findFirst).not.toHaveBeenCalled();
+    expect(mocks.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it("re-checks when reactivating a cancelled appointment, even though staff/time never changed", async () => {
+    // Regression for a gap Codex caught on PR #75: a CANCELLED appointment
+    // doesn't occupy its slot, so another appointment may have taken it —
+    // un-cancelling back onto the same unchanged staff/time must not skip
+    // the check just because staff/start/end look unchanged.
+    mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_1" });
+    mocks.appointment.findFirst
+      .mockResolvedValueOnce({
+        ...EXISTING,
+        staffMemberId: "staff_1",
+        status: "CANCELLED",
+        startAt: parseZonedWallClock("2026-06-01", "09:00"),
+        endAt: parseZonedWallClock("2026-06-01", "09:30"),
+      })
+      .mockResolvedValueOnce({ id: "other_appt" });
+
+    const result = await saveAppointmentAction({
+      ...PAYLOAD,
+      staffMemberId: "staff_1",
+      status: "confirmed",
+      baselineStatus: "cancelled",
+    });
+
+    expect(result).toEqual({ ok: false, error: APPOINTMENT_TIME_CONFLICT_ERROR });
+    expect(mocks.$executeRaw).toHaveBeenCalled();
+    expect(mocks.appointment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects a booking that falls inside a blocked-off period, even with no staff assigned", async () => {
+    mocks.scheduleBlock.findFirst.mockResolvedValue({ id: "block_1" });
+
+    const result = await saveAppointmentAction({
+      ...NEW_BOOKING,
+      staffMemberId: undefined,
+    });
+
+    expect(result).toEqual({ ok: false, error: APPOINTMENT_TIME_CONFLICT_ERROR });
+    expect(mocks.appointment.create).not.toHaveBeenCalled();
+    // No staff assigned, so the staff-overlap check has nothing to check —
+    // only the business-wide block query should have run.
+    expect(mocks.appointment.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("saves normally when neither check finds a conflict", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_1" });
+    mocks.appointment.findFirst.mockResolvedValue(null);
+    mocks.appointment.create.mockResolvedValue({ id: "new_appt" });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      id: "new_appt",
+      clientId: "client_1",
+      staffMemberId: "staff_1",
+      startAt: new Date("2026-06-01T10:00:00Z"),
+      endAt: new Date("2026-06-01T10:30:00Z"),
+      notes: null,
+      status: "CONFIRMED",
+      client: { id: "client_1", name: "Mira" },
+      staffMember: { id: "staff_1", name: "Dr. Lee" },
+    });
+
+    const result = await saveAppointmentAction(NEW_BOOKING);
+
+    expect(result.ok).toBe(true);
+    expect(mocks.appointment.create).toHaveBeenCalled();
   });
 });
