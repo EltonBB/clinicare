@@ -18,9 +18,18 @@ import {
 } from "@/lib/messaging/baileys-control";
 import type { WorkerConnectionStatus } from "@/lib/messaging/baileys-contract";
 import { normalizePhone } from "@/lib/inbox";
-import { normalizeStorageReference } from "@/lib/media-storage";
+import {
+  isValidUploadShape,
+  normalizeStorageReference,
+  parseStorageReference,
+} from "@/lib/media-storage";
 import { hasUnsafePublicUrl, normalizeOptionalPublicUrl } from "@/lib/safe-url";
-import { attemptStorageCleanup, recordPendingStorageCleanup } from "@/lib/media-storage-server";
+import {
+  attemptStorageCleanup,
+  OWNER_ID_SHAPE,
+  recordPendingStorageCleanup,
+} from "@/lib/media-storage-server";
+import { logger } from "@/lib/logger";
 import { normalizeBrandHexColor, resolveBrandAccentPreset } from "@/lib/branding";
 import {
   type SaveSettingsPayload,
@@ -307,6 +316,39 @@ export async function discardUnsavedLogoAction(uploadedLogoUrl: string): Promise
   const candidate = normalizeStorageReference(uploadedLogoUrl);
 
   if (!candidate || candidate === (business.logoUrl ?? "")) {
+    return;
+  }
+
+  // This action only exists to clean up a discarded LOGO upload — never
+  // queue anything else for deletion. A caller-supplied value must have the
+  // exact shape a real upload produces (media-storage-client.ts:
+  // `${ownerId}/logos/${uuid}.${ext}`), belong to this business's own owner
+  // prefix, and land specifically in the logos/ folder; otherwise a crafted
+  // same-owner reference could queue an in-use client document or gallery
+  // image (Codex P1 — those live under the same owner prefix, just a
+  // different folder, so the ownerId check alone doesn't rule them out).
+  const reference = parseStorageReference(candidate);
+  const [ownerId, folder] = reference?.path.split("/") ?? [];
+  const isLogoUpload =
+    reference !== null &&
+    isValidUploadShape(reference.bucket, reference.path) &&
+    ownerId === business.ownerId &&
+    folder === "logos";
+
+  if (!isLogoUpload) {
+    // Never log the raw path — see media-storage-server.ts's
+    // processPendingStorageCleanupRow for why a crafted value's segments
+    // can't be assumed safe (could be arbitrary text, including a patient
+    // name). Only log values already independently verified safe to show.
+    logger.error(
+      "discardUnsavedLogoAction received a candidate outside the logos/ folder — dropped without queueing.",
+      undefined,
+      {
+        businessId: business.id,
+        foundOwnerId: ownerId && OWNER_ID_SHAPE.test(ownerId) ? ownerId : "<non-uuid>",
+        foundFolder: folder === "client-documents" || folder === "client-gallery" ? folder : "<other>",
+      }
+    );
     return;
   }
 
