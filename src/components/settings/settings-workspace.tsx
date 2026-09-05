@@ -291,6 +291,9 @@ export function SettingsWorkspace({
     (isStorageReference(state.business.logoUrl) ? "" : state.business.logoUrl);
   const whatsappPhase = state.whatsapp.connection.phase;
   const isConnected = whatsappPhase === "CONNECTED";
+  // The settled Settings contract keeps the status headline binary — never
+  // STARTING/NEEDS_SUPPORT's own phaseLabelMap strings (Codex P1).
+  const connectionHeadline = isConnected ? "Connected" : "Not connected";
   const settingsDirty = useMemo(
     () => JSON.stringify(state) !== JSON.stringify(savedState),
     [state, savedState]
@@ -622,7 +625,16 @@ export function SettingsWorkspace({
       if (cancelled) {
         return;
       }
-      if (!result.ok || result.status === "disconnected") {
+      if (!result.ok) {
+        // A transport/session failure here says nothing about the actual
+        // connection — the worker might still be sitting on a perfectly
+        // live, unscanned QR. Collapsing this into markWhatsAppNotStarted()
+        // (Codex P2) hid that active attempt behind a fresh "Connect"
+        // button. Leave the phase at STARTING; reopening Settings (or a
+        // fresh Connect attempt) reconciles it again later.
+        return;
+      }
+      if (result.status === "disconnected") {
         markWhatsAppNotStarted();
         return;
       }
@@ -1295,11 +1307,11 @@ export function SettingsWorkspace({
                   />
                   {whatsappPhase === "NEEDS_SUPPORT" ? (
                     <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
-                      {state.whatsapp.connection.statusLabel}
+                      {connectionHeadline}
                     </span>
                   ) : (
                     <p className="text-sm font-semibold text-foreground">
-                      {state.whatsapp.connection.statusLabel}
+                      {connectionHeadline}
                     </p>
                   )}
                 </div>

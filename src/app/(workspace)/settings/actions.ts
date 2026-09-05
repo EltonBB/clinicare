@@ -374,13 +374,19 @@ export async function connectBaileysWhatsAppAction(options?: {
       return { ok: true, status: workerState.status, qr: await renderQrDataUrl(workerState.qr) };
     }
 
-    // A forced re-pair specifically asks the worker to invalidate the old
-    // session and start a new one — if /pair's own response was lost,
-    // "connected" here could just be the stale pre-force session the worker
-    // never got a chance to tear down, not proof the new pairing succeeded
-    // (Codex P2). Only trust this shortcut for a non-forced attempt, where
-    // there's no old session for "connected" to ambiguously belong to.
-    if (!options?.force && workerState?.status === "connected") {
+    // Trust "connected" here even for a forced re-pair. A freshly forced
+    // pairing can't realistically have already reached "connected" by the
+    // time this same request reconciles — that requires a human to scan a
+    // fresh QR, which takes far longer than this immediate follow-up check —
+    // so this is virtually always the old session the worker hasn't torn
+    // down yet, not proof the new pairing landed. Rolling it back to
+    // DISCONNECTED (the previous version of this fix) silently breaks a
+    // live, working connection — reminders and Inbox replies stop for a
+    // WhatsApp session that's actually fine — which is strictly worse than
+    // occasionally mislabeling a still-old session as freshly reconnected
+    // (Codex P1: no attempt/generation identifier exists to tell the two
+    // apart, so prefer the failure mode that keeps messaging working).
+    if (workerState?.status === "connected") {
       await markWhatsAppConnected(business.id);
       revalidatePath("/inbox");
       revalidatePath("/settings");
