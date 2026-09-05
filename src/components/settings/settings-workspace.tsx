@@ -83,6 +83,15 @@ type SettingsWorkspaceProps = {
    * P2).
    */
   onLogoUploadingChange?: (uploading: boolean) => void;
+  /**
+   * Notifies the host while handleSave is in flight. Without this, the host
+   * only knows about an uploading logo, not a save that's actively
+   * committing one — Escape/backdrop could still open the discard
+   * confirmation mid-save, and confirming it queues the just-saved logo for
+   * cleanup as if it were still unsaved, deleting the object the save just
+   * made active (Codex P2).
+   */
+  onSavingChange?: (saving: boolean) => void;
   /** Owner account details merged into the Business & account section. */
   ownerName?: string;
   ownerEmail?: string;
@@ -256,6 +265,7 @@ export function SettingsWorkspace({
   onDirtyChange,
   onUnsavedLogoUrlChange,
   onLogoUploadingChange,
+  onSavingChange,
   ownerName = "",
   ownerEmail = "",
   ownerPhone = "",
@@ -335,6 +345,10 @@ export function SettingsWorkspace({
   useEffect(() => {
     onLogoUploadingChange?.(isLogoUploading);
   }, [isLogoUploading, onLogoUploadingChange]);
+
+  useEffect(() => {
+    onSavingChange?.(isPending);
+  }, [isPending, onSavingChange]);
 
   // onSaved is read via a ref, not as a dependency below, so a prop-identity
   // change on its own can't re-fire the completion effect.
@@ -763,7 +777,12 @@ export function SettingsWorkspace({
               variant="outline"
               className="h-10 w-full rounded-(--radius-card) bg-white"
               onClick={handleDiscard}
-              disabled={isPending || !hasUnsavedChanges}
+              // Also blocked mid-upload — handleDiscard resets state to
+              // savedState immediately, but the still-running upload later
+              // writes its result back into state regardless, silently
+              // leaving a new unsaved logo behind right after a discard
+              // that was supposed to clear everything (Codex P2).
+              disabled={isPending || isLogoUploading || !hasUnsavedChanges}
             >
               Discard changes
             </Button>

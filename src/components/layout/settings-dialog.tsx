@@ -58,6 +58,12 @@ export function SettingsDialog({
   // nothing to protect and unmount this tree out from under it, orphaning
   // the upload with no cleanup ever queued (Codex P2).
   const [isLogoUploading, setIsLogoUploading] = useState(false);
+  // handleSave can still be mid-flight (e.g. awaiting updateOwnerProfileAction)
+  // after isLogoUploading has already gone false — without this, closing then
+  // reads pendingUnsavedLogoUrl as if the save never happened, queues the
+  // in-flight save's own logo for deletion, and races its saveSettingsAction
+  // commit of that exact URL (Codex P2).
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -104,10 +110,12 @@ export function SettingsDialog({
 
   function handleOpenChange(next: boolean) {
     if (!next) {
-      // Refuse to close while a logo upload is still running — there's
-      // nothing yet for isDirty/pendingUnsavedLogoUrl to catch below, but
-      // unmounting now would still orphan the upload once it resolves.
-      if (isLogoUploading) {
+      // Refuse to close while a logo upload OR a save is still running —
+      // isDirty/pendingUnsavedLogoUrl don't yet reflect either one reliably
+      // (a save can be actively committing the exact logo a close-triggered
+      // discard would queue for deletion), and unmounting now would either
+      // orphan the upload once it resolves or race the save's own commit.
+      if (isLogoUploading || isSaving) {
         return;
       }
 
@@ -136,6 +144,10 @@ export function SettingsDialog({
     setIsLogoUploading(uploading);
   }, []);
 
+  const handleSavingChange = useCallback((saving: boolean) => {
+    setIsSaving(saving);
+  }, []);
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="flex max-h-[88vh] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-[920px]">
@@ -161,6 +173,7 @@ export function SettingsDialog({
             onDirtyChange={handleDirtyChange}
             onUnsavedLogoUrlChange={handleUnsavedLogoUrlChange}
             onLogoUploadingChange={handleLogoUploadingChange}
+            onSavingChange={handleSavingChange}
           />
         ) : (
           <div className="flex flex-1 items-center justify-center px-5 py-16 text-sm text-muted-foreground">
