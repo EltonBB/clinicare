@@ -25,7 +25,6 @@ import {
   getZonedDayWindowFromParts,
   getZonedMonthWindow,
   getZonedWeekWindow,
-  zonedDateTimeToUtc,
 } from "@/lib/time-zone";
 import { sumMergedIntervals } from "@/lib/utils";
 
@@ -671,32 +670,49 @@ function buildCapacityMinutes(
         return total + openMinutes * safeStaffCount;
       }
 
-      const dayOpenAt = zonedDateTimeToUtc({
-        year: dayParts.year,
-        month: dayParts.month,
-        day: dayParts.day,
-        hour: Math.floor(dayStartMinutes / 60),
-        minute: dayStartMinutes % 60,
-        timeZone,
-      });
-      const dayCloseAt = zonedDateTimeToUtc({
-        year: dayParts.year,
-        month: dayParts.month,
-        day: dayParts.day,
-        hour: Math.floor(dayEndMinutes / 60),
-        minute: dayEndMinutes % 60,
-        timeZone,
+      // Wall-clock minutes-since-midnight throughout — never elapsed real
+      // time — so this stays comparable to openMinutes above, which is also
+      // wall-clock (a 09:00-17:00 window is 480 minutes of bookable time
+      // regardless of what DST does that day). Converting through UTC
+      // instants and taking their elapsed-ms difference (the previous
+      // version) measured a different duration than openMinutes on a day
+      // with a DST transition inside the window, over- or under-counting
+      // capacity by the shift (Codex P2).
+      const dayKey = Date.UTC(dayParts.year, dayParts.month - 1, dayParts.day);
+      const blockedIntervals = scheduleBlocks.flatMap((block) => {
+        const blockStartParts = getZonedDateParts(block.startsAt, timeZone);
+        const blockEndParts = getZonedDateParts(block.endsAt, timeZone);
+        const blockStartKey = Date.UTC(
+          blockStartParts.year,
+          blockStartParts.month - 1,
+          blockStartParts.day
+        );
+        const blockEndKey = Date.UTC(blockEndParts.year, blockEndParts.month - 1, blockEndParts.day);
+
+        if (dayKey < blockStartKey || dayKey > blockEndKey) {
+          return []; // doesn't touch this calendar day at all
+        }
+
+        // A block only carries its real clock time on the day it actually
+        // starts/ends — every day in between (and the whole day, on either
+        // boundary that isn't also the other boundary) is blocked start-of-
+        // day to end-of-day.
+        const blockStartMinutesToday = dayKey === blockStartKey
+          ? blockStartParts.hour * 60 + blockStartParts.minute
+          : 0;
+        const blockEndMinutesToday = dayKey === blockEndKey
+          ? blockEndParts.hour * 60 + blockEndParts.minute
+          : 24 * 60;
+
+        return [{
+          start: Math.max(dayStartMinutes, blockStartMinutesToday),
+          end: Math.min(dayEndMinutes, blockEndMinutesToday),
+        }];
       });
       // sumMergedIntervals merges overlapping blocks before summing, so two
       // ScheduleBlocks covering the same hour don't get subtracted twice.
-      const blockedMinutes =
-        sumMergedIntervals(
-          scheduleBlocks.map((block) => ({
-            start: Math.max(dayOpenAt.getTime(), block.startsAt.getTime()),
-            end: Math.min(dayCloseAt.getTime(), block.endsAt.getTime()),
-          }))
-        ) / 60_000;
-      const minutes = openMinutes - blockedMinutes;
+      const blockedMinutes = sumMergedIntervals(blockedIntervals);
+      const minutes = Math.max(openMinutes - blockedMinutes, 0);
 
       return total + minutes * safeStaffCount;
     },
@@ -1623,10 +1639,18 @@ function buildMetrics(args: {
     current.finalizedCount > 0 && previous.finalizedCount > 0
       ? formatPointChange(current.lostSlotRate, previous.lostSlotRate, { inverse: true })
       : unmeasuredDelta();
-  const utilizationDelta = formatPointChange(
-    current.utilizationRate,
-    previous.utilizationRate
-  );
+  // Every other rate metric above already gates its delta on both periods
+  // having enough data to compare — utilizationRate was the one exception.
+  // Without this, a period with bookings but zero measured capacity (a
+  // closed day, missing business hours, or a schedule block covering the
+  // whole window) reports the 999% sentinel, and diffing that against a
+  // normal period's percentage produced a nonsensical multi-hundred-point
+  // swing that read as a catastrophic utilization change rather than the
+  // configuration mismatch it actually is (Codex P1).
+  const utilizationDelta =
+    current.capacityMinutes > 0 && previous.capacityMinutes > 0
+      ? formatPointChange(current.utilizationRate, previous.utilizationRate)
+      : unmeasuredDelta();
   const newClientsDelta = formatCountChange(current.newClients, previous.newClients);
   const repeatVisitDelta =
     current.completedCount > 0 && previous.completedCount > 0

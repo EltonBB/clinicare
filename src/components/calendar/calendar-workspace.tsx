@@ -120,6 +120,17 @@ function clipMinutesToGrid(minutes: number) {
   return Math.min(Math.max(minutes, gridStartMinutes), gridEndMinutes);
 }
 
+// A block entirely before/after the grid clips both ends to the same
+// boundary — appointmentHeight's own `duration` floor (below) would still
+// render it as a minimum-height card sitting right over the first/last
+// visible slot, with zero real overlap, intercepting clicks on a slot it
+// doesn't actually block (Codex P2, fresh evidence after the clipping fix
+// above). Callers rendering block cards must skip any block this returns
+// false for.
+function hasVisibleGridInterval(startTime: string, endTime: string) {
+  return clipMinutesToGrid(timeToMinutes(endTime)) > clipMinutesToGrid(timeToMinutes(startTime));
+}
+
 function appointmentHeight(startTime: string, endTime: string) {
   const start = clipMinutesToGrid(timeToMinutes(startTime));
   const end = clipMinutesToGrid(timeToMinutes(endTime));
@@ -835,7 +846,10 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                     {(view === "day" ? [activeDate] : currentWeek).map((day) => {
                       const key = format(day, "yyyy-MM-dd");
                       const items = visibleAppointments.filter((appointment) => appointment.date === key);
-                      const blocks = visibleBlocks.filter((block) => block.date === key);
+                      const blocks = visibleBlocks.filter(
+                        (block) =>
+                          block.date === key && hasVisibleGridInterval(block.startTime, block.endTime)
+                      );
                       const isToday = isSameDay(day, todayDate);
                       const isSelectedColumn = isSameDay(day, activeDate);
 

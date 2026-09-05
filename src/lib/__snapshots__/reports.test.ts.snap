@@ -699,10 +699,10 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           "value": "50.0%",
         },
         {
-          "delta": "-992.8 pts",
+          "delta": "",
           "helper": "Booked minutes vs open hours × staff (estimate)",
           "label": "Estimated utilization",
-          "trend": "down",
+          "trend": "flat",
           "value": "6.3%",
         },
         {
@@ -736,11 +736,11 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
       ],
       "operationalDetail": [
         {
-          "delta": "-992.8 pts",
+          "delta": "",
           "helper": "Booked minutes vs open hours × staff (estimate)",
           "key": "utilization",
           "label": "Estimated utilization",
-          "trend": "down",
+          "trend": "flat",
           "value": "6.3%",
         },
         {

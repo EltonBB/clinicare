@@ -207,6 +207,65 @@ describe("buildReportsViewFromWorkspace — ScheduleBlock capacity", () => {
 
     expect(utilization?.value).toBe("999.0%");
   });
+
+  it("measures blocked capacity in wall-clock minutes, not elapsed time across a DST transition", () => {
+    // Europe/Budapest springs forward at 01:00 local on 2026-03-29 — the
+    // wall-clock interval 00:00-08:00 that day is only 420 real elapsed
+    // minutes, not 480. A block covering that same wall-clock span must
+    // still subtract 480 minutes (matching the always-wall-clock open-hours
+    // window it's subtracted from), not 420 — otherwise this day reports 60
+    // minutes of phantom capacity that was never actually bookable.
+    const dstNow = new Date("2026-03-29T10:00:00.000Z"); // local noon, post-shift
+    const dailyView = buildReportsViewFromWorkspace({
+      business: { name: "Blocked Clinic" },
+      // Local 08:00-08:30 on the transition day — inside the genuinely
+      // unblocked 08:00-09:00 hour, so it's a real, always-bookable slot
+      // regardless of the bug.
+      appointments: [
+        {
+          status: "COMPLETED",
+          startAt: new Date("2026-03-29T06:00:00.000Z"),
+          endAt: new Date("2026-03-29T06:30:00.000Z"),
+          createdAt: new Date("2026-03-29T06:00:00.000Z"),
+          clientId: "c1",
+          staffMemberId: "s1",
+        },
+      ],
+      clients: [],
+      clientMix: { active: 0, atRisk: 0, inactive: 0, archived: 0 },
+      messages: [],
+      businessHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+        weekday,
+        isOpen: true,
+        startTime: "00:00",
+        endTime: "09:00",
+      })),
+      // Local 00:00-08:00 on the transition day — the full 8 wall-clock
+      // hours, even though only 7 hours actually elapse.
+      scheduleBlocks: [
+        {
+          startsAt: new Date("2026-03-28T23:00:00.000Z"),
+          endsAt: new Date("2026-03-29T06:00:00.000Z"),
+        },
+      ],
+      staffMembers: [
+        { id: "s1", name: "Dr. One", role: "Dentist", status: "ACTIVE", isActive: true },
+      ],
+      conversations: [],
+      aiSnapshots: [],
+      now: dstNow,
+      timeZone: "Europe/Budapest",
+    });
+
+    const utilization = dailyView.periods.daily.metrics.find(
+      (metric) => metric.label === "Estimated utilization"
+    );
+
+    // 9h open - 8h blocked (wall-clock) = 1h (60min) capacity; 30min booked /
+    // 60min = 50%. The elapsed-time bug would instead measure only 7h
+    // blocked, leaving 2h (120min) of capacity and reporting 25%.
+    expect(utilization?.value).toBe("50.0%");
+  });
 });
 
 describe("buildKeyMetrics", () => {
