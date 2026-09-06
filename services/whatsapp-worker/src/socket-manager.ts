@@ -32,6 +32,13 @@ type Session = {
 const sessions = new Map<string, Session>();
 /** Businesses with an in-flight startSession — guards the Map against races. */
 const starting = new Set<string>();
+/**
+ * Businesses with an in-flight forceRestartSession — covers the teardown
+ * (old session removal, cred wipe) that happens before startSession is even
+ * called, so it can't reuse `starting` itself (which startSession's own
+ * guard treats as "already in progress, do nothing").
+ */
+const restarting = new Set<string>();
 /** Consecutive reconnect attempts per business (reset on a successful open). */
 const reconnectAttempts = new Map<string, number>();
 
@@ -94,8 +101,19 @@ export function getStatus(businessId: string): {
     // credential/version load (or a timed-out first-time /pair still inside
     // that same work) would otherwise report "disconnected" here too,
     // fresh evidence beyond the reconnect-timer gap above (Codex P2).
+    //
+    // `restarting` covers a third gap: forceRestartSession removes the old
+    // session and wipes creds — including an awaited DB call — before it
+    // ever calls startSession, so `starting` isn't set yet either during
+    // that teardown. Without this, a forced "Link a different device" could
+    // report "disconnected" mid-wipe, and the reconciliation above would
+    // hide the fresh QR the worker produces moments later (Codex P2, fresh
+    // evidence beyond the in-flight-startSession gap above).
     return {
-      status: reconnectTimers.has(businessId) || starting.has(businessId) ? "connecting" : "disconnected",
+      status:
+        reconnectTimers.has(businessId) || starting.has(businessId) || restarting.has(businessId)
+          ? "connecting"
+          : "disconnected",
     };
   }
   return {
@@ -580,27 +598,36 @@ export function closeAllSessions(): void {
  * produce a new QR.
  */
 export async function forceRestartSession(businessId: string): Promise<void> {
-  // Bump the generation FIRST so any in-flight startSession (which may have
-  // already loaded the soon-to-be-wiped creds) detects the change and restarts
-  // with fresh creds rather than reviving the old session.
-  sessionEpoch.set(businessId, (sessionEpoch.get(businessId) ?? 0) + 1);
-  const existing = sessions.get(businessId);
-  if (existing) {
-    try {
-      existing.sock.end(undefined);
-    } catch {
-      // already closed
+  // Reserve this slot for getStatus() before any teardown — the old session
+  // is about to be removed and creds wiped (including an awaited DB call)
+  // well before startSession itself ever sets `starting`, so without this
+  // that whole window reported "disconnected" (Codex P2).
+  restarting.add(businessId);
+  try {
+    // Bump the generation FIRST so any in-flight startSession (which may have
+    // already loaded the soon-to-be-wiped creds) detects the change and restarts
+    // with fresh creds rather than reviving the old session.
+    sessionEpoch.set(businessId, (sessionEpoch.get(businessId) ?? 0) + 1);
+    const existing = sessions.get(businessId);
+    if (existing) {
+      try {
+        existing.sock.end(undefined);
+      } catch {
+        // already closed
+      }
+      sessions.delete(businessId);
     }
-    sessions.delete(businessId);
+    clearReconnectTimer(businessId);
+    clearStableTimer(businessId);
+    reconnectAttempts.delete(businessId);
+    // Wipe stored creds so the next connect requires a fresh QR scan instead of
+    // silently re-linking the old phone. (The superseded socket's late close is a
+    // no-op — handleConnectionUpdate's socket-identity guard drops it.)
+    await clearAuthState(businessId);
+    await startSession(businessId);
+  } finally {
+    restarting.delete(businessId);
   }
-  clearReconnectTimer(businessId);
-  clearStableTimer(businessId);
-  reconnectAttempts.delete(businessId);
-  // Wipe stored creds so the next connect requires a fresh QR scan instead of
-  // silently re-linking the old phone. (The superseded socket's late close is a
-  // no-op — handleConnectionUpdate's socket-identity guard drops it.)
-  await clearAuthState(businessId);
-  await startSession(businessId);
 }
 
 /** Best-effort reconnect of every workspace that already has saved creds. */
