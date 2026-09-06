@@ -135,13 +135,15 @@ function buildBillingSummary(business: Business): SettingsState["billing"] {
   };
 }
 
-const statusLabelMap: Record<WhatsAppConnectionStatus, string> = {
-  DISCONNECTED: "Not connected",
-  PENDING_SETUP: "Not connected",
-  CONNECTING: "Connecting",
-  PENDING_VERIFICATION: "Connecting",
+// Exported so settings-workspace.tsx's client-side pairing handlers can
+// derive statusLabel from phase the same way this module does — a shared
+// map instead of each side hand-writing its own strings, which is what let
+// them drift apart (Codex P1 on an earlier version of those handlers).
+export const phaseLabelMap: Record<SettingsState["whatsapp"]["connection"]["phase"], string> = {
+  NOT_STARTED: "Not connected",
+  STARTING: "Connecting",
   CONNECTED: "Connected",
-  ERRORED: "Needs attention",
+  NEEDS_SUPPORT: "Needs attention",
 };
 
 function resolveCustomerFacingPhase(
@@ -172,11 +174,17 @@ export function buildWhatsAppConnectionSummary(
   connection: WhatsAppConnection | null
 ): SettingsState["whatsapp"]["connection"] {
   const status = connection?.status ?? "PENDING_SETUP";
+  const phase = resolveCustomerFacingPhase(connection);
 
   return {
-    phase: resolveCustomerFacingPhase(connection),
+    phase,
     status,
-    statusLabel: statusLabelMap[status],
+    // Keyed by the resolved phase, not the raw status — a legacy/other-provider
+    // CONNECTED row resolves to phase NOT_STARTED above (see
+    // resolveCustomerFacingPhase) and must say "Not connected" too, not
+    // "Connected" next to a Connect button. Deriving from status directly
+    // would let this label silently disagree with the phase it's shown beside.
+    statusLabel: phaseLabelMap[phase],
   };
 }
 

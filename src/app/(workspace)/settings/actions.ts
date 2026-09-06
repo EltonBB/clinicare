@@ -289,7 +289,12 @@ export async function saveSettingsAction(
 
 export type BaileysPairingResult =
   | { ok: true; status: WorkerConnectionStatus; qr?: string }
-  | { ok: false; error: string };
+  // `rolledBack` distinguishes a failure that actually reset the persisted
+  // connection (the caller should reflect that locally too) from a preflight
+  // failure — expired session, worker not configured — that never touched
+  // the existing row, where a still-connected clinic's status must be left
+  // alone (Codex P2).
+  | { ok: false; error: string; rolledBack?: boolean };
 
 /** Renders a raw QR payload to a small PNG data URL for the pairing UI. */
 async function renderQrDataUrl(qr?: string): Promise<string | undefined> {
@@ -352,9 +357,66 @@ export async function connectBaileysWhatsAppAction(options?: {
     force: options?.force === true,
   });
   if (!state) {
+    // requestBaileysPairing can return null on a lost/timed-out HTTP response
+    // even though the worker actually accepted /pair — including reusing an
+    // existing live session, which the worker doesn't treat as a new
+    // connection event and so never emits a webhook for. Scoping the
+    // rollback to status: "CONNECTING" alone only guards against a webhook
+    // that already landed; it does nothing for a live session sitting on the
+    // worker with no webhook ever coming to correct a wrong rollback (Codex
+    // P1 — reminders would then silently stop, since lib/reminders.ts only
+    // selects CONNECTED/ERRORED rows). Ask the worker directly first.
+    const workerState = await fetchBaileysStatus(business.id);
+
+    // "connecting"/"qr" are inherently transient, in-flight-only states — the
+    // worker only ever reports either one while a pairing attempt is
+    // genuinely live, so seeing one here proves /pair did land even though
+    // its own HTTP response to us got lost. Let the client keep polling/
+    // showing the QR instead of rolling back an attempt that's still
+    // actually in progress (Codex P2 — the first version of this fix only
+    // handled "connected", discarding these too).
+    if (workerState?.status === "connecting" || workerState?.status === "qr") {
+      return { ok: true, status: workerState.status, qr: await renderQrDataUrl(workerState.qr) };
+    }
+
+    // Trust "connected" here even for a forced re-pair. A freshly forced
+    // pairing can't realistically have already reached "connected" by the
+    // time this same request reconciles — that requires a human to scan a
+    // fresh QR, which takes far longer than this immediate follow-up check —
+    // so this is virtually always the old session the worker hasn't torn
+    // down yet, not proof the new pairing landed. Rolling it back to
+    // DISCONNECTED (the previous version of this fix) silently breaks a
+    // live, working connection — reminders and Inbox replies stop for a
+    // WhatsApp session that's actually fine — which is strictly worse than
+    // occasionally mislabeling a still-old session as freshly reconnected
+    // (Codex P1: no attempt/generation identifier exists to tell the two
+    // apart, so prefer the failure mode that keeps messaging working).
+    if (workerState?.status === "connected") {
+      await markWhatsAppConnected(business.id);
+      revalidatePath("/inbox");
+      revalidatePath("/settings");
+      return { ok: true, status: "connected", qr: await renderQrDataUrl(workerState.qr) };
+    }
+
+    // The upsert above optimistically set CONNECTING before this request —
+    // undo it now that the worker doesn't report an in-progress/live session
+    // we can trust, so Settings doesn't keep showing "finishing the
+    // connection" indefinitely for an attempt that never actually started.
+    // Still scoped to status: "CONNECTING" so a concurrent webhook that
+    // already moved this row to CONNECTED/ERRORED in the meantime makes this
+    // a no-op — checked below, not assumed, so the caller only reflects a
+    // disconnect locally when a row was actually changed (Codex P2: a
+    // webhook landing between the worker-status check above and this
+    // updateMany left the DB correctly CONNECTED but still reported
+    // rolledBack: true, telling the client to show "Not connected" anyway).
+    const rollback = await prisma.whatsAppConnection.updateMany({
+      where: { businessId: business.id, status: "CONNECTING" },
+      data: { status: "DISCONNECTED" },
+    });
     return {
       ok: false,
       error: "We couldn't start the WhatsApp connection. Please try again.",
+      rolledBack: rollback.count > 0,
     };
   }
 
@@ -417,6 +479,43 @@ export async function getBaileysPairingStatusAction(): Promise<BaileysPairingRes
   if (state.status === "connected") {
     await markWhatsAppConnected(business.id);
     revalidatePath("/inbox");
+  } else if (state.status === "disconnected") {
+    // The worker's own confirmation that pairing never completed / the
+    // session dropped — persist it, or the row stays CONNECTING and every
+    // later page load, save, or revalidation resurrects the misleading
+    // "Finishing the connection" phase even though the client already
+    // reconciled itself to not-started (Codex P2). Scoped to CONNECTING so
+    // a concurrent webhook that already moved this row is a no-op, not a
+    // clobber.
+    await prisma.whatsAppConnection.updateMany({
+      where: { businessId: business.id, status: "CONNECTING" },
+      data: { status: "DISCONNECTED" },
+    });
+    revalidatePath("/settings");
+
+    // Always re-read after the write, whether or not it matched — a
+    // connection webhook can land on either side of this compare-and-set
+    // (the socket reopening right before it OR right after it commits), so
+    // trusting either the pre-write "disconnected" snapshot or an
+    // unconditional "the write must still hold" leaves a live, reconnected
+    // session reported as disconnected either way (Codex P2 — a first pass
+    // only re-checked the no-op case, missing the socket-reopens-right-
+    // after-a-successful-rollback interleaving). Report what's actually
+    // persisted now instead.
+    const current = await prisma.whatsAppConnection.findUnique({
+      where: { businessId: business.id },
+      select: { status: true },
+    });
+    if (current?.status === "CONNECTED") {
+      return { ok: true, status: "connected", qr: await renderQrDataUrl(state.qr) };
+    }
+    if (current?.status === "DISCONNECTED") {
+      return { ok: true, status: "disconnected" };
+    }
+    // CONNECTING (a fresh attempt already under way) or an unmapped status
+    // (ERRORED, PENDING_*) — neither is a confirmed disconnect; let a later
+    // check resolve it instead of asserting one here.
+    return { ok: true, status: "connecting" };
   }
 
   return { ok: true, status: state.status, qr: await renderQrDataUrl(state.qr) };
