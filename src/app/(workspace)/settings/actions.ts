@@ -404,15 +404,19 @@ export async function connectBaileysWhatsAppAction(options?: {
     // connection" indefinitely for an attempt that never actually started.
     // Still scoped to status: "CONNECTING" so a concurrent webhook that
     // already moved this row to CONNECTED/ERRORED in the meantime makes this
-    // a no-op.
-    await prisma.whatsAppConnection.updateMany({
+    // a no-op — checked below, not assumed, so the caller only reflects a
+    // disconnect locally when a row was actually changed (Codex P2: a
+    // webhook landing between the worker-status check above and this
+    // updateMany left the DB correctly CONNECTED but still reported
+    // rolledBack: true, telling the client to show "Not connected" anyway).
+    const rollback = await prisma.whatsAppConnection.updateMany({
       where: { businessId: business.id, status: "CONNECTING" },
       data: { status: "DISCONNECTED" },
     });
     return {
       ok: false,
       error: "We couldn't start the WhatsApp connection. Please try again.",
-      rolledBack: true,
+      rolledBack: rollback.count > 0,
     };
   }
 
