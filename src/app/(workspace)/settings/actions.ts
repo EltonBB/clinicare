@@ -18,9 +18,18 @@ import {
 } from "@/lib/messaging/baileys-control";
 import type { WorkerConnectionStatus } from "@/lib/messaging/baileys-contract";
 import { normalizePhone } from "@/lib/inbox";
-import { normalizeStorageReference } from "@/lib/media-storage";
+import {
+  isValidUploadShape,
+  normalizeStorageReference,
+  parseStorageReference,
+} from "@/lib/media-storage";
 import { hasUnsafePublicUrl, normalizeOptionalPublicUrl } from "@/lib/safe-url";
-import { attemptStorageCleanup, recordPendingStorageCleanup } from "@/lib/media-storage-server";
+import {
+  attemptStorageCleanup,
+  OWNER_ID_SHAPE,
+  recordPendingStorageCleanup,
+} from "@/lib/media-storage-server";
+import { logger } from "@/lib/logger";
 import { normalizeBrandHexColor, resolveBrandAccentPreset } from "@/lib/branding";
 import {
   REMINDER_TEMPLATE_MAX_LENGTH,
@@ -285,6 +294,78 @@ export async function saveSettingsAction(
     ok: true,
     state: nextState,
   };
+}
+
+/**
+ * Best-effort cleanup for a logo the operator uploaded (handleLogoUpload in
+ * settings-workspace.tsx writes it to Storage immediately, before Save) but
+ * then discarded without saving. Nothing else ever records that file for
+ * cleanup unless a save actually commits it as the new logoUrl (see
+ * saveSettingsAction above) — otherwise it sits in Storage as an orphan
+ * forever. Never deletes the business's currently-persisted logo, even if a
+ * caller passes its URL by mistake.
+ */
+export async function discardUnsavedLogoAction(uploadedLogoUrl: string): Promise<void> {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return;
+  }
+
+  const business = await requireCurrentBusiness(user, {
+    missingBusinessRedirect: "/onboarding",
+  });
+
+  const candidate = normalizeStorageReference(uploadedLogoUrl);
+
+  if (!candidate || candidate === (business.logoUrl ?? "")) {
+    return;
+  }
+
+  // This action only exists to clean up a discarded LOGO upload — never
+  // queue anything else for deletion. A caller-supplied value must have the
+  // exact shape a real upload produces (media-storage-client.ts:
+  // `${ownerId}/logos/${uuid}.${ext}`), belong to this business's own owner
+  // prefix, and land specifically in the logos/ folder; otherwise a crafted
+  // same-owner reference could queue an in-use client document or gallery
+  // image (Codex P1 — those live under the same owner prefix, just a
+  // different folder, so the ownerId check alone doesn't rule them out).
+  const reference = parseStorageReference(candidate);
+  const [ownerId, folder] = reference?.path.split("/") ?? [];
+  const isLogoUpload =
+    reference !== null &&
+    isValidUploadShape(reference.bucket, reference.path) &&
+    ownerId === business.ownerId &&
+    folder === "logos";
+
+  if (!isLogoUpload) {
+    // Never log the raw path — see media-storage-server.ts's
+    // processPendingStorageCleanupRow for why a crafted value's segments
+    // can't be assumed safe (could be arbitrary text, including a patient
+    // name). Only log values already independently verified safe to show.
+    //
+    // logger.warn, not .error — this action is called from a client
+    // component, so its argument is untrusted input, and rejecting it is
+    // expected, not exceptional. logger.error forwards to Sentry, so any
+    // signed-in caller could otherwise page production alerts for free by
+    // repeatedly submitting a bad reference (Codex P2). Reserve .error for
+    // an actual invariant failure.
+    logger.warn(
+      "discardUnsavedLogoAction received a candidate outside the logos/ folder — dropped without queueing.",
+      {
+        businessId: business.id,
+        foundOwnerId: ownerId && OWNER_ID_SHAPE.test(ownerId) ? ownerId : "<non-uuid>",
+        foundFolder: folder === "client-documents" || folder === "client-gallery" ? folder : "<other>",
+      }
+    );
+    return;
+  }
+
+  const pending = await prisma.$transaction((tx) =>
+    recordPendingStorageCleanup(tx, business.id, [candidate])
+  );
+
+  after(() => attemptStorageCleanup(pending));
 }
 
 export type BaileysPairingResult =

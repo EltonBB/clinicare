@@ -400,8 +400,10 @@ function describeStorageError(error: unknown): string {
 // A Supabase auth id (what a legitimate ownerId prefix always is) is a v4
 // UUID. Used only to decide whether a mismatched entry's prefix is safe to
 // log — see processPendingStorageCleanupRow — never for the actual
-// ownership check itself, which always compares the raw value.
-const OWNER_ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// ownership check itself, which always compares the raw value. Exported so
+// settings/actions.ts's discardUnsavedLogoAction can apply the same
+// safe-logging discipline when it rejects a candidate outside logos/.
+export const OWNER_ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Keeps one cron tick from firing 50 concurrent Storage calls + DB writes at
 // once against DATABASE_POOL_MAX (default 3 — see prisma.ts) — normally

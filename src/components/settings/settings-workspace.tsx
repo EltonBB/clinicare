@@ -26,6 +26,7 @@ import {
 import { updateOwnerProfileAction } from "@/app/(auth)/actions";
 import {
   connectBaileysWhatsAppAction,
+  discardUnsavedLogoAction,
   getBaileysPairingStatusAction,
   saveSettingsAction,
 } from "@/app/(workspace)/settings/actions";
@@ -67,6 +68,31 @@ type SettingsWorkspaceProps = {
   onSaved?: (hasUnsavedChanges: boolean) => void;
   /** Notifies the host (the settings dialog) whenever unsaved edits appear or clear. */
   onDirtyChange?: (dirty: boolean) => void;
+  /**
+   * Notifies the host of a logo uploaded to Storage but not yet saved, so it
+   * can run the same orphan cleanup handleDiscard does below when the host's
+   * own close/discard path (Escape, backdrop, its confirm dialog) unmounts
+   * this component without ever calling handleDiscard itself.
+   */
+  onUnsavedLogoUrlChange?: (url: string | null) => void;
+  /**
+   * Notifies the host while a logo upload is still in flight — before it
+   * resolves, `state.business.logoUrl` (and so `onUnsavedLogoUrlChange`)
+   * hasn't changed yet, so without this signal the host's close path sees
+   * nothing to protect and unmounts this component out from under the
+   * still-running upload, orphaning it with no cleanup ever queued (Codex
+   * P2).
+   */
+  onLogoUploadingChange?: (uploading: boolean) => void;
+  /**
+   * Notifies the host while handleSave is in flight. Without this, the host
+   * only knows about an uploading logo, not a save that's actively
+   * committing one — Escape/backdrop could still open the discard
+   * confirmation mid-save, and confirming it queues the just-saved logo for
+   * cleanup as if it were still unsaved, deleting the object the save just
+   * made active (Codex P2).
+   */
+  onSavingChange?: (saving: boolean) => void;
   /** Owner account details merged into the Business & account section. */
   ownerName?: string;
   ownerEmail?: string;
@@ -238,6 +264,9 @@ export function SettingsWorkspace({
   variant = "page",
   onSaved,
   onDirtyChange,
+  onUnsavedLogoUrlChange,
+  onLogoUploadingChange,
+  onSavingChange,
   ownerName = "",
   ownerEmail = "",
   ownerPhone = "",
@@ -309,6 +338,22 @@ export function SettingsWorkspace({
   useEffect(() => {
     onDirtyChange?.(hasUnsavedChanges);
   }, [hasUnsavedChanges, onDirtyChange]);
+
+  useEffect(() => {
+    onUnsavedLogoUrlChange?.(
+      state.business.logoUrl && state.business.logoUrl !== savedState.business.logoUrl
+        ? state.business.logoUrl
+        : null
+    );
+  }, [state.business.logoUrl, savedState.business.logoUrl, onUnsavedLogoUrlChange]);
+
+  useEffect(() => {
+    onLogoUploadingChange?.(isLogoUploading);
+  }, [isLogoUploading, onLogoUploadingChange]);
+
+  useEffect(() => {
+    onSavingChange?.(isPending);
+  }, [isPending, onSavingChange]);
 
   // onSaved is read via a ref, not as a dependency below, so a prop-identity
   // change on its own can't re-fire the completion effect.
@@ -486,6 +531,13 @@ export function SettingsWorkspace({
   }
 
   function handleDiscard() {
+    // handleLogoUpload already wrote this file to Storage — discarding it here
+    // just resets local state, so without this the upload would sit orphaned
+    // in Storage forever. Best-effort: nothing in the UI depends on it landing.
+    if (state.business.logoUrl && state.business.logoUrl !== savedState.business.logoUrl) {
+      discardUnsavedLogoAction(state.business.logoUrl).catch(() => {});
+    }
+
     setState(savedState);
     setAccount({
       fullName: savedAccount.fullName,
@@ -518,11 +570,19 @@ export function SettingsWorkspace({
 
     setIsLogoUploading(true);
 
+    // Uploading again before saving the last upload abandons that file in
+    // Storage just as much as Discard does — same best-effort cleanup.
+    const previousUnsavedLogoUrl =
+      state.business.logoUrl !== savedState.business.logoUrl ? state.business.logoUrl : null;
+
     try {
       const uploadedLogo = await uploadWorkspaceImage(file, {
         folder: "logos",
         maxBytes: 750_000,
       });
+      if (previousUnsavedLogoUrl) {
+        discardUnsavedLogoAction(previousUnsavedLogoUrl).catch(() => {});
+      }
       setState((current) => ({
         ...current,
         business: {
@@ -843,7 +903,13 @@ export function SettingsWorkspace({
           <div className="mt-auto space-y-2 border-t border-border/70 p-2 pt-3">
             <Button
               className="h-10 w-full rounded-(--radius-card)"
-              disabled={isPending}
+              // Also blocked mid-upload — saving the not-yet-resolved logo
+              // URL here, then starting a second upload once this save
+              // completes, is exactly the ordering that let a discard
+              // queued against a stale pre-save logoUrl delete the logo a
+              // save had just committed (Codex P2). Keeping upload and save
+              // mutually exclusive removes the overlap entirely.
+              disabled={isPending || isLogoUploading}
               onClick={handleSave}
             >
               {isPending ? "Saving..." : "Save changes"}
@@ -852,7 +918,12 @@ export function SettingsWorkspace({
               variant="outline"
               className="h-10 w-full rounded-(--radius-card) bg-white"
               onClick={handleDiscard}
-              disabled={isPending || !hasUnsavedChanges}
+              // Also blocked mid-upload — handleDiscard resets state to
+              // savedState immediately, but the still-running upload later
+              // writes its result back into state regardless, silently
+              // leaving a new unsaved logo behind right after a discard
+              // that was supposed to clear everything (Codex P2).
+              disabled={isPending || isLogoUploading || !hasUnsavedChanges}
             >
               Discard changes
             </Button>
@@ -968,7 +1039,9 @@ export function SettingsWorkspace({
                     <input
                       type="file"
                       accept="image/*"
-                      disabled={isLogoUploading}
+                      // Also blocked while a save is in flight — see the
+                      // Save button's own disabled condition above.
+                      disabled={isLogoUploading || isPending}
                       className="sr-only"
                       onChange={(event) => handleLogoUpload(event.target.files?.[0] ?? null)}
                     />
