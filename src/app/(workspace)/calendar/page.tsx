@@ -77,9 +77,16 @@ export default async function CalendarPage({
     prisma.scheduleBlock.findMany({
       where: {
         businessId: business.id,
+        // Interval overlap, not "starts inside the range" — a multi-day
+        // block that started before rangeStart but extends into the visible
+        // window was otherwise excluded entirely, silently showing its
+        // opening days as available (Codex P2). Matches report-data.ts's
+        // own scheduleBlock query.
         startsAt: {
-          gte: rangeStart,
           lte: rangeEnd,
+        },
+        endsAt: {
+          gte: rangeStart,
         },
       },
       orderBy: {
@@ -128,6 +135,8 @@ export default async function CalendarPage({
     businessHours,
     ownerName,
     initialDate: format(initialDate, "yyyy-MM-dd"),
+    rangeStart,
+    rangeEnd,
   });
 
   return (

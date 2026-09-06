@@ -9,6 +9,7 @@ import type {
   Client,
   Conversation,
   Message,
+  ScheduleBlock,
   StaffMember,
 } from "@prisma/client";
 import {
@@ -25,6 +26,7 @@ import {
   getZonedMonthWindow,
   getZonedWeekWindow,
 } from "@/lib/time-zone";
+import { sumMergedIntervals } from "@/lib/utils";
 
 export type ReportMetricTrend = "up" | "down" | "flat";
 export type ReportSnapshotTone = "strong" | "healthy" | "watch" | "attention";
@@ -197,6 +199,7 @@ type ReportsWorkspaceArgs = {
   clientMix: ReportClientMix;
   messages: Array<Pick<Message, "direction" | "sentAt">>;
   businessHours: Array<Pick<BusinessHours, "weekday" | "isOpen" | "startTime" | "endTime">>;
+  scheduleBlocks: Array<Pick<ScheduleBlock, "startsAt" | "endsAt">>;
   staffMembers: Array<Pick<StaffMember, "id" | "name" | "role" | "status" | "isActive">>;
   conversations: Array<Pick<Conversation, "unreadCount">>;
   aiSnapshots?: ReportAiSnapshotInput[];
@@ -632,6 +635,7 @@ function filterClientsInRange(
 function buildCapacityMinutes(
   window: PeriodWindow,
   businessHours: Array<Pick<BusinessHours, "weekday" | "isOpen" | "startTime" | "endTime">>,
+  scheduleBlocks: Array<Pick<ScheduleBlock, "startsAt" | "endsAt">>,
   activeStaffCount: number,
   timeZone: string
 ) {
@@ -657,10 +661,58 @@ function buildCapacityMinutes(
 
       const dayStartMinutes = parseTimeToMinutes(schedule.startTime);
       const dayEndMinutes = parseTimeToMinutes(schedule.endTime);
-      const minutes = Math.max(
-        dayEndMinutes - dayStartMinutes,
-        0
-      );
+      const openMinutes = Math.max(dayEndMinutes - dayStartMinutes, 0);
+
+      // A business-wide ScheduleBlock inside open hours isn't real capacity —
+      // an appointment can't be booked into it. Skip the timezone conversion
+      // below entirely when there's nothing to check (the common case).
+      if (scheduleBlocks.length === 0) {
+        return total + openMinutes * safeStaffCount;
+      }
+
+      // Wall-clock minutes-since-midnight throughout — never elapsed real
+      // time — so this stays comparable to openMinutes above, which is also
+      // wall-clock (a 09:00-17:00 window is 480 minutes of bookable time
+      // regardless of what DST does that day). Converting through UTC
+      // instants and taking their elapsed-ms difference (the previous
+      // version) measured a different duration than openMinutes on a day
+      // with a DST transition inside the window, over- or under-counting
+      // capacity by the shift (Codex P2).
+      const dayKey = Date.UTC(dayParts.year, dayParts.month - 1, dayParts.day);
+      const blockedIntervals = scheduleBlocks.flatMap((block) => {
+        const blockStartParts = getZonedDateParts(block.startsAt, timeZone);
+        const blockEndParts = getZonedDateParts(block.endsAt, timeZone);
+        const blockStartKey = Date.UTC(
+          blockStartParts.year,
+          blockStartParts.month - 1,
+          blockStartParts.day
+        );
+        const blockEndKey = Date.UTC(blockEndParts.year, blockEndParts.month - 1, blockEndParts.day);
+
+        if (dayKey < blockStartKey || dayKey > blockEndKey) {
+          return []; // doesn't touch this calendar day at all
+        }
+
+        // A block only carries its real clock time on the day it actually
+        // starts/ends — every day in between (and the whole day, on either
+        // boundary that isn't also the other boundary) is blocked start-of-
+        // day to end-of-day.
+        const blockStartMinutesToday = dayKey === blockStartKey
+          ? blockStartParts.hour * 60 + blockStartParts.minute
+          : 0;
+        const blockEndMinutesToday = dayKey === blockEndKey
+          ? blockEndParts.hour * 60 + blockEndParts.minute
+          : 24 * 60;
+
+        return [{
+          start: Math.max(dayStartMinutes, blockStartMinutesToday),
+          end: Math.min(dayEndMinutes, blockEndMinutesToday),
+        }];
+      });
+      // sumMergedIntervals merges overlapping blocks before summing, so two
+      // ScheduleBlocks covering the same hour don't get subtracted twice.
+      const blockedMinutes = sumMergedIntervals(blockedIntervals);
+      const minutes = Math.max(openMinutes - blockedMinutes, 0);
 
       return total + minutes * safeStaffCount;
     },
@@ -673,13 +725,23 @@ function buildPeriodStats(args: {
   clients: Array<Pick<Client, "createdAt" | "isArchived">>;
   messages: Array<Pick<Message, "direction" | "sentAt">>;
   businessHours: Array<Pick<BusinessHours, "weekday" | "isOpen" | "startTime" | "endTime">>;
+  scheduleBlocks: Array<Pick<ScheduleBlock, "startsAt" | "endsAt">>;
   activeStaffCount: number;
   unreadMessages: number;
   window: PeriodWindow;
   timeZone: string;
 }): PeriodStats {
-  const { appointments, clients, messages, businessHours, activeStaffCount, unreadMessages, window, timeZone } =
-    args;
+  const {
+    appointments,
+    clients,
+    messages,
+    businessHours,
+    scheduleBlocks,
+    activeStaffCount,
+    unreadMessages,
+    window,
+    timeZone,
+  } = args;
   const scopedAppointments = filterAppointmentsInRange(appointments, window.start, window.end);
   const finalizedAppointments = scopedAppointments.filter(
     (appointment) =>
@@ -701,6 +763,7 @@ function buildPeriodStats(args: {
   const capacityMinutes = buildCapacityMinutes(
     window,
     businessHours,
+    scheduleBlocks,
     activeStaffCount,
     timeZone
   );
@@ -743,8 +806,19 @@ function buildPeriodStats(args: {
         ? (cancelledAppointments.length / finalizedAppointments.length) * 100
         : 0,
     capacityMinutes,
+    // A ScheduleBlock can drive a day's capacity to exactly 0 while a real
+    // booking still exists under it — saveAppointmentAction validates against
+    // BusinessHours but never ScheduleBlock, and a block can also be created
+    // after the booking. Reporting flat 0% there (Codex P1) reads as "no
+    // capacity was used" when the opposite is true; treat it the same as any
+    // other over-capacity case (already reachable and already capped at 999,
+    // not a new class of value this introduces).
     utilizationRate:
-      capacityMinutes > 0 ? Math.min((bookedMinutes / capacityMinutes) * 100, 999) : 0,
+      capacityMinutes > 0
+        ? Math.min((bookedMinutes / capacityMinutes) * 100, 999)
+        : bookedMinutes > 0
+          ? 999
+          : 0,
     newClients: scopedClients.length,
     repeatVisitRate:
       distinctCompletedClients > 0 ? (repeatClients / distinctCompletedClients) * 100 : 0,
@@ -1017,6 +1091,14 @@ function buildPerformanceSummary(stats: PeriodStats, deltas: {
 }
 
 function buildStrength(stats: PeriodStats, periodLabel: string) {
+  // Checked first — a closed/blocked period with zero bookings still needs
+  // this over "unused capacity", which implies capacity existed and simply
+  // went unbooked (Codex P2, same class as buildWatch/buildFocus/
+  // buildPrimaryConstraint/buildDynamicPlaybookSteps).
+  if (stats.capacityMinutes <= 0) {
+    return `Utilization can't be measured ${periodLabel} — there's no configured open capacity to compare against.`;
+  }
+
   if (stats.scheduledCount === 0) {
     return `There are no booked appointments ${periodLabel}, so the clearest signal is unused capacity rather than visit execution.`;
   }
@@ -1043,6 +1125,16 @@ function buildStrength(stats: PeriodStats, periodLabel: string) {
 }
 
 function buildWatch(stats: PeriodStats) {
+  // Checked before scheduledCount below — a fully closed/blocked period with
+  // nothing booked still needs this over "0 booked appointments... open
+  // capacity is the main issue", which reads as capacity existing and simply
+  // going unused, not as there having been no open capacity to book into at
+  // all (Codex P2, fresh evidence: the earlier fix only covered a booking
+  // existing despite zero capacity, not the zero-booking case too).
+  if (stats.capacityMinutes <= 0) {
+    return "Estimated utilization can't be measured this period — there's no configured open capacity to compare bookings against (closed hours, or a schedule block covering the window).";
+  }
+
   if (stats.scheduledCount === 0) {
     return `There are 0 booked appointments while utilization is ${formatPercent(stats.utilizationRate)}, so open capacity is the main issue.`;
   }
@@ -1077,6 +1169,13 @@ function buildWatch(stats: PeriodStats) {
 }
 
 function buildFocus(stats: PeriodStats) {
+  // Checked first — a closed/blocked period with zero bookings still needs
+  // this over "create measurable demand", which implies capacity existed
+  // and simply went unbooked (Codex P2, same class as buildWatch).
+  if (stats.capacityMinutes <= 0) {
+    return "Check business hours and schedule blocks for this period — utilization can't be estimated without real open capacity to compare against.";
+  }
+
   if (stats.scheduledCount === 0) {
     return "Create measurable demand first: book upcoming visits, reactivate existing clients, and fill the next available open slots.";
   }
@@ -1113,6 +1212,19 @@ function buildFocus(stats: PeriodStats) {
 }
 
 function buildPrimaryConstraint(stats: PeriodStats) {
+  // Checked first — a closed/blocked period with zero bookings still needs
+  // this over "no booked demand" (severity high, implying action to
+  // generate demand), when the real constraint is that no capacity ever
+  // existed to book into (Codex P2, same class as buildWatch/buildFocus).
+  if (stats.capacityMinutes <= 0) {
+    return {
+      title: "Utilization can't be measured for this period",
+      metric: "Estimated utilization",
+      value: "Unmeasured",
+      severity: "low" as const,
+    };
+  }
+
   if (stats.scheduledCount === 0) {
     return {
       title: "No booked demand in this timeframe",
@@ -1185,6 +1297,18 @@ function buildPrimaryConstraint(stats: PeriodStats) {
 }
 
 function buildDynamicPlaybookSteps(stats: PeriodStats) {
+  // Checked first — a closed/blocked period with zero bookings still needs
+  // this over "book at least 1 appointment", which reads as a demand
+  // problem when no capacity ever existed to book into (Codex P2, same
+  // class as buildWatch/buildFocus/buildPrimaryConstraint).
+  if (stats.capacityMinutes <= 0) {
+    return [
+      "Check business hours and schedule blocks for this period before trusting utilization.",
+      "Confirm the closed hours or schedule block covering this window are intentional.",
+      "Re-run this report once real open capacity exists to measure utilization again.",
+    ];
+  }
+
   if (stats.scheduledCount === 0) {
     return [
       `Book at least 1 appointment into the open schedule for this period.`,
@@ -1263,7 +1387,10 @@ function buildWhatToMonitor(stats: PeriodStats) {
     },
     {
       metric: "Estimated utilization",
-      target: `Current estimated utilization is ${formatPercent(stats.utilizationRate)}; healthy range is 70-92%.`,
+      target:
+        stats.capacityMinutes <= 0
+          ? "Utilization can't be measured this period — there's no configured open capacity to compare against."
+          : `Current estimated utilization is ${formatPercent(stats.utilizationRate)}; healthy range is 70-92%.`,
     },
   ];
 
@@ -1356,11 +1483,18 @@ function buildSnapshot(
       },
       {
         label: "Estimated utilization",
-        value: formatPercent(stats.utilizationRate),
+        // This feeds the AI/rule-based insight payload, not the Reports KPI
+        // tile — showing the raw sentinel here (as opposed to the tile's own
+        // deliberate "999% = maximum" display) reads as a real, actionable
+        // imbalance rather than the configuration conflict it actually is
+        // (Codex P1, same class as buildWatch/buildFocus/buildPrimaryConstraint).
+        value: stats.capacityMinutes <= 0 ? "Unmeasured" : formatPercent(stats.utilizationRate),
         readout:
-          stats.utilizationRate >= 70 && stats.utilizationRate <= 92
-            ? "Booked time is sitting in a healthy operating range."
-            : "Capacity and demand are not yet balanced for this timeframe.",
+          stats.capacityMinutes <= 0
+            ? "No configured open capacity this period — utilization can't be measured."
+            : stats.utilizationRate >= 70 && stats.utilizationRate <= 92
+              ? "Booked time is sitting in a healthy operating range."
+              : "Capacity and demand are not yet balanced for this timeframe.",
       },
       {
         label: "Repeat visits",
@@ -1406,26 +1540,39 @@ function buildSnapshot(
     auditLabel: "Generated from current clinic metrics without AI.",
     actions: [
       {
+        // capacityMinutes checked first, same as strength/watch/focus/
+        // primaryConstraint/playbookSteps above — otherwise a closed/blocked
+        // period with zero bookings still rendered "Create booked demand" as
+        // the Next move, recommending demand generation for a period that
+        // never had capacity to book into (Codex P2, fresh evidence: this
+        // action independently re-derives its own condition rather than
+        // reusing the already-corrected strength/focus text).
         title:
-          stats.scheduledCount === 0
-            ? "Create booked demand"
-            : stats.finalizedCount === 0
-              ? "Finalize booked visits"
-              : "Protect the strongest signal",
+          stats.capacityMinutes <= 0
+            ? "Confirm the closed period is intentional"
+            : stats.scheduledCount === 0
+              ? "Create booked demand"
+              : stats.finalizedCount === 0
+                ? "Finalize booked visits"
+                : "Protect the strongest signal",
         detail: strength,
         priority: "medium",
         metric:
-          stats.scheduledCount === 0
-            ? "Appointments"
-            : stats.finalizedCount === 0
-              ? "Finalized visits"
-              : "Completion and utilization",
+          stats.capacityMinutes <= 0
+            ? "Estimated utilization"
+            : stats.scheduledCount === 0
+              ? "Appointments"
+              : stats.finalizedCount === 0
+                ? "Finalized visits"
+                : "Completion and utilization",
         expectedImpact:
-          stats.scheduledCount === 0
-            ? "Creates the visit data needed for the next report to diagnose performance."
-            : stats.finalizedCount === 0
-              ? "Turns booked visits into measurable completion and lost-slot rates."
-              : `Protects the current ${score}/100 performance score by preserving the strongest metric signal.`,
+          stats.capacityMinutes <= 0
+            ? "Confirms the closed hours or schedule block for this period are correct before trusting utilization again."
+            : stats.scheduledCount === 0
+              ? "Creates the visit data needed for the next report to diagnose performance."
+              : stats.finalizedCount === 0
+                ? "Turns booked visits into measurable completion and lost-slot rates."
+                : `Protects the current ${score}/100 performance score by preserving the strongest metric signal.`,
       },
       {
         title: `Work ${primaryConstraint.metric.toLowerCase()}`,
@@ -1565,10 +1712,18 @@ function buildMetrics(args: {
     current.finalizedCount > 0 && previous.finalizedCount > 0
       ? formatPointChange(current.lostSlotRate, previous.lostSlotRate, { inverse: true })
       : unmeasuredDelta();
-  const utilizationDelta = formatPointChange(
-    current.utilizationRate,
-    previous.utilizationRate
-  );
+  // Every other rate metric above already gates its delta on both periods
+  // having enough data to compare — utilizationRate was the one exception.
+  // Without this, a period with bookings but zero measured capacity (a
+  // closed day, missing business hours, or a schedule block covering the
+  // whole window) reports the 999% sentinel, and diffing that against a
+  // normal period's percentage produced a nonsensical multi-hundred-point
+  // swing that read as a catastrophic utilization change rather than the
+  // configuration mismatch it actually is (Codex P1).
+  const utilizationDelta =
+    current.capacityMinutes > 0 && previous.capacityMinutes > 0
+      ? formatPointChange(current.utilizationRate, previous.utilizationRate)
+      : unmeasuredDelta();
   const newClientsDelta = formatCountChange(current.newClients, previous.newClients);
   const repeatVisitDelta =
     current.completedCount > 0 && previous.completedCount > 0
@@ -2093,6 +2248,7 @@ export function buildReportsViewFromWorkspace({
   clientMix,
   messages,
   businessHours,
+  scheduleBlocks,
   staffMembers,
   conversations,
   aiSnapshots = [],
@@ -2182,6 +2338,7 @@ export function buildReportsViewFromWorkspace({
     clients,
     messages,
     businessHours,
+    scheduleBlocks,
     activeStaffCount,
     unreadMessages,
     window: dailyWindow,
@@ -2199,6 +2356,7 @@ export function buildReportsViewFromWorkspace({
     clients,
     messages,
     businessHours,
+    scheduleBlocks,
     activeStaffCount,
     unreadMessages,
     window: {
@@ -2215,6 +2373,7 @@ export function buildReportsViewFromWorkspace({
     clients,
     messages,
     businessHours,
+    scheduleBlocks,
     activeStaffCount,
     unreadMessages,
     window: weeklyWindow,
@@ -2232,6 +2391,7 @@ export function buildReportsViewFromWorkspace({
     clients,
     messages,
     businessHours,
+    scheduleBlocks,
     activeStaffCount,
     unreadMessages,
     window: {
@@ -2248,6 +2408,7 @@ export function buildReportsViewFromWorkspace({
     clients,
     messages,
     businessHours,
+    scheduleBlocks,
     activeStaffCount,
     unreadMessages,
     window: monthlyWindow,
@@ -2265,6 +2426,7 @@ export function buildReportsViewFromWorkspace({
     clients,
     messages,
     businessHours,
+    scheduleBlocks,
     activeStaffCount,
     unreadMessages,
     window: {
@@ -2281,6 +2443,7 @@ export function buildReportsViewFromWorkspace({
         clients,
         messages,
         businessHours,
+        scheduleBlocks,
         activeStaffCount,
         unreadMessages,
         window: customWindow,
@@ -2302,6 +2465,7 @@ export function buildReportsViewFromWorkspace({
         clients,
         messages,
         businessHours,
+        scheduleBlocks,
         activeStaffCount,
         unreadMessages,
         window: {

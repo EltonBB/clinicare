@@ -11,8 +11,22 @@ export async function getReportWorkspaceData(
   const timeZone = getAppTimeZone();
   const defaultStart = getZonedDayWindow(subDays(now, 209), timeZone).start;
   const defaultEnd = getZonedDayWindow(now, timeZone).end;
+  // A custom range needs its own comparison ("previous") period fetched too
+  // — buildReportsViewFromWorkspace builds that as the same-length window
+  // immediately before range.start — so the fetch boundary must reach back
+  // that far, not just to range.start itself, or a custom range whose
+  // comparison period predates the default 209-day lookback silently omits
+  // appointments/messages/ScheduleBlocks from its own comparison interval.
+  // A missing ScheduleBlock is the most dangerous case: it reads as capacity
+  // that was never actually bookable (Codex P2).
+  const customRangeStart = range
+    ? new Date(
+        range.start.getTime() -
+          Math.max(range.end.getTime() - range.start.getTime(), 86_400_000)
+      )
+    : undefined;
   const reportStart =
-    range?.start && range.start < defaultStart ? range.start : defaultStart;
+    customRangeStart && customRangeStart < defaultStart ? customRangeStart : defaultStart;
   const reportEnd = range?.end && range.end > defaultEnd ? range.end : defaultEnd;
 
   const [
@@ -21,6 +35,7 @@ export async function getReportWorkspaceData(
     clients,
     messages,
     businessHours,
+    scheduleBlocks,
     staffMembers,
     conversations,
     clientStatusCounts,
@@ -95,6 +110,24 @@ export async function getReportWorkspaceData(
         endTime: true,
       },
     }),
+    // Business-wide blocked-off time — subtracted from capacity in
+    // buildCapacityMinutes since nothing can be booked into it regardless of
+    // BusinessHours saying the day is otherwise open.
+    prisma.scheduleBlock.findMany({
+      where: {
+        businessId,
+        startsAt: {
+          lte: reportEnd,
+        },
+        endsAt: {
+          gte: reportStart,
+        },
+      },
+      select: {
+        startsAt: true,
+        endsAt: true,
+      },
+    }),
     prisma.staffMember.findMany({
       where: {
         businessId,
@@ -155,6 +188,7 @@ export async function getReportWorkspaceData(
     clients,
     messages,
     businessHours,
+    scheduleBlocks,
     staffMembers,
     conversations,
     clientMix,

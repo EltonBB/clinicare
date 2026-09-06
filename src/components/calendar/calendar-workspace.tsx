@@ -37,7 +37,7 @@ import {
   WorkspaceRail,
 } from "@/components/workspace/workspace-layout";
 import { MonthGrid } from "@/components/workspace/month-grid";
-import { cn } from "@/lib/utils";
+import { cn, sumMergedIntervals } from "@/lib/utils";
 import type {
   CalendarAppointment,
   CalendarAppointmentStatus,
@@ -105,18 +105,49 @@ function monthDays(activeDate: Date) {
   });
 }
 
+// The visible grid only ever renders slotHours[0]:00 through
+// (slotHours[last]+1):00 — a continuation ScheduleBlock segment can carry a
+// startTime/endTime well outside that (e.g. "00:00" for every day after a
+// multi-day block's first). Clipping both ends to the grid here, not just
+// the start, is what keeps a block that ends mid-day from rendering with the
+// height of its full (mostly invisible, before-the-grid) nominal duration —
+// previously only the start was clamped, so the visible block could overlay
+// hours past its real end and intercept clicks on open slots (Codex P2).
+const gridStartMinutes = slotHours[0] * 60;
+const gridEndMinutes = (slotHours[slotHours.length - 1] + 1) * 60;
+
+function clipMinutesToGrid(minutes: number) {
+  return Math.min(Math.max(minutes, gridStartMinutes), gridEndMinutes);
+}
+
+// A block entirely before/after the grid clips both ends to the same
+// boundary — appointmentHeight's own `duration` floor (below) would still
+// render it as a minimum-height card sitting right over the first/last
+// visible slot, with zero real overlap, intercepting clicks on a slot it
+// doesn't actually block (Codex P2, fresh evidence after the clipping fix
+// above). Callers rendering block cards must skip any block this returns
+// false for.
+function hasVisibleGridInterval(startTime: string, endTime: string) {
+  return clipMinutesToGrid(timeToMinutes(endTime)) > clipMinutesToGrid(timeToMinutes(startTime));
+}
+
 function appointmentHeight(startTime: string, endTime: string) {
-  const duration = Math.max(timeToMinutes(endTime) - timeToMinutes(startTime), 30);
+  const start = clipMinutesToGrid(timeToMinutes(startTime));
+  const end = clipMinutesToGrid(timeToMinutes(endTime));
+  const duration = Math.max(end - start, 30);
   return `${Math.max((duration / 60) * hourRowHeight, 42)}px`;
 }
 
 function appointmentOffset(startTime: string) {
-  const firstMinute = slotHours[0] * 60;
-  const startMinute = timeToMinutes(startTime);
-  return `${Math.max(((startMinute - firstMinute) / 60) * hourRowHeight, 0)}px`;
+  const start = clipMinutesToGrid(timeToMinutes(startTime));
+  return `${Math.max(((start - gridStartMinutes) / 60) * hourRowHeight, 0)}px`;
 }
 
-function dayCapacityMinutes(date: Date, businessHours: CalendarViewModel["businessHours"]) {
+function dayCapacityMinutes(
+  date: Date,
+  businessHours: CalendarViewModel["businessHours"],
+  scheduleBlocks: CalendarViewModel["scheduleBlocks"]
+) {
   const weekday = (date.getDay() + 6) % 7;
   const hours = businessHours.find((item) => item.weekday === weekday);
 
@@ -124,7 +155,29 @@ function dayCapacityMinutes(date: Date, businessHours: CalendarViewModel["busine
     return 0;
   }
 
-  return Math.max(timeToMinutes(hours.end) - timeToMinutes(hours.start), 0);
+  const openStart = timeToMinutes(hours.start);
+  const openEnd = timeToMinutes(hours.end);
+  const openMinutes = Math.max(openEnd - openStart, 0);
+
+  // A business-wide ScheduleBlock inside open hours isn't real capacity — an
+  // appointment can't be booked into it.
+  if (scheduleBlocks.length === 0) {
+    return openMinutes;
+  }
+
+  const dateKey = format(date, "yyyy-MM-dd");
+  // sumMergedIntervals merges overlapping blocks before summing, so two
+  // ScheduleBlocks covering the same hour don't get subtracted twice.
+  const blockedMinutes = sumMergedIntervals(
+    scheduleBlocks
+      .filter((block) => block.date === dateKey)
+      .map((block) => ({
+        start: Math.max(openStart, timeToMinutes(block.startTime)),
+        end: Math.min(openEnd, timeToMinutes(block.endTime)),
+      }))
+  );
+
+  return Math.max(openMinutes - blockedMinutes, 0);
 }
 
 function hourOpenForDay(
@@ -508,7 +561,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
     0
   );
   const capacityMinutes = visibleDates.reduce(
-    (sum, day) => sum + dayCapacityMinutes(day, initialView.businessHours),
+    (sum, day) => sum + dayCapacityMinutes(day, initialView.businessHours, scheduleBlocks),
     0
   );
   const availableMinutes = Math.max(capacityMinutes - activeBookedMinutes, 0);
@@ -653,7 +706,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                   const blocks = scheduleBlocks.filter((block) => block.date === key);
                   const isToday = isSameDay(day, todayDate);
                   const isSelected = isSameDay(day, activeDate);
-                  const isClosed = dayCapacityMinutes(day, initialView.businessHours) === 0;
+                  const isClosed = dayCapacityMinutes(day, initialView.businessHours, scheduleBlocks) === 0;
 
                   return (
                     <button
@@ -793,7 +846,10 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                     {(view === "day" ? [activeDate] : currentWeek).map((day) => {
                       const key = format(day, "yyyy-MM-dd");
                       const items = visibleAppointments.filter((appointment) => appointment.date === key);
-                      const blocks = visibleBlocks.filter((block) => block.date === key);
+                      const blocks = visibleBlocks.filter(
+                        (block) =>
+                          block.date === key && hasVisibleGridInterval(block.startTime, block.endTime)
+                      );
                       const isToday = isSameDay(day, todayDate);
                       const isSelectedColumn = isSameDay(day, activeDate);
 
