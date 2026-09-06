@@ -28,6 +28,7 @@ export function MobileAccessCard({ staffId, initial }: MobileAccessCardProps) {
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [justRevoked, setJustRevoked] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const hasAccess = status.hasActiveCode || status.device !== null;
@@ -41,6 +42,7 @@ export function MobileAccessCard({ staffId, initial }: MobileAccessCardProps) {
         return;
       }
       setStatus((prev) => ({ ...prev, hasActiveCode: true }));
+      setJustRevoked(false);
       setCopied(false);
       setGeneratedCode(result.code);
     });
@@ -56,6 +58,7 @@ export function MobileAccessCard({ staffId, initial }: MobileAccessCardProps) {
       }
       setStatus({ hasActiveCode: false, device: null });
       setConfirmRevoke(false);
+      setJustRevoked(true);
     });
   }
 
@@ -96,6 +99,10 @@ export function MobileAccessCard({ staffId, initial }: MobileAccessCardProps) {
         ) : status.hasActiveCode ? (
           <p className="text-sm text-muted-foreground">
             Code active — waiting for the staff member to sign in on their phone.
+          </p>
+        ) : justRevoked ? (
+          <p className="text-sm text-muted-foreground">
+            Access revoked. They&apos;ll need a new code to sign back in.
           </p>
         ) : (
           <p className="text-sm text-muted-foreground">No device paired yet.</p>
