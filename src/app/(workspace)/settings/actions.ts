@@ -486,12 +486,40 @@ export async function getBaileysPairingStatusAction(): Promise<BaileysPairingRes
     // "Finishing the connection" phase even though the client already
     // reconciled itself to not-started (Codex P2). Scoped to CONNECTING,
     // same as connectBaileysWhatsAppAction's own rollback, so a concurrent
-    // webhook that already moved this row to CONNECTED/ERRORED is a no-op.
-    await prisma.whatsAppConnection.updateMany({
+    // webhook that already moved this row to CONNECTED/ERRORED is a no-op —
+    // checked below, not assumed.
+    const rollback = await prisma.whatsAppConnection.updateMany({
       where: { businessId: business.id, status: "CONNECTING" },
       data: { status: "DISCONNECTED" },
     });
     revalidatePath("/settings");
+
+    if (rollback.count === 0) {
+      // The row wasn't CONNECTING by the time this landed, so the
+      // "disconnected" snapshot captured above (before this update) may
+      // already be stale — most likely a connection webhook moved it to
+      // CONNECTED in that gap (the socket opened right after the worker
+      // check), though it could already be DISCONNECTED too (a second
+      // concurrent check racing this one). Report what's actually
+      // persisted now rather than the pre-race snapshot — both
+      // reconciliation paths in settings-workspace.tsx would otherwise
+      // mark a live, connected session NOT_STARTED and stop polling
+      // (Codex P2, same class as the connect-action rollback race).
+      const current = await prisma.whatsAppConnection.findUnique({
+        where: { businessId: business.id },
+        select: { status: true },
+      });
+      if (current?.status === "CONNECTED") {
+        return { ok: true, status: "connected", qr: await renderQrDataUrl(state.qr) };
+      }
+      if (current?.status === "DISCONNECTED") {
+        return { ok: true, status: "disconnected" };
+      }
+      // CONNECTING (a fresh attempt already under way) or an unmapped
+      // status (ERRORED, PENDING_*) — neither is a confirmed disconnect;
+      // let a later check resolve it instead of asserting one here.
+      return { ok: true, status: "connecting" };
+    }
   }
 
   return { ok: true, status: state.status, qr: await renderQrDataUrl(state.qr) };
