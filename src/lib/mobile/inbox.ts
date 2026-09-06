@@ -230,6 +230,14 @@ export async function markNotificationRead(ctx: StaffContext, id: string): Promi
   return result.count > 0;
 }
 
+export async function markAllNotificationsRead(ctx: StaffContext): Promise<number> {
+  const result = await prisma.staffNotification.updateMany({
+    where: { businessId: ctx.business.id, staffMemberId: ctx.staffMember.id, readAt: null },
+    data: { readAt: new Date() },
+  });
+  return result.count;
+}
+
 export async function registerDevicePushToken(
   ctx: StaffContext,
   expoPushToken: string
