@@ -11,6 +11,7 @@ import {
   generateDeviceToken,
   hashAccessCode,
   hashDeviceToken,
+  isStaffMemberActive,
 } from "@/lib/staff-auth";
 
 export const runtime = "nodejs";
@@ -105,6 +106,19 @@ export async function POST(request: Request) {
           where: { id: code.id },
           data: { attemptCount, ...(shouldLock ? { status: "REVOKED" } : {}) },
         });
+        return { kind: "invalid" as const };
+      }
+
+      // A staff member who's gone inactive since the code was issued must not
+      // redeem it into a working session — otherwise redeem "succeeds" and
+      // every real call 401s via requireStaffContext's identical check,
+      // stranding the device with no way back in. Same generic failure as
+      // every other reason below; never reveal that this one's about status.
+      const staffMember = await tx.staffMember.findUnique({
+        where: { id: code.staffMemberId },
+        select: { isActive: true, status: true },
+      });
+      if (!staffMember || !isStaffMemberActive(staffMember)) {
         return { kind: "invalid" as const };
       }
 

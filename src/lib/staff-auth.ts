@@ -52,6 +52,16 @@ export const ACCESS_CODE_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours
 /** Wrong-state redemption attempts on one code before it locks. */
 export const MAX_CODE_ATTEMPTS = 5;
 
+/**
+ * Whether a staff member is eligible for mobile access at all. Gates every
+ * step of the mobile-auth lifecycle — generate-code, redeem, and every
+ * authenticated call via {@link requireStaffContext} — so the three can never
+ * drift apart into a code that "succeeds" now but 401s on the very next call.
+ */
+export function isStaffMemberActive(staff: Pick<StaffMember, "isActive" | "status">): boolean {
+  return staff.isActive && staff.status !== "INACTIVE";
+}
+
 // ---- request context -------------------------------------------------------
 
 export type StaffContext = {
@@ -102,8 +112,7 @@ export async function requireStaffContext(
     device.revokedAt === null &&
     device.expiresAt > now &&
     now.getTime() - device.createdAt.getTime() <= DEVICE_ABSOLUTE_TTL_MS &&
-    device.staffMember.isActive &&
-    device.staffMember.status !== "INACTIVE";
+    isStaffMemberActive(device.staffMember);
 
   if (!device || !valid) {
     return { error: "Unauthorized.", status: 401 };

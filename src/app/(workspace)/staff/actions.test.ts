@@ -21,7 +21,7 @@ vi.mock("@/lib/business", () => ({
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
-import { deleteStaffAction } from "./actions";
+import { deleteStaffAction, generateMobileAccessCodeAction } from "./actions";
 
 const BUSINESS = { id: "biz_1" };
 const STAFF_ID = "staff_1";
@@ -66,5 +66,42 @@ describe("deleteStaffAction", () => {
 
     expect(result).toEqual({ ok: false, error: "Staff member not found in this workspace." });
     expect(mocks.staffMember.deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("generateMobileAccessCodeAction", () => {
+  it("refuses to issue a code when the staff member is inactive", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({
+      id: STAFF_ID,
+      isActive: false,
+      status: "INACTIVE",
+    });
+
+    const result = await generateMobileAccessCodeAction(STAFF_ID);
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Mobile access can't be issued to an inactive staff member.",
+    });
+  });
+
+  it("refuses even if isActive has drifted true for an INACTIVE status record", async () => {
+    // isActive is derived from status at save time (status !== "INACTIVE"), but
+    // isn't a DB-enforced invariant — a record last saved before that logic
+    // existed (or edited outside saveStaffAction) can have the two disagree.
+    // The guard must catch either half, since requireStaffContext (which every
+    // subsequent mobile call goes through) checks both the same way.
+    mocks.staffMember.findFirst.mockResolvedValue({
+      id: STAFF_ID,
+      isActive: true,
+      status: "INACTIVE",
+    });
+
+    const result = await generateMobileAccessCodeAction(STAFF_ID);
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Mobile access can't be issued to an inactive staff member.",
+    });
   });
 });
