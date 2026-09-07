@@ -29,6 +29,7 @@ import {
   ACCESS_CODE_TTL_MS,
   generateAccessCode,
   hashAccessCode,
+  isStaffMemberActive,
 } from "@/lib/staff-auth";
 
 export type SaveStaffResult = {
@@ -525,12 +526,17 @@ async function requireOwnedStaff(staffId: unknown) {
   }
   const staff = await prisma.staffMember.findFirst({
     where: { id: staffId, businessId: context.business.id },
-    select: { id: true },
+    select: { id: true, isActive: true, status: true },
   });
   if (!staff) {
     return { error: "Staff member not found." } as const;
   }
-  return { businessId: context.business.id, staffId } as const;
+  return {
+    businessId: context.business.id,
+    staffId,
+    isActive: staff.isActive,
+    status: staff.status,
+  } as const;
 }
 
 /**
@@ -544,6 +550,9 @@ export async function generateMobileAccessCodeAction(
   const owned = await requireOwnedStaff(staffId);
   if ("error" in owned) {
     return { ok: false, error: owned.error };
+  }
+  if (!isStaffMemberActive(owned)) {
+    return { ok: false, error: "Mobile access can't be issued to an inactive staff member." };
   }
 
   const code = generateAccessCode();
