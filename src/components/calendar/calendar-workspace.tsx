@@ -17,7 +17,7 @@ import {
   subMonths,
   subWeeks,
 } from "date-fns";
-import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import {
   CalendarDays,
   CalendarX2,
@@ -25,19 +25,17 @@ import {
   ChevronRight,
   Plus,
   UsersRound,
+  X,
 } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
 import {
   WorkspaceEmptyState,
-  WorkspaceCard,
   WorkspaceHeader,
-  WorkspaceMainGrid,
   WorkspacePage,
-  WorkspaceRail,
 } from "@/components/workspace/workspace-layout";
 import { MonthGrid } from "@/components/workspace/month-grid";
-import { cn, sumMergedIntervals } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import type {
   CalendarAppointment,
   CalendarAppointmentStatus,
@@ -143,43 +141,6 @@ function appointmentOffset(startTime: string) {
   return `${Math.max(((start - gridStartMinutes) / 60) * hourRowHeight, 0)}px`;
 }
 
-function dayCapacityMinutes(
-  date: Date,
-  businessHours: CalendarViewModel["businessHours"],
-  scheduleBlocks: CalendarViewModel["scheduleBlocks"]
-) {
-  const weekday = (date.getDay() + 6) % 7;
-  const hours = businessHours.find((item) => item.weekday === weekday);
-
-  if (!hours || !hours.enabled) {
-    return 0;
-  }
-
-  const openStart = timeToMinutes(hours.start);
-  const openEnd = timeToMinutes(hours.end);
-  const openMinutes = Math.max(openEnd - openStart, 0);
-
-  // A business-wide ScheduleBlock inside open hours isn't real capacity — an
-  // appointment can't be booked into it.
-  if (scheduleBlocks.length === 0) {
-    return openMinutes;
-  }
-
-  const dateKey = format(date, "yyyy-MM-dd");
-  // sumMergedIntervals merges overlapping blocks before summing, so two
-  // ScheduleBlocks covering the same hour don't get subtracted twice.
-  const blockedMinutes = sumMergedIntervals(
-    scheduleBlocks
-      .filter((block) => block.date === dateKey)
-      .map((block) => ({
-        start: Math.max(openStart, timeToMinutes(block.startTime)),
-        end: Math.min(openEnd, timeToMinutes(block.endTime)),
-      }))
-  );
-
-  return Math.max(openMinutes - blockedMinutes, 0);
-}
-
 function hourOpenForDay(
   date: Date,
   hour: number,
@@ -196,13 +157,6 @@ function hourOpenForDay(
   const cellEnd = cellStart + 60;
 
   return cellEnd > timeToMinutes(hours.start) && cellStart < timeToMinutes(hours.end);
-}
-
-function formatMinutes(minutes: number) {
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-
-  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
 }
 
 function AppointmentCard({
@@ -408,49 +362,94 @@ function NowLine() {
   );
 }
 
-function UtilizationRing({ value }: { value: number }) {
-  const [progress, setProgress] = useState(0);
+// Anchored to the clicked chip's bounding rect (not a portal) so it renders
+// above the surrounding surface-card's overflow-clip without needing to
+// change that ancestor's overflow behavior.
+function AppointmentQuickView({
+  appointment,
+  anchorRect,
+  onClose,
+}: {
+  appointment: CalendarAppointment;
+  anchorRect: DOMRect;
+  onClose: () => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      const frame = requestAnimationFrame(() => setProgress(value));
-      return () => cancelAnimationFrame(frame);
-    }
-
-    const duration = 750;
-    let startedAt: number | null = null;
-    let frame = 0;
-
-    const tick = (now: number) => {
-      startedAt = startedAt ?? now;
-      const elapsed = Math.min((now - startedAt) / duration, 1);
-      const eased = 1 - Math.pow(1 - elapsed, 4);
-      setProgress(Math.round(value * eased));
-
-      if (elapsed < 1) {
-        frame = requestAnimationFrame(tick);
+    const onPointerDown = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        onClose();
       }
     };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    const onScroll = () => onClose();
 
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [value]);
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("scroll", onScroll, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [onClose]);
+
+  const width = 264;
+  const left = Math.min(Math.max(anchorRect.left, 12), window.innerWidth - width - 12);
+  const top = anchorRect.bottom + 8;
 
   return (
     <div
-      className="grid size-20 shrink-0 place-items-center rounded-full"
-      style={{
-        background: `conic-gradient(var(--primary) ${progress}%, #eef2f7 0)`,
-      }}
+      ref={containerRef}
+      role="dialog"
+      aria-label={`${appointment.clientName} appointment details`}
+      className="state-pop fixed z-50 rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-pop)"
+      style={{ left, top, width }}
     >
-      <div className="grid size-16 place-items-center rounded-full bg-white text-center">
-        <span>
-          <span className="block text-lg font-semibold leading-5 tabular-nums text-foreground">
-            {progress}%
-          </span>
-          <span className="text-[9px] text-muted-foreground">Booked</span>
-        </span>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-foreground">{appointment.clientName}</p>
+          <p className="text-xs text-muted-foreground">{format(parseISO(appointment.date), "EEEE, MMMM d")}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors duration-(--duration-base) hover:bg-secondary hover:text-foreground"
+        >
+          <X className="size-3.5" />
+        </button>
       </div>
+      <div className="mt-2.5 space-y-1.5 border-t border-border/70 pt-2.5 text-sm">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-muted-foreground">Time</span>
+          <span className="font-medium text-foreground">
+            {appointment.startTime} – {appointment.endTime}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-muted-foreground">Service</span>
+          <span className="truncate font-medium text-foreground">{appointment.service || "—"}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-muted-foreground">Status</span>
+          <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-semibold capitalize", monthChipClasses[appointment.status])}>
+            {appointment.status}
+          </span>
+        </div>
+      </div>
+      <Link
+        href={`/calendar/${appointment.id}/edit`}
+        className="mt-3 flex h-8 items-center justify-center rounded-(--radius-card) border border-border/75 bg-white text-sm font-semibold text-foreground transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]"
+      >
+        View appointment
+      </Link>
     </div>
   );
 }
@@ -458,6 +457,7 @@ function UtilizationRing({ value }: { value: number }) {
 export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
   const [view, setView] = useState<CalendarView>("week");
   const [activeDate, setActiveDate] = useState(() => parseISO(initialView.initialDate));
+  const [quickView, setQuickView] = useState<{ appointment: CalendarAppointment; rect: DOMRect } | null>(null);
   const appointments = initialView.appointments;
   const scheduleBlocks = initialView.scheduleBlocks;
   const hasClients = initialView.hasClients;
@@ -545,53 +545,19 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
           ? `${format(weekStart, "MMM d")} – ${format(weekEnd, "d, yyyy")}`
           : `${format(weekStart, "MMM d")} – ${format(weekEnd, "MMM d, yyyy")}`;
   const gridKey = `${view}-${format(visibleDates[0] ?? activeDate, "yyyy-MM-dd")}`;
-  const selectedDayAppointments = appointments
-    .filter((appointment) => appointment.date === selectedDateKey)
-    .sort((left, right) => left.startTime.localeCompare(right.startTime));
-  const selectedDayBlocks = scheduleBlocks.filter((block) => block.date === selectedDateKey);
-  // Cancelled appointments free their slot — exclude them from every booked /
-  // utilization figure so the ring, "Scheduled", and the header description agree
-  // (and match Reports, which counts only booked statuses).
-  const activeVisibleAppointments = visibleAppointments.filter(
-    (appointment) => appointment.status !== "cancelled"
-  );
-  const activeBookedMinutes = activeVisibleAppointments.reduce(
-    (sum, appointment) =>
-      sum + Math.max(timeToMinutes(appointment.endTime) - timeToMinutes(appointment.startTime), 0),
-    0
-  );
-  const capacityMinutes = visibleDates.reduce(
-    (sum, day) => sum + dayCapacityMinutes(day, initialView.businessHours, scheduleBlocks),
-    0
-  );
-  const availableMinutes = Math.max(capacityMinutes - activeBookedMinutes, 0);
-  const utilization = Math.min(
-    Math.round((activeBookedMinutes / Math.max(capacityMinutes, 1)) * 100),
-    100
-  );
-  const utilizationScope =
-    view === "day" ? "Selected day" : view === "week" ? "This week" : "This month";
-  const scopeLabel =
-    view === "day"
-      ? `on ${format(activeDate, "MMMM d")}`
-      : view === "week"
-        ? `in the week of ${format(currentWeek[0], "MMMM d")}`
-        : `in ${format(activeDate, "MMMM yyyy")}`;
-  const headerDescription =
-    activeVisibleAppointments.length === 0
-      ? `No appointments ${scopeLabel} yet — the schedule is open.`
-      : `${activeVisibleAppointments.length} appointment${
-          activeVisibleAppointments.length === 1 ? "" : "s"
-        } ${scopeLabel} · ${formatMinutes(activeBookedMinutes)} booked.`;
 
   const quietControlClasses =
     "inline-flex h-9 items-center justify-center text-muted-foreground transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] hover:text-foreground active:bg-[#eef2f8] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45";
+
+  function openQuickView(appointment: CalendarAppointment, event: MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation();
+    setQuickView({ appointment, rect: event.currentTarget.getBoundingClientRect() });
+  }
 
   return (
     <WorkspacePage size="wide">
       <WorkspaceHeader
         title="Calendar"
-        description={headerDescription}
         actions={
           hasClients ? (
             <Link
@@ -680,9 +646,8 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
         </div>
       </div>
 
-      <WorkspaceMainGrid railWidth="md">
-        <div className="space-y-3">
-          {!hasClients ? (
+      <div className="space-y-3">
+        {!hasClients ? (
             <WorkspaceEmptyState
               icon={UsersRound}
               title="Add a client before booking"
@@ -706,55 +671,66 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                   const blocks = scheduleBlocks.filter((block) => block.date === key);
                   const isToday = isSameDay(day, todayDate);
                   const isSelected = isSameDay(day, activeDate);
-                  const isClosed = dayCapacityMinutes(day, initialView.businessHours, scheduleBlocks) === 0;
+                  const visibleEntries = [...items.slice(0, 2), ...blocks.slice(0, 1)];
+                  const overflowCount = items.length + blocks.length - visibleEntries.length;
 
                   return (
-                    <button
+                    <div
                       key={key}
-                      type="button"
-                      onClick={() => {
-                        setActiveDate(day);
-                        startTransition(() => setView("day"));
-                      }}
                       className={cn(
-                        "min-h-24 border-b border-r border-border/75 px-3 py-2.5 text-left transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40",
+                        "relative min-h-24 border-b border-r border-border/75",
                         !isSameMonth(day, activeDate) && "bg-muted/35 text-muted-foreground",
-                        isSameMonth(day, activeDate) &&
-                          (isClosed ? "bg-rose-50/60" : "bg-emerald-50/30"),
                         isSelected && !isToday && "bg-[#f5f8fd]",
                         isToday && "bg-[#f6f9ff]"
                       )}
                     >
-                      <span
-                        className={cn(
-                          "inline-flex size-6 items-center justify-center rounded-full text-sm font-medium",
-                          isToday && "bg-primary font-semibold text-primary-foreground"
-                        )}
-                      >
-                        {format(day, "d")}
-                      </span>
-                      <div className="mt-2 space-y-1.5">
-                        {[...items.slice(0, 2), ...blocks.slice(0, 1)].map((entry) => (
-                          <div
-                            key={entry.id}
-                            className={cn(
-                              "truncate rounded-(--radius-tile) px-2 py-1 text-xs font-medium",
-                              "status" in entry
-                                ? monthChipClasses[entry.status]
-                                : "bg-slate-100 text-slate-700"
-                            )}
-                          >
-                            {entry.startTime}{" "}
-                            {"service" in entry ? entry.service : entry.title}
-                          </div>
-                        ))}
-                        {items.length + blocks.length > 3 ? (
-                          <p className="px-2 text-[11px] font-medium text-muted-foreground">
-                            +{items.length + blocks.length - 3} more
-                          </p>
-                        ) : null}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveDate(day);
+                          startTransition(() => setView("day"));
+                        }}
+                        aria-label={`Open ${format(day, "MMMM d")}`}
+                        className="absolute inset-0 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
+                      />
+                      <div className="pointer-events-none relative px-3 py-2.5">
+                        <span
+                          className={cn(
+                            "inline-flex size-6 items-center justify-center rounded-full text-sm font-medium",
+                            isToday && "bg-primary font-semibold text-primary-foreground"
+                          )}
+                        >
+                          {format(day, "d")}
+                        </span>
+                        <div className="mt-2 space-y-1.5">
+                          {visibleEntries.map((entry) =>
+                            "status" in entry ? (
+                              <button
+                                key={entry.id}
+                                type="button"
+                                onClick={(event) => openQuickView(entry, event)}
+                                className={cn(
+                                  "pointer-events-auto block w-full truncate rounded-(--radius-tile) px-2 py-1 text-left text-xs font-medium transition-[filter] duration-(--duration-base) hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                                  monthChipClasses[entry.status]
+                                )}
+                              >
+                                {entry.startTime} {entry.service}
+                              </button>
+                            ) : (
+                              <div
+                                key={entry.id}
+                                className="pointer-events-none truncate rounded-(--radius-tile) bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700"
+                              >
+                                {entry.startTime} {entry.title}
+                              </div>
+                            )
+                          )}
+                          {overflowCount > 0 ? (
+                            <p className="px-2 text-[11px] font-medium text-muted-foreground">+{overflowCount} more</p>
+                          ) : null}
+                        </div>
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -868,17 +844,14 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                                 href={`/calendar/new?date=${key}&time=${String(hour).padStart(2, "0")}:00`}
                                 tabIndex={-1}
                                 aria-label={`Book ${format(day, "MMMM d")} at ${format(new Date(2026, 3, 3, hour), "h a")}`}
-                                className={cn(
-                                  "group/slot relative block h-16 border-b border-border/75",
-                                  !isToday && !isSelectedColumn && "bg-emerald-50/40"
-                                )}
+                                className="group/slot relative block h-16 border-b border-border/75"
                               >
                                 <span className="pointer-events-none absolute inset-1 flex items-center justify-center rounded-(--radius-tile) border border-dashed border-primary/35 bg-primary/5 opacity-0 transition-opacity duration-(--duration-base) group-hover/slot:opacity-100">
                                   <Plus className="size-3.5 text-primary/80" />
                                 </span>
                               </Link>
                             ) : (
-                              <div key={hour} className="h-16 border-b border-border/75 bg-rose-50/60" />
+                              <div key={hour} className="h-16 border-b border-border/75 bg-muted/25" />
                             )
                           )}
                           {items.map((appointment, index) => (
@@ -898,115 +871,13 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
           )}
         </div>
 
-        <WorkspaceRail className="section-reveal-delayed gap-3">
-          <WorkspaceCard
-            compact
-            title="Selected day"
-            action={
-              <Link
-                href={`/calendar/new?date=${selectedDateKey}`}
-                className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
-              >
-                Add appointment
-              </Link>
-            }
-          >
-            <p className="mb-2 text-xs font-medium text-muted-foreground">
-              {format(activeDate, "EEEE, MMMM d")}
-            </p>
-            {selectedDayAppointments.length > 0 || selectedDayBlocks.length > 0 ? (
-              <div className="divide-y divide-border/65">
-                {selectedDayAppointments.map((appointment) => (
-                  <Link
-                    key={appointment.id}
-                    href={`/calendar/${appointment.id}/edit`}
-                    className="flex items-center gap-2.5 rounded-(--radius-tile) px-1 py-2 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]"
-                  >
-                    <span className="w-11 shrink-0 text-xs font-semibold tabular-nums text-foreground">
-                      {appointment.startTime}
-                    </span>
-                    <span
-                      className={cn(
-                        "size-2 shrink-0 rounded-full",
-                        statusDotClasses[appointment.status]
-                      )}
-                      aria-hidden="true"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span
-                        className={cn(
-                          "block truncate text-sm font-semibold text-foreground",
-                          appointment.status === "cancelled" &&
-                            "text-muted-foreground line-through"
-                        )}
-                      >
-                        {appointment.clientName}
-                      </span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {appointment.service}
-                      </span>
-                    </span>
-                  </Link>
-                ))}
-                {selectedDayBlocks.map((block) => (
-                  <div key={block.id} className="flex items-center gap-2.5 px-1 py-2">
-                    <span className="w-11 shrink-0 text-xs font-semibold tabular-nums text-foreground">
-                      {block.startTime}
-                    </span>
-                    <span className="size-2 shrink-0 rounded-full bg-slate-400" aria-hidden="true" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-foreground">
-                        {block.title}
-                      </span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        Blocked time
-                      </span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-1.5 py-5 text-center">
-                <span className="mb-1 flex size-8 items-center justify-center rounded-(--radius-tile) border border-border/75 bg-[#f7f9fc] text-primary">
-                  <CalendarX2 className="size-3.5" />
-                </span>
-                <p className="text-sm font-semibold text-foreground">No bookings</p>
-                <p className="text-xs leading-5 text-muted-foreground">
-                  Add a booking or blocked time for this date.
-                </p>
-              </div>
-            )}
-          </WorkspaceCard>
-
-          <WorkspaceCard
-            compact
-            title="Utilization"
-            action={
-              <span className="text-[11px] font-medium text-muted-foreground">
-                {utilizationScope}
-              </span>
-            }
-          >
-            <div className="flex items-center gap-4">
-              <UtilizationRing value={utilization} />
-              <div className="min-w-0 flex-1 space-y-2 text-sm">
-                <RailMetric label="Scheduled" value={formatMinutes(activeBookedMinutes)} />
-                <RailMetric label="Available" value={formatMinutes(availableMinutes)} />
-                <RailMetric label="Blocks" value={visibleBlocks.length.toString()} />
-              </div>
-            </div>
-          </WorkspaceCard>
-        </WorkspaceRail>
-      </WorkspaceMainGrid>
+      {quickView ? (
+        <AppointmentQuickView
+          appointment={quickView.appointment}
+          anchorRect={quickView.rect}
+          onClose={() => setQuickView(null)}
+        />
+      ) : null}
     </WorkspacePage>
-  );
-}
-
-function RailMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-4 border-b border-border/70 pb-2 last:border-b-0 last:pb-0">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-semibold text-foreground">{value}</span>
-    </div>
   );
 }

@@ -42,7 +42,6 @@ export function DemandTab({ period }: { period: ReportPeriodView }) {
     <m.div key={period.key} variants={fadeIn} initial="initial" animate="animate" className="grid items-stretch gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(280px,1fr)]">
       <section className="rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
         <h2 className="px-1 text-[15px] font-semibold text-foreground">Booking patterns</h2>
-        <p className="px-1 text-sm text-muted-foreground">When appointments actually land</p>
 
         {peakCell && peakCell.count > 0 ? (
           <div className="mx-1 mt-2.5 flex items-center gap-2.5 rounded-(--radius-tile) border border-primary/20 bg-primary/5 px-3 py-2">
@@ -112,8 +111,7 @@ export function DemandTab({ period }: { period: ReportPeriodView }) {
                 </Fragment>
               ))}
             </div>
-            <div className="mt-2 flex items-center justify-end gap-1.5 text-[10px] text-muted-foreground">
-              <span>Fewer</span>
+            <div className="mt-2 flex items-center justify-end gap-1.5" aria-hidden="true">
               {[0.12, 0.35, 0.6, 0.9].map((alpha) => (
                 <span
                   key={alpha}
@@ -121,7 +119,6 @@ export function DemandTab({ period }: { period: ReportPeriodView }) {
                   style={{ background: `color-mix(in srgb, var(--primary) ${Math.round(alpha * 100)}%, white)` }}
                 />
               ))}
-              <span>More</span>
             </div>
           </div>
         ) : (

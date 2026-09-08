@@ -197,6 +197,7 @@ These four rules came out of owner review and apply to every workspace surface; 
 2. **No filler text.** Empty fields render nothing — or one quiet section-level empty state. Never print "Not added", "No notes.", "TBD"-style placeholders per field. View models return empty strings, never placeholder copy.
 3. **Sub-records are list rows.** Repeating records (medications, health items, plan items, notes, reminders) render as divided list rows — title, inline meta, badge, row actions — never grids of bordered mini-cards that leave empty cells.
 4. **Label/value pairs are flex rows.** Sentence-case muted label left, truncating value right. No fixed-width label columns and no all-caps labels inside profile/summary lists (tiny uppercase labels remain fine on KPI tiles).
+5. **No decorative sub-captions.** A page or card title does not get a grey descriptive sentence underneath restating what the section already shows or what the page obviously does (e.g. a "Reports" header does not need "How the clinic is performing and where to focus next" beneath it). Keep a caption only when it carries real, otherwise-invisible data (a period label like "Last 8 weeks", a live count). This reads as text-heavy and dated next to a plain, icon-led SaaS layout. (Calendar and Reports migrated first, 2026-09 — remaining surfaces adopt this as they're touched.)
 
 The UI UX Pro Max skill may be used for UI/UX review and design work, but AGENTS.md remains the source of truth for Vela-specific product direction, layout types, brand rules, and functionality boundaries.
 
@@ -318,14 +319,14 @@ Avoid: repeated appointment counts, cards that say the same thing, oversized emp
 
 ### Calendar
 
-Focus: scheduling.
+Focus: scheduling. Redesigned 2026-09 to a flatter, minimal grid (owner reference: a clean month-grid SaaS calendar with click-to-popover event details) — **no side rail**, the grid is the entire page.
 
-- Page header with view/date controls plus a direct date-jump control.
-- Calendar grid as the main focus; schedule blocks render as blocked time.
-- Selected-day/appointment context lives in the **side panel** — no duplicated lower summary panels.
-- Utilization derives from the selected view and saved business hours.
+- Page header is the title plus the toolbar only (Day/Week/Month, Prev/Today/Next, date-jump popover, New appointment) — **no description line** under the title; the grid itself is the schedule-at-a-glance.
+- Month view is plain and flat: white cells, hairline borders, day number top-left, no open/closed background tinting. Clicking an event chip opens a small floating **quick-view popover** anchored at that chip (client, time, service, status + a link into the edit page) — clicking empty space in the day cell still jumps into Day view for that date. Non-current-month days stay muted; that's the only cell-level tinting.
+- Week/Day (hourly) views keep the timeline grid and click-to-book empty slots, restyled with the same calmer palette (closed hours get a plain muted background, not a colored tint).
+- There is no "Selected day" or "Utilization" rail — that context now lives in the quick-view popover (per event) or by switching to Day view (per date).
 
-Avoid: too many side cards; the grid becoming visually secondary.
+Avoid: a side rail, background tinting for open/closed days, a header description sentence, reintroducing a summary card the grid already shows.
 
 ### Clients Directory
 
@@ -388,28 +389,26 @@ Avoid: a third context pane, dashboard-style KPI cards, metric clutter, fabricat
 
 ### Reports
 
-A clean analytics experience (Pro) or a polished upgrade state (Basic). Redesigned 2026-09 into a **tabbed workspace — Overview / Staff / Demand** — the same underline-tabs pattern as Client/Staff detail. The period selector (daily/weekly/monthly/custom) and Refresh AI live in the page header above the tabs and apply across all three; switching tabs never resets the selected period. All three tabs stay behind the Pro gate as a unit — there is no partial-Basic view.
+A clean analytics experience (Pro) or a polished upgrade state (Basic). Redesigned 2026-09 into a **single scrolling page — no tabs** (owner reference: a clean, minimal analytics dashboard with plain icon+value+delta KPI tiles). The period selector (daily/weekly/monthly/custom) and Refresh AI live in the page header; there is no subtitle under the "Reports" title. All sections stay behind the Pro gate as a unit — there is no partial-Basic view.
 
 - header controls: period pills (daily/weekly/monthly + Custom range when active), a **calendar icon button** that opens a small popover (From/To date inputs + "Analyse range"; both dates required) — never inline date inputs in the header — and Refresh AI, all h-10
 - compact paddings (`p-4` cards, `gap-3`) are deliberate; don't re-inflate them — the page scrolls normally like the rest of the workspace, it does not lock to one viewport
 
-**Overview tab** — the former single-page layout, refined:
-- **Row 1 — four KPI cards** (Appointments, Completion rate, New clients, **Estimated utilization**), each with an icon tile + label header and a large value with a **tinted delta pill** + comparison caption. Appointments/Completion rate/New clients keep their **embedded mini-chart** filling the right half of the card (track-style bars for counts, a gradient sparkline for the rate); Estimated utilization has no mini-chart — a genuine per-bucket capacity trend would require re-deriving the DST/schedule-block-aware capacity math for every historical bucket, judged not worth the risk for a sparkline. Avg visit length and Repeat-visit rate live in Highlights; Active clients, Unread messages, Busiest window, and Top provider do not belong here (Staff/Demand own those now).
-- **Row 2 — Performance chart (≈2fr) beside the AI insight card (≈1fr)**: same edge-to-edge, monotone-cubic, shared-scale chart as before, now with a third series — a **dotted, muted "Previous period" ghost line** (the same bucket shape one full span earlier: prior 7 days / prior 8 weeks / prior 6 months / an equal-length prior custom range) for a lightweight visual comparison. The AI card is unchanged: recommendation-style divided rows (Summary / Diagnosis / Next move) plus the "Operational health score" footer pill.
-- **Row 3 — Appointment status donut (left) + Highlights card (right)**: donut unchanged. Highlights is now just **two** bordered icon rows (Average visit length, Repeat-visit rate) — Busiest window moved to Demand's heat-grid and Top provider moved to Staff's sortable list, so Highlights no longer needs to cover them.
-- Period switches fade content in (~160ms), the KPI cards stagger subtly, the date-range popover scales in from its trigger (~150ms).
+**Row 1 — four KPI cards** (Appointments, Completion rate, New clients, Estimated utilization), each a plain icon tile + label + large value + tinted delta pill + comparison caption — **no embedded mini-chart**; the trend already lives in the Performance chart below, and a bare value/delta tile reads calmer at a glance. Clicking a card expands a one-line detail (inline on mobile, a shared panel below the row on desktop).
 
-**Staff tab** — per-provider performance as sortable list rows (square identity tile, name/role, visit count, an inline utilization-load bar, completion rate — `—` when a provider has no finalized visits yet this period). Clicking a row expands an inline accordion panel (a plain-language recap of that row's numbers) with a "View profile" link to the provider's existing Staff Detail page — never a duplicate profile view.
+**Row 2 — Performance chart (≈2fr) beside the AI insight card (≈1fr)**: edge-to-edge, monotone-cubic, shared-scale chart with three series — appointments, completed, and a dotted muted "Previous period" ghost line. The AI card: recommendation-style divided rows (Summary / Diagnosis / Next move) plus the "Operational health score" footer pill.
 
-**Demand tab** — a day × time-band heat-grid (4 fixed bands — morning/midday/afternoon/evening, not raw hours) showing booking density, hover a cell for the exact count; a stats strip below (avg booking lead time, same-day bookings, unassigned appointments); and Client mix (active/at-risk/inactive/archived) as a stacked bar + legend rows.
+**Row 3 — Appointment status donut (left) + Staff performance (right)**: the donut is unchanged; Staff performance is the per-provider sortable list (square identity tile, name/role, visit count, inline load bar, completion rate — `—` when unmeasured). Clicking a row expands an inline accordion with a "View profile" link to that provider's Staff Detail page — never a duplicate profile view.
 
-**Drill-down pattern:** where it exists (Staff rows), clicking expands an inline accordion directly beneath the row — never a dialog, never a page navigation. The Overview KPI row intentionally has no drill-down: the only data available for it duplicates what the chart/donut on the same tab already show.
+**Row 4 — Demand heat-grid (left) + Client mix (right)**: a day × time-band heat-grid (4 fixed bands — morning/midday/afternoon/evening) showing booking density with a "peak window" callout above it and a hover tooltip per cell; a stats strip (avg booking lead time, same-day bookings, unassigned appointments); Client mix (active/at-risk/inactive/archived) as a stacked bar + legend rows.
+
+**Drill-down pattern:** where it exists (KPI cards, Staff rows), clicking expands an inline panel directly in place — never a dialog, never a page navigation.
 
 **The delta rule:** a delta always means "change vs the previous period"; point-in-time numbers carry no delta and no trend arrow. Capacity-derived utilization is labeled **"Estimated utilization"** with its basis stated.
 
 Sparse data uses natural-height compact empty/status states; the trend chart is hidden when no chart bucket has appointments. Custom date ranges always use rule-based analysis and say so; AI insights clearly indicate when rule-based fallback was used.
 
-Avoid: dense metric-table cards (Operational detail-style), synthetic deltas/trends on point-in-time numbers, duplicating a metric across two tabs, restating the header period/Refresh controls inside a tab.
+Avoid: dense metric-table cards (Operational detail-style), synthetic deltas/trends on point-in-time numbers, section subtitles that just restate the heading or repeat data already shown in that section, embedded KPI-card mini-charts, tabs/sub-navigation splitting this page.
 
 ### Settings
 
