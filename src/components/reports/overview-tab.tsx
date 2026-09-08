@@ -134,6 +134,7 @@ function polarPoint(cx: number, cy: number, radius: number, angle: number) {
 export function OverviewTab({ period }: { period: ReportPeriodView }) {
   const [chartHover, setChartHover] = useState<number | null>(null);
   const [statusHover, setStatusHover] = useState<string | null>(null);
+  const [activeKpi, setActiveKpi] = useState<string | null>(null);
   const [chartWidth, setChartWidth] = useState(820);
   const chartAreaRef = useRef<HTMLDivElement | null>(null);
   const chartGradientId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
@@ -149,6 +150,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
     setLastPeriodIdentity(periodIdentity);
     setChartHover(null);
     setStatusHover(null);
+    setActiveKpi(null);
   }
 
   const chartPoints = period.chart.points;
@@ -192,8 +194,32 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
   const primaryAction = period.snapshot.actions?.[0];
   const avgVisitKpi = kpiByKey.get("avgVisitLength");
   const repeatVisitRow = period.operationalDetail.find((row) => row.key === "repeatVisit");
+  const lostSlotRow = period.operationalDetail.find((row) => row.key === "lostSlot");
+  const followUpRow = period.operationalDetail.find((row) => row.key === "followUp");
   const statusMix = period.diagnostics.statusMix;
   const hoveredStatus = statusMix.find((item) => item.label === statusHover);
+  const busiestDay = period.diagnostics.demandWindows.busiestDays[0];
+  const quietestDay = period.diagnostics.demandWindows.quietestDays[0];
+
+  const kpiDetails: Record<string, string> = {
+    appointments:
+      busiestDay && busiestDay.count > 0
+        ? `Busiest day this period: ${busiestDay.label} (${busiestDay.count} visit${busiestDay.count === 1 ? "" : "s"}).${
+            quietestDay && quietestDay.label !== busiestDay.label
+              ? ` Quietest: ${quietestDay.label} (${quietestDay.count}).`
+              : ""
+          } See the Demand tab for the full breakdown by day and time.`
+        : "No appointments booked yet this period to break down by day.",
+    completionRate:
+      lostSlotRow?.value || followUpRow?.value
+        ? `${lostSlotRow?.value ? `Lost-slot rate: ${lostSlotRow.value} of finalized visits were cancelled.` : ""} ${
+            followUpRow?.value ? `Follow-up coverage: ${followUpRow.value} of inbound messages got an outbound reply.` : ""
+          }`.trim()
+        : "Not enough finalized visits or inbound messages yet to break this down further.",
+    newClients: `${period.activeClients.toLocaleString("en-US")} of ${period.clientMixTotal.toLocaleString("en-US")} total client records are currently active. See the Demand tab for the full active/at-risk/inactive/archived mix.`,
+    utilization:
+      "Booked minutes vs. open hours × active staff, estimated — not a measured clock-in/clock-out figure. 70-92% is the healthy operating range; below that means open capacity isn't converting into visits, above it risks overload.",
+  };
 
   const highlights = [
     avgVisitKpi && avgVisitKpi.value
@@ -220,7 +246,14 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
     <m.div key={period.key} variants={fadeIn} initial="initial" animate="animate" className="space-y-3">
       <m.div variants={staggerChildren} initial="initial" animate="animate" className="grid gap-3 md:grid-cols-4">
         {appointmentsKpi ? (
-          <KpiCard kpi={appointmentsKpi} series={chartValues} labels={chartLabels} chartType="bars" />
+          <KpiCard
+            kpi={appointmentsKpi}
+            series={chartValues}
+            labels={chartLabels}
+            chartType="bars"
+            active={activeKpi === "appointments"}
+            onToggle={() => setActiveKpi((current) => (current === "appointments" ? null : "appointments"))}
+          />
         ) : null}
         {completionKpi ? (
           <KpiCard
@@ -229,13 +262,34 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
             labels={chartLabels}
             chartType="line"
             formatValue={(value) => `${value}%`}
+            active={activeKpi === "completionRate"}
+            onToggle={() => setActiveKpi((current) => (current === "completionRate" ? null : "completionRate"))}
           />
         ) : null}
         {newClientsKpi ? (
-          <KpiCard kpi={newClientsKpi} series={period.chart.newClientValues} labels={chartLabels} chartType="bars" />
+          <KpiCard
+            kpi={newClientsKpi}
+            series={period.chart.newClientValues}
+            labels={chartLabels}
+            chartType="bars"
+            active={activeKpi === "newClients"}
+            onToggle={() => setActiveKpi((current) => (current === "newClients" ? null : "newClients"))}
+          />
         ) : null}
-        {utilizationKpi ? <KpiCard kpi={utilizationKpi} /> : null}
+        {utilizationKpi ? (
+          <KpiCard
+            kpi={utilizationKpi}
+            active={activeKpi === "utilization"}
+            onToggle={() => setActiveKpi((current) => (current === "utilization" ? null : "utilization"))}
+          />
+        ) : null}
       </m.div>
+
+      {activeKpi ? (
+        <div className="state-pop rounded-(--radius-card) border border-dashed border-primary/25 bg-primary/5 px-4 py-3 text-sm text-foreground">
+          {kpiDetails[activeKpi]}
+        </div>
+      ) : null}
 
       <div className="grid items-stretch gap-3 xl:grid-cols-[minmax(0,1.9fr)_minmax(320px,1fr)]">
         <section className="flex flex-col rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
@@ -664,18 +718,42 @@ function KpiCard({
   labels = [],
   chartType,
   formatValue = (value) => `${value}`,
+  onToggle,
+  active = false,
 }: {
   kpi: ReportKpi;
   series?: number[];
   labels?: string[];
   chartType?: "bars" | "line";
   formatValue?: (value: number) => string;
+  onToggle?: () => void;
+  active?: boolean;
 }) {
   const Icon = kpiIcons[kpi.key] ?? CalendarDays;
   const hasSeries = series.some((value) => value > 0);
 
   return (
-    <m.section variants={staggerItem} className="card-hover flex items-stretch rounded-(--radius-card) border border-border/80 bg-white shadow-(--shadow-card)">
+    <m.section
+      variants={staggerItem}
+      onClick={onToggle}
+      role={onToggle ? "button" : undefined}
+      tabIndex={onToggle ? 0 : undefined}
+      onKeyDown={
+        onToggle
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onToggle();
+              }
+            }
+          : undefined
+      }
+      className={cn(
+        "card-hover flex items-stretch rounded-(--radius-card) border bg-white shadow-(--shadow-card)",
+        onToggle && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35",
+        active ? "border-primary/45" : "border-border/80"
+      )}
+    >
       <div className="flex flex-1 flex-col p-3.5">
         <div className="flex items-center gap-2.5">
           <span className="grid size-8 shrink-0 place-items-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
