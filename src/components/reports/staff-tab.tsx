@@ -2,11 +2,13 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { m } from "framer-motion";
 import { ArrowDown, ArrowUp, ChevronRight } from "lucide-react";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn, getInitials } from "@/lib/utils";
+import { staggerChildren, staggerItem } from "@/lib/motion";
 import type { ReportPeriodView } from "@/lib/reports";
 
 type SortKey = "appointments" | "bookedMinutes" | "completion";
@@ -27,6 +29,19 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
   const [openRowId, setOpenRowId] = useState<string | null>(null);
   const { staffLoad } = period.diagnostics;
   const maxBookedMinutes = Math.max(...staffLoad.map((row) => row.bookedMinutes), 1);
+  const totalVisits = staffLoad.reduce((sum, row) => sum + row.appointments, 0);
+  const avgBookedMinutes = staffLoad.length > 0
+    ? staffLoad.reduce((sum, row) => sum + row.bookedMinutes, 0) / staffLoad.length
+    : 0;
+  const avgLoadShare = maxBookedMinutes > 0 ? Math.min((avgBookedMinutes / maxBookedMinutes) * 100, 100) : 0;
+  const avgAppointments = staffLoad.length > 0 ? totalVisits / staffLoad.length : 0;
+  const measuredCompletionRates = staffLoad
+    .map((row) => completionValue(row.completionRate))
+    .filter((value) => value >= 0);
+  const avgCompletionRate =
+    measuredCompletionRates.length > 0
+      ? measuredCompletionRates.reduce((sum, value) => sum + value, 0) / measuredCompletionRates.length
+      : null;
 
   const sortedRows = useMemo(() => {
     const rows = [...staffLoad];
@@ -66,6 +81,11 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
 
   return (
     <section className="rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
+      <p className="px-1 pb-2 text-sm text-muted-foreground">
+        {staffLoad.length} provider{staffLoad.length === 1 ? "" : "s"} · {totalVisits} total visit
+        {totalVisits === 1 ? "" : "s"} this period
+        {avgCompletionRate !== null ? ` · ${avgCompletionRate.toFixed(1)}% avg completion` : ""}
+      </p>
       <div className="flex items-center gap-3 border-b border-border/70 px-1 pb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         <span className="flex-1">Provider</span>
         {columns.map((column) => (
@@ -91,14 +111,16 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
         ))}
       </div>
 
-      <div className="divide-y divide-border/65">
+      <m.div variants={staggerChildren} initial="initial" animate="animate" className="divide-y divide-border/65">
         {sortedRows.map((row) => {
           const rowKey = row.id;
           const loadShare = maxBookedMinutes > 0 ? (row.bookedMinutes / maxBookedMinutes) * 100 : 0;
           const bookedHours = Math.round((row.bookedMinutes / 60) * 10) / 10;
+          const vsAverage =
+            avgAppointments > 0 ? Math.round(((row.appointments - avgAppointments) / avgAppointments) * 100) : 0;
 
           return (
-            <div key={rowKey}>
+            <m.div variants={staggerItem} key={rowKey}>
               <button
                 type="button"
                 onClick={() => setOpenRowId((current) => (current === rowKey ? null : rowKey))}
@@ -117,11 +139,18 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
                   {row.appointments}
                 </span>
                 <span className="hidden w-20 shrink-0 sm:block">
-                  <span className="block h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                  <span className="relative block h-1.5 w-full overflow-hidden rounded-full bg-secondary">
                     <span
                       className="block h-full rounded-full bg-primary"
                       style={{ width: `${Math.min(loadShare, 100)}%` }}
                     />
+                    {avgLoadShare > 0 ? (
+                      <span
+                        className="absolute top-1/2 h-2.5 w-px -translate-y-1/2 bg-foreground/40"
+                        style={{ left: `${avgLoadShare}%` }}
+                        title="Team average load"
+                      />
+                    ) : null}
                   </span>
                 </span>
                 <span className="w-14 shrink-0 text-right text-sm font-semibold tabular-nums text-foreground sm:w-20">
@@ -135,6 +164,9 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
                     {row.appointments} visit{row.appointments === 1 ? "" : "s"} this period, {bookedHours}{" "}
                     booked hour{bookedHours === 1 ? "" : "s"} ({row.utilizationShare} of total staff load)
                     {row.completionRate ? `, ${row.completionRate} completion rate.` : ", no finalized visits yet."}
+                    {avgAppointments > 0 && vsAverage !== 0
+                      ? ` That's ${Math.abs(vsAverage)}% ${vsAverage > 0 ? "above" : "below"} the team average of ${avgAppointments.toFixed(1)} visits.`
+                      : ""}
                   </p>
                   <Link
                     href={`/staff/${row.id}`}
@@ -145,10 +177,10 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
                   </Link>
                 </div>
               ) : null}
-            </div>
+            </m.div>
           );
         })}
-      </div>
+      </m.div>
     </section>
   );
 }

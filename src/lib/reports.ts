@@ -58,13 +58,7 @@ export type ReportKpi = {
   helper: string;
 };
 
-export type ReportDetailRowKey =
-  | "lostSlot"
-  | "repeatVisit"
-  | "followUp"
-  | "sameDayBookings"
-  | "leadTime"
-  | "unassigned";
+export type ReportDetailRowKey = "lostSlot" | "repeatVisit" | "followUp";
 
 export type ReportDetailRow = {
   /** Stable identifier — match on this, never on the display label. */
@@ -2115,9 +2109,8 @@ function buildKpis(args: {
 function buildOperationalDetail(args: {
   current: PeriodStats;
   deltas: ReturnType<typeof buildMetrics>["deltas"];
-  diagnostics: ReportPeriodDiagnostics;
 }): ReportDetailRow[] {
-  const { current, deltas, diagnostics } = args;
+  const { current, deltas } = args;
   // Utilization itself is now a first-class KPI (buildKpis) rather than a
   // Highlights row — this list covers only the rates that don't have their
   // own KPI card.
@@ -2154,37 +2147,6 @@ function buildOperationalDetail(args: {
       trend: deltas.followUp.trend,
       helper: "",
     });
-  }
-
-  rows.push({
-    key: "sameDayBookings",
-    label: "Same-day bookings",
-    value: diagnostics.bookingBehavior.sameDayBookings.toLocaleString("en-US"),
-    delta: "",
-    trend: "flat",
-    helper: "",
-  });
-
-  if (current.scheduledCount > 0) {
-    rows.push({
-      key: "leadTime",
-      label: "Avg booking lead time",
-      value: `${diagnostics.bookingBehavior.averageLeadTimeHours}h`,
-      delta: "",
-      trend: "flat",
-      helper: "",
-    });
-
-    if (diagnostics.bookingBehavior.unassignedAppointments > 0) {
-      rows.push({
-        key: "unassigned",
-        label: "Unassigned appointments",
-        value: diagnostics.bookingBehavior.unassignedAppointments.toLocaleString("en-US"),
-        delta: "",
-        trend: "flat",
-        helper: "",
-      });
-    }
   }
 
   return rows;
@@ -2279,7 +2241,7 @@ function buildPeriodView(args: {
       comparisonLabel,
       clientMixTotal: clientMixView.total,
     }),
-    operationalDetail: buildOperationalDetail({ current, deltas, diagnostics }),
+    operationalDetail: buildOperationalDetail({ current, deltas }),
     statusTotal: diagnostics.statusMix.reduce((total, status) => total + status.count, 0),
     clientMixTotal: clientMixView.total,
     clientMixSegments: clientMixView.segments,

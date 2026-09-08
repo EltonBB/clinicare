@@ -1,9 +1,11 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { Clock3, UserX, Zap } from "lucide-react";
+import { m } from "framer-motion";
+import { Clock3, TrendingUp, UserX, Zap } from "lucide-react";
 
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
+import { fadeIn } from "@/lib/motion";
 import {
   DEMAND_HEATMAP_BANDS,
   DEMAND_HEATMAP_DAYS,
@@ -30,12 +32,30 @@ export function DemandTab({ period }: { period: ReportPeriodView }) {
   const maxCount = Math.max(...heatmap.map((cell) => cell.count), 1);
   const hasBookings = heatmap.some((cell) => cell.count > 0);
   const cellByKey = new Map(heatmap.map((cell) => [`${cell.day}__${cell.band}`, cell]));
+  const peakCell = heatmap.reduce(
+    (best, cell) => (cell.count > (best?.count ?? 0) ? cell : best),
+    null as (typeof heatmap)[number] | null
+  );
+  const atRiskSegment = period.clientMixSegments.find((segment) => segment.key === "atRisk");
 
   return (
-    <div className="grid items-stretch gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(280px,1fr)]">
+    <m.div key={period.key} variants={fadeIn} initial="initial" animate="animate" className="grid items-stretch gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(280px,1fr)]">
       <section className="rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
         <h2 className="px-1 text-[15px] font-semibold text-foreground">Booking patterns</h2>
         <p className="px-1 text-sm text-muted-foreground">When appointments actually land</p>
+
+        {peakCell && peakCell.count > 0 ? (
+          <div className="mx-1 mt-2.5 flex items-center gap-2.5 rounded-(--radius-tile) border border-primary/20 bg-primary/5 px-3 py-2">
+            <span className="grid size-7 shrink-0 place-items-center rounded-(--radius-tile) border border-primary/30 bg-white text-primary">
+              <TrendingUp className="size-3.5" />
+            </span>
+            <p className="text-sm text-foreground">
+              Peak window: <span className="font-semibold">{peakCell.day} {peakCell.band.toLowerCase()}</span> with{" "}
+              {peakCell.count} appointment{peakCell.count === 1 ? "" : "s"} — the clearest place to add coverage if
+              demand keeps growing.
+            </p>
+          </div>
+        ) : null}
 
         {hasBookings ? (
           <div className="mt-3">
@@ -160,6 +180,12 @@ export function DemandTab({ period }: { period: ReportPeriodView }) {
                 />
               ))}
             </div>
+            {atRiskSegment && atRiskSegment.count > 0 ? (
+              <p className="mt-3 rounded-(--radius-tile) border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                {atRiskSegment.count} client{atRiskSegment.count === 1 ? "" : "s"} flagged at risk — worth a
+                follow-up message before they go inactive.
+              </p>
+            ) : null}
           </>
         ) : (
           <div className="mt-3">
@@ -172,6 +198,6 @@ export function DemandTab({ period }: { period: ReportPeriodView }) {
           </div>
         )}
       </section>
-    </div>
+    </m.div>
   );
 }
