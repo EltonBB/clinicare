@@ -355,6 +355,107 @@ describe("buildReportsViewFromWorkspace — ScheduleBlock capacity", () => {
   });
 });
 
+describe("buildReportsViewFromWorkspace — Reports redesign additions", () => {
+  it("promotes Estimated utilization to its own KPI, matching the existing metrics-array value", () => {
+    const utilizationMetric = view.periods.daily.metrics.find(
+      (metric) => metric.label === "Estimated utilization"
+    );
+    const utilizationKpi = view.periods.daily.kpis.find((kpi) => kpi.key === "utilization");
+
+    expect(utilizationKpi).toBeDefined();
+    expect(utilizationKpi?.value).toBe(utilizationMetric?.value);
+  });
+
+  it("buckets the day×time heat-grid into the 4 fixed bands, not raw hours", () => {
+    // now (daysAgo 0) is a Tuesday — see the busiest-day assertions elsewhere
+    // in this file. One appointment per band, all on the same day, isolates
+    // the band boundaries cleanly.
+    const heatmapView = buildReportsViewFromWorkspace({
+      business: { name: "Band Clinic" },
+      appointments: [
+        appt(0, 9, "COMPLETED"), // morning (< 12)
+        appt(0, 13, "COMPLETED"), // midday (< 15)
+        appt(0, 16, "COMPLETED"), // afternoon (< 18)
+        appt(0, 20, "COMPLETED"), // evening (>= 18)
+      ],
+      clients: [],
+      clientMix: { active: 0, atRisk: 0, inactive: 0, archived: 0 },
+      messages: [],
+      businessHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+        weekday,
+        isOpen: true,
+        startTime: "00:00",
+        endTime: "23:00",
+      })),
+      scheduleBlocks: [],
+      staffMembers: [
+        { id: "s1", name: "Dr. One", role: "Dentist", status: "ACTIVE", isActive: true },
+      ],
+      conversations: [],
+      aiSnapshots: [],
+      now,
+      timeZone: "UTC",
+    });
+
+    const { heatmap } = heatmapView.periods.daily.diagnostics.demandWindows;
+    expect(heatmap).toHaveLength(28); // 7 days x 4 bands, including zero cells
+
+    const tueCells = heatmap.filter((cell) => cell.day === "Tue");
+    expect(tueCells.map((cell) => cell.count)).toEqual([1, 1, 1, 1]);
+    expect(heatmap.filter((cell) => cell.day !== "Tue").every((cell) => cell.count === 0)).toBe(
+      true
+    );
+  });
+
+  it("computes per-provider completion rate as completed / finalized, leaving it unmeasured with no finalized visits", () => {
+    const staffView = buildReportsViewFromWorkspace({
+      business: { name: "Staff Clinic" },
+      appointments: [
+        appt(0, 9, "COMPLETED", 30, "s1"),
+        appt(0, 10, "COMPLETED", 30, "s1"),
+        appt(0, 11, "CANCELLED", 30, "s1"),
+        appt(0, 12, "CONFIRMED", 30, "s1"), // not finalized, excluded from the rate
+        appt(0, 9, "PENDING", 30, "s2"), // s2 has zero finalized visits
+      ],
+      clients: [],
+      clientMix: { active: 0, atRisk: 0, inactive: 0, archived: 0 },
+      messages: [],
+      businessHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+        weekday,
+        isOpen: true,
+        startTime: "00:00",
+        endTime: "23:00",
+      })),
+      scheduleBlocks: [],
+      staffMembers: [
+        { id: "s1", name: "Dr. One", role: "Dentist", status: "ACTIVE", isActive: true },
+        { id: "s2", name: "Dr. Two", role: "Hygienist", status: "ACTIVE", isActive: true },
+      ],
+      conversations: [],
+      aiSnapshots: [],
+      now,
+      timeZone: "UTC",
+    });
+
+    const { staffLoad } = staffView.periods.daily.diagnostics;
+    expect(staffLoad.find((row) => row.name === "Dr. One")?.completionRate).toBe("66.7%");
+    expect(staffLoad.find((row) => row.name === "Dr. Two")?.completionRate).toBe("");
+  });
+
+  it("builds a previous-period chart series of the same shape, for the ghost-line overlay", () => {
+    for (const key of ["daily", "weekly", "monthly"] as const) {
+      const { points, previousValues } = view.periods[key].chart;
+      expect(previousValues).toHaveLength(points.length);
+      expect(previousValues.every((value) => Number.isFinite(value) && value >= 0)).toBe(true);
+    }
+
+    // Daily's previous series covers days 7-13 ago (one full 7-day span before
+    // the current one) — only appt(10, ...) in the top-level fixture falls
+    // there, so the ghost line should sum to exactly 1.
+    expect(view.periods.daily.chart.previousValues.reduce((sum, value) => sum + value, 0)).toBe(1);
+  });
+});
+
 describe("buildKeyMetrics", () => {
   it("keeps only the three headline KPIs Reports' own KPI row shows, dropping the display-only helper field", () => {
     // Codex finding on the OpenAI payload trim: currentRuleSnapshot's prose
