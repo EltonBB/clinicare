@@ -97,7 +97,26 @@ function RangeCalendar({
 
 export function ReportsOverview({ view }: { view: ReportsViewModel }) {
   const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriodKey>(view.defaultPeriod);
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTabState] = useState("overview");
+
+  // Restores tab position on refresh/back/shared link, same as the custom
+  // date range already round-trips through the URL — without this, a
+  // front-desk user who always checks Staff/Demand loses their place on
+  // every reload. A plain history update (not router.push) avoids
+  // re-fetching the page's server data for a client-only view change.
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    if (tab === "staff" || tab === "demand") {
+      setActiveTabState(tab);
+    }
+  }, []);
+
+  function setActiveTab(tab: string) {
+    setActiveTabState(tab);
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", tab);
+    window.history.replaceState(null, "", `?${params.toString()}`);
+  }
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const [rangeOpen, setRangeOpen] = useState(false);

@@ -83,9 +83,14 @@ export function DemandTab({ period }: { period: ReportPeriodView }) {
                     return (
                       <div
                         key={cellKey}
-                        className="relative"
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`${day} ${band.label}: ${count} appointment${count === 1 ? "" : "s"}`}
+                        className="relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
                         onMouseEnter={() => setHoverCell(cellKey)}
                         onMouseLeave={() => setHoverCell((current) => (current === cellKey ? null : current))}
+                        onFocus={() => setHoverCell(cellKey)}
+                        onBlur={() => setHoverCell((current) => (current === cellKey ? null : current))}
                       >
                         <div
                           className="h-6 rounded-[4px]"
@@ -106,6 +111,17 @@ export function DemandTab({ period }: { period: ReportPeriodView }) {
                   })}
                 </Fragment>
               ))}
+            </div>
+            <div className="mt-2 flex items-center justify-end gap-1.5 text-[10px] text-muted-foreground">
+              <span>Fewer</span>
+              {[0.12, 0.35, 0.6, 0.9].map((alpha) => (
+                <span
+                  key={alpha}
+                  className="size-2.5 rounded-[2px]"
+                  style={{ background: `color-mix(in srgb, var(--primary) ${Math.round(alpha * 100)}%, white)` }}
+                />
+              ))}
+              <span>More</span>
             </div>
           </div>
         ) : (
