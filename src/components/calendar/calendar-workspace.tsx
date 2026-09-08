@@ -702,7 +702,11 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                         >
                           {format(day, "d")}
                         </span>
-                        <div className="mt-2 space-y-1.5">
+                        {/* Below sm, a column is ~45px — full chips truncate to unreadable
+                            fragments ("0...", "1..."), so mobile gets the same density-only
+                            dot summary as the week/day header (see the day-column buttons
+                            below); tapping the day still opens Day view for full detail. */}
+                        <div className="mt-2 hidden space-y-1.5 sm:block">
                           {visibleEntries.map((entry) =>
                             "status" in entry ? (
                               <button
@@ -729,6 +733,21 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                             <p className="px-2 text-[11px] font-medium text-muted-foreground">+{overflowCount} more</p>
                           ) : null}
                         </div>
+                        {items.length > 0 ? (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1 sm:hidden">
+                            {items.slice(0, 4).map((item) => (
+                              <span
+                                key={item.id}
+                                className={cn("size-1.5 rounded-full", statusDotClasses[item.status])}
+                              />
+                            ))}
+                            {items.length > 4 ? (
+                              <span className="text-[9px] font-semibold leading-none text-muted-foreground">
+                                +{items.length - 4}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   );
