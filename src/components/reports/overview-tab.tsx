@@ -253,6 +253,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
             chartType="bars"
             active={activeKpi === "appointments"}
             onToggle={() => setActiveKpi((current) => (current === "appointments" ? null : "appointments"))}
+            detail={kpiDetails.appointments}
           />
         ) : null}
         {completionKpi ? (
@@ -264,6 +265,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
             formatValue={(value) => `${value}%`}
             active={activeKpi === "completionRate"}
             onToggle={() => setActiveKpi((current) => (current === "completionRate" ? null : "completionRate"))}
+            detail={kpiDetails.completionRate}
           />
         ) : null}
         {newClientsKpi ? (
@@ -274,6 +276,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
             chartType="bars"
             active={activeKpi === "newClients"}
             onToggle={() => setActiveKpi((current) => (current === "newClients" ? null : "newClients"))}
+            detail={kpiDetails.newClients}
           />
         ) : null}
         {utilizationKpi ? (
@@ -281,12 +284,13 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
             kpi={utilizationKpi}
             active={activeKpi === "utilization"}
             onToggle={() => setActiveKpi((current) => (current === "utilization" ? null : "utilization"))}
+            detail={kpiDetails.utilization}
           />
         ) : null}
       </m.div>
 
       {activeKpi ? (
-        <div className="state-pop rounded-(--radius-card) border border-dashed border-primary/25 bg-primary/5 px-4 py-3 text-sm text-foreground">
+        <div className="state-pop hidden rounded-(--radius-card) border border-dashed border-primary/25 bg-primary/5 px-4 py-3 text-sm text-foreground md:block">
           {kpiDetails[activeKpi]}
         </div>
       ) : null}
@@ -720,6 +724,7 @@ function KpiCard({
   formatValue = (value) => `${value}`,
   onToggle,
   active = false,
+  detail,
 }: {
   kpi: ReportKpi;
   series?: number[];
@@ -728,6 +733,7 @@ function KpiCard({
   formatValue?: (value: number) => string;
   onToggle?: () => void;
   active?: boolean;
+  detail?: string;
 }) {
   const Icon = kpiIcons[kpi.key] ?? CalendarDays;
   const hasSeries = series.some((value) => value > 0);
@@ -735,54 +741,69 @@ function KpiCard({
   return (
     <m.section
       variants={staggerItem}
-      onClick={onToggle}
-      role={onToggle ? "button" : undefined}
-      tabIndex={onToggle ? 0 : undefined}
-      onKeyDown={
-        onToggle
-          ? (event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                onToggle();
-              }
-            }
-          : undefined
-      }
       className={cn(
-        "card-hover flex items-stretch rounded-(--radius-card) border bg-white shadow-(--shadow-card)",
-        onToggle && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35",
-        active ? "border-primary/45" : "border-border/80"
+        "card-hover flex flex-col rounded-(--radius-card) border bg-white shadow-(--shadow-card)",
+        active ? "border-primary/45 ring-1 ring-primary/20" : "border-border/80"
       )}
     >
-      <div className="flex flex-1 flex-col p-3.5">
-        <div className="flex items-center gap-2.5">
-          <span className="grid size-8 shrink-0 place-items-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
-            <Icon className="size-4" />
-          </span>
-          <p className="truncate text-sm font-medium whitespace-nowrap text-muted-foreground">{kpi.label}</p>
-        </div>
-        <div className="mt-auto pt-2.5">
-          <p className="text-[1.6rem] font-semibold leading-8 tracking-tight text-foreground">{kpi.value || "—"}</p>
-          <div className="mt-1 flex items-center gap-1.5 whitespace-nowrap">
-            {kpi.delta ? (
-              <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold", deltaPillStyles[kpi.trend])}>
-                <TrendIcon trend={kpi.trend} />
-                {kpi.delta}
-              </span>
-            ) : null}
-            {kpi.helper ? <span className="text-xs text-muted-foreground">{kpi.helper}</span> : null}
+      <div
+        onClick={onToggle}
+        role={onToggle ? "button" : undefined}
+        tabIndex={onToggle ? 0 : undefined}
+        aria-expanded={onToggle ? active : undefined}
+        onKeyDown={
+          onToggle
+            ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onToggle();
+                }
+              }
+            : undefined
+        }
+        className={cn(
+          "flex flex-1 items-stretch",
+          onToggle && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+        )}
+      >
+        <div className="flex flex-1 flex-col p-3.5">
+          <div className="flex items-center gap-2.5">
+            <span className="grid size-8 shrink-0 place-items-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
+              <Icon className="size-4" />
+            </span>
+            <p className="truncate text-sm font-medium whitespace-nowrap text-muted-foreground">{kpi.label}</p>
+          </div>
+          <div className="mt-auto pt-2.5">
+            <p className="text-[1.6rem] font-semibold leading-8 tracking-tight text-foreground">{kpi.value || "—"}</p>
+            <div className="mt-1 flex items-center gap-1.5 whitespace-nowrap">
+              {kpi.delta ? (
+                <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold", deltaPillStyles[kpi.trend])}>
+                  <TrendIcon trend={kpi.trend} />
+                  {kpi.delta}
+                </span>
+              ) : null}
+              {kpi.helper ? <span className="text-xs text-muted-foreground">{kpi.helper}</span> : null}
+            </div>
           </div>
         </div>
+        {hasSeries ? (
+          <div className="relative flex w-[52%] items-center px-4">
+            <div className="h-[68px] w-full">
+              {chartType === "bars" ? (
+                <MiniBars values={series} labels={labels} formatValue={formatValue} />
+              ) : (
+                <MiniLine values={series} labels={labels} formatValue={formatValue} />
+              )}
+            </div>
+          </div>
+        ) : null}
       </div>
-      {hasSeries ? (
-        <div className="relative flex w-[52%] items-center px-4">
-          <div className="h-[68px] w-full">
-            {chartType === "bars" ? (
-              <MiniBars values={series} labels={labels} formatValue={formatValue} />
-            ) : (
-              <MiniLine values={series} labels={labels} formatValue={formatValue} />
-            )}
-          </div>
+      {/* Mobile only: the grid is single-column below md, so a shared panel after
+          all 4 cards loses the tap-to-explanation connection. Desktop keeps the
+          one shared panel below the 4-across row instead (see OverviewTab). */}
+      {active && detail ? (
+        <div className="state-pop border-t border-dashed border-primary/25 bg-primary/5 px-3.5 py-2.5 text-sm text-foreground md:hidden">
+          {detail}
         </div>
       ) : null}
     </m.section>

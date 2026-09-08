@@ -15,7 +15,7 @@ type SortKey = "appointments" | "bookedMinutes" | "completion";
 
 const columns: Array<{ key: SortKey; label: string }> = [
   { key: "appointments", label: "Visits" },
-  { key: "bookedMinutes", label: "Load" },
+  { key: "bookedMinutes", label: "Booked time" },
   { key: "completion", label: "Completion" },
 ];
 
@@ -124,6 +124,7 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
               <button
                 type="button"
                 onClick={() => setOpenRowId((current) => (current === rowKey ? null : rowKey))}
+                aria-expanded={openRowId === rowKey}
                 className="flex w-full items-center gap-3 py-2.5 text-left transition-colors duration-(--duration-base) hover:bg-secondary/35"
               >
                 <Avatar shape="square">
