@@ -520,7 +520,7 @@ function KpiCard({
         }
         className={cn(
           "flex flex-1 items-stretch",
-          onToggle && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+          onToggle && "cursor-pointer transition-transform duration-(--duration-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 active:scale-[0.98]"
         )}
       >
         <div className="flex flex-1 flex-col p-3.5">

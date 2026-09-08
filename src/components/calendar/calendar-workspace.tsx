@@ -288,7 +288,7 @@ function DatePickerPopover({
         <div
           role="dialog"
           aria-label="Choose a date"
-          className="state-pop absolute right-0 top-[calc(100%+8px)] z-50 w-[284px] rounded-(--radius-card) border border-border/80 bg-white p-3 shadow-(--shadow-pop)"
+          className="state-pop absolute right-0 top-[calc(100%+8px)] z-50 w-[284px] origin-top-right rounded-(--radius-card) border border-border/80 bg-white p-3 shadow-(--shadow-pop)"
         >
           <MonthGrid
             monthCursor={monthCursor}
@@ -409,7 +409,7 @@ function AppointmentQuickView({
       ref={containerRef}
       role="dialog"
       aria-label={`${appointment.clientName} appointment details`}
-      className="state-pop fixed z-50 rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-pop)"
+      className="state-pop fixed z-50 origin-top rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-pop)"
       style={{ left, top, width }}
     >
       <div className="flex items-start justify-between gap-2">
@@ -714,7 +714,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                                 type="button"
                                 onClick={(event) => openQuickView(entry, event)}
                                 className={cn(
-                                  "pointer-events-auto block w-full truncate rounded-(--radius-tile) px-2 py-1 text-left text-xs font-medium transition-[filter] duration-(--duration-base) hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                                  "pointer-events-auto block w-full truncate rounded-(--radius-tile) px-2 py-1 text-left text-xs font-medium transition-[filter,transform] duration-(--duration-base) hover:brightness-95 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
                                   monthChipClasses[entry.status]
                                 )}
                               >
