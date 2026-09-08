@@ -84,7 +84,8 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
             type="button"
             onClick={() => toggleSort(column.key)}
             className={cn(
-              "flex w-11 shrink-0 items-center justify-end gap-1 text-right transition-colors duration-(--duration-base) hover:text-foreground sm:w-20",
+              "flex shrink-0 items-center justify-end gap-1 text-right transition-colors duration-(--duration-base) hover:text-foreground sm:w-20",
+              column.key === "completion" ? "w-14" : "w-11",
               column.key === "bookedMinutes" && "hidden sm:flex",
               sortKey === column.key && "text-primary"
             )}
