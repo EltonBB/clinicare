@@ -311,7 +311,7 @@ These reflect the **settled** designs after many review passes. Do not re-invent
 
 Answers: *What needs my attention today?*
 
-- Page header with the date and a single primary action ("New appointment"). There is **no customizer** — the dashboard is a fixed, curated layout (the configurable-widgets system was removed); the page uses the **wide** workspace frame.
+- Page header with a single primary action ("New appointment") — no date subtitle (removed 2026-09, rule 5). There is **no customizer** — the dashboard is a fixed, curated layout (the configurable-widgets system was removed); the page uses the **wide** workspace frame.
 - A **five-tile KPI row** (Appointments today, Completion rate, Active clients, Revenue this month, Unread messages). Each tile carries a tone chip and links to the surface that owns it (calendar, reports, clients, inbox); each KPI appears exactly once.
 - A primary row pairing the **Visits** card (7 / 30 / all-time totals + a 7-day bar chart — 14 days of data considered, comparing the last 7 against the prior 7 for the week-over-week delta — cancellations excluded) with **Today's schedule** (a "Next up" panel above the day's appointment list).
 - A secondary row of compact cards — recent activity, **Messages** (preview list + live unread badge), and **Staff today** — none of them restating a KPI.

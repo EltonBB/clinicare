@@ -143,7 +143,6 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
     <WorkspacePage>
       <WorkspaceHeader
         title="Staff"
-        description="Manage your team, shifts, time tracking, and performance."
         actions={
           <Link
             href="/staff/new"
