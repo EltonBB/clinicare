@@ -3,12 +3,15 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { m } from "framer-motion";
 import {
+  AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
   CalendarDays,
   CheckCircle2,
   Gauge,
   Minus,
+  Sparkles,
+  Target,
   UserPlus,
 } from "lucide-react";
 
@@ -21,7 +24,6 @@ import type {
   ReportPeriodView,
   ReportSnapshotTone,
 } from "@/lib/reports";
-import { StaffTab } from "./staff-tab";
 
 const PLOT_TOP = 14;
 const PLOT_HEIGHT = 168;
@@ -41,6 +43,13 @@ const snapshotToneColor: Record<ReportSnapshotTone, string> = {
   healthy: "var(--primary)",
   watch: "#f59e0b",
   attention: "#ef4444",
+};
+
+const snapshotToneLabel: Record<ReportSnapshotTone, string> = {
+  strong: "Strong",
+  healthy: "Healthy",
+  watch: "Needs watching",
+  attention: "Needs attention",
 };
 
 const priorityStyles = {
@@ -116,23 +125,8 @@ function capitalize(value: string) {
   return value.length > 0 ? value[0].toUpperCase() + value.slice(1) : value;
 }
 
-function statusColor(label: string) {
-  const normalized = label.toLowerCase();
-
-  if (normalized.includes("completed")) return "var(--primary)";
-  if (normalized.includes("cancelled")) return "#ef4444";
-  if (normalized.includes("pending")) return "#f59e0b";
-  if (normalized.includes("confirmed")) return "#5b57d6";
-  return "#94a3b8";
-}
-
-function polarPoint(cx: number, cy: number, radius: number, angle: number) {
-  return [cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)];
-}
-
 export function OverviewTab({ period }: { period: ReportPeriodView }) {
   const [chartHover, setChartHover] = useState<number | null>(null);
-  const [statusHover, setStatusHover] = useState<string | null>(null);
   const [activeKpi, setActiveKpi] = useState<string | null>(null);
   const [chartWidth, setChartWidth] = useState(820);
   const chartAreaRef = useRef<HTMLDivElement | null>(null);
@@ -148,7 +142,6 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
   if (periodIdentity !== lastPeriodIdentity) {
     setLastPeriodIdentity(periodIdentity);
     setChartHover(null);
-    setStatusHover(null);
     setActiveKpi(null);
   }
 
@@ -185,8 +178,6 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
   const repeatVisitRow = period.operationalDetail.find((row) => row.key === "repeatVisit");
   const lostSlotRow = period.operationalDetail.find((row) => row.key === "lostSlot");
   const followUpRow = period.operationalDetail.find((row) => row.key === "followUp");
-  const statusMix = period.diagnostics.statusMix;
-  const hoveredStatus = statusMix.find((item) => item.label === statusHover);
   const busiestDay = period.diagnostics.demandWindows.busiestDays[0];
   const quietestDay = period.diagnostics.demandWindows.quietestDays[0];
 
@@ -270,7 +261,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
         </div>
       ) : null}
 
-      <div className="grid items-stretch gap-3 xl:grid-cols-[minmax(0,1.9fr)_minmax(320px,1fr)]">
+      <div className="grid items-stretch gap-3 xl:grid-cols-2">
         <section className="flex flex-col rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
           <div className="flex items-start justify-between gap-3 px-1">
             <div>
@@ -443,9 +434,18 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
             </span>
           </div>
 
-          <div className="mt-0.5 flex-1 divide-y divide-border/65">
-            <InsightRow label="Summary" title={period.snapshot.headline} text={period.snapshot.summary} />
+          <div className="mt-2.5 flex items-center gap-3 rounded-(--radius-tile) border border-border/70 bg-secondary/25 px-3 py-2.5">
+            <ScoreGauge score={period.snapshot.score} tone={period.snapshot.tone} />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">{snapshotToneLabel[period.snapshot.tone]}</p>
+              <p className="text-xs text-muted-foreground">Operational health score: {period.snapshot.score}/100</p>
+            </div>
+          </div>
+
+          <div className="mt-2 flex-1 space-y-1">
+            <InsightRow icon={Sparkles} label="Summary" title={period.snapshot.headline} text={period.snapshot.summary} />
             <InsightRow
+              icon={AlertTriangle}
               label="Diagnosis"
               badge={topCause ? capitalize(topCause.severity) : undefined}
               badgeTone={topCause?.severity}
@@ -453,6 +453,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
               text={topCause?.evidence}
             />
             <InsightRow
+              icon={Target}
               label="Next move"
               badge={primaryAction ? capitalize(primaryAction.priority) : undefined}
               badgeTone={primaryAction?.priority}
@@ -460,126 +461,24 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
               text={primaryAction?.detail}
             />
           </div>
-
-          <div className="mt-1.5 flex items-center justify-center gap-2 rounded-(--radius-tile) border border-border/70 bg-secondary/35 px-3 py-1.5">
-            <span className="size-2 shrink-0 rounded-full" style={{ background: snapshotToneColor[period.snapshot.tone] }} />
-            <p className="text-xs font-medium text-muted-foreground">
-              Operational health score:{" "}
-              <span className="font-semibold tabular-nums text-foreground">{period.snapshot.score}/100</span>
-            </p>
-          </div>
         </section>
-      </div>
-
-      <div className="grid items-stretch gap-3 xl:grid-cols-2">
-        <section className="flex flex-col rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
-          <h2 className="px-1 text-[15px] font-semibold text-foreground">Appointment status</h2>
-          {period.statusTotal > 0 ? (
-            <div className="grid flex-1 grid-cols-[auto_minmax(0,1fr)] items-center gap-8 px-2 py-2">
-              <div className="relative" onMouseLeave={() => setStatusHover(null)}>
-                <DonutChart items={statusMix} hovered={statusHover} onHover={setStatusHover} />
-                <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
-                  <div>
-                    <p className="text-xl font-semibold leading-6 tabular-nums text-foreground">
-                      {hoveredStatus ? hoveredStatus.count : period.statusTotal}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      {hoveredStatus ? hoveredStatus.label.toLowerCase() : "visits"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="divide-y divide-border/65 text-sm" onMouseLeave={() => setStatusHover(null)}>
-                {statusMix.map((item) => (
-                  <LegendRow
-                    key={item.label}
-                    color={statusColor(item.label)}
-                    label={item.label}
-                    value={`${item.count}`}
-                    detail={item.share.replace(/\.0%$/, "%")}
-                    muted={item.count === 0}
-                    active={statusHover === item.label}
-                    onHover={() => setStatusHover(item.label)}
-                  />
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="mt-3">
-              <WorkspaceEmptyState compact icon={CheckCircle2} title="No status mix yet" description="Statuses appear after visits are booked." />
-            </div>
-          )}
-        </section>
-
-        <StaffTab period={period} />
       </div>
     </m.div>
   );
 }
 
-function DonutChart({
-  items,
-  hovered,
-  onHover,
-}: {
-  items: Array<{ label: string; count: number }>;
-  hovered: string | null;
-  onHover: (label: string) => void;
-}) {
-  const size = 128;
-  const strokeWidth = 14;
-  const center = size / 2;
-  const radius = (size - strokeWidth) / 2 - 2;
-  const total = items.reduce((sum, item) => sum + item.count, 0);
-  const nonZero = items.filter((item) => item.count > 0);
-  const pad = nonZero.length > 1 ? 0.055 : 0;
-
-  let cursor = -Math.PI / 2;
-  const arcs = nonZero.map((item) => {
-    const sweep = (item.count / total) * Math.PI * 2;
-    const a0 = cursor + pad;
-    const a1 = Math.max(cursor + sweep - pad, a0 + 0.01);
-    cursor += sweep;
-    const [x0, y0] = polarPoint(center, center, radius, a0);
-    const [x1, y1] = polarPoint(center, center, radius, a1);
-    const largeArc = a1 - a0 > Math.PI ? 1 : 0;
-
-    return {
-      item,
-      d: `M ${round2(x0)} ${round2(y0)} A ${radius} ${radius} 0 ${largeArc} 1 ${round2(x1)} ${round2(y1)}`,
-    };
-  });
+function ScoreGauge({ score, tone }: { score: number; tone: ReportSnapshotTone }) {
+  const color = snapshotToneColor[tone];
 
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} className="size-32">
-      {nonZero.length === 1 ? (
-        <circle
-          cx={center}
-          cy={center}
-          r={radius}
-          fill="none"
-          stroke={statusColor(nonZero[0].label)}
-          strokeWidth={hovered === nonZero[0].label ? strokeWidth + 3 : strokeWidth}
-          opacity={hovered && hovered !== nonZero[0].label ? 0.25 : 1}
-          className="transition-[stroke-width,opacity] duration-(--duration-base)"
-          onMouseEnter={() => onHover(nonZero[0].label)}
-        />
-      ) : (
-        arcs.map(({ item, d }) => (
-          <path
-            key={item.label}
-            d={d}
-            fill="none"
-            stroke={statusColor(item.label)}
-            strokeWidth={hovered === item.label ? strokeWidth + 3 : strokeWidth}
-            strokeLinecap="butt"
-            opacity={hovered && hovered !== item.label ? 0.25 : 1}
-            className="transition-[stroke-width,opacity] duration-(--duration-base)"
-            onMouseEnter={() => onHover(item.label)}
-          />
-        ))
-      )}
-    </svg>
+    <div
+      className="grid size-14 shrink-0 place-items-center rounded-full"
+      style={{ background: `conic-gradient(${color} ${score}%, var(--secondary) 0)` }}
+    >
+      <div className="grid size-11 place-items-center rounded-full bg-white">
+        <span className="text-base font-semibold tabular-nums text-foreground">{score}</span>
+      </div>
+    </div>
   );
 }
 
@@ -657,47 +556,15 @@ function KpiCard({
   );
 }
 
-export function LegendRow({
-  color,
-  label,
-  value,
-  detail,
-  muted,
-  active,
-  onHover,
-}: {
-  color: string;
-  label: string;
-  value: string;
-  detail?: string;
-  muted?: boolean;
-  active?: boolean;
-  onHover?: () => void;
-}) {
-  return (
-    <div
-      onMouseEnter={onHover}
-      className={cn("flex items-center justify-between gap-2.5 px-1.5 py-1.5 transition-colors duration-(--duration-base)", active ? "bg-secondary/55" : "hover:bg-secondary/45")}
-    >
-      <span className="flex min-w-0 items-center gap-2">
-        <span className={cn("size-2.5 shrink-0 rounded-full", muted && "opacity-35")} style={{ background: color }} />
-        <span className={cn("truncate", muted ? "text-muted-foreground/60" : "text-muted-foreground")}>{label}</span>
-      </span>
-      <span className={cn("shrink-0 font-medium tabular-nums", muted ? "text-muted-foreground/60" : "text-foreground")}>
-        {value}
-        {detail ? <span className={cn("ml-1.5 font-normal", muted ? "text-muted-foreground/50" : "text-muted-foreground")}>· {detail}</span> : null}
-      </span>
-    </div>
-  );
-}
-
 function InsightRow({
+  icon: Icon,
   label,
   badge,
   badgeTone,
   title,
   text,
 }: {
+  icon: typeof Sparkles;
   label: string;
   badge?: string;
   badgeTone?: "high" | "medium" | "low";
@@ -705,13 +572,18 @@ function InsightRow({
   text?: string;
 }) {
   return (
-    <div className="-mx-1 rounded-(--radius-tile) px-2 py-1.5 transition-colors duration-(--duration-base) hover:bg-secondary/30">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium text-muted-foreground">{label}</p>
-        {badge ? <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-semibold", priorityStyles[badgeTone ?? "medium"])}>{badge}</span> : null}
+    <div className="flex items-start gap-2.5 rounded-(--radius-tile) px-1 py-1.5 transition-colors duration-(--duration-base) hover:bg-secondary/30">
+      <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
+        <Icon className="size-3.5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
+          {badge ? <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-semibold", priorityStyles[badgeTone ?? "medium"])}>{badge}</span> : null}
+        </div>
+        <p className="mt-0.5 line-clamp-2 text-sm font-medium leading-5 text-foreground">{title}</p>
+        {text ? <p className="mt-0.5 line-clamp-1 text-xs leading-4 text-muted-foreground">{text}</p> : null}
       </div>
-      <p className="mt-1 line-clamp-2 text-sm font-medium leading-5 text-foreground">{title}</p>
-      {text ? <p className="mt-0.5 line-clamp-1 text-xs leading-4 text-muted-foreground">{text}</p> : null}
     </div>
   );
 }
