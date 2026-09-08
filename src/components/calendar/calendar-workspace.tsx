@@ -304,7 +304,7 @@ function DatePickerPopover({
               showDot: appointmentDateKeys.has(format(day, "yyyy-MM-dd")),
             })}
           />
-          <div className="mt-2 border-t border-border/70 pt-2 text-right">
+          <div className="mt-2 text-right">
             <button
               type="button"
               onClick={() => {
@@ -426,7 +426,7 @@ function AppointmentQuickView({
           <X className="size-3.5" />
         </button>
       </div>
-      <div className="mt-2.5 space-y-1.5 border-t border-border/70 pt-2.5 text-sm">
+      <div className="mt-2.5 space-y-1.5 text-sm">
         <div className="flex items-center justify-between gap-3">
           <span className="text-muted-foreground">Time</span>
           <span className="font-medium text-foreground">

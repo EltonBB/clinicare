@@ -86,7 +86,7 @@ function RangeCalendar({
           };
         }}
       />
-      <p className="mt-3 border-t border-border/70 pt-3 text-center text-xs font-medium text-muted-foreground">
+      <p className="mt-3 text-center text-xs font-medium text-muted-foreground">
         {rangeCaption}
       </p>
     </div>
