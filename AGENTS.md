@@ -204,10 +204,11 @@ The UI UX Pro Max skill may be used for UI/UX review and design work, but AGENTS
 
 ### Design skill workflow
 
-Claude Code has a curated design-skill stack installed (`emil-design-eng`, `impeccable`, `design-taste-frontend`, `high-end-visual-design`, `redesign-existing-projects`). Use them **surface-dependently** — they supply craft; this file supplies the law:
+Claude Code has a curated design-skill stack installed (`emil-design-eng`, `impeccable`, `design-taste-frontend`, `high-end-visual-design`, `redesign-existing-projects`, `apple-design` — added 2026-09). Use them **surface-dependently** — they supply craft; this file supplies the law:
 
 - **Marketing pages** (`/`, `/product`, `/pricing`, `/about`): bold is good — `design-taste-frontend` / `high-end-visual-design` fit. Higher visual variance and motion are acceptable here.
 - **Authenticated workspace** (dashboard, calendar, clients, staff, inbox, reports, settings): the calm/compact/restrained-motion rules above win. Use only `emil-design-eng` (interaction polish) and `impeccable` (audit/critique) here — never re-style the clinical workspace with marketing-grade variance.
+- **`apple-design`** (Apple's WWDC-derived fluid-interaction guidance — springs, gesture momentum, translucent materials, optical typography): useful for its *universal* craft points — instant pointer-down feedback, motion anchored to its trigger (`transform-origin`, not a generic center), correct `prefers-reduced-motion` handling, size-specific type tracking. Its bouncy-spring and glass/blur defaults directly conflict with DESIGN.md's locked "no bounce/no elastic" and "flat white cards, never glass/blur decoration" rules — do not import those on the authenticated workspace; DESIGN.md's pinned system wins per the skill's own "the brief wins" precedence rule.
 - **Always:** AGENTS.md + ROADMAP.md override any skill output. Do not run `/impeccable init` to generate a competing `DESIGN.md`/`PRODUCT.md` — point design skills at this file instead.
 
 (These skills are installed for Claude Code only; Codex continues to use UI UX Pro Max.)
