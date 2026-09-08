@@ -133,7 +133,6 @@ export function ClientsWorkspace({
     <WorkspacePage>
       <WorkspaceHeader
         title="Clients"
-        description="Manage client records, visit history, documents, messages, and follow-up."
         actions={
           <Link
             href="/clients/new"
