@@ -30,7 +30,7 @@ import { buttonVariants } from "@/components/ui/button-variants";
 import { cn } from "@/lib/utils";
 import type { ReportPeriodKey, ReportsViewModel } from "@/lib/reports";
 import { OverviewTab } from "./overview-tab";
-import { DemandTab } from "./demand-tab";
+import { StaffTab } from "./staff-tab";
 
 /** Month-grid range picker built on the shared MonthGrid. */
 function RangeCalendar({
@@ -254,7 +254,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
 
           <div className="space-y-3">
             <OverviewTab period={period} />
-            <DemandTab period={period} />
+            <StaffTab period={period} />
           </div>
         </WorkspacePage>
       </div>
