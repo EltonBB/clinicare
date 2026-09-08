@@ -76,7 +76,7 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
   return (
     <section className="flex flex-col rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
       <h2 className="px-1 pb-2 text-[15px] font-semibold text-foreground">Staff performance</h2>
-      <div className="flex items-center gap-3 border-b border-border/70 px-1 pb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="flex items-center gap-3 px-1 pb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         <span className="flex-1">Provider</span>
         {columns.map((column) => (
           <button
@@ -101,7 +101,7 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
         ))}
       </div>
 
-      <m.div variants={staggerChildren} initial="initial" animate="animate" className="divide-y divide-border/65">
+      <m.div variants={staggerChildren} initial="initial" animate="animate">
         {sortedRows.map((row) => {
           const rowKey = row.id;
           const loadShare = maxBookedMinutes > 0 ? (row.bookedMinutes / maxBookedMinutes) * 100 : 0;

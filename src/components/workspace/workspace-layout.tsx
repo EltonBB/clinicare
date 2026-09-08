@@ -128,7 +128,7 @@ export function WorkspaceHeader({
   className,
 }: WorkspaceHeaderProps) {
   return (
-    <section className={cn("section-reveal border-b border-border/65 pb-2", className)}>
+    <section className={cn("section-reveal pb-2", className)}>
       {backHref && backLabel ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Link

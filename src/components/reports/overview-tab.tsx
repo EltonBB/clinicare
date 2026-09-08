@@ -548,7 +548,7 @@ function KpiCard({
           all 4 cards loses the tap-to-explanation connection. Desktop keeps the
           one shared panel below the 4-across row instead (see OverviewTab). */}
       {active && detail ? (
-        <div className="state-pop border-t border-dashed border-primary/25 bg-primary/5 px-3.5 py-2.5 text-sm text-foreground md:hidden">
+        <div className="state-pop bg-primary/5 px-3.5 py-2.5 text-sm text-foreground md:hidden">
           {detail}
         </div>
       ) : null}
