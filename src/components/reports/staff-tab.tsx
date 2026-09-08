@@ -35,13 +35,6 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
     : 0;
   const avgLoadShare = maxBookedMinutes > 0 ? Math.min((avgBookedMinutes / maxBookedMinutes) * 100, 100) : 0;
   const avgAppointments = staffLoad.length > 0 ? totalVisits / staffLoad.length : 0;
-  const measuredCompletionRates = staffLoad
-    .map((row) => completionValue(row.completionRate))
-    .filter((value) => value >= 0);
-  const avgCompletionRate =
-    measuredCompletionRates.length > 0
-      ? measuredCompletionRates.reduce((sum, value) => sum + value, 0) / measuredCompletionRates.length
-      : null;
 
   const sortedRows = useMemo(() => {
     const rows = [...staffLoad];
@@ -68,7 +61,8 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
 
   if (staffLoad.length === 0) {
     return (
-      <section className="rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
+      <section className="flex flex-col rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
+        <h2 className="px-1 pb-2 text-[15px] font-semibold text-foreground">Staff performance</h2>
         <WorkspaceEmptyState
           compact
           icon={ChevronRight}
@@ -80,12 +74,8 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
   }
 
   return (
-    <section className="rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
-      <p className="px-1 pb-2 text-sm text-muted-foreground">
-        {staffLoad.length} provider{staffLoad.length === 1 ? "" : "s"} · {totalVisits} total visit
-        {totalVisits === 1 ? "" : "s"} this period
-        {avgCompletionRate !== null ? ` · ${avgCompletionRate.toFixed(1)}% avg completion` : ""}
-      </p>
+    <section className="flex flex-col rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
+      <h2 className="px-1 pb-2 text-[15px] font-semibold text-foreground">Staff performance</h2>
       <div className="flex items-center gap-3 border-b border-border/70 px-1 pb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         <span className="flex-1">Provider</span>
         {columns.map((column) => (

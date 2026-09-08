@@ -7,10 +7,8 @@ import {
   ArrowUpRight,
   CalendarDays,
   CheckCircle2,
-  Clock3,
   Gauge,
   Minus,
-  Repeat,
   UserPlus,
 } from "lucide-react";
 
@@ -23,6 +21,7 @@ import type {
   ReportPeriodView,
   ReportSnapshotTone,
 } from "@/lib/reports";
+import { StaffTab } from "./staff-tab";
 
 const PLOT_TOP = 14;
 const PLOT_HEIGHT = 168;
@@ -157,7 +156,6 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
   const chartCompletedValues = period.chart.completedValues;
   const chartPreviousValues = period.chart.previousValues;
   const chartValues = useMemo(() => chartPoints.map((point) => point.value), [chartPoints]);
-  const chartLabels = useMemo(() => chartPoints.map((point) => point.label), [chartPoints]);
   // Scale is derived from the current period only — if a previous-period
   // bucket spikes above it, that segment of the ghost line clips at the top
   // of the plot rather than compressing today's real trend down to fit it.
@@ -176,15 +174,6 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
     [chartPreviousValues, plotWidth, maxChartValue]
   );
   const yTicks = maxChartValue >= 2 ? [maxChartValue, maxChartValue / 2, 0] : [maxChartValue, 0];
-  const completionSeries = useMemo(
-    () =>
-      chartPoints.map((point, index) =>
-        point.value > 0
-          ? Math.round(((chartCompletedValues[index] ?? 0) / point.value) * 100)
-          : 0
-      ),
-    [chartPoints, chartCompletedValues]
-  );
   const kpiByKey = new Map(period.kpis.map((kpi) => [kpi.key, kpi]));
   const appointmentsKpi = kpiByKey.get("appointments");
   const completionKpi = kpiByKey.get("completionRate");
@@ -201,6 +190,13 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
   const busiestDay = period.diagnostics.demandWindows.busiestDays[0];
   const quietestDay = period.diagnostics.demandWindows.quietestDays[0];
 
+  const completionDetailParts = [
+    lostSlotRow?.value ? `Lost-slot rate: ${lostSlotRow.value} of finalized visits were cancelled.` : null,
+    followUpRow?.value ? `Follow-up coverage: ${followUpRow.value} of inbound messages got an outbound reply.` : null,
+    avgVisitKpi?.value ? `Average visit length: ${avgVisitKpi.value}.` : null,
+    repeatVisitRow?.value ? `${repeatVisitRow.value} of clients return for another visit.` : null,
+  ].filter((part): part is string => Boolean(part));
+
   const kpiDetails: Record<string, string> = {
     appointments:
       busiestDay && busiestDay.count > 0
@@ -208,27 +204,16 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
             quietestDay && quietestDay.label !== busiestDay.label
               ? ` Quietest: ${quietestDay.label} (${quietestDay.count}).`
               : ""
-          } See the Demand tab for the full breakdown by day and time.`
+          }`
         : "No appointments booked yet this period to break down by day.",
     completionRate:
-      lostSlotRow?.value || followUpRow?.value
-        ? `${lostSlotRow?.value ? `Lost-slot rate: ${lostSlotRow.value} of finalized visits were cancelled.` : ""} ${
-            followUpRow?.value ? `Follow-up coverage: ${followUpRow.value} of inbound messages got an outbound reply.` : ""
-          }`.trim()
+      completionDetailParts.length > 0
+        ? completionDetailParts.join(" ")
         : "Not enough finalized visits or inbound messages yet to break this down further.",
-    newClients: `${period.activeClients.toLocaleString("en-US")} of ${period.clientMixTotal.toLocaleString("en-US")} total client records are currently active. See the Demand tab for the full active/at-risk/inactive/archived mix.`,
+    newClients: `${period.activeClients.toLocaleString("en-US")} of ${period.clientMixTotal.toLocaleString("en-US")} total client records are currently active.`,
     utilization:
       "Booked minutes vs. open hours × active staff, estimated — not a measured clock-in/clock-out figure. 70-92% is the healthy operating range; below that means open capacity isn't converting into visits, above it risks overload.",
   };
-
-  const highlights = [
-    avgVisitKpi && avgVisitKpi.value
-      ? { icon: Clock3, title: "Average visit length", detail: `Completed visits average ${avgVisitKpi.value} this period.` }
-      : null,
-    repeatVisitRow && repeatVisitRow.value
-      ? { icon: Repeat, title: "Repeat-visit rate", detail: `${repeatVisitRow.value} of clients return for another visit.` }
-      : null,
-  ].filter((item): item is { icon: typeof Clock3; title: string; detail: string } => Boolean(item));
 
   useEffect(() => {
     const element = chartAreaRef.current;
@@ -248,9 +233,6 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
         {appointmentsKpi ? (
           <KpiCard
             kpi={appointmentsKpi}
-            series={chartValues}
-            labels={chartLabels}
-            chartType="bars"
             active={activeKpi === "appointments"}
             onToggle={() => setActiveKpi((current) => (current === "appointments" ? null : "appointments"))}
             detail={kpiDetails.appointments}
@@ -259,10 +241,6 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
         {completionKpi ? (
           <KpiCard
             kpi={completionKpi}
-            series={completionSeries}
-            labels={chartLabels}
-            chartType="line"
-            formatValue={(value) => `${value}%`}
             active={activeKpi === "completionRate"}
             onToggle={() => setActiveKpi((current) => (current === "completionRate" ? null : "completionRate"))}
             detail={kpiDetails.completionRate}
@@ -271,9 +249,6 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
         {newClientsKpi ? (
           <KpiCard
             kpi={newClientsKpi}
-            series={period.chart.newClientValues}
-            labels={chartLabels}
-            chartType="bars"
             active={activeKpi === "newClients"}
             onToggle={() => setActiveKpi((current) => (current === "newClients" ? null : "newClients"))}
             detail={kpiDetails.newClients}
@@ -536,28 +511,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
           )}
         </section>
 
-        <section className="flex flex-col rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
-          <h2 className="px-1 text-[15px] font-semibold text-foreground">Highlights</h2>
-          {highlights.length > 0 ? (
-            <div className="mt-2.5 flex flex-1 flex-col justify-center space-y-1.5">
-              {highlights.map((highlight) => (
-                <div key={highlight.title} className="flex items-center gap-3 rounded-(--radius-tile) border border-border/70 px-3 py-1">
-                  <span className="grid size-7 shrink-0 place-items-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
-                    <highlight.icon className="size-3.5" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground">{highlight.title}</p>
-                    <p className="truncate text-xs text-muted-foreground">{highlight.detail}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-3">
-              <WorkspaceEmptyState compact icon={CalendarDays} title="No activity pattern yet" description="Highlights appear once visits are completed." />
-            </div>
-          )}
-        </section>
+        <StaffTab period={period} />
       </div>
     </m.div>
   );
@@ -629,114 +583,18 @@ function DonutChart({
   );
 }
 
-function MiniChartTooltip({ index, count, label, value }: { index: number; count: number; label: string; value: string }) {
-  return (
-    <div
-      className={cn(
-        "pointer-events-none absolute z-10 whitespace-nowrap rounded-(--radius-tile) border border-border/80 bg-white px-2 py-1 text-[11px] font-medium text-foreground shadow-[0_6px_16px_rgba(20,21,47,0.12)]",
-        index === 0 ? "" : index === count - 1 ? "-translate-x-full" : "-translate-x-1/2"
-      )}
-      style={{ left: `${(index / Math.max(count - 1, 1)) * 100}%`, bottom: "calc(100% + 6px)" }}
-    >
-      {label} · {value}
-    </div>
-  );
-}
-
-function MiniBars({ values, labels, formatValue }: { values: number[]; labels: string[]; formatValue: (value: number) => string }) {
-  const [hover, setHover] = useState<number | null>(null);
-  const max = Math.max(...values, 1);
-
-  return (
-    <div className="relative h-full w-full" onMouseLeave={() => setHover(null)}>
-      <div className="flex h-full w-full items-end gap-1.5">
-        {values.map((value, index) => (
-          <div
-            key={index}
-            className="relative flex h-full flex-1 items-end overflow-hidden rounded-[4px] bg-secondary/70"
-            onMouseEnter={() => setHover(index)}
-          >
-            <div
-              className={cn(
-                "w-full rounded-[4px] transition-colors duration-(--duration-base)",
-                index === values.length - 1 ? "bg-primary" : hover === index ? "bg-primary/70" : "bg-primary/40"
-              )}
-              style={{ height: `${(value / max) * 100}%` }}
-            />
-          </div>
-        ))}
-      </div>
-      {hover !== null ? (
-        <MiniChartTooltip index={hover} count={values.length} label={labels[hover] ?? ""} value={formatValue(values[hover] ?? 0)} />
-      ) : null}
-    </div>
-  );
-}
-
-function MiniLine({ values, labels, formatValue }: { values: number[]; labels: string[]; formatValue: (value: number) => string }) {
-  const [hover, setHover] = useState<number | null>(null);
-  const gradientId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  const max = Math.max(...values, 1);
-  const path = buildSmoothPath(values, 100, 30);
-  const pointTopPercent = (value: number) => ((5 + 30 - (value / max) * 30) / 40) * 100;
-  const lastIndex = values.length - 1;
-
-  return (
-    <div className="relative h-full w-full" onMouseLeave={() => setHover(null)}>
-      <svg viewBox="0 0 100 40" className="h-full w-full" preserveAspectRatio="none" aria-hidden>
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.16" />
-            <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.02" />
-          </linearGradient>
-        </defs>
-        <path d={`${path} L 100 30 L 0 30 Z`} fill={`url(#${gradientId})`} transform="translate(0 5)" />
-        <path d={path} fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" transform="translate(0 5)" />
-      </svg>
-      {hover === null ? (
-        <span
-          className="pointer-events-none absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary ring-2 ring-white"
-          style={{ left: "100%", top: `${pointTopPercent(values[lastIndex] ?? 0)}%` }}
-        />
-      ) : (
-        <>
-          <span
-            className="pointer-events-none absolute z-10 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary ring-2 ring-white"
-            style={{ left: `${(hover / Math.max(values.length - 1, 1)) * 100}%`, top: `${pointTopPercent(values[hover] ?? 0)}%` }}
-          />
-          <MiniChartTooltip index={hover} count={values.length} label={labels[hover] ?? ""} value={formatValue(values[hover] ?? 0)} />
-        </>
-      )}
-      <div className="absolute inset-0 grid" style={{ gridTemplateColumns: `repeat(${values.length}, 1fr)` }}>
-        {values.map((_, index) => (
-          <div key={index} onMouseEnter={() => setHover(index)} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function KpiCard({
   kpi,
-  series = [],
-  labels = [],
-  chartType,
-  formatValue = (value) => `${value}`,
   onToggle,
   active = false,
   detail,
 }: {
   kpi: ReportKpi;
-  series?: number[];
-  labels?: string[];
-  chartType?: "bars" | "line";
-  formatValue?: (value: number) => string;
   onToggle?: () => void;
   active?: boolean;
   detail?: string;
 }) {
   const Icon = kpiIcons[kpi.key] ?? CalendarDays;
-  const hasSeries = series.some((value) => value > 0);
 
   return (
     <m.section
@@ -786,17 +644,6 @@ function KpiCard({
             </div>
           </div>
         </div>
-        {hasSeries ? (
-          <div className="relative flex w-[52%] items-center px-4">
-            <div className="h-[68px] w-full">
-              {chartType === "bars" ? (
-                <MiniBars values={series} labels={labels} formatValue={formatValue} />
-              ) : (
-                <MiniLine values={series} labels={labels} formatValue={formatValue} />
-              )}
-            </div>
-          </div>
-        ) : null}
       </div>
       {/* Mobile only: the grid is single-column below md, so a shared panel after
           all 4 cards loses the tap-to-explanation connection. Desktop keeps the

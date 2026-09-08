@@ -26,12 +26,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { cn } from "@/lib/utils";
 import type { ReportPeriodKey, ReportsViewModel } from "@/lib/reports";
 import { OverviewTab } from "./overview-tab";
-import { StaffTab } from "./staff-tab";
 import { DemandTab } from "./demand-tab";
 
 /** Month-grid range picker built on the shared MonthGrid. */
@@ -97,26 +95,6 @@ function RangeCalendar({
 
 export function ReportsOverview({ view }: { view: ReportsViewModel }) {
   const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriodKey>(view.defaultPeriod);
-  const [activeTab, setActiveTabState] = useState("overview");
-
-  // Restores tab position on refresh/back/shared link, same as the custom
-  // date range already round-trips through the URL — without this, a
-  // front-desk user who always checks Staff/Demand loses their place on
-  // every reload. A plain history update (not router.push) avoids
-  // re-fetching the page's server data for a client-only view change.
-  useEffect(() => {
-    const tab = new URLSearchParams(window.location.search).get("tab");
-    if (tab === "staff" || tab === "demand") {
-      setActiveTabState(tab);
-    }
-  }, []);
-
-  function setActiveTab(tab: string) {
-    setActiveTabState(tab);
-    const params = new URLSearchParams(window.location.search);
-    params.set("tab", tab);
-    window.history.replaceState(null, "", `?${params.toString()}`);
-  }
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const [rangeOpen, setRangeOpen] = useState(false);
@@ -182,7 +160,6 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
         <WorkspacePage>
           <WorkspaceHeader
             title="Reports"
-            description="How the clinic is performing and where to focus next."
             actions={
               <>
                 <div className="inline-flex h-10 items-center rounded-(--radius-card) border border-border/80 bg-white p-1">
@@ -275,29 +252,10 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
             </div>
           ) : null}
 
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="gap-3">
-            <TabsList variant="line" className="w-full justify-start gap-6 rounded-none border-b border-border/80 p-0">
-              <TabsTrigger className="flex-none px-0 pb-3" value="overview">
-                Overview
-              </TabsTrigger>
-              <TabsTrigger className="flex-none px-0 pb-3" value="staff">
-                Staff
-              </TabsTrigger>
-              <TabsTrigger className="flex-none px-0 pb-3" value="demand">
-                Demand
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="overview">
-              <OverviewTab period={period} />
-            </TabsContent>
-            <TabsContent value="staff">
-              <StaffTab period={period} />
-            </TabsContent>
-            <TabsContent value="demand">
-              <DemandTab period={period} />
-            </TabsContent>
-          </Tabs>
+          <div className="space-y-3">
+            <OverviewTab period={period} />
+            <DemandTab period={period} />
+          </div>
         </WorkspacePage>
       </div>
     </LazyMotionProvider>
