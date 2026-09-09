@@ -3,8 +3,6 @@
 import Link from "next/link";
 import {
   addDays,
-  addMonths,
-  addWeeks,
   eachDayOfInterval,
   endOfMonth,
   endOfWeek,
@@ -14,15 +12,11 @@ import {
   parseISO,
   startOfMonth,
   startOfWeek,
-  subMonths,
-  subWeeks,
 } from "date-fns";
 import { startTransition, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import {
   CalendarDays,
   CalendarX2,
-  ChevronLeft,
-  ChevronRight,
   Plus,
   UsersRound,
   X,
@@ -65,6 +59,11 @@ const monthChipClasses: Record<CalendarAppointmentStatus, string> = {
   completed: "bg-emerald-50 text-emerald-800",
   cancelled: "bg-[#f1f3f6] text-muted-foreground line-through",
 };
+
+// Fills the viewport below the header + toolbar so the grid reads as the whole
+// page rather than a card floating above empty space (mirrors Inbox's own
+// lg:h-[calc(100vh-174px)] fill pattern, offset for Calendar's extra toolbar row).
+const calendarGridHeightClass = "surface-card section-reveal step-enter flex flex-col overflow-clip p-0 lg:h-[calc(100vh-230px)]";
 
 function timeToMinutes(time: string) {
   const [hours, minutes] = time.split(":").map(Number);
@@ -166,7 +165,7 @@ function DatePickerPopover({
   }, [open]);
 
   return (
-    <div ref={containerRef} className="relative ml-auto">
+    <div ref={containerRef} className="relative">
       <button
         type="button"
         aria-label="Jump to date"
@@ -377,22 +376,6 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
     return scheduleBlocks.filter((block) => visibleKeys.has(block.date));
   }, [currentMonth, currentWeek, scheduleBlocks, selectedDateKey, view]);
 
-  function shiftRange(direction: "prev" | "next") {
-    startTransition(() => {
-      setActiveDate((current) => {
-        if (view === "day") {
-          return addDays(current, direction === "next" ? 1 : -1);
-        }
-
-        if (view === "week") {
-          return direction === "next" ? addWeeks(current, 1) : subWeeks(current, 1);
-        }
-
-        return direction === "next" ? addMonths(current, 1) : subMonths(current, 1);
-      });
-    });
-  }
-
   const weekStart = currentWeek[0];
   const weekEnd = currentWeek[6];
   const rangeLabel =
@@ -459,29 +442,6 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
           ))}
         </div>
 
-        <div className="inline-flex items-center gap-0.5">
-          <button
-            type="button"
-            onClick={() => shiftRange("prev")}
-            aria-label="Previous period"
-            className="grid size-8 place-items-center rounded-(--radius-tile) text-muted-foreground transition-colors duration-(--duration-base) hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
-          >
-            <ChevronLeft className="size-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => shiftRange("next")}
-            aria-label="Next period"
-            className="grid size-8 place-items-center rounded-(--radius-tile) text-muted-foreground transition-colors duration-(--duration-base) hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
-          >
-            <ChevronRight className="size-4" />
-          </button>
-        </div>
-
-        <span className="text-[17px] font-semibold tracking-tight text-foreground">
-          {rangeLabel}
-        </span>
-
         <button
           type="button"
           onClick={() => setActiveDate(parseISO(initialView.initialDate))}
@@ -490,12 +450,18 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
           Today
         </button>
 
-        <DatePickerPopover
-          activeDate={activeDate}
-          todayDate={todayDate}
-          appointmentDateKeys={appointmentDateKeys}
-          onSelect={(day) => setActiveDate(day)}
-        />
+        <div className="ml-auto flex items-center gap-3">
+          <span className="text-[17px] font-semibold tracking-tight text-foreground">
+            {rangeLabel}
+          </span>
+
+          <DatePickerPopover
+            activeDate={activeDate}
+            todayDate={todayDate}
+            appointmentDateKeys={appointmentDateKeys}
+            onSelect={(day) => setActiveDate(day)}
+          />
+        </div>
       </div>
 
       <div className="space-y-3">
@@ -508,15 +474,16 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
               actionLabel="Add first client"
             />
           ) : view === "month" ? (
-            <div key={gridKey} className="surface-card section-reveal step-enter overflow-clip p-0">
-              <div className="z-30 grid grid-cols-7 border-b border-border/80 bg-white text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground lg:sticky lg:top-[57px]">
+            <div key={gridKey} className={calendarGridHeightClass}>
+              <div className="z-30 grid shrink-0 grid-cols-7 border-b border-border/80 bg-white text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                 {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
                   <div key={label} className="px-4 py-3">
                     {label}
                   </div>
                 ))}
               </div>
-              <div className="grid grid-cols-7">
+              <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+              <div className="grid grid-cols-7 lg:h-full lg:auto-rows-fr">
                 {currentMonth.map((day) => {
                   const key = format(day, "yyyy-MM-dd");
                   const items = appointments.filter((appointment) => appointment.date === key);
@@ -608,12 +575,13 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                   );
                 })}
               </div>
+              </div>
             </div>
           ) : (
-            <div key={gridKey} className="surface-card section-reveal step-enter overflow-clip p-0">
-              <div className="overflow-x-auto">
-                <div className={view === "week" ? "min-w-[720px]" : undefined}>
-              <div className={cn("grid border-b border-border/80 bg-white", view === "day" ? "grid-cols-1" : "grid-cols-7")}>
+            <div key={gridKey} className={calendarGridHeightClass}>
+              <div className="min-h-0 overflow-x-auto lg:flex lg:flex-1 lg:flex-col">
+                <div className={cn("lg:flex lg:h-full lg:min-h-0 lg:flex-col", view === "week" && "min-w-[720px]")}>
+              <div className={cn("grid shrink-0 border-b border-border/80 bg-white", view === "day" ? "grid-cols-1" : "grid-cols-7")}>
                 {(view === "day" ? [activeDate] : currentWeek).map((day) => {
                   const isToday = isSameDay(day, todayDate);
                   const isSelected = isSameDay(day, activeDate);
@@ -651,7 +619,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                 })}
               </div>
 
-              <div className={cn("grid", view === "day" ? "grid-cols-1" : "grid-cols-7")}>
+              <div className={cn("grid lg:min-h-0 lg:flex-1", view === "day" ? "grid-cols-1" : "grid-cols-7")}>
                 {(view === "day" ? [activeDate] : currentWeek).map((day) => {
                   const key = format(day, "yyyy-MM-dd");
                   const items = visibleAppointments
@@ -661,11 +629,14 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                   const isToday = isSameDay(day, todayDate);
                   const isSelectedColumn = isSameDay(day, activeDate);
 
+                  const isEmpty = items.length === 0 && blocks.length === 0;
+
                   return (
                     <div
                       key={key}
                       className={cn(
-                        "flex max-h-[520px] min-h-[200px] flex-col gap-1.5 overflow-y-auto border-l border-t border-border/75 p-2.5 first:border-l-0",
+                        "flex max-h-[520px] min-h-[200px] flex-col gap-1.5 overflow-y-auto border-l border-t border-border/75 p-2.5 first:border-l-0 lg:h-full lg:max-h-none lg:min-h-0",
+                        isEmpty && "justify-center",
                         isToday ? "bg-[#f6f9ff]" : isSelectedColumn && "bg-[#f8fafd]"
                       )}
                     >
@@ -683,9 +654,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                         href={`/calendar/new?date=${key}`}
                         className={cn(
                           "flex items-center justify-center gap-1.5 rounded-(--radius-tile) px-2.5 py-2 text-xs font-medium text-muted-foreground transition-[background-color,color,transform] duration-(--duration-base) hover:bg-primary/5 hover:text-primary active:scale-[0.97]",
-                          items.length === 0 && blocks.length === 0
-                            ? "border border-dashed border-border/70"
-                            : "mt-auto"
+                          isEmpty ? "border border-dashed border-border/70" : "mt-auto"
                         )}
                       >
                         <Plus className="size-3.5" />
