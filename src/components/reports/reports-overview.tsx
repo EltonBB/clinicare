@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import type { ReportPeriodKey, ReportsViewModel } from "@/lib/reports";
 import { OverviewTab } from "./overview-tab";
 import { StaffTab } from "./staff-tab";
+import { DemandTab } from "./demand-tab";
 
 /** Month-grid range picker built on the shared MonthGrid. */
 function RangeCalendar({
@@ -255,6 +256,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
           <div className="space-y-3">
             <OverviewTab period={period} />
             <StaffTab period={period} />
+            <DemandTab period={period} />
           </div>
         </WorkspacePage>
       </div>

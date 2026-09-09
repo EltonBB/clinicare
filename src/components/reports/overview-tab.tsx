@@ -8,11 +8,15 @@ import {
   ArrowUpRight,
   CalendarDays,
   CheckCircle2,
+  Clock3,
   Gauge,
   Minus,
+  Repeat,
+  Reply,
   Sparkles,
   Target,
   UserPlus,
+  XCircle,
 } from "lucide-react";
 
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
@@ -125,8 +129,23 @@ function capitalize(value: string) {
   return value.length > 0 ? value[0].toUpperCase() + value.slice(1) : value;
 }
 
+function statusColor(label: string) {
+  const normalized = label.toLowerCase();
+
+  if (normalized.includes("completed")) return "var(--primary)";
+  if (normalized.includes("cancelled")) return "#ef4444";
+  if (normalized.includes("pending")) return "#f59e0b";
+  if (normalized.includes("confirmed")) return "#5b57d6";
+  return "#94a3b8";
+}
+
+function polarPoint(cx: number, cy: number, radius: number, angle: number) {
+  return [cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)];
+}
+
 export function OverviewTab({ period }: { period: ReportPeriodView }) {
   const [chartHover, setChartHover] = useState<number | null>(null);
+  const [statusHover, setStatusHover] = useState<string | null>(null);
   const [activeKpi, setActiveKpi] = useState<string | null>(null);
   const [chartWidth, setChartWidth] = useState(820);
   const chartAreaRef = useRef<HTMLDivElement | null>(null);
@@ -142,6 +161,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
   if (periodIdentity !== lastPeriodIdentity) {
     setLastPeriodIdentity(periodIdentity);
     setChartHover(null);
+    setStatusHover(null);
     setActiveKpi(null);
   }
 
@@ -180,6 +200,23 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
   const followUpRow = period.operationalDetail.find((row) => row.key === "followUp");
   const busiestDay = period.diagnostics.demandWindows.busiestDays[0];
   const quietestDay = period.diagnostics.demandWindows.quietestDays[0];
+  const statusMix = period.diagnostics.statusMix;
+  const hoveredStatus = statusMix.find((item) => item.label === statusHover);
+
+  const highlights = [
+    avgVisitKpi && avgVisitKpi.value
+      ? { icon: Clock3, title: "Average visit length", detail: `Completed visits average ${avgVisitKpi.value} this period.` }
+      : null,
+    repeatVisitRow && repeatVisitRow.value
+      ? { icon: Repeat, title: "Repeat-visit rate", detail: `${repeatVisitRow.value} of clients return for another visit.` }
+      : null,
+    lostSlotRow && lostSlotRow.value
+      ? { icon: XCircle, title: "Lost-slot rate", detail: `${lostSlotRow.value} of finalized visits were cancelled.` }
+      : null,
+    followUpRow && followUpRow.value
+      ? { icon: Reply, title: "Follow-up coverage", detail: `${followUpRow.value} of inbound messages got an outbound reply.` }
+      : null,
+  ].filter((item): item is { icon: typeof Clock3; title: string; detail: string } => Boolean(item));
 
   const completionDetailParts = [
     lostSlotRow?.value ? `Lost-slot rate: ${lostSlotRow.value} of finalized visits were cancelled.` : null,
@@ -463,7 +500,133 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
           </div>
         </section>
       </div>
+
+      <section className="rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
+        <h2 className="px-1 text-[15px] font-semibold text-foreground">Appointment status</h2>
+        {period.statusTotal > 0 ? (
+          <div className="mt-2 grid grid-cols-1 items-center gap-6 px-2 py-2 sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-10">
+            <div className="relative mx-auto" onMouseLeave={() => setStatusHover(null)}>
+              <DonutChart items={statusMix} hovered={statusHover} onHover={setStatusHover} />
+              <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
+                <div>
+                  <p className="text-xl font-semibold leading-6 tabular-nums text-foreground">
+                    {hoveredStatus ? hoveredStatus.count : period.statusTotal}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {hoveredStatus ? hoveredStatus.label.toLowerCase() : "visits"}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="text-sm" onMouseLeave={() => setStatusHover(null)}>
+              {statusMix.map((item) => (
+                <LegendRow
+                  key={item.label}
+                  color={statusColor(item.label)}
+                  label={item.label}
+                  value={`${item.count}`}
+                  detail={item.share.replace(/\.0%$/, "%")}
+                  muted={item.count === 0}
+                  active={statusHover === item.label}
+                  onHover={() => setStatusHover(item.label)}
+                />
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3">
+            <WorkspaceEmptyState compact icon={CheckCircle2} title="No status mix yet" description="Statuses appear after visits are booked." />
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
+        <h2 className="px-1 pb-2 text-[15px] font-semibold text-foreground">Highlights</h2>
+        {highlights.length > 0 ? (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {highlights.map((highlight) => (
+              <div key={highlight.title} className="flex items-center gap-3 rounded-(--radius-tile) border border-border/70 px-3 py-2.5">
+                <span className="grid size-8 shrink-0 place-items-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
+                  <highlight.icon className="size-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">{highlight.title}</p>
+                  <p className="truncate text-xs text-muted-foreground">{highlight.detail}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <WorkspaceEmptyState compact icon={CalendarDays} title="No activity pattern yet" description="Highlights appear once visits are completed." />
+        )}
+      </section>
     </m.div>
+  );
+}
+
+function DonutChart({
+  items,
+  hovered,
+  onHover,
+}: {
+  items: Array<{ label: string; count: number }>;
+  hovered: string | null;
+  onHover: (label: string) => void;
+}) {
+  const size = 128;
+  const strokeWidth = 14;
+  const center = size / 2;
+  const radius = (size - strokeWidth) / 2 - 2;
+  const total = items.reduce((sum, item) => sum + item.count, 0);
+  const nonZero = items.filter((item) => item.count > 0);
+  const pad = nonZero.length > 1 ? 0.055 : 0;
+
+  let cursor = -Math.PI / 2;
+  const arcs = nonZero.map((item) => {
+    const sweep = (item.count / total) * Math.PI * 2;
+    const a0 = cursor + pad;
+    const a1 = Math.max(cursor + sweep - pad, a0 + 0.01);
+    cursor += sweep;
+    const [x0, y0] = polarPoint(center, center, radius, a0);
+    const [x1, y1] = polarPoint(center, center, radius, a1);
+    const largeArc = a1 - a0 > Math.PI ? 1 : 0;
+
+    return {
+      item,
+      d: `M ${round2(x0)} ${round2(y0)} A ${radius} ${radius} 0 ${largeArc} 1 ${round2(x1)} ${round2(y1)}`,
+    };
+  });
+
+  return (
+    <svg viewBox={`0 0 ${size} ${size}`} className="size-32">
+      {nonZero.length === 1 ? (
+        <circle
+          cx={center}
+          cy={center}
+          r={radius}
+          fill="none"
+          stroke={statusColor(nonZero[0].label)}
+          strokeWidth={hovered === nonZero[0].label ? strokeWidth + 3 : strokeWidth}
+          opacity={hovered && hovered !== nonZero[0].label ? 0.25 : 1}
+          className="transition-[stroke-width,opacity] duration-(--duration-base)"
+          onMouseEnter={() => onHover(nonZero[0].label)}
+        />
+      ) : (
+        arcs.map(({ item, d }) => (
+          <path
+            key={item.label}
+            d={d}
+            fill="none"
+            stroke={statusColor(item.label)}
+            strokeWidth={hovered === item.label ? strokeWidth + 3 : strokeWidth}
+            strokeLinecap="butt"
+            opacity={hovered && hovered !== item.label ? 0.25 : 1}
+            className="transition-[stroke-width,opacity] duration-(--duration-base)"
+            onMouseEnter={() => onHover(item.label)}
+          />
+        ))
+      )}
+    </svg>
   );
 }
 
@@ -553,6 +716,40 @@ function KpiCard({
         </div>
       ) : null}
     </m.section>
+  );
+}
+
+export function LegendRow({
+  color,
+  label,
+  value,
+  detail,
+  muted,
+  active,
+  onHover,
+}: {
+  color: string;
+  label: string;
+  value: string;
+  detail?: string;
+  muted?: boolean;
+  active?: boolean;
+  onHover?: () => void;
+}) {
+  return (
+    <div
+      onMouseEnter={onHover}
+      className={cn("flex items-center justify-between gap-2.5 rounded-(--radius-tile) px-1.5 py-1.5 transition-colors duration-(--duration-base)", active ? "bg-secondary/55" : "hover:bg-secondary/45")}
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <span className={cn("size-2.5 shrink-0 rounded-full", muted && "opacity-35")} style={{ background: color }} />
+        <span className={cn("truncate", muted ? "text-muted-foreground/60" : "text-muted-foreground")}>{label}</span>
+      </span>
+      <span className={cn("shrink-0 font-medium tabular-nums", muted ? "text-muted-foreground/60" : "text-foreground")}>
+        {value}
+        {detail ? <span className={cn("ml-1.5 font-normal", muted ? "text-muted-foreground/50" : "text-muted-foreground")}>· {detail}</span> : null}
+      </span>
+    </div>
   );
 }
 
