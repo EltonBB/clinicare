@@ -406,7 +406,7 @@ A clean analytics experience (Pro) or a polished upgrade state (Basic). Redesign
 
 **Row 4 — Appointment status, Highlights, and Booking patterns as three equal-size cards** in one responsive row (`grid-cols-1 sm:grid-cols-2 xl:grid-cols-3`, `items-stretch` so all three match the tallest card's height) — there is no fourth "Client mix" card; that breakdown was dropped from Reports:
   - **Appointment status**: the status-mix donut + legend, centered in the card.
-  - **Highlights**: up to four compact icon tiles (Average visit length, Repeat-visit rate, Lost-slot rate, Follow-up coverage), stacked single-column and vertically centered in the card — only the ones with measured data render, so a quiet period can show as few as one or two, never a placeholder tile, and never leaves visible blank space below a short list.
+  - **Highlights**: up to five compact icon tiles (Average visit length, Repeat-visit rate, Lost-slot rate, Follow-up coverage, Active clients), stacked single-column and vertically centered in the card — only the ones with measured data render, so a quiet period can show as few as one or two, never a placeholder tile, and never leaves visible blank space below a short list.
   - **Booking patterns**: a day × time-band heat-grid (4 fixed bands — morning/midday/afternoon/evening, abbreviated to fit the narrower card) with a "peak window" callout and per-cell hover tooltip, plus a booking-behavior stats strip (avg lead time, same-day bookings, unassigned appointments).
 
 **Drill-down pattern:** where it exists (KPI cards, Staff rows), clicking expands an inline panel directly in place — never a dialog, never a page navigation.
