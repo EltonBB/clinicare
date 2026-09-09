@@ -45,6 +45,7 @@ import {
   WorkspaceEmptyState,
   WorkspaceHeader,
   WorkspacePage,
+  searchFieldClass,
 } from "@/components/workspace/workspace-layout";
 import { cn, getInitials } from "@/lib/utils";
 import { fadeIn } from "@/lib/motion";
@@ -583,7 +584,7 @@ export function InboxWorkspace({
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder="Search conversations..."
-                    className="h-10 rounded-(--radius-card) bg-white pl-9"
+                    className={searchFieldClass}
                   />
                 </div>
                 <div className="flex items-center gap-1.5">

@@ -103,6 +103,11 @@ const mainGridTypes = {
 export const fieldInputClass = "h-10 rounded-(--radius-card) bg-white";
 export const fieldSelectClass =
   "h-10 w-full rounded-(--radius-card) border border-border/80 bg-white px-3 text-sm text-foreground outline-none transition-[border-color,box-shadow] duration-(--duration-base) focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/40";
+// Borderless, filled search fields — a quiet secondary-tint pill instead of a
+// bordered/shadowed box, so search reads as part of the toolbar chrome rather
+// than a separate floating control; lifts to white only once focused.
+export const searchFieldClass =
+  "h-10 rounded-(--radius-card) border-0 bg-secondary pl-9 shadow-none transition-colors duration-(--duration-base)";
 
 export function WorkspacePage({
   children,
