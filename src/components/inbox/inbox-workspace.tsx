@@ -509,9 +509,6 @@ export function InboxWorkspace({
       <Dialog open={convertDialogOpen} onOpenChange={setConvertDialogOpen}>
         <DialogContent className="max-w-[460px]">
           <DialogHeader>
-            <div className="mb-2 flex size-10 items-center justify-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
-              <ArrowRightLeft className="size-4" />
-            </div>
             <DialogTitle className="text-[1.1rem] font-semibold">Convert to client</DialogTitle>
             <DialogDescription className="text-sm leading-6">
               Create or link a client profile for this conversation without losing the history.

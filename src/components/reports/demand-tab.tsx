@@ -2,7 +2,7 @@
 
 import { Fragment, useState } from "react";
 import { m } from "framer-motion";
-import { Clock3, TrendingUp, UserX, Zap } from "lucide-react";
+import { Clock3 } from "lucide-react";
 
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
 import { fadeIn } from "@/lib/motion";
@@ -47,10 +47,7 @@ export function BookingPatternsCard({ period }: { period: ReportPeriodView }) {
       <h2 className="px-1 text-[15px] font-semibold text-foreground">Booking patterns</h2>
 
       {peakCell && peakCell.count > 0 ? (
-        <div className="mx-1 mt-2.5 flex items-center gap-2.5 rounded-(--radius-tile) border border-primary/20 bg-primary/5 px-3 py-2">
-          <span className="grid size-7 shrink-0 place-items-center rounded-(--radius-tile) border border-primary/30 bg-white text-primary">
-            <TrendingUp className="size-3.5" />
-          </span>
+        <div className="mx-1 mt-2.5 rounded-(--radius-tile) border border-primary/20 bg-primary/5 px-3 py-2">
           <p className="text-sm text-foreground">
             Peak: <span className="font-semibold">{peakCell.day} {peakCell.band.toLowerCase()}</span> —{" "}
             {peakCell.count} appointment{peakCell.count === 1 ? "" : "s"}, the clearest place to add coverage.
@@ -138,22 +135,14 @@ export function BookingPatternsCard({ period }: { period: ReportPeriodView }) {
         <div className="mt-3.5 flex flex-1 flex-wrap items-end gap-2">
           {(
             [
-              { icon: Clock3, value: `${bookingBehavior.averageLeadTimeHours}h`, label: "Avg lead time" },
-              { icon: Zap, value: bookingBehavior.sameDayBookings, label: "Same-day" },
-              { icon: UserX, value: bookingBehavior.unassignedAppointments, label: "Unassigned" },
+              { value: `${bookingBehavior.averageLeadTimeHours}h`, label: "Avg lead time" },
+              { value: bookingBehavior.sameDayBookings, label: "Same-day" },
+              { value: bookingBehavior.unassignedAppointments, label: "Unassigned" },
             ] as const
           ).map((stat) => (
-            <div
-              key={stat.label}
-              className="flex flex-1 items-center gap-2.5 rounded-(--radius-tile) border border-border/70 px-3 py-2"
-            >
-              <span className="grid size-7 shrink-0 place-items-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
-                <stat.icon className="size-3.5" />
-              </span>
-              <div>
-                <p className="text-sm font-semibold text-foreground">{stat.value}</p>
-                <p className="text-xs text-muted-foreground">{stat.label}</p>
-              </div>
+            <div key={stat.label} className="flex-1 rounded-(--radius-tile) border border-border/70 px-3 py-2">
+              <p className="text-sm font-semibold text-foreground">{stat.value}</p>
+              <p className="text-xs text-muted-foreground">{stat.label}</p>
             </div>
           ))}
         </div>
