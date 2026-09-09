@@ -112,7 +112,7 @@ export function GlobalSearch({ className }: { className?: string }) {
 
   return (
     <div ref={containerRef} className={cn("relative", className)}>
-      <div className="flex h-11 items-center gap-3 rounded-(--radius-field) border-0 bg-transparent px-4 transition-colors duration-(--duration-base) hover:bg-secondary/70 focus-within:bg-white focus-within:ring-3 focus-within:ring-ring/30">
+      <div className="flex h-11 items-center gap-3 rounded-(--radius-field) border-0 bg-transparent px-4 transition-colors duration-(--duration-base) hover:bg-secondary/70 focus-within:bg-white">
         <Search className="size-4 shrink-0 text-primary" />
         <input
           value={query}
