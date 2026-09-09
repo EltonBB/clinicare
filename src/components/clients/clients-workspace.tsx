@@ -15,6 +15,7 @@ import {
   WorkspacePage,
   WorkspaceTable,
   WorkspaceToolbar,
+  searchFieldClass,
 } from "@/components/workspace/workspace-layout";
 import { cn, getInitials } from "@/lib/utils";
 import type {
@@ -152,7 +153,7 @@ export function ClientsWorkspace({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search clients by name, email, or phone..."
-              className="h-10 rounded-(--radius-card) bg-white pl-9"
+              className={searchFieldClass}
             />
           </div>
           <div className="flex flex-wrap gap-2">

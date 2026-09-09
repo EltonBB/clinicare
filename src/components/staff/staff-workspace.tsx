@@ -16,6 +16,7 @@ import {
   WorkspacePage,
   WorkspaceTable,
   WorkspaceToolbar,
+  searchFieldClass,
 } from "@/components/workspace/workspace-layout";
 import { cn, getInitials } from "@/lib/utils";
 import type { StaffStatus, StaffViewModel } from "@/lib/staff";
@@ -162,7 +163,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search staff by name, role, email, or phone..."
-              className="h-10 rounded-(--radius-card) bg-white pl-9"
+              className={searchFieldClass}
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">
