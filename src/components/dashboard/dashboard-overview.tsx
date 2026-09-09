@@ -259,7 +259,6 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
         <WorkspaceCard
           fill
           title="Visits"
-          description="Booked visits, cancellations excluded."
           className="flex flex-col"
           contentClassName="flex-1"
           action={
@@ -435,9 +434,6 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                     >
                       {appointment.clientName}
                     </span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {appointment.service} · {appointment.staffName}
-                    </span>
                   </span>
                   <span
                     className={cn(
@@ -500,9 +496,6 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-foreground">
                       {client.name}
-                    </span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {client.updatedLabel}
                     </span>
                   </span>
                   <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground" />

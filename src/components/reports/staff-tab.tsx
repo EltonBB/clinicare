@@ -130,7 +130,10 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
                 <span className="w-11 shrink-0 text-right text-sm font-semibold tabular-nums text-foreground sm:w-20">
                   {row.appointments}
                 </span>
-                <span className="hidden w-20 shrink-0 sm:block">
+                <span className="hidden w-20 shrink-0 flex-col items-end gap-1 sm:flex">
+                  <span className="text-[11px] font-medium tabular-nums text-muted-foreground">
+                    {bookedHours}h
+                  </span>
                   <span className="relative block h-1.5 w-full overflow-hidden rounded-full bg-secondary">
                     <span
                       className="block h-full rounded-full bg-primary"
