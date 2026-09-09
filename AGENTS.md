@@ -321,14 +321,15 @@ Avoid: repeated appointment counts, cards that say the same thing, oversized emp
 
 ### Calendar
 
-Focus: scheduling. Redesigned 2026-09 to a flatter, minimal grid (owner reference: a clean month-grid SaaS calendar with click-to-popover event details) — **no side rail**, the grid is the entire page.
+Focus: scheduling. Redesigned 2026-09, twice — first to a flatter grid, then to uniform pill-style events (owner references: a clean month-grid SaaS calendar with click-to-popover event details; a minimal calendar with name+time pill events; a dark segmented-toolbar mockup) — **no side rail**, the grid is the entire page.
 
-- Page header is the title plus the toolbar only (Day/Week/Month, Prev/Today/Next, date-jump popover, New appointment) — **no description line** under the title; the grid itself is the schedule-at-a-glance.
-- Month view is plain and flat: white cells, hairline borders, day number top-left, no open/closed background tinting. Clicking an event chip opens a small floating **quick-view popover** anchored at that chip (client, time, service, status + a link into the edit page) — clicking empty space in the day cell still jumps into Day view for that date. Non-current-month days stay muted; that's the only cell-level tinting.
-- Week/Day (hourly) views keep the timeline grid and click-to-book empty slots, restyled with the same calmer palette (closed hours get a plain muted background, not a colored tint).
+- Page header is the title plus a flat toolbar: Day/Week/Month segmented pills, plain prev/next icon buttons (no bordered cluster), the date-range label, a text "Today" link, the date-jump popover, and New appointment — no bordered/shadowed wrapper around the toolbar row, no description line under the page title.
+- Every appointment renders as a **uniform pill** — client name left, start time right, tinted by status (the same tone set as everywhere else: confirmed/pending/completed/cancelled) — in month, week, and day views alike. No duration-scaled sizing.
+- Month view: plain flat cells (white, hairline borders, day number top-left, no open/closed background tinting — only non-current-month days are muted). Clicking a pill opens a small floating **quick-view popover** (client, time, service, status + a link into the edit page); clicking empty cell space still jumps into Day view for that date.
+- Week/Day views have **no hour-axis grid** — no time-of-day labels, no click-a-specific-time-slot booking, no now-line. Each day is a column listing that day's pills sorted by time, plus one "+ Add" action at the bottom (routes to New appointment pre-filled with the date; the exact time is picked in the form, not on the grid). Week view scrolls horizontally below its ~720px minimum width rather than crushing 7 columns unreadably.
 - There is no "Selected day" or "Utilization" rail — that context now lives in the quick-view popover (per event) or by switching to Day view (per date).
 
-Avoid: a side rail, background tinting for open/closed days, a header description sentence, reintroducing a summary card the grid already shows.
+Avoid: a side rail, background tinting for open/closed days, a header description sentence, an hour-axis time grid, duration-scaled event cards, reintroducing a summary card the grid already shows.
 
 ### Clients Directory
 
@@ -391,18 +392,22 @@ Avoid: a third context pane, dashboard-style KPI cards, metric clutter, fabricat
 
 ### Reports
 
-A clean analytics experience (Pro) or a polished upgrade state (Basic). Redesigned 2026-09 into a **single scrolling page — no tabs**, structured as exactly three sections (owner reference: a clean, minimal analytics dashboard — 4 aligned KPI cards, 2 equal-size analytics panels, one full-width list). The period selector (daily/weekly/monthly/custom) and Refresh AI live in the page header; there is no subtitle under the "Reports" title. All sections stay behind the Pro gate as a unit — there is no partial-Basic view.
+A clean analytics experience (Pro) or a polished upgrade state (Basic). Redesigned 2026-09 into a **single scrolling page — no tabs**, six stacked full-width-rhythm sections (the first pass trimmed to a strict 4-cards/2-panels/1-list template; the owner then asked for three more rows back — Appointment status, Highlights, and Demand & booking patterns — so the page now runs KPIs → Performance/AI insight → Staff performance → Appointment status → Highlights → Booking patterns/Client mix). The period selector (daily/weekly/monthly/custom) and Refresh AI live in the page header; there is no subtitle under the "Reports" title. All sections stay behind the Pro gate as a unit — there is no partial-Basic view.
 
 - header controls: period pills (daily/weekly/monthly + Custom range when active), a **calendar icon button** that opens a small popover (From/To date inputs + "Analyse range"; both dates required) — never inline date inputs in the header — and Refresh AI, all h-10
 - compact paddings (`p-4` cards, `gap-3`) are deliberate; don't re-inflate them — the page scrolls normally like the rest of the workspace, it does not lock to one viewport
 
-**Section 1 — four KPI cards** (Appointments, Completion rate, New clients, Estimated utilization), each a plain icon tile + label + large value + tinted delta pill + comparison caption — **no embedded mini-chart**; the trend already lives in the Performance chart below, and a bare value/delta tile reads calmer at a glance. Clicking a card expands a one-line detail (inline on mobile, a shared panel below the row on desktop).
+**Row 1 — four KPI cards** (Appointments, Completion rate, New clients, Estimated utilization), each a plain icon tile + label + large value + tinted delta pill + comparison caption — **no embedded mini-chart**; the trend already lives in the Performance chart below, and a bare value/delta tile reads calmer at a glance. Clicking a card expands a one-line detail (inline on mobile, a shared panel below the row on desktop).
 
-**Section 2 — Performance chart beside the AI insight card, equal width**: the chart is edge-to-edge, monotone-cubic, shared-scale, with three series — appointments, completed, and a dotted muted "Previous period" ghost line. The AI card leads with a visual **health-score gauge** (a small conic-gradient ring, tone-colored, the score centered) beside the tone label ("Strong" / "Healthy" / "Needs watching" / "Needs attention") — never a bare text pill for the score — then three icon-led rows (Summary / Diagnosis / Next move), each with its own icon tile so the card doesn't read as a wall of text.
+**Row 2 — Performance chart beside the AI insight card, equal width**: the chart is edge-to-edge, monotone-cubic, shared-scale, with three series — appointments, completed, and a dotted muted "Previous period" ghost line. The AI card leads with a visual **health-score gauge** (a small conic-gradient ring, tone-colored, the score centered) beside the tone label ("Strong" / "Healthy" / "Needs watching" / "Needs attention") — never a bare text pill for the score — then three icon-led rows (Summary / Diagnosis / Next move), each with its own icon tile so the card doesn't read as a wall of text.
 
-**Section 3 — Staff performance, full width**: the per-provider sortable list (square identity tile, name/role, visit count, inline load bar, completion rate — `—` when unmeasured). Clicking a row expands an inline accordion with a "View profile" link to that provider's Staff Detail page — never a duplicate profile view.
+**Row 3 — Staff performance, full width**: the per-provider sortable list (square identity tile, name/role, visit count, inline load bar, completion rate — `—` when unmeasured). Clicking a row expands an inline accordion with a "View profile" link to that provider's Staff Detail page — never a duplicate profile view.
 
-The Appointment status donut, Demand heat-grid, and Client mix were removed 2026-09 to hit this strict 3-section template — don't reintroduce them as a fourth section; if that data needs to come back, it belongs inside one of the two existing panels, not a new row.
+**Row 4 — Appointment status, full width**: the status-mix donut (left) + legend (right), centered with generous spacing since it isn't paired with anything else.
+
+**Row 5 — Highlights, full width**: up to four compact icon tiles in a responsive grid (Average visit length, Repeat-visit rate, Lost-slot rate, Follow-up coverage) — only the ones with measured data render, so a quiet period can show as few as one or two, never a placeholder tile.
+
+**Row 6 — Booking patterns beside Client mix**: a day × time-band heat-grid (4 fixed bands — morning/midday/afternoon/evening) with a "peak window" callout and per-cell hover tooltip, plus a booking-behavior stats strip (avg lead time, same-day bookings, unassigned appointments); Client mix (active/at-risk/inactive/archived) as a stacked bar + legend rows, with an at-risk callout when that segment is non-zero.
 
 **Drill-down pattern:** where it exists (KPI cards, Staff rows), clicking expands an inline panel directly in place — never a dialog, never a page navigation.
 
