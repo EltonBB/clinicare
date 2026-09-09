@@ -321,15 +321,16 @@ Avoid: repeated appointment counts, cards that say the same thing, oversized emp
 
 ### Calendar
 
-Focus: scheduling. Redesigned 2026-09, twice — first to a flatter grid, then to uniform pill-style events (owner references: a clean month-grid SaaS calendar with click-to-popover event details; a minimal calendar with name+time pill events; a dark segmented-toolbar mockup) — **no side rail**, the grid is the entire page.
+Focus: scheduling. Redesigned 2026-09, three times — first to a flatter grid, then to uniform pill-style events, then to a simplified toolbar that fills the viewport (owner references: a clean month-grid SaaS calendar with click-to-popover event details; a minimal calendar with name+time pill events; a dark segmented-toolbar mockup) — **no side rail**, the grid is the entire page.
 
-- Page header is the title plus a flat toolbar: Day/Week/Month segmented pills, plain prev/next icon buttons (no bordered cluster), the date-range label, a text "Today" link, the date-jump popover, and New appointment — no bordered/shadowed wrapper around the toolbar row, no description line under the page title.
+- Page header is the title plus a flat toolbar: Day/Week/Month segmented pills, a text "Today" link right next to them, then (right-aligned) the date-range label immediately beside the date-jump calendar-icon popover, and New appointment — no prev/next arrow buttons (navigation is via "Today" and the date-jump popover only), no bordered/shadowed wrapper around the toolbar row, no description line under the page title.
 - Every appointment renders as a **uniform pill** — client name left, start time right, tinted by status (the same tone set as everywhere else: confirmed/pending/completed/cancelled) — in month, week, and day views alike. No duration-scaled sizing.
+- The grid fills the viewport height below the header/toolbar on desktop (`lg:h-[calc(100vh-230px)]`, mirroring Inbox's own fill pattern) rather than sizing to a fixed max-height — month rows and week/day columns stretch to use the available screen instead of leaving blank space under a short grid. An empty week/day column centers its "+ Add" prompt vertically instead of stranding it at the top.
 - Month view: plain flat cells (white, hairline borders, day number top-left, no open/closed background tinting — only non-current-month days are muted). Clicking a pill opens a small floating **quick-view popover** (client, time, service, status + a link into the edit page); clicking empty cell space still jumps into Day view for that date.
 - Week/Day views have **no hour-axis grid** — no time-of-day labels, no click-a-specific-time-slot booking, no now-line. Each day is a column listing that day's pills sorted by time, plus one "+ Add" action at the bottom (routes to New appointment pre-filled with the date; the exact time is picked in the form, not on the grid). Week view scrolls horizontally below its ~720px minimum width rather than crushing 7 columns unreadably.
 - There is no "Selected day" or "Utilization" rail — that context now lives in the quick-view popover (per event) or by switching to Day view (per date).
 
-Avoid: a side rail, background tinting for open/closed days, a header description sentence, an hour-axis time grid, duration-scaled event cards, reintroducing a summary card the grid already shows.
+Avoid: a side rail, prev/next arrow buttons, background tinting for open/closed days, a header description sentence, an hour-axis time grid, duration-scaled event cards, reintroducing a summary card the grid already shows.
 
 ### Clients Directory
 
@@ -392,7 +393,7 @@ Avoid: a third context pane, dashboard-style KPI cards, metric clutter, fabricat
 
 ### Reports
 
-A clean analytics experience (Pro) or a polished upgrade state (Basic). Redesigned 2026-09 into a **single scrolling page — no tabs**, six stacked full-width-rhythm sections (the first pass trimmed to a strict 4-cards/2-panels/1-list template; the owner then asked for three more rows back — Appointment status, Highlights, and Demand & booking patterns — so the page now runs KPIs → Performance/AI insight → Staff performance → Appointment status → Highlights → Booking patterns/Client mix). The period selector (daily/weekly/monthly/custom) and Refresh AI live in the page header; there is no subtitle under the "Reports" title. All sections stay behind the Pro gate as a unit — there is no partial-Basic view.
+A clean analytics experience (Pro) or a polished upgrade state (Basic). Redesigned 2026-09 into a **single scrolling page — no tabs**, run as a 4-2-1-3 stack (the first pass trimmed to a strict 4-cards/2-panels/1-list template; the owner then asked for three more rows back — Appointment status, Highlights, Booking patterns — then, after living with three full-width rows, asked to compact them into one row of three equal-size cards and drop Client mix entirely, so the page now runs KPIs → Performance/AI insight → Staff performance → Appointment status/Highlights/Booking patterns). The period selector (daily/weekly/monthly/custom) and Refresh AI live in the page header; there is no subtitle under the "Reports" title. All sections stay behind the Pro gate as a unit — there is no partial-Basic view.
 
 - header controls: period pills (daily/weekly/monthly + Custom range when active), a **calendar icon button** that opens a small popover (From/To date inputs + "Analyse range"; both dates required) — never inline date inputs in the header — and Refresh AI, all h-10
 - compact paddings (`p-4` cards, `gap-3`) are deliberate; don't re-inflate them — the page scrolls normally like the rest of the workspace, it does not lock to one viewport
@@ -403,11 +404,10 @@ A clean analytics experience (Pro) or a polished upgrade state (Basic). Redesign
 
 **Row 3 — Staff performance, full width**: the per-provider sortable list (square identity tile, name/role, visit count, inline load bar, completion rate — `—` when unmeasured). Clicking a row expands an inline accordion with a "View profile" link to that provider's Staff Detail page — never a duplicate profile view.
 
-**Row 4 — Appointment status, full width**: the status-mix donut (left) + legend (right), centered with generous spacing since it isn't paired with anything else.
-
-**Row 5 — Highlights, full width**: up to four compact icon tiles in a responsive grid (Average visit length, Repeat-visit rate, Lost-slot rate, Follow-up coverage) — only the ones with measured data render, so a quiet period can show as few as one or two, never a placeholder tile.
-
-**Row 6 — Booking patterns beside Client mix**: a day × time-band heat-grid (4 fixed bands — morning/midday/afternoon/evening) with a "peak window" callout and per-cell hover tooltip, plus a booking-behavior stats strip (avg lead time, same-day bookings, unassigned appointments); Client mix (active/at-risk/inactive/archived) as a stacked bar + legend rows, with an at-risk callout when that segment is non-zero.
+**Row 4 — Appointment status, Highlights, and Booking patterns as three equal-size cards** in one responsive row (`grid-cols-1 sm:grid-cols-2 xl:grid-cols-3`, `items-stretch` so all three match the tallest card's height) — there is no fourth "Client mix" card; that breakdown was dropped from Reports:
+  - **Appointment status**: the status-mix donut + legend, centered in the card.
+  - **Highlights**: up to four compact icon tiles (Average visit length, Repeat-visit rate, Lost-slot rate, Follow-up coverage), stacked single-column and vertically centered in the card — only the ones with measured data render, so a quiet period can show as few as one or two, never a placeholder tile, and never leaves visible blank space below a short list.
+  - **Booking patterns**: a day × time-band heat-grid (4 fixed bands — morning/midday/afternoon/evening, abbreviated to fit the narrower card) with a "peak window" callout and per-cell hover tooltip, plus a booking-behavior stats strip (avg lead time, same-day bookings, unassigned appointments).
 
 **Drill-down pattern:** where it exists (KPI cards, Staff rows), clicking expands an inline panel directly in place — never a dialog, never a page navigation.
 

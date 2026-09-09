@@ -143,27 +143,31 @@ function polarPoint(cx: number, cy: number, radius: number, angle: number) {
   return [cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)];
 }
 
+// A stale hover from the previous period/range must not survive a period
+// switch or a custom-range change — periodStart/periodEnd change on both,
+// even when `period.key` stays "custom" across two different date ranges.
+// Adjusting state during render (React's documented pattern for this,
+// rather than an effect) avoids an extra commit-then-reset render pass.
+function useResetOnPeriodChange(period: ReportPeriodView, onReset: () => void) {
+  const periodIdentity = `${period.periodStart}|${period.periodEnd}`;
+  const [lastPeriodIdentity, setLastPeriodIdentity] = useState(periodIdentity);
+  if (periodIdentity !== lastPeriodIdentity) {
+    setLastPeriodIdentity(periodIdentity);
+    onReset();
+  }
+}
+
 export function OverviewTab({ period }: { period: ReportPeriodView }) {
   const [chartHover, setChartHover] = useState<number | null>(null);
-  const [statusHover, setStatusHover] = useState<string | null>(null);
   const [activeKpi, setActiveKpi] = useState<string | null>(null);
   const [chartWidth, setChartWidth] = useState(820);
   const chartAreaRef = useRef<HTMLDivElement | null>(null);
   const chartGradientId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
 
-  // A stale hover from the previous period/range must not survive a period
-  // switch or a custom-range change — periodStart/periodEnd change on both,
-  // even when `period.key` stays "custom" across two different date ranges.
-  // Adjusting state during render (React's documented pattern for this,
-  // rather than an effect) avoids an extra commit-then-reset render pass.
-  const periodIdentity = `${period.periodStart}|${period.periodEnd}`;
-  const [lastPeriodIdentity, setLastPeriodIdentity] = useState(periodIdentity);
-  if (periodIdentity !== lastPeriodIdentity) {
-    setLastPeriodIdentity(periodIdentity);
+  useResetOnPeriodChange(period, () => {
     setChartHover(null);
-    setStatusHover(null);
     setActiveKpi(null);
-  }
+  });
 
   const chartPoints = period.chart.points;
   const chartCompletedValues = period.chart.completedValues;
@@ -200,23 +204,6 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
   const followUpRow = period.operationalDetail.find((row) => row.key === "followUp");
   const busiestDay = period.diagnostics.demandWindows.busiestDays[0];
   const quietestDay = period.diagnostics.demandWindows.quietestDays[0];
-  const statusMix = period.diagnostics.statusMix;
-  const hoveredStatus = statusMix.find((item) => item.label === statusHover);
-
-  const highlights = [
-    avgVisitKpi && avgVisitKpi.value
-      ? { icon: Clock3, title: "Average visit length", detail: `Completed visits average ${avgVisitKpi.value} this period.` }
-      : null,
-    repeatVisitRow && repeatVisitRow.value
-      ? { icon: Repeat, title: "Repeat-visit rate", detail: `${repeatVisitRow.value} of clients return for another visit.` }
-      : null,
-    lostSlotRow && lostSlotRow.value
-      ? { icon: XCircle, title: "Lost-slot rate", detail: `${lostSlotRow.value} of finalized visits were cancelled.` }
-      : null,
-    followUpRow && followUpRow.value
-      ? { icon: Reply, title: "Follow-up coverage", detail: `${followUpRow.value} of inbound messages got an outbound reply.` }
-      : null,
-  ].filter((item): item is { icon: typeof Clock3; title: string; detail: string } => Boolean(item));
 
   const completionDetailParts = [
     lostSlotRow?.value ? `Lost-slot rate: ${lostSlotRow.value} of finalized visits were cancelled.` : null,
@@ -500,67 +487,115 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
           </div>
         </section>
       </div>
+    </m.div>
+  );
+}
 
-      <section className="rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
-        <h2 className="px-1 text-[15px] font-semibold text-foreground">Appointment status</h2>
-        {period.statusTotal > 0 ? (
-          <div className="mt-2 grid grid-cols-1 items-center gap-6 px-2 py-2 sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-10">
-            <div className="relative mx-auto" onMouseLeave={() => setStatusHover(null)}>
-              <DonutChart items={statusMix} hovered={statusHover} onHover={setStatusHover} />
-              <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
-                <div>
-                  <p className="text-xl font-semibold leading-6 tabular-nums text-foreground">
-                    {hoveredStatus ? hoveredStatus.count : period.statusTotal}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {hoveredStatus ? hoveredStatus.label.toLowerCase() : "visits"}
-                  </p>
-                </div>
+export function AppointmentStatusCard({ period }: { period: ReportPeriodView }) {
+  const [statusHover, setStatusHover] = useState<string | null>(null);
+  useResetOnPeriodChange(period, () => setStatusHover(null));
+
+  const statusMix = period.diagnostics.statusMix;
+  const hoveredStatus = statusMix.find((item) => item.label === statusHover);
+
+  return (
+    <m.section
+      key={period.key}
+      variants={fadeIn}
+      initial="initial"
+      animate="animate"
+      className="flex h-full flex-col rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)"
+    >
+      <h2 className="px-1 text-[15px] font-semibold text-foreground">Appointment status</h2>
+      {period.statusTotal > 0 ? (
+        <div className="mt-2 flex flex-1 flex-col items-center justify-center gap-4 px-1 py-2">
+          <div className="relative" onMouseLeave={() => setStatusHover(null)}>
+            <DonutChart items={statusMix} hovered={statusHover} onHover={setStatusHover} />
+            <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
+              <div>
+                <p className="text-xl font-semibold leading-6 tabular-nums text-foreground">
+                  {hoveredStatus ? hoveredStatus.count : period.statusTotal}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {hoveredStatus ? hoveredStatus.label.toLowerCase() : "visits"}
+                </p>
               </div>
             </div>
-            <div className="text-sm" onMouseLeave={() => setStatusHover(null)}>
-              {statusMix.map((item) => (
-                <LegendRow
-                  key={item.label}
-                  color={statusColor(item.label)}
-                  label={item.label}
-                  value={`${item.count}`}
-                  detail={item.share.replace(/\.0%$/, "%")}
-                  muted={item.count === 0}
-                  active={statusHover === item.label}
-                  onHover={() => setStatusHover(item.label)}
-                />
-              ))}
-            </div>
           </div>
-        ) : (
-          <div className="mt-3">
-            <WorkspaceEmptyState compact icon={CheckCircle2} title="No status mix yet" description="Statuses appear after visits are booked." />
-          </div>
-        )}
-      </section>
-
-      <section className="rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
-        <h2 className="px-1 pb-2 text-[15px] font-semibold text-foreground">Highlights</h2>
-        {highlights.length > 0 ? (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {highlights.map((highlight) => (
-              <div key={highlight.title} className="flex items-center gap-3 rounded-(--radius-tile) border border-border/70 px-3 py-2.5">
-                <span className="grid size-8 shrink-0 place-items-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
-                  <highlight.icon className="size-4" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground">{highlight.title}</p>
-                  <p className="truncate text-xs text-muted-foreground">{highlight.detail}</p>
-                </div>
-              </div>
+          <div className="w-full text-sm" onMouseLeave={() => setStatusHover(null)}>
+            {statusMix.map((item) => (
+              <LegendRow
+                key={item.label}
+                color={statusColor(item.label)}
+                label={item.label}
+                value={`${item.count}`}
+                detail={item.share.replace(/\.0%$/, "%")}
+                muted={item.count === 0}
+                active={statusHover === item.label}
+                onHover={() => setStatusHover(item.label)}
+              />
             ))}
           </div>
-        ) : (
+        </div>
+      ) : (
+        <div className="mt-3 flex-1">
+          <WorkspaceEmptyState compact icon={CheckCircle2} title="No status mix yet" description="Statuses appear after visits are booked." />
+        </div>
+      )}
+    </m.section>
+  );
+}
+
+export function HighlightsCard({ period }: { period: ReportPeriodView }) {
+  const avgVisitKpi = period.kpis.find((kpi) => kpi.key === "avgVisitLength");
+  const repeatVisitRow = period.operationalDetail.find((row) => row.key === "repeatVisit");
+  const lostSlotRow = period.operationalDetail.find((row) => row.key === "lostSlot");
+  const followUpRow = period.operationalDetail.find((row) => row.key === "followUp");
+
+  const highlights = [
+    avgVisitKpi && avgVisitKpi.value
+      ? { icon: Clock3, title: "Average visit length", detail: `Completed visits average ${avgVisitKpi.value} this period.` }
+      : null,
+    repeatVisitRow && repeatVisitRow.value
+      ? { icon: Repeat, title: "Repeat-visit rate", detail: `${repeatVisitRow.value} of clients return for another visit.` }
+      : null,
+    lostSlotRow && lostSlotRow.value
+      ? { icon: XCircle, title: "Lost-slot rate", detail: `${lostSlotRow.value} of finalized visits were cancelled.` }
+      : null,
+    followUpRow && followUpRow.value
+      ? { icon: Reply, title: "Follow-up coverage", detail: `${followUpRow.value} of inbound messages got an outbound reply.` }
+      : null,
+  ].filter((item): item is { icon: typeof Clock3; title: string; detail: string } => Boolean(item));
+
+  return (
+    <m.section
+      key={period.key}
+      variants={fadeIn}
+      initial="initial"
+      animate="animate"
+      className="flex h-full flex-col rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)"
+    >
+      <h2 className="px-1 pb-2 text-[15px] font-semibold text-foreground">Highlights</h2>
+      {highlights.length > 0 ? (
+        <div className="flex flex-1 flex-col justify-center gap-2">
+          {highlights.map((highlight) => (
+            <div key={highlight.title} className="flex items-center gap-3 rounded-(--radius-tile) border border-border/70 px-3 py-2.5">
+              <span className="grid size-8 shrink-0 place-items-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
+                <highlight.icon className="size-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">{highlight.title}</p>
+                <p className="truncate text-xs text-muted-foreground">{highlight.detail}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex-1">
           <WorkspaceEmptyState compact icon={CalendarDays} title="No activity pattern yet" description="Highlights appear once visits are completed." />
-        )}
-      </section>
-    </m.div>
+        </div>
+      )}
+    </m.section>
   );
 }
 
