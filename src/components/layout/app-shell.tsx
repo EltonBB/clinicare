@@ -302,12 +302,12 @@ export function AppShell({
 
         <div className="relative flex min-h-screen min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-20 border-b border-border/70 bg-white px-4 py-3 backdrop-blur-xl sm:px-5 lg:px-6 lg:py-0">
-            <div className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 lg:h-[56px] lg:gap-5">
-              <div className="flex min-w-[148px] items-center">
+            <div className="grid w-full grid-cols-[148px_minmax(0,1fr)_148px] items-center gap-4 lg:h-[56px] lg:gap-5">
+              <div className="flex items-center">
                 <BrandMark compact href="/dashboard" className="lg:hidden" />
               </div>
-              <GlobalSearch className="hidden min-w-0 w-full max-w-3xl justify-self-center md:block" />
-              <div className="flex items-center gap-1.5">
+              <GlobalSearch className="mx-auto hidden w-full max-w-md md:block" />
+              <div className="flex items-center justify-end gap-1.5">
                 <NotificationsMenu
                   unreadCount={liveUnreadCount}
                   items={liveNotifications}
