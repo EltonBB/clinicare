@@ -51,23 +51,6 @@ type CalendarWorkspaceProps = {
 };
 
 const views: CalendarView[] = ["day", "week", "month"];
-const slotHours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
-const hourRowHeight = 64;
-
-const eventClasses: Record<CalendarAppointmentStatus, string> = {
-  confirmed: "border-primary/25 bg-[#eef2ff] text-[#16219c] hover:bg-[#e4eaff]",
-  pending: "border-amber-300/70 bg-amber-50 text-amber-900 hover:bg-amber-100/70",
-  completed:
-    "border-emerald-300/70 bg-emerald-50 text-emerald-900 hover:bg-emerald-100/60",
-  cancelled: "border-border/80 bg-[#f6f7f9] text-muted-foreground hover:bg-[#eef0f4]",
-};
-
-const eventBarClasses: Record<CalendarAppointmentStatus, string> = {
-  confirmed: "bg-primary",
-  pending: "bg-amber-400",
-  completed: "bg-emerald-500",
-  cancelled: "bg-slate-300",
-};
 
 const statusDotClasses: Record<CalendarAppointmentStatus, string> = {
   confirmed: "bg-primary",
@@ -103,125 +86,41 @@ function monthDays(activeDate: Date) {
   });
 }
 
-// The visible grid only ever renders slotHours[0]:00 through
-// (slotHours[last]+1):00 — a continuation ScheduleBlock segment can carry a
-// startTime/endTime well outside that (e.g. "00:00" for every day after a
-// multi-day block's first). Clipping both ends to the grid here, not just
-// the start, is what keeps a block that ends mid-day from rendering with the
-// height of its full (mostly invisible, before-the-grid) nominal duration —
-// previously only the start was clamped, so the visible block could overlay
-// hours past its real end and intercept clicks on open slots (Codex P2).
-const gridStartMinutes = slotHours[0] * 60;
-const gridEndMinutes = (slotHours[slotHours.length - 1] + 1) * 60;
-
-function clipMinutesToGrid(minutes: number) {
-  return Math.min(Math.max(minutes, gridStartMinutes), gridEndMinutes);
-}
-
-// A block entirely before/after the grid clips both ends to the same
-// boundary — appointmentHeight's own `duration` floor (below) would still
-// render it as a minimum-height card sitting right over the first/last
-// visible slot, with zero real overlap, intercepting clicks on a slot it
-// doesn't actually block (Codex P2, fresh evidence after the clipping fix
-// above). Callers rendering block cards must skip any block this returns
-// false for.
-function hasVisibleGridInterval(startTime: string, endTime: string) {
-  return clipMinutesToGrid(timeToMinutes(endTime)) > clipMinutesToGrid(timeToMinutes(startTime));
-}
-
-function appointmentHeight(startTime: string, endTime: string) {
-  const start = clipMinutesToGrid(timeToMinutes(startTime));
-  const end = clipMinutesToGrid(timeToMinutes(endTime));
-  const duration = Math.max(end - start, 30);
-  return `${Math.max((duration / 60) * hourRowHeight, 42)}px`;
-}
-
-function appointmentOffset(startTime: string) {
-  const start = clipMinutesToGrid(timeToMinutes(startTime));
-  return `${Math.max(((start - gridStartMinutes) / 60) * hourRowHeight, 0)}px`;
-}
-
-function hourOpenForDay(
-  date: Date,
-  hour: number,
-  businessHours: CalendarViewModel["businessHours"]
-) {
-  const weekday = (date.getDay() + 6) % 7;
-  const hours = businessHours.find((item) => item.weekday === weekday);
-
-  if (!hours || !hours.enabled) {
-    return false;
-  }
-
-  const cellStart = hour * 60;
-  const cellEnd = cellStart + 60;
-
-  return cellEnd > timeToMinutes(hours.start) && cellStart < timeToMinutes(hours.end);
-}
-
-function AppointmentCard({
+// Uniform pill for an appointment — every card is the same shape regardless
+// of duration (there's no time-axis grid to position against anymore):
+// name left, start time right, tinted by status.
+function EventPill({
   appointment,
-  index,
+  onOpen,
 }: {
   appointment: CalendarAppointment;
-  index: number;
+  onOpen: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
-    <Link
-      href={`/calendar/${appointment.id}/edit`}
+    <button
+      type="button"
+      onClick={onOpen}
       className={cn(
-        "event-enter absolute inset-x-1 flex flex-col justify-center overflow-hidden rounded-(--radius-tile) border py-1 pl-3.5 pr-2.5 text-left transition-[background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint hover:z-20 hover:-translate-y-px hover:shadow-(--shadow-card-hover)",
-        eventClasses[appointment.status]
+        "flex w-full items-center justify-between gap-2 rounded-(--radius-tile) px-2.5 py-1.5 text-left text-xs font-medium transition-[filter,transform] duration-(--duration-base) hover:brightness-95 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+        monthChipClasses[appointment.status]
       )}
-      style={{
-        top: appointmentOffset(appointment.startTime),
-        height: appointmentHeight(appointment.startTime, appointment.endTime),
-        animationDelay: `${Math.min(index, 6) * 45}ms`,
-      }}
     >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "absolute inset-y-1 left-1 w-[3px] rounded-full",
-          eventBarClasses[appointment.status]
-        )}
-      />
-      <span
-        className={cn(
-          "block truncate text-xs font-semibold leading-4",
-          appointment.status === "cancelled" && "line-through"
-        )}
-      >
+      <span className={cn("truncate font-semibold", appointment.status === "cancelled" && "line-through")}>
         {appointment.clientName}
       </span>
-      <span className="block truncate text-[11px] leading-4 opacity-80">
-        {appointment.startTime} · {appointment.service || "Appointment"}
-      </span>
-    </Link>
+      <span className="shrink-0 tabular-nums opacity-80">{appointment.startTime}</span>
+    </button>
   );
 }
 
-function BlockCard({ block, index }: { block: CalendarScheduleBlock; index: number }) {
+function BlockPill({ block }: { block: CalendarScheduleBlock }) {
   return (
-    <div
-      className="event-enter absolute inset-x-1 flex flex-col justify-center overflow-hidden rounded-(--radius-tile) border border-slate-300/70 bg-slate-100/90 py-1 pl-3.5 pr-2.5 text-left text-slate-700"
-      style={{
-        top: appointmentOffset(block.startTime),
-        height: appointmentHeight(block.startTime, block.endTime),
-        animationDelay: `${Math.min(index, 6) * 45}ms`,
-      }}
-    >
-      <span
-        aria-hidden="true"
-        className="absolute inset-y-1 left-1 w-[3px] rounded-full bg-slate-400"
-      />
-      <span className="flex items-center gap-1 truncate text-xs font-semibold leading-4">
+    <div className="flex w-full items-center justify-between gap-2 rounded-(--radius-tile) bg-slate-100 px-2.5 py-1.5 text-left text-xs font-medium text-slate-700">
+      <span className="flex min-w-0 items-center gap-1.5 truncate">
         <CalendarX2 className="size-3 shrink-0" />
-        {block.title}
+        <span className="truncate">{block.title}</span>
       </span>
-      <span className="block truncate text-[11px] leading-4 opacity-80">
-        {block.startTime} - {block.endTime}
-      </span>
+      <span className="shrink-0 tabular-nums opacity-80">{block.startTime}</span>
     </div>
   );
 }
@@ -318,46 +217,6 @@ function DatePickerPopover({
           </div>
         </div>
       ) : null}
-    </div>
-  );
-}
-
-function NowLine() {
-  const [topPx, setTopPx] = useState<number | null>(null);
-
-  useEffect(() => {
-    const compute = () => {
-      const now = new Date();
-      const minutes = now.getHours() * 60 + now.getMinutes();
-      const start = slotHours[0] * 60;
-      const end = (slotHours[slotHours.length - 1] + 1) * 60;
-
-      setTopPx(
-        minutes < start || minutes > end
-          ? null
-          : ((minutes - start) / 60) * hourRowHeight
-      );
-    };
-
-    compute();
-    const interval = window.setInterval(compute, 60000);
-
-    return () => window.clearInterval(interval);
-  }, []);
-
-  if (topPx === null) {
-    return null;
-  }
-
-  return (
-    <div className="pointer-events-none absolute inset-x-0 z-10" style={{ top: topPx }}>
-      <div className="relative h-px bg-primary">
-        <span
-          aria-hidden="true"
-          className="now-ping absolute -left-1 top-1/2 size-2 -translate-y-1/2 rounded-full bg-primary"
-        />
-        <span className="absolute -left-1 top-1/2 size-2 -translate-y-1/2 rounded-full bg-primary" />
-      </div>
     </div>
   );
 }
@@ -546,9 +405,6 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
           : `${format(weekStart, "MMM d")} – ${format(weekEnd, "MMM d, yyyy")}`;
   const gridKey = `${view}-${format(visibleDates[0] ?? activeDate, "yyyy-MM-dd")}`;
 
-  const quietControlClasses =
-    "inline-flex h-9 items-center justify-center text-muted-foreground transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] hover:text-foreground active:bg-[#eef2f8] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45";
-
   function openQuickView(appointment: CalendarAppointment, event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation();
     setQuickView({ appointment, rect: event.currentTarget.getBoundingClientRect() });
@@ -585,65 +441,61 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
         }
       />
 
-      <div className="surface-card section-reveal relative z-30 p-2.5">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="inline-flex gap-0.5 rounded-(--radius-card) border border-border/75 bg-[#f1f4f9] p-0.5">
-            {views.map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => startTransition(() => setView(option))}
-                className={cn(
-                  "h-8 rounded-(--radius-tile) px-3.5 text-sm font-semibold capitalize text-muted-foreground transition-[background-color,color,box-shadow] duration-(--duration-base) hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45",
-                  view === option &&
-                    "bg-primary text-primary-foreground hover:text-primary-foreground"
-                )}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-
-          <div className="inline-flex items-center overflow-hidden rounded-(--radius-card) border border-border/75 bg-white">
+      <div className="section-reveal relative z-30 flex flex-wrap items-center gap-3 py-1">
+        <div className="inline-flex gap-0.5 rounded-(--radius-card) border border-border/75 bg-[#f1f4f9] p-0.5">
+          {views.map((option) => (
             <button
+              key={option}
               type="button"
-              onClick={() => shiftRange("prev")}
-              aria-label="Previous period"
-              className={cn(quietControlClasses, "px-3")}
-            >
-              <ChevronLeft className="size-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveDate(parseISO(initialView.initialDate))}
+              onClick={() => startTransition(() => setView(option))}
               className={cn(
-                quietControlClasses,
-                "border-x border-border/75 px-3.5 text-sm font-semibold text-foreground"
+                "h-8 rounded-(--radius-tile) px-3.5 text-sm font-semibold capitalize text-muted-foreground transition-[background-color,color,box-shadow] duration-(--duration-base) hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45",
+                view === option &&
+                  "bg-primary text-primary-foreground hover:text-primary-foreground"
               )}
             >
-              Today
+              {option}
             </button>
-            <button
-              type="button"
-              onClick={() => shiftRange("next")}
-              aria-label="Next period"
-              className={cn(quietControlClasses, "px-3")}
-            >
-              <ChevronRight className="size-4" />
-            </button>
-          </div>
-
-          <span className="px-1.5 text-[17px] font-semibold tracking-tight text-foreground">
-            {rangeLabel}
-          </span>
-
-          <DatePickerPopover
-            activeDate={activeDate}
-            todayDate={todayDate}
-            appointmentDateKeys={appointmentDateKeys}
-            onSelect={(day) => setActiveDate(day)}
-          />
+          ))}
         </div>
+
+        <div className="inline-flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => shiftRange("prev")}
+            aria-label="Previous period"
+            className="grid size-8 place-items-center rounded-(--radius-tile) text-muted-foreground transition-colors duration-(--duration-base) hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => shiftRange("next")}
+            aria-label="Next period"
+            className="grid size-8 place-items-center rounded-(--radius-tile) text-muted-foreground transition-colors duration-(--duration-base) hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
+          >
+            <ChevronRight className="size-4" />
+          </button>
+        </div>
+
+        <span className="text-[17px] font-semibold tracking-tight text-foreground">
+          {rangeLabel}
+        </span>
+
+        <button
+          type="button"
+          onClick={() => setActiveDate(parseISO(initialView.initialDate))}
+          className="text-sm font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
+        >
+          Today
+        </button>
+
+        <DatePickerPopover
+          activeDate={activeDate}
+          todayDate={todayDate}
+          appointmentDateKeys={appointmentDateKeys}
+          onSelect={(day) => setActiveDate(day)}
+        />
       </div>
 
       <div className="space-y-3">
@@ -678,7 +530,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                     <div
                       key={key}
                       className={cn(
-                        "relative min-h-24 border-b border-r border-border/75",
+                        "relative min-h-20 border-b border-r border-border/75",
                         !isSameMonth(day, activeDate) && "bg-muted/35 text-muted-foreground",
                         isSelected && !isToday && "bg-[#f5f8fd]",
                         isToday && "bg-[#f6f9ff]"
@@ -693,7 +545,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                         aria-label={`Open ${format(day, "MMMM d")}`}
                         className="absolute inset-0 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
                       />
-                      <div className="pointer-events-none relative px-3 py-2.5">
+                      <div className="pointer-events-none relative px-2.5 py-2">
                         <span
                           className={cn(
                             "inline-flex size-6 items-center justify-center rounded-full text-sm font-medium",
@@ -706,7 +558,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                             fragments ("0...", "1..."), so mobile gets the same density-only
                             dot summary as the week/day header (see the day-column buttons
                             below); tapping the day still opens Day view for full detail. */}
-                        <div className="mt-2 hidden space-y-1.5 sm:block">
+                        <div className="mt-1.5 hidden space-y-1 sm:block">
                           {visibleEntries.map((entry) =>
                             "status" in entry ? (
                               <button
@@ -714,23 +566,26 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                                 type="button"
                                 onClick={(event) => openQuickView(entry, event)}
                                 className={cn(
-                                  "pointer-events-auto block w-full truncate rounded-(--radius-tile) px-2 py-1 text-left text-xs font-medium transition-[filter,transform] duration-(--duration-base) hover:brightness-95 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                                  "pointer-events-auto flex w-full items-center justify-between gap-1.5 truncate rounded-(--radius-tile) px-2 py-1 text-left text-[11px] font-medium transition-[filter,transform] duration-(--duration-base) hover:brightness-95 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
                                   monthChipClasses[entry.status]
                                 )}
                               >
-                                {entry.startTime} {entry.service}
+                                <span className={cn("truncate font-semibold", entry.status === "cancelled" && "line-through")}>
+                                  {entry.clientName}
+                                </span>
+                                <span className="shrink-0 tabular-nums opacity-80">{entry.startTime}</span>
                               </button>
                             ) : (
                               <div
                                 key={entry.id}
-                                className="pointer-events-none truncate rounded-(--radius-tile) bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700"
+                                className="pointer-events-none truncate rounded-(--radius-tile) bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700"
                               >
                                 {entry.startTime} {entry.title}
                               </div>
                             )
                           )}
                           {overflowCount > 0 ? (
-                            <p className="px-2 text-[11px] font-medium text-muted-foreground">+{overflowCount} more</p>
+                            <p className="px-2 text-[10px] font-medium text-muted-foreground">+{overflowCount} more</p>
                           ) : null}
                         </div>
                         {items.length > 0 ? (
@@ -756,134 +611,90 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
             </div>
           ) : (
             <div key={gridKey} className="surface-card section-reveal step-enter overflow-clip p-0">
-              <div className="overflow-x-auto min-[1660px]:overflow-x-clip">
-                <div className="min-w-[940px]">
-                  <div
-                    className={cn(
-                      "z-30 grid border-b border-border/80 bg-white min-[1660px]:sticky min-[1660px]:top-[57px]",
-                      view === "day" ? "grid-cols-[76px_1fr]" : "grid-cols-[76px_repeat(7,minmax(0,1fr))]"
-                    )}
-                  >
-                    <div className="px-3 py-4 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      {initialView.timeZoneLabel}
-                    </div>
-                    {(view === "day" ? [activeDate] : currentWeek).map((day) => {
-                      const isToday = isSameDay(day, todayDate);
-                      const isSelected = isSameDay(day, activeDate);
-                      const dayItems = appointments
-                        .filter((appointment) => appointment.date === format(day, "yyyy-MM-dd"))
-                        .sort((left, right) => left.startTime.localeCompare(right.startTime));
+              <div className="overflow-x-auto">
+                <div className={view === "week" ? "min-w-[720px]" : undefined}>
+              <div className={cn("grid border-b border-border/80 bg-white", view === "day" ? "grid-cols-1" : "grid-cols-7")}>
+                {(view === "day" ? [activeDate] : currentWeek).map((day) => {
+                  const isToday = isSameDay(day, todayDate);
+                  const isSelected = isSameDay(day, activeDate);
 
-                      return (
-                        <button
-                          key={day.toISOString()}
-                          type="button"
-                          onClick={() => setActiveDate(day)}
+                  return (
+                    <button
+                      key={day.toISOString()}
+                      type="button"
+                      onClick={() => setActiveDate(day)}
+                      className={cn(
+                        "border-l border-border/80 px-3.5 py-3 text-left transition-colors duration-(--duration-base) first:border-l-0 hover:bg-[#f7f9fc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40",
+                        isToday ? "bg-[#f6f9ff]" : isSelected && "bg-[#f5f8fd]"
+                      )}
+                    >
+                      <p
+                        className={cn(
+                          "text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground",
+                          isToday && "text-primary"
+                        )}
+                      >
+                        {format(day, "EEE")}
+                      </p>
+                      <p className="mt-1.5">
+                        <span
                           className={cn(
-                            "border-l border-border/80 px-3.5 py-3 text-left transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40",
-                            isToday ? "bg-[#f6f9ff]" : isSelected && "bg-[#f5f8fd]"
+                            "inline-flex size-8 items-center justify-center rounded-full text-xl font-semibold tracking-tight text-foreground",
+                            isToday && "bg-primary text-primary-foreground"
                           )}
                         >
-                          <p
-                            className={cn(
-                              "text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground",
-                              isToday && "text-primary"
-                            )}
-                          >
-                            {format(day, "EEE")}
-                          </p>
-                          <p className="mt-1.5">
-                            <span
-                              className={cn(
-                                "inline-flex size-8 items-center justify-center rounded-full text-xl font-semibold tracking-tight text-foreground",
-                                isToday && "bg-primary text-primary-foreground"
-                              )}
-                            >
-                              {format(day, "d")}
-                            </span>
-                          </p>
-                          <span className="mt-1.5 flex h-1.5 items-center gap-1">
-                            {dayItems.slice(0, 3).map((appointment) => (
-                              <span
-                                key={appointment.id}
-                                className={cn(
-                                  "size-1.5 rounded-full",
-                                  statusDotClasses[appointment.status]
-                                )}
-                                aria-hidden="true"
-                              />
-                            ))}
-                            {dayItems.length > 3 ? (
-                              <span className="text-[9px] font-semibold leading-none text-muted-foreground">
-                                +{dayItems.length - 3}
-                              </span>
-                            ) : null}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                          {format(day, "d")}
+                        </span>
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
 
-                  <div className={cn("grid", view === "day" ? "grid-cols-[76px_1fr]" : "grid-cols-[76px_repeat(7,minmax(0,1fr))]")}>
-                    <div>
-                      {slotHours.map((hour, index) => (
-                        <div
-                          key={hour}
-                          className="flex h-16 items-start justify-end pr-3 text-xs text-muted-foreground"
-                        >
-                          <span className={cn("leading-none", index === 0 ? "pt-2" : "-translate-y-1/2")}>
-                            {format(new Date(2026, 3, 3, hour), "h a")}
-                          </span>
-                        </div>
+              <div className={cn("grid", view === "day" ? "grid-cols-1" : "grid-cols-7")}>
+                {(view === "day" ? [activeDate] : currentWeek).map((day) => {
+                  const key = format(day, "yyyy-MM-dd");
+                  const items = visibleAppointments
+                    .filter((appointment) => appointment.date === key)
+                    .sort((left, right) => timeToMinutes(left.startTime) - timeToMinutes(right.startTime));
+                  const blocks = visibleBlocks.filter((block) => block.date === key);
+                  const isToday = isSameDay(day, todayDate);
+                  const isSelectedColumn = isSameDay(day, activeDate);
+
+                  return (
+                    <div
+                      key={key}
+                      className={cn(
+                        "flex max-h-[520px] min-h-[200px] flex-col gap-1.5 overflow-y-auto border-l border-t border-border/75 p-2.5 first:border-l-0",
+                        isToday ? "bg-[#f6f9ff]" : isSelectedColumn && "bg-[#f8fafd]"
+                      )}
+                    >
+                      {items.map((appointment) => (
+                        <EventPill
+                          key={appointment.id}
+                          appointment={appointment}
+                          onOpen={(event) => openQuickView(appointment, event)}
+                        />
                       ))}
+                      {blocks.map((block) => (
+                        <BlockPill key={block.id} block={block} />
+                      ))}
+                      <Link
+                        href={`/calendar/new?date=${key}`}
+                        className={cn(
+                          "flex items-center justify-center gap-1.5 rounded-(--radius-tile) px-2.5 py-2 text-xs font-medium text-muted-foreground transition-[background-color,color,transform] duration-(--duration-base) hover:bg-primary/5 hover:text-primary active:scale-[0.97]",
+                          items.length === 0 && blocks.length === 0
+                            ? "border border-dashed border-border/70"
+                            : "mt-auto"
+                        )}
+                      >
+                        <Plus className="size-3.5" />
+                        Add
+                      </Link>
                     </div>
-
-                    {(view === "day" ? [activeDate] : currentWeek).map((day) => {
-                      const key = format(day, "yyyy-MM-dd");
-                      const items = visibleAppointments.filter((appointment) => appointment.date === key);
-                      const blocks = visibleBlocks.filter(
-                        (block) =>
-                          block.date === key && hasVisibleGridInterval(block.startTime, block.endTime)
-                      );
-                      const isToday = isSameDay(day, todayDate);
-                      const isSelectedColumn = isSameDay(day, activeDate);
-
-                      return (
-                        <div
-                          key={key}
-                          className={cn(
-                            "relative border-l border-border/80",
-                            isToday ? "bg-[#f6f9ff]" : isSelectedColumn && "bg-[#f8fafd]"
-                          )}
-                        >
-                          {slotHours.map((hour) =>
-                            hourOpenForDay(day, hour, initialView.businessHours) ? (
-                              <Link
-                                key={hour}
-                                href={`/calendar/new?date=${key}&time=${String(hour).padStart(2, "0")}:00`}
-                                tabIndex={-1}
-                                aria-label={`Book ${format(day, "MMMM d")} at ${format(new Date(2026, 3, 3, hour), "h a")}`}
-                                className="group/slot relative block h-16 border-b border-border/75"
-                              >
-                                <span className="pointer-events-none absolute inset-1 flex items-center justify-center rounded-(--radius-tile) border border-dashed border-primary/35 bg-primary/5 opacity-0 transition-opacity duration-(--duration-base) group-hover/slot:opacity-100">
-                                  <Plus className="size-3.5 text-primary/80" />
-                                </span>
-                              </Link>
-                            ) : (
-                              <div key={hour} className="h-16 border-b border-border/75 bg-muted/25" />
-                            )
-                          )}
-                          {items.map((appointment, index) => (
-                            <AppointmentCard key={appointment.id} appointment={appointment} index={index} />
-                          ))}
-                          {blocks.map((block, index) => (
-                            <BlockCard key={block.id} block={block} index={items.length + index} />
-                          ))}
-                          {isToday ? <NowLine /> : null}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  );
+                })}
+              </div>
                 </div>
               </div>
             </div>
