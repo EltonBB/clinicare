@@ -8,18 +8,12 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { WorkspaceNotificationItem } from "@/components/layout/workspace-live-context";
 import { cn } from "@/lib/utils";
-
-type NotificationItem = {
-  id: string;
-  title: string;
-  detail: string;
-  href: string;
-};
 
 type NotificationsMenuProps = {
   unreadCount: number;
-  items: NotificationItem[];
+  items: WorkspaceNotificationItem[];
   hasInboxUnread: boolean;
   hasStaffUnread: boolean;
 };
