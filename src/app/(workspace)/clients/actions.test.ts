@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => {
   const clientCareNote = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientTreatmentPlanItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientFollowUpReminder = { findFirst: vi.fn(), deleteMany: vi.fn() };
-  const clientPayment = { findFirst: vi.fn(), deleteMany: vi.fn() };
+  const clientPayment = { findFirst: vi.fn(), deleteMany: vi.fn(), create: vi.fn(), update: vi.fn() };
   const clientDocument = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientGalleryItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const $transaction = vi.fn();
@@ -73,6 +73,8 @@ async function flushAfter() {
 }
 
 import {
+  addClientPaymentAction,
+  updateClientPaymentAction,
   deleteClientAction,
   deleteClientCareNoteAction,
   deleteClientHealthItemAction,
@@ -103,6 +105,30 @@ beforeEach(() => {
       clientDocument: mocks.clientDocument,
       clientGalleryItem: mocks.clientGalleryItem,
     })
+  );
+});
+
+describe("payment amount validation", () => {
+  it.each(["abc", "1e3", "85.501", "1.000,00", "1000000.01"])(
+    "rejects %j on create and update without writing a payment",
+    async (amount) => {
+      mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID });
+      mocks.clientPayment.findFirst.mockResolvedValue({ id: SUB_RECORD_ID });
+      const payload = {
+        clientId: CLIENT_ID,
+        amount,
+        status: "Unpaid",
+        description: "",
+        receiptUrl: "",
+        paidAt: "",
+      };
+      const expected = { ok: false, error: "Enter a valid payment amount." };
+
+      expect(await addClientPaymentAction(payload)).toEqual(expected);
+      expect(await updateClientPaymentAction({ ...payload, id: SUB_RECORD_ID })).toEqual(expected);
+      expect(mocks.clientPayment.create).not.toHaveBeenCalled();
+      expect(mocks.clientPayment.update).not.toHaveBeenCalled();
+    }
   );
 });
 

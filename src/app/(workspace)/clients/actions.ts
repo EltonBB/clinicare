@@ -19,6 +19,7 @@ import {
   type SaveClientPayload,
 } from "@/lib/clients";
 import { normalizeStorageReference } from "@/lib/media-storage";
+import { parseAmountToCents } from "@/lib/payment-amount";
 import { attemptStorageCleanup, recordPendingStorageCleanup } from "@/lib/media-storage-server";
 
 export type SaveClientResult = {
@@ -523,18 +524,6 @@ function parseOptionalDate(value: string | undefined) {
   const parsed = new Date(`${value}T00:00:00.000Z`);
 
   return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function parseAmountToCents(value: string) {
-  const normalized = Number(value.replace(/[^0-9.-]/g, ""));
-
-  // Reject negatives and absurd fat-finger amounts (> $1,000,000) so a typo
-  // can't write a huge value into the ledger and corrupt revenue reporting.
-  if (!Number.isFinite(normalized) || normalized < 0 || normalized > 1_000_000) {
-    return null;
-  }
-
-  return Math.round(normalized * 100);
 }
 
 export async function addClientGalleryItemAction(
