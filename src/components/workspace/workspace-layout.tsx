@@ -3,6 +3,7 @@ import type { ComponentProps, ComponentType, ReactNode } from "react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { WorkspaceHeaderNotifications } from "@/components/workspace/workspace-header-notifications";
 
 type WorkspacePageProps = ComponentProps<"div"> & {
   children: ReactNode;
@@ -168,11 +169,10 @@ export function WorkspaceHeader({
           ) : null}
           {meta ? <div className="mt-1.5">{meta}</div> : null}
         </div>
-        {actions ? (
-          <div className="section-reveal-delayed flex flex-wrap items-center gap-2 lg:justify-end">
-            {actions}
-          </div>
-        ) : null}
+        <div className="section-reveal-delayed flex flex-wrap items-center justify-end gap-2">
+          <WorkspaceHeaderNotifications />
+          {actions}
+        </div>
       </div>
     </section>
   );
