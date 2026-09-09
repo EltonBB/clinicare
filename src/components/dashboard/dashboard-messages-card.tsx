@@ -87,6 +87,9 @@ export function DashboardMessagesCard({
                 >
                   {conversation.contactName}
                 </span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {conversation.snippet}
+                </span>
               </span>
               <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
                 {conversation.timeLabel}
