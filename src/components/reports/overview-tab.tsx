@@ -16,6 +16,7 @@ import {
   Sparkles,
   Target,
   UserPlus,
+  Users,
   XCircle,
 } from "lucide-react";
 
@@ -564,6 +565,13 @@ export function HighlightsCard({ period }: { period: ReportPeriodView }) {
       : null,
     followUpRow && followUpRow.value
       ? { icon: Reply, title: "Follow-up coverage", detail: `${followUpRow.value} of inbound messages got an outbound reply.` }
+      : null,
+    period.clientMixTotal > 0
+      ? {
+          icon: Users,
+          title: "Active clients",
+          detail: `${period.activeClients.toLocaleString("en-US")} of ${period.clientMixTotal.toLocaleString("en-US")} client records are currently active.`,
+        }
       : null,
   ].filter((item): item is { icon: typeof Clock3; title: string; detail: string } => Boolean(item));
 
