@@ -2358,7 +2358,7 @@ export function buildReportsViewFromWorkspace({
         end: customRange.end,
         previousStart: new Date(
           customRange.start.getTime() -
-            Math.max(customRange.end.getTime() - customRange.start.getTime(), 86_400_000) -
+            Math.max(customRange.end.getTime() - customRange.start.getTime(), 86_400_000 - 1) -
             1
         ),
         previousEnd: new Date(customRange.start.getTime() - 1),

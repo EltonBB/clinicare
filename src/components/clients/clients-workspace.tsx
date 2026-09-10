@@ -255,7 +255,14 @@ export function ClientsWorkspace({
                   </p>
                   <div className="min-w-0 text-sm">
                     {client.lastService ? (
-                      <p className="truncate font-medium text-foreground">{client.lastService}</p>
+                      <>
+                        <p className="truncate font-medium text-foreground">{client.lastService}</p>
+                        {client.lastProvider ? (
+                          <p className="mt-1 truncate text-xs text-muted-foreground">
+                            {client.lastProvider}
+                          </p>
+                        ) : null}
+                      </>
                     ) : (
                       <p className="text-muted-foreground">No appointments yet</p>
                     )}
@@ -274,6 +281,11 @@ export function ClientsWorkspace({
                       <span className={statusDot(client.status)} />
                       <span className="capitalize">{client.status}</span>
                     </div>
+                    {client.needsAttention ? (
+                      <p className="mt-0.5 truncate text-[11px] font-medium text-amber-600">
+                        {client.attentionReason}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                     <Link

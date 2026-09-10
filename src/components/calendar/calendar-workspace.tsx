@@ -259,8 +259,12 @@ function AppointmentQuickView({
   }, [onClose]);
 
   const width = 264;
+  const estimatedHeight = 230;
   const left = Math.min(Math.max(anchorRect.left, 12), window.innerWidth - width - 12);
-  const top = anchorRect.bottom + 8;
+  const top =
+    anchorRect.bottom + 8 + estimatedHeight <= window.innerHeight
+      ? anchorRect.bottom + 8
+      : Math.max(anchorRect.top - estimatedHeight - 8, 12);
 
   return (
     <div
@@ -555,7 +559,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                             <p className="px-2 text-[10px] font-medium text-muted-foreground">+{overflowCount} more</p>
                           ) : null}
                         </div>
-                        {items.length > 0 ? (
+                        {items.length > 0 || blocks.length > 0 ? (
                           <div className="mt-1.5 flex flex-wrap items-center gap-1 sm:hidden">
                             {items.slice(0, 4).map((item) => (
                               <span
@@ -563,6 +567,9 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                                 className={cn("size-1.5 rounded-full", statusDotClasses[item.status])}
                               />
                             ))}
+                            {items.length === 0 && blocks.length > 0 ? (
+                              <span className="size-1.5 rounded-full bg-slate-400" />
+                            ) : null}
                             {items.length > 4 ? (
                               <span className="text-[9px] font-semibold leading-none text-muted-foreground">
                                 +{items.length - 4}
