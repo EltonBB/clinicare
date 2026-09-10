@@ -65,6 +65,54 @@ const monthChipClasses: Record<CalendarAppointmentStatus, string> = {
 // lg:h-[calc(100vh-174px)] fill pattern, offset for Calendar's extra toolbar row).
 const calendarGridHeightClass = "surface-card section-reveal step-enter flex flex-col overflow-clip p-0 lg:h-[calc(100vh-230px)]";
 
+// Keeps `onDismiss` reachable from the DOM listeners below without putting an
+// unstable inline callback in the effect's own dependency array (which would
+// tear down and re-attach the listeners on every render).
+function useDismissOnOutsideOrEscape(
+  containerRef: React.RefObject<HTMLElement | null>,
+  onDismiss: () => void,
+  options?: { active?: boolean; dismissOnScroll?: boolean }
+) {
+  const { active = true, dismissOnScroll = false } = options ?? {};
+  const onDismissRef = useRef(onDismiss);
+
+  useEffect(() => {
+    onDismissRef.current = onDismiss;
+  });
+
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        onDismissRef.current();
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onDismissRef.current();
+      }
+    };
+    const onScroll = () => onDismissRef.current();
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    if (dismissOnScroll) {
+      window.addEventListener("scroll", onScroll, true);
+    }
+
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+      if (dismissOnScroll) {
+        window.removeEventListener("scroll", onScroll, true);
+      }
+    };
+  }, [active, containerRef, dismissOnScroll]);
+}
+
 function timeToMinutes(time: string) {
   const [hours, minutes] = time.split(":").map(Number);
   return (hours || 0) * 60 + (minutes || 0);
@@ -139,30 +187,7 @@ function DatePickerPopover({
   const [monthCursor, setMonthCursor] = useState(() => startOfMonth(activeDate));
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const onPointerDown = (event: PointerEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    };
-
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
+  useDismissOnOutsideOrEscape(containerRef, () => setOpen(false), { active: open });
 
   return (
     <div ref={containerRef} className="relative">
@@ -234,29 +259,7 @@ function AppointmentQuickView({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const onPointerDown = (event: PointerEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) {
-        onClose();
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-    const onScroll = () => onClose();
-
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    window.addEventListener("scroll", onScroll, true);
-
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("scroll", onScroll, true);
-    };
-  }, [onClose]);
+  useDismissOnOutsideOrEscape(containerRef, onClose, { dismissOnScroll: true });
 
   const width = 264;
   const estimatedHeight = 230;
@@ -351,34 +354,6 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
 
     return currentMonth.filter((day) => isSameMonth(day, activeDate));
   }, [activeDate, currentMonth, currentWeek, view]);
-
-  const visibleAppointments = useMemo(() => {
-    if (view === "day") {
-      return appointments.filter((appointment) => appointment.date === selectedDateKey);
-    }
-
-    if (view === "week") {
-      const visibleKeys = new Set(currentWeek.map((day) => format(day, "yyyy-MM-dd")));
-      return appointments.filter((appointment) => visibleKeys.has(appointment.date));
-    }
-
-    const visibleKeys = new Set(currentMonth.map((day) => format(day, "yyyy-MM-dd")));
-    return appointments.filter((appointment) => visibleKeys.has(appointment.date));
-  }, [appointments, currentMonth, currentWeek, selectedDateKey, view]);
-
-  const visibleBlocks = useMemo(() => {
-    if (view === "day") {
-      return scheduleBlocks.filter((block) => block.date === selectedDateKey);
-    }
-
-    if (view === "week") {
-      const visibleKeys = new Set(currentWeek.map((day) => format(day, "yyyy-MM-dd")));
-      return scheduleBlocks.filter((block) => visibleKeys.has(block.date));
-    }
-
-    const visibleKeys = new Set(currentMonth.map((day) => format(day, "yyyy-MM-dd")));
-    return scheduleBlocks.filter((block) => visibleKeys.has(block.date));
-  }, [currentMonth, currentWeek, scheduleBlocks, selectedDateKey, view]);
 
   const weekStart = currentWeek[0];
   const weekEnd = currentWeek[6];
@@ -629,10 +604,10 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
               <div className={cn("grid lg:min-h-0 lg:flex-1", view === "day" ? "grid-cols-1" : "grid-cols-7")}>
                 {(view === "day" ? [activeDate] : currentWeek).map((day) => {
                   const key = format(day, "yyyy-MM-dd");
-                  const items = visibleAppointments
+                  const items = appointments
                     .filter((appointment) => appointment.date === key)
                     .sort((left, right) => timeToMinutes(left.startTime) - timeToMinutes(right.startTime));
-                  const blocks = visibleBlocks.filter((block) => block.date === key);
+                  const blocks = scheduleBlocks.filter((block) => block.date === key);
                   const isToday = isSameDay(day, todayDate);
                   const isSelectedColumn = isSameDay(day, activeDate);
 

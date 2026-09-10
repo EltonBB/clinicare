@@ -287,7 +287,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
       ) : null}
 
       <div className="grid items-stretch gap-3 xl:grid-cols-2">
-        <section className="flex flex-col rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
+        <section className="surface-card flex flex-col p-3.5">
           <div className="flex items-start justify-between gap-3 px-1">
             <div>
               <h2 className="text-[15px] font-semibold text-foreground">Performance</h2>
@@ -446,7 +446,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
           </div>
         </section>
 
-        <section className="flex flex-col rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
+        <section className="surface-card flex flex-col p-3.5">
           <div className="flex items-center justify-between gap-3 px-1">
             <h2 className="text-[15px] font-semibold text-foreground">AI insight</h2>
             <span
@@ -505,7 +505,7 @@ export function AppointmentStatusCard({ period }: { period: ReportPeriodView }) 
       variants={fadeIn}
       initial="initial"
       animate="animate"
-      className="flex h-full flex-col rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)"
+      className="surface-card flex h-full flex-col p-3.5"
     >
       <h2 className="px-1 text-[15px] font-semibold text-foreground">Appointment status</h2>
       {period.statusTotal > 0 ? (
@@ -581,7 +581,7 @@ export function HighlightsCard({ period }: { period: ReportPeriodView }) {
       variants={fadeIn}
       initial="initial"
       animate="animate"
-      className="flex h-full flex-col rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)"
+      className="surface-card flex h-full flex-col p-3.5"
     >
       <h2 className="px-1 pb-2 text-[15px] font-semibold text-foreground">Highlights</h2>
       {highlights.length > 0 ? (
