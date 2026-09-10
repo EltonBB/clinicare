@@ -279,6 +279,17 @@ export function InboxWorkspace({
     };
   }, []);
 
+  // Jumps the thread to the newest message on every conversation switch and
+  // whenever the active thread grows (a reply arrives via poll or send) — the
+  // container's DOM node itself is recreated on switch (see the m.div's
+  // key={activeConversation.id} below), so this runs against the fresh node.
+  const messageListRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const container = messageListRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
+  }, [activeConversation?.id, activeConversation?.messages.length]);
+
   // Fresh retry budget each time a different conversation is selected —
   // independent of the retry-token effect below, which bumps within the
   // same selection.
@@ -741,7 +752,7 @@ export function InboxWorkspace({
                     </div>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto bg-muted/22 px-4 py-4">
+                  <div ref={messageListRef} className="flex-1 overflow-y-auto bg-muted/22 px-4 py-4">
                     <div className="mx-auto max-w-3xl space-y-2.5">
                       {activeConversation.messages.map((message, index) => {
                         const previousMessage = activeConversation.messages[index - 1];
