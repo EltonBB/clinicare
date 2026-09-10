@@ -52,48 +52,36 @@ export function DashboardPageSkeleton() {
   );
 }
 
-function SkeletonToolbar() {
-  return (
-    <div className="surface-card flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
-      <SkeletonBlock className="h-10 w-full max-w-xs" />
-      <div className="flex flex-wrap gap-2">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <SkeletonBlock key={index} className="h-8 w-20" />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function SkeletonTable({ rows = 7 }: { rows?: number }) {
-  return (
-    <div className="overflow-hidden rounded-(--radius-card) border border-border/80 bg-white shadow-(--shadow-card)">
-      {/* This is new code (not yet-unmigrated WorkspaceTable markup), so it
-          follows the current no-divider rule directly — background contrast
-          and spacing, not a border-b/divide-y hairline (Codex). */}
-      <div className="flex min-h-[40px] items-center bg-[#f8fafc] px-3.5 py-2">
-        <SkeletonBlock className="h-3 w-24" />
-      </div>
-      <div className="space-y-2 p-2">
-        {Array.from({ length: rows }).map((_, index) => (
-          <div key={index} className="flex items-center gap-3 px-1.5 py-2">
-            <SkeletonBlock className="size-9 shrink-0 rounded-(--radius-tile)" />
-            <SkeletonBlock className="h-3.5 w-1/4" />
-            <SkeletonBlock className="ml-auto h-3.5 w-16" />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // Clients / Staff directories: header (no KPI band, per AGENTS.md) → toolbar → table.
 export function DirectoryPageSkeleton() {
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-3">
       <SkeletonHeader />
-      <SkeletonToolbar />
-      <SkeletonTable />
+      <div className="surface-card flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
+        <SkeletonBlock className="h-10 w-full max-w-xs" />
+        <div className="flex flex-wrap gap-2">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <SkeletonBlock key={index} className="h-8 w-20" />
+          ))}
+        </div>
+      </div>
+      {/* This is new code (not yet-unmigrated WorkspaceTable markup), so it
+          follows the current no-divider rule directly — background contrast
+          and spacing, not a border-b/divide-y hairline (Codex). */}
+      <div className="overflow-hidden rounded-(--radius-card) border border-border/80 bg-white shadow-(--shadow-card)">
+        <div className="flex min-h-[40px] items-center bg-[#f8fafc] px-3.5 py-2">
+          <SkeletonBlock className="h-3 w-24" />
+        </div>
+        <div className="space-y-2 p-2">
+          {Array.from({ length: 7 }).map((_, index) => (
+            <div key={index} className="flex items-center gap-3 px-1.5 py-2">
+              <SkeletonBlock className="size-9 shrink-0 rounded-(--radius-tile)" />
+              <SkeletonBlock className="h-3.5 w-1/4" />
+              <SkeletonBlock className="ml-auto h-3.5 w-16" />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
