@@ -12,6 +12,7 @@ import {
   UsersRound,
 } from "lucide-react";
 
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 type SearchResult = {
@@ -141,20 +142,12 @@ export function GlobalSearchPalette({
     router.push(result.href);
   }
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-[60] flex justify-center px-4 pt-[12vh] pb-4">
-      <div
-        aria-hidden="true"
-        onClick={() => onOpenChange(false)}
-        className="state-pop-fast absolute inset-0 bg-[#0b0d14]/35 backdrop-blur-[2px]"
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showCloseButton={false}
         aria-label="Search"
-        className="state-pop relative z-10 flex h-fit max-h-[min(560px,80vh)] w-full max-w-[560px] flex-col overflow-hidden rounded-(--radius-panel) border border-border/80 bg-white shadow-(--shadow-pop)"
+        className="top-[12vh] flex max-h-[min(560px,80vh)] w-full max-w-[560px] translate-y-0 flex-col gap-0 rounded-(--radius-panel) p-0 shadow-(--shadow-pop) sm:max-w-[560px]"
       >
         <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border/70 px-4">
           <Search className="size-4.5 shrink-0 text-muted-foreground" />
@@ -176,10 +169,6 @@ export function GlobalSearchPalette({
               if (event.key === "Enter" && results[activeIndex]) {
                 event.preventDefault();
                 navigateToResult(results[activeIndex]);
-              }
-
-              if (event.key === "Escape") {
-                onOpenChange(false);
               }
             }}
             placeholder="Search clients, appointments, staff, messages..."
@@ -246,20 +235,22 @@ export function GlobalSearchPalette({
         </div>
 
         <div className="flex shrink-0 items-center gap-3 border-t border-border/70 px-4 py-2 text-[11px] font-medium text-muted-foreground">
-          <span className="inline-flex items-center gap-1">
-            <kbd className="rounded-[0.3rem] border border-border/70 bg-secondary/60 px-1.5 py-0.5 font-mono">↑↓</kbd>
-            Navigate
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <kbd className="rounded-[0.3rem] border border-border/70 bg-secondary/60 px-1.5 py-0.5 font-mono">↵</kbd>
-            Open
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <kbd className="rounded-[0.3rem] border border-border/70 bg-secondary/60 px-1.5 py-0.5 font-mono">esc</kbd>
-            Close
-          </span>
+          {(
+            [
+              ["↑↓", "Navigate"],
+              ["↵", "Open"],
+              ["esc", "Close"],
+            ] as const
+          ).map(([key, label]) => (
+            <span key={label} className="inline-flex items-center gap-1">
+              <kbd className="rounded-[0.3rem] border border-border/70 bg-secondary/60 px-1.5 py-0.5 font-mono">
+                {key}
+              </kbd>
+              {label}
+            </span>
+          ))}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
