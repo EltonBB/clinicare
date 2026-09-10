@@ -260,6 +260,11 @@
     animation: vela-bar-rise calc(var(--duration-entrance) + 120ms) var(--ease-out-expo) both;
   }
 
+  .bar-grow {
+    transform-origin: left;
+    animation: vela-bar-grow calc(var(--duration-entrance) + 120ms) var(--ease-out-expo) both;
+  }
+
   .badge-pulse {
     animation: vela-badge-pulse 360ms var(--ease-out-quint);
   }
@@ -499,6 +504,7 @@
     .landing-card-pop,
     .landing-streak,
     .bar-rise,
+    .bar-grow,
     .badge-pulse,
     .event-enter,
     .now-ping {
@@ -562,6 +568,15 @@
   }
   to {
     transform: scaleY(1);
+  }
+}
+
+@keyframes vela-bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
   }
 }
 
