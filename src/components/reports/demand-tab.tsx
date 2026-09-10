@@ -134,35 +134,37 @@ export function BookingPatternsCard({ period }: { period: ReportPeriodView }) {
         </div>
       )}
 
-      <div className="mt-3.5 flex flex-1 flex-wrap items-end gap-2">
-        <div className="flex flex-1 items-center gap-2.5 rounded-(--radius-tile) border border-border/70 px-3 py-2">
-          <span className="grid size-7 shrink-0 place-items-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
-            <Clock3 className="size-3.5" />
-          </span>
-          <div>
-            <p className="text-sm font-semibold text-foreground">{bookingBehavior.averageLeadTimeHours}h</p>
-            <p className="text-xs text-muted-foreground">Avg lead time</p>
+      {hasBookings ? (
+        <div className="mt-3.5 flex flex-1 flex-wrap items-end gap-2">
+          <div className="flex flex-1 items-center gap-2.5 rounded-(--radius-tile) border border-border/70 px-3 py-2">
+            <span className="grid size-7 shrink-0 place-items-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
+              <Clock3 className="size-3.5" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-foreground">{bookingBehavior.averageLeadTimeHours}h</p>
+              <p className="text-xs text-muted-foreground">Avg lead time</p>
+            </div>
+          </div>
+          <div className="flex flex-1 items-center gap-2.5 rounded-(--radius-tile) border border-border/70 px-3 py-2">
+            <span className="grid size-7 shrink-0 place-items-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
+              <Zap className="size-3.5" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-foreground">{bookingBehavior.sameDayBookings}</p>
+              <p className="text-xs text-muted-foreground">Same-day</p>
+            </div>
+          </div>
+          <div className="flex flex-1 items-center gap-2.5 rounded-(--radius-tile) border border-border/70 px-3 py-2">
+            <span className="grid size-7 shrink-0 place-items-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
+              <UserX className="size-3.5" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-foreground">{bookingBehavior.unassignedAppointments}</p>
+              <p className="text-xs text-muted-foreground">Unassigned</p>
+            </div>
           </div>
         </div>
-        <div className="flex flex-1 items-center gap-2.5 rounded-(--radius-tile) border border-border/70 px-3 py-2">
-          <span className="grid size-7 shrink-0 place-items-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
-            <Zap className="size-3.5" />
-          </span>
-          <div>
-            <p className="text-sm font-semibold text-foreground">{bookingBehavior.sameDayBookings}</p>
-            <p className="text-xs text-muted-foreground">Same-day</p>
-          </div>
-        </div>
-        <div className="flex flex-1 items-center gap-2.5 rounded-(--radius-tile) border border-border/70 px-3 py-2">
-          <span className="grid size-7 shrink-0 place-items-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
-            <UserX className="size-3.5" />
-          </span>
-          <div>
-            <p className="text-sm font-semibold text-foreground">{bookingBehavior.unassignedAppointments}</p>
-            <p className="text-xs text-muted-foreground">Unassigned</p>
-          </div>
-        </div>
-      </div>
+      ) : null}
     </m.section>
   );
 }
