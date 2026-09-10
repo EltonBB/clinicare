@@ -10,11 +10,9 @@ import { refreshWorkspaceNotificationsAction } from "@/app/(workspace)/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { GlobalSearch } from "@/components/layout/global-search";
+import { NotificationsMenu, type NotificationItem } from "@/components/layout/notifications-menu";
 import { SettingsDialog } from "@/components/layout/settings-dialog";
-import {
-  WorkspaceLiveProvider,
-  type WorkspaceNotificationItem,
-} from "@/components/layout/workspace-live-context";
+import { WorkspaceLiveProvider } from "@/components/layout/workspace-live-context";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,7 +46,7 @@ type AppShellProps = {
   unreadCount?: number;
   // Patient-inbox-only unread — feeds WorkspaceLiveContext (dashboard KPI, Messages card).
   inboxUnreadCount?: number;
-  notifications?: WorkspaceNotificationItem[];
+  notifications?: NotificationItem[];
   hasInboxUnread?: boolean;
   hasStaffUnread?: boolean;
 };
@@ -120,28 +118,12 @@ export function AppShell({
     },
     [liveHasInboxUnread, liveHasStaffUnread]
   );
-  // Published to descendants (e.g. the dashboard Messages card, every page's
-  // WorkspaceHeader bell) so they read this single poll instead of starting
-  // their own. Memoized so a AppShell re-render that doesn't touch any of
-  // these values (e.g. opening Settings) doesn't force every consumer to
-  // re-render too.
-  const liveWorkspaceContext = useMemo(
-    () => ({
-      unreadCount: liveInboxUnreadCount,
-      initialized: unreadInitialized,
-      notificationsUnreadCount: liveUnreadCount,
-      notifications: liveNotifications,
-      hasInboxUnread: liveHasInboxUnread,
-      hasStaffUnread: liveHasStaffUnread,
-    }),
-    [
-      liveInboxUnreadCount,
-      unreadInitialized,
-      liveUnreadCount,
-      liveNotifications,
-      liveHasInboxUnread,
-      liveHasStaffUnread,
-    ]
+  // Published to descendants (e.g. the dashboard Messages card) so they read
+  // this single poll instead of starting their own. Inbox-only count — see
+  // liveInboxUnreadCount above.
+  const liveUnread = useMemo(
+    () => ({ unreadCount: liveInboxUnreadCount, initialized: unreadInitialized }),
+    [liveInboxUnreadCount, unreadInitialized]
   );
 
   useEffect(() => {
@@ -316,17 +298,23 @@ export function AppShell({
             <div className="flex w-full items-center gap-4 lg:h-[56px] lg:gap-5">
               <BrandMark compact href="/dashboard" className="lg:hidden" />
               <GlobalSearch className="hidden max-w-md flex-1 md:block" />
-              <div className="ml-auto lg:hidden">
-                <LogoutButton />
+              <div className="ml-auto flex items-center gap-1.5">
+                <NotificationsMenu
+                  unreadCount={liveUnreadCount}
+                  items={liveNotifications}
+                  hasInboxUnread={liveHasInboxUnread}
+                  hasStaffUnread={liveHasStaffUnread}
+                />
+                <div className="lg:hidden">
+                  <LogoutButton />
+                </div>
               </div>
             </div>
             <GlobalSearch className="mt-3 w-full md:hidden" />
           </header>
 
           <main className="relative flex-1 bg-background px-4 py-3 pb-28 sm:px-5 lg:px-6 lg:py-4 lg:pb-4">
-            <WorkspaceLiveProvider value={liveWorkspaceContext}>
-              {children}
-            </WorkspaceLiveProvider>
+            <WorkspaceLiveProvider value={liveUnread}>{children}</WorkspaceLiveProvider>
           </main>
         </div>
       </div>
