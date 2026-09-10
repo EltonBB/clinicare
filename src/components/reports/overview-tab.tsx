@@ -124,10 +124,6 @@ function statusColor(label: string) {
   return "#94a3b8";
 }
 
-function polarPoint(cx: number, cy: number, radius: number, angle: number) {
-  return [cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)];
-}
-
 // A stale hover from the previous period/range must not survive a period
 // switch or a custom-range change — periodStart/periodEnd change on both,
 // even when `period.key` stays "custom" across two different date ranges.
@@ -486,8 +482,8 @@ export function AppointmentStatusCard({ period }: { period: ReportPeriodView }) 
     >
       <h2 className="px-1 text-[15px] font-semibold text-foreground">Appointment status</h2>
       {period.statusTotal > 0 ? (
-        <div className="mt-2 flex flex-1 flex-col items-center justify-center gap-4 px-1 py-2">
-          <div className="relative" onMouseLeave={() => setStatusHover(null)}>
+        <div className="mt-2 flex flex-1 items-center justify-center gap-6 px-1 py-2">
+          <div className="relative shrink-0" onMouseLeave={() => setStatusHover(null)}>
             <DonutChart items={statusMix} hovered={statusHover} onHover={setStatusHover} />
             <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
               <div>
@@ -500,16 +496,15 @@ export function AppointmentStatusCard({ period }: { period: ReportPeriodView }) 
               </div>
             </div>
           </div>
-          <div className="w-full text-sm" onMouseLeave={() => setStatusHover(null)}>
+          <div className="min-w-0" onMouseLeave={() => setStatusHover(null)}>
             {statusMix.map((item) => (
               <LegendRow
                 key={item.label}
                 color={statusColor(item.label)}
                 label={item.label}
-                value={`${item.count}`}
                 detail={item.share.replace(/\.0%$/, "%")}
                 muted={item.count === 0}
-                active={statusHover === item.label}
+                dimmed={statusHover !== null && statusHover !== item.label}
                 onHover={() => setStatusHover(item.label)}
               />
             ))}
@@ -587,13 +582,13 @@ function DonutChart({
   hovered: string | null;
   onHover: (label: string) => void;
 }) {
-  const size = 128;
-  const strokeWidth = 14;
+  const size = 132;
+  const strokeWidth = 13;
   const center = size / 2;
-  const radius = (size - strokeWidth) / 2 - 2;
+  const radius = 52;
+  const circumference = 2 * Math.PI * radius;
   const total = items.reduce((sum, item) => sum + item.count, 0);
   const nonZero = items.filter((item) => item.count > 0);
-  const pad = nonZero.length > 1 ? 0.055 : 0;
   // The per-arc stagger delay below is for the mount reveal only — without
   // this guard, every hover-driven opacity change would reuse the same
   // delayed transition, making dimming lag behind the cursor instead of
@@ -604,59 +599,37 @@ function DonutChart({
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  let cursor = -Math.PI / 2;
-  const arcs = nonZero.map((item) => {
-    const sweep = (item.count / total) * Math.PI * 2;
-    const a0 = cursor + pad;
-    const a1 = Math.max(cursor + sweep - pad, a0 + 0.01);
-    cursor += sweep;
-    const [x0, y0] = polarPoint(center, center, radius, a0);
-    const [x1, y1] = polarPoint(center, center, radius, a1);
-    const largeArc = a1 - a0 > Math.PI ? 1 : 0;
-
-    return {
-      item,
-      d: `M ${round2(x0)} ${round2(y0)} A ${radius} ${radius} 0 ${largeArc} 1 ${round2(x1)} ${round2(y1)}`,
-    };
-  });
+  const pcts = nonZero.map((item) => (item.count / total) * 100);
+  const arcs = nonZero.map((item, index) => ({
+    item,
+    pct: pcts[index],
+    start: pcts.slice(0, index).reduce((sum, pct) => sum + pct, 0),
+  }));
 
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} className="size-32">
-      {nonZero.length === 1 ? (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+      {arcs.map(({ item, pct, start: arcStart }, index) => (
         <m.circle
+          key={item.label}
           cx={center}
           cy={center}
           r={radius}
           fill="none"
-          stroke={statusColor(nonZero[0].label)}
-          strokeWidth={hovered === nonZero[0].label ? strokeWidth + 3 : strokeWidth}
+          stroke={statusColor(item.label)}
+          strokeWidth={strokeWidth}
+          strokeDasharray={`${(pct / 100) * circumference - (arcs.length > 1 ? 2 : 0)} ${circumference}`}
+          strokeDashoffset={-((arcStart / 100) * circumference)}
           initial={{ opacity: 0 }}
-          animate={{ opacity: hovered && hovered !== nonZero[0].label ? 0.25 : 1 }}
-          transition={{ duration: 0.35, ease: easeOutQuart }}
-          className="transition-[stroke-width] duration-(--duration-base)"
-          onMouseEnter={() => onHover(nonZero[0].label)}
+          animate={{ opacity: hovered && hovered !== item.label ? 0.25 : 1 }}
+          transition={{
+            duration: 0.35,
+            ease: easeOutQuart,
+            delay: hasMounted ? 0 : index * 0.08,
+          }}
+          onMouseEnter={() => onHover(item.label)}
+          className="cursor-default"
         />
-      ) : (
-        arcs.map(({ item, d }, index) => (
-          <m.path
-            key={item.label}
-            d={d}
-            fill="none"
-            stroke={statusColor(item.label)}
-            strokeWidth={hovered === item.label ? strokeWidth + 3 : strokeWidth}
-            strokeLinecap="butt"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: hovered && hovered !== item.label ? 0.25 : 1 }}
-            transition={{
-              duration: 0.35,
-              ease: easeOutQuart,
-              delay: hasMounted ? 0 : index * 0.05,
-            }}
-            className="transition-[stroke-width] duration-(--duration-base)"
-            onMouseEnter={() => onHover(item.label)}
-          />
-        ))
-      )}
+      ))}
     </svg>
   );
 }
@@ -750,37 +723,43 @@ function KpiCard({
   );
 }
 
+// Dims every row except the hovered one, rather than tinting the active row's
+// background — the legend cross-highlight read from 21st.dev's Sectors Donut.
 export function LegendRow({
   color,
   label,
-  value,
   detail,
   muted,
-  active,
+  dimmed,
   onHover,
 }: {
   color: string;
   label: string;
-  value: string;
   detail?: string;
   muted?: boolean;
-  active?: boolean;
+  // true only while a *different* row is hovered — distinct from "nothing is
+  // hovered", which must leave every row at full opacity.
+  dimmed?: boolean;
   onHover?: () => void;
 }) {
   return (
-    <div
+    <button
+      type="button"
       onMouseEnter={onHover}
-      className={cn("flex items-center justify-between gap-2.5 rounded-(--radius-tile) px-1.5 py-1.5 transition-colors duration-(--duration-base)", active ? "bg-secondary/55" : "hover:bg-secondary/45")}
+      onFocus={onHover}
+      className="-mx-1.5 flex w-full items-center gap-2.5 rounded-(--radius-tile) px-1.5 py-[7px] text-left transition-opacity duration-(--duration-base)"
+      style={{ opacity: dimmed ? 0.35 : 1 }}
     >
-      <span className="flex min-w-0 items-center gap-2">
-        <span className={cn("size-2.5 shrink-0 rounded-full", muted && "opacity-35")} style={{ background: color }} />
-        <span className={cn("truncate", muted ? "text-muted-foreground/60" : "text-muted-foreground")}>{label}</span>
+      <span className={cn("size-2 shrink-0 rounded-full", muted && "opacity-35")} style={{ background: color }} />
+      <span className={cn("w-[92px] truncate text-sm", muted ? "text-muted-foreground/60" : "text-muted-foreground")}>
+        {label}
       </span>
-      <span className={cn("shrink-0 font-medium tabular-nums", muted ? "text-muted-foreground/60" : "text-foreground")}>
-        {value}
-        {detail ? <span className={cn("ml-1.5 font-normal", muted ? "text-muted-foreground/50" : "text-muted-foreground")}>· {detail}</span> : null}
-      </span>
-    </div>
+      {detail ? (
+        <span className={cn("shrink-0 text-sm font-medium tabular-nums", muted ? "text-muted-foreground/60" : "text-foreground")}>
+          {detail}
+        </span>
+      ) : null}
+    </button>
   );
 }
 
