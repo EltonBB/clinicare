@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CalendarDays,
   Loader2,
@@ -80,14 +80,6 @@ export function GlobalSearchPalette({
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    // Autofocus needs a tick after mount for the input to exist/be visible.
-    const timeout = window.setTimeout(() => inputRef.current?.focus(), 10);
-    return () => window.clearTimeout(timeout);
-  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -167,7 +159,7 @@ export function GlobalSearchPalette({
         <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border/70 px-4">
           <Search className="size-4.5 shrink-0 text-muted-foreground" />
           <input
-            ref={inputRef}
+            autoFocus
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
