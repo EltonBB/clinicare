@@ -24,7 +24,11 @@ import { StaffMessagesTab } from "@/components/staff/staff-messages-tab";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { WorkspaceEmptyState, WorkspacePage } from "@/components/workspace/workspace-layout";
+import {
+  SidebarSectionHeader,
+  WorkspaceEmptyState,
+  WorkspacePage,
+} from "@/components/workspace/workspace-layout";
 import { HeaderStat } from "@/components/workspace/header-stat";
 import { cn, getInitials } from "@/lib/utils";
 import type { AdminThreadView } from "@/lib/mobile/admin-inbox";
@@ -527,10 +531,6 @@ function AppointmentStatusBadge({ status }: { status: string }) {
       {normalized}
     </span>
   );
-}
-
-function SidebarSectionHeader({ title }: { title: string }) {
-  return <h2 className="text-[15px] font-semibold leading-5 text-foreground">{title}</h2>;
 }
 
 function OverviewLine({ label, value }: { label: string; value: string }) {
