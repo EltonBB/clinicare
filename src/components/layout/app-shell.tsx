@@ -9,7 +9,7 @@ import { logoutAction } from "@/app/(auth)/actions";
 import { refreshWorkspaceNotificationsAction } from "@/app/(workspace)/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { LogoutButton } from "@/components/auth/logout-button";
-import { GlobalSearch } from "@/components/layout/global-search";
+import { GlobalSearchPalette, GlobalSearchTrigger } from "@/components/layout/global-search";
 import { NotificationsMenu, type NotificationItem } from "@/components/layout/notifications-menu";
 import { SettingsDialog } from "@/components/layout/settings-dialog";
 import { WorkspaceLiveProvider } from "@/components/layout/workspace-live-context";
@@ -105,6 +105,7 @@ export function AppShell({
   const [liveHasInboxUnread, setLiveHasInboxUnread] = useState(hasInboxUnread);
   const [liveHasStaffUnread, setLiveHasStaffUnread] = useState(hasStaffUnread);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const logoutFormRef = useRef<HTMLFormElement>(null);
   const businessInitial = (businessName || "V").charAt(0).toUpperCase();
   // Which nav item (sidebar + mobile bottom nav) gets the small unread dot —
@@ -148,6 +149,21 @@ export function AppShell({
       router.prefetch(href);
     }
   }, [pathname, router]);
+
+  // "/" opens the search palette from anywhere, like most apps that dock
+  // search in the sidebar — guarded so it doesn't fire while typing in a field.
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
+      event.preventDefault();
+      setSearchOpen(true);
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -209,7 +225,7 @@ export function AppShell({
             </div>
 
             <div className="mb-3 px-0.5">
-              <GlobalSearch compact />
+              <GlobalSearchTrigger compact onOpen={() => setSearchOpen(true)} />
             </div>
 
             <nav className="flex-1 space-y-1.5 px-0.5 py-2">
@@ -315,7 +331,7 @@ export function AppShell({
             </div>
             {/* Search moves into the sidebar at lg+ (compact instance above);
                 below lg the sidebar is hidden, so this is the only way to search. */}
-            <GlobalSearch className="mt-3 w-full lg:hidden" />
+            <GlobalSearchTrigger className="mt-3 w-full lg:hidden" onOpen={() => setSearchOpen(true)} />
           </header>
 
           <main className="relative flex-1 bg-background px-4 py-3 pb-28 sm:px-5 lg:px-6 lg:py-4 lg:pb-4">
@@ -385,6 +401,8 @@ export function AppShell({
         ownerEmail={ownerEmail}
         ownerPhone={ownerPhone}
       />
+
+      <GlobalSearchPalette open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   );
 }

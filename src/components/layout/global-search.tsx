@@ -29,45 +29,73 @@ const resultIcons = {
   Message: MessageSquareText,
 };
 
-export function GlobalSearch({ className, compact = false }: { className?: string; compact?: boolean }) {
+/** The quiet, always-visible control that opens the search palette — docked
+ * compact in the sidebar, or full-width in the mobile header fallback. */
+export function GlobalSearchTrigger({
+  className,
+  compact = false,
+  onOpen,
+}: {
+  className?: string;
+  compact?: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label="Search clients, appointments, staff, and messages"
+      className={cn(
+        "flex w-full items-center gap-2.5 rounded-(--radius-tile) border-0 bg-secondary/60 text-left transition-colors duration-(--duration-base) hover:bg-secondary",
+        compact ? "h-10 px-3" : "h-11 gap-3 px-4",
+        className
+      )}
+    >
+      <Search className="size-4 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+        {compact ? "Search" : "Search clients, appointments, staff, messages..."}
+      </span>
+      {compact ? (
+        <kbd className="hidden shrink-0 rounded-[0.3rem] border border-border/70 bg-white px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground lg:inline-block">
+          /
+        </kbd>
+      ) : null}
+    </button>
+  );
+}
+
+/** The spotlight-style command palette itself — a dimmed backdrop with a
+ * centered panel, matching how Vercel/Linear/Raycast surface global search:
+ * opened from anywhere (the sidebar trigger, the mobile trigger, or "/"),
+ * rendered once and shared so only one can ever be open at a time. */
+export function GlobalSearchPalette({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    function handlePointerDown(event: PointerEvent) {
-      if (!containerRef.current?.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    }
+    if (!open) return;
+    // Autofocus needs a tick after mount for the input to exist/be visible.
+    const timeout = window.setTimeout(() => inputRef.current?.focus(), 10);
+    return () => window.clearTimeout(timeout);
+  }, [open]);
 
-    document.addEventListener("pointerdown", handlePointerDown);
-
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, []);
-
-  // "/" focuses search from anywhere, like most apps that dock search in the
-  // sidebar — guarded so it doesn't fire while typing in another field.
   useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
-
-      const target = event.target as HTMLElement | null;
-      const tag = target?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
-
-      event.preventDefault();
-      inputRef.current?.focus();
+    if (!open) {
+      setQuery("");
+      setResults([]);
+      setActiveIndex(0);
     }
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [open]);
 
   useEffect(() => {
     const trimmedQuery = query.trim();
@@ -99,7 +127,6 @@ export function GlobalSearch({ className, compact = false }: { className?: strin
         const payload = (await response.json()) as { results?: SearchResult[] };
         setResults(payload.results ?? []);
         setActiveIndex(0);
-        setIsOpen(true);
       } catch {
         if (!controller.signal.aborted) {
           setResults([]);
@@ -117,83 +144,71 @@ export function GlobalSearch({ className, compact = false }: { className?: strin
     };
   }, [query]);
 
-  function closeSearch() {
-    setIsOpen(false);
-    setQuery("");
-    setResults([]);
-    setActiveIndex(0);
-  }
-
   function navigateToResult(result: SearchResult) {
-    closeSearch();
+    onOpenChange(false);
     router.push(result.href);
   }
 
+  if (!open) return null;
+
   return (
-    <div ref={containerRef} className={cn("relative", className)}>
+    <div className="fixed inset-0 z-[60] flex justify-center px-4 pt-[12vh] pb-4">
       <div
-        className={cn(
-          "flex items-center gap-2.5 rounded-(--radius-tile) border-0 bg-secondary/60 transition-colors duration-(--duration-base) hover:bg-secondary focus-within:bg-white",
-          compact ? "h-10 px-3" : "h-11 gap-3 px-4"
-        )}
+        aria-hidden="true"
+        onClick={() => onOpenChange(false)}
+        className="state-pop-fast absolute inset-0 bg-[#0b0d14]/35 backdrop-blur-[2px]"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search"
+        className="state-pop relative z-10 flex h-fit max-h-[min(560px,80vh)] w-full max-w-[560px] flex-col overflow-hidden rounded-(--radius-panel) border border-border/80 bg-white shadow-(--shadow-pop)"
       >
-        <Search className="size-4 shrink-0 text-muted-foreground" />
-        <input
-          ref={inputRef}
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setIsOpen(true);
-          }}
-          onFocus={() => setIsOpen(true)}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              setActiveIndex((current) => Math.min(current + 1, results.length - 1));
-            }
+        <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border/70 px-4">
+          <Search className="size-4.5 shrink-0 text-muted-foreground" />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setActiveIndex((current) => Math.min(current + 1, results.length - 1));
+              }
 
-            if (event.key === "ArrowUp") {
-              event.preventDefault();
-              setActiveIndex((current) => Math.max(current - 1, 0));
-            }
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setActiveIndex((current) => Math.max(current - 1, 0));
+              }
 
-            if (event.key === "Enter" && results[activeIndex]) {
-              event.preventDefault();
-              navigateToResult(results[activeIndex]);
-            }
+              if (event.key === "Enter" && results[activeIndex]) {
+                event.preventDefault();
+                navigateToResult(results[activeIndex]);
+              }
 
-            if (event.key === "Escape") {
-              setIsOpen(false);
-              event.currentTarget.blur();
+              if (event.key === "Escape") {
+                onOpenChange(false);
+              }
+            }}
+            placeholder="Search clients, appointments, staff, messages..."
+            aria-label="Search clients, appointments, staff, and messages"
+            aria-controls="global-search-results"
+            aria-activedescendant={
+              results[activeIndex] ? `global-search-result-${results[activeIndex].id}` : undefined
             }
-          }}
-          placeholder={compact ? "Search" : "Search clients, appointments, staff, messages..."}
-          aria-label="Search clients, appointments, staff, and messages"
-          aria-controls="global-search-results"
-          aria-activedescendant={
-            isOpen && results[activeIndex] ? `global-search-result-${results[activeIndex].id}` : undefined
-          }
-          className="h-full min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-          type="search"
-        />
-        {isLoading ? (
-          <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
-        ) : compact && !query ? (
-          <kbd className="hidden shrink-0 rounded-[0.3rem] border border-border/70 bg-white px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground lg:inline-block">
-            /
-          </kbd>
-        ) : null}
-      </div>
+            className="h-full min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground"
+            type="search"
+          />
+          {isLoading ? <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" /> : null}
+        </div>
 
-      {isOpen && query.trim().length >= 2 ? (
-        <div
-          className={cn(
-            "state-pop absolute top-[calc(100%+4px)] z-50 overflow-hidden rounded-(--radius-panel) border border-border/80 bg-white/96 shadow-[0_24px_60px_rgba(20,21,47,0.14)] backdrop-blur-xl",
-            compact ? "left-0 w-[340px]" : "left-0 right-0"
-          )}
-        >
-          {results.length > 0 ? (
-            <div id="global-search-results" className="max-h-[420px] overflow-y-auto p-2" role="listbox">
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {query.trim().length < 2 ? (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+              Type at least 2 characters to search.
+            </p>
+          ) : results.length > 0 ? (
+            <div id="global-search-results" className="p-2" role="listbox">
               {results.map((result, index) => {
                 const Icon = resultIcons[result.type];
 
@@ -209,7 +224,7 @@ export function GlobalSearch({ className, compact = false }: { className?: strin
                       index === activeIndex && "bg-primary/8"
                     )}
                     onMouseEnter={() => setActiveIndex(index)}
-                    onClick={closeSearch}
+                    onClick={() => onOpenChange(false)}
                   >
                     <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-(--radius-field) border border-border/80 bg-white text-primary">
                       <Icon className="size-4" />
@@ -232,12 +247,27 @@ export function GlobalSearch({ className, compact = false }: { className?: strin
               })}
             </div>
           ) : (
-            <p className="px-4 py-4 text-sm text-muted-foreground">
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
               {isLoading ? "Searching..." : "No matching records found."}
             </p>
           )}
         </div>
-      ) : null}
+
+        <div className="flex shrink-0 items-center gap-3 border-t border-border/70 px-4 py-2 text-[11px] font-medium text-muted-foreground">
+          <span className="inline-flex items-center gap-1">
+            <kbd className="rounded-[0.3rem] border border-border/70 bg-secondary/60 px-1.5 py-0.5 font-mono">↑↓</kbd>
+            Navigate
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <kbd className="rounded-[0.3rem] border border-border/70 bg-secondary/60 px-1.5 py-0.5 font-mono">↵</kbd>
+            Open
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <kbd className="rounded-[0.3rem] border border-border/70 bg-secondary/60 px-1.5 py-0.5 font-mono">esc</kbd>
+            Close
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
