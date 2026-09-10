@@ -60,6 +60,7 @@ import {
   type RecordFormValues,
 } from "@/components/clients/record-form-dialog";
 import {
+  SidebarSectionHeader,
   WorkspaceEmptyState,
   WorkspacePage,
 } from "@/components/workspace/workspace-layout";
@@ -1872,10 +1873,6 @@ function HealthSummaryRow({ title, value }: { title: string; value: string }) {
       <p className="mt-1 text-sm leading-6 text-muted-foreground">{value}</p>
     </div>
   );
-}
-
-function SidebarSectionHeader({ title }: { title: string }) {
-  return <h2 className="text-[15px] font-semibold leading-5 text-foreground">{title}</h2>;
 }
 
 function OverviewLine({ label, value }: { label: string; value: string }) {
