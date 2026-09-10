@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { KpiValue } from "@/components/workspace/kpi-value";
 import {
   FilterChip,
   WorkspaceEmptyState,
@@ -313,11 +314,14 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                   {member.completionRate > 0 ? (
                     <>
                       <p className="text-sm font-semibold text-foreground">
-                        {member.completionRate}%
+                        <KpiValue value={`${member.completionRate}%`} />
                       </p>
-                      <div className="mt-1 h-1.5 w-24 rounded-full bg-secondary">
+                      {/* Mount-once CSS entrance (.bar-grow), not framer-motion — unlike
+                          Reports' staff-load bar, this directory has no period selector,
+                          so there's no "retarget an already-mounted bar" case to support. */}
+                      <div className="mt-1 h-1.5 w-24 overflow-hidden rounded-full bg-secondary">
                         <div
-                          className="vela-gradient h-full rounded-full"
+                          className="bar-grow vela-gradient h-full rounded-full"
                           style={{ width: `${Math.min(member.completionRate, 100)}%` }}
                         />
                       </div>
