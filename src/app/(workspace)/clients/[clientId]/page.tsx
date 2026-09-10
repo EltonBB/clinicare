@@ -4,6 +4,7 @@ import { ClientDetailsPage } from "@/components/clients/client-details-page";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { buildClientRecord } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
+import { initialPaymentHistory } from "@/lib/client-payments";
 
 export default async function ClientDetailsRoute({
   params,
@@ -93,26 +94,7 @@ export default async function ClientDetailsRoute({
         },
         take: 60,
       },
-      payments: {
-        select: {
-          id: true,
-          appointmentId: true,
-          amountCents: true,
-          status: true,
-          description: true,
-          invoiceNumber: true,
-          receiptNumber: true,
-          paymentMethod: true,
-          billingNote: true,
-          receiptUrl: true,
-          paidAt: true,
-          createdAt: true,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-        take: 60,
-      },
+      payments: { ...initialPaymentHistory, where: { businessId: business.id } },
       healthItems: {
         select: {
           id: true,
