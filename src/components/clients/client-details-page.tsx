@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ComponentType, ReactNode } from "react";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -66,7 +66,8 @@ import {
 } from "@/components/workspace/workspace-layout";
 import { HeaderStat } from "@/components/workspace/header-stat";
 import { safeUploadErrorMessage, uploadWorkspaceDocument } from "@/lib/media-storage-client";
-import { cn, formatCurrency, getInitials } from "@/lib/utils";
+import { useClientPaymentHistory } from "@/hooks/use-client-payment-history";
+import { cn, getInitials } from "@/lib/utils";
 import type {
   ClientRecord,
   ClientStatus,
@@ -260,7 +261,16 @@ function stripPlaceholder(value: string, ...placeholders: string[]) {
 }
 
 export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
+  return <ClientDetailsContent key={initialClient.id} initialClient={initialClient} />;
+}
+
+function ClientDetailsContent({ initialClient }: ClientDetailsPageProps) {
   const [client, setClient] = useState(initialClient);
+  const paymentHistory = useClientPaymentHistory(client);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+  const exportRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => exportRequest.current?.abort(), []);
   const [dialog, setDialog] = useState<DialogState>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
@@ -282,9 +292,6 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   );
   const latestPayment = client.payments[0];
   const currentMedications = client.medications.filter((medication) => medication.isActive);
-  const totalBilledDisplay = formatCurrency(
-    client.payments.reduce((sum, payment) => sum + payment.amountCents, 0)
-  );
   const allergies = client.healthItems.filter((item) =>
     item.type.toLowerCase().includes("allerg")
   );
@@ -536,33 +543,33 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
     }
   }
 
-  function downloadPaymentStatement() {
-    const rows = [
-      ["Date", "Invoice", "Description", "Amount", "Status", "Payment method", "Receipt"],
-      ...client.payments.map((payment) => [
-        payment.paidAt || payment.createdAt,
-        payment.invoiceNumber || "",
-        payment.description || "Manual ledger entry",
-        payment.amountDisplay,
-        payment.status,
-        payment.paymentMethod || "Manual",
-        payment.receiptNumber || "",
-      ]),
-    ];
-    const csv = rows
-      .map((row) =>
-        row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")
-      )
-      .join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${client.name.replaceAll(" ", "-").toLowerCase()}-payment-statement.csv`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
+  async function downloadPaymentStatement() {
+    if (exportRequest.current) return;
+    const controller = new AbortController();
+    exportRequest.current = controller;
+    setIsExporting(true);
+    setExportError("");
+    try {
+      const response = await fetch(`/api/clients/${encodeURIComponent(client.id)}/payments?format=csv`, {
+        cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]),
+      });
+      if (!response.ok) throw new Error("Statement unavailable");
+      const blob = await response.blob();
+      if (controller.signal.aborted) return;
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "payment-statement.csv";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      if (!controller.signal.aborted) setExportError("We couldn't download the statement. Please try again.");
+    } finally {
+      exportRequest.current = null;
+      setIsExporting(false);
+    }
   }
 
   const activeFormDialog =
@@ -1543,8 +1550,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
         <TabsContent value="payments" className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
           <div className="space-y-3.5">
             <section className="grid gap-3 surface-card p-3.5 md:grid-cols-4">
-              <PaymentMetric label="Total billed" value={totalBilledDisplay} helper={`${client.payments.length} ledger entries`} />
-              <PaymentMetric label="Total paid" value={client.paymentStats.totalPaidDisplay} helper={`${client.payments.filter((payment) => payment.status.toLowerCase() === "paid").length} paid entries`} tone="good" />
+              <PaymentMetric label="Total billed" value={client.paymentStats.totalBilledDisplay} helper={`${client.paymentStats.ledgerEntries} ledger entries`} />
+              <PaymentMetric label="Total paid" value={client.paymentStats.totalPaidDisplay} helper={`${client.paymentStats.paidEntries} paid entries`} tone="good" />
               <PaymentMetric label="Outstanding" value={client.paymentStats.unpaidBalanceDisplay} helper="Open balance" tone={client.paymentStats.unpaidBalanceCents > 0 ? "danger" : "default"} />
               <PaymentMetric
                 label="Last payment"
@@ -1560,9 +1567,10 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   <button
                     type="button"
                     onClick={downloadPaymentStatement}
+                    disabled={isExporting}
                     className="text-sm font-medium text-primary transition-colors duration-(--duration-base) hover:text-foreground"
                   >
-                    Download statement
+                    {isExporting ? "Preparing statement…" : exportError ? "Retry statement" : "Download statement"}
                   </button>
                   <Button
                     size="sm"
@@ -1587,7 +1595,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/70 bg-white">
-                    {client.payments.map((payment) => (
+                    {paymentHistory.payments.map((payment) => (
                       <tr key={payment.id} className="transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]">
                         <td className="px-3 py-2.5 font-medium text-foreground">{payment.paidAt || payment.createdAt}</td>
                         <td className="px-3 py-2.5 text-muted-foreground">{payment.invoiceNumber || "-"}</td>
@@ -1638,13 +1646,25 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                         </td>
                       </tr>
                     ))}
-                    {client.payments.length === 0 ? (
+                    {paymentHistory.payments.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="px-4 py-6 text-sm text-muted-foreground">No payments yet.</td>
                       </tr>
                     ) : null}
                   </tbody>
                 </table>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/75 px-3.5 py-3">
+                <p className="text-sm text-muted-foreground" aria-live="polite">
+                  {paymentHistory.payments.length} of {client.paymentStats.ledgerEntries} entries shown
+                </p>
+                {paymentHistory.nextCursor ? (
+                  <Button variant="outline" size="sm" onClick={paymentHistory.loadMore} disabled={paymentHistory.loading || isPending}>
+                    {paymentHistory.loading ? "Loading…" : paymentHistory.error ? "Retry" : "Load more"}
+                  </Button>
+                ) : null}
+                {paymentHistory.error ? <p role="alert" className="w-full text-sm text-destructive">{paymentHistory.error}</p> : null}
+                {exportError ? <p role="alert" className="w-full text-sm text-destructive">{exportError}</p> : null}
               </div>
             </section>
           </div>
@@ -1675,9 +1695,9 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 </div>
               </div>
               <div className="mt-5 space-y-3 border-t border-border/70 pt-4 text-sm">
-                <SummaryRow label="Paid entries" value={client.payments.filter((payment) => payment.status.toLowerCase() === "paid").length} />
-                <SummaryRow label="Open entries" value={client.payments.filter((payment) => payment.status.toLowerCase() !== "paid").length} />
-                <SummaryRow label="Receipts linked" value={client.payments.filter((payment) => Boolean(payment.receiptUrl)).length} />
+                <SummaryRow label="Paid entries" value={client.paymentStats.paidEntries} />
+                <SummaryRow label="Open entries" value={client.paymentStats.ledgerEntries - client.paymentStats.paidEntries} />
+                <SummaryRow label="Receipts linked" value={client.paymentStats.receiptsLinked} />
                 <SummaryRow label="Last update" value={latestPayment?.createdAt ?? "No payments yet"} strong />
               </div>
             </section>
@@ -1909,4 +1929,3 @@ function OverviewLine({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-

@@ -17,6 +17,7 @@ import { format } from "date-fns";
 import { resolveMediaDisplayUrls } from "@/lib/media-storage-server";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
+import { buildPaymentPage, type PaymentCursor } from "@/lib/client-payments";
 
 export type ClientStatus = "active" | "at-risk" | "inactive" | "archived";
 
@@ -164,6 +165,7 @@ export type ClientRecord = {
   medications: ClientMedicationEntry[];
   documents: ClientDocumentEntry[];
   payments: ClientPaymentEntry[];
+  paymentNextCursor: PaymentCursor | null;
   messages: ClientMessageEntry[];
   healthItems: ClientHealthItemEntry[];
   careNotes: ClientCareNoteEntry[];
@@ -177,6 +179,11 @@ export type ClientRecord = {
     noShows: number;
   };
   paymentStats: {
+    totalBilledCents: number;
+    totalBilledDisplay: string;
+    ledgerEntries: number;
+    paidEntries: number;
+    receiptsLinked: number;
     totalPaidCents: number;
     unpaidBalanceCents: number;
     totalPaidDisplay: string;
@@ -429,26 +436,6 @@ async function buildDocuments(client: ClientWithRelations): Promise<ClientDocume
   });
 }
 
-function buildPayments(client: ClientWithRelations): ClientPaymentEntry[] {
-  return client.payments.map((payment) => ({
-    id: payment.id,
-    appointmentId: payment.appointmentId ?? "",
-    amountCents: payment.amountCents,
-    amountDisplay: formatMoney(payment.amountCents),
-    amountInput: (payment.amountCents / 100).toFixed(2),
-    status: payment.status,
-    description: payment.description ?? "",
-    invoiceNumber: payment.invoiceNumber ?? "",
-    receiptNumber: payment.receiptNumber ?? "",
-    paymentMethod: payment.paymentMethod ?? "",
-    billingNote: payment.billingNote ?? "",
-    receiptUrl: payment.receiptUrl ?? "",
-    paidAt: payment.paidAt ? format(payment.paidAt, "MMM d, yyyy") : "",
-    paidAtInput: payment.paidAt ? format(payment.paidAt, "yyyy-MM-dd") : "",
-    createdAt: format(payment.createdAt, "MMM d, yyyy"),
-  }));
-}
-
 function buildHealthItems(client: ClientWithRelations): ClientHealthItemEntry[] {
   return client.healthItems.map((item) => ({
     id: item.id,
@@ -550,12 +537,9 @@ function buildTimeline(client: ClientWithRelations): ClientTimelineEntry[] {
 export async function buildClientRecord(client: ClientWithRelations): Promise<ClientRecord> {
   const now = new Date();
 
-  // The appointments/payments arrays on `client` are display lists capped at
-  // take:25/take:60 (ordered most-recent-first) — fine for rendering history,
-  // but a patient with more visits/invoices than that would silently undercount
-  // completed/cancelled/pending and understate money totals. Aggregate those
-  // over the FULL history in the DB instead, unbounded by the display take limit.
-  const [appointmentCountsByStatus, upcomingCount, paymentSumsByStatus, galleryUrlMap] =
+  // History relations have display limits (payments include one lookahead row).
+  // Aggregate counts and money over the full history, independently of that page.
+  const [appointmentCountsByStatus, upcomingCount, paymentSumsByStatus, receiptsLinked, galleryUrlMap] =
     await Promise.all([
       prisma.appointment.groupBy({
         by: ["status"],
@@ -574,6 +558,10 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
         by: ["status"],
         where: { businessId: client.businessId, clientId: client.id },
         _sum: { amountCents: true },
+        _count: true,
+      }),
+      prisma.clientPayment.count({
+        where: { businessId: client.businessId, clientId: client.id, receiptUrl: { not: null }, NOT: { receiptUrl: "" } },
       }),
       // Batch-sign gallery images once (one request per bucket) instead of a
       // round-trip per item; independent of the aggregates above, so it runs
@@ -590,6 +578,10 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
 
   const paymentSum = (status: string) =>
     paymentSumsByStatus.find((row) => row.status === status)?._sum.amountCents ?? 0;
+  const totalBilledCents = paymentSumsByStatus.reduce((sum, row) => sum + (row._sum.amountCents ?? 0), 0);
+  const ledgerEntries = paymentSumsByStatus.reduce((sum, row) => sum + row._count, 0);
+  const paidEntries = paymentSumsByStatus.reduce((sum, row) => sum + (row.status.toLowerCase() === "paid" ? row._count : 0), 0);
+  const paymentPage = buildPaymentPage(client.payments);
   const totalPaidCents = paymentSum("Paid");
   const unpaidBalanceCents = paymentSum("Unpaid") + paymentSum("Partially Paid");
   const paymentStatus =
@@ -639,7 +631,8 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
     appointments: buildAppointments(client),
     medications: buildMedications(client),
     documents: await buildDocuments(client),
-    payments: buildPayments(client),
+    payments: paymentPage.payments,
+    paymentNextCursor: paymentPage.nextCursor,
     messages: buildMessages(client),
     healthItems: buildHealthItems(client),
     careNotes: buildCareNotes(client),
@@ -653,6 +646,11 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
       noShows: 0,
     },
     paymentStats: {
+      totalBilledCents,
+      totalBilledDisplay: formatMoney(totalBilledCents),
+      ledgerEntries,
+      paidEntries,
+      receiptsLinked,
       totalPaidCents,
       unpaidBalanceCents,
       totalPaidDisplay: formatMoney(totalPaidCents),

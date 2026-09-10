@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
+import { initialPaymentHistory } from "@/lib/client-payments";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { ensureConversationForClient, normalizeConversationsForBusiness } from "@/lib/inbox-server";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
@@ -387,26 +388,7 @@ async function fetchClientRecord(businessId: string, clientId: string) {
         },
         take: 60,
       },
-      payments: {
-        select: {
-          id: true,
-          appointmentId: true,
-          amountCents: true,
-          status: true,
-          description: true,
-          invoiceNumber: true,
-          receiptNumber: true,
-          paymentMethod: true,
-          billingNote: true,
-          receiptUrl: true,
-          paidAt: true,
-          createdAt: true,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-        take: 60,
-      },
+      payments: { ...initialPaymentHistory, where: { businessId: businessId } },
       healthItems: {
         select: {
           id: true,
