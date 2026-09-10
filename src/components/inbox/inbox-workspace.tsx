@@ -279,15 +279,32 @@ export function InboxWorkspace({
     };
   }, []);
 
-  // Jumps the thread to the newest message on every conversation switch and
-  // whenever the active thread grows (a reply arrives via poll or send) — the
-  // container's DOM node itself is recreated on switch (see the m.div's
+  // Jumps the thread to the newest message on every conversation switch, and
+  // whenever the active thread grows — but only if the operator was already
+  // near the bottom, so a reply landing via the 10s poll doesn't yank them
+  // away mid-scroll while they're rereading earlier messages. The container's
+  // DOM node itself is recreated on switch (see the m.div's
   // key={activeConversation.id} below), so this runs against the fresh node.
   const messageListRef = useRef<HTMLDivElement>(null);
+  const wasNearBottomRef = useRef(true);
+  const previousConversationIdRef = useRef<string | undefined>(undefined);
+
+  function handleMessageListScroll() {
+    const container = messageListRef.current;
+    if (!container) return;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    wasNearBottomRef.current = distanceFromBottom < 120;
+  }
+
   useEffect(() => {
     const container = messageListRef.current;
     if (!container) return;
-    container.scrollTop = container.scrollHeight;
+    const isNewConversation = previousConversationIdRef.current !== activeConversation?.id;
+    previousConversationIdRef.current = activeConversation?.id;
+    if (isNewConversation || wasNearBottomRef.current) {
+      container.scrollTop = container.scrollHeight;
+      wasNearBottomRef.current = true;
+    }
   }, [activeConversation?.id, activeConversation?.messages.length]);
 
   // Fresh retry budget each time a different conversation is selected —
@@ -752,7 +769,11 @@ export function InboxWorkspace({
                     </div>
                   </div>
 
-                  <div ref={messageListRef} className="flex-1 overflow-y-auto bg-muted/22 px-4 py-4">
+                  <div
+                    ref={messageListRef}
+                    onScroll={handleMessageListScroll}
+                    className="flex-1 overflow-y-auto bg-muted/22 px-4 py-4"
+                  >
                     <div className="mx-auto max-w-3xl space-y-2.5">
                       {activeConversation.messages.map((message, index) => {
                         const previousMessage = activeConversation.messages[index - 1];
