@@ -10,9 +10,10 @@ import {
   Minus,
 } from "lucide-react";
 
+import { KpiValue } from "@/components/workspace/kpi-value";
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
 import { cn } from "@/lib/utils";
-import { fadeIn, staggerChildren, staggerItem } from "@/lib/motion";
+import { easeOutQuart, fadeIn, staggerChildren, staggerItem } from "@/lib/motion";
 import type {
   ReportKpi,
   ReportMetricTrend,
@@ -604,28 +605,32 @@ function DonutChart({
   return (
     <svg viewBox={`0 0 ${size} ${size}`} className="size-32">
       {nonZero.length === 1 ? (
-        <circle
+        <m.circle
           cx={center}
           cy={center}
           r={radius}
           fill="none"
           stroke={statusColor(nonZero[0].label)}
           strokeWidth={hovered === nonZero[0].label ? strokeWidth + 3 : strokeWidth}
-          opacity={hovered && hovered !== nonZero[0].label ? 0.25 : 1}
-          className="transition-[stroke-width,opacity] duration-(--duration-base)"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: hovered && hovered !== nonZero[0].label ? 0.25 : 1 }}
+          transition={{ duration: 0.35, ease: easeOutQuart }}
+          className="transition-[stroke-width] duration-(--duration-base)"
           onMouseEnter={() => onHover(nonZero[0].label)}
         />
       ) : (
-        arcs.map(({ item, d }) => (
-          <path
+        arcs.map(({ item, d }, index) => (
+          <m.path
             key={item.label}
             d={d}
             fill="none"
             stroke={statusColor(item.label)}
             strokeWidth={hovered === item.label ? strokeWidth + 3 : strokeWidth}
             strokeLinecap="butt"
-            opacity={hovered && hovered !== item.label ? 0.25 : 1}
-            className="transition-[stroke-width,opacity] duration-(--duration-base)"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: hovered && hovered !== item.label ? 0.25 : 1 }}
+            transition={{ duration: 0.35, ease: easeOutQuart, delay: index * 0.05 }}
+            className="transition-[stroke-width] duration-(--duration-base)"
             onMouseEnter={() => onHover(item.label)}
           />
         ))
@@ -691,7 +696,9 @@ function KpiCard({
         <div className="flex flex-1 flex-col p-3.5">
           <p className="truncate text-sm font-medium whitespace-nowrap text-muted-foreground">{kpi.label}</p>
           <div className="mt-auto pt-2.5">
-            <p className="text-[1.6rem] font-semibold leading-8 tracking-tight text-foreground">{kpi.value || "—"}</p>
+            <p className="text-[1.6rem] font-semibold leading-8 tracking-tight text-foreground">
+              {kpi.value ? <KpiValue key={kpi.value} value={kpi.value} /> : "—"}
+            </p>
             <div className="mt-1 flex items-center gap-1.5 whitespace-nowrap">
               {kpi.delta ? (
                 <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold", deltaPillStyles[kpi.trend])}>
