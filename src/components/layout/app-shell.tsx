@@ -208,6 +208,10 @@ export function AppShell({
               <BrandMark href="/dashboard" includeSubtitle={false} size="lg" />
             </div>
 
+            <div className="mb-3 px-0.5">
+              <GlobalSearch compact />
+            </div>
+
             <nav className="flex-1 space-y-1.5 px-0.5 py-2">
             {navigationItems
               .filter((item) => item.href !== "/settings")
@@ -297,7 +301,6 @@ export function AppShell({
           <header className="sticky top-0 z-20 border-b border-border/70 bg-white px-4 py-3 backdrop-blur-xl sm:px-5 lg:px-6 lg:py-0">
             <div className="flex w-full items-center gap-4 lg:h-[56px] lg:gap-5">
               <BrandMark compact href="/dashboard" className="lg:hidden" />
-              <GlobalSearch className="hidden max-w-md flex-1 md:block" />
               <div className="ml-auto flex items-center gap-1.5">
                 <NotificationsMenu
                   unreadCount={liveUnreadCount}
@@ -310,7 +313,9 @@ export function AppShell({
                 </div>
               </div>
             </div>
-            <GlobalSearch className="mt-3 w-full md:hidden" />
+            {/* Search moves into the sidebar at lg+ (compact instance above);
+                below lg the sidebar is hidden, so this is the only way to search. */}
+            <GlobalSearch className="mt-3 w-full lg:hidden" />
           </header>
 
           <main className="relative flex-1 bg-background px-4 py-3 pb-28 sm:px-5 lg:px-6 lg:py-4 lg:pb-4">
