@@ -10,7 +10,7 @@ import {
   Minus,
 } from "lucide-react";
 
-import { KpiValue } from "@/components/workspace/kpi-value";
+import { KpiValue, useCountUp } from "@/components/workspace/kpi-value";
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
 import { cn } from "@/lib/utils";
 import { easeOutQuart, fadeIn, staggerChildren, staggerItem } from "@/lib/motion";
@@ -305,10 +305,13 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                       </g>
                     );
                   })}
-                  <path
+                  <m.path
                     d={`${linePath} L ${plotWidth} ${PLOT_HEIGHT} L 0 ${PLOT_HEIGHT} Z`}
                     fill={`url(#${chartGradientId})`}
                     transform={`translate(${PLOT_LEFT} ${PLOT_TOP})`}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.4, ease: "easeOut", delay: 0.2 }}
                   />
                   <path
                     d={previousLinePath}
@@ -320,7 +323,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                     strokeLinecap="round"
                     transform={`translate(${PLOT_LEFT} ${PLOT_TOP})`}
                   />
-                  <path
+                  <m.path
                     d={linePath}
                     fill="none"
                     stroke="var(--primary)"
@@ -328,8 +331,11 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     transform={`translate(${PLOT_LEFT} ${PLOT_TOP})`}
+                    initial={{ pathLength: 0 }}
+                    animate={{ pathLength: 1 }}
+                    transition={{ duration: 0.6, ease: "easeOut" }}
                   />
-                  <path
+                  <m.path
                     d={completedLinePath}
                     fill="none"
                     stroke="var(--primary)"
@@ -338,6 +344,9 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                     strokeWidth="2"
                     strokeLinecap="round"
                     transform={`translate(${PLOT_LEFT} ${PLOT_TOP})`}
+                    initial={{ pathLength: 0 }}
+                    animate={{ pathLength: 1 }}
+                    transition={{ duration: 0.6, ease: "easeOut" }}
                   />
                   {period.chart.points.map((point, index) => {
                     const x = PLOT_LEFT + (index / Math.max(period.chart.points.length - 1, 1)) * plotWidth;
@@ -585,6 +594,15 @@ function DonutChart({
   const total = items.reduce((sum, item) => sum + item.count, 0);
   const nonZero = items.filter((item) => item.count > 0);
   const pad = nonZero.length > 1 ? 0.055 : 0;
+  // The per-arc stagger delay below is for the mount reveal only — without
+  // this guard, every hover-driven opacity change would reuse the same
+  // delayed transition, making dimming lag behind the cursor instead of
+  // responding instantly.
+  const [hasMounted, setHasMounted] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setHasMounted(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   let cursor = -Math.PI / 2;
   const arcs = nonZero.map((item) => {
@@ -629,7 +647,11 @@ function DonutChart({
             strokeLinecap="butt"
             initial={{ opacity: 0 }}
             animate={{ opacity: hovered && hovered !== item.label ? 0.25 : 1 }}
-            transition={{ duration: 0.35, ease: easeOutQuart, delay: index * 0.05 }}
+            transition={{
+              duration: 0.35,
+              ease: easeOutQuart,
+              delay: hasMounted ? 0 : index * 0.05,
+            }}
             className="transition-[stroke-width] duration-(--duration-base)"
             onMouseEnter={() => onHover(item.label)}
           />
@@ -641,14 +663,19 @@ function DonutChart({
 
 function ScoreGauge({ score, tone }: { score: number; tone: ReportSnapshotTone }) {
   const color = snapshotToneColor[tone];
+  // Same rAF/ease-out-quart count-up KpiValue uses (shared hook), driving the
+  // ring and the number together — eases from whatever score last settled at
+  // rather than always from 0, so a score change without a remount (e.g. two
+  // custom date ranges in a row) animates cleanly between the two numbers.
+  const displayScore = Math.round(useCountUp(score));
 
   return (
     <div
       className="grid size-14 shrink-0 place-items-center rounded-full"
-      style={{ background: `conic-gradient(${color} ${score}%, var(--secondary) 0)` }}
+      style={{ background: `conic-gradient(${color} ${displayScore}%, var(--secondary) 0)` }}
     >
       <div className="grid size-11 place-items-center rounded-full bg-white">
-        <span className="text-base font-semibold tabular-nums text-foreground">{score}</span>
+        <span className="text-base font-semibold tabular-nums text-foreground">{displayScore}</span>
       </div>
     </div>
   );
