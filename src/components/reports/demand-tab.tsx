@@ -42,7 +42,7 @@ export function BookingPatternsCard({ period }: { period: ReportPeriodView }) {
       variants={fadeIn}
       initial="initial"
       animate="animate"
-      className="flex h-full flex-col rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)"
+      className="surface-card flex h-full flex-col p-3.5"
     >
       <h2 className="px-1 text-[15px] font-semibold text-foreground">Booking patterns</h2>
 

@@ -61,7 +61,7 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
 
   if (staffLoad.length === 0) {
     return (
-      <section className="flex flex-col rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
+      <section className="surface-card flex flex-col p-3.5">
         <h2 className="px-1 pb-2 text-[15px] font-semibold text-foreground">Staff performance</h2>
         <WorkspaceEmptyState
           compact
@@ -74,7 +74,7 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
   }
 
   return (
-    <section className="flex flex-col rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-card)">
+    <section className="surface-card flex flex-col p-3.5">
       <h2 className="px-1 pb-2 text-[15px] font-semibold text-foreground">Staff performance</h2>
       <div className="flex items-center gap-3 px-1 pb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         <span className="min-w-0 max-w-[240px] flex-1">Provider</span>
