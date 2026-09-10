@@ -1,11 +1,8 @@
-function SkeletonBlock({ className = "" }: { className?: string }) {
-  return (
-    <div
-      className={`animate-pulse rounded-[0.82rem] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(242,244,255,0.72))] shadow-[0_8px_20px_rgba(20,21,47,0.026)] ${className}`}
-    />
-  );
-}
+import { SkeletonBlock } from "@/components/workspace/skeleton";
 
+// Dashboard-shaped — the fallback for any route below that doesn't define
+// its own loading.tsx. Routes with a meaningfully different shape (Calendar,
+// Inbox, directories, detail pages, Reports, Settings, forms) each have one.
 export default function WorkspaceLoading() {
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-3.5">
