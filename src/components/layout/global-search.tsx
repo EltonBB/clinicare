@@ -29,7 +29,7 @@ const resultIcons = {
   Message: MessageSquareText,
 };
 
-export function GlobalSearch({ className }: { className?: string }) {
+export function GlobalSearch({ className, compact = false }: { className?: string; compact?: boolean }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -37,6 +37,7 @@ export function GlobalSearch({ className }: { className?: string }) {
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     function handlePointerDown(event: PointerEvent) {
@@ -48,6 +49,24 @@ export function GlobalSearch({ className }: { className?: string }) {
     document.addEventListener("pointerdown", handlePointerDown);
 
     return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, []);
+
+  // "/" focuses search from anywhere, like most apps that dock search in the
+  // sidebar — guarded so it doesn't fire while typing in another field.
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
+
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
+
+      event.preventDefault();
+      inputRef.current?.focus();
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   useEffect(() => {
@@ -112,9 +131,15 @@ export function GlobalSearch({ className }: { className?: string }) {
 
   return (
     <div ref={containerRef} className={cn("relative", className)}>
-      <div className="flex h-11 items-center gap-3 rounded-(--radius-field) border-0 bg-transparent px-4 transition-colors duration-(--duration-base) hover:bg-secondary/70 focus-within:bg-white">
-        <Search className="size-4 shrink-0 text-primary" />
+      <div
+        className={cn(
+          "flex items-center gap-2.5 rounded-(--radius-tile) border-0 bg-secondary/60 transition-colors duration-(--duration-base) hover:bg-secondary focus-within:bg-white",
+          compact ? "h-10 px-3" : "h-11 gap-3 px-4"
+        )}
+      >
+        <Search className="size-4 shrink-0 text-muted-foreground" />
         <input
+          ref={inputRef}
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
@@ -139,9 +164,10 @@ export function GlobalSearch({ className }: { className?: string }) {
 
             if (event.key === "Escape") {
               setIsOpen(false);
+              event.currentTarget.blur();
             }
           }}
-          placeholder="Search clients, appointments, staff, messages..."
+          placeholder={compact ? "Search" : "Search clients, appointments, staff, messages..."}
           aria-label="Search clients, appointments, staff, and messages"
           aria-controls="global-search-results"
           aria-activedescendant={
@@ -152,11 +178,20 @@ export function GlobalSearch({ className }: { className?: string }) {
         />
         {isLoading ? (
           <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+        ) : compact && !query ? (
+          <kbd className="hidden shrink-0 rounded-[0.3rem] border border-border/70 bg-white px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground lg:inline-block">
+            /
+          </kbd>
         ) : null}
       </div>
 
       {isOpen && query.trim().length >= 2 ? (
-        <div className="state-pop absolute left-0 right-0 top-13 z-50 overflow-hidden rounded-(--radius-panel) border border-border/80 bg-white/96 shadow-[0_24px_60px_rgba(20,21,47,0.14)] backdrop-blur-xl">
+        <div
+          className={cn(
+            "state-pop absolute top-[calc(100%+4px)] z-50 overflow-hidden rounded-(--radius-panel) border border-border/80 bg-white/96 shadow-[0_24px_60px_rgba(20,21,47,0.14)] backdrop-blur-xl",
+            compact ? "left-0 w-[340px]" : "left-0 right-0"
+          )}
+        >
           {results.length > 0 ? (
             <div id="global-search-results" className="max-h-[420px] overflow-y-auto p-2" role="listbox">
               {results.map((result, index) => {
