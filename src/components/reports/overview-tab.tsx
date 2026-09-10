@@ -582,10 +582,10 @@ function DonutChart({
   hovered: string | null;
   onHover: (label: string) => void;
 }) {
-  const size = 132;
-  const strokeWidth = 13;
+  const size = 148;
+  const strokeWidth = 14;
   const center = size / 2;
-  const radius = 52;
+  const radius = 58;
   const circumference = 2 * Math.PI * radius;
   const total = items.reduce((sum, item) => sum + item.count, 0);
   const nonZero = items.filter((item) => item.count > 0);

@@ -23,45 +23,33 @@ function SkeletonHeader({ actionWidth = "w-36" }: { actionWidth?: string }) {
   );
 }
 
-function SkeletonToolbar() {
-  return (
-    <div className="surface-card flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
-      <SkeletonBlock className="h-10 w-full max-w-xs" />
-      <div className="flex gap-2">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <SkeletonBlock key={index} className="h-8 w-20" />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function SkeletonTable({ rows = 7 }: { rows?: number }) {
-  return (
-    <div className="overflow-hidden rounded-(--radius-card) border border-border/80 bg-white shadow-(--shadow-card)">
-      <div className="flex min-h-[40px] items-center border-b border-border/70 bg-[#f8fafc] px-3.5 py-2">
-        <SkeletonBlock className="h-3 w-24" />
-      </div>
-      <div className="divide-y divide-border/65">
-        {Array.from({ length: rows }).map((_, index) => (
-          <div key={index} className="flex items-center gap-3 px-3.5 py-3">
-            <SkeletonBlock className="size-9 shrink-0 rounded-(--radius-tile)" />
-            <SkeletonBlock className="h-3.5 w-1/4" />
-            <SkeletonBlock className="ml-auto h-3.5 w-16" />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // Clients / Staff directories: header (no KPI band, per AGENTS.md) → toolbar → table.
 export function DirectoryPageSkeleton() {
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-3">
       <SkeletonHeader />
-      <SkeletonToolbar />
-      <SkeletonTable />
+      <div className="surface-card flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
+        <SkeletonBlock className="h-10 w-full max-w-xs" />
+        <div className="flex gap-2">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <SkeletonBlock key={index} className="h-8 w-20" />
+          ))}
+        </div>
+      </div>
+      <div className="overflow-hidden rounded-(--radius-card) border border-border/80 bg-white shadow-(--shadow-card)">
+        <div className="flex min-h-[40px] items-center border-b border-border/70 bg-[#f8fafc] px-3.5 py-2">
+          <SkeletonBlock className="h-3 w-24" />
+        </div>
+        <div className="divide-y divide-border/65">
+          {Array.from({ length: 7 }).map((_, index) => (
+            <div key={index} className="flex items-center gap-3 px-3.5 py-3">
+              <SkeletonBlock className="size-9 shrink-0 rounded-(--radius-tile)" />
+              <SkeletonBlock className="h-3.5 w-1/4" />
+              <SkeletonBlock className="ml-auto h-3.5 w-16" />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
