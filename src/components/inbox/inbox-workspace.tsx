@@ -288,6 +288,11 @@ export function InboxWorkspace({
   const messageListRef = useRef<HTMLDivElement>(null);
   const wasNearBottomRef = useRef(true);
   const previousConversationIdRef = useRef<string | undefined>(undefined);
+  // Set right before sendMessage's own state update lands, so the operator
+  // always sees their own message appear even if they'd scrolled up to
+  // reread history — unlike an incoming poll reply, a local send should
+  // never be silently left off-screen.
+  const justSentRef = useRef(false);
 
   function handleMessageListScroll() {
     const container = messageListRef.current;
@@ -308,9 +313,10 @@ export function InboxWorkspace({
     if (!container) return;
     const isNewConversation = previousConversationIdRef.current !== activeConversation?.id;
     previousConversationIdRef.current = activeConversation?.id;
-    if (isNewConversation || wasNearBottomRef.current) {
+    if (isNewConversation || wasNearBottomRef.current || justSentRef.current) {
       container.scrollTop = container.scrollHeight;
       wasNearBottomRef.current = true;
+      justSentRef.current = false;
     }
   }, [activeConversation?.id, newestMessageId]);
 
@@ -478,6 +484,7 @@ export function InboxWorkspace({
         return;
       }
 
+      justSentRef.current = true;
       setConversations((current) => [
         result.conversation!,
         ...current.filter((conversation) => conversation.id !== result.conversation!.id),
