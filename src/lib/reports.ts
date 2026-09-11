@@ -25,6 +25,7 @@ import {
   getZonedDayWindowFromParts,
   getZonedMonthWindow,
   getZonedWeekWindow,
+  zonedCalendarDaysBetween,
 } from "@/lib/time-zone";
 import { sumMergedIntervals } from "@/lib/utils";
 
@@ -2356,16 +2357,32 @@ export function buildReportsViewFromWorkspace({
     previousEnd: monthlyPreviousEnd,
   };
   const customWindow: PeriodWindow | undefined = customRange
-    ? {
-        start: customRange.start,
-        end: customRange.end,
-        previousStart: new Date(
-          customRange.start.getTime() -
-            Math.max(customRange.end.getTime() - customRange.start.getTime(), 86_400_000 - 1) -
-            1
-        ),
-        previousEnd: new Date(customRange.start.getTime() - 1),
-      }
+    ? (() => {
+        // Shift back by whole zoned calendar days, not elapsed milliseconds —
+        // a range crossing a DST transition would otherwise land the previous
+        // window on a different number of local days than the selected range,
+        // pairing the wrong comparison buckets (Codex P2).
+        const rangeDays = Math.max(
+          zonedCalendarDaysBetween(customRange.start, customRange.end, timeZone) + 1,
+          1
+        );
+        const previousStartParts = addZonedDays(
+          getZonedDateParts(customRange.start, timeZone),
+          -rangeDays
+        );
+
+        return {
+          start: customRange.start,
+          end: customRange.end,
+          previousStart: getZonedDayWindowFromParts(
+            previousStartParts.year,
+            previousStartParts.month,
+            previousStartParts.day,
+            timeZone
+          ).start,
+          previousEnd: new Date(customRange.start.getTime() - 1),
+        };
+      })()
     : undefined;
 
   const dailyCurrent = buildPeriodStats({
