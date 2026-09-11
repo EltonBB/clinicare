@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   format,
@@ -17,17 +17,9 @@ import { refreshAnalyticsInsightsAction } from "@/app/(workspace)/reports/action
 import { fieldInputClass, WorkspaceHeader, WorkspacePage } from "@/components/workspace/workspace-layout";
 import { MonthGrid } from "@/components/workspace/month-grid";
 import { LazyMotionProvider } from "@/components/layout/motion-provider";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Input } from "@/components/ui/input";
+import { useDismissOnOutsideOrEscape } from "@/hooks/use-dismiss-on-outside-or-escape";
 import { cn } from "@/lib/utils";
 import type { ReportPeriodKey, ReportsViewModel } from "@/lib/reports";
 import { AppointmentStatusCard, HighlightsCard, OverviewTab } from "./overview-tab";
@@ -136,6 +128,8 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const [rangeOpen, setRangeOpen] = useState(false);
   const [rangeError, setRangeError] = useState("");
+  const rangeContainerRef = useRef<HTMLDivElement>(null);
+  useDismissOnOutsideOrEscape(rangeContainerRef, () => setRangeOpen(false), { active: rangeOpen });
   const router = useRouter();
   const period = view.periods[selectedPeriod];
   const [fromInput, setFromInput] = useState(period.periodStartKey);
@@ -220,28 +214,28 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                     );
                   })}
                 </div>
-                <button
-                  type="button"
-                  aria-label="Choose a custom date range"
-                  aria-haspopup="dialog"
-                  aria-expanded={rangeOpen}
-                  onClick={() => setRangeOpen(true)}
-                  className={cn(
-                    "grid size-10 place-items-center rounded-(--radius-card) border bg-white transition-[background-color,border-color,color,transform] duration-(--duration-base) ease-(--ease-out-quint) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 active:scale-[0.97]",
-                    rangeOpen || selectedPeriod === "custom"
-                      ? "border-primary/40 text-primary"
-                      : "border-border/80 text-muted-foreground hover:border-primary/30 hover:text-foreground"
-                  )}
-                >
-                  <CalendarDays className="size-4" />
-                </button>
-                <Dialog open={rangeOpen} onOpenChange={setRangeOpen}>
-                  <DialogContent className="gap-0 p-0 sm:max-w-[420px]">
-                    <DialogHeader className="px-5 pt-5">
-                      <DialogTitle>Custom range</DialogTitle>
-                      <DialogDescription>Pick a start and end date to analyse.</DialogDescription>
-                    </DialogHeader>
-                    <div className="px-5 py-4">
+                <div ref={rangeContainerRef} className="relative">
+                  <button
+                    type="button"
+                    aria-label="Choose a custom date range"
+                    aria-haspopup="dialog"
+                    aria-expanded={rangeOpen}
+                    onClick={() => setRangeOpen((current) => !current)}
+                    className={cn(
+                      "grid size-10 place-items-center rounded-(--radius-card) border bg-white transition-[background-color,border-color,color,transform] duration-(--duration-base) ease-(--ease-out-quint) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 active:scale-[0.97]",
+                      rangeOpen || selectedPeriod === "custom"
+                        ? "border-primary/40 text-primary"
+                        : "border-border/80 text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                    )}
+                  >
+                    <CalendarDays className="size-4" />
+                  </button>
+                  {rangeOpen ? (
+                    <div
+                      role="dialog"
+                      aria-label="Custom range"
+                      className="state-pop absolute right-0 top-[calc(100%+8px)] z-50 w-[320px] origin-top-right rounded-(--radius-card) border border-border/80 bg-white p-4 shadow-(--shadow-pop)"
+                    >
                       <RangeCalendar
                         from={fromInput}
                         to={toInput}
@@ -254,22 +248,26 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                       {rangeError ? (
                         <p className="mt-2 text-center text-xs font-medium text-destructive">{rangeError}</p>
                       ) : null}
+                      <div className="mt-3 flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setRangeOpen(false)}
+                          className="inline-flex h-9 items-center justify-center rounded-(--radius-card) border border-border/75 bg-white px-3.5 text-sm font-semibold text-foreground transition-[background-color,border-color] duration-(--duration-base) hover:border-border hover:bg-[#f7f9fc] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={applyRange}
+                          disabled={!fromInput || !toInput}
+                          className={cn(buttonVariants({ variant: "solid" }), "rounded-(--radius-card) px-3.5")}
+                        >
+                          Analyse range
+                        </button>
+                      </div>
                     </div>
-                    <DialogFooter>
-                      <DialogClose className="inline-flex h-9 items-center justify-center rounded-(--radius-card) border border-border/75 bg-white px-3.5 text-sm font-semibold text-foreground transition-[background-color,border-color] duration-(--duration-base) hover:border-border hover:bg-[#f7f9fc] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45">
-                        Cancel
-                      </DialogClose>
-                      <button
-                        type="button"
-                        onClick={applyRange}
-                        disabled={!fromInput || !toInput}
-                        className={cn(buttonVariants({ variant: "solid" }), "rounded-(--radius-card) px-3.5")}
-                      >
-                        Analyse range
-                      </button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+                  ) : null}
+                </div>
                 <button
                   type="button"
                   onClick={refreshInsights}

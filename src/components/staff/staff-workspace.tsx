@@ -270,6 +270,11 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                         />
                       ) : null}
                     </p>
+                    {member.email || member.phone ? (
+                      <p className="truncate text-sm text-muted-foreground">
+                        {member.email || member.phone}
+                      </p>
+                    ) : null}
                   </div>
                 </Link>
                 <div className="min-w-0">

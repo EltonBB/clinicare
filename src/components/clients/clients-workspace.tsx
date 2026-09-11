@@ -247,6 +247,11 @@ export function ClientsWorkspace({
                     </Avatar>
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-foreground">{client.name}</p>
+                      {client.phone || client.email ? (
+                        <p className="truncate text-sm text-muted-foreground">
+                          {client.phone || client.email}
+                        </p>
+                      ) : null}
                     </div>
                   </Link>
                   <p className="text-sm text-muted-foreground lg:block">
