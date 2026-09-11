@@ -7,19 +7,22 @@ import { useEffect, useRef, useState } from "react";
  * value that changes without the component remounting (e.g. a score that
  * updates across two custom date ranges) animates smoothly between the two
  * numbers instead of visibly dropping to 0 first. State starts already at
- * `target`, so SSR/no-JS/slow-hydration never show a wrong number the old
- * static render never showed either; the dip-then-rise only happens once
- * client JS actually runs the effect.
+ * `target` (so SSR/no-JS/slow-hydration never show a wrong number the old
+ * static render never showed either) unless `animateOnMount` is set, which
+ * starts from 0 instead — for a call site with no other retarget trigger
+ * (e.g. a Dashboard tile that only ever mounts once per page load), that's
+ * the only way the count-up effect ever gets to run at all.
  */
-export function useCountUp(target: number) {
-  const [display, setDisplay] = useState(target);
-  const previousTargetRef = useRef(target);
+export function useCountUp(target: number, options?: { animateOnMount?: boolean }) {
+  const animateOnMount = options?.animateOnMount ?? false;
+  const [display, setDisplay] = useState(animateOnMount ? 0 : target);
+  const previousTargetRef = useRef(animateOnMount ? 0 : target);
 
   useEffect(() => {
     const from = previousTargetRef.current;
-    previousTargetRef.current = target;
 
     if (from === target || !Number.isFinite(target)) {
+      previousTargetRef.current = target;
       return;
     }
 
@@ -31,7 +34,10 @@ export function useCountUp(target: number) {
       // Deferred a frame so this stays inside an async callback rather than
       // the effect body itself (calling setState synchronously in an effect
       // is flagged by react-hooks/set-state-in-effect).
-      const raf = requestAnimationFrame(() => setDisplay(target));
+      const raf = requestAnimationFrame(() => {
+        previousTargetRef.current = target;
+        setDisplay(target);
+      });
       return () => cancelAnimationFrame(raf);
     }
 
@@ -40,8 +46,15 @@ export function useCountUp(target: number) {
     let raf = 0;
 
     const frame = (timestamp: number) => {
+      // Committed here, not synchronously above — React 19's dev-mode
+      // double-invokes a mount effect once (run, cleanup, run again); the
+      // first run's rAF never reaches this callback before its cleanup
+      // cancels it, so committing here means only the surviving second
+      // run's "from" reads the real previous value instead of one the
+      // cancelled first run already advanced to `target`.
       if (!start) {
         start = timestamp;
+        previousTargetRef.current = target;
       }
 
       const progress = Math.min((timestamp - start) / duration, 1);
@@ -64,6 +77,7 @@ export function useCountUp(target: number) {
 export function KpiValue({
   value,
   truncate = false,
+  animateOnMount = false,
 }: {
   value: string;
   // The default layout reserves width for the final string via an invisible
@@ -75,6 +89,10 @@ export function KpiValue({
   // a single plain span instead, trading the anti-reflow trick for working
   // ellipsis truncation.
   truncate?: boolean;
+  // Counts up from 0 on this instance's first mount — for a call site with
+  // no other retarget trigger (a Dashboard tile that only mounts once per
+  // page load, never re-rendered with a new target in place).
+  animateOnMount?: boolean;
 }) {
   // Decimal part (if any) is captured with the digits, not left in the
   // suffix — otherwise a value like "66.7%" would count the whole part up
@@ -83,7 +101,7 @@ export function KpiValue({
   const raw = match ? match[2].replace(/,/g, "") : "";
   const parsedTarget = match ? Number(raw) : NaN;
   const decimals = raw.includes(".") ? raw.split(".")[1].length : 0;
-  const display = useCountUp(Number.isFinite(parsedTarget) ? parsedTarget : 0);
+  const display = useCountUp(Number.isFinite(parsedTarget) ? parsedTarget : 0, { animateOnMount });
 
   const formatted = match
     ? `${match[1]}${display.toLocaleString("en-US", {
