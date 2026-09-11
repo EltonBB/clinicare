@@ -82,7 +82,7 @@ function KpiTile({
         {label}
       </p>
       <p className="mt-2 text-[1.6rem] font-semibold leading-none tracking-tight text-foreground">
-        <KpiValue key={value} value={value} />
+        <KpiValue value={value} animateOnMount />
       </p>
       <p
         className={cn(
