@@ -697,7 +697,7 @@ function KpiCard({
           <p className="truncate text-sm font-medium whitespace-nowrap text-muted-foreground">{kpi.label}</p>
           <div className="mt-auto pt-2.5">
             <p className="text-[1.6rem] font-semibold leading-8 tracking-tight text-foreground">
-              {kpi.value ? <KpiValue key={kpi.value} value={kpi.value} /> : "—"}
+              {kpi.value ? <KpiValue value={kpi.value} /> : "—"}
             </p>
             <div className="mt-1 flex items-center gap-1.5 whitespace-nowrap">
               {kpi.delta ? (
