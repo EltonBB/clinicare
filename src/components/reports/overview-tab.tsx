@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { m } from "framer-motion";
+import { m, useReducedMotion } from "framer-motion";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -144,6 +144,10 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
   const [chartWidth, setChartWidth] = useState(820);
   const chartAreaRef = useRef<HTMLDivElement | null>(null);
   const chartGradientId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  // SVG `pathLength` isn't a transform/layout property, so MotionConfig's
+  // reducedMotion="user" (motion-provider.tsx) doesn't cover it — the trace-in
+  // draw has to be gated here explicitly (Codex P2).
+  const prefersReducedMotion = useReducedMotion();
 
   useResetOnPeriodChange(period, () => {
     setChartHover(null);
@@ -327,10 +331,15 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     transform={`translate(${PLOT_LEFT} ${PLOT_TOP})`}
-                    initial={{ pathLength: 0 }}
+                    initial={prefersReducedMotion ? false : { pathLength: 0 }}
                     animate={{ pathLength: 1 }}
                     transition={{ duration: 0.6, ease: "easeOut" }}
                   />
+                  {/* Faded in rather than drawn with `pathLength` — Motion
+                      synthesizes its own stroke-dasharray to animate that
+                      property, which would overwrite the fixed "6 6" pattern
+                      that keeps this series visually distinct once settled
+                      (Codex P2). */}
                   <m.path
                     d={completedLinePath}
                     fill="none"
@@ -340,8 +349,8 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                     strokeWidth="2"
                     strokeLinecap="round"
                     transform={`translate(${PLOT_LEFT} ${PLOT_TOP})`}
-                    initial={{ pathLength: 0 }}
-                    animate={{ pathLength: 1 }}
+                    initial={prefersReducedMotion ? false : { opacity: 0 }}
+                    animate={{ opacity: 1 }}
                     transition={{ duration: 0.6, ease: "easeOut" }}
                   />
                   {period.chart.points.map((point, index) => {
