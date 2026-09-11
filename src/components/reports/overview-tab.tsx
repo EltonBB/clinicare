@@ -246,38 +246,24 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
   return (
     <m.div key={period.key} variants={fadeIn} initial="initial" animate="animate" className="space-y-3">
       <m.div variants={staggerChildren} initial="initial" animate="animate" className="grid gap-3 md:grid-cols-4">
-        {appointmentsKpi ? (
-          <KpiCard
-            kpi={appointmentsKpi}
-            active={activeKpi === "appointments"}
-            onToggle={() => setActiveKpi((current) => (current === "appointments" ? null : "appointments"))}
-            detail={kpiDetails.appointments}
-          />
-        ) : null}
-        {completionKpi ? (
-          <KpiCard
-            kpi={completionKpi}
-            active={activeKpi === "completionRate"}
-            onToggle={() => setActiveKpi((current) => (current === "completionRate" ? null : "completionRate"))}
-            detail={kpiDetails.completionRate}
-          />
-        ) : null}
-        {newClientsKpi ? (
-          <KpiCard
-            kpi={newClientsKpi}
-            active={activeKpi === "newClients"}
-            onToggle={() => setActiveKpi((current) => (current === "newClients" ? null : "newClients"))}
-            detail={kpiDetails.newClients}
-          />
-        ) : null}
-        {utilizationKpi ? (
-          <KpiCard
-            kpi={utilizationKpi}
-            active={activeKpi === "utilization"}
-            onToggle={() => setActiveKpi((current) => (current === "utilization" ? null : "utilization"))}
-            detail={kpiDetails.utilization}
-          />
-        ) : null}
+        {(
+          [
+            { key: "appointments", kpi: appointmentsKpi },
+            { key: "completionRate", kpi: completionKpi },
+            { key: "newClients", kpi: newClientsKpi },
+            { key: "utilization", kpi: utilizationKpi },
+          ] as const
+        ).map(({ key, kpi }) =>
+          kpi ? (
+            <KpiCard
+              key={key}
+              kpi={kpi}
+              active={activeKpi === key}
+              onToggle={() => setActiveKpi((current) => (current === key ? null : key))}
+              detail={kpiDetails[key]}
+            />
+          ) : null
+        )}
       </m.div>
 
       {activeKpi ? (

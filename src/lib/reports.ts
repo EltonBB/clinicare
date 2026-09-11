@@ -593,6 +593,10 @@ function isBookedStatus(status: Appointment["status"]) {
   return status !== "CANCELLED";
 }
 
+function isFinalizedStatus(status: Appointment["status"]) {
+  return status === "COMPLETED" || status === "CANCELLED";
+}
+
 function countDistinct<T>(values: T[]) {
   return new Set(values).size;
 }
@@ -769,9 +773,8 @@ function buildPeriodStats(args: {
     timeZone,
   } = args;
   const scopedAppointments = filterAppointmentsInRange(appointments, window.start, window.end);
-  const finalizedAppointments = scopedAppointments.filter(
-    (appointment) =>
-      appointment.status === "COMPLETED" || appointment.status === "CANCELLED"
+  const finalizedAppointments = scopedAppointments.filter((appointment) =>
+    isFinalizedStatus(appointment.status)
   );
   const completedAppointments = scopedAppointments.filter(
     (appointment) => appointment.status === "COMPLETED"
@@ -931,7 +934,7 @@ function buildPeriodDiagnostics(args: {
         completedCount: 0,
         finalizedCount: 0,
       };
-      const isFinalized = appointment.status === "COMPLETED" || appointment.status === "CANCELLED";
+      const isFinalized = isFinalizedStatus(appointment.status);
       staffCounts.set(appointment.staffMemberId, {
         appointments: current.appointments + 1,
         bookedMinutes: current.bookedMinutes + (isBookedStatus(appointment.status) ? duration : 0),
