@@ -298,10 +298,12 @@ function AppointmentQuickView({
             {appointment.startTime} – {appointment.endTime}
           </span>
         </div>
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-muted-foreground">Service</span>
-          <span className="truncate font-medium text-foreground">{appointment.service || "—"}</span>
-        </div>
+        {appointment.service ? (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">Service</span>
+            <span className="truncate font-medium text-foreground">{appointment.service}</span>
+          </div>
+        ) : null}
         <div className="flex items-center justify-between gap-3">
           <span className="text-muted-foreground">Status</span>
           <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-semibold capitalize", monthChipClasses[appointment.status])}>
