@@ -85,16 +85,14 @@ export function KpiValue({
   const decimals = raw.includes(".") ? raw.split(".")[1].length : 0;
   const display = useCountUp(Number.isFinite(parsedTarget) ? parsedTarget : 0);
 
-  if (!match || !Number.isFinite(parsedTarget)) {
-    return <span className="tabular-nums">{value}</span>;
-  }
+  const formatted = match
+    ? `${match[1]}${display.toLocaleString("en-US", {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      })}${match[3]}`
+    : value;
 
-  const formatted = `${match[1]}${display.toLocaleString("en-US", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  })}${match[3]}`;
-
-  if (truncate) {
+  if (truncate || !match || !Number.isFinite(parsedTarget)) {
     return <span className="tabular-nums">{formatted}</span>;
   }
 
