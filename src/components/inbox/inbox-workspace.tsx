@@ -296,6 +296,13 @@ export function InboxWorkspace({
     wasNearBottomRef.current = distanceFromBottom < 120;
   }
 
+  // The server caps a conversation at RECENT_MESSAGE_LIMIT messages, so once
+  // a thread is already at that cap, a new incoming message evicts the
+  // oldest one instead of growing the array — messages.length alone would
+  // miss that change and skip the scroll. The newest message's own id
+  // catches it either way.
+  const newestMessageId = activeConversation?.messages.at(-1)?.id;
+
   useEffect(() => {
     const container = messageListRef.current;
     if (!container) return;
@@ -305,7 +312,7 @@ export function InboxWorkspace({
       container.scrollTop = container.scrollHeight;
       wasNearBottomRef.current = true;
     }
-  }, [activeConversation?.id, activeConversation?.messages.length]);
+  }, [activeConversation?.id, newestMessageId]);
 
   // Fresh retry budget each time a different conversation is selected —
   // independent of the retry-token effect below, which bumps within the
