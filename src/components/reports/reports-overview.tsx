@@ -14,7 +14,7 @@ import {
 import { CalendarDays, RefreshCw } from "lucide-react";
 
 import { refreshAnalyticsInsightsAction } from "@/app/(workspace)/reports/actions";
-import { WorkspaceHeader, WorkspacePage } from "@/components/workspace/workspace-layout";
+import { fieldInputClass, WorkspaceHeader, WorkspacePage } from "@/components/workspace/workspace-layout";
 import { MonthGrid } from "@/components/workspace/month-grid";
 import { LazyMotionProvider } from "@/components/layout/motion-provider";
 import {
@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { buttonVariants } from "@/components/ui/button-variants";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { ReportPeriodKey, ReportsViewModel } from "@/lib/reports";
 import { AppointmentStatusCard, HighlightsCard, OverviewTab } from "./overview-tab";
@@ -68,8 +69,43 @@ function RangeCalendar({
       : `${format(fromDate, "MMM d, yyyy")} — pick an end date`
     : "Pick a start date";
 
+  // Typing a date (or using the native picker) jumps straight there instead
+  // of paging the grid month by month — the grid stays in sync either way,
+  // since both write through the same onChange the day-click handler uses.
+  function handleFromInput(value: string) {
+    onChange(value, to);
+    if (value) setMonthCursor(startOfMonth(parseISO(value)));
+  }
+
+  function handleToInput(value: string) {
+    onChange(from, value);
+    if (value) setMonthCursor(startOfMonth(parseISO(value)));
+  }
+
   return (
     <div>
+      <div className="mb-3 grid grid-cols-2 gap-2">
+        <label className="space-y-1 text-left">
+          <span className="text-xs font-medium text-muted-foreground">From</span>
+          <Input
+            type="date"
+            value={from}
+            max={to || undefined}
+            onChange={(event) => handleFromInput(event.target.value)}
+            className={fieldInputClass}
+          />
+        </label>
+        <label className="space-y-1 text-left">
+          <span className="text-xs font-medium text-muted-foreground">To</span>
+          <Input
+            type="date"
+            value={to}
+            min={from || undefined}
+            onChange={(event) => handleToInput(event.target.value)}
+            className={fieldInputClass}
+          />
+        </label>
+      </div>
       <MonthGrid
         monthCursor={monthCursor}
         onMonthChange={setMonthCursor}

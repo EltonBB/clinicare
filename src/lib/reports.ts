@@ -992,8 +992,11 @@ function buildPeriodDiagnostics(args: {
             : "",
       };
     })
-    .sort((left, right) => right.bookedMinutes - left.bookedMinutes)
-    .slice(0, 6);
+    // Staff performance's columns are independently sortable (visits/booked
+    // time/completion) client-side, so truncating the team here would hide
+    // whoever doesn't rank in the top 6 by booked minutes specifically, even
+    // when the operator sorts by a different column looking for them.
+    .sort((left, right) => right.bookedMinutes - left.bookedMinutes);
   const heatmap: ReportDemandHeatmapCell[] = DEMAND_HEATMAP_DAYS.flatMap((day) =>
     DEMAND_HEATMAP_BANDS.map((band) => ({
       day,
