@@ -13,7 +13,7 @@ import {
   startOfMonth,
   startOfWeek,
 } from "date-fns";
-import { startTransition, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { startTransition, useMemo, useRef, useState, type MouseEvent } from "react";
 import {
   CalendarDays,
   CalendarX2,
@@ -29,6 +29,7 @@ import {
   WorkspacePage,
 } from "@/components/workspace/workspace-layout";
 import { MonthGrid } from "@/components/workspace/month-grid";
+import { useDismissOnOutsideOrEscape } from "@/hooks/use-dismiss-on-outside-or-escape";
 import { cn } from "@/lib/utils";
 import type {
   CalendarAppointment,
@@ -65,53 +66,6 @@ const monthChipClasses: Record<CalendarAppointmentStatus, string> = {
 // lg:h-[calc(100vh-174px)] fill pattern, offset for Calendar's extra toolbar row).
 const calendarGridHeightClass = "surface-card section-reveal step-enter flex flex-col overflow-clip p-0 lg:h-[calc(100vh-230px)]";
 
-// Keeps `onDismiss` reachable from the DOM listeners below without putting an
-// unstable inline callback in the effect's own dependency array (which would
-// tear down and re-attach the listeners on every render).
-function useDismissOnOutsideOrEscape(
-  containerRef: React.RefObject<HTMLElement | null>,
-  onDismiss: () => void,
-  options?: { active?: boolean; dismissOnScroll?: boolean }
-) {
-  const { active = true, dismissOnScroll = false } = options ?? {};
-  const onDismissRef = useRef(onDismiss);
-
-  useEffect(() => {
-    onDismissRef.current = onDismiss;
-  });
-
-  useEffect(() => {
-    if (!active) {
-      return;
-    }
-
-    const onPointerDown = (event: PointerEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) {
-        onDismissRef.current();
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onDismissRef.current();
-      }
-    };
-    const onScroll = () => onDismissRef.current();
-
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    if (dismissOnScroll) {
-      window.addEventListener("scroll", onScroll, true);
-    }
-
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-      if (dismissOnScroll) {
-        window.removeEventListener("scroll", onScroll, true);
-      }
-    };
-  }, [active, containerRef, dismissOnScroll]);
-}
 
 function timeToMinutes(time: string) {
   const [hours, minutes] = time.split(":").map(Number);
@@ -344,6 +298,34 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
       ),
     [appointments]
   );
+  // Grouped once per appointments/scheduleBlocks change so month/week/day cells
+  // do an O(1) Map lookup instead of an O(n) filter over the whole ~6-month
+  // window on every render (a click that only opens the quick-view popover was
+  // re-scanning the full window per visible day before this).
+  const appointmentsByDate = useMemo(() => {
+    const map = new Map<string, CalendarAppointment[]>();
+    for (const appointment of appointments) {
+      const bucket = map.get(appointment.date);
+      if (bucket) {
+        bucket.push(appointment);
+      } else {
+        map.set(appointment.date, [appointment]);
+      }
+    }
+    return map;
+  }, [appointments]);
+  const scheduleBlocksByDate = useMemo(() => {
+    const map = new Map<string, CalendarScheduleBlock[]>();
+    for (const block of scheduleBlocks) {
+      const bucket = map.get(block.date);
+      if (bucket) {
+        bucket.push(block);
+      } else {
+        map.set(block.date, [block]);
+      }
+    }
+    return map;
+  }, [scheduleBlocks]);
   const selectedDateKey = format(activeDate, "yyyy-MM-dd");
   const visibleDates = useMemo(() => {
     if (view === "day") {
@@ -467,11 +449,16 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
               <div className="grid grid-cols-7 lg:h-full lg:auto-rows-fr">
                 {currentMonth.map((day) => {
                   const key = format(day, "yyyy-MM-dd");
-                  const items = appointments.filter((appointment) => appointment.date === key);
-                  const blocks = scheduleBlocks.filter((block) => block.date === key);
+                  const items = appointmentsByDate.get(key) ?? [];
+                  const blocks = scheduleBlocksByDate.get(key) ?? [];
                   const isToday = isSameDay(day, todayDate);
                   const isSelected = isSameDay(day, activeDate);
-                  const visibleEntries = [...items.slice(0, 2), ...blocks.slice(0, 1)];
+                  // Chronological, matching week/day's dayEntries below — a
+                  // morning block should still surface before a later
+                  // appointment rather than always trailing every appointment.
+                  const visibleEntries = [...items, ...blocks]
+                    .sort((left, right) => timeToMinutes(left.startTime) - timeToMinutes(right.startTime))
+                    .slice(0, 3);
                   const overflowCount = items.length + blocks.length - visibleEntries.length;
 
                   return (
@@ -544,7 +531,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                                 className={cn("size-1.5 rounded-full", statusDotClasses[item.status])}
                               />
                             ))}
-                            {items.length === 0 && blocks.length > 0 ? (
+                            {blocks.length > 0 ? (
                               <span className="size-1.5 rounded-full bg-slate-400" />
                             ) : null}
                             {items.length > 4 ? (
@@ -606,8 +593,8 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
               <div className={cn("grid lg:min-h-0 lg:flex-1", view === "day" ? "grid-cols-1" : "grid-cols-7")}>
                 {(view === "day" ? [activeDate] : currentWeek).map((day) => {
                   const key = format(day, "yyyy-MM-dd");
-                  const items = appointments.filter((appointment) => appointment.date === key);
-                  const blocks = scheduleBlocks.filter((block) => block.date === key);
+                  const items = appointmentsByDate.get(key) ?? [];
+                  const blocks = scheduleBlocksByDate.get(key) ?? [];
                   // Appointments and blocks share one chronological column, not
                   // two stacked lists — a 09:00 block must sit above a 10:00
                   // appointment, not below every appointment regardless of time.
