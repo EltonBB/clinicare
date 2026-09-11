@@ -149,7 +149,7 @@ export function GlobalSearchPalette({
         aria-label="Search"
         className="top-[12vh] flex max-h-[min(560px,80vh)] w-full max-w-[560px] translate-y-0 flex-col gap-0 rounded-(--radius-panel) p-0 shadow-(--shadow-pop) sm:max-w-[560px]"
       >
-        <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border/70 px-4">
+        <div className="flex h-14 shrink-0 items-center gap-3 px-4">
           <Search className="size-4.5 shrink-0 text-muted-foreground" />
           <input
             autoFocus
@@ -234,7 +234,7 @@ export function GlobalSearchPalette({
           )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-3 border-t border-border/70 px-4 py-2 text-[11px] font-medium text-muted-foreground">
+        <div className="flex shrink-0 items-center gap-3 bg-[#fafbfd] px-4 py-2 text-[11px] font-medium text-muted-foreground">
           {(
             [
               ["↑↓", "Navigate"],
