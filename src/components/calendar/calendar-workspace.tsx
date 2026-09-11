@@ -93,16 +93,24 @@ function monthDays(activeDate: Date) {
 function EventPill({
   appointment,
   onOpen,
+  dense = false,
 }: {
   appointment: CalendarAppointment;
   onOpen: (event: MouseEvent<HTMLButtonElement>) => void;
+  // Month-grid cells are ~20px tall per row — same pill, smaller type/padding,
+  // plus pointer-events-auto to punch through the cell's pointer-events-none
+  // day-open overlay button.
+  dense?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onOpen}
       className={cn(
-        "flex w-full items-center justify-between gap-2 rounded-(--radius-tile) px-2.5 py-1.5 text-left text-xs font-medium transition-[filter,transform] duration-(--duration-base) hover:brightness-95 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+        "flex w-full items-center justify-between gap-1.5 truncate rounded-(--radius-tile) text-left font-medium transition-[filter,transform] duration-(--duration-base) hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+        dense
+          ? "pointer-events-auto gap-1.5 px-2 py-1 text-[11px] active:scale-[0.97]"
+          : "gap-2 px-2.5 py-1.5 text-xs active:scale-[0.98]",
         monthChipClasses[appointment.status]
       )}
     >
@@ -496,20 +504,12 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                         <div className="mt-1.5 hidden space-y-1 sm:block">
                           {visibleEntries.map((entry) =>
                             "status" in entry ? (
-                              <button
+                              <EventPill
                                 key={entry.id}
-                                type="button"
-                                onClick={(event) => openQuickView(entry, event)}
-                                className={cn(
-                                  "pointer-events-auto flex w-full items-center justify-between gap-1.5 truncate rounded-(--radius-tile) px-2 py-1 text-left text-[11px] font-medium transition-[filter,transform] duration-(--duration-base) hover:brightness-95 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
-                                  monthChipClasses[entry.status]
-                                )}
-                              >
-                                <span className={cn("truncate font-semibold", entry.status === "cancelled" && "line-through")}>
-                                  {entry.clientName}
-                                </span>
-                                <span className="shrink-0 tabular-nums opacity-80">{entry.startTime}</span>
-                              </button>
+                                dense
+                                appointment={entry}
+                                onOpen={(event) => openQuickView(entry, event)}
+                              />
                             ) : (
                               <div
                                 key={entry.id}
