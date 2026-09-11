@@ -1,7 +1,10 @@
-import { subDays } from "date-fns";
-
 import { prisma } from "@/lib/prisma";
-import { getAppTimeZone, getZonedDayWindow } from "@/lib/time-zone";
+import {
+  getAppTimeZone,
+  getZonedDayWindow,
+  getZonedDayWindowFromParts,
+  getZonedMonthWindow,
+} from "@/lib/time-zone";
 
 export async function getReportWorkspaceData(
   businessId: string,
@@ -9,7 +12,22 @@ export async function getReportWorkspaceData(
 ) {
   const now = new Date();
   const timeZone = getAppTimeZone();
-  const defaultStart = getZonedDayWindow(subDays(now, 209), timeZone).start;
+  // The monthly chart's "previous period" ghost line shifts the same 6-month
+  // window back another 6 months (buildMonthlyChart's offsetMonths), so the
+  // oldest bucket it needs is 11 months before the current month — not the
+  // ~7 months the current-period chart alone would require. A shorter
+  // default fetch would report false zeros for those older buckets even
+  // when the clinic has real appointment history there (Codex P1).
+  const currentMonth = getZonedMonthWindow(now, timeZone);
+  const lookbackMonthDate = new Date(
+    Date.UTC(currentMonth.parts.year, currentMonth.parts.month - 1 - 11, 1)
+  );
+  const defaultStart = getZonedDayWindowFromParts(
+    lookbackMonthDate.getUTCFullYear(),
+    lookbackMonthDate.getUTCMonth() + 1,
+    1,
+    timeZone
+  ).start;
   const defaultEnd = getZonedDayWindow(now, timeZone).end;
   // A custom range needs its own comparison ("previous") period fetched too
   // — buildReportsViewFromWorkspace builds that as the same-length window

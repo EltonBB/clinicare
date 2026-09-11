@@ -604,10 +604,14 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
               <div className={cn("grid lg:min-h-0 lg:flex-1", view === "day" ? "grid-cols-1" : "grid-cols-7")}>
                 {(view === "day" ? [activeDate] : currentWeek).map((day) => {
                   const key = format(day, "yyyy-MM-dd");
-                  const items = appointments
-                    .filter((appointment) => appointment.date === key)
-                    .sort((left, right) => timeToMinutes(left.startTime) - timeToMinutes(right.startTime));
+                  const items = appointments.filter((appointment) => appointment.date === key);
                   const blocks = scheduleBlocks.filter((block) => block.date === key);
+                  // Appointments and blocks share one chronological column, not
+                  // two stacked lists — a 09:00 block must sit above a 10:00
+                  // appointment, not below every appointment regardless of time.
+                  const dayEntries = [...items, ...blocks].sort(
+                    (left, right) => timeToMinutes(left.startTime) - timeToMinutes(right.startTime)
+                  );
                   const isToday = isSameDay(day, todayDate);
                   const isSelectedColumn = isSameDay(day, activeDate);
 
@@ -622,16 +626,17 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                         isToday ? "bg-[#f6f9ff]" : isSelectedColumn && "bg-[#f8fafd]"
                       )}
                     >
-                      {items.map((appointment) => (
-                        <EventPill
-                          key={appointment.id}
-                          appointment={appointment}
-                          onOpen={(event) => openQuickView(appointment, event)}
-                        />
-                      ))}
-                      {blocks.map((block) => (
-                        <BlockPill key={block.id} block={block} />
-                      ))}
+                      {dayEntries.map((entry) =>
+                        "status" in entry ? (
+                          <EventPill
+                            key={entry.id}
+                            appointment={entry}
+                            onOpen={(event) => openQuickView(entry, event)}
+                          />
+                        ) : (
+                          <BlockPill key={entry.id} block={entry} />
+                        )
+                      )}
                       <Link
                         href={`/calendar/new?date=${key}`}
                         className={cn(
