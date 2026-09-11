@@ -940,7 +940,6 @@ export function SettingsWorkspace({
           <SectionCard
             id="business"
             title="Business & account"
-            description="Your account and clinic details."
             active={activeSection === "business"}
           >
             <div className="space-y-4">
@@ -1019,7 +1018,7 @@ export function SettingsWorkspace({
                 </div>
               </div>
 
-              <div className="flex items-center gap-4 border-t border-border/60 pt-4">
+              <div className="flex items-center gap-4 pt-2">
                 <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-(--radius-tile) border border-border/75 bg-white text-xl font-semibold text-primary">
                   {logoDisplayUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -1050,7 +1049,7 @@ export function SettingsWorkspace({
                 </div>
               </div>
 
-              <div className="space-y-3 border-t border-border/60 pt-4">
+              <div className="space-y-3 pt-2">
                 <p className="text-sm font-medium text-foreground">
                   Change password <span className="font-normal text-muted-foreground">— requires your current password</span>
                 </p>
