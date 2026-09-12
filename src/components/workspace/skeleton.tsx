@@ -11,14 +11,43 @@ export function SkeletonBlock({ className = "" }: { className?: string }) {
   );
 }
 
-function SkeletonHeader({ actionWidth = "w-36" }: { actionWidth?: string }) {
+// Real Directory/Inbox headers (WorkspaceHeader) render a title and, for
+// Directory, one action button — no eyebrow line and no description, unlike
+// Form pages' CreatePageShell (which has its own header block below).
+function SkeletonHeader({ actionWidth = "w-36", showAction = true }: { actionWidth?: string; showAction?: boolean }) {
   return (
     <div className="flex flex-col gap-3.5 lg:flex-row lg:items-end lg:justify-between">
-      <div className="space-y-3">
-        <SkeletonBlock className="h-3 w-32" />
-        <SkeletonBlock className="h-10 w-72 max-w-full" />
+      <SkeletonBlock className="h-10 w-72 max-w-full" />
+      {showAction ? <SkeletonBlock className={`h-11 ${actionWidth}`} /> : null}
+    </div>
+  );
+}
+
+// Dashboard: header (no subtitle, per AGENTS.md rule 5) → 5-tile KPI row →
+// Visits/Today's-schedule row → 3-card secondary row. Also covers the
+// (workspace) group-root loading.tsx, since /dashboard is what that redirect
+// resolves to.
+export function DashboardPageSkeleton() {
+  return (
+    <div className="mx-auto w-full max-w-[1520px] space-y-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <SkeletonBlock className="h-8 w-40" />
+        <SkeletonBlock className="h-10 w-44" />
       </div>
-      <SkeletonBlock className={`h-11 ${actionWidth}`} />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <SkeletonBlock key={index} className="h-24" />
+        ))}
+      </div>
+      <div className="grid grid-cols-1 items-stretch gap-3 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+        <SkeletonBlock className="h-72" />
+        <SkeletonBlock className="h-72" />
+      </div>
+      <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <SkeletonBlock key={index} className="h-48" />
+        ))}
+      </div>
     </div>
   );
 }
@@ -105,6 +134,9 @@ export function DetailPageSkeleton() {
 }
 
 // Calendar: header → flat toolbar (view pills + date range) → filled grid.
+// Shaped for the week view — CalendarWorkspace defaults to "week", not
+// month, so 7 pill-listing day columns resemble the real first paint more
+// closely than a 35-cell month grid would.
 export function CalendarPageSkeleton() {
   return (
     <div className="mx-auto w-full max-w-[1520px] space-y-3">
@@ -117,12 +149,14 @@ export function CalendarPageSkeleton() {
           <SkeletonBlock className="h-9 w-32" />
         </div>
       </div>
-      <div className="grid grid-cols-7 gap-2">
+      <div className="grid grid-cols-7 gap-2 lg:h-[calc(100vh-230px)]">
         {Array.from({ length: 7 }).map((_, index) => (
-          <SkeletonBlock key={`heading-${index}`} className="h-5" />
-        ))}
-        {Array.from({ length: 35 }).map((_, index) => (
-          <SkeletonBlock key={index} className="h-24" />
+          <div key={index} className="space-y-2">
+            <SkeletonBlock className="h-5" />
+            {Array.from({ length: 3 }).map((_, pillIndex) => (
+              <SkeletonBlock key={pillIndex} className="h-9" />
+            ))}
+          </div>
         ))}
       </div>
     </div>
@@ -133,7 +167,7 @@ export function CalendarPageSkeleton() {
 export function InboxPageSkeleton() {
   return (
     <div className="mx-auto w-full max-w-[1520px] space-y-3">
-      <SkeletonHeader actionWidth="w-44" />
+      <SkeletonHeader showAction={false} />
       <div className="surface-card min-h-[640px] overflow-hidden p-0 lg:h-[calc(100vh-174px)]">
         <div className="grid h-full grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
           <div className="space-y-3 border-b border-border/70 p-3 lg:border-b-0 lg:border-r">
