@@ -274,3 +274,9 @@ export function buildCalendarViewFromRecords(args: {
 export function appointmentDurationMinutes(appointment: Pick<Appointment, "startAt" | "endAt">) {
   return Math.max(differenceInMinutes(appointment.endAt, appointment.startAt), 0);
 }
+
+/** Parses a "HH:mm" display time (as rendered on calendar pills/forms) into minutes since midnight, for sorting/comparison. */
+export function timeToMinutes(time: string) {
+  const [hours, minutes] = time.split(":").map(Number);
+  return (hours || 0) * 60 + (minutes || 0);
+}

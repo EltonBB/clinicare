@@ -13,7 +13,7 @@ import {
   startOfMonth,
   startOfWeek,
 } from "date-fns";
-import { startTransition, useMemo, useRef, useState, type MouseEvent } from "react";
+import { startTransition, useCallback, useMemo, useRef, useState, type MouseEvent } from "react";
 import {
   CalendarDays,
   CalendarX2,
@@ -30,6 +30,7 @@ import {
 } from "@/components/workspace/workspace-layout";
 import { MonthGrid } from "@/components/workspace/month-grid";
 import { useDismissOnOutsideOrEscape } from "@/hooks/use-dismiss-on-outside-or-escape";
+import { timeToMinutes } from "@/lib/calendar";
 import { cn } from "@/lib/utils";
 import type {
   CalendarAppointment,
@@ -66,10 +67,13 @@ const monthChipClasses: Record<CalendarAppointmentStatus, string> = {
 // lg:h-[calc(100vh-174px)] fill pattern, offset for Calendar's extra toolbar row).
 const calendarGridHeightClass = "surface-card section-reveal step-enter flex flex-col overflow-clip p-0 lg:h-[calc(100vh-230px)]";
 
-
-function timeToMinutes(time: string) {
-  const [hours, minutes] = time.split(":").map(Number);
-  return (hours || 0) * 60 + (minutes || 0);
+// Appointments and blocks share one chronological list, not two stacked ones
+// — a 09:00 block must sit above a 10:00 appointment, not below every
+// appointment regardless of time. Shared by month cells and week/day columns.
+function mergeEntriesByTime(items: CalendarAppointment[], blocks: CalendarScheduleBlock[]) {
+  return [...items, ...blocks].sort(
+    (left, right) => timeToMinutes(left.startTime) - timeToMinutes(right.startTime)
+  );
 }
 
 function weekDays(activeDate: Date) {
@@ -129,7 +133,9 @@ function BlockPill({ block }: { block: CalendarScheduleBlock }) {
         <CalendarX2 className="size-3 shrink-0" />
         <span className="truncate">{block.title}</span>
       </span>
-      <span className="shrink-0 tabular-nums opacity-80">{block.startTime}</span>
+      <span className="shrink-0 tabular-nums opacity-80">
+        {block.startTime} – {block.endTime}
+      </span>
     </div>
   );
 }
@@ -224,16 +230,28 @@ function AppointmentQuickView({
   useDismissOnOutsideOrEscape(containerRef, onClose, { dismissOnScroll: true });
 
   const width = 264;
-  const estimatedHeight = 230;
   const left = Math.min(Math.max(anchorRect.left, 12), window.innerWidth - width - 12);
-  const top =
-    anchorRect.bottom + 8 + estimatedHeight <= window.innerHeight
-      ? anchorRect.bottom + 8
-      : Math.max(anchorRect.top - estimatedHeight - 8, 12);
+  // Rendered below the anchor on the first paint (there's no real content to
+  // measure before it's in the DOM); corrected to flip above from the card's
+  // actual rendered height the moment it mounts (a ref callback fires during
+  // the same commit, before the browser paints, so a wrong first guess is
+  // never visible) — replacing a hardcoded height guess that could silently
+  // drift out of sync with this card's real content.
+  const [top, setTop] = useState(() => anchorRect.bottom + 8);
+
+  const measureRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      containerRef.current = node;
+      if (!node) return;
+      const fitsBelow = anchorRect.bottom + 8 + node.offsetHeight <= window.innerHeight;
+      setTop(fitsBelow ? anchorRect.bottom + 8 : Math.max(anchorRect.top - node.offsetHeight - 8, 12));
+    },
+    [anchorRect]
+  );
 
   return (
     <div
-      ref={containerRef}
+      ref={measureRef}
       role="dialog"
       aria-label={`${appointment.clientName} appointment details`}
       className="state-pop fixed z-50 origin-top rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-pop)"
@@ -335,18 +353,6 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
     return map;
   }, [scheduleBlocks]);
   const selectedDateKey = format(activeDate, "yyyy-MM-dd");
-  const visibleDates = useMemo(() => {
-    if (view === "day") {
-      return [activeDate];
-    }
-
-    if (view === "week") {
-      return currentWeek;
-    }
-
-    return currentMonth.filter((day) => isSameMonth(day, activeDate));
-  }, [activeDate, currentMonth, currentWeek, view]);
-
   const weekStart = currentWeek[0];
   const weekEnd = currentWeek[6];
   const rangeLabel =
@@ -357,7 +363,15 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
         : isSameMonth(weekStart, weekEnd)
           ? `${format(weekStart, "MMM d")} – ${format(weekEnd, "d, yyyy")}`
           : `${format(weekStart, "MMM d")} – ${format(weekEnd, "MMM d, yyyy")}`;
-  const gridKey = `${view}-${format(visibleDates[0] ?? activeDate, "yyyy-MM-dd")}`;
+  // Remounts the grid subtree on a real navigation (view switch or jumping to
+  // a different day/week/month) so per-view local state resets cleanly —
+  // just the anchor date for each view, not the full visible-date list.
+  const gridKey =
+    view === "day"
+      ? `day-${format(activeDate, "yyyy-MM-dd")}`
+      : view === "week"
+        ? `week-${format(weekStart, "yyyy-MM-dd")}`
+        : `month-${format(startOfMonth(activeDate), "yyyy-MM-dd")}`;
 
   function openQuickView(appointment: CalendarAppointment, event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation();
@@ -396,16 +410,16 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
       />
 
       <div className="section-reveal relative z-30 flex flex-wrap items-center gap-3 py-1">
-        <div className="inline-flex gap-0.5 rounded-(--radius-card) border border-border/75 bg-[#f1f4f9] p-0.5">
+        <div className="inline-flex items-center gap-1.5">
           {views.map((option) => (
             <button
               key={option}
               type="button"
               onClick={() => startTransition(() => setView(option))}
               className={cn(
-                "h-8 rounded-(--radius-tile) px-3.5 text-sm font-semibold capitalize text-muted-foreground transition-[background-color,color,box-shadow] duration-(--duration-base) hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45",
+                "h-8 rounded-(--radius-tile) px-3.5 text-sm font-semibold capitalize text-muted-foreground transition-[background-color,color] duration-(--duration-base) hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45",
                 view === option &&
-                  "bg-primary text-primary-foreground hover:text-primary-foreground"
+                  "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground"
               )}
             >
               {option}
@@ -461,12 +475,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                   const blocks = scheduleBlocksByDate.get(key) ?? [];
                   const isToday = isSameDay(day, todayDate);
                   const isSelected = isSameDay(day, activeDate);
-                  // Chronological, matching week/day's dayEntries below — a
-                  // morning block should still surface before a later
-                  // appointment rather than always trailing every appointment.
-                  const visibleEntries = [...items, ...blocks]
-                    .sort((left, right) => timeToMinutes(left.startTime) - timeToMinutes(right.startTime))
-                    .slice(0, 3);
+                  const visibleEntries = mergeEntriesByTime(items, blocks).slice(0, 3);
                   const overflowCount = items.length + blocks.length - visibleEntries.length;
 
                   return (
@@ -595,12 +604,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                   const key = format(day, "yyyy-MM-dd");
                   const items = appointmentsByDate.get(key) ?? [];
                   const blocks = scheduleBlocksByDate.get(key) ?? [];
-                  // Appointments and blocks share one chronological column, not
-                  // two stacked lists — a 09:00 block must sit above a 10:00
-                  // appointment, not below every appointment regardless of time.
-                  const dayEntries = [...items, ...blocks].sort(
-                    (left, right) => timeToMinutes(left.startTime) - timeToMinutes(right.startTime)
-                  );
+                  const dayEntries = mergeEntriesByTime(items, blocks);
                   const isToday = isSameDay(day, todayDate);
                   const isSelectedColumn = isSameDay(day, activeDate);
 

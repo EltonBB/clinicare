@@ -21,6 +21,7 @@ import {
   WorkspaceEmptyState,
   WorkspaceFormSection,
 } from "@/components/workspace/workspace-layout";
+import { timeToMinutes } from "@/lib/calendar";
 import { cn } from "@/lib/utils";
 import type {
   CalendarAppointment,
@@ -57,11 +58,6 @@ const statusOptions: CalendarAppointmentStatus[] = [
 // At creation a booking is only confirmed or pending; it becomes completed or
 // cancelled later via the calendar, never at the moment it's booked.
 const createStatusOptions: CalendarAppointmentStatus[] = ["confirmed", "pending"];
-
-function timeToMinutes(time: string) {
-  const [hours, minutes] = time.split(":").map(Number);
-  return (hours || 0) * 60 + (minutes || 0);
-}
 
 function minutesToTime(minutes: number) {
   const hours = Math.floor(minutes / 60);

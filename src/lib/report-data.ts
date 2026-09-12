@@ -1,9 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import {
+  addZonedDays,
   getAppTimeZone,
+  getZonedDateParts,
   getZonedDayWindow,
   getZonedDayWindowFromParts,
   getZonedMonthWindow,
+  zonedCalendarDaysBetween,
 } from "@/lib/time-zone";
 
 export async function getReportWorkspaceData(
@@ -38,10 +41,26 @@ export async function getReportWorkspaceData(
   // A missing ScheduleBlock is the most dangerous case: it reads as capacity
   // that was never actually bookable (Codex P2).
   const customRangeStart = range
-    ? new Date(
-        range.start.getTime() -
-          Math.max(range.end.getTime() - range.start.getTime(), 86_400_000)
-      )
+    ? (() => {
+        // Same DST-safe zoned-calendar-day shift as reports.ts's own
+        // previous-window construction — the two must agree, since this
+        // fetch boundary is what makes that later window's data available
+        // at all. Raw millisecond subtraction (the bug this mirrors) can
+        // land up to an hour later than the true boundary across a DST
+        // transition, silently dropping appointments/messages/ScheduleBlocks
+        // from the comparison period's own fetch.
+        const rangeDays = Math.max(
+          zonedCalendarDaysBetween(range.start, range.end, timeZone) + 1,
+          1
+        );
+        const startParts = addZonedDays(getZonedDateParts(range.start, timeZone), -rangeDays);
+        return getZonedDayWindowFromParts(
+          startParts.year,
+          startParts.month,
+          startParts.day,
+          timeZone
+        ).start;
+      })()
     : undefined;
   const reportStart =
     customRangeStart && customRangeStart < defaultStart ? customRangeStart : defaultStart;
