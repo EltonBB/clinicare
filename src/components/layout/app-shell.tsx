@@ -9,7 +9,11 @@ import { logoutAction } from "@/app/(auth)/actions";
 import { refreshWorkspaceNotificationsAction } from "@/app/(workspace)/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { LogoutButton } from "@/components/auth/logout-button";
-import { GlobalSearchPalette, GlobalSearchTrigger } from "@/components/layout/global-search";
+import {
+  GlobalSearchPalette,
+  GlobalSearchTrigger,
+  useGlobalSearchHotkey,
+} from "@/components/layout/global-search";
 import { NotificationsMenu, type NotificationItem } from "@/components/layout/notifications-menu";
 import { SettingsDialog } from "@/components/layout/settings-dialog";
 import { WorkspaceLiveProvider } from "@/components/layout/workspace-live-context";
@@ -151,19 +155,9 @@ export function AppShell({
   }, [pathname, router]);
 
   // "/" opens the search palette from anywhere, like most apps that dock
-  // search in the sidebar — guarded so it doesn't fire while typing in a field.
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
-      const target = event.target as HTMLElement | null;
-      const tag = target?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
-      event.preventDefault();
-      setSearchOpen(true);
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  // search in the sidebar — disabled while search or Settings is already
+  // open so it can't stack a second modal on top of one that's showing.
+  useGlobalSearchHotkey(() => setSearchOpen(true), searchOpen || settingsOpen);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {

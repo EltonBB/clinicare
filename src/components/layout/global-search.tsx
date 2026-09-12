@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CalendarDays,
   Loader2,
@@ -12,7 +12,7 @@ import {
   UsersRound,
 } from "lucide-react";
 
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 type SearchResult = {
@@ -29,6 +29,33 @@ const resultIcons = {
   Staff: UsersRound,
   Message: MessageSquareText,
 };
+
+const SHORTCUT_HINTS = [
+  ["↑↓", "Navigate"],
+  ["↵", "Open"],
+  ["esc", "Close"],
+] as const;
+
+/** Opens the search palette on "/" from anywhere in the workspace — guarded
+ * so it doesn't fire while typing/selecting in a field, or while the palette
+ * (or another modal the caller flags via `disabled`) is already open. */
+export function useGlobalSearchHotkey(onOpen: () => void, disabled = false) {
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (disabled) return;
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) {
+        return;
+      }
+      event.preventDefault();
+      onOpen();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onOpen, disabled]);
+}
 
 /** The quiet, always-visible control that opens the search palette — docked
  * compact in the sidebar, or full-width in the mobile header fallback. */
@@ -81,12 +108,31 @@ export function GlobalSearchPalette({
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const previousOpenRef = useRef(open);
+
+  // Captured during render, not inside an effect — by the time an effect
+  // runs, Base UI's own focus-trap layout effect (a descendant, so it
+  // commits first) has already moved focus onto the autoFocus input, so an
+  // effect here would "restore" focus to that input instead of whatever was
+  // focused before the dialog opened.
+  if (open !== previousOpenRef.current) {
+    previousOpenRef.current = open;
+    if (open) {
+      previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+    }
+  }
 
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      // Reset on open, not on close — clearing on close would wipe the
+      // results out from under the exit animation, flashing the empty state
+      // for the ~duration-slow it takes the dialog to fade out.
       setQuery("");
       setResults([]);
       setActiveIndex(0);
+    } else {
+      previouslyFocusedRef.current?.focus?.();
     }
   }, [open]);
 
@@ -146,9 +192,9 @@ export function GlobalSearchPalette({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        aria-label="Search"
-        className="top-[12vh] flex max-h-[min(560px,80vh)] w-full max-w-[560px] translate-y-0 flex-col gap-0 rounded-(--radius-panel) p-0 shadow-(--shadow-pop) sm:max-w-[560px]"
+        className="top-[12dvh] flex max-h-[min(560px,80dvh)] w-full max-w-[560px] translate-y-0 flex-col gap-0 rounded-(--radius-panel) p-0 shadow-(--shadow-pop) sm:max-w-[560px]"
       >
+        <DialogTitle className="sr-only">Search</DialogTitle>
         <div className="flex h-14 shrink-0 items-center gap-3 px-4">
           <Search className="size-4.5 shrink-0 text-muted-foreground" />
           <input
@@ -158,12 +204,14 @@ export function GlobalSearchPalette({
             onKeyDown={(event) => {
               if (event.key === "ArrowDown") {
                 event.preventDefault();
-                setActiveIndex((current) => Math.min(current + 1, results.length - 1));
+                setActiveIndex((current) =>
+                  results.length === 0 ? 0 : Math.min(current + 1, results.length - 1)
+                );
               }
 
               if (event.key === "ArrowUp") {
                 event.preventDefault();
-                setActiveIndex((current) => Math.max(current - 1, 0));
+                setActiveIndex((current) => (results.length === 0 ? 0 : Math.max(current - 1, 0)));
               }
 
               if (event.key === "Enter" && results[activeIndex]) {
@@ -235,13 +283,7 @@ export function GlobalSearchPalette({
         </div>
 
         <div className="flex shrink-0 items-center gap-3 bg-[#fafbfd] px-4 py-2 text-[11px] font-medium text-muted-foreground">
-          {(
-            [
-              ["↑↓", "Navigate"],
-              ["↵", "Open"],
-              ["esc", "Close"],
-            ] as const
-          ).map(([key, label]) => (
+          {SHORTCUT_HINTS.map(([key, label]) => (
             <span key={label} className="inline-flex items-center gap-1">
               <kbd className="rounded-[0.3rem] border border-border/70 bg-secondary/60 px-1.5 py-0.5 font-mono">
                 {key}
