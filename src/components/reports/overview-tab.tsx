@@ -640,7 +640,12 @@ function DonutChart({
           fill="none"
           stroke={statusColor(item.label)}
           strokeWidth={strokeWidth}
-          strokeDasharray={`${Math.max((pct / 100) * circumference - (arcs.length > 1 ? 2 : 0), 0)} ${circumference}`}
+          // A minimum visible length, not just a floor of 0 — a rare status
+          // (e.g. 1 cancellation among 200 visits) can compute shorter than
+          // the inter-arc gap, and clamping that to 0 erases it from the
+          // donut entirely even though its legend row still reports a
+          // nonzero share (Codex).
+          strokeDasharray={`${Math.max((pct / 100) * circumference - (arcs.length > 1 ? 2 : 0), arcs.length > 1 ? 3 : 0)} ${circumference}`}
           strokeDashoffset={-((arcStart / 100) * circumference)}
           initial={prefersReducedMotion ? false : { opacity: 0 }}
           animate={{ opacity: hovered && hovered !== item.label ? 0.25 : 1 }}
