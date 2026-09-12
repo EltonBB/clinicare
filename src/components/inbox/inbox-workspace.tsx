@@ -294,6 +294,12 @@ export function InboxWorkspace({
   // reread history — unlike an incoming poll reply, a local send should
   // never be silently left off-screen.
   const justSentRef = useRef(false);
+  // Bumped alongside justSentRef so the autoscroll effect below always
+  // re-runs after a send completes — if the 10s poll already delivered the
+  // identical message first, id/newestMessageId/messageCount wouldn't
+  // change a second time on their own, and the effect would never see
+  // justSentRef flip to true (Codex).
+  const [sendRevision, setSendRevision] = useState(0);
 
   function handleMessageListScroll() {
     const container = messageListRef.current;
@@ -326,7 +332,7 @@ export function InboxWorkspace({
       wasNearBottomRef.current = true;
       justSentRef.current = false;
     }
-  }, [activeConversation?.id, newestMessageId, messageCount]);
+  }, [activeConversation?.id, newestMessageId, messageCount, sendRevision]);
 
   // Fresh retry budget each time a different conversation is selected —
   // independent of the retry-token effect below, which bumps within the
@@ -493,6 +499,7 @@ export function InboxWorkspace({
       }
 
       justSentRef.current = true;
+      setSendRevision((current) => current + 1);
       setConversations((current) => [
         result.conversation!,
         ...current.filter((conversation) => conversation.id !== result.conversation!.id),
