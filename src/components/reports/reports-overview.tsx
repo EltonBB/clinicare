@@ -64,14 +64,9 @@ function RangeCalendar({
   // Typing a date (or using the native picker) jumps straight there instead
   // of paging the grid month by month — the grid stays in sync either way,
   // since both write through the same onChange the day-click handler uses.
-  function handleFromInput(value: string) {
-    onChange(value, to);
-    if (value) setMonthCursor(startOfMonth(parseISO(value)));
-  }
-
-  function handleToInput(value: string) {
-    onChange(from, value);
-    if (value) setMonthCursor(startOfMonth(parseISO(value)));
+  function handleInput(nextFrom: string, nextTo: string, typedValue: string) {
+    onChange(nextFrom, nextTo);
+    if (typedValue) setMonthCursor(startOfMonth(parseISO(typedValue)));
   }
 
   return (
@@ -83,7 +78,7 @@ function RangeCalendar({
             type="date"
             value={from}
             max={to || undefined}
-            onChange={(event) => handleFromInput(event.target.value)}
+            onChange={(event) => handleInput(event.target.value, to, event.target.value)}
             className={fieldInputClass}
           />
         </label>
@@ -93,7 +88,7 @@ function RangeCalendar({
             type="date"
             value={to}
             min={from || undefined}
-            onChange={(event) => handleToInput(event.target.value)}
+            onChange={(event) => handleInput(from, event.target.value, event.target.value)}
             className={fieldInputClass}
           />
         </label>
@@ -193,7 +188,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
             title="Reports"
             actions={
               <>
-                <div className="inline-flex h-10 items-center rounded-(--radius-card) border border-border/80 bg-white p-1">
+                <div className="inline-flex h-10 items-center gap-1">
                   {view.periodOrder.map((key) => {
                     const item = view.periods[key];
                     const selected = selectedPeriod === key;
@@ -205,7 +200,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                         aria-pressed={selected}
                         onClick={() => selectPeriod(item.key)}
                         className={cn(
-                          "rounded-[0.45rem] px-3 py-1.5 text-sm font-medium transition-[background-color,color,transform] duration-(--duration-base) ease-(--ease-out-quint) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 active:scale-[0.97]",
+                          "h-9 rounded-(--radius-tile) px-3 text-sm font-medium transition-[background-color,color,transform] duration-(--duration-base) ease-(--ease-out-quint) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 active:scale-[0.97]",
                           selected ? "bg-primary/8 text-primary" : "text-muted-foreground hover:bg-secondary"
                         )}
                       >

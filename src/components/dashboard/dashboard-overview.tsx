@@ -259,6 +259,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
         <WorkspaceCard
           fill
           title="Visits"
+          description="Booked visits, cancellations excluded."
           className="flex flex-col"
           contentClassName="flex-1"
           action={
