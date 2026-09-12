@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CalendarDays,
   Loader2,
@@ -12,6 +12,7 @@ import {
   UsersRound,
 } from "lucide-react";
 
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 type SearchResult = {
@@ -29,26 +30,65 @@ const resultIcons = {
   Message: MessageSquareText,
 };
 
-export function GlobalSearch({ className }: { className?: string }) {
+/** The quiet, always-visible control that opens the search palette — docked
+ * compact in the sidebar, or full-width in the mobile header fallback. */
+export function GlobalSearchTrigger({
+  className,
+  compact = false,
+  onOpen,
+}: {
+  className?: string;
+  compact?: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label="Search clients, appointments, staff, and messages"
+      className={cn(
+        "flex w-full items-center gap-2.5 rounded-(--radius-tile) border-0 bg-secondary/60 text-left transition-colors duration-(--duration-base) hover:bg-secondary",
+        compact ? "h-10 px-3" : "h-11 gap-3 px-4",
+        className
+      )}
+    >
+      <Search className="size-4 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+        {compact ? "Search" : "Search clients, appointments, staff, messages..."}
+      </span>
+      {compact ? (
+        <kbd className="hidden shrink-0 rounded-[0.3rem] border border-border/70 bg-white px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground lg:inline-block">
+          /
+        </kbd>
+      ) : null}
+    </button>
+  );
+}
+
+/** The spotlight-style command palette itself — a dimmed backdrop with a
+ * centered panel, matching how Vercel/Linear/Raycast surface global search:
+ * opened from anywhere (the sidebar trigger, the mobile trigger, or "/"),
+ * rendered once and shared so only one can ever be open at a time. */
+export function GlobalSearchPalette({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    function handlePointerDown(event: PointerEvent) {
-      if (!containerRef.current?.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
+    if (!open) {
+      setQuery("");
+      setResults([]);
+      setActiveIndex(0);
     }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, []);
+  }, [open]);
 
   useEffect(() => {
     const trimmedQuery = query.trim();
@@ -80,7 +120,6 @@ export function GlobalSearch({ className }: { className?: string }) {
         const payload = (await response.json()) as { results?: SearchResult[] };
         setResults(payload.results ?? []);
         setActiveIndex(0);
-        setIsOpen(true);
       } catch {
         if (!controller.signal.aborted) {
           setResults([]);
@@ -98,67 +137,59 @@ export function GlobalSearch({ className }: { className?: string }) {
     };
   }, [query]);
 
-  function closeSearch() {
-    setIsOpen(false);
-    setQuery("");
-    setResults([]);
-    setActiveIndex(0);
-  }
-
   function navigateToResult(result: SearchResult) {
-    closeSearch();
+    onOpenChange(false);
     router.push(result.href);
   }
 
   return (
-    <div ref={containerRef} className={cn("relative", className)}>
-      <div className="flex h-11 items-center gap-3 rounded-(--radius-field) border-0 bg-transparent px-4 transition-colors duration-(--duration-base) hover:bg-secondary/70 focus-within:bg-white focus-within:ring-3 focus-within:ring-ring/30">
-        <Search className="size-4 shrink-0 text-primary" />
-        <input
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setIsOpen(true);
-          }}
-          onFocus={() => setIsOpen(true)}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              setActiveIndex((current) => Math.min(current + 1, results.length - 1));
-            }
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showCloseButton={false}
+        aria-label="Search"
+        className="top-[12vh] flex max-h-[min(560px,80vh)] w-full max-w-[560px] translate-y-0 flex-col gap-0 rounded-(--radius-panel) p-0 shadow-(--shadow-pop) sm:max-w-[560px]"
+      >
+        <div className="flex h-14 shrink-0 items-center gap-3 px-4">
+          <Search className="size-4.5 shrink-0 text-muted-foreground" />
+          <input
+            autoFocus
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setActiveIndex((current) => Math.min(current + 1, results.length - 1));
+              }
 
-            if (event.key === "ArrowUp") {
-              event.preventDefault();
-              setActiveIndex((current) => Math.max(current - 1, 0));
-            }
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setActiveIndex((current) => Math.max(current - 1, 0));
+              }
 
-            if (event.key === "Enter" && results[activeIndex]) {
-              event.preventDefault();
-              navigateToResult(results[activeIndex]);
+              if (event.key === "Enter" && results[activeIndex]) {
+                event.preventDefault();
+                navigateToResult(results[activeIndex]);
+              }
+            }}
+            placeholder="Search clients, appointments, staff, messages..."
+            aria-label="Search clients, appointments, staff, and messages"
+            aria-controls="global-search-results"
+            aria-activedescendant={
+              results[activeIndex] ? `global-search-result-${results[activeIndex].id}` : undefined
             }
+            className="h-full min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground"
+            type="search"
+          />
+          {isLoading ? <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" /> : null}
+        </div>
 
-            if (event.key === "Escape") {
-              setIsOpen(false);
-            }
-          }}
-          placeholder="Search clients, appointments, staff, messages..."
-          aria-label="Search clients, appointments, staff, and messages"
-          aria-controls="global-search-results"
-          aria-activedescendant={
-            isOpen && results[activeIndex] ? `global-search-result-${results[activeIndex].id}` : undefined
-          }
-          className="h-full min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-          type="search"
-        />
-        {isLoading ? (
-          <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
-        ) : null}
-      </div>
-
-      {isOpen && query.trim().length >= 2 ? (
-        <div className="state-pop absolute left-0 right-0 top-13 z-50 overflow-hidden rounded-(--radius-panel) border border-border/80 bg-white/96 shadow-[0_24px_60px_rgba(20,21,47,0.14)] backdrop-blur-xl">
-          {results.length > 0 ? (
-            <div id="global-search-results" className="max-h-[420px] overflow-y-auto p-2" role="listbox">
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {query.trim().length < 2 ? (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+              Type at least 2 characters to search.
+            </p>
+          ) : results.length > 0 ? (
+            <div id="global-search-results" className="p-2" role="listbox">
               {results.map((result, index) => {
                 const Icon = resultIcons[result.type];
 
@@ -174,7 +205,7 @@ export function GlobalSearch({ className }: { className?: string }) {
                       index === activeIndex && "bg-primary/8"
                     )}
                     onMouseEnter={() => setActiveIndex(index)}
-                    onClick={closeSearch}
+                    onClick={() => onOpenChange(false)}
                   >
                     <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-(--radius-field) border border-border/80 bg-white text-primary">
                       <Icon className="size-4" />
@@ -197,12 +228,29 @@ export function GlobalSearch({ className }: { className?: string }) {
               })}
             </div>
           ) : (
-            <p className="px-4 py-4 text-sm text-muted-foreground">
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
               {isLoading ? "Searching..." : "No matching records found."}
             </p>
           )}
         </div>
-      ) : null}
-    </div>
+
+        <div className="flex shrink-0 items-center gap-3 bg-[#fafbfd] px-4 py-2 text-[11px] font-medium text-muted-foreground">
+          {(
+            [
+              ["↑↓", "Navigate"],
+              ["↵", "Open"],
+              ["esc", "Close"],
+            ] as const
+          ).map(([key, label]) => (
+            <span key={label} className="inline-flex items-center gap-1">
+              <kbd className="rounded-[0.3rem] border border-border/70 bg-secondary/60 px-1.5 py-0.5 font-mono">
+                {key}
+              </kbd>
+              {label}
+            </span>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

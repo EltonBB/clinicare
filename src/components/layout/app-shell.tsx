@@ -9,8 +9,8 @@ import { logoutAction } from "@/app/(auth)/actions";
 import { refreshWorkspaceNotificationsAction } from "@/app/(workspace)/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { LogoutButton } from "@/components/auth/logout-button";
-import { GlobalSearch } from "@/components/layout/global-search";
-import { NotificationsMenu } from "@/components/layout/notifications-menu";
+import { GlobalSearchPalette, GlobalSearchTrigger } from "@/components/layout/global-search";
+import { NotificationsMenu, type NotificationItem } from "@/components/layout/notifications-menu";
 import { SettingsDialog } from "@/components/layout/settings-dialog";
 import { WorkspaceLiveProvider } from "@/components/layout/workspace-live-context";
 import {
@@ -23,13 +23,6 @@ import {
 import { resolveBrandAccentPreset } from "@/lib/branding";
 import { navigationItems } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
-
-type AppShellNotification = {
-  id: string;
-  title: string;
-  detail: string;
-  href: string;
-};
 
 function navLinkClasses(isActive: boolean) {
   return cn(
@@ -53,7 +46,7 @@ type AppShellProps = {
   unreadCount?: number;
   // Patient-inbox-only unread — feeds WorkspaceLiveContext (dashboard KPI, Messages card).
   inboxUnreadCount?: number;
-  notifications?: AppShellNotification[];
+  notifications?: NotificationItem[];
   hasInboxUnread?: boolean;
   hasStaffUnread?: boolean;
 };
@@ -112,6 +105,7 @@ export function AppShell({
   const [liveHasInboxUnread, setLiveHasInboxUnread] = useState(hasInboxUnread);
   const [liveHasStaffUnread, setLiveHasStaffUnread] = useState(hasStaffUnread);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const logoutFormRef = useRef<HTMLFormElement>(null);
   const businessInitial = (businessName || "V").charAt(0).toUpperCase();
   // Which nav item (sidebar + mobile bottom nav) gets the small unread dot —
@@ -155,6 +149,21 @@ export function AppShell({
       router.prefetch(href);
     }
   }, [pathname, router]);
+
+  // "/" opens the search palette from anywhere, like most apps that dock
+  // search in the sidebar — guarded so it doesn't fire while typing in a field.
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
+      event.preventDefault();
+      setSearchOpen(true);
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -213,6 +222,10 @@ export function AppShell({
           <div className="sticky top-0 flex h-screen w-full flex-col bg-white p-3">
             <div className="mb-4 px-2 py-2">
               <BrandMark href="/dashboard" includeSubtitle={false} size="lg" />
+            </div>
+
+            <div className="mb-3 px-0.5">
+              <GlobalSearchTrigger compact onOpen={() => setSearchOpen(true)} />
             </div>
 
             <nav className="flex-1 space-y-1.5 px-0.5 py-2">
@@ -302,12 +315,9 @@ export function AppShell({
 
         <div className="relative flex min-h-screen min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-20 border-b border-border/70 bg-white px-4 py-3 backdrop-blur-xl sm:px-5 lg:px-6 lg:py-0">
-            <div className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 lg:h-[56px] lg:gap-5">
-              <div className="flex min-w-[148px] items-center">
-                <BrandMark compact href="/dashboard" className="lg:hidden" />
-              </div>
-              <GlobalSearch className="hidden min-w-0 w-full max-w-3xl justify-self-center md:block" />
-              <div className="flex items-center gap-1.5">
+            <div className="flex w-full items-center gap-4 lg:h-[56px] lg:gap-5">
+              <BrandMark compact href="/dashboard" className="lg:hidden" />
+              <div className="ml-auto flex items-center gap-1.5">
                 <NotificationsMenu
                   unreadCount={liveUnreadCount}
                   items={liveNotifications}
@@ -319,7 +329,9 @@ export function AppShell({
                 </div>
               </div>
             </div>
-            <GlobalSearch className="mt-3 w-full md:hidden" />
+            {/* Search moves into the sidebar at lg+ (compact instance above);
+                below lg the sidebar is hidden, so this is the only way to search. */}
+            <GlobalSearchTrigger className="mt-3 w-full lg:hidden" onOpen={() => setSearchOpen(true)} />
           </header>
 
           <main className="relative flex-1 bg-background px-4 py-3 pb-28 sm:px-5 lg:px-6 lg:py-4 lg:pb-4">
@@ -389,6 +401,8 @@ export function AppShell({
         ownerEmail={ownerEmail}
         ownerPhone={ownerPhone}
       />
+
+      <GlobalSearchPalette open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   );
 }

@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
-type NotificationItem = {
+export type NotificationItem = {
   id: string;
   title: string;
   detail: string;
