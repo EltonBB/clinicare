@@ -149,15 +149,21 @@ export function CalendarPageSkeleton() {
           <SkeletonBlock className="h-9 w-32" />
         </div>
       </div>
-      <div className="grid grid-cols-7 gap-2 lg:h-[calc(100vh-230px)]">
-        {Array.from({ length: 7 }).map((_, index) => (
-          <div key={index} className="space-y-2">
-            <SkeletonBlock className="h-5" />
-            {Array.from({ length: 3 }).map((_, pillIndex) => (
-              <SkeletonBlock key={pillIndex} className="h-9" />
-            ))}
-          </div>
-        ))}
+      <div className="overflow-x-auto lg:h-[calc(100vh-230px)]">
+        {/* Matches the loaded week view's own min-w-[720px] (CalendarWorkspace)
+            so a narrow viewport doesn't crush 7 columns during loading and
+            then jump width the instant the real, horizontally-scrollable
+            grid mounts (Codex). */}
+        <div className="grid min-w-[720px] grid-cols-7 gap-2 lg:h-full">
+          {Array.from({ length: 7 }).map((_, index) => (
+            <div key={index} className="space-y-2">
+              <SkeletonBlock className="h-5" />
+              {Array.from({ length: 3 }).map((_, pillIndex) => (
+                <SkeletonBlock key={pillIndex} className="h-9" />
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
