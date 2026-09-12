@@ -56,7 +56,7 @@ function SkeletonToolbar() {
   return (
     <div className="surface-card flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
       <SkeletonBlock className="h-10 w-full max-w-xs" />
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {Array.from({ length: 4 }).map((_, index) => (
           <SkeletonBlock key={index} className="h-8 w-20" />
         ))}
@@ -124,9 +124,9 @@ export function DetailPageSkeleton() {
           </div>
         </div>
       </div>
-      <div className="flex gap-5">
+      <div className="flex gap-5 overflow-x-auto pb-px">
         {Array.from({ length: 4 }).map((_, index) => (
-          <SkeletonBlock key={index} className="h-7 w-20" />
+          <SkeletonBlock key={index} className="h-7 w-20 shrink-0" />
         ))}
       </div>
       <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]">
@@ -257,7 +257,15 @@ export function FormPageSkeleton() {
   return (
     <div className="mx-auto w-full max-w-[860px] space-y-3 px-1 py-2 sm:py-3">
       <SkeletonBlock className="h-4 w-28" />
-      <SkeletonBlock className="h-8 w-56" />
+      {/* Every CreatePageShell caller passes both eyebrow and description, so
+          WorkspaceHeader always renders all 4 rows here (breadcrumb, eyebrow,
+          title, description) — 2 placeholders let the real header insert 2
+          more lines and push the form down once it resolves (Codex). */}
+      <div className="space-y-1.5">
+        <SkeletonBlock className="h-3 w-32" />
+        <SkeletonBlock className="h-8 w-56" />
+        <SkeletonBlock className="h-4 w-full max-w-md" />
+      </div>
       <div className="surface-card space-y-4 p-3.5">
         <SkeletonBlock className="h-4 w-40" />
         <div className="grid gap-3 sm:grid-cols-2">
