@@ -103,18 +103,25 @@ export function DetailPageSkeleton() {
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-3">
       <SkeletonBlock className="h-4 w-40" />
-      <div className="surface-card space-y-3.5 p-3.5">
-        <div className="flex items-center gap-3">
-          <SkeletonBlock className="size-14 shrink-0 rounded-(--radius-tile)" />
-          <div className="space-y-2">
-            <SkeletonBlock className="h-5 w-48" />
-            <SkeletonBlock className="h-3.5 w-32" />
+      {/* No shared card border — the real header is an open split at xl+
+          (identity left, a 560px stat/actions block right), only stacking
+          into a single column below that (Codex: matching the split avoids
+          the loaded page abruptly shortening/reflowing out of a bordered
+          card that never existed there). */}
+      <div className="flex flex-col gap-3.5 xl:flex-row xl:items-start xl:justify-between">
+        <div className="flex min-w-0 items-start gap-3.5">
+          <SkeletonBlock className="size-20 shrink-0 rounded-(--radius-tile)" />
+          <div className="space-y-2 pt-1">
+            <SkeletonBlock className="h-7 w-48" />
+            <SkeletonBlock className="h-4 w-64" />
           </div>
         </div>
-        <SkeletonBlock className="h-16 w-full" />
-        <div className="flex gap-2">
-          <SkeletonBlock className="h-9 w-28" />
-          <SkeletonBlock className="h-9 w-28" />
+        <div className="w-full space-y-3 xl:w-[560px]">
+          <SkeletonBlock className="h-16 w-full" />
+          <div className="flex flex-wrap justify-end gap-2.5">
+            <SkeletonBlock className="h-10 w-36" />
+            <SkeletonBlock className="h-10 w-36" />
+          </div>
         </div>
       </div>
       <div className="flex gap-5">
@@ -213,32 +220,17 @@ export function InboxPageSkeleton() {
   );
 }
 
-// Reports: header w/ period pills → KPI row(4) → chart+insight row → staff row → 3-card row.
+// Reports: deliberately neutral, not shaped to the full 4-2-1-3 Pro layout —
+// this route resolves to one of two structurally incompatible pages (Pro's
+// full analytics stack, or Basic's completely different ProFeatureLock
+// upgrade page) depending on plan, which isn't known until the page's own
+// data fetch resolves. Committing to either shape here means the other
+// plan tier sees a jarring collapse into something else entirely (Codex).
 export function ReportsPageSkeleton() {
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-3">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <SkeletonBlock className="h-8 w-40" />
-        <div className="flex gap-2">
-          <SkeletonBlock className="h-10 w-64" />
-          <SkeletonBlock className="h-10 w-28" />
-        </div>
-      </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <SkeletonBlock key={index} className="h-24" />
-        ))}
-      </div>
-      <div className="grid gap-3 xl:grid-cols-2">
-        <SkeletonBlock className="h-72" />
-        <SkeletonBlock className="h-72" />
-      </div>
-      <SkeletonBlock className="h-56" />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <SkeletonBlock key={index} className="h-64" />
-        ))}
-      </div>
+      <SkeletonBlock className="h-8 w-40" />
+      <SkeletonBlock className="h-64 w-full" />
     </div>
   );
 }
