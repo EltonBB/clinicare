@@ -133,7 +133,6 @@ export function ClientsWorkspace({
     <WorkspacePage>
       <WorkspaceHeader
         title="Clients"
-        description="Manage client records, visit history, documents, messages, and follow-up."
         actions={
           <Link
             href="/clients/new"
@@ -248,9 +247,11 @@ export function ClientsWorkspace({
                     </Avatar>
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-foreground">{client.name}</p>
-                      <p className="truncate text-sm text-muted-foreground">
-                        {client.phone || client.email || "No contact added"}
-                      </p>
+                      {client.phone || client.email ? (
+                        <p className="truncate text-sm text-muted-foreground">
+                          {client.phone || client.email}
+                        </p>
+                      ) : null}
                     </div>
                   </Link>
                   <p className="text-sm text-muted-foreground lg:block">

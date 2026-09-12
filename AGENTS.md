@@ -195,17 +195,20 @@ These four rules came out of owner review and apply to every workspace surface; 
 
 1. **Identity is square.** People/entity avatars and icon chips use rounded-square tiles (`--radius-tile`, white background, border, primary initials/icon) — never circles. Circles are reserved for status dots, count badges, and pill chips. (Dashboard + Clients surfaces migrated first; remaining surfaces adopt this as they're touched.)
 2. **No filler text.** Empty fields render nothing — or one quiet section-level empty state. Never print "Not added", "No notes.", "TBD"-style placeholders per field. View models return empty strings, never placeholder copy.
-3. **Sub-records are list rows.** Repeating records (medications, health items, plan items, notes, reminders) render as divided list rows — title, inline meta, badge, row actions — never grids of bordered mini-cards that leave empty cells.
+3. **Sub-records are list rows.** Repeating records (medications, health items, plan items, notes, reminders) render as list rows — title, inline meta, badge, row actions — never grids of bordered mini-cards that leave empty cells. (Rows separate by padding/hover state, not divider lines — see rule 6; a surface built before 2026-09 may still show `divide-y` hairlines between rows until it's touched.)
 4. **Label/value pairs are flex rows.** Sentence-case muted label left, truncating value right. No fixed-width label columns and no all-caps labels inside profile/summary lists (tiny uppercase labels remain fine on KPI tiles).
+5. **No decorative sub-captions.** A page or card title does not get a grey descriptive sentence underneath restating what the section already shows or what the page obviously does (e.g. a "Reports" header does not need "How the clinic is performing and where to focus next" beneath it). Keep a caption only when it carries real, otherwise-invisible data (a period label like "Last 8 weeks", a live count). This reads as text-heavy and dated next to a plain, icon-led SaaS layout. (Calendar and Reports migrated first, 2026-09 — remaining surfaces adopt this as they're touched.)
+6. **No dividers except structural chrome and card borders.** A card/section keeps its own outer border and the calendar/table grid keeps its own cell borders — those are the component's own structure. Everything else — a `border-b` under a page header, a hairline between list rows, a rule above a popover's footer action — is removed; use spacing and background/hover contrast instead. The sidebar/topbar borders that frame the whole workspace shell are the one other exception. `WorkspaceHeader` (`components/workspace/workspace-layout.tsx`) had its bottom divider removed app-wide 2026-09 as the one shared case; remaining page-specific dividers (list rows, table headers, popover footers) are removed as each surface is touched — Calendar and Reports are done first.
 
 The UI UX Pro Max skill may be used for UI/UX review and design work, but AGENTS.md remains the source of truth for Vela-specific product direction, layout types, brand rules, and functionality boundaries.
 
 ### Design skill workflow
 
-Claude Code has a curated design-skill stack installed (`emil-design-eng`, `impeccable`, `design-taste-frontend`, `high-end-visual-design`, `redesign-existing-projects`). Use them **surface-dependently** — they supply craft; this file supplies the law:
+Claude Code has a curated design-skill stack installed (`emil-design-eng`, `impeccable`, `design-taste-frontend`, `high-end-visual-design`, `redesign-existing-projects`, `apple-design` — added 2026-09). Use them **surface-dependently** — they supply craft; this file supplies the law:
 
 - **Marketing pages** (`/`, `/product`, `/pricing`, `/about`): bold is good — `design-taste-frontend` / `high-end-visual-design` fit. Higher visual variance and motion are acceptable here.
 - **Authenticated workspace** (dashboard, calendar, clients, staff, inbox, reports, settings): the calm/compact/restrained-motion rules above win. Use only `emil-design-eng` (interaction polish) and `impeccable` (audit/critique) here — never re-style the clinical workspace with marketing-grade variance.
+- **`apple-design`** (Apple's WWDC-derived fluid-interaction guidance — springs, gesture momentum, translucent materials, optical typography): useful for its *universal* craft points — instant pointer-down feedback, motion anchored to its trigger (`transform-origin`, not a generic center), correct `prefers-reduced-motion` handling, size-specific type tracking. Its bouncy-spring and glass/blur defaults directly conflict with DESIGN.md's locked "no bounce/no elastic" and "flat white cards, never glass/blur decoration" rules — do not import those on the authenticated workspace; DESIGN.md's pinned system wins per the skill's own "the brief wins" precedence rule.
 - **Always:** AGENTS.md + ROADMAP.md override any skill output. Do not run `/impeccable init` to generate a competing `DESIGN.md`/`PRODUCT.md` — point design skills at this file instead.
 
 (These skills are installed for Claude Code only; Codex continues to use UI UX Pro Max.)
@@ -309,7 +312,7 @@ These reflect the **settled** designs after many review passes. Do not re-invent
 
 Answers: *What needs my attention today?*
 
-- Page header with the date and a single primary action ("New appointment"). There is **no customizer** — the dashboard is a fixed, curated layout (the configurable-widgets system was removed); the page uses the **wide** workspace frame.
+- Page header with a single primary action ("New appointment") — no date subtitle (removed 2026-09, rule 5). There is **no customizer** — the dashboard is a fixed, curated layout (the configurable-widgets system was removed); the page uses the **wide** workspace frame.
 - A **five-tile KPI row** (Appointments today, Completion rate, Active clients, Revenue this month, Unread messages). Each tile carries a tone chip and links to the surface that owns it (calendar, reports, clients, inbox); each KPI appears exactly once.
 - A primary row pairing the **Visits** card (7 / 30 / all-time totals + a 7-day bar chart — 14 days of data considered, comparing the last 7 against the prior 7 for the week-over-week delta — cancellations excluded) with **Today's schedule** (a "Next up" panel above the day's appointment list).
 - A secondary row of compact cards — recent activity, **Messages** (preview list + live unread badge), and **Staff today** — none of them restating a KPI.
@@ -318,14 +321,16 @@ Avoid: repeated appointment counts, cards that say the same thing, oversized emp
 
 ### Calendar
 
-Focus: scheduling.
+Focus: scheduling. Redesigned 2026-09, three times — first to a flatter grid, then to uniform pill-style events, then to a simplified toolbar that fills the viewport (owner references: a clean month-grid SaaS calendar with click-to-popover event details; a minimal calendar with name+time pill events; a dark segmented-toolbar mockup) — **no side rail**, the grid is the entire page.
 
-- Page header with view/date controls plus a direct date-jump control.
-- Calendar grid as the main focus; schedule blocks render as blocked time.
-- Selected-day/appointment context lives in the **side panel** — no duplicated lower summary panels.
-- Utilization derives from the selected view and saved business hours.
+- Page header is the title plus a flat toolbar: Day/Week/Month segmented pills, a text "Today" link right next to them, then (right-aligned) the date-range label immediately beside the date-jump calendar-icon popover, and New appointment — no prev/next arrow buttons (navigation is via "Today" and the date-jump popover only), no bordered/shadowed wrapper around the toolbar row, no description line under the page title.
+- Every appointment renders as a **uniform pill** — client name left, start time right, tinted by status (the same tone set as everywhere else: confirmed/pending/completed/cancelled) — in month, week, and day views alike. No duration-scaled sizing.
+- The grid fills the viewport height below the header/toolbar on desktop (`lg:h-[calc(100vh-230px)]`, mirroring Inbox's own fill pattern) rather than sizing to a fixed max-height — month rows and week/day columns stretch to use the available screen instead of leaving blank space under a short grid. An empty week/day column centers its "+ Add" prompt vertically instead of stranding it at the top.
+- Month view: plain flat cells (white, hairline borders, day number top-left, no open/closed background tinting — only non-current-month days are muted). Clicking a pill opens a small floating **quick-view popover** (client, time, service, status + a link into the edit page); clicking empty cell space still jumps into Day view for that date.
+- Week/Day views have **no hour-axis grid** — no time-of-day labels, no click-a-specific-time-slot booking, no now-line. Each day is a column listing that day's pills sorted by time, plus one "+ Add" action at the bottom (routes to New appointment pre-filled with the date; the exact time is picked in the form, not on the grid). Week view scrolls horizontally below its ~720px minimum width rather than crushing 7 columns unreadably.
+- There is no "Selected day" or "Utilization" rail — that context now lives in the quick-view popover (per event) or by switching to Day view (per date).
 
-Avoid: too many side cards; the grid becoming visually secondary.
+Avoid: a side rail, prev/next arrow buttons, background tinting for open/closed days, a header description sentence, an hour-axis time grid, duration-scaled event cards, reintroducing a summary card the grid already shows.
 
 ### Clients Directory
 
@@ -388,20 +393,29 @@ Avoid: a third context pane, dashboard-style KPI cards, metric clutter, fabricat
 
 ### Reports
 
-A clean analytics experience (Pro) or a polished upgrade state (Basic). Reshaped 2026-06 (owner-provided finance-dashboard inspiration) into a **compact three-row page** — every card simple, minimal, and shown exactly once:
+A clean analytics experience (Pro) or a polished upgrade state (Basic). Redesigned 2026-09 into a **single scrolling page — no tabs**, run as a 4-2-1-3 stack (the first pass trimmed to a strict 4-cards/2-panels/1-list template; the owner then asked for three more rows back — Appointment status, Highlights, Booking patterns — then, after living with three full-width rows, asked to compact them into one row of three equal-size cards and drop Client mix entirely, so the page now runs KPIs → Performance/AI insight → Staff performance → Appointment status/Highlights/Booking patterns). The period selector (daily/weekly/monthly/custom) and Refresh AI live in the page header; there is no subtitle under the "Reports" title. All sections stay behind the Pro gate as a unit — there is no partial-Basic view.
 
 - header controls: period pills (daily/weekly/monthly + Custom range when active), a **calendar icon button** that opens a small popover (From/To date inputs + "Analyse range"; both dates required) — never inline date inputs in the header — and Refresh AI, all h-10
 - compact paddings (`p-4` cards, `gap-3`) are deliberate; don't re-inflate them — the page scrolls normally like the rest of the workspace, it does not lock to one viewport
-- **Row 1 — exactly three KPI cards** (Appointments, Completion rate, New clients), each with an icon tile + label header, a large value with a **tinted delta pill** + comparison caption, and an **embedded mini-chart filling the right half of the card**: Appointments/New clients use **track-style bars** (full-height light ghost track per bucket with the value filling from the bottom; current bucket solid primary — zero buckets show just the track, never tiny stubs), Completion rate uses a **smooth gradient-filled sparkline with a visible end dot**; mini-charts are **interactive** — per-bucket hover shows a "label · value" tooltip. Avg visit length lives in Highlights; Active clients and Unread messages do not belong on Reports.
-- **Row 2 — Performance chart (≈2fr) beside the AI insight card (≈1fr)**: the chart renders **edge-to-edge** (container width measured with a ResizeObserver into the SVG viewBox — no letterboxed fixed-aspect SVG) with **smooth monotone-cubic curves** (no overshoot on flat-to-rising data), a **gradient area fill**, a **left y-axis** (0 / mid / max ticks aligned to the gridlines), and **both series on one shared scale** (the Completed line must never be normalized to its own max). No permanent point dots — per-bucket hover shows the guide line, both series' dots, and the "N appointments · M completed" tooltip. The AI card is **recommendation-style divided rows** — status badge top-right, then Summary / Diagnosis / Next move rows (label + severity/priority pill, one bold line, one clamped detail line) and a **footer pill "Operational health score: N/100"** with a tone-colored dot. No score ring, no audit footer.
-- **Row 3 — Appointment status donut (left) + Highlights card (right)**: an **SVG segment donut** (size-32, rounded segment caps with small gaps, total visits centered) beside divided legend rows that show **all four statuses including zero counts** (zero rows muted, "count · %", dot colors matching segments); the donut is **interactive from both sides** — hovering a segment or its legend row thickens that segment, fades the others, and swaps the center to that segment's count/label. Highlights is up to four **bordered icon rows** (title + one-line plain-English detail): Busiest window, Estimated utilization (with its basis), Top provider, Average visit length — replacing the old Operational detail, Client mix, and Demand & staff load cards, which were removed.
-- Period switches fade content in (~160ms), the KPI cards stagger subtly, and the date-range popover scales in from its trigger (~150ms).
 
-**The delta rule:** a delta always means "change vs the previous period"; point-in-time numbers carry no delta and no trend arrow. Capacity-derived utilization is labeled **"Estimated utilization"** with its basis stated, and lives in Highlights, not the KPI row.
+**Row 1 — four KPI cards** (Appointments, Completion rate, New clients, Estimated utilization), each a plain icon tile + label + large value + tinted delta pill + comparison caption — **no embedded mini-chart**; the trend already lives in the Performance chart below, and a bare value/delta tile reads calmer at a glance. Clicking a card expands a one-line detail (inline on mobile, a shared panel below the row on desktop).
+
+**Row 2 — Performance chart beside the AI insight card, equal width**: the chart is edge-to-edge, monotone-cubic, shared-scale, with three series — appointments, completed, and a dotted muted "Previous period" ghost line. The AI card leads with a visual **health-score gauge** (a small conic-gradient ring, tone-colored, the score centered) beside the tone label ("Strong" / "Healthy" / "Needs watching" / "Needs attention") — never a bare text pill for the score — then three icon-led rows (Summary / Diagnosis / Next move), each with its own icon tile so the card doesn't read as a wall of text.
+
+**Row 3 — Staff performance, full width**: the per-provider sortable list (square identity tile, name/role, visit count, inline load bar, completion rate — `—` when unmeasured). Clicking a row expands an inline accordion with a "View profile" link to that provider's Staff Detail page — never a duplicate profile view.
+
+**Row 4 — Appointment status, Highlights, and Booking patterns as three equal-size cards** in one responsive row (`grid-cols-1 sm:grid-cols-2 xl:grid-cols-3`, `items-stretch` so all three match the tallest card's height) — there is no fourth "Client mix" card; that breakdown was dropped from Reports:
+  - **Appointment status**: the status-mix donut + legend, centered in the card.
+  - **Highlights**: up to five compact icon tiles (Average visit length, Repeat-visit rate, Lost-slot rate, Follow-up coverage, Active clients), stacked single-column and vertically centered in the card — only the ones with measured data render, so a quiet period can show as few as one or two, never a placeholder tile, and never leaves visible blank space below a short list.
+  - **Booking patterns**: a day × time-band heat-grid (4 fixed bands — morning/midday/afternoon/evening, abbreviated to fit the narrower card) with a "peak window" callout and per-cell hover tooltip, plus a booking-behavior stats strip (avg lead time, same-day bookings, unassigned appointments).
+
+**Drill-down pattern:** where it exists (KPI cards, Staff rows), clicking expands an inline panel directly in place — never a dialog, never a page navigation.
+
+**The delta rule:** a delta always means "change vs the previous period"; point-in-time numbers carry no delta and no trend arrow. Capacity-derived utilization is labeled **"Estimated utilization"** with its basis stated.
 
 Sparse data uses natural-height compact empty/status states; the trend chart is hidden when no chart bucket has appointments. Custom date ranges always use rule-based analysis and say so; AI insights clearly indicate when rule-based fallback was used.
 
-Avoid: four-or-more KPI tiles, tall disconnected AI rails, masonry-like card placement, large blank chart areas, the same metric in two cards, dense metric-table cards (Operational detail-style), synthetic deltas/trends on point-in-time numbers.
+Avoid: dense metric-table cards (Operational detail-style), synthetic deltas/trends on point-in-time numbers, section subtitles that just restate the heading or repeat data already shown in that section, embedded KPI-card mini-charts, tabs/sub-navigation splitting this page.
 
 ### Settings
 

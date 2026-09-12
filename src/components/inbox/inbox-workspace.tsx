@@ -571,10 +571,7 @@ export function InboxWorkspace({
       />
 
       <WorkspacePage size="wide">
-        <WorkspaceHeader
-          title="Inbox"
-          description="Client conversations, replies, and unknown contacts."
-        />
+        <WorkspaceHeader title="Inbox" />
 
         <div className="surface-card min-h-[640px] overflow-hidden p-0 lg:h-[calc(100vh-174px)]">
           <div className="grid h-full grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">

@@ -179,7 +179,6 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
     <WorkspacePage size="wide">
       <WorkspaceHeader
         title="Dashboard"
-        description={view.dateLabel}
         actions={
           primaryAction ? (
             <Link href={primaryAction.href} className={solidButtonClasses}>

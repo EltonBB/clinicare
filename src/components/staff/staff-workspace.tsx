@@ -143,7 +143,6 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
     <WorkspacePage>
       <WorkspaceHeader
         title="Staff"
-        description="Manage your team, shifts, time tracking, and performance."
         actions={
           <Link
             href="/staff/new"
@@ -271,9 +270,11 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                         />
                       ) : null}
                     </p>
-                    <p className="truncate text-sm text-muted-foreground">
-                      {member.email || member.phone || "No contact added"}
-                    </p>
+                    {member.email || member.phone ? (
+                      <p className="truncate text-sm text-muted-foreground">
+                        {member.email || member.phone}
+                      </p>
+                    ) : null}
                   </div>
                 </Link>
                 <div className="min-w-0">

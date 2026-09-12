@@ -61,3 +61,6 @@ next-env.d.ts
 
 # Ad-hoc on-device QA screenshots (may capture seeded demo data — keep local)
 /vela-staff-*.png
+
+# Superpowers brainstorming companion mockups (design scratch, not shipped code)
+/.superpowers/
