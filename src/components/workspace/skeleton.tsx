@@ -240,7 +240,11 @@ export function SettingsPageSkeleton() {
   return (
     <div className="mx-auto w-full max-w-[1000px] space-y-3">
       <SkeletonBlock className="h-8 w-40" />
-      <div className="grid gap-3.5 lg:grid-cols-[280px_minmax(0,1fr)]">
+      {/* xl, not lg — the standalone (non-dialog) SettingsWorkspace only
+          switches to two columns at xl, so matching lg here would show the
+          detail pane beside the nav during loading and then move it below
+          once data resolves (Codex). */}
+      <div className="grid gap-3.5 xl:grid-cols-[290px_minmax(0,1fr)]">
         <div className="space-y-2">
           {Array.from({ length: 6 }).map((_, index) => (
             <SkeletonBlock key={index} className="h-14 w-full" />
