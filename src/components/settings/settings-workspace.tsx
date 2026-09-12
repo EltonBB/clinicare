@@ -1051,7 +1051,10 @@ export function SettingsWorkspace({
 
               <div className="space-y-3 pt-2">
                 <p className="text-sm font-medium text-foreground">
-                  Change password <span className="font-normal text-muted-foreground">— requires your current password</span>
+                  Change password{" "}
+                  <span className="font-normal text-muted-foreground">
+                    — leave blank to keep your current password, or fill in all three to change it
+                  </span>
                 </p>
                 <div className="space-y-1.5">
                   <FieldLabel>Current password</FieldLabel>
