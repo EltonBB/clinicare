@@ -313,7 +313,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                     d={`${linePath} L ${plotWidth} ${PLOT_HEIGHT} L 0 ${PLOT_HEIGHT} Z`}
                     fill={`url(#${chartGradientId})`}
                     transform={`translate(${PLOT_LEFT} ${PLOT_TOP})`}
-                    initial={{ opacity: 0 }}
+                    initial={prefersReducedMotion ? false : { opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.4, ease: "easeOut", delay: 0.2 }}
                   />
@@ -604,6 +604,7 @@ function DonutChart({
   hovered: string | null;
   onHover: (label: string) => void;
 }) {
+  const prefersReducedMotion = useReducedMotion();
   const size = 148;
   const strokeWidth = 14;
   const center = size / 2;
@@ -641,12 +642,12 @@ function DonutChart({
           strokeWidth={strokeWidth}
           strokeDasharray={`${Math.max((pct / 100) * circumference - (arcs.length > 1 ? 2 : 0), 0)} ${circumference}`}
           strokeDashoffset={-((arcStart / 100) * circumference)}
-          initial={{ opacity: 0 }}
+          initial={prefersReducedMotion ? false : { opacity: 0 }}
           animate={{ opacity: hovered && hovered !== item.label ? 0.25 : 1 }}
           transition={{
             duration: 0.35,
             ease: easeOutQuart,
-            delay: hasMounted ? 0 : index * 0.08,
+            delay: hasMounted || prefersReducedMotion ? 0 : index * 0.08,
           }}
           onMouseEnter={() => onHover(item.label)}
           className="cursor-default"

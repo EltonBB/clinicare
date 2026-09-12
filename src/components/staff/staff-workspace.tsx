@@ -314,7 +314,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                   {member.completionRate > 0 ? (
                     <>
                       <p className="text-sm font-semibold text-foreground">
-                        <KpiValue value={`${member.completionRate}%`} />
+                        <KpiValue value={`${member.completionRate}%`} animateOnMount />
                       </p>
                       {/* Mount-once CSS entrance (.bar-grow), not framer-motion — unlike
                           Reports' staff-load bar, this directory has no period selector,

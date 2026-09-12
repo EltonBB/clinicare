@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useReducedMotion } from "framer-motion";
 
 /**
  * Eases `target` from wherever it last settled — not always from 0 — so a
@@ -17,6 +18,7 @@ export function useCountUp(target: number, options?: { animateOnMount?: boolean 
   const animateOnMount = options?.animateOnMount ?? false;
   const [display, setDisplay] = useState(animateOnMount ? 0 : target);
   const previousTargetRef = useRef(animateOnMount ? 0 : target);
+  const prefersReducedMotion = useReducedMotion();
 
   useEffect(() => {
     const from = previousTargetRef.current;
@@ -26,11 +28,7 @@ export function useCountUp(target: number, options?: { animateOnMount?: boolean 
       return;
     }
 
-    const prefersReduced = window.matchMedia(
-      "(prefers-reduced-motion: reduce)"
-    ).matches;
-
-    if (prefersReduced) {
+    if (prefersReducedMotion) {
       // Deferred a frame so this stays inside an async callback rather than
       // the effect body itself (calling setState synchronously in an effect
       // is flagged by react-hooks/set-state-in-effect).
@@ -69,7 +67,7 @@ export function useCountUp(target: number, options?: { animateOnMount?: boolean 
     raf = requestAnimationFrame(frame);
 
     return () => cancelAnimationFrame(raf);
-  }, [target]);
+  }, [target, prefersReducedMotion]);
 
   return display;
 }
