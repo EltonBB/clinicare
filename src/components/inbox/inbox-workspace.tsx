@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   useDeferredValue,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -307,8 +308,15 @@ export function InboxWorkspace({
   // miss that change and skip the scroll. The newest message's own id
   // catches it either way.
   const newestMessageId = activeConversation?.messages.at(-1)?.id;
+  // Hydration (below) replaces a 1-message preview with the full thread —
+  // the newest id is unchanged (the preview already showed it), so without
+  // this the effect wouldn't re-run and scrollTop would stay pinned to the
+  // preview's tiny scrollHeight, stranding the view above the real content.
+  const messageCount = activeConversation?.messages.length ?? 0;
 
-  useEffect(() => {
+  // Layout, not passive — runs before paint so a freshly-mounted long thread
+  // never flashes its top for a frame before snapping to the bottom.
+  useLayoutEffect(() => {
     const container = messageListRef.current;
     if (!container) return;
     const isNewConversation = previousConversationIdRef.current !== activeConversation?.id;
@@ -318,7 +326,7 @@ export function InboxWorkspace({
       wasNearBottomRef.current = true;
       justSentRef.current = false;
     }
-  }, [activeConversation?.id, newestMessageId]);
+  }, [activeConversation?.id, newestMessageId, messageCount]);
 
   // Fresh retry budget each time a different conversation is selected —
   // independent of the retry-token effect below, which bumps within the
