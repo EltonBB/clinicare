@@ -940,7 +940,6 @@ export function SettingsWorkspace({
           <SectionCard
             id="business"
             title="Business & account"
-            description="Your account details and your clinic's information in one place."
             active={activeSection === "business"}
           >
             <div className="space-y-4">
@@ -1019,7 +1018,7 @@ export function SettingsWorkspace({
                 </div>
               </div>
 
-              <div className="flex items-center gap-4 border-t border-border/60 pt-4">
+              <div className="flex items-center gap-4 pt-2">
                 <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-(--radius-tile) border border-border/75 bg-white text-xl font-semibold text-primary">
                   {logoDisplayUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -1050,14 +1049,13 @@ export function SettingsWorkspace({
                 </div>
               </div>
 
-              <div className="space-y-3.5 border-t border-border/60 pt-4">
-                <div className="space-y-0.5">
-                  <p className="text-sm font-semibold text-foreground">Change password</p>
-                  <p className="text-xs leading-5 text-muted-foreground">
-                    Leave the fields blank to keep your current password. Changing it
-                    requires your current password.
-                  </p>
-                </div>
+              <div className="space-y-3 pt-2">
+                <p className="text-sm font-medium text-foreground">
+                  Change password{" "}
+                  <span className="font-normal text-muted-foreground">
+                    — leave blank to keep your current password, or fill in all three to change it
+                  </span>
+                </p>
                 <div className="space-y-1.5">
                   <FieldLabel>Current password</FieldLabel>
                   <Input
@@ -1230,16 +1228,11 @@ export function SettingsWorkspace({
                 </div>
               </div>
 
-              <p
-                className={cn(
-                  "text-xs",
-                  customAccentInvalid ? "font-medium text-destructive" : "text-muted-foreground"
-                )}
-              >
-                {customAccentInvalid
-                  ? "Use a valid HEX value like #0A22FF."
-                  : "Applied to primary actions, active states, and highlights across the workspace."}
-              </p>
+              {customAccentInvalid ? (
+                <p className="text-xs font-medium text-destructive">
+                  Use a valid HEX value like #0A22FF.
+                </p>
+              ) : null}
             </div>
           </SectionCard>
 

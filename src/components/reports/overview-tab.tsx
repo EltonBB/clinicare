@@ -3,21 +3,11 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { m } from "framer-motion";
 import {
-  AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
   CalendarDays,
   CheckCircle2,
-  Clock3,
-  Gauge,
   Minus,
-  Repeat,
-  Reply,
-  Sparkles,
-  Target,
-  UserPlus,
-  Users,
-  XCircle,
 } from "lucide-react";
 
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
@@ -62,13 +52,6 @@ const priorityStyles = {
   medium: "bg-primary/10 text-primary",
   low: "bg-secondary text-muted-foreground",
 } as const;
-
-const kpiIcons: Record<string, typeof CalendarDays> = {
-  appointments: CalendarDays,
-  completionRate: CheckCircle2,
-  newClients: UserPlus,
-  utilization: Gauge,
-};
 
 function TrendIcon({ trend }: { trend: ReportMetricTrend }) {
   if (trend === "up") return <ArrowUpRight className="size-3" />;
@@ -454,9 +437,8 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
           </div>
 
           <div className="mt-2 flex-1 space-y-1">
-            <InsightRow icon={Sparkles} label="Summary" title={period.snapshot.headline} text={period.snapshot.summary} />
+            <InsightRow label="Summary" title={period.snapshot.headline} text={period.snapshot.summary} />
             <InsightRow
-              icon={AlertTriangle}
               label="Diagnosis"
               badge={topCause ? capitalize(topCause.severity) : undefined}
               badgeTone={topCause?.severity}
@@ -464,7 +446,6 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
               text={topCause?.evidence}
             />
             <InsightRow
-              icon={Target}
               label="Next move"
               badge={primaryAction ? capitalize(primaryAction.priority) : undefined}
               badgeTone={primaryAction?.priority}
@@ -541,25 +522,24 @@ export function HighlightsCard({ period }: { period: ReportPeriodView }) {
 
   const highlights = [
     avgVisitKpi && avgVisitKpi.value
-      ? { icon: Clock3, title: "Average visit length", detail: `Completed visits average ${avgVisitKpi.value} this period.` }
+      ? { title: "Average visit length", detail: `Completed visits average ${avgVisitKpi.value} this period.` }
       : null,
     repeatVisitRow && repeatVisitRow.value
-      ? { icon: Repeat, title: "Repeat-visit rate", detail: `${repeatVisitRow.value} of clients return for another visit.` }
+      ? { title: "Repeat-visit rate", detail: `${repeatVisitRow.value} of clients return for another visit.` }
       : null,
     lostSlotRow && lostSlotRow.value
-      ? { icon: XCircle, title: "Lost-slot rate", detail: `${lostSlotRow.value} of finalized visits were cancelled.` }
+      ? { title: "Lost-slot rate", detail: `${lostSlotRow.value} of finalized visits were cancelled.` }
       : null,
     followUpRow && followUpRow.value
-      ? { icon: Reply, title: "Follow-up coverage", detail: `${followUpRow.value} of inbound messages got an outbound reply.` }
+      ? { title: "Follow-up coverage", detail: `${followUpRow.value} of inbound messages got an outbound reply.` }
       : null,
     period.clientMixTotal > 0
       ? {
-          icon: Users,
           title: "Active clients",
           detail: `${period.activeClients.toLocaleString("en-US")} of ${period.clientMixTotal.toLocaleString("en-US")} client records are currently active.`,
         }
       : null,
-  ].filter((item): item is { icon: typeof Clock3; title: string; detail: string } => Boolean(item));
+  ].filter((item): item is { title: string; detail: string } => Boolean(item));
 
   return (
     <m.section
@@ -573,14 +553,9 @@ export function HighlightsCard({ period }: { period: ReportPeriodView }) {
       {highlights.length > 0 ? (
         <div className="flex flex-1 flex-col justify-center gap-2">
           {highlights.map((highlight) => (
-            <div key={highlight.title} className="flex items-center gap-3 rounded-(--radius-tile) border border-border/70 px-3 py-2.5">
-              <span className="grid size-8 shrink-0 place-items-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
-                <highlight.icon className="size-4" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground">{highlight.title}</p>
-                <p className="truncate text-xs text-muted-foreground">{highlight.detail}</p>
-              </div>
+            <div key={highlight.title} className="rounded-(--radius-tile) border border-border/70 px-3 py-2.5">
+              <p className="text-sm font-medium text-foreground">{highlight.title}</p>
+              <p className="truncate text-xs text-muted-foreground">{highlight.detail}</p>
             </div>
           ))}
         </div>
@@ -685,8 +660,6 @@ function KpiCard({
   active?: boolean;
   detail?: string;
 }) {
-  const Icon = kpiIcons[kpi.key] ?? CalendarDays;
-
   return (
     <m.section
       variants={staggerItem}
@@ -716,12 +689,7 @@ function KpiCard({
         )}
       >
         <div className="flex flex-1 flex-col p-3.5">
-          <div className="flex items-center gap-2.5">
-            <span className="grid size-8 shrink-0 place-items-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
-              <Icon className="size-4" />
-            </span>
-            <p className="truncate text-sm font-medium whitespace-nowrap text-muted-foreground">{kpi.label}</p>
-          </div>
+          <p className="truncate text-sm font-medium whitespace-nowrap text-muted-foreground">{kpi.label}</p>
           <div className="mt-auto pt-2.5">
             <p className="text-[1.6rem] font-semibold leading-8 tracking-tight text-foreground">{kpi.value || "—"}</p>
             <div className="mt-1 flex items-center gap-1.5 whitespace-nowrap">
@@ -783,14 +751,12 @@ export function LegendRow({
 }
 
 function InsightRow({
-  icon: Icon,
   label,
   badge,
   badgeTone,
   title,
   text,
 }: {
-  icon: typeof Sparkles;
   label: string;
   badge?: string;
   badgeTone?: "high" | "medium" | "low";
@@ -798,18 +764,13 @@ function InsightRow({
   text?: string;
 }) {
   return (
-    <div className="flex items-start gap-2.5 rounded-(--radius-tile) px-1 py-1.5 transition-colors duration-(--duration-base) hover:bg-secondary/30">
-      <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
-        <Icon className="size-3.5" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-medium text-muted-foreground">{label}</p>
-          {badge ? <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-semibold", priorityStyles[badgeTone ?? "medium"])}>{badge}</span> : null}
-        </div>
-        <p className="mt-0.5 line-clamp-2 text-sm font-medium leading-5 text-foreground">{title}</p>
-        {text ? <p className="mt-0.5 line-clamp-1 text-xs leading-4 text-muted-foreground">{text}</p> : null}
+    <div className="rounded-(--radius-tile) px-1 py-1.5 transition-colors duration-(--duration-base) hover:bg-secondary/30">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium text-muted-foreground">{label}</p>
+        {badge ? <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-semibold", priorityStyles[badgeTone ?? "medium"])}>{badge}</span> : null}
       </div>
+      <p className="mt-0.5 line-clamp-2 text-sm font-medium leading-5 text-foreground">{title}</p>
+      {text ? <p className="mt-0.5 line-clamp-1 text-xs leading-4 text-muted-foreground">{text}</p> : null}
     </div>
   );
 }

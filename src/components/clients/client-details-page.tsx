@@ -13,7 +13,6 @@ import {
   CreditCard,
   Download,
   FileText,
-  HeartPulse,
   ImageOff,
   ImagePlus,
   Mail,
@@ -61,6 +60,7 @@ import {
   type RecordFormValues,
 } from "@/components/clients/record-form-dialog";
 import {
+  SidebarSectionHeader,
   WorkspaceEmptyState,
   WorkspacePage,
 } from "@/components/workspace/workspace-layout";
@@ -739,7 +739,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </Link>
 
               <div className="mt-5 border-t border-border/70 pt-4">
-                <SidebarSectionHeader icon={CalendarDays} title="Upcoming appointment" />
+                <SidebarSectionHeader title="Upcoming appointment" />
                 {upcomingAppointments[0] ? (
                   <div className="mt-3 rounded-(--radius-card) bg-primary/7 px-3.5 py-3">
                     <div className="flex items-start justify-between gap-3.5">
@@ -1868,32 +1868,10 @@ function HealthSummaryRow({ title, value }: { title: string; value: string }) {
   }
 
   return (
-    <div className="grid grid-cols-[40px_minmax(0,1fr)] gap-3 py-3 first:pt-0 last:pb-0">
-      <div className="flex size-9 items-center justify-center rounded-(--radius-tile) border border-border/80 bg-white text-primary">
-        <HeartPulse className="size-4" />
-      </div>
-      <div>
-        <p className="text-sm font-semibold text-foreground">{title}</p>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground">{value}</p>
-      </div>
+    <div className="py-3 first:pt-0 last:pb-0">
+      <p className="text-sm font-semibold text-foreground">{title}</p>
+      <p className="mt-1 text-sm leading-6 text-muted-foreground">{value}</p>
     </div>
-  );
-}
-
-function SidebarSectionHeader({
-  icon: Icon,
-  title,
-}: {
-  icon: ComponentType<{ className?: string }>;
-  title: string;
-}) {
-  return (
-    <h2 className="inline-flex items-center gap-3 text-[15px] font-semibold leading-5 text-foreground">
-      <span className="flex size-8 items-center justify-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
-        <Icon className="size-4" />
-      </span>
-      {title}
-    </h2>
   );
 }
 

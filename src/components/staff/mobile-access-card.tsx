@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, Copy, Smartphone } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 
 import {
   generateMobileAccessCodeAction,
@@ -75,15 +75,8 @@ export function MobileAccessCard({ staffId, initial }: MobileAccessCardProps) {
 
   return (
     <section className="surface-card mt-3.5 flex flex-col p-3.5">
-      <div className="flex items-center gap-3">
-        <span className="flex size-10 items-center justify-center rounded-(--radius-tile) border border-border bg-white text-primary">
-          <Smartphone className="size-5" />
-        </span>
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-foreground">Mobile access</h3>
-          <p className="text-xs text-muted-foreground">Vela Staff app sign-in</p>
-        </div>
-      </div>
+      <h3 className="text-sm font-semibold text-foreground">Mobile access</h3>
+      <p className="text-xs text-muted-foreground">Vela Staff app sign-in</p>
 
       <div className="mt-3.5 rounded-(--radius-card) bg-primary/5 px-3.5 py-3">
         {status.device ? (

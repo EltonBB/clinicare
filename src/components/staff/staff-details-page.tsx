@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import type { ComponentType } from "react";
 import { useEffect, useState, useTransition } from "react";
 import {
   ArrowLeft,
@@ -25,7 +24,11 @@ import { StaffMessagesTab } from "@/components/staff/staff-messages-tab";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { WorkspaceEmptyState, WorkspacePage } from "@/components/workspace/workspace-layout";
+import {
+  SidebarSectionHeader,
+  WorkspaceEmptyState,
+  WorkspacePage,
+} from "@/components/workspace/workspace-layout";
 import { HeaderStat } from "@/components/workspace/header-stat";
 import { cn, getInitials } from "@/lib/utils";
 import type { AdminThreadView } from "@/lib/mobile/admin-inbox";
@@ -303,7 +306,7 @@ export function StaffDetailsPage({
               </Link>
 
               <div className="mt-5 border-t border-border/70 pt-4">
-                <SidebarSectionHeader icon={CalendarClock} title="Today" />
+                <SidebarSectionHeader title="Today" />
                 {staff.shiftLabel ? (
                   <div className="mt-3 rounded-(--radius-card) bg-primary/7 px-3.5 py-3">
                     <p className="text-sm font-semibold text-foreground">{staff.shiftLabel}</p>
@@ -384,23 +387,18 @@ export function StaffDetailsPage({
             {staff.recentAppointments.length > 0 ? (
               <div className="mt-2 divide-y divide-border/65">
                 {staff.recentAppointments.map((appointment) => (
-                  <div key={appointment.id} className="flex items-start gap-3 py-2.5">
-                    <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-(--radius-tile) border border-border/80 bg-white text-primary">
-                      <CalendarCheck2 className="size-4" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="truncate text-sm font-semibold text-foreground">
-                          {appointment.title}
-                        </p>
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          {appointment.date} · {appointment.time}
-                        </span>
-                      </div>
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {appointment.clientName}
+                  <div key={appointment.id} className="py-2.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {appointment.title}
                       </p>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {appointment.date} · {appointment.time}
+                      </span>
                     </div>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {appointment.clientName}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -434,10 +432,7 @@ export function StaffDetailsPage({
             {staff.schedule.length > 0 ? (
               <div className="mt-2 divide-y divide-border/65">
                 {staff.schedule.map((shift) => (
-                  <div key={shift.id} className="flex items-center gap-3 py-2.5">
-                    <span className="flex size-8 shrink-0 items-center justify-center rounded-(--radius-tile) border border-border/80 bg-white text-primary">
-                      <CalendarClock className="size-4" />
-                    </span>
+                  <div key={shift.id} className="flex items-center justify-between gap-3 py-2.5">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-foreground">{shift.day}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
@@ -479,9 +474,6 @@ export function StaffDetailsPage({
               <div className="mt-2 divide-y divide-border/65">
                 {staff.weekTimeEntries.map((entry) => (
                   <div key={entry.id} className="flex items-center gap-3 py-2.5">
-                    <span className="flex size-8 shrink-0 items-center justify-center rounded-(--radius-tile) border border-border/80 bg-white text-primary">
-                      <Clock3 className="size-4" />
-                    </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-foreground">{entry.day}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
@@ -538,23 +530,6 @@ function AppointmentStatusBadge({ status }: { status: string }) {
     >
       {normalized}
     </span>
-  );
-}
-
-function SidebarSectionHeader({
-  icon: Icon,
-  title,
-}: {
-  icon: ComponentType<{ className?: string }>;
-  title: string;
-}) {
-  return (
-    <h2 className="inline-flex items-center gap-3 text-[15px] font-semibold leading-5 text-foreground">
-      <span className="flex size-8 items-center justify-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
-        <Icon className="size-4" />
-      </span>
-      {title}
-    </h2>
   );
 }
 
