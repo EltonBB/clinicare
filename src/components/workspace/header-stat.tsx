@@ -1,3 +1,4 @@
+import { KpiValue } from "@/components/workspace/kpi-value";
 import { cn } from "@/lib/utils";
 
 /**
@@ -26,7 +27,7 @@ export function HeaderStat({
           tone === "danger" && "text-destructive"
         )}
       >
-        {value}
+        <KpiValue value={value} truncate />
       </p>
     </div>
   );

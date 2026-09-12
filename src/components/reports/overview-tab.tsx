@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { m } from "framer-motion";
+import { m, useReducedMotion } from "framer-motion";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -10,9 +10,10 @@ import {
   Minus,
 } from "lucide-react";
 
+import { KpiValue, useCountUp } from "@/components/workspace/kpi-value";
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
 import { cn } from "@/lib/utils";
-import { fadeIn, staggerChildren, staggerItem } from "@/lib/motion";
+import { easeOutQuart, fadeIn, staggerChildren, staggerItem } from "@/lib/motion";
 import type {
   ReportKpi,
   ReportMetricTrend,
@@ -123,10 +124,6 @@ function statusColor(label: string) {
   return "#94a3b8";
 }
 
-function polarPoint(cx: number, cy: number, radius: number, angle: number) {
-  return [cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)];
-}
-
 // A stale hover from the previous period/range must not survive a period
 // switch or a custom-range change — periodStart/periodEnd change on both,
 // even when `period.key` stays "custom" across two different date ranges.
@@ -147,6 +144,10 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
   const [chartWidth, setChartWidth] = useState(820);
   const chartAreaRef = useRef<HTMLDivElement | null>(null);
   const chartGradientId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  // SVG `pathLength` isn't a transform/layout property, so MotionConfig's
+  // reducedMotion="user" (motion-provider.tsx) doesn't cover it — the trace-in
+  // draw has to be gated here explicitly (Codex P2).
+  const prefersReducedMotion = useReducedMotion();
 
   useResetOnPeriodChange(period, () => {
     setChartHover(null);
@@ -304,10 +305,13 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                       </g>
                     );
                   })}
-                  <path
+                  <m.path
                     d={`${linePath} L ${plotWidth} ${PLOT_HEIGHT} L 0 ${PLOT_HEIGHT} Z`}
                     fill={`url(#${chartGradientId})`}
                     transform={`translate(${PLOT_LEFT} ${PLOT_TOP})`}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.4, ease: "easeOut", delay: 0.2 }}
                   />
                   <path
                     d={previousLinePath}
@@ -319,7 +323,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                     strokeLinecap="round"
                     transform={`translate(${PLOT_LEFT} ${PLOT_TOP})`}
                   />
-                  <path
+                  <m.path
                     d={linePath}
                     fill="none"
                     stroke="var(--primary)"
@@ -327,8 +331,16 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     transform={`translate(${PLOT_LEFT} ${PLOT_TOP})`}
+                    initial={prefersReducedMotion ? false : { pathLength: 0 }}
+                    animate={{ pathLength: 1 }}
+                    transition={{ duration: 0.6, ease: "easeOut" }}
                   />
-                  <path
+                  {/* Faded in rather than drawn with `pathLength` — Motion
+                      synthesizes its own stroke-dasharray to animate that
+                      property, which would overwrite the fixed "6 6" pattern
+                      that keeps this series visually distinct once settled
+                      (Codex P2). */}
+                  <m.path
                     d={completedLinePath}
                     fill="none"
                     stroke="var(--primary)"
@@ -337,6 +349,9 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                     strokeWidth="2"
                     strokeLinecap="round"
                     transform={`translate(${PLOT_LEFT} ${PLOT_TOP})`}
+                    initial={prefersReducedMotion ? false : { opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.6, ease: "easeOut" }}
                   />
                   {period.chart.points.map((point, index) => {
                     const x = PLOT_LEFT + (index / Math.max(period.chart.points.length - 1, 1)) * plotWidth;
@@ -476,8 +491,8 @@ export function AppointmentStatusCard({ period }: { period: ReportPeriodView }) 
     >
       <h2 className="px-1 text-[15px] font-semibold text-foreground">Appointment status</h2>
       {period.statusTotal > 0 ? (
-        <div className="mt-2 flex flex-1 flex-col items-center justify-center gap-4 px-1 py-2">
-          <div className="relative" onMouseLeave={() => setStatusHover(null)}>
+        <div className="mt-2 flex flex-1 flex-col items-center justify-center gap-4 px-1 py-2 lg:flex-row lg:gap-6">
+          <div className="relative shrink-0" onMouseLeave={() => setStatusHover(null)}>
             <DonutChart items={statusMix} hovered={statusHover} onHover={setStatusHover} />
             <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
               <div>
@@ -490,16 +505,24 @@ export function AppointmentStatusCard({ period }: { period: ReportPeriodView }) 
               </div>
             </div>
           </div>
-          <div className="w-full text-sm" onMouseLeave={() => setStatusHover(null)}>
+          <div
+            className="w-full min-w-0 lg:w-auto"
+            onMouseLeave={() => setStatusHover(null)}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setStatusHover(null);
+              }
+            }}
+          >
             {statusMix.map((item) => (
               <LegendRow
                 key={item.label}
                 color={statusColor(item.label)}
                 label={item.label}
-                value={`${item.count}`}
                 detail={item.share.replace(/\.0%$/, "%")}
+                count={item.count}
                 muted={item.count === 0}
-                active={statusHover === item.label}
+                dimmed={statusHover !== null && statusHover !== item.label}
                 onHover={() => setStatusHover(item.label)}
               />
             ))}
@@ -577,73 +600,73 @@ function DonutChart({
   hovered: string | null;
   onHover: (label: string) => void;
 }) {
-  const size = 128;
+  const size = 148;
   const strokeWidth = 14;
   const center = size / 2;
-  const radius = (size - strokeWidth) / 2 - 2;
+  const radius = 58;
+  const circumference = 2 * Math.PI * radius;
   const total = items.reduce((sum, item) => sum + item.count, 0);
   const nonZero = items.filter((item) => item.count > 0);
-  const pad = nonZero.length > 1 ? 0.055 : 0;
+  // The per-arc stagger delay below is for the mount reveal only — without
+  // this guard, every hover-driven opacity change would reuse the same
+  // delayed transition, making dimming lag behind the cursor instead of
+  // responding instantly.
+  const [hasMounted, setHasMounted] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setHasMounted(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
-  let cursor = -Math.PI / 2;
-  const arcs = nonZero.map((item) => {
-    const sweep = (item.count / total) * Math.PI * 2;
-    const a0 = cursor + pad;
-    const a1 = Math.max(cursor + sweep - pad, a0 + 0.01);
-    cursor += sweep;
-    const [x0, y0] = polarPoint(center, center, radius, a0);
-    const [x1, y1] = polarPoint(center, center, radius, a1);
-    const largeArc = a1 - a0 > Math.PI ? 1 : 0;
-
-    return {
-      item,
-      d: `M ${round2(x0)} ${round2(y0)} A ${radius} ${radius} 0 ${largeArc} 1 ${round2(x1)} ${round2(y1)}`,
-    };
-  });
+  const pcts = nonZero.map((item) => (item.count / total) * 100);
+  const arcs = nonZero.map((item, index) => ({
+    item,
+    pct: pcts[index],
+    start: pcts.slice(0, index).reduce((sum, pct) => sum + pct, 0),
+  }));
 
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} className="size-32">
-      {nonZero.length === 1 ? (
-        <circle
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+      {arcs.map(({ item, pct, start: arcStart }, index) => (
+        <m.circle
+          key={item.label}
           cx={center}
           cy={center}
           r={radius}
           fill="none"
-          stroke={statusColor(nonZero[0].label)}
-          strokeWidth={hovered === nonZero[0].label ? strokeWidth + 3 : strokeWidth}
-          opacity={hovered && hovered !== nonZero[0].label ? 0.25 : 1}
-          className="transition-[stroke-width,opacity] duration-(--duration-base)"
-          onMouseEnter={() => onHover(nonZero[0].label)}
+          stroke={statusColor(item.label)}
+          strokeWidth={strokeWidth}
+          strokeDasharray={`${Math.max((pct / 100) * circumference - (arcs.length > 1 ? 2 : 0), 0)} ${circumference}`}
+          strokeDashoffset={-((arcStart / 100) * circumference)}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: hovered && hovered !== item.label ? 0.25 : 1 }}
+          transition={{
+            duration: 0.35,
+            ease: easeOutQuart,
+            delay: hasMounted ? 0 : index * 0.08,
+          }}
+          onMouseEnter={() => onHover(item.label)}
+          className="cursor-default"
         />
-      ) : (
-        arcs.map(({ item, d }) => (
-          <path
-            key={item.label}
-            d={d}
-            fill="none"
-            stroke={statusColor(item.label)}
-            strokeWidth={hovered === item.label ? strokeWidth + 3 : strokeWidth}
-            strokeLinecap="butt"
-            opacity={hovered && hovered !== item.label ? 0.25 : 1}
-            className="transition-[stroke-width,opacity] duration-(--duration-base)"
-            onMouseEnter={() => onHover(item.label)}
-          />
-        ))
-      )}
+      ))}
     </svg>
   );
 }
 
 function ScoreGauge({ score, tone }: { score: number; tone: ReportSnapshotTone }) {
   const color = snapshotToneColor[tone];
+  // Same rAF/ease-out-quart count-up KpiValue uses (shared hook), driving the
+  // ring and the number together — eases from whatever score last settled at
+  // rather than always from 0, so a score change without a remount (e.g. two
+  // custom date ranges in a row) animates cleanly between the two numbers.
+  const displayScore = Math.round(useCountUp(score));
 
   return (
     <div
       className="grid size-14 shrink-0 place-items-center rounded-full"
-      style={{ background: `conic-gradient(${color} ${score}%, var(--secondary) 0)` }}
+      style={{ background: `conic-gradient(${color} ${displayScore}%, var(--secondary) 0)` }}
     >
       <div className="grid size-11 place-items-center rounded-full bg-white">
-        <span className="text-base font-semibold tabular-nums text-foreground">{score}</span>
+        <span className="text-base font-semibold tabular-nums text-foreground">{displayScore}</span>
       </div>
     </div>
   );
@@ -691,7 +714,9 @@ function KpiCard({
         <div className="flex flex-1 flex-col p-3.5">
           <p className="truncate text-sm font-medium whitespace-nowrap text-muted-foreground">{kpi.label}</p>
           <div className="mt-auto pt-2.5">
-            <p className="text-[1.6rem] font-semibold leading-8 tracking-tight text-foreground">{kpi.value || "—"}</p>
+            <p className="text-[1.6rem] font-semibold leading-8 tracking-tight text-foreground">
+              {kpi.value ? <KpiValue value={kpi.value} /> : "—"}
+            </p>
             <div className="mt-1 flex items-center gap-1.5 whitespace-nowrap">
               {kpi.delta ? (
                 <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold", deltaPillStyles[kpi.trend])}>
@@ -716,37 +741,52 @@ function KpiCard({
   );
 }
 
+// Dims every row except the hovered one, rather than tinting the active row's
+// background — the legend cross-highlight read from 21st.dev's Sectors Donut.
 export function LegendRow({
   color,
   label,
-  value,
   detail,
+  count,
   muted,
-  active,
+  dimmed,
   onHover,
 }: {
   color: string;
   label: string;
-  value: string;
   detail?: string;
+  // Visible text shows label + percentage only, but a screen reader gets no
+  // other way to learn the raw count — the donut center that updates on
+  // hover/focus isn't associated with this button via ARIA — so it's folded
+  // into the accessible name instead of the visible row.
+  count?: number;
   muted?: boolean;
-  active?: boolean;
+  // true only while a *different* row is hovered — distinct from "nothing is
+  // hovered", which must leave every row at full opacity.
+  dimmed?: boolean;
   onHover?: () => void;
 }) {
   return (
-    <div
+    <button
+      type="button"
       onMouseEnter={onHover}
-      className={cn("flex items-center justify-between gap-2.5 rounded-(--radius-tile) px-1.5 py-1.5 transition-colors duration-(--duration-base)", active ? "bg-secondary/55" : "hover:bg-secondary/45")}
+      onFocus={onHover}
+      aria-label={
+        count !== undefined && detail ? `${label}: ${count} visits, ${detail}` : undefined
+      }
+      className="-mx-1.5 flex w-full items-center gap-2.5 rounded-(--radius-tile) px-1.5 py-[7px] text-left transition-opacity duration-(--duration-base)"
+      style={{ opacity: dimmed ? 0.35 : 1 }}
     >
-      <span className="flex min-w-0 items-center gap-2">
-        <span className={cn("size-2.5 shrink-0 rounded-full", muted && "opacity-35")} style={{ background: color }} />
-        <span className={cn("truncate", muted ? "text-muted-foreground/60" : "text-muted-foreground")}>{label}</span>
+      <span className={cn("size-2 shrink-0 rounded-full", muted && "opacity-35")} style={{ background: color }} />
+      <span className={cn("w-[92px] truncate text-sm", muted ? "text-muted-foreground/60" : "text-muted-foreground")}>
+        {label}
       </span>
-      <span className={cn("shrink-0 font-medium tabular-nums", muted ? "text-muted-foreground/60" : "text-foreground")}>
-        {value}
-        {detail ? <span className={cn("ml-1.5 font-normal", muted ? "text-muted-foreground/50" : "text-muted-foreground")}>· {detail}</span> : null}
-      </span>
-    </div>
+      {detail ? (
+        <span className={cn("shrink-0 text-sm font-medium tabular-nums", muted ? "text-muted-foreground/60" : "text-foreground")}>
+          {detail}
+        </span>
+      ) : null}
+    </button>
   );
 }
 

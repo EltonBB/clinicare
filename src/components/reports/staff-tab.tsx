@@ -152,9 +152,11 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
                     {bookedHours}h
                   </span>
                   <span className="relative block h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-                    <span
+                    <m.span
                       className="block h-full rounded-full bg-primary"
-                      style={{ width: `${Math.min(loadShare, 100)}%` }}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.min(loadShare, 100)}%` }}
+                      transition={{ duration: 0.5, ease: "easeOut" }}
                     />
                     {avgLoadShare > 0 ? (
                       <span
