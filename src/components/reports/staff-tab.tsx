@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { m } from "framer-motion";
+import { m, useReducedMotion } from "framer-motion";
 import { ArrowDown, ArrowUp, ChevronRight } from "lucide-react";
 
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
@@ -24,6 +24,7 @@ function completionValue(completionRate: string) {
 }
 
 export function StaffTab({ period }: { period: ReportPeriodView }) {
+  const prefersReducedMotion = useReducedMotion();
   const [sortKey, setSortKey] = useState<SortKey>("appointments");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [openRowId, setOpenRowId] = useState<string | null>(null);
@@ -153,9 +154,9 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
                   </span>
                   <span className="relative block h-1.5 w-full overflow-hidden rounded-full bg-secondary">
                     <m.span
-                      className="block h-full rounded-full bg-primary"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${Math.min(loadShare, 100)}%` }}
+                      className="block h-full w-full origin-left rounded-full bg-primary"
+                      initial={prefersReducedMotion ? false : { scaleX: 0 }}
+                      animate={{ scaleX: Math.min(loadShare, 100) / 100 }}
                       transition={{ duration: 0.5, ease: "easeOut" }}
                     />
                     {avgLoadShare > 0 ? (
