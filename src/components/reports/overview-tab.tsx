@@ -494,8 +494,15 @@ export function AppointmentStatusCard({ period }: { period: ReportPeriodView }) 
       className="surface-card flex h-full flex-col p-3.5"
     >
       <h2 className="px-1 text-[15px] font-semibold text-foreground">Appointment status</h2>
+      {/* 2xl, not lg, for the row/column switch below — this card sits in a
+          3-column row from xl (1280px) onward (reports-overview.tsx), so
+          switching at lg leaves a narrow band right around that breakpoint
+          where the card is already horizontal but its grid cell is only
+          ~290px, too tight for the fixed 148px donut + gap + legend
+          (Codex). Staying stacked until each column is wide enough to
+          actually fit both avoids the overflow/clipping. */}
       {period.statusTotal > 0 ? (
-        <div className="mt-2 flex flex-1 flex-col items-center justify-center gap-4 px-1 py-2 lg:flex-row lg:gap-6">
+        <div className="mt-2 flex flex-1 flex-col items-center justify-center gap-4 px-1 py-2 2xl:flex-row 2xl:gap-6">
           <div className="relative shrink-0" onMouseLeave={() => setStatusHover(null)}>
             <DonutChart items={statusMix} hovered={statusHover} onHover={setStatusHover} />
             <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
