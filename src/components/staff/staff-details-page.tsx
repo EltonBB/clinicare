@@ -305,7 +305,7 @@ export function StaffDetailsPage({
                 Edit profile
               </Link>
 
-              <div className="mt-5 border-t border-border/70 pt-4">
+              <div className="mt-5 pt-4">
                 <SidebarSectionHeader title="Today" />
                 {staff.shiftLabel ? (
                   <div className="mt-3 rounded-(--radius-card) bg-primary/7 px-3.5 py-3">
@@ -385,7 +385,7 @@ export function StaffDetailsPage({
               </Link>
             </div>
             {staff.recentAppointments.length > 0 ? (
-              <div className="mt-2 divide-y divide-border/65">
+              <div className="mt-2">
                 {staff.recentAppointments.map((appointment) => (
                   <div key={appointment.id} className="py-2.5">
                     <div className="flex items-center justify-between gap-3">
@@ -430,7 +430,7 @@ export function StaffDetailsPage({
               </Link>
             </div>
             {staff.schedule.length > 0 ? (
-              <div className="mt-2 divide-y divide-border/65">
+              <div className="mt-2">
                 {staff.schedule.map((shift) => (
                   <div key={shift.id} className="flex items-center justify-between gap-3 py-2.5">
                     <div className="min-w-0 flex-1">
@@ -471,7 +471,7 @@ export function StaffDetailsPage({
               </span>
             </div>
             {staff.weekTimeEntries.length > 0 ? (
-              <div className="mt-2 divide-y divide-border/65">
+              <div className="mt-2">
                 {staff.weekTimeEntries.map((entry) => (
                   <div key={entry.id} className="flex items-center gap-3 py-2.5">
                     <div className="min-w-0 flex-1">
