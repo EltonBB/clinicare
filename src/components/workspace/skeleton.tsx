@@ -99,7 +99,10 @@ export function DirectoryPageSkeleton() {
 }
 
 // Client / Staff detail: back link → header (identity tile, stat strip, actions) → tabs → rail + main.
-export function DetailPageSkeleton() {
+// tabCount matches the loaded route's real tab count (5 for Client Detail,
+// 3 for Staff Detail) — a fixed 4 added or removed an underline placeholder
+// on every detail navigation (Codex).
+export function DetailPageSkeleton({ tabCount }: { tabCount: number }) {
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-3">
       <SkeletonBlock className="h-4 w-40" />
@@ -130,7 +133,7 @@ export function DetailPageSkeleton() {
         </div>
       </div>
       <div className="flex gap-5 overflow-x-auto pb-px">
-        {Array.from({ length: 4 }).map((_, index) => (
+        {Array.from({ length: tabCount }).map((_, index) => (
           <SkeletonBlock key={index} className="h-7 w-20 shrink-0" />
         ))}
       </div>
@@ -153,10 +156,8 @@ export function DetailPageSkeleton() {
   );
 }
 
-// Calendar: header → flat toolbar (view pills + date range) → filled grid.
-// Shaped for the week view — CalendarWorkspace defaults to "week", not
-// month, so 7 pill-listing day columns resemble the real first paint more
-// closely than a 35-cell month grid would.
+// Calendar: header → flat toolbar (view pills + date range). The content
+// area below stays neutral rather than grid-shaped — see the comment there.
 export function CalendarPageSkeleton() {
   return (
     <div className="mx-auto w-full max-w-[1520px] space-y-3">
@@ -174,22 +175,13 @@ export function CalendarPageSkeleton() {
           <SkeletonBlock className="h-9 w-40" />
         </div>
       </div>
-      <div className="overflow-x-auto lg:h-[calc(100vh-230px)]">
-        {/* Matches the loaded week view's own min-w-[720px] (CalendarWorkspace)
-            so a narrow viewport doesn't crush 7 columns during loading and
-            then jump width the instant the real, horizontally-scrollable
-            grid mounts (Codex). */}
-        <div className="grid min-w-[720px] grid-cols-7 gap-2 lg:h-full">
-          {Array.from({ length: 7 }).map((_, index) => (
-            <div key={index} className="space-y-2">
-              <SkeletonBlock className="h-5" />
-              {Array.from({ length: 3 }).map((_, pillIndex) => (
-                <SkeletonBlock key={pillIndex} className="h-9" />
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* Deliberately neutral, not shaped to the full-height week grid — a
+          brand-new workspace with no clients yet resolves to the compact
+          "Add a client before booking" empty state instead of the grid
+          (calendar-workspace.tsx), so committing to the tall grid shape
+          here collapsed most of the viewport once that state loaded
+          (Codex). */}
+      <SkeletonBlock className="h-64 w-full" />
     </div>
   );
 }
