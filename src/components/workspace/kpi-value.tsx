@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useReducedMotion } from "framer-motion";
 
 /**
@@ -12,19 +12,18 @@ import { useReducedMotion } from "framer-motion";
  * static render never showed either) unless `animateOnMount` is set, which
  * starts from 0 instead — for a call site with no other retarget trigger
  * (e.g. a Dashboard tile that only ever mounts once per page load), that's
- * the only way the count-up effect ever gets to run at all.
+ * the only way the count-up effect ever gets to run at all. The initial
+ * state never looks at `prefersReducedMotion` — the server can't know the
+ * client's motion preference, so branching the initializer on it would
+ * hydrate to a different value than SSR rendered. The reduced-motion
+ * correction instead runs in the layout effect below, synchronously before
+ * the browser's first paint, so it never shows the SSR value on screen
+ * for a reduced-motion client without ever risking a hydration mismatch
+ * (Codex).
  */
 export function useCountUp(target: number, options?: { animateOnMount?: boolean }) {
   const animateOnMount = options?.animateOnMount ?? false;
-  // Read before the initial state so a reduced-motion client starts at
-  // `target` immediately instead of at 0 — framer-motion's hook resolves
-  // this synchronously from matchMedia on the client (see its source), so
-  // checking it here (rather than only inside the effect below) means a
-  // reduced-motion user's first paint is already correct instead of
-  // showing 0 until the effect's post-commit correction runs (Codex).
-  const prefersReducedMotion = useReducedMotion();
-  const startAtTarget = !animateOnMount || prefersReducedMotion;
-  const [display, setDisplay] = useState(startAtTarget ? target : 0);
+  const [display, setDisplay] = useState(animateOnMount ? 0 : target);
   // Tracks the actually-rendered value, not the target — updated every
   // frame the animation runs, not just once when it starts. If an earlier
   // version bumped this to `target` as soon as the animation began, an
@@ -34,9 +33,14 @@ export function useCountUp(target: number, options?: { animateOnMount?: boolean 
   // setDisplay, leaving the KPI frozen on that partial value — or, for a
   // fast retarget, animate from the old final target instead of from
   // wherever the number actually was on screen (Codex).
-  const displayRef = useRef(startAtTarget ? target : 0);
+  const displayRef = useRef(animateOnMount ? 0 : target);
+  const prefersReducedMotion = useReducedMotion();
 
-  useEffect(() => {
+  // Layout, not passive — runs synchronously right after commit, before the
+  // browser paints, so the reduced-motion branch's correction below lands
+  // in the same paint as the mount instead of flashing the SSR/animateOnMount
+  // value first (Codex).
+  useLayoutEffect(() => {
     const from = displayRef.current;
 
     if (from === target || !Number.isFinite(target)) {
@@ -47,7 +51,10 @@ export function useCountUp(target: number, options?: { animateOnMount?: boolean 
     if (prefersReducedMotion) {
       // Deferred a frame so this stays inside an async callback rather than
       // the effect body itself (calling setState synchronously in an effect
-      // is flagged by react-hooks/set-state-in-effect).
+      // is flagged by react-hooks/set-state-in-effect) — scheduled from a
+      // layout effect, this rAF still fires before the browser's first
+      // paint of the mount commit, so the SSR-matching initial value is
+      // never actually shown on screen (Codex).
       const raf = requestAnimationFrame(() => {
         displayRef.current = target;
         setDisplay(target);
