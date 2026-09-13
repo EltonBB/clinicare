@@ -202,6 +202,11 @@ export function InboxPageSkeleton() {
               <SkeletonBlock className="h-7 w-16" />
               <SkeletonBlock className="h-7 w-20" />
             </div>
+            {/* The loaded list inserts a one-line connection-status row
+                (connectionLine, inbox-workspace.tsx) between the filter
+                chips and the first conversation row — omitting it shifts
+                every row down once data resolves (Codex). */}
+            <SkeletonBlock className="h-3 w-40" />
             {Array.from({ length: 6 }).map((_, index) => (
               <div key={index} className="flex items-center gap-2.5 py-1">
                 <SkeletonBlock className="size-10 shrink-0 rounded-(--radius-tile)" />
@@ -212,12 +217,19 @@ export function InboxPageSkeleton() {
               </div>
             ))}
           </div>
-          <div className="flex flex-col p-4">
-            <SkeletonBlock className="mb-4 h-14 w-full" />
-            <div className="flex-1 space-y-3">
+          <div className="flex h-full flex-col">
+            <div className="flex-1 space-y-3 p-4">
+              <SkeletonBlock className="mb-1 h-14 w-full" />
               <SkeletonBlock className="h-14 w-2/3" />
               <SkeletonBlock className="ml-auto h-14 w-2/3" />
               <SkeletonBlock className="h-14 w-1/2" />
+            </div>
+            {/* The loaded thread always ends in a composer row (border-t,
+                inbox-workspace.tsx) — without it, the message area
+                contracts and its contents shift up once data resolves
+                (Codex). */}
+            <div className="border-t border-border/70 px-4 py-3">
+              <SkeletonBlock className="h-14 w-full" />
             </div>
           </div>
         </div>
@@ -244,8 +256,17 @@ export function ReportsPageSkeleton() {
 // Settings deep-link fallback (/settings): master nav list beside the active section.
 export function SettingsPageSkeleton() {
   return (
-    <div className="mx-auto w-full max-w-[1000px] space-y-3">
+    // 1440px, matching WorkspacePage's default size — the standalone route
+    // isn't wrapped in the "wide" frame, and this fallback previously capped
+    // at 1000px, so the whole grid widened by hundreds of pixels once data
+    // resolved (Codex).
+    <div className="mx-auto w-full max-w-[1440px] space-y-3">
       <SkeletonBlock className="h-8 w-40" />
+      {/* The real WorkspaceHeader here always renders a description line
+          ("Configure how the workspace runs.") below the title — omitting
+          it shifts the whole nav/detail grid down once data resolves
+          (Codex). */}
+      <SkeletonBlock className="h-4 w-72 max-w-full" />
       {/* xl, not lg — the standalone (non-dialog) SettingsWorkspace only
           switches to two columns at xl, so matching lg here would show the
           detail pane beside the nav during loading and then move it below
