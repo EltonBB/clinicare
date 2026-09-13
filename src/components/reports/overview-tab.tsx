@@ -685,11 +685,15 @@ function ScoreGauge({ score, tone }: { score: number; tone: ReportSnapshotTone }
   // ring and the number together — eases from whatever score last settled at
   // rather than always from 0, so a score change without a remount (e.g. two
   // custom date ranges in a row) animates cleanly between the two numbers.
-  // OverviewTab remounts this via key={period.key} on every ordinary period
-  // switch too, so animateOnMount is required here for the same reason the
-  // KPI cards needed it — without it the effect sees from === target on
-  // mount and the gauge jumps straight to the final score (Codex).
-  const displayScore = Math.round(useCountUp(score, { animateOnMount: true }));
+  // No animateOnMount here, unlike the plain-number KPI cards: this gauge's
+  // ring color and the adjacent tone label + "X/100" caption (rendered by
+  // the caller from the final, un-animated score/tone) can't animate along
+  // with a 0-to-target count-up, so a mount-animated version showed a
+  // "Strong"-green ring mostly empty for 600ms, or the wrong tone label
+  // during a big custom-range swing. Codex's own resolution for that is to
+  // render the final score immediately instead, keeping every part of the
+  // gauge internally consistent at all times.
+  const displayScore = Math.round(useCountUp(score));
 
   return (
     <div
