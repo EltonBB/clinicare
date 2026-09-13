@@ -732,7 +732,15 @@ function KpiCard({
           <p className="truncate text-sm font-medium whitespace-nowrap text-muted-foreground">{kpi.label}</p>
           <div className="mt-auto pt-2.5">
             <p className="text-[1.6rem] font-semibold leading-8 tracking-tight text-foreground">
-              {kpi.value ? <KpiValue value={kpi.value} /> : "—"}
+              {/* animateOnMount is safe here even for the custom-range
+                  retarget case: it only seeds the INITIAL state on a fresh
+                  mount (0 instead of target) — a live instance's retarget
+                  (period.key staying "custom" across two ranges) never
+                  remounts, so this doesn't touch that path at all. Without
+                  it, ordinary daily/weekly/monthly switches remount via
+                  key={period.key} straight to the final number, skipping
+                  the count-up the feature is meant to show (Codex). */}
+              {kpi.value ? <KpiValue value={kpi.value} animateOnMount /> : "—"}
             </p>
             <div className="mt-1 flex items-center gap-1.5 whitespace-nowrap">
               {kpi.delta ? (
