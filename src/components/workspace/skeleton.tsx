@@ -129,7 +129,12 @@ export function DetailPageSkeleton() {
           <SkeletonBlock key={index} className="h-7 w-20 shrink-0" />
         ))}
       </div>
-      <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]">
+      {/* xl only, not lg — both loaded Overview tabs (client-details-page.tsx,
+          staff-details-page.tsx) stay single-column until xl too, so
+          splitting a breakpoint earlier here would replace a two-column
+          placeholder with two stacked sections once real data resolves
+          (Codex). */}
+      <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-[320px_minmax(0,1fr)]">
         <div className="space-y-3">
           <SkeletonBlock className="h-40" />
           <SkeletonBlock className="h-28" />
