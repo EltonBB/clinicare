@@ -48,12 +48,20 @@ export function useCountUp(target: number, options?: { animateOnMount?: boolean 
     }
 
     if (prefersReducedMotion) {
-      // `display` is already `target` (its initial state, untouched so
-      // far), so no setState is needed here — just record the state these
-      // refs would otherwise reach.
-      displayRef.current = target;
-      hasStartedMountAnimationRef.current = true;
-      return;
+      // Deferred into an async callback rather than the effect body itself
+      // (a direct synchronous setState call here is flagged by
+      // react-hooks/set-state-in-effect). Needed for more than the initial
+      // mount, where `display` already equals `target` and this is a
+      // no-op: a live retarget on an already-mounted, reduced-motion
+      // instance (e.g. the Dashboard's unread-count chip) reaches this
+      // same branch with `display` still at the *old* value, so skipping
+      // setDisplay left it stale (Codex).
+      const raf = requestAnimationFrame(() => {
+        displayRef.current = target;
+        hasStartedMountAnimationRef.current = true;
+        setDisplay(target);
+      });
+      return () => cancelAnimationFrame(raf);
     }
 
     const duration = 600;
