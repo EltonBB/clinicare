@@ -174,10 +174,14 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
   const chartCompletedValues = period.chart.completedValues;
   const chartPreviousValues = period.chart.previousValues;
   const chartValues = useMemo(() => chartPoints.map((point) => point.value), [chartPoints]);
-  // Scale is derived from the current period only — if a previous-period
-  // bucket spikes above it, that segment of the ghost line clips at the top
-  // of the plot rather than compressing today's real trend down to fit it.
-  const maxChartValue = useMemo(() => Math.max(...chartValues, 1), [chartValues]);
+  // Includes the previous-period series in the scale too — deriving it from
+  // the current period alone let a higher previous-period bucket clip off
+  // the top of the plot, hiding the size of a decline instead of showing it
+  // on the same scale as the current trend (Codex).
+  const maxChartValue = useMemo(
+    () => Math.max(...chartValues, ...chartPreviousValues, 1),
+    [chartValues, chartPreviousValues]
+  );
   const plotWidth = Math.max(chartWidth - PLOT_LEFT, 80);
   const linePath = useMemo(
     () => buildSmoothPath(chartValues, plotWidth, PLOT_HEIGHT, maxChartValue),
