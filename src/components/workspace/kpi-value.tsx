@@ -16,7 +16,15 @@ import { useReducedMotion } from "framer-motion";
  */
 export function useCountUp(target: number, options?: { animateOnMount?: boolean }) {
   const animateOnMount = options?.animateOnMount ?? false;
-  const [display, setDisplay] = useState(animateOnMount ? 0 : target);
+  // Read before the initial state so a reduced-motion client starts at
+  // `target` immediately instead of at 0 — framer-motion's hook resolves
+  // this synchronously from matchMedia on the client (see its source), so
+  // checking it here (rather than only inside the effect below) means a
+  // reduced-motion user's first paint is already correct instead of
+  // showing 0 until the effect's post-commit correction runs (Codex).
+  const prefersReducedMotion = useReducedMotion();
+  const startAtTarget = !animateOnMount || prefersReducedMotion;
+  const [display, setDisplay] = useState(startAtTarget ? target : 0);
   // Tracks the actually-rendered value, not the target — updated every
   // frame the animation runs, not just once when it starts. If an earlier
   // version bumped this to `target` as soon as the animation began, an
@@ -26,8 +34,7 @@ export function useCountUp(target: number, options?: { animateOnMount?: boolean 
   // setDisplay, leaving the KPI frozen on that partial value — or, for a
   // fast retarget, animate from the old final target instead of from
   // wherever the number actually was on screen (Codex).
-  const displayRef = useRef(animateOnMount ? 0 : target);
-  const prefersReducedMotion = useReducedMotion();
+  const displayRef = useRef(startAtTarget ? target : 0);
 
   useEffect(() => {
     const from = displayRef.current;
