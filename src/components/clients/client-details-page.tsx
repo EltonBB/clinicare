@@ -738,7 +738,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 Edit profile
               </Link>
 
-              <div className="mt-5 border-t border-border/70 pt-4">
+              <div className="mt-5 pt-4">
                 <SidebarSectionHeader title="Upcoming appointment" />
                 {upcomingAppointments[0] ? (
                   <div className="mt-3 rounded-(--radius-card) bg-primary/7 px-3.5 py-3">
@@ -808,7 +808,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   </button>
                 </div>
                 {client.medical.importantHealthNotes || currentMedications[0] ? (
-                  <div className="mt-2 divide-y divide-border/70">
+                  <div className="mt-2">
                     <HealthSummaryRow
                       title="Important health notes"
                       value={client.medical.importantHealthNotes}
