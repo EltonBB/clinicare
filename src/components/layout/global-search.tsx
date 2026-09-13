@@ -49,14 +49,16 @@ export function useGlobalSearchHotkey(onOpen: () => void, disabled = false) {
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) {
         return;
       }
-      // A dialog the caller doesn't know about (a delete confirmation, the
-      // Inbox conversion dialog, etc.) isn't covered by `disabled` — every
-      // dialog in the app shares the one Base UI-backed primitive
-      // (components/ui/dialog.tsx), whose popup carries role="dialog" (or
-      // "alertdialog") plus data-open while open, so check the DOM directly
-      // instead of plumbing open state up from every dialog in the tree
-      // (Codex).
-      if (target?.closest('[role="dialog"][data-open], [role="alertdialog"][data-open]')) {
+      // A dialog the caller doesn't know about isn't covered by `disabled`
+      // — Base UI dialogs (components/ui/dialog.tsx) and hand-rolled
+      // popovers (Calendar's date picker/quick view, Reports' custom-range
+      // popup) alike, so check the DOM directly instead of plumbing open
+      // state up from every dialog/popover in the tree. No open-state
+      // attribute needed: the hand-rolled popovers only render this markup
+      // while open, and Base UI's own Portal defaults to keepMounted=false,
+      // removing the popup from the DOM entirely once fully closed — so a
+      // bare role match can't go stale (Codex).
+      if (target?.closest('[role="dialog"], [role="alertdialog"]')) {
         return;
       }
       event.preventDefault();
