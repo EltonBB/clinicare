@@ -53,12 +53,15 @@ export function useGlobalSearchHotkey(onOpen: () => void, disabled = false) {
       // — Base UI dialogs (components/ui/dialog.tsx) and hand-rolled
       // popovers (Calendar's date picker/quick view, Reports' custom-range
       // popup) alike, so check the DOM directly instead of plumbing open
-      // state up from every dialog/popover in the tree. No open-state
-      // attribute needed: the hand-rolled popovers only render this markup
-      // while open, and Base UI's own Portal defaults to keepMounted=false,
-      // removing the popup from the DOM entirely once fully closed — so a
-      // bare role match can't go stale (Codex).
-      if (target?.closest('[role="dialog"], [role="alertdialog"]')) {
+      // state up from every dialog/popover in the tree. Checked document-wide,
+      // not just the event target's ancestors — these hand-rolled popovers
+      // don't move focus into their own markup on open, so the target is
+      // still the trigger button outside the dialog. No open-state attribute
+      // needed: the hand-rolled popovers only render this markup while open,
+      // and Base UI's own Portal defaults to keepMounted=false, removing the
+      // popup from the DOM entirely once fully closed — so a bare role match
+      // can't go stale (Codex).
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) {
         return;
       }
       event.preventDefault();
