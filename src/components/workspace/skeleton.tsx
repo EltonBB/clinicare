@@ -111,9 +111,14 @@ export function DetailPageSkeleton() {
       <div className="flex flex-col gap-3.5 xl:flex-row xl:items-start xl:justify-between">
         <div className="flex min-w-0 items-start gap-3.5">
           <SkeletonBlock className="size-20 shrink-0 rounded-(--radius-tile)" />
-          <div className="space-y-2 pt-1">
-            <SkeletonBlock className="h-7 w-48" />
-            <SkeletonBlock className="h-4 w-64" />
+          {/* min-w-0 lets this shrink inside the flex row; without it a
+              fixed-width child block sets the div's min-content size and
+              the row overflows a narrow (320px) viewport instead of
+              matching the real header's own shrinkable identity content
+              (Codex). */}
+          <div className="min-w-0 space-y-2 pt-1">
+            <SkeletonBlock className="h-7 w-48 max-w-full" />
+            <SkeletonBlock className="h-4 w-64 max-w-full" />
           </div>
         </div>
         <div className="w-full space-y-3 xl:w-[560px]">
