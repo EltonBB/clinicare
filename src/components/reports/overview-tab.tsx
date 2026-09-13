@@ -10,7 +10,7 @@ import {
   Minus,
 } from "lucide-react";
 
-import { KpiValue, useCountUp } from "@/components/workspace/kpi-value";
+import { KpiValue } from "@/components/workspace/kpi-value";
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
 import { cn } from "@/lib/utils";
 import { easeOutQuart, fadeIn, staggerChildren, staggerItem } from "@/lib/motion";
@@ -681,19 +681,18 @@ function DonutChart({
 
 function ScoreGauge({ score, tone }: { score: number; tone: ReportSnapshotTone }) {
   const color = snapshotToneColor[tone];
-  // Same rAF/ease-out-quart count-up KpiValue uses (shared hook), driving the
-  // ring and the number together — eases from whatever score last settled at
-  // rather than always from 0, so a score change without a remount (e.g. two
-  // custom date ranges in a row) animates cleanly between the two numbers.
-  // No animateOnMount here, unlike the plain-number KPI cards: this gauge's
-  // ring color and the adjacent tone label + "X/100" caption (rendered by
-  // the caller from the final, un-animated score/tone) can't animate along
-  // with a 0-to-target count-up, so a mount-animated version showed a
-  // "Strong"-green ring mostly empty for 600ms, or the wrong tone label
-  // during a big custom-range swing. Codex's own resolution for that is to
-  // render the final score immediately instead, keeping every part of the
-  // gauge internally consistent at all times.
-  const displayScore = Math.round(useCountUp(score));
+  // No count-up here, unlike the plain-number KPI cards: the ring's color
+  // and the adjacent tone label + "X/100" caption (rendered by the caller
+  // from the same, un-animated score/tone) can't animate along with the
+  // number, whether the change comes from a mount or from an in-place
+  // retarget (two custom ranges in a row) — an animated version kept
+  // showing a stale/intermediate score under the new tone's color and
+  // label for 600ms either way. Deriving the tone/caption from the
+  // animated value instead would need the score-to-tone thresholds
+  // client-side, duplicating logic that belongs to the snapshot builder in
+  // lib/reports.ts — rendering the final score immediately keeps every
+  // part of the gauge consistent without that duplication (Codex).
+  const displayScore = Math.round(score);
 
   return (
     <div
