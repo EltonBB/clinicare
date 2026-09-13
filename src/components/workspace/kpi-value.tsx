@@ -134,10 +134,19 @@ export function KpiValue({
     return <span className="tabular-nums">{formatted}</span>;
   }
 
+  // Two renders sharing one slot, switched by a CSS media query rather than
+  // JS: the animated value for motion-safe clients, and the plain final
+  // value (`value` itself, already correct) for motion-reduce ones. A JS
+  // effect can't correct the animateOnMount-0 server HTML until hydration
+  // has run, so a reduced-motion client watching a slow hydration — or one
+  // with JS disabled entirely — would otherwise see 0. CSS resolves at
+  // first paint regardless, and both spans are identical on server and
+  // client, so this can't cause a hydration mismatch either (Codex).
   return (
     <span className="relative inline-block tabular-nums">
       <span className="invisible">{value}</span>
-      <span className="absolute inset-0">{formatted}</span>
+      <span className="absolute inset-0 motion-reduce:hidden">{formatted}</span>
+      <span className="absolute inset-0 hidden motion-reduce:inline">{value}</span>
     </span>
   );
 }
