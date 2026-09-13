@@ -49,6 +49,16 @@ export function useGlobalSearchHotkey(onOpen: () => void, disabled = false) {
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) {
         return;
       }
+      // A dialog the caller doesn't know about (a delete confirmation, the
+      // Inbox conversion dialog, etc.) isn't covered by `disabled` — every
+      // dialog in the app shares the one Base UI-backed primitive
+      // (components/ui/dialog.tsx), whose popup carries role="dialog" (or
+      // "alertdialog") plus data-open while open, so check the DOM directly
+      // instead of plumbing open state up from every dialog in the tree
+      // (Codex).
+      if (target?.closest('[role="dialog"][data-open], [role="alertdialog"][data-open]')) {
+        return;
+      }
       event.preventDefault();
       onOpen();
     }
