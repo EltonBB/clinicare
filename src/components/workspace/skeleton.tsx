@@ -155,18 +155,19 @@ export function DetailPageSkeleton() {
 export function CalendarPageSkeleton() {
   return (
     <div className="mx-auto w-full max-w-[1520px] space-y-3">
-      {/* Two rows, not one — the real page keeps New appointment in the
-          header and the view/Today/date-range controls in their own
-          toolbar row below it (Codex); matching that avoids a layout jump
-          once data resolves. */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <SkeletonBlock className="h-8 w-40" />
-        <SkeletonBlock className="h-9 w-40" />
-      </div>
+      {/* Title-only header — New appointment lives in the toolbar row below,
+          next to the date-range label and date-jump popover, not in the
+          header's own action area (Codex); matching that avoids a layout
+          jump once data resolves. */}
+      <SkeletonBlock className="h-8 w-40" />
       <div className="flex flex-wrap items-center gap-2">
         <SkeletonBlock className="h-8 w-40" />
         <SkeletonBlock className="h-8 w-14" />
-        <SkeletonBlock className="ml-auto h-8 w-44" />
+        <div className="ml-auto flex items-center gap-3">
+          <SkeletonBlock className="h-6 w-32" />
+          <SkeletonBlock className="size-8" />
+          <SkeletonBlock className="h-9 w-40" />
+        </div>
       </div>
       <div className="overflow-x-auto lg:h-[calc(100vh-230px)]">
         {/* Matches the loaded week view's own min-w-[720px] (CalendarWorkspace)
