@@ -380,34 +380,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
 
   return (
     <WorkspacePage size="wide">
-      <WorkspaceHeader
-        title="Calendar"
-        actions={
-          hasClients ? (
-            <Link
-              href={`/calendar/new?date=${selectedDateKey}`}
-              className={cn(
-                buttonVariants({ variant: "solid" }),
-                "h-9 rounded-(--radius-card) px-3.5"
-              )}
-            >
-              <Plus className="size-4" />
-              New appointment
-            </Link>
-          ) : (
-            <Link
-              href="/clients/new?next=calendar"
-              className={cn(
-                buttonVariants({ variant: "solid" }),
-                "h-9 rounded-(--radius-card) px-3.5"
-              )}
-            >
-              <UsersRound className="size-4" />
-              Add first client
-            </Link>
-          )
-        }
-      />
+      <WorkspaceHeader title="Calendar" />
 
       <div className="section-reveal relative z-30 flex flex-wrap items-center gap-3 py-1">
         <div className="inline-flex items-center gap-1.5">
@@ -446,6 +419,30 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
             appointmentDateKeys={appointmentDateKeys}
             onSelect={(day) => setActiveDate(day)}
           />
+
+          {hasClients ? (
+            <Link
+              href={`/calendar/new?date=${selectedDateKey}`}
+              className={cn(
+                buttonVariants({ variant: "solid" }),
+                "h-9 rounded-(--radius-card) px-3.5"
+              )}
+            >
+              <Plus className="size-4" />
+              New appointment
+            </Link>
+          ) : (
+            <Link
+              href="/clients/new?next=calendar"
+              className={cn(
+                buttonVariants({ variant: "solid" }),
+                "h-9 rounded-(--radius-card) px-3.5"
+              )}
+            >
+              <UsersRound className="size-4" />
+              Add first client
+            </Link>
+          )}
         </div>
       </div>
 
@@ -474,7 +471,6 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                   const items = appointmentsByDate.get(key) ?? [];
                   const blocks = scheduleBlocksByDate.get(key) ?? [];
                   const isToday = isSameDay(day, todayDate);
-                  const isSelected = isSameDay(day, activeDate);
                   const visibleEntries = mergeEntriesByTime(items, blocks).slice(0, 3);
                   const overflowCount = items.length + blocks.length - visibleEntries.length;
 
@@ -483,9 +479,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                       key={key}
                       className={cn(
                         "relative min-h-20 border-b border-r border-border/75",
-                        !isSameMonth(day, activeDate) && "bg-muted/35 text-muted-foreground",
-                        isSelected && !isToday && "bg-[#f5f8fd]",
-                        isToday && "bg-[#f6f9ff]"
+                        !isSameMonth(day, activeDate) && "bg-muted/35 text-muted-foreground"
                       )}
                     >
                       <button
