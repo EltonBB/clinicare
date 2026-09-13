@@ -2274,7 +2274,13 @@ function buildPeriodView(args: {
       completedValues: chartData.completedValues,
       newClientValues: chartData.newClientValues,
       previousValues: previousChartData.points.map((point) => point.value),
-      hasData: chartData.points.some((point) => point.value > 0),
+      // Includes the previous-period series — a current span with zero
+      // appointments but a previous span that had some is still worth
+      // charting (it shows the decline to zero), not just when the
+      // current span alone has data (Codex).
+      hasData:
+        chartData.points.some((point) => point.value > 0) ||
+        previousChartData.points.some((point) => point.value > 0),
     },
     snapshot,
   };
