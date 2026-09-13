@@ -17,14 +17,23 @@ import { useReducedMotion } from "framer-motion";
 export function useCountUp(target: number, options?: { animateOnMount?: boolean }) {
   const animateOnMount = options?.animateOnMount ?? false;
   const [display, setDisplay] = useState(animateOnMount ? 0 : target);
-  const previousTargetRef = useRef(animateOnMount ? 0 : target);
+  // Tracks the actually-rendered value, not the target — updated every
+  // frame the animation runs, not just once when it starts. If an earlier
+  // version bumped this to `target` as soon as the animation began, an
+  // interruption mid-flight (prefers-reduced-motion flips, or target
+  // changes again before the current run finishes) would make the next
+  // effect run see `from === target` and bail out without ever calling
+  // setDisplay, leaving the KPI frozen on that partial value — or, for a
+  // fast retarget, animate from the old final target instead of from
+  // wherever the number actually was on screen (Codex).
+  const displayRef = useRef(animateOnMount ? 0 : target);
   const prefersReducedMotion = useReducedMotion();
 
   useEffect(() => {
-    const from = previousTargetRef.current;
+    const from = displayRef.current;
 
     if (from === target || !Number.isFinite(target)) {
-      previousTargetRef.current = target;
+      displayRef.current = target;
       return;
     }
 
@@ -33,7 +42,7 @@ export function useCountUp(target: number, options?: { animateOnMount?: boolean 
       // the effect body itself (calling setState synchronously in an effect
       // is flagged by react-hooks/set-state-in-effect).
       const raf = requestAnimationFrame(() => {
-        previousTargetRef.current = target;
+        displayRef.current = target;
         setDisplay(target);
       });
       return () => cancelAnimationFrame(raf);
@@ -44,20 +53,19 @@ export function useCountUp(target: number, options?: { animateOnMount?: boolean 
     let raf = 0;
 
     const frame = (timestamp: number) => {
-      // Committed here, not synchronously above — React 19's dev-mode
-      // double-invokes a mount effect once (run, cleanup, run again); the
-      // first run's rAF never reaches this callback before its cleanup
-      // cancels it, so committing here means only the surviving second
-      // run's "from" reads the real previous value instead of one the
-      // cancelled first run already advanced to `target`.
+      // React 19's dev-mode double-invokes a mount effect once (run,
+      // cleanup, run again); the first run's rAF is cancelled before the
+      // browser ever calls it, so this callback — and the ref/state writes
+      // inside it — only ever runs for the surviving second run.
       if (!start) {
         start = timestamp;
-        previousTargetRef.current = target;
       }
 
       const progress = Math.min((timestamp - start) / duration, 1);
       const eased = 1 - Math.pow(1 - progress, 4);
-      setDisplay(from + (target - from) * eased);
+      const next = from + (target - from) * eased;
+      displayRef.current = next;
+      setDisplay(next);
 
       if (progress < 1) {
         raf = requestAnimationFrame(frame);
