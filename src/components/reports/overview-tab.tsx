@@ -632,13 +632,19 @@ function DonutChart({
   const pcts = nonZero.map((item) => (item.count / total) * 100);
   const arcs = nonZero.map((item, index) => ({
     item,
-    pct: pcts[index],
     start: pcts.slice(0, index).reduce((sum, pct) => sum + pct, 0),
+    // The arc's own true share of the circle in stroke-length units — the
+    // hard ceiling on its dash length. Consecutive arcs' starts are exactly
+    // this far apart (and the last arc's share is exactly the remaining
+    // distance back to the first arc's start), so a length capped at this
+    // value can never reach the next arc's territory, however small the
+    // slice or however large the minimum-visible floor below (Codex).
+    alloc: (pcts[index] / 100) * circumference,
   }));
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
-      {arcs.map(({ item, pct, start: arcStart }, index) => (
+      {arcs.map(({ item, start: arcStart, alloc }, index) => (
         <m.circle
           key={item.label}
           cx={center}
@@ -651,8 +657,12 @@ function DonutChart({
           // (e.g. 1 cancellation among 200 visits) can compute shorter than
           // the inter-arc gap, and clamping that to 0 erases it from the
           // donut entirely even though its legend row still reports a
-          // nonzero share (Codex).
-          strokeDasharray={`${Math.max((pct / 100) * circumference - (arcs.length > 1 ? 2 : 0), arcs.length > 1 ? 3 : 0)} ${circumference}`}
+          // nonzero share. That floor is itself capped at `alloc` so it can
+          // never exceed the arc's own true share: an alloc under the floor
+          // (e.g. ~1.8 units for a 0.5% slice) renders at its full alloc
+          // with no gap instead of overshooting into — and painting over —
+          // the next sector (Codex).
+          strokeDasharray={`${Math.min(Math.max(alloc - (arcs.length > 1 ? 2 : 0), arcs.length > 1 ? 3 : 0), alloc)} ${circumference}`}
           strokeDashoffset={-((arcStart / 100) * circumference)}
           initial={prefersReducedMotion ? false : { opacity: 0 }}
           animate={{ opacity: hovered && hovered !== item.label ? 0.25 : 1 }}
