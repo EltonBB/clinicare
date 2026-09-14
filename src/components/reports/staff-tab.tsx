@@ -60,7 +60,13 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
     setSortDir("desc");
   }
 
-  if (staffLoad.length === 0) {
+  // totalVisits, not staffLoad.length — staffLoad includes every active
+  // staff member with a zero-filled row even when nobody had an
+  // appointment this period, so the array is never actually empty for a
+  // clinic with active staff. Checking the array length made this state
+  // unreachable for the common "quiet period" case, and Reports instead
+  // rendered a table of meaningless 0/0h/— rows (Codex).
+  if (totalVisits === 0) {
     return (
       <section className="surface-card flex flex-col p-3.5">
         <h2 className="px-1 pb-2 text-[15px] font-semibold text-foreground">Staff performance</h2>
