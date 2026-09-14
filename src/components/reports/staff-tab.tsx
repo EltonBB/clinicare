@@ -174,8 +174,11 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
                     ) : null}
                   </span>
                 </span>
+                {/* row.completionRate is already "" (not a placeholder) when
+                    unmeasured — an em-dash fallback here is the same
+                    per-field placeholder AGENTS.md rule 2 forbids (Codex). */}
                 <span className="w-14 shrink-0 text-right text-sm font-semibold tabular-nums text-foreground sm:w-20">
-                  {row.completionRate || "—"}
+                  {row.completionRate}
                 </span>
               </button>
 

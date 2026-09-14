@@ -768,7 +768,13 @@ function KpiCard({
                   it, ordinary daily/weekly/monthly switches remount via
                   key={period.key} straight to the final number, skipping
                   the count-up the feature is meant to show (Codex). */}
-              {kpi.value ? <KpiValue value={kpi.value} animateOnMount /> : "—"}
+              {/* An unmeasured KPI (e.g. completion rate with no finalized
+                  visits yet) is an empty string from the view model, on
+                  purpose (lib/reports.ts's "unmeasured, not zero"
+                  convention) — rendering it as an em dash turned that
+                  intentional emptiness into exactly the kind of per-field
+                  placeholder AGENTS.md rule 2 forbids (Codex). */}
+              {kpi.value ? <KpiValue value={kpi.value} animateOnMount /> : null}
             </p>
             <div className="mt-1 flex items-center gap-1.5 whitespace-nowrap">
               {kpi.delta ? (
