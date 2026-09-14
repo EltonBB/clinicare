@@ -867,7 +867,11 @@ export function InboxWorkspace({
                     </div>
                   </div>
 
-                  <div className="border-t border-border/70 px-4 py-3">
+                  {/* Background contrast, not a border-t — the composer's
+                      own bordered pill below already gives it visual weight,
+                      and a rule above it isn't card/table structure (AGENTS.md
+                      rule 6), same as the directory table's bg-only header row. */}
+                  <div className="bg-[#f8fafc] px-4 py-3">
                     <div className="mx-auto flex max-w-3xl items-end gap-3 rounded-(--radius-field) border border-border/75 bg-white px-3 py-2">
                       <Input
                         value={draftMessage}

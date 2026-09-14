@@ -198,6 +198,16 @@ export function GlobalSearchPalette({
     };
   }, [query]);
 
+  // Arrow-key navigation only moves activeIndex — nothing scrolls the
+  // dialog's own scroll container, so once a result list overflows this
+  // capped-height palette, navigating past the visible rows leaves the
+  // highlight (and the row Enter would open) scrolled out of view (Codex).
+  useEffect(() => {
+    const activeResult = results[activeIndex];
+    if (!activeResult) return;
+    document.getElementById(`global-search-result-${activeResult.id}`)?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, results]);
+
   function navigateToResult(result: SearchResult) {
     onOpenChange(false);
     router.push(result.href);
