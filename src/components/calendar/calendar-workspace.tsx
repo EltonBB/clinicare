@@ -430,7 +430,12 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
           Today
         </button>
 
-        <div className="ml-auto flex items-center gap-3">
+        {/* flex-wrap, not a fixed one-line row — the date label, date-jump
+            popover, and New appointment CTA together don't fit one line at
+            narrow widths, and the app shell clips horizontal overflow
+            rather than scrolling it, so a non-wrapping cluster here just
+            clipped part of the date or the CTA off-screen (Codex). */}
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-3">
           <span className="text-[17px] font-semibold tracking-tight text-foreground">
             {rangeLabel}
           </span>
