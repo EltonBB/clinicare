@@ -1,4 +1,4 @@
-import { CLIENT_DETAIL_TAB_COUNT } from "@/components/clients/client-details-page";
+import { CLIENT_DETAIL_TAB_COUNT } from "@/lib/skeleton-counts";
 import { DetailPageSkeleton } from "@/components/workspace/skeleton";
 
 export default function ClientDetailLoading() {

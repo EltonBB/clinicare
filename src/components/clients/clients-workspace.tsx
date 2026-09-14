@@ -18,6 +18,7 @@ import {
   searchFieldClass,
 } from "@/components/workspace/workspace-layout";
 import { cn, getInitials } from "@/lib/utils";
+import { CLIENT_DIRECTORY_FILTERS as filters } from "@/lib/skeleton-counts";
 import type {
   ClientDirectoryFilter,
   ClientStatus,
@@ -29,20 +30,6 @@ type ClientsWorkspaceProps = {
   initialQuery: string;
   activeFilter: ClientDirectoryFilter;
 };
-
-const filters: Array<{ label: string; value: ClientDirectoryFilter }> = [
-  { label: "All", value: "all" },
-  { label: "Active", value: "active" },
-  { label: "Inactive", value: "inactive" },
-  { label: "Archived", value: "archived" },
-  { label: "Attention", value: "attention" },
-  { label: "No visits", value: "no-visits" },
-];
-
-// Exported so the route's loading.tsx skeleton can reserve exactly this many
-// filter-chip placeholders instead of a hand-typed number that silently
-// drifts if this list ever changes.
-export const CLIENT_DIRECTORY_FILTER_COUNT = filters.length;
 
 const statusColors: Record<ClientStatus, string> = {
   active: "text-primary",
