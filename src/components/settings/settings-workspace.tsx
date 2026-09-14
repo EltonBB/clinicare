@@ -940,6 +940,7 @@ export function SettingsWorkspace({
           <SectionCard
             id="business"
             title="Business & account"
+            description="Your account details and your clinic's information in one place."
             active={activeSection === "business"}
           >
             <div className="space-y-4">

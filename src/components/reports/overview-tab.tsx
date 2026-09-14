@@ -14,6 +14,7 @@ import { KpiValue } from "@/components/workspace/kpi-value";
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
 import { cn } from "@/lib/utils";
 import { easeOutQuart, fadeIn, staggerChildren, staggerItem } from "@/lib/motion";
+import { APPOINTMENT_STATUS_COLORS, APPOINTMENT_STATUS_FALLBACK_COLOR } from "@/lib/status-tone";
 import type {
   ReportKpi,
   ReportMetricTrend,
@@ -114,14 +115,19 @@ function capitalize(value: string) {
   return value.length > 0 ? value[0].toUpperCase() + value.slice(1) : value;
 }
 
+// Colors come from the shared APPOINTMENT_STATUS_COLORS map, not
+// independently-guessed hex values — the same appointment status must read
+// as the same color on Calendar's pills and Reports' donut/legend, and
+// this function previously drifted (completed was cobalt here vs green on
+// Calendar; confirmed was a one-off purple used nowhere else) (Codex).
 function statusColor(label: string) {
   const normalized = label.toLowerCase();
 
-  if (normalized.includes("completed")) return "var(--primary)";
-  if (normalized.includes("cancelled")) return "#ef4444";
-  if (normalized.includes("pending")) return "#f59e0b";
-  if (normalized.includes("confirmed")) return "#5b57d6";
-  return "#94a3b8";
+  if (normalized.includes("completed")) return APPOINTMENT_STATUS_COLORS.completed;
+  if (normalized.includes("cancelled")) return APPOINTMENT_STATUS_COLORS.cancelled;
+  if (normalized.includes("pending")) return APPOINTMENT_STATUS_COLORS.pending;
+  if (normalized.includes("confirmed")) return APPOINTMENT_STATUS_COLORS.confirmed;
+  return APPOINTMENT_STATUS_FALLBACK_COLOR;
 }
 
 // A stale hover from the previous period/range must not survive a period

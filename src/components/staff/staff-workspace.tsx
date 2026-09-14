@@ -36,6 +36,11 @@ const filters: Array<{ label: string; value: StaffFilter }> = [
   { label: "Checked in", value: "checked-in" },
 ];
 
+// Exported so the route's loading.tsx skeleton can reserve exactly this many
+// filter-chip placeholders instead of a hand-typed number that silently
+// drifts if this list ever changes.
+export const STAFF_DIRECTORY_FILTER_COUNT = filters.length;
+
 const statusLabels: Record<StaffStatus, string> = {
   ACTIVE: "Active",
   AWAY: "Away",

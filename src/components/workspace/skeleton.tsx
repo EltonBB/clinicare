@@ -3,6 +3,9 @@
 // resembles what's about to render, instead of every route sharing one
 // generic shape.
 
+import { cn } from "@/lib/utils";
+import { pageSizes } from "./workspace-layout";
+
 export function SkeletonBlock({ className = "" }: { className?: string }) {
   return (
     <div
@@ -29,7 +32,7 @@ function SkeletonHeader({ actionWidth = "w-36", showAction = true }: { actionWid
 // resolves to.
 export function DashboardPageSkeleton() {
   return (
-    <div className="mx-auto w-full max-w-[1520px] space-y-3">
+    <div className={pageSizes.wide}>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <SkeletonBlock className="h-8 w-40" />
         <SkeletonBlock className="h-10 w-44" />
@@ -60,7 +63,7 @@ export function DashboardPageSkeleton() {
 // set does, pushing the table down once it resolves (Codex).
 export function DirectoryPageSkeleton({ filterCount }: { filterCount: number }) {
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-3">
+    <div className={pageSizes.default}>
       <SkeletonHeader />
       <div className="surface-card flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
         <SkeletonBlock className="h-10 w-full max-w-xs" />
@@ -102,7 +105,7 @@ export function DirectoryPageSkeleton({ filterCount }: { filterCount: number }) 
 // on every detail navigation (Codex).
 export function DetailPageSkeleton({ tabCount }: { tabCount: number }) {
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-3">
+    <div className={pageSizes.default}>
       <SkeletonBlock className="h-4 w-40" />
       {/* No shared card border — the real header is an open split at xl+
           (identity left, a 560px stat/actions block right), only stacking
@@ -158,7 +161,7 @@ export function DetailPageSkeleton({ tabCount }: { tabCount: number }) {
 // area below stays neutral rather than grid-shaped — see the comment there.
 export function CalendarPageSkeleton() {
   return (
-    <div className="mx-auto w-full max-w-[1520px] space-y-3">
+    <div className={pageSizes.wide}>
       {/* Title-only header — New appointment lives in the toolbar row below,
           next to the date-range label and date-jump popover, not in the
           header's own action area (Codex); matching that avoids a layout
@@ -187,7 +190,7 @@ export function CalendarPageSkeleton() {
 // Inbox: two-pane — 320px conversation list beside the active thread.
 export function InboxPageSkeleton() {
   return (
-    <div className="mx-auto w-full max-w-[1520px] space-y-3">
+    <div className={pageSizes.wide}>
       <SkeletonHeader showAction={false} />
       <div className="surface-card min-h-[640px] overflow-hidden p-0 lg:h-[calc(100vh-174px)]">
         <div className="grid h-full grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
@@ -244,7 +247,7 @@ export function InboxPageSkeleton() {
 // plan tier sees a jarring collapse into something else entirely (Codex).
 export function ReportsPageSkeleton() {
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-3">
+    <div className={pageSizes.default}>
       <SkeletonBlock className="h-8 w-40" />
       <SkeletonBlock className="h-64 w-full" />
     </div>
@@ -254,11 +257,11 @@ export function ReportsPageSkeleton() {
 // Settings deep-link fallback (/settings): master nav list beside the active section.
 export function SettingsPageSkeleton() {
   return (
-    // 1440px, matching WorkspacePage's default size — the standalone route
-    // isn't wrapped in the "wide" frame, and this fallback previously capped
-    // at 1000px, so the whole grid widened by hundreds of pixels once data
-    // resolved (Codex).
-    <div className="mx-auto w-full max-w-[1440px] space-y-3">
+    // pageSizes.default, matching WorkspacePage's default size — the
+    // standalone route isn't wrapped in the "wide" frame, and this fallback
+    // previously capped at 1000px, so the whole grid widened by hundreds of
+    // pixels once data resolved (Codex).
+    <div className={pageSizes.default}>
       <SkeletonBlock className="h-8 w-40" />
       {/* The real WorkspaceHeader here always renders a description line
           ("Configure how the workspace runs.") below the title — omitting
@@ -284,7 +287,7 @@ export function SettingsPageSkeleton() {
 // New/edit forms: back link → title → sectioned form cards.
 export function FormPageSkeleton() {
   return (
-    <div className="mx-auto w-full max-w-[860px] space-y-3 px-1 py-2 sm:py-3">
+    <div className={cn(pageSizes.form, "px-1 py-2 sm:py-3")}>
       <SkeletonBlock className="h-4 w-28" />
       {/* Every CreatePageShell caller passes both eyebrow and description, so
           WorkspaceHeader always renders all 4 rows here (breadcrumb, eyebrow,

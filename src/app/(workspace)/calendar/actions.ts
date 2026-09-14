@@ -23,6 +23,7 @@ import {
   parseZonedWallClock,
 } from "@/lib/time-zone";
 import {
+  timeToMinutes,
   toPrismaAppointmentStatus,
   type CalendarAppointment,
   type CalendarAppointmentStatus,
@@ -77,11 +78,6 @@ function getAuthedBusiness() {
 // the true UTC instant (shared helper — see lib/time-zone.ts).
 function parseDateTime(date: string, time: string) {
   return parseZonedWallClock(date, time);
-}
-
-function timeToMinutes(time: string) {
-  const [hours, minutes] = time.split(":").map(Number);
-  return (hours || 0) * 60 + (minutes || 0);
 }
 
 async function isInsideBusinessHours(args: {

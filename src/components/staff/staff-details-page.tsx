@@ -42,6 +42,11 @@ type StaffDetailsPageProps = {
   initialTab?: "overview" | "messages";
 };
 
+// Keep in sync with the <TabsTrigger> count in the tabs below (Overview,
+// Schedule, Messages) — used by staff/[staffId]/loading.tsx to size its
+// skeleton's tab row.
+export const STAFF_DETAIL_TAB_COUNT = 3;
+
 const statusLabels: Record<StaffStatus, string> = {
   ACTIVE: "Active",
   AWAY: "Away",

@@ -39,6 +39,11 @@ const filters: Array<{ label: string; value: ClientDirectoryFilter }> = [
   { label: "No visits", value: "no-visits" },
 ];
 
+// Exported so the route's loading.tsx skeleton can reserve exactly this many
+// filter-chip placeholders instead of a hand-typed number that silently
+// drifts if this list ever changes.
+export const CLIENT_DIRECTORY_FILTER_COUNT = filters.length;
+
 const statusColors: Record<ClientStatus, string> = {
   active: "text-primary",
   "at-risk": "text-destructive",
