@@ -174,11 +174,14 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
                     ) : null}
                   </span>
                 </span>
-                {/* row.completionRate is already "" (not a placeholder) when
-                    unmeasured — an em-dash fallback here is the same
-                    per-field placeholder AGENTS.md rule 2 forbids (Codex). */}
+                {/* AGENTS.md's Reports spec explicitly carves this column out
+                    from rule 2's general "render nothing" default: "completion
+                    rate — `—` when unmeasured" (Row 3, Staff performance) —
+                    unlike the KPI row's own completion-rate card, a blank cell
+                    here would be indistinguishable from missing data in a
+                    dense table row (Codex). */}
                 <span className="w-14 shrink-0 text-right text-sm font-semibold tabular-nums text-foreground sm:w-20">
-                  {row.completionRate}
+                  {row.completionRate || "—"}
                 </span>
               </button>
 
