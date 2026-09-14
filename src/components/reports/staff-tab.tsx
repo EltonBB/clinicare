@@ -8,7 +8,7 @@ import { ArrowDown, ArrowUp, ChevronRight } from "lucide-react";
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn, getInitials } from "@/lib/utils";
-import { staggerChildren, staggerItem } from "@/lib/motion";
+import { durationEntrance, easeOutExpo, staggerChildren, staggerItem } from "@/lib/motion";
 import type { ReportPeriodView } from "@/lib/reports";
 
 type SortKey = "appointments" | "bookedMinutes" | "completion";
@@ -157,7 +157,7 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
                       className="block h-full w-full origin-left rounded-full bg-primary"
                       initial={prefersReducedMotion ? false : { scaleX: 0 }}
                       animate={{ scaleX: Math.min(loadShare, 100) / 100 }}
-                      transition={{ duration: 0.5, ease: "easeOut" }}
+                      transition={{ duration: durationEntrance, ease: easeOutExpo }}
                     />
                     {avgLoadShare > 0 ? (
                       <span
