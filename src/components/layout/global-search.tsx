@@ -205,9 +205,14 @@ export function GlobalSearchPalette({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
+      {/* No unprefixed max-w-* below — DialogContent's own default
+          (max-w-[calc(100%-2rem)]) is what keeps a 1rem side gutter below
+          `sm`; an unprefixed max-w-[560px] would win over it via
+          tailwind-merge and make the palette exactly viewport-wide on
+          narrow screens, flush against the edges (Codex). */}
       <DialogContent
         showCloseButton={false}
-        className="top-[12dvh] flex max-h-[min(560px,80dvh)] w-full max-w-[560px] translate-y-0 flex-col gap-0 rounded-(--radius-panel) p-0 shadow-(--shadow-pop) sm:max-w-[560px]"
+        className="top-[12dvh] flex max-h-[min(560px,80dvh)] w-full translate-y-0 flex-col gap-0 rounded-(--radius-panel) p-0 shadow-(--shadow-pop) sm:max-w-[560px]"
       >
         <DialogTitle className="sr-only">Search</DialogTitle>
         <div className="flex h-14 shrink-0 items-center gap-3 px-4">
