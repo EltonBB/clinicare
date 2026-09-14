@@ -219,11 +219,14 @@ export function InboxPageSkeleton() {
               <SkeletonBlock className="ml-auto h-14 w-2/3" />
               <SkeletonBlock className="h-14 w-1/2" />
             </div>
-            {/* The loaded thread always ends in a composer row (border-t,
-                inbox-workspace.tsx) — without it, the message area
+            {/* The loaded thread always ends in a composer row
+                (inbox-workspace.tsx) — without it, the message area
                 contracts and its contents shift up once data resolves
-                (Codex). */}
-            <div className="border-t border-border/70 px-4 py-3">
+                (Codex). Background contrast, not a border-t — matching the
+                real composer's own fix for AGENTS.md rule 6 (no dividers
+                outside card/table structure); a border here would appear
+                only in the skeleton and vanish once data resolved. */}
+            <div className="bg-[#f8fafc] px-4 py-3">
               <SkeletonBlock className="h-14 w-full" />
             </div>
           </div>
