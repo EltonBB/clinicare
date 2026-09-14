@@ -53,14 +53,19 @@ export function DashboardPageSkeleton() {
 }
 
 // Clients / Staff directories: header (no KPI band, per AGENTS.md) → toolbar → table.
-export function DirectoryPageSkeleton() {
+// filterCount matches the loaded route's real, fixed chip count (6 for
+// Clients — All/Active/Inactive/Archived/Attention/No visits; 5 for Staff —
+// All/Active/Away/Inactive/Checked in) — a shared fixed count wrapped one
+// fewer/more chip onto an extra row at common mobile widths than the real
+// set does, pushing the table down once it resolves (Codex).
+export function DirectoryPageSkeleton({ filterCount }: { filterCount: number }) {
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-3">
       <SkeletonHeader />
       <div className="surface-card flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
         <SkeletonBlock className="h-10 w-full max-w-xs" />
         <div className="flex flex-wrap gap-2">
-          {Array.from({ length: 4 }).map((_, index) => (
+          {Array.from({ length: filterCount }).map((_, index) => (
             <SkeletonBlock key={index} className="h-8 w-20" />
           ))}
         </div>
@@ -72,8 +77,13 @@ export function DirectoryPageSkeleton() {
         <div className="flex min-h-[40px] items-center bg-[#f8fafc] px-3.5 py-2">
           <SkeletonBlock className="h-3 w-24" />
         </div>
+        {/* 4 rows, not a "typical" 7-10 — a brand-new workspace with no
+            records yet resolves to a compact empty state here (same pattern
+            as Calendar's own skeleton below), and over-committing to a full
+            row count collapsed several hundred pixels of placeholder at once
+            once that state loaded (Codex). */}
         <div className="space-y-2 p-2">
-          {Array.from({ length: 7 }).map((_, index) => (
+          {Array.from({ length: 4 }).map((_, index) => (
             <div key={index} className="flex items-center gap-3 px-1.5 py-2">
               <SkeletonBlock className="size-9 shrink-0 rounded-(--radius-tile)" />
               <SkeletonBlock className="h-3.5 w-1/4" />
