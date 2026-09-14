@@ -77,10 +77,12 @@ type ClientDetailsPageProps = {
   initialClient: ClientRecord;
 };
 
-// Keep in sync with the <TabsTrigger> count in the tabs below (Overview,
-// Appointments, Medical Info, Documents, Payments) — used by
-// clients/[clientId]/loading.tsx to size its skeleton's tab row.
-export const CLIENT_DETAIL_TAB_COUNT = 5;
+// The <TabsTrigger> count below (Overview, Appointments, Medical Info,
+// Documents, Payments) is mirrored as CLIENT_DETAIL_TAB_COUNT in
+// lib/skeleton-counts.ts, not exported from here — this is a "use client"
+// module, and clients/[clientId]/loading.tsx (a Server Component) importing
+// a value from one gets a client reference, not the number itself (Codex).
+// Keep both in sync if the tab list changes.
 
 const statusLabels: Record<ClientStatus, string> = {
   active: "Active",

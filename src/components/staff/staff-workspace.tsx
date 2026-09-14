@@ -20,26 +20,13 @@ import {
   searchFieldClass,
 } from "@/components/workspace/workspace-layout";
 import { cn, getInitials } from "@/lib/utils";
+import { STAFF_DIRECTORY_FILTERS as filters } from "@/lib/skeleton-counts";
+import type { StaffDirectoryFilter as StaffFilter } from "@/lib/skeleton-counts";
 import type { StaffStatus, StaffViewModel } from "@/lib/staff";
 
 type StaffWorkspaceProps = {
   initialView: StaffViewModel;
 };
-
-type StaffFilter = "all" | StaffStatus | "checked-in";
-
-const filters: Array<{ label: string; value: StaffFilter }> = [
-  { label: "All", value: "all" },
-  { label: "Active", value: "ACTIVE" },
-  { label: "Away", value: "AWAY" },
-  { label: "Inactive", value: "INACTIVE" },
-  { label: "Checked in", value: "checked-in" },
-];
-
-// Exported so the route's loading.tsx skeleton can reserve exactly this many
-// filter-chip placeholders instead of a hand-typed number that silently
-// drifts if this list ever changes.
-export const STAFF_DIRECTORY_FILTER_COUNT = filters.length;
 
 const statusLabels: Record<StaffStatus, string> = {
   ACTIVE: "Active",

@@ -1,4 +1,4 @@
-import { STAFF_DIRECTORY_FILTER_COUNT } from "@/components/staff/staff-workspace";
+import { STAFF_DIRECTORY_FILTER_COUNT } from "@/lib/skeleton-counts";
 import { DirectoryPageSkeleton } from "@/components/workspace/skeleton";
 
 export default function StaffLoading() {
