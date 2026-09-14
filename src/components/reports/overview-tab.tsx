@@ -530,8 +530,7 @@ export function AppointmentStatusCard({ period }: { period: ReportPeriodView }) 
                 key={item.label}
                 color={statusColor(item.label)}
                 label={item.label}
-                detail={item.share.replace(/\.0%$/, "%")}
-                count={item.count}
+                detail={`${item.count} · ${item.share.replace(/\.0%$/, "%")}`}
                 muted={item.count === 0}
                 dimmed={statusHover !== null && statusHover !== item.label}
                 onHover={() => setStatusHover(item.label)}
@@ -622,7 +621,10 @@ function DonutChart({
   // The per-arc stagger delay below is for the mount reveal only — without
   // this guard, every hover-driven opacity change would reuse the same
   // delayed transition, making dimming lag behind the cursor instead of
-  // responding instantly.
+  // responding instantly. State, not a ref: `hasMounted` is read directly
+  // in the render below (inside `transition`), and this repo's lint config
+  // (react-hooks/refs) disallows reading a ref's `.current` during render —
+  // the extra re-render this setState causes is the cost of that guarantee.
   const [hasMounted, setHasMounted] = useState(false);
   useEffect(() => {
     const raf = requestAnimationFrame(() => setHasMounted(true));
@@ -630,21 +632,36 @@ function DonutChart({
   }, []);
 
   const pcts = nonZero.map((item) => (item.count / total) * 100);
-  const arcs = nonZero.map((item, index) => ({
-    item,
-    start: pcts.slice(0, index).reduce((sum, pct) => sum + pct, 0),
+  const gap = nonZero.length > 1 ? 2 : 0;
+  // A minimum visible length, not just a floor of 0 — a rare status (e.g. 1
+  // cancellation among 200 visits) can compute shorter than the inter-arc
+  // gap, and clamping that to 0 erases it from the donut entirely even
+  // though its legend row still reports a nonzero share.
+  const minVisible = nonZero.length > 1 ? 3 : 0;
+  const arcs = nonZero.map((item, index) => {
+    const start = pcts.slice(0, index).reduce((sum, pct) => sum + pct, 0);
     // The arc's own true share of the circle in stroke-length units — the
     // hard ceiling on its dash length. Consecutive arcs' starts are exactly
     // this far apart (and the last arc's share is exactly the remaining
     // distance back to the first arc's start), so a length capped at this
     // value can never reach the next arc's territory, however small the
-    // slice or however large the minimum-visible floor below (Codex).
-    alloc: (pcts[index] / 100) * circumference,
-  }));
+    // slice or however large `minVisible` (Codex).
+    const alloc = (pcts[index] / 100) * circumference;
+    // The floor is itself capped at `alloc` so it can never exceed the
+    // arc's own true share: an alloc under the floor (e.g. ~1.8 units for a
+    // 0.5% slice) renders at its full alloc with no gap instead of
+    // overshooting into — and painting over — the next sector (Codex).
+    const length = Math.min(Math.max(alloc - gap, minVisible), alloc);
+    return {
+      item,
+      dasharray: `${length} ${circumference}`,
+      dashoffset: -((start / 100) * circumference),
+    };
+  });
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
-      {arcs.map(({ item, start: arcStart, alloc }, index) => (
+      {arcs.map(({ item, dasharray, dashoffset }, index) => (
         <m.circle
           key={item.label}
           cx={center}
@@ -653,19 +670,13 @@ function DonutChart({
           fill="none"
           stroke={statusColor(item.label)}
           strokeWidth={strokeWidth}
-          // A minimum visible length, not just a floor of 0 — a rare status
-          // (e.g. 1 cancellation among 200 visits) can compute shorter than
-          // the inter-arc gap, and clamping that to 0 erases it from the
-          // donut entirely even though its legend row still reports a
-          // nonzero share. That floor is itself capped at `alloc` so it can
-          // never exceed the arc's own true share: an alloc under the floor
-          // (e.g. ~1.8 units for a 0.5% slice) renders at its full alloc
-          // with no gap instead of overshooting into — and painting over —
-          // the next sector (Codex).
-          strokeDasharray={`${Math.min(Math.max(alloc - (arcs.length > 1 ? 2 : 0), arcs.length > 1 ? 3 : 0), alloc)} ${circumference}`}
-          strokeDashoffset={-((arcStart / 100) * circumference)}
+          strokeDasharray={dasharray}
+          strokeDashoffset={dashoffset}
           initial={prefersReducedMotion ? false : { opacity: 0 }}
-          animate={{ opacity: hovered && hovered !== item.label ? 0.25 : 1 }}
+          animate={{
+            opacity: hovered && hovered !== item.label ? 0.25 : 1,
+            strokeWidth: hovered === item.label ? strokeWidth + 4 : strokeWidth,
+          }}
           transition={{
             duration: 0.35,
             ease: easeOutQuart,
@@ -789,19 +800,17 @@ export function LegendRow({
   color,
   label,
   detail,
-  count,
   muted,
   dimmed,
   onHover,
 }: {
   color: string;
   label: string;
+  // Visible text carries the exact count alongside the percentage (e.g.
+  // "12 · 25%") — a percentage alone can't be read back to a raw number
+  // without doing the total-times-share math, so a sighted user scanning
+  // the legend without hovering never saw the actual visit count (Codex).
   detail?: string;
-  // Visible text shows label + percentage only, but a screen reader gets no
-  // other way to learn the raw count — the donut center that updates on
-  // hover/focus isn't associated with this button via ARIA — so it's folded
-  // into the accessible name instead of the visible row.
-  count?: number;
   muted?: boolean;
   // true only while a *different* row is hovered — distinct from "nothing is
   // hovered", which must leave every row at full opacity.
@@ -813,9 +822,6 @@ export function LegendRow({
       type="button"
       onMouseEnter={onHover}
       onFocus={onHover}
-      aria-label={
-        count !== undefined && detail ? `${label}: ${count} visits, ${detail}` : undefined
-      }
       className="-mx-1.5 flex w-full items-center gap-2.5 rounded-(--radius-tile) px-1.5 py-[7px] text-left transition-opacity duration-(--duration-base)"
       style={{ opacity: dimmed ? 0.35 : 1 }}
     >
