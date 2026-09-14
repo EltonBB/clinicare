@@ -77,6 +77,11 @@ type ClientDetailsPageProps = {
   initialClient: ClientRecord;
 };
 
+// Keep in sync with the <TabsTrigger> count in the tabs below (Overview,
+// Appointments, Medical Info, Documents, Payments) — used by
+// clients/[clientId]/loading.tsx to size its skeleton's tab row.
+export const CLIENT_DETAIL_TAB_COUNT = 5;
+
 const statusLabels: Record<ClientStatus, string> = {
   active: "Active",
   "at-risk": "At risk",

@@ -48,6 +48,10 @@ type CalendarWorkspaceProps = {
 
 const views: CalendarView[] = ["day", "week", "month"];
 
+// Source of truth for appointment-status color (AGENTS.md: "the same tone
+// set as everywhere else") — lib/status-tone.ts mirrors these 4 colors as
+// raw values for places (Reports' donut/legend) that need a CSS color
+// rather than a Tailwind class; keep both in sync if these change.
 const statusDotClasses: Record<CalendarAppointmentStatus, string> = {
   confirmed: "bg-primary",
   completed: "bg-emerald-500",
@@ -100,16 +104,29 @@ function EventPill({
   dense = false,
 }: {
   appointment: CalendarAppointment;
-  onOpen: (event: MouseEvent<HTMLButtonElement>) => void;
+  onOpen: (event: MouseEvent<HTMLAnchorElement>) => void;
   // Month-grid cells are ~20px tall per row — same pill, smaller type/padding,
   // plus pointer-events-auto to punch through the cell's pointer-events-none
   // day-open overlay button.
   dense?: boolean;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onOpen}
+    <Link
+      href={`/calendar/${appointment.id}/edit`}
+      onClick={(event) => {
+        // Always stop the day-cell's own click-to-navigate handler from
+        // seeing this. A plain left click opens the quick-view popover
+        // instead of navigating (unchanged behavior); a modified click
+        // (ctrl/cmd/shift) or middle-click falls through to the browser's
+        // native link handling — open in new tab, copy link, no-JS
+        // navigation — none of which a plain <button> here could support (Codex).
+        event.stopPropagation();
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+          return;
+        }
+        event.preventDefault();
+        onOpen(event);
+      }}
       className={cn(
         "flex w-full items-center justify-between gap-1.5 truncate rounded-(--radius-tile) text-left font-medium transition-[filter,transform] duration-(--duration-base) hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
         dense
@@ -122,7 +139,7 @@ function EventPill({
         {appointment.clientName}
       </span>
       <span className="shrink-0 tabular-nums opacity-80">{appointment.startTime}</span>
-    </button>
+    </Link>
   );
 }
 
@@ -230,7 +247,12 @@ function AppointmentQuickView({
   useDismissOnOutsideOrEscape(containerRef, onClose, { dismissOnScroll: true });
 
   const width = 264;
-  const left = Math.min(Math.max(anchorRect.left, 12), window.innerWidth - width - 12);
+  // The upper bound is itself floored at 12 — on a viewport narrower than
+  // width + 24 (a resized desktop window, a narrow foldable cover display),
+  // `window.innerWidth - width - 12` drops below the 12px margin (or
+  // negative), which would otherwise invert the clamp range and push the
+  // card off the left edge of the screen (Codex).
+  const left = Math.min(Math.max(anchorRect.left, 12), Math.max(window.innerWidth - width - 12, 12));
   // Rendered below the anchor on the first paint (there's no real content to
   // measure before it's in the DOM); corrected to flip above from the card's
   // actual rendered height the moment it mounts (a ref callback fires during
@@ -373,7 +395,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
         ? `week-${format(weekStart, "yyyy-MM-dd")}`
         : `month-${format(startOfMonth(activeDate), "yyyy-MM-dd")}`;
 
-  function openQuickView(appointment: CalendarAppointment, event: MouseEvent<HTMLButtonElement>) {
+  function openQuickView(appointment: CalendarAppointment, event: MouseEvent<HTMLAnchorElement>) {
     event.stopPropagation();
     setQuickView({ appointment, rect: event.currentTarget.getBoundingClientRect() });
   }

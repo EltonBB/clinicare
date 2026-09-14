@@ -77,7 +77,11 @@ type WorkspaceEmptyStateProps = {
   compact?: boolean;
 };
 
-const pageSizes = {
+// Exported so loading.tsx skeletons (skeleton.tsx) can size their wrapper to
+// the exact same width instead of retyping these literals — a drifted copy
+// silently reintroduces the layout-jump-on-resolve bug class those skeletons
+// exist to prevent.
+export const pageSizes = {
   default: "mx-auto w-full max-w-[1440px] space-y-3",
   wide: "mx-auto w-full max-w-[1520px] space-y-3",
   full: "w-full max-w-none space-y-3",

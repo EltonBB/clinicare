@@ -1876,8 +1876,37 @@ type ReportChartData = {
 
 type ReportClientRecord = Pick<Client, "createdAt" | "isArchived">;
 
+// Requires `clients` sorted ascending by createdAt (the view builder sorts
+// once up front, same as filterAppointmentsInRange above) — binary-searches
+// the inclusive [start, end] range instead of scanning the whole array on
+// every chart bucket.
 function countClientsCreatedInRange(clients: ReportClientRecord[], start: Date, end: Date) {
-  return clients.filter((client) => client.createdAt >= start && client.createdAt <= end).length;
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+
+  let lo = 0;
+  let hi = clients.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (clients[mid].createdAt.getTime() < startMs) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  const from = lo;
+
+  hi = clients.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (clients[mid].createdAt.getTime() <= endMs) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+
+  return lo - from;
 }
 
 function toChartData(
@@ -2289,7 +2318,7 @@ function buildPeriodView(args: {
 export function buildReportsViewFromWorkspace({
   business,
   appointments: appointmentsInput,
-  clients,
+  clients: clientsInput,
   clientMix,
   messages,
   businessHours,
@@ -2306,6 +2335,14 @@ export function buildReportsViewFromWorkspace({
   // downstream consumer reads this sorted copy; results are order-independent.
   const appointments = [...appointmentsInput].sort(
     (left, right) => left.startAt.getTime() - right.startAt.getTime()
+  );
+  // Same technique, same reason — countClientsCreatedInRange is called once
+  // per chart bucket (now twice as often per period, since the new
+  // "previous period" ghost line re-runs the same bucketing), so an unsorted
+  // scan here compounds exactly like the appointments case above did before
+  // this sort was added (Codex).
+  const clients = [...clientsInput].sort(
+    (left, right) => left.createdAt.getTime() - right.createdAt.getTime()
   );
   const activeStaffCount = staffMembers.filter(
     (member) => member.isActive && member.status !== "INACTIVE"
