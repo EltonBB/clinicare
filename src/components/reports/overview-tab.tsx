@@ -75,7 +75,14 @@ function buildSmoothPath(values: number[], width: number, height: number, maxOve
   const xs = values.map((_, index) => (index / Math.max(n - 1, 1)) * width);
   const ys = values.map((value) => height - (value / max) * height);
 
-  if (n === 1) return `M ${round2(xs[0])} ${round2(ys[0])}`;
+  // A bare "M" draws nothing at all when stroked — no subpath to paint. A
+  // zero-length "M ... L" (same point twice) is a real, empty subpath, which
+  // every caller here renders with stroke-linecap="round", so the browser
+  // paints it as a small dot instead of an invisible line. Needed for a
+  // single-bucket period (a 1-day custom range) where the series would
+  // otherwise vanish even though hasData correctly says there's real data
+  // to show (Codex).
+  if (n === 1) return `M ${round2(xs[0])} ${round2(ys[0])} L ${round2(xs[0])} ${round2(ys[0])}`;
   if (n === 2) {
     return `M ${round2(xs[0])} ${round2(ys[0])} L ${round2(xs[1])} ${round2(ys[1])}`;
   }

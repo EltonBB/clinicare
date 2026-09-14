@@ -971,7 +971,15 @@ function buildPeriodDiagnostics(args: {
       count,
     }));
   const staffLoad = args.staffMembers
-    .filter((member) => member.isActive && member.status !== "INACTIVE")
+    .filter((member) => {
+      const isCurrentlyActive = member.isActive && member.status !== "INACTIVE";
+      // A staff member who has since gone inactive can still have real
+      // tracked activity for this (past) period — excluding them here made
+      // a period's own appointment/status totals disagree with an empty
+      // Staff performance table whenever every visit that period belonged
+      // to someone no longer on the active roster (Codex).
+      return isCurrentlyActive || staffCounts.has(member.id);
+    })
     .map((member) => {
       const load = staffCounts.get(member.id) ?? {
         appointments: 0,
