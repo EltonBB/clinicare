@@ -736,6 +736,7 @@ model StaffNotification {
   createdAt     DateTime              @default(now())
 
   @@index([staffMemberId, readAt, createdAt])
+  @@index([businessId])
 }
 
 enum StaffAccessCodeStatus {
@@ -786,4 +787,5 @@ model PendingStorageCleanup {
   createdAt     DateTime @default(now())
 
   @@index([nextAttemptAt])
+  @@index([businessId])
 }

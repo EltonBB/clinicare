@@ -3,6 +3,8 @@ import { isProBusinessPlan } from "@/lib/billing";
 import { ProFeatureLock } from "@/components/billing/pro-feature-lock";
 import { ReportsOverview } from "@/components/reports/reports-overview";
 import { buildReportsViewFromWorkspace } from "@/lib/reports";
+import { analyticsSnapshotsCacheKey } from "@/lib/analytics-ai";
+import { getCached } from "@/lib/cache";
 import { prisma } from "@/lib/prisma";
 import { getReportWorkspaceData } from "@/lib/report-data";
 import { getZonedDayWindowFromParts } from "@/lib/time-zone";
@@ -78,15 +80,20 @@ export default async function ReportsPage({
   // workspaceData has no such fallback, so its rejection still propagates.
   const [workspaceDataResult, aiSnapshotsResult] = await Promise.allSettled([
     getReportWorkspaceData(business.id, selectedRange),
-    prisma.analyticsSnapshot.findMany({
-      where: {
-        businessId: business.id,
-      },
-      orderBy: {
-        generatedAt: "desc",
-      },
-      take: 18,
-    }),
+    getCached(
+      analyticsSnapshotsCacheKey(business.id),
+      60, // seconds; short enough that a stale read here is a non-issue
+      () =>
+        prisma.analyticsSnapshot.findMany({
+          where: {
+            businessId: business.id,
+          },
+          orderBy: {
+            generatedAt: "desc",
+          },
+          take: 18,
+        })
+    ),
   ]);
 
   if (workspaceDataResult.status === "rejected") {
