@@ -167,6 +167,86 @@ describe("getCachedVersioned (version read fails)", () => {
   });
 });
 
+describe("getCachedVersioned / invalidateCacheVersioned (Redis path)", () => {
+  const getRedisFn = vi.fn();
+  const store = vi.fn();
+  const failure = vi.fn();
+  const get = vi.fn();
+  const set = vi.fn().mockResolvedValue("OK");
+  const incr = vi.fn().mockResolvedValue(1);
+  const expire = vi.fn().mockResolvedValue(1);
+
+  beforeEach(() => {
+    vi.resetModules();
+    getRedisFn.mockReset();
+    getRedisFn.mockReturnValue({ get, set, incr, expire });
+    store.mockClear();
+    failure.mockClear();
+    get.mockReset().mockResolvedValue(null); // no version counter yet → defaults to 0
+    set.mockClear();
+    incr.mockClear().mockResolvedValue(1);
+    expire.mockClear().mockResolvedValue(1);
+    vi.doMock("@/lib/redis", () => ({
+      getRedis: getRedisFn,
+      noteRedisStoreSucceeded: store,
+      noteRedisFailure: failure,
+    }));
+  });
+
+  afterEach(() => {
+    vi.doUnmock("@/lib/redis");
+  });
+
+  it("resolves the backend exactly once per getCachedVersioned call, not once per sub-operation", async () => {
+    const cache = await import("@/lib/cache");
+    await cache.getCachedVersioned("test:versioned-redis-single-resolve", 60, async () => "fresh");
+
+    // One resolution shared by both the version read and the data read/write —
+    // not two independent ones that could disagree on backend (CodeRabbit).
+    expect(getRedisFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads the version key, then the versioned data key, on a miss", async () => {
+    get.mockResolvedValueOnce(3); // version counter reads as 3
+    get.mockResolvedValueOnce(null); // data key "...:v3" is a miss
+
+    const cache = await import("@/lib/cache");
+    const result = await cache.getCachedVersioned("test:versioned-redis-read", 60, async () => "fresh");
+
+    expect(result).toBe("fresh");
+    expect(get).toHaveBeenNthCalledWith(1, "vela:cache:test:versioned-redis-read:version");
+    expect(get).toHaveBeenNthCalledWith(2, "vela:cache:test:versioned-redis-read:v3");
+    expect(set).toHaveBeenCalledWith(
+      "vela:cache:test:versioned-redis-read:v3",
+      "fresh",
+      { ex: 60 }
+    );
+  });
+
+  it("invalidateCacheVersioned increments then sets an expiry on the version key", async () => {
+    const cache = await import("@/lib/cache");
+    await cache.invalidateCacheVersioned("test:versioned-redis-invalidate");
+
+    expect(incr).toHaveBeenCalledWith("vela:cache:test:versioned-redis-invalidate:version");
+    expect(expire).toHaveBeenCalledWith(
+      "vela:cache:test:versioned-redis-invalidate:version",
+      7 * 24 * 60 * 60
+    );
+    expect(store).toHaveBeenCalledTimes(1); // a completed INCR counts as breaker-recovery evidence
+    expect(failure).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed increment as a failure, never as a store", async () => {
+    incr.mockRejectedValueOnce(new Error("OOM command not allowed"));
+
+    const cache = await import("@/lib/cache");
+    await cache.invalidateCacheVersioned("test:versioned-redis-invalidate-fail");
+
+    expect(store).not.toHaveBeenCalled();
+    expect(failure).toHaveBeenCalledTimes(1);
+  });
+});
+
 /**
  * Which cache operations may count as breaker-recovery evidence.
  *
