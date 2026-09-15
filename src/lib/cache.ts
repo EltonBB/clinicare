@@ -151,3 +151,87 @@ export async function invalidateCache(key: string): Promise<void> {
 
   memory.delete(namespaced);
 }
+
+// Version counters live 7 days — they only need to outlive every versioned
+// entry's own (much shorter) TTL by a wide margin, so a version number is
+// never reused while data cached under it could still be live.
+const VERSION_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+function versionCounterKey(key: string): string {
+  return `${key}:version`;
+}
+
+function versionedDataKey(key: string, version: number): string {
+  return `${key}:v${version}`;
+}
+
+async function readVersion(key: string): Promise<number | null> {
+  const namespaced = NAMESPACE + versionCounterKey(key);
+  const redis = getRedis();
+
+  if (redis) {
+    try {
+      const value = await redis.get<number>(namespaced);
+      return value ?? 0;
+    } catch {
+      noteRedisFailure();
+      return null;
+    }
+  }
+
+  return memoryGet<number>(namespaced) ?? 0;
+}
+
+/**
+ * Like getCached, but immune to the classic cache-aside invalidation race:
+ * a producer() that started before invalidateCacheVersioned() ran and only
+ * finishes after it would otherwise repopulate the live key with the stale
+ * value it read (invalidateCache's plain DEL does nothing to stop that — the
+ * late SET lands right after the DEL and looks like a fresh cache entry).
+ *
+ * Versioned reads fold a separately-tracked version number into the actual
+ * cache key; invalidation bumps that number instead of deleting data, so a
+ * producer call that's still in flight when the version moves on ends up
+ * writing under the OLD version's key — which nothing reads anymore once the
+ * version has advanced, and which simply expires on its own short TTL. Use
+ * this (with invalidateCacheVersioned) instead of getCached/invalidateCache
+ * whenever a caller needs "invalidate is visible on the very next read," not
+ * just "eventually," which plain TTL expiry already gives for free.
+ *
+ * If the version itself can't be read (a cache fault), this bypasses caching
+ * entirely for that call rather than guess — reading under the wrong version
+ * number is exactly the inconsistency this function exists to prevent.
+ */
+export async function getCachedVersioned<T>(
+  key: string,
+  ttlSeconds: number,
+  producer: () => Promise<T>
+): Promise<T> {
+  const version = await readVersion(key);
+  if (version === null) {
+    return producer();
+  }
+  return getCached(versionedDataKey(key, version), ttlSeconds, producer);
+}
+
+/** Invalidate a versioned key (see getCachedVersioned) by advancing its version. */
+export async function invalidateCacheVersioned(key: string): Promise<void> {
+  const namespaced = NAMESPACE + versionCounterKey(key);
+  const redis = getRedis();
+
+  if (redis) {
+    try {
+      await redis.incr(namespaced);
+      await redis.expire(namespaced, VERSION_TTL_SECONDS);
+      // INCR is denyoom-flagged like SET, so a completed one is a valid
+      // store-succeeded signal for the breaker — same reasoning as SET.
+      noteRedisStoreSucceeded();
+    } catch {
+      noteRedisFailure();
+    }
+    return;
+  }
+
+  const current = memoryGet<number>(namespaced) ?? 0;
+  memorySet(namespaced, current + 1, VERSION_TTL_SECONDS);
+}
