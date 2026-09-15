@@ -3,10 +3,12 @@
 import { revalidatePath } from "next/cache";
 
 import {
+  analyticsSnapshotsCacheKey,
   generateAnalyticsSnapshotsForBusiness,
   type GenerateAnalyticsSnapshotResult,
 } from "@/lib/analytics-ai";
 import { requireCurrentWorkspace } from "@/lib/business";
+import { invalidateCache } from "@/lib/cache";
 
 export type RefreshAnalyticsInsightsResult = {
   ok: boolean;
@@ -21,6 +23,7 @@ export async function refreshAnalyticsInsightsAction(): Promise<RefreshAnalytics
 
   const results = await generateAnalyticsSnapshotsForBusiness(business.id);
 
+  await invalidateCache(analyticsSnapshotsCacheKey(business.id));
   revalidatePath("/reports");
   revalidatePath("/dashboard");
 

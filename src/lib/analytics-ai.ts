@@ -15,6 +15,13 @@ const manualRefreshCooldownMs = 10 * 60 * 1000;
 const analyticsRequestTimeoutMs = 50 * 1000;
 const analyticsModelAttemptTimeoutMs = 22 * 1000;
 
+// Shared getCached() key for the Reports page's snapshot read, so the page
+// and the manual "Refresh AI" action (which must invalidate it) never drift
+// apart on what key they're using.
+export function analyticsSnapshotsCacheKey(businessId: string): string {
+  return `analytics-snapshots:${businessId}`;
+}
+
 // Narrowed to exactly what the Reports UI reads (reports-overview.tsx's AI
 // insight card: headline/summary, rootCauses[0], actions[0], focus/diagnosis
 // as their fallback text, tone + score for the dot/footer pill) — the prior
