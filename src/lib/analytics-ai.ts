@@ -5,6 +5,7 @@ import {
   buildReportsViewFromWorkspace,
   chartSignature,
   metricSignature,
+  type ReportAiSnapshotInput,
   type ReportPeriodDiagnostics,
   type ReportPeriodKey,
 } from "@/lib/reports";
@@ -20,6 +21,23 @@ const analyticsModelAttemptTimeoutMs = 22 * 1000;
 // apart on what key they're using.
 export function analyticsSnapshotsCacheKey(businessId: string): string {
   return `analytics-snapshots:${businessId}`;
+}
+
+// Upstash round-trips a cached value through JSON, which serializes Date
+// fields to ISO strings with no automatic revival on the way back out — a
+// cache hit would hand reports.ts's aiSnapshotForPeriod() strings where it
+// calls .getTime(), throwing instead of rendering. Apply on every read (hit
+// or miss; re-wrapping an already-real Date is a harmless no-op) before the
+// snapshots reach reports.ts. (Codex)
+export function rehydrateAnalyticsSnapshotDates(
+  snapshots: ReportAiSnapshotInput[]
+): ReportAiSnapshotInput[] {
+  return snapshots.map((snapshot) => ({
+    ...snapshot,
+    periodStart: new Date(snapshot.periodStart),
+    periodEnd: new Date(snapshot.periodEnd),
+    generatedAt: new Date(snapshot.generatedAt),
+  }));
 }
 
 // Narrowed to exactly what the Reports UI reads (reports-overview.tsx's AI
