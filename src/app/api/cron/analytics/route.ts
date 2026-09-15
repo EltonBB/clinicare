@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { generateAnalyticsSnapshotsForBusiness } from "@/lib/analytics-ai";
+import { analyticsSnapshotsCacheKey } from "@/lib/analytics-snapshot-cache";
 import { isProBusinessPlan } from "@/lib/billing";
+import { invalidateCache } from "@/lib/cache";
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { logger } from "@/lib/logger";
@@ -69,6 +71,10 @@ export async function GET(request: Request) {
         const snapshots = await generateAnalyticsSnapshotsForBusiness(business.id, {
           force: true,
         });
+        // Same writer as the manual "Refresh AI" action — must invalidate the
+        // same Reports-page cache key, or a page cached just before this cron
+        // run serves pre-cron snapshots until the TTL lapses on its own.
+        await invalidateCache(analyticsSnapshotsCacheKey(business.id));
         return {
           businessId: business.id,
           generated: snapshots.filter((snapshot) => snapshot.usedAi).length,
