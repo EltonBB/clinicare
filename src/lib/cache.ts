@@ -246,24 +246,59 @@ export async function getCachedVersioned<T>(
   return getCachedWith(redis, versionedDataKey(key, version), ttlSeconds, producer);
 }
 
-/** Invalidate a versioned key (see getCachedVersioned) by advancing its version. */
-export async function invalidateCacheVersioned(key: string): Promise<void> {
+/**
+ * Invalidate a versioned key (see getCachedVersioned) by advancing its
+ * version. Returns whether the version is confirmed to have advanced —
+ * `false` means the caller's write is NOT guaranteed visible on the very
+ * next read (the whole point of the versioned/invalidated path over plain
+ * TTL expiry), so callers should surface that rather than silently swallow
+ * it, even though this itself never throws (a cache fault still isn't a
+ * hard failure for the caller's own request/job).
+ *
+ * INCR is retried once beyond the Upstash client's own per-call retry
+ * (lib/redis.ts) before giving up — it's the operation that actually moves
+ * readers onto a fresh version, so it's worth one more attempt. EXPIRE is
+ * NOT retried on its own failure: by the time it runs, INCR has already
+ * succeeded and the invalidation is already correct — a missing/stale TTL
+ * on the counter is a minor storage-hygiene concern, not a correctness one,
+ * so it's reported (for observability) without failing the whole call or
+ * re-running INCR (which would just skip an extra version for no benefit).
+ */
+export async function invalidateCacheVersioned(key: string): Promise<boolean> {
   const namespaced = NAMESPACE + versionCounterKey(key);
   const redis = getRedis();
 
   if (redis) {
+    const incremented = await tryTwice(() => redis.incr(namespaced));
+    if (!incremented) {
+      noteRedisFailure();
+      return false;
+    }
+    // INCR is denyoom-flagged like SET, so a completed one is a valid
+    // store-succeeded signal for the breaker — same reasoning as SET.
+    noteRedisStoreSucceeded();
+
     try {
-      await redis.incr(namespaced);
       await redis.expire(namespaced, VERSION_TTL_SECONDS);
-      // INCR is denyoom-flagged like SET, so a completed one is a valid
-      // store-succeeded signal for the breaker — same reasoning as SET.
-      noteRedisStoreSucceeded();
     } catch {
       noteRedisFailure();
     }
-    return;
+    return true;
   }
 
   const current = memoryGet<number>(namespaced) ?? 0;
   memorySet(namespaced, current + 1, VERSION_TTL_SECONDS);
+  return true;
+}
+
+async function tryTwice<T>(operation: () => Promise<T>): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await operation();
+      return true;
+    } catch {
+      // Fall through to the retry, or exhaust below.
+    }
+  }
+  return false;
 }
