@@ -27,12 +27,20 @@ reviews:
         not a page path; (2) mutations outside the obvious feature folder,
         including (auth) profile updates and settings.
     - path: "src/lib/cache.ts"
-      instructions: >
+      instructions: &cache_seam_instructions >
         This is a cache-aside seam over Redis (Upstash) with an in-memory
         fallback. Never PHI or patient-identifying data (names, phones,
         conversations, clinical content) — non-PHI only. Every per-tenant
         cache key must embed businessId; an unscoped key would serve one
         clinic's cached value to another.
+    # Path instructions match only the file that changed, not files it calls
+    # into — the businessId/PHI rule above needs to reach getCached()'s
+    # callers too, not just the seam definition itself. Every real caller
+    # lives under src/app/ today (CodeRabbit review on PR #110).
+    - path: "src/app/**/*.ts"
+      instructions: *cache_seam_instructions
+    - path: "src/app/**/*.tsx"
+      instructions: *cache_seam_instructions
     - path: "src/lib/messaging/**"
       instructions: >
         All outbound messages must flow through sendMessage(channel,
