@@ -12,6 +12,7 @@ import {
 } from "@/lib/analytics-snapshot-cache";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { invalidateCacheVersioned } from "@/lib/cache";
+import { logger } from "@/lib/logger";
 
 export type RefreshAnalyticsInsightsResult = {
   ok: boolean;
@@ -33,7 +34,15 @@ export async function refreshAnalyticsInsightsAction(): Promise<RefreshAnalytics
   // pre-refresh data must not be able to resurrect it after this bumps the
   // version — see getCachedVersioned's docstring.
   if (!allPeriodsRateLimited(results)) {
-    await invalidateCacheVersioned(analyticsSnapshotsCacheKey(business.id));
+    const invalidated = await invalidateCacheVersioned(analyticsSnapshotsCacheKey(business.id));
+    if (!invalidated) {
+      // Not a hard failure — the 60s TTL still bounds staleness — but a
+      // refresh the user just triggered not being immediately visible is
+      // worth a signal rather than silently swallowing it.
+      logger.warn("Reports cache invalidation failed after a manual refresh", {
+        businessId: business.id,
+      });
+    }
   }
   revalidatePath("/reports");
   revalidatePath("/dashboard");

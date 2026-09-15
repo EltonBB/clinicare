@@ -223,10 +223,11 @@ describe("getCachedVersioned / invalidateCacheVersioned (Redis path)", () => {
     );
   });
 
-  it("invalidateCacheVersioned increments then sets an expiry on the version key", async () => {
+  it("invalidateCacheVersioned increments then sets an expiry on the version key, returning true", async () => {
     const cache = await import("@/lib/cache");
-    await cache.invalidateCacheVersioned("test:versioned-redis-invalidate");
+    const result = await cache.invalidateCacheVersioned("test:versioned-redis-invalidate");
 
+    expect(result).toBe(true);
     expect(incr).toHaveBeenCalledWith("vela:cache:test:versioned-redis-invalidate:version");
     expect(expire).toHaveBeenCalledWith(
       "vela:cache:test:versioned-redis-invalidate:version",
@@ -236,14 +237,40 @@ describe("getCachedVersioned / invalidateCacheVersioned (Redis path)", () => {
     expect(failure).not.toHaveBeenCalled();
   });
 
-  it("reports a failed increment as a failure, never as a store", async () => {
-    incr.mockRejectedValueOnce(new Error("OOM command not allowed"));
+  it("retries a failed increment once and succeeds if the retry works", async () => {
+    incr.mockRejectedValueOnce(new Error("ETIMEDOUT")).mockResolvedValueOnce(2);
 
     const cache = await import("@/lib/cache");
-    await cache.invalidateCacheVersioned("test:versioned-redis-invalidate-fail");
+    const result = await cache.invalidateCacheVersioned("test:versioned-redis-invalidate-retry");
 
+    expect(result).toBe(true);
+    expect(incr).toHaveBeenCalledTimes(2);
+    expect(store).toHaveBeenCalledTimes(1);
+    expect(failure).not.toHaveBeenCalled();
+  });
+
+  it("returns false and reports a failure after both increment attempts fail — never counted as a store", async () => {
+    incr.mockRejectedValue(new Error("OOM command not allowed"));
+
+    const cache = await import("@/lib/cache");
+    const result = await cache.invalidateCacheVersioned("test:versioned-redis-invalidate-fail");
+
+    expect(result).toBe(false);
+    expect(incr).toHaveBeenCalledTimes(2); // initial attempt + one retry, then gave up
     expect(store).not.toHaveBeenCalled();
     expect(failure).toHaveBeenCalledTimes(1);
+  });
+
+  it("still returns true when INCR succeeds but EXPIRE fails — invalidation itself already happened", async () => {
+    expire.mockRejectedValueOnce(new Error("unreachable"));
+
+    const cache = await import("@/lib/cache");
+    const result = await cache.invalidateCacheVersioned("test:versioned-redis-expire-fail");
+
+    expect(result).toBe(true); // the version WAS bumped — correctness is intact
+    expect(store).toHaveBeenCalledTimes(1); // from the successful INCR
+    expect(failure).toHaveBeenCalledTimes(1); // from the failed EXPIRE, for observability
+    expect(incr).toHaveBeenCalledTimes(1); // EXPIRE failing does not re-run INCR
   });
 });
 
