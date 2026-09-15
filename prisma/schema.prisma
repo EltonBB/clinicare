@@ -736,7 +736,11 @@ model StaffNotification {
   createdAt     DateTime              @default(now())
 
   @@index([staffMemberId, readAt, createdAt])
-  @@index([businessId])
+  // Matches the real query shape (src/lib/mobile/inbox.ts: every read/update
+  // filters {businessId, staffMemberId} together) — the leading column also
+  // fully covers the cascade-delete-by-businessId path on its own, so this
+  // one index serves both instead of needing a separate bare @@index([businessId]).
+  @@index([businessId, staffMemberId])
 }
 
 enum StaffAccessCodeStatus {

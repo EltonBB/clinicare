@@ -3,10 +3,13 @@
 import { revalidatePath } from "next/cache";
 
 import {
-  analyticsSnapshotsCacheKey,
   generateAnalyticsSnapshotsForBusiness,
   type GenerateAnalyticsSnapshotResult,
 } from "@/lib/analytics-ai";
+import {
+  allPeriodsRateLimited,
+  analyticsSnapshotsCacheKey,
+} from "@/lib/analytics-snapshot-cache";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { invalidateCache } from "@/lib/cache";
 
@@ -23,7 +26,12 @@ export async function refreshAnalyticsInsightsAction(): Promise<RefreshAnalytics
 
   const results = await generateAnalyticsSnapshotsForBusiness(business.id);
 
-  await invalidateCache(analyticsSnapshotsCacheKey(business.id));
+  // A fully-rate-limited refresh (e.g. a double-click inside the cooldown)
+  // writes nothing — skip the cache eviction so the next Reports load still
+  // gets a cheap cache hit instead of paying for a no-op refresh.
+  if (!allPeriodsRateLimited(results)) {
+    await invalidateCache(analyticsSnapshotsCacheKey(business.id));
+  }
   revalidatePath("/reports");
   revalidatePath("/dashboard");
 
