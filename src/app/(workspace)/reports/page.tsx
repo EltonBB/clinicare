@@ -96,7 +96,7 @@ export default async function ReportsPage({
           },
           take: 18,
         })
-    ).then(rehydrateAnalyticsSnapshotDates),
+    ),
   ]);
 
   if (workspaceDataResult.status === "rejected") {
@@ -110,7 +110,10 @@ export default async function ReportsPage({
   }
 
   const workspaceData = workspaceDataResult.value;
-  const aiSnapshots = aiSnapshotsResult.status === "fulfilled" ? aiSnapshotsResult.value : [];
+  const aiSnapshots =
+    aiSnapshotsResult.status === "fulfilled"
+      ? rehydrateAnalyticsSnapshotDates(aiSnapshotsResult.value)
+      : [];
 
   const view = buildReportsViewFromWorkspace({
     ...workspaceData,
