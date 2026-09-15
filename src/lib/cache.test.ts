@@ -198,9 +198,24 @@ describe("getCachedVersioned / invalidateCacheVersioned (Redis path)", () => {
   });
 
   it("resolves the backend exactly once per getCachedVersioned call, not once per sub-operation", async () => {
-    const cache = await import("@/lib/cache");
-    await cache.getCachedVersioned("test:versioned-redis-single-resolve", 60, async () => "fresh");
+    // Explicit, not coincidental: version reads as 0, then the data key
+    // "...:v0" misses — the same two-call sequence as the "reads the
+    // version key, then the versioned data key" test below, so this test
+    // provably exercises both the version read AND the data read/write
+    // (not just whichever one happens to match the shared default mock),
+    // while still resolving the backend once for the whole operation.
+    get.mockResolvedValueOnce(0);
+    get.mockResolvedValueOnce(null);
 
+    const cache = await import("@/lib/cache");
+    const result = await cache.getCachedVersioned(
+      "test:versioned-redis-single-resolve",
+      60,
+      async () => "fresh"
+    );
+
+    expect(result).toBe("fresh");
+    expect(get).toHaveBeenCalledTimes(2);
     // One resolution shared by both the version read and the data read/write —
     // not two independent ones that could disagree on backend (CodeRabbit).
     expect(getRedisFn).toHaveBeenCalledTimes(1);
@@ -233,6 +248,9 @@ describe("getCachedVersioned / invalidateCacheVersioned (Redis path)", () => {
       "vela:cache:test:versioned-redis-invalidate:version",
       7 * 24 * 60 * 60
     );
+    // Order matters, not just that both were called: EXPIRE only makes sense
+    // once INCR has actually bumped the version.
+    expect(incr.mock.invocationCallOrder[0]).toBeLessThan(expire.mock.invocationCallOrder[0]);
     expect(store).toHaveBeenCalledTimes(1); // a completed INCR counts as breaker-recovery evidence
     expect(failure).not.toHaveBeenCalled();
   });
