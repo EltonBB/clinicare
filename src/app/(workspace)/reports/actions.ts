@@ -11,7 +11,7 @@ import {
   analyticsSnapshotsCacheKey,
 } from "@/lib/analytics-snapshot-cache";
 import { requireCurrentWorkspace } from "@/lib/business";
-import { invalidateCache } from "@/lib/cache";
+import { invalidateCacheVersioned } from "@/lib/cache";
 
 export type RefreshAnalyticsInsightsResult = {
   ok: boolean;
@@ -28,9 +28,12 @@ export async function refreshAnalyticsInsightsAction(): Promise<RefreshAnalytics
 
   // A fully-rate-limited refresh (e.g. a double-click inside the cooldown)
   // writes nothing — skip the cache eviction so the next Reports load still
-  // gets a cheap cache hit instead of paying for a no-op refresh.
+  // gets a cheap cache hit instead of paying for a no-op refresh. Versioned
+  // (not plain) invalidation: a concurrent /reports load whose producer read
+  // pre-refresh data must not be able to resurrect it after this bumps the
+  // version — see getCachedVersioned's docstring.
   if (!allPeriodsRateLimited(results)) {
-    await invalidateCache(analyticsSnapshotsCacheKey(business.id));
+    await invalidateCacheVersioned(analyticsSnapshotsCacheKey(business.id));
   }
   revalidatePath("/reports");
   revalidatePath("/dashboard");

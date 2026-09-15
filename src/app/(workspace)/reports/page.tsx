@@ -7,7 +7,7 @@ import {
   analyticsSnapshotsCacheKey,
   rehydrateAnalyticsSnapshotDates,
 } from "@/lib/analytics-snapshot-cache";
-import { getCached } from "@/lib/cache";
+import { getCachedVersioned } from "@/lib/cache";
 import { prisma } from "@/lib/prisma";
 import { getReportWorkspaceData } from "@/lib/report-data";
 import { getZonedDayWindowFromParts } from "@/lib/time-zone";
@@ -83,9 +83,9 @@ export default async function ReportsPage({
   // workspaceData has no such fallback, so its rejection still propagates.
   const [workspaceDataResult, aiSnapshotsResult] = await Promise.allSettled([
     getReportWorkspaceData(business.id, selectedRange),
-    getCached(
+    getCachedVersioned(
       analyticsSnapshotsCacheKey(business.id),
-      60, // seconds; short enough that a stale read here is a non-issue
+      60, // seconds; bounds staleness between explicit invalidations
       () =>
         prisma.analyticsSnapshot.findMany({
           where: {
