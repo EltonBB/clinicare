@@ -3,7 +3,10 @@ import { isProBusinessPlan } from "@/lib/billing";
 import { ProFeatureLock } from "@/components/billing/pro-feature-lock";
 import { ReportsOverview } from "@/components/reports/reports-overview";
 import { buildReportsViewFromWorkspace } from "@/lib/reports";
-import { analyticsSnapshotsCacheKey } from "@/lib/analytics-ai";
+import {
+  analyticsSnapshotsCacheKey,
+  rehydrateAnalyticsSnapshotDates,
+} from "@/lib/analytics-ai";
 import { getCached } from "@/lib/cache";
 import { prisma } from "@/lib/prisma";
 import { getReportWorkspaceData } from "@/lib/report-data";
@@ -93,7 +96,7 @@ export default async function ReportsPage({
           },
           take: 18,
         })
-    ),
+    ).then(rehydrateAnalyticsSnapshotDates),
   ]);
 
   if (workspaceDataResult.status === "rejected") {
