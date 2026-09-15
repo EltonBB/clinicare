@@ -1,0 +1,51 @@
+language: "en-US"
+early_access: false
+
+reviews:
+  profile: "chill"
+  # Advisory only — never blocks or auto-approves. Matches the existing
+  # Codex workflow: a bot comments, a human still approves and merges.
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    # Auto-generated dependency lockfiles — pure diff noise, no review value.
+    - "!**/package-lock.json"
+  path_instructions:
+    - path: "src/app/**/actions.ts"
+      instructions: >
+        Server actions must revalidatePath() every surface the mutation
+        feeds: its directory row, detail page, and any dashboard/Reports
+        KPI it rolls into. Two recurring blind spots to check for: (1)
+        shell-global identity (owner name/phone, business name/logo/accent)
+        rendered in (workspace)/layout.tsx needs revalidatePath("/", "layout"),
+        not a page path; (2) mutations outside the obvious feature folder,
+        including (auth) profile updates and settings.
+    - path: "src/lib/cache.ts"
+      instructions: >
+        This is a cache-aside seam over Redis (Upstash) with an in-memory
+        fallback. Never PHI or patient-identifying data (names, phones,
+        conversations, clinical content) — non-PHI only. Every per-tenant
+        cache key must embed businessId; an unscoped key would serve one
+        clinic's cached value to another.
+    - path: "src/lib/messaging/**"
+      instructions: >
+        All outbound messages must flow through sendMessage(channel,
+        payload); never call a provider (Baileys, Twilio, etc.) or the
+        WhatsApp worker directly from feature code. Outbound patient-facing
+        content is minimum-necessary: name + appointment time only, never
+        clinical detail.
+    - path: "prisma/schema.prisma"
+      instructions: >
+        Every foreign-key column (businessId, staffMemberId, clientId, etc.)
+        used in a where clause should have a covering index — Postgres does
+        not auto-index FK columns. Flag a new tenant-scoped model or query
+        pattern that lacks one.
+
+chat:
+  auto_reply: true
