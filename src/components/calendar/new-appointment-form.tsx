@@ -53,8 +53,6 @@ const statusOptions: CalendarAppointmentStatus[] = [
   "completed",
 ];
 
-const durationSteps = [15, 30, 45, 60, 90, 120];
-
 function minutesToTime(minutes: number) {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
@@ -172,10 +170,17 @@ export function NewAppointmentForm({
         })
         .sort()
     : [];
-  // Lengths that still finish before closing; the current length stays listed so
-  // an existing off-grid duration isn't silently replaced.
-  const durationOptions = Array.from(new Set([...durationSteps, duration]))
-    .filter((minutes) => timeToMinutes(startTime) + minutes <= closeMinutes)
+  // Every 15-minute length that still finishes by closing time, like the old
+  // end-time picker; the current length stays listed so an existing off-grid
+  // duration isn't silently replaced.
+  const maxDuration = closeMinutes - timeToMinutes(startTime);
+  const durationOptions = Array.from(
+    new Set([
+      ...Array.from({ length: Math.max(0, Math.floor(maxDuration / 15)) }, (_, index) => (index + 1) * 15),
+      duration,
+    ])
+  )
+    .filter((minutes) => minutes <= maxDuration)
     .sort((a, b) => a - b);
   const effectiveDuration = durationOptions.includes(duration)
     ? duration
