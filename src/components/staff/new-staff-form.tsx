@@ -248,7 +248,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
                     type="time"
                     value={item.startTime}
                     onChange={(event) => updateSchedule(index, { startTime: event.target.value })}
-                    className="h-9 min-w-0 flex-1 rounded-(--radius-card) bg-white sm:w-32 sm:flex-none"
+                    className="h-9 min-w-0 flex-1 rounded-(--radius-card) bg-white px-2 text-sm max-sm:[&::-webkit-calendar-picker-indicator]:hidden sm:w-32 sm:flex-none sm:px-3.5"
                     aria-label={`${item.day} shift start`}
                   />
                   <span className="text-muted-foreground">–</span>
@@ -256,7 +256,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
                     type="time"
                     value={item.endTime}
                     onChange={(event) => updateSchedule(index, { endTime: event.target.value })}
-                    className="h-9 min-w-0 flex-1 rounded-(--radius-card) bg-white sm:w-32 sm:flex-none"
+                    className="h-9 min-w-0 flex-1 rounded-(--radius-card) bg-white px-2 text-sm max-sm:[&::-webkit-calendar-picker-indicator]:hidden sm:w-32 sm:flex-none sm:px-3.5"
                     aria-label={`${item.day} shift end`}
                   />
                 </div>
