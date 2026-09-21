@@ -222,6 +222,20 @@ export function expandScheduleBlockDays(
   });
 }
 
+// Ceiling on the daily block entries one calendar payload carries. Each block
+// expands to one entry per day it touches, so many overlapping blocks could
+// otherwise multiply into a payload far beyond anything a clinic really has.
+export const MAX_EXPANDED_BLOCK_ENTRIES = 1500;
+
+export function expandScheduleBlocks(
+  blocks: Array<Pick<ScheduleBlock, "id" | "title" | "startsAt" | "endsAt" | "reason">>,
+  range?: { start: Date; end: Date }
+): CalendarScheduleBlock[] {
+  return blocks
+    .flatMap((block) => expandScheduleBlockDays(block, range))
+    .slice(0, MAX_EXPANDED_BLOCK_ENTRIES);
+}
+
 export function buildCalendarViewFromRecords(args: {
   appointments: AppointmentWithRelations[];
   scheduleBlocks?: ScheduleBlockWithRelations[];
@@ -264,7 +278,7 @@ export function buildCalendarViewFromRecords(args: {
     initialDate: initialDateValue,
     timeZoneLabel: getTimeZoneLabel(),
     appointments: appointments.map((appointment) => toCalendarAppointment(appointment, ownerName)),
-    scheduleBlocks: scheduleBlocks.flatMap((block) => expandScheduleBlockDays(block, expandRange)),
+    scheduleBlocks: expandScheduleBlocks(scheduleBlocks, expandRange),
     clients: clientOptions,
     hasClients: hasClients ?? clientOptions.length > 0,
     staffMembers: staffMembers.map((member) => ({

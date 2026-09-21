@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { monthGridRange, type CalendarRange } from "@/lib/calendar-range";
 import {
-  expandScheduleBlockDays,
+  expandScheduleBlocks,
   toCalendarAppointment,
   type CalendarAppointment,
   type CalendarScheduleBlock,
@@ -12,6 +12,9 @@ import { getZonedDayWindowFromParts, zonedDateTimeToUtc } from "@/lib/time-zone"
 // real clinic — ~70 visits a day for 42 days — so it only guards a runaway
 // query from shipping an unbounded payload.
 const MONTH_ROW_CAP = 3000;
+// Schedule blocks (closures, lunch breaks) are a handful per clinic; the cap
+// keeps a runaway set from being read, expanded and shipped whole.
+const MONTH_BLOCK_CAP = 200;
 
 function parseDateKey(key: string) {
   const [year, month, day] = key.split("-").map(Number);
@@ -60,6 +63,7 @@ export async function loadCalendarMonthRecords(args: { businessId: string; month
         endsAt: { gte: start },
       },
       orderBy: { startsAt: "asc" },
+      take: MONTH_BLOCK_CAP,
     }),
   ]);
 
@@ -89,8 +93,9 @@ export async function loadCalendarMonth(args: {
     appointments: records.appointments.map((appointment) =>
       toCalendarAppointment(appointment, args.ownerName)
     ),
-    scheduleBlocks: records.scheduleBlocks.flatMap((block) =>
-      expandScheduleBlockDays(block, { start: records.rangeStart, end: records.rangeEnd })
-    ),
+    scheduleBlocks: expandScheduleBlocks(records.scheduleBlocks, {
+      start: records.rangeStart,
+      end: records.rangeEnd,
+    }),
   };
 }
