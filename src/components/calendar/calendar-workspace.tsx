@@ -39,7 +39,8 @@ import {
 } from "@/components/workspace/workspace-layout";
 import { MonthGrid } from "@/components/workspace/month-grid";
 import { useDismissOnOutsideOrEscape } from "@/hooks/use-dismiss-on-outside-or-escape";
-import { timeToMinutes } from "@/lib/calendar";
+import { businessHoursForDate, timeToMinutes } from "@/lib/calendar";
+import { rowsThatFit, visibleEntryCount } from "@/lib/calendar-fit";
 import { monthsToLoad, type CalendarRange } from "@/lib/calendar-range";
 import { cn } from "@/lib/utils";
 import type {
@@ -158,6 +159,7 @@ function EventPill({
         event.preventDefault();
         onOpen(event);
       }}
+      data-pill=""
       className={cn(
         "flex w-full shrink-0 items-center justify-between gap-1.5 truncate rounded-(--radius-tile) text-left font-medium transition-[filter,transform] duration-(--duration-base) hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
         dense
@@ -210,18 +212,42 @@ function BlockPill({ block }: { block: CalendarScheduleBlock }) {
   );
 }
 
-const DAY_COLUMN_VISIBLE_CAP = 8;
+// A week column stretches to the viewport (`lg` and up), so how many rows fit is
+// measured; below that its height just follows its content, so there is nothing
+// to measure and it falls back to a fixed handful (8 entries plus the link).
+const LG_MEDIA_QUERY = "(min-width: 1024px)";
+const DAY_COLUMN_FALLBACK_SLOTS = 9;
+const DAY_COLUMN_PILL_HEIGHT = 40;
 
-// Week/Day columns can run well past a screen's worth of pills for a busy
-// provider roster — cap what renders up front and let "View more" reveal the
-// rest, rather than relying on scroll alone to surface a 30+ entry day.
+// Rows (entry pills, plus the "+N more" link that takes one) that fit in a week
+// column, measured from the column's real box and its real pills so it holds at
+// any viewport height and text size.
+function measureDayColumnSlots(column: HTMLElement) {
+  if (!window.matchMedia(LG_MEDIA_QUERY).matches) {
+    return DAY_COLUMN_FALLBACK_SLOTS;
+  }
+
+  const styles = getComputedStyle(column);
+  const gap = parseFloat(styles.rowGap) || 0;
+  const padding = (parseFloat(styles.paddingTop) || 0) + (parseFloat(styles.paddingBottom) || 0);
+  const footerHeight = column.querySelector<HTMLElement>("[data-day-footer]")?.offsetHeight ?? 0;
+  const pillHeight = column.querySelector<HTMLElement>("a[data-pill]")?.offsetHeight ?? DAY_COLUMN_PILL_HEIGHT;
+
+  return rowsThatFit(column.clientHeight - padding - footerHeight - gap, pillHeight, gap);
+}
+
+// A week column lists as many entries as fill it, then one "+N more" row that
+// opens that day. Day view (`detailed`) lists every entry and scrolls instead —
+// reading the whole day is what that view is for.
 function DayColumn({
   dayKey,
   entries,
   isToday,
   isSelectedColumn,
   isEmpty,
+  isClosed,
   onOpen,
+  onOpenDay,
   detailed = false,
 }: {
   dayKey: string;
@@ -229,25 +255,46 @@ function DayColumn({
   isToday: boolean;
   isSelectedColumn: boolean;
   isEmpty: boolean;
+  // The clinic doesn't work this weekday: the "Add" prompt is replaced by a label.
+  isClosed: boolean;
   onOpen: (appointment: CalendarAppointment, event: MouseEvent<HTMLAnchorElement>) => void;
-  // Day view: the one wide column lists every entry (the column scrolls), since
-  // reading the whole day is what that view is for; week columns stay capped.
+  onOpenDay: () => void;
   detailed?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const visibleEntries =
-    expanded || detailed ? entries : entries.slice(0, DAY_COLUMN_VISIBLE_CAP);
-  const hiddenCount = entries.length - visibleEntries.length;
+  const columnRef = useRef<HTMLDivElement>(null);
+  const [slots, setSlots] = useState(DAY_COLUMN_FALLBACK_SLOTS);
+
+  useEffect(() => {
+    const column = columnRef.current;
+
+    if (!column || detailed) {
+      return;
+    }
+
+    // The observer reports once as soon as it starts watching (before the first
+    // paint), so the fallback is replaced by the measured count straight away;
+    // state is only ever set inside its callback (react-hooks/set-state-in-effect).
+    const observer = new ResizeObserver(() => setSlots(measureDayColumnSlots(column)));
+
+    observer.observe(column);
+
+    return () => observer.disconnect();
+  }, [detailed]);
+
+  const shownCount = detailed ? entries.length : visibleEntryCount(entries.length, slots);
+  const hiddenCount = entries.length - shownCount;
+  const footerClasses = "flex shrink-0 items-center justify-center rounded-(--radius-tile) px-2.5 py-2 text-xs font-medium";
 
   return (
     <div
+      ref={columnRef}
       className={cn(
         "flex max-h-[520px] min-h-[200px] flex-col gap-1.5 overflow-y-auto border-l border-t border-border/75 p-2.5 first:border-l-0 lg:h-full lg:max-h-none lg:min-h-0",
         isEmpty && "justify-center",
         isToday ? "bg-[#f6f9ff]" : isSelectedColumn && "bg-[#f8fafd]"
       )}
     >
-      {visibleEntries.map((entry) =>
+      {entries.slice(0, shownCount).map((entry) =>
         "status" in entry ? (
           <EventPill
             key={entry.id}
@@ -262,24 +309,67 @@ function DayColumn({
       {hiddenCount > 0 ? (
         <button
           type="button"
-          onClick={() => setExpanded(true)}
-          className="flex shrink-0 items-center justify-center rounded-(--radius-tile) px-2.5 py-2 text-sm font-semibold text-primary transition-colors duration-(--duration-base) hover:bg-primary/5"
+          onClick={onOpenDay}
+          aria-label={`${hiddenCount} more calendar entries — open this day`}
+          className="flex shrink-0 items-center justify-center rounded-(--radius-tile) px-3 py-2.5 text-sm font-semibold text-primary transition-colors duration-(--duration-base) hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
         >
-          View {hiddenCount} more
+          +{hiddenCount} more
         </button>
       ) : null}
-      <Link
-        href={`/calendar/new?date=${dayKey}`}
-        className={cn(
-          "flex shrink-0 items-center justify-center gap-1.5 rounded-(--radius-tile) px-2.5 py-2 text-xs font-medium text-muted-foreground transition-[background-color,color,transform] duration-(--duration-base) hover:bg-primary/5 hover:text-primary active:scale-[0.97]",
-          isEmpty ? "border border-dashed border-border/70" : "mt-auto"
-        )}
-      >
-        <Plus className="size-3.5" />
-        Add
-      </Link>
+      {isClosed ? (
+        <p
+          data-day-footer=""
+          className={cn(footerClasses, "text-muted-foreground", !isEmpty && "mt-auto")}
+        >
+          Clinic closed
+        </p>
+      ) : (
+        <Link
+          data-day-footer=""
+          href={`/calendar/new?date=${dayKey}`}
+          className={cn(
+            footerClasses,
+            "text-muted-foreground transition-[background-color,color,transform] duration-(--duration-base) hover:bg-primary/5 hover:text-primary active:scale-[0.97]",
+            isEmpty ? "gap-1.5 border border-dashed border-border/70" : "mt-auto gap-1.5"
+          )}
+        >
+          <Plus className="size-3.5" />
+          Add
+        </Link>
+      )}
     </div>
   );
+}
+
+// Below `lg` a month cell just grows with its pills, so three is a fixed cap;
+// from `lg` the cells split the viewport evenly and as many pills as fill one show.
+const MONTH_FALLBACK_SLOTS = 3;
+const MONTH_PILL_HEIGHT = 25;
+
+// Pills that fit in a month cell below its date row. The "+N more" count lives in
+// the date row, so it takes no slot here. Measured from a real cell (they are all
+// the same height) and a real pill.
+function measureMonthSlots(grid: HTMLElement) {
+  if (!window.matchMedia(LG_MEDIA_QUERY).matches) {
+    return MONTH_FALLBACK_SLOTS;
+  }
+
+  const cell = grid.querySelector<HTMLElement>("[data-month-cell]");
+  const list = cell?.querySelector<HTMLElement>("[data-month-list]");
+
+  if (!cell || !list?.parentElement) {
+    return MONTH_FALLBACK_SLOTS;
+  }
+
+  const cellStyles = getComputedStyle(cell);
+  const listStyles = getComputedStyle(list);
+  const bottomEdge =
+    cell.getBoundingClientRect().bottom -
+    (parseFloat(cellStyles.borderBottomWidth) || 0) -
+    (parseFloat(getComputedStyle(list.parentElement).paddingBottom) || 0);
+  const pillHeight = grid.querySelector<HTMLElement>("a[data-pill]")?.offsetHeight ?? MONTH_PILL_HEIGHT;
+
+  return rowsThatFit(bottomEdge - list.getBoundingClientRect().top, pillHeight, parseFloat(listStyles.rowGap) || 0);
 }
 
 function DatePickerPopover({
@@ -466,6 +556,8 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
   // instead of "Try again".
   const [sessionExpired, setSessionExpired] = useState(false);
   const requestedMonths = useRef(new Set<string>());
+  const monthGridRef = useRef<HTMLDivElement>(null);
+  const [monthSlots, setMonthSlots] = useState(MONTH_FALLBACK_SLOTS);
   const hasClients = initialView.hasClients;
   const todayDate = useMemo(() => parseISO(today), [today]);
 
@@ -587,6 +679,22 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
       : view === "week"
         ? `week-${format(weekStart, "yyyy-MM-dd")}`
         : `month-${format(startOfMonth(activeDate), "yyyy-MM-dd")}`;
+
+  useEffect(() => {
+    const grid = monthGridRef.current;
+
+    if (!grid) {
+      return;
+    }
+
+    // Same pattern as DayColumn: the first report replaces the fallback before the
+    // first paint, and state is only set inside the observer's callback.
+    const observer = new ResizeObserver(() => setMonthSlots(measureMonthSlots(grid)));
+
+    observer.observe(grid);
+
+    return () => observer.disconnect();
+  }, [gridKey]);
 
   function openQuickView(appointment: CalendarAppointment, event: MouseEvent<HTMLAnchorElement>) {
     event.stopPropagation();
@@ -718,18 +826,19 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
                 ))}
               </div>
               <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-              <div className="grid grid-cols-7 lg:h-full lg:auto-rows-fr">
+              <div ref={monthGridRef} className="grid grid-cols-7 lg:h-full lg:auto-rows-fr">
                 {currentMonth.map((day) => {
                   const key = format(day, "yyyy-MM-dd");
                   const items = appointmentsByDate.get(key) ?? [];
                   const blocks = scheduleBlocksByDate.get(key) ?? [];
                   const isToday = isSameDay(day, todayDate);
-                  const visibleEntries = mergeEntriesByTime(items, blocks).slice(0, 2);
+                  const visibleEntries = mergeEntriesByTime(items, blocks).slice(0, monthSlots);
                   const overflowCount = items.length + blocks.length - visibleEntries.length;
 
                   return (
                     <div
                       key={key}
+                      data-month-cell=""
                       className={cn(
                         "relative min-h-20 overflow-hidden border-b border-r border-border/75",
                         !isSameMonth(day, activeDate) && "bg-muted/35 text-muted-foreground"
@@ -772,7 +881,7 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
                             fragments ("0...", "1..."), so mobile gets the same density-only
                             dot summary as the week/day header (see the day-column buttons
                             below); tapping the day still opens Day view for full detail. */}
-                        <div className="mt-1.5 hidden space-y-1 sm:block">
+                        <div data-month-list="" className="mt-1.5 hidden flex-col gap-1 sm:flex">
                           {visibleEntries.map((entry) =>
                             "status" in entry ? (
                               <EventPill
@@ -784,7 +893,7 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
                             ) : (
                               <div
                                 key={entry.id}
-                                className="pointer-events-none truncate rounded-(--radius-tile) bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700"
+                                className="pointer-events-none shrink-0 truncate rounded-(--radius-tile) bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700"
                               >
                                 {entry.startTime} {entry.title}
                               </div>
@@ -868,6 +977,7 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
                   const isSelectedColumn = isSameDay(day, activeDate);
 
                   const isEmpty = items.length === 0 && blocks.length === 0;
+                  const isClosed = !businessHoursForDate(key, initialView.businessHours).enabled;
 
                   return (
                     <DayColumn
@@ -877,8 +987,13 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
                       isToday={isToday}
                       isSelectedColumn={isSelectedColumn}
                       isEmpty={isEmpty}
+                      isClosed={isClosed}
                       detailed={view === "day"}
                       onOpen={openQuickView}
+                      onOpenDay={() => {
+                        setActiveDate(day);
+                        startTransition(() => setView("day"));
+                      }}
                     />
                   );
                 })}
