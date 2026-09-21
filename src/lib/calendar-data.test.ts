@@ -13,6 +13,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 import { loadCalendarMonth, loadCalendarMonthRecords } from "@/lib/calendar-data";
+import { buildCalendarViewFromRecords, MAX_EXPANDED_BLOCK_ENTRIES } from "@/lib/calendar";
 import { getZonedDayWindowFromParts, zonedDateTimeToUtc } from "@/lib/time-zone";
 
 function appointmentRow(overrides: Record<string, unknown> = {}) {
@@ -29,6 +30,18 @@ function appointmentRow(overrides: Record<string, unknown> = {}) {
     client: { id: "client_1", name: "Ada Lovelace" },
     staffMember: { id: "staff_1", name: "Dr. Kim" },
     ...overrides,
+  };
+}
+
+// A block that spans the whole September grid (Aug 31 – Oct 4), so it expands to
+// one entry for each of those 35 days.
+function wholeGridBlock(index: number) {
+  return {
+    id: `block_${index}`,
+    title: "Closure",
+    startsAt: new Date("2026-08-30T12:00:00.000Z"),
+    endsAt: new Date("2026-10-05T12:00:00.000Z"),
+    reason: null,
   };
 }
 
@@ -78,6 +91,12 @@ describe("loadCalendarMonthRecords", () => {
     expect(query.where.startsAt).toHaveProperty("lte");
     expect(query.where.endsAt).toHaveProperty("gte");
   });
+
+  it("bounds the schedule-block query too, not only the appointments", async () => {
+    await loadCalendarMonthRecords({ businessId: "biz_1", monthKey: "2026-09" });
+
+    expect(mocks.scheduleBlockFindMany.mock.calls[0][0].take).toBe(200);
+  });
 });
 
 describe("loadCalendarMonth", () => {
@@ -108,5 +127,47 @@ describe("loadCalendarMonth", () => {
     // No staff member → falls back to the owner's name, like the page's first load.
     expect(month?.appointments[1]).toMatchObject({ status: "cancelled", staffName: "Owner Name" });
     expect(month?.range).toEqual({ from: "2026-08-31", to: "2026-10-04" });
+  });
+});
+
+describe("expanded schedule blocks are bounded", () => {
+  const manyBlocks = Array.from({ length: 100 }, (_, index) => wholeGridBlock(index));
+
+  it("caps the entries the on-demand loader returns", async () => {
+    mocks.scheduleBlockFindMany.mockResolvedValue(manyBlocks);
+
+    const month = await loadCalendarMonth({ businessId: "biz_1", monthKey: "2026-09", ownerName: "Owner" });
+
+    // 100 blocks × 35 days = 3,500 raw entries.
+    expect(month?.scheduleBlocks).toHaveLength(MAX_EXPANDED_BLOCK_ENTRIES);
+  });
+
+  it("caps the entries the page path returns, via the shared builder", () => {
+    const view = buildCalendarViewFromRecords({
+      appointments: [],
+      scheduleBlocks: manyBlocks.map((block) => ({
+        ...block,
+        businessId: "biz_1",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })) as never,
+      hasClients: true,
+      staffMembers: [],
+      businessHours: [],
+      ownerName: "Owner",
+      initialDate: "2026-09-21",
+      rangeStart: new Date("2026-08-30T22:00:00.000Z"),
+      rangeEnd: new Date("2026-10-04T21:59:59.999Z"),
+    });
+
+    expect(view.scheduleBlocks).toHaveLength(MAX_EXPANDED_BLOCK_ENTRIES);
+  });
+
+  it("leaves a normal handful of blocks untouched", async () => {
+    mocks.scheduleBlockFindMany.mockResolvedValue([wholeGridBlock(1), wholeGridBlock(2)]);
+
+    const month = await loadCalendarMonth({ businessId: "biz_1", monthKey: "2026-09", ownerName: "Owner" });
+
+    expect(month?.scheduleBlocks).toHaveLength(70);
   });
 });
