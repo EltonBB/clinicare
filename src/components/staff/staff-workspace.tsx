@@ -313,7 +313,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                           so there's no "retarget an already-mounted bar" case to support. */}
                       <div className="mt-1 h-1.5 w-24 overflow-hidden rounded-full bg-secondary">
                         <div
-                          className="bar-grow vela-gradient h-full rounded-full"
+                          className="bar-grow h-full bg-primary"
                           style={{ width: `${Math.min(member.completionRate, 100)}%` }}
                         />
                       </div>

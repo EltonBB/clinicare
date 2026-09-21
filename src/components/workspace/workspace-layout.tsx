@@ -243,14 +243,14 @@ export function WorkspaceTable({
       {headers ? (
         <div
           className={cn(
-            "flex min-h-[40px] items-center border-b border-border/70 bg-[#f8fafc] px-3.5 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground",
+            "flex min-h-[40px] items-center bg-[#f8fafc] px-3.5 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground",
             headerClassName
           )}
         >
           {headers}
         </div>
       ) : null}
-      <div className={cn("divide-y divide-border/65", bodyClassName)}>{children}</div>
+      <div className={cn(bodyClassName)}>{children}</div>
     </section>
   );
 }
@@ -357,10 +357,10 @@ export function FilterChip({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        "inline-flex items-center border border-transparent px-3 py-1.5 text-sm font-medium transition-[background-color,color,border-color] duration-(--duration-base) ease-out-quint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35",
+        "inline-flex items-center px-3 py-1.5 text-sm font-medium transition-[background-color,color] duration-(--duration-base) ease-out-quint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35",
         shape === "pill" ? "rounded-full" : "rounded-(--radius-card)",
         active
-          ? "border-border/80 bg-primary/8 text-primary"
+          ? "bg-primary/8 text-primary"
           : "text-muted-foreground hover:bg-secondary hover:text-foreground",
         className
       )}
