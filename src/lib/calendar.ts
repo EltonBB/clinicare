@@ -50,6 +50,30 @@ export type CalendarBusinessHours = {
   end: string;
 };
 
+/**
+ * The clinic's hours for a calendar date (`YYYY-MM-DD`). A weekday with no
+ * configured row means closed, not a guessed Mon-Fri 9-5 default — the same rule
+ * as reports.ts and the server-side isInsideBusinessHours check in
+ * calendar/actions.ts.
+ */
+export function businessHoursForDate(date: string, hours: CalendarBusinessHours[]) {
+  // The weekday of a calendar date is purely calendrical — derive it from the
+  // date parts via UTC so it never shifts with the browser's time zone. Monday is 0.
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.trim());
+  const weekday = match
+    ? (new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))).getUTCDay() + 6) % 7
+    : 0;
+
+  return (
+    hours.find((item) => item.weekday === weekday) ?? {
+      weekday,
+      enabled: false,
+      start: "09:00",
+      end: "17:00",
+    }
+  );
+}
+
 export type CalendarViewModel = {
   initialDate: string;
   timeZoneLabel: string;
