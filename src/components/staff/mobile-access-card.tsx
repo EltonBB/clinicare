@@ -74,7 +74,7 @@ export function MobileAccessCard({ staffId, initial }: MobileAccessCardProps) {
   }
 
   return (
-    <section className="surface-card mt-3.5 flex flex-col p-3.5">
+    <section className="surface-card flex flex-col p-3.5">
       <h3 className="text-sm font-semibold text-foreground">Mobile access</h3>
       <p className="text-xs text-muted-foreground">Vela Staff app sign-in</p>
 

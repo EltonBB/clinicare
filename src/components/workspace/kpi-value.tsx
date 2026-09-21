@@ -113,7 +113,7 @@ export function KpiValue({
   // changes during the count-up don't reflow surrounding layout — but that
   // overlay is opaque to a parent's `truncate` (text-overflow:ellipsis
   // can't see inside an atomic inline-block, so it hard-clips with no "…").
-  // Callers that truncate their container (e.g. HeaderStat) pass this to get
+  // Callers that truncate their container (e.g. a narrow stat tile) pass this to get
   // a single plain span instead, trading the anti-reflow trick for working
   // ellipsis truncation.
   truncate?: boolean;

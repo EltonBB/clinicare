@@ -99,7 +99,7 @@ export function DirectoryPageSkeleton({ filterCount }: { filterCount: number }) 
   );
 }
 
-// Client / Staff detail: back link → header (identity tile, stat strip, actions) → tabs → rail + main.
+// Client / Staff detail: back link → header (identity tile, actions) → tabs → info cards + main list.
 // tabCount matches the loaded route's real tab count (5 for Client Detail,
 // 3 for Staff Detail) — a fixed 4 added or removed an underline placeholder
 // on every detail navigation (Codex).
@@ -108,29 +108,26 @@ export function DetailPageSkeleton({ tabCount }: { tabCount: number }) {
     <div className={pageSizes.default}>
       <SkeletonBlock className="h-4 w-40" />
       {/* No shared card border — the real header is an open split at xl+
-          (identity left, a 560px stat/actions block right), only stacking
-          into a single column below that (Codex: matching the split avoids
-          the loaded page abruptly shortening/reflowing out of a bordered
-          card that never existed there). */}
+          (identity left, the action buttons right), only stacking into a
+          single column below that (Codex: matching the split avoids the
+          loaded page abruptly shortening/reflowing out of a bordered card
+          that never existed there). */}
       <div className="flex flex-col gap-3.5 xl:flex-row xl:items-start xl:justify-between">
-        <div className="flex min-w-0 items-start gap-3.5">
+        <div className="flex min-w-0 items-center gap-3.5">
           <SkeletonBlock className="size-20 shrink-0 rounded-(--radius-tile)" />
           {/* min-w-0 lets this shrink inside the flex row; without it a
               fixed-width child block sets the div's min-content size and
               the row overflows a narrow (320px) viewport instead of
               matching the real header's own shrinkable identity content
               (Codex). */}
-          <div className="min-w-0 space-y-2 pt-1">
+          <div className="min-w-0 space-y-2">
             <SkeletonBlock className="h-7 w-48 max-w-full" />
-            <SkeletonBlock className="h-4 w-64 max-w-full" />
+            <SkeletonBlock className="h-4 w-40 max-w-full" />
           </div>
         </div>
-        <div className="w-full space-y-3 xl:w-[560px]">
-          <SkeletonBlock className="h-16 w-full" />
-          <div className="flex flex-wrap justify-end gap-2.5">
-            <SkeletonBlock className="h-10 w-36" />
-            <SkeletonBlock className="h-10 w-36" />
-          </div>
+        <div className="flex flex-wrap gap-2.5 xl:justify-end">
+          <SkeletonBlock className="h-10 w-36" />
+          <SkeletonBlock className="h-10 w-36" />
         </div>
       </div>
       <div className="flex gap-5 overflow-x-auto pb-px">
@@ -138,21 +135,14 @@ export function DetailPageSkeleton({ tabCount }: { tabCount: number }) {
           <SkeletonBlock key={index} className="h-7 w-20 shrink-0" />
         ))}
       </div>
-      {/* xl only, not lg — both loaded Overview tabs (client-details-page.tsx,
-          staff-details-page.tsx) stay single-column until xl too, so
-          splitting a breakpoint earlier here would replace a two-column
-          placeholder with two stacked sections once real data resolves
-          (Codex). */}
-      <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <div className="space-y-3">
-          <SkeletonBlock className="h-40" />
-          <SkeletonBlock className="h-28" />
-        </div>
-        <div className="space-y-3">
-          <SkeletonBlock className="h-48" />
-          <SkeletonBlock className="h-64" />
-        </div>
+      {/* A row of info cards above a taller list — the shape both loaded
+          Overview tabs (client-details-page.tsx, staff-details-page.tsx)
+          share. Two columns from md, like the client info-card row. */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <SkeletonBlock className="h-28" />
+        <SkeletonBlock className="h-28" />
       </div>
+      <SkeletonBlock className="h-64" />
     </div>
   );
 }
