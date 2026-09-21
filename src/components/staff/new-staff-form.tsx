@@ -243,12 +243,12 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
                 {item.day}
               </label>
               {item.enabled ? (
-                <div className="flex items-center gap-2">
+                <div className="flex w-full items-center gap-2 sm:w-auto">
                   <Input
                     type="time"
                     value={item.startTime}
                     onChange={(event) => updateSchedule(index, { startTime: event.target.value })}
-                    className="h-9 w-28 rounded-(--radius-card) bg-white sm:w-32"
+                    className="h-9 min-w-0 flex-1 rounded-(--radius-card) bg-white sm:w-32 sm:flex-none"
                     aria-label={`${item.day} shift start`}
                   />
                   <span className="text-muted-foreground">–</span>
@@ -256,7 +256,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
                     type="time"
                     value={item.endTime}
                     onChange={(event) => updateSchedule(index, { endTime: event.target.value })}
-                    className="h-9 w-28 rounded-(--radius-card) bg-white sm:w-32"
+                    className="h-9 min-w-0 flex-1 rounded-(--radius-card) bg-white sm:w-32 sm:flex-none"
                     aria-label={`${item.day} shift end`}
                   />
                 </div>
