@@ -79,12 +79,34 @@ function getTimeZoneLabel() {
   }
 }
 
-type AppointmentWithRelations = Appointment & {
+export type AppointmentWithRelations = Appointment & {
   client: Pick<Client, "id" | "name">;
   staffMember: Pick<StaffMember, "id" | "name"> | null;
 };
 
 type ScheduleBlockWithRelations = ScheduleBlock;
+
+// One row → the shape the calendar renders. Shared by the page's first load and
+// the on-demand month loader so both produce identical appointments.
+export function toCalendarAppointment(
+  appointment: AppointmentWithRelations,
+  ownerName: string
+): CalendarAppointment {
+  return {
+    id: appointment.id,
+    clientId: appointment.clientId,
+    clientName: appointment.client.name,
+    service: appointment.title,
+    staffMemberId: appointment.staffMemberId ?? undefined,
+    staffName: appointment.staffMember?.name ?? ownerName,
+    date: formatZonedDateKey(appointment.startAt),
+    startTime: formatZonedTime24(appointment.startAt),
+    endTime: formatZonedTime24(appointment.endAt),
+    notes: appointment.notes ?? "",
+    status: toCalendarStatus(appointment.status),
+    tone: toCalendarTone(appointment.status),
+  };
+}
 
 function toCalendarStatus(status: Appointment["status"]): CalendarAppointmentStatus {
   if (status === "CANCELLED") {
@@ -139,7 +161,7 @@ export function toPrismaAppointmentStatus(status: CalendarAppointmentStatus) {
 // consumer (capacity math, the day-grid block card) keys off one `date`, so
 // a multi-day block needs one entry per day it touches, each clamped to that
 // day's portion, or every day after the first silently loses the block.
-function expandScheduleBlockDays(
+export function expandScheduleBlockDays(
   block: Pick<ScheduleBlock, "id" | "title" | "startsAt" | "endsAt" | "reason">,
   range?: { start: Date; end: Date }
 ): CalendarScheduleBlock[] {
@@ -241,20 +263,7 @@ export function buildCalendarViewFromRecords(args: {
   return {
     initialDate: initialDateValue,
     timeZoneLabel: getTimeZoneLabel(),
-    appointments: appointments.map((appointment) => ({
-      id: appointment.id,
-      clientId: appointment.clientId,
-      clientName: appointment.client.name,
-      service: appointment.title,
-      staffMemberId: appointment.staffMemberId ?? undefined,
-      staffName: appointment.staffMember?.name ?? ownerName,
-      date: formatZonedDateKey(appointment.startAt),
-      startTime: formatZonedTime24(appointment.startAt),
-      endTime: formatZonedTime24(appointment.endAt),
-      notes: appointment.notes ?? "",
-      status: toCalendarStatus(appointment.status),
-      tone: toCalendarTone(appointment.status),
-    })),
+    appointments: appointments.map((appointment) => toCalendarAppointment(appointment, ownerName)),
     scheduleBlocks: scheduleBlocks.flatMap((block) => expandScheduleBlockDays(block, expandRange)),
     clients: clientOptions,
     hasClients: hasClients ?? clientOptions.length > 0,

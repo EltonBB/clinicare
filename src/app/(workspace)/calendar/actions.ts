@@ -3,7 +3,9 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
+import { getAuthedBusiness as getAuthedBusinessContext, toBusinessIdentity } from "@/lib/business";
+import { loadCalendarMonth, type CalendarMonthData } from "@/lib/calendar-data";
+import { isValidMonthKey } from "@/lib/calendar-range";
 import {
   acquireSchedulingLock,
   APPOINTMENT_ALREADY_COMPLETED_ERROR,
@@ -582,3 +584,37 @@ export async function deleteAppointmentAction(
   };
 }
 
+export type LoadCalendarMonthResult =
+  | ({ ok: true } & CalendarMonthData)
+  | { ok: false; error: string };
+
+// The calendar loads one month at a time. This serves any month the user
+// navigates to that the page did not already load (older history, a distant
+// future month), so the grid is never silently empty just because it sits
+// outside the first window.
+export async function loadCalendarMonthAction(monthKey: string): Promise<LoadCalendarMonthResult> {
+  const context = await getAuthedBusinessContext(
+    "Your session expired. Log in again to view the calendar."
+  );
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  if (!isValidMonthKey(monthKey)) {
+    return { ok: false, error: "Choose a valid month." };
+  }
+
+  const { ownerName } = toBusinessIdentity(context.business, context.user);
+  const month = await loadCalendarMonth({
+    businessId: context.business.id,
+    monthKey,
+    ownerName,
+  });
+
+  if (!month) {
+    return { ok: false, error: "Choose a valid month." };
+  }
+
+  return { ok: true, ...month };
+}

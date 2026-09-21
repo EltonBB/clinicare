@@ -13,7 +13,15 @@ import {
   startOfMonth,
   startOfWeek,
 } from "date-fns";
-import { startTransition, useCallback, useMemo, useRef, useState, type MouseEvent } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import {
   CalendarDays,
   CalendarX2,
@@ -22,6 +30,7 @@ import {
   X,
 } from "lucide-react";
 
+import { loadCalendarMonthAction } from "@/app/(workspace)/calendar/actions";
 import { buttonVariants } from "@/components/ui/button";
 import {
   WorkspaceEmptyState,
@@ -31,6 +40,7 @@ import {
 import { MonthGrid } from "@/components/workspace/month-grid";
 import { useDismissOnOutsideOrEscape } from "@/hooks/use-dismiss-on-outside-or-escape";
 import { timeToMinutes } from "@/lib/calendar";
+import { monthsToLoad, type CalendarRange } from "@/lib/calendar-range";
 import { cn } from "@/lib/utils";
 import type {
   CalendarAppointment,
@@ -43,7 +53,10 @@ type CalendarView = "day" | "week" | "month";
 
 type CalendarWorkspaceProps = {
   initialView: CalendarViewModel;
-  ownerName: string;
+  /** The days the page already loaded; any other month is fetched on demand. */
+  initialRange: CalendarRange;
+  /** The real current date (`YYYY-MM-DD`), independent of the date being viewed. */
+  today: string;
 };
 
 const views: CalendarView[] = ["day", "week", "month"];
@@ -78,6 +91,19 @@ function mergeEntriesByTime(items: CalendarAppointment[], blocks: CalendarSchedu
   return [...items, ...blocks].sort(
     (left, right) => timeToMinutes(left.startTime) - timeToMinutes(right.startTime)
   );
+}
+
+// Adds newly loaded rows to what's already on screen. Neighbouring months' grids
+// overlap by up to a week, so rows are keyed (a newer copy replaces an older one)
+// rather than appended — an overlap must never show an appointment twice.
+function mergeByKey<T>(current: T[], incoming: T[], keyOf: (item: T) => string) {
+  const merged = new Map(current.map((item) => [keyOf(item), item]));
+
+  for (const item of incoming) {
+    merged.set(keyOf(item), item);
+  }
+
+  return [...merged.values()];
 }
 
 function weekDays(activeDate: Date) {
@@ -389,17 +415,19 @@ function AppointmentQuickView({
   );
 }
 
-export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
+export function CalendarWorkspace({ initialView, initialRange, today }: CalendarWorkspaceProps) {
   const [view, setView] = useState<CalendarView>("week");
   const [activeDate, setActiveDate] = useState(() => parseISO(initialView.initialDate));
   const [quickView, setQuickView] = useState<{ appointment: CalendarAppointment; rect: DOMRect } | null>(null);
-  const appointments = initialView.appointments;
-  const scheduleBlocks = initialView.scheduleBlocks;
+  // The page loads the viewed month; every other month is fetched when navigated
+  // to (below) and merged in, so history and far-off dates are never silently empty.
+  const [appointments, setAppointments] = useState(initialView.appointments);
+  const [scheduleBlocks, setScheduleBlocks] = useState(initialView.scheduleBlocks);
+  const [loadedRanges, setLoadedRanges] = useState<CalendarRange[]>([initialRange]);
+  const [failedMonths, setFailedMonths] = useState<string[]>([]);
+  const requestedMonths = useRef(new Set<string>());
   const hasClients = initialView.hasClients;
-  const todayDate = useMemo(
-    () => parseISO(initialView.initialDate),
-    [initialView.initialDate]
-  );
+  const todayDate = useMemo(() => parseISO(today), [today]);
 
   const currentWeek = useMemo(() => weekDays(activeDate), [activeDate]);
   const currentMonth = useMemo(() => monthDays(activeDate), [activeDate]);
@@ -440,6 +468,61 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
     }
     return map;
   }, [scheduleBlocks]);
+  // Which months the visible days need that aren't loaded yet. Derived from what
+  // is on screen, so there's no separate "loading" state to keep in sync.
+  const visibleDayKeys = useMemo(
+    () =>
+      (view === "day" ? [activeDate] : view === "week" ? currentWeek : currentMonth).map((day) =>
+        format(day, "yyyy-MM-dd")
+      ),
+    [view, activeDate, currentWeek, currentMonth]
+  );
+  const missingMonths = useMemo(
+    () => monthsToLoad(visibleDayKeys, loadedRanges),
+    [visibleDayKeys, loadedRanges]
+  );
+  const pendingMonthsKey = missingMonths.filter((month) => !failedMonths.includes(month)).join(",");
+  const isLoadingMonths = pendingMonthsKey !== "";
+  const loadFailed = missingMonths.some((month) => failedMonths.includes(month));
+
+  useEffect(() => {
+    if (!pendingMonthsKey) {
+      return;
+    }
+
+    for (const monthKey of pendingMonthsKey.split(",")) {
+      if (requestedMonths.current.has(monthKey)) {
+        continue;
+      }
+
+      requestedMonths.current.add(monthKey);
+      // State is only set inside these async callbacks, never synchronously in the
+      // effect body (react-hooks/set-state-in-effect).
+      loadCalendarMonthAction(monthKey)
+        .then((result) => {
+          if (!result.ok) {
+            throw new Error(result.error);
+          }
+
+          setAppointments((current) => mergeByKey(current, result.appointments, (item) => item.id));
+          setScheduleBlocks((current) =>
+            mergeByKey(current, result.scheduleBlocks, (item) => `${item.id}|${item.date}`)
+          );
+          setLoadedRanges((current) => [...current, result.range]);
+        })
+        .catch(() => {
+          setFailedMonths((current) => (current.includes(monthKey) ? current : [...current, monthKey]));
+        })
+        .finally(() => {
+          requestedMonths.current.delete(monthKey);
+        });
+    }
+  }, [pendingMonthsKey]);
+
+  function retryLoading() {
+    setFailedMonths([]);
+  }
+
   const selectedDateKey = format(activeDate, "yyyy-MM-dd");
   const weekStart = currentWeek[0];
   const weekEnd = currentWeek[6];
@@ -490,7 +573,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
 
         <button
           type="button"
-          onClick={() => setActiveDate(parseISO(initialView.initialDate))}
+          onClick={() => setActiveDate(todayDate)}
           className="text-sm font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
         >
           Today
@@ -539,7 +622,27 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
         </div>
       </div>
 
-      <div className="space-y-3">
+          {isLoadingMonths ? (
+            <span role="status" className="text-sm text-muted-foreground">
+              Loading…
+            </span>
+          ) : null}
+      <div className="space-y-3" aria-busy={isLoadingMonths}>
+        {loadFailed ? (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-3 rounded-(--radius-card) border border-destructive/20 bg-destructive/5 px-3.5 py-2.5 text-sm text-destructive"
+          >
+            <span>We couldn&apos;t load these dates, so some appointments may be missing.</span>
+            <button
+              type="button"
+              onClick={retryLoading}
+              className="shrink-0 font-semibold underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
+            >
+              Try again
+            </button>
+          </div>
+        ) : null}
         {!hasClients ? (
             <WorkspaceEmptyState
               icon={UsersRound}

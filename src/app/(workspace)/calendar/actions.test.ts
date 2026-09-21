@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => {
   const $executeRaw = vi.fn();
   const $transaction = vi.fn();
   const getAuthedBusiness = vi.fn();
+  const toBusinessIdentity = vi.fn();
+  const loadCalendarMonth = vi.fn();
   const refreshClientLastVisitAt = vi.fn();
   const notifyStaffOfAppointmentChange = vi.fn();
   const revalidateCalendarSurfaces = vi.fn();
@@ -31,6 +33,8 @@ const mocks = vi.hoisted(() => {
     $executeRaw,
     $transaction,
     getAuthedBusiness,
+    toBusinessIdentity,
+    loadCalendarMonth,
     refreshClientLastVisitAt,
     notifyStaffOfAppointmentChange,
     revalidateCalendarSurfaces,
@@ -51,6 +55,11 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("@/lib/business", () => ({
   getAuthedBusiness: mocks.getAuthedBusiness,
+  toBusinessIdentity: mocks.toBusinessIdentity,
+}));
+
+vi.mock("@/lib/calendar-data", () => ({
+  loadCalendarMonth: mocks.loadCalendarMonth,
 }));
 
 vi.mock("@/lib/appointments-shared", async () => {
@@ -76,7 +85,11 @@ vi.mock("@/lib/appointments-shared", async () => {
   };
 });
 
-import { saveAppointmentAction, type SaveAppointmentPayload } from "./actions";
+import {
+  loadCalendarMonthAction,
+  saveAppointmentAction,
+  type SaveAppointmentPayload,
+} from "./actions";
 import {
   APPOINTMENT_ALREADY_COMPLETED_ERROR,
   APPOINTMENT_CONFLICT_ERROR,
@@ -545,5 +558,48 @@ describe("saveAppointmentAction — time conflicts", () => {
 
     expect(result.ok).toBe(true);
     expect(mocks.appointment.create).toHaveBeenCalled();
+  });
+});
+
+describe("loadCalendarMonthAction", () => {
+  const MONTH = {
+    range: { from: "2026-08-31", to: "2026-10-04" },
+    appointments: [],
+    scheduleBlocks: [],
+  };
+
+  beforeEach(() => {
+    mocks.toBusinessIdentity.mockReturnValue({ businessName: "Clinic", ownerName: "Owner Name" });
+    mocks.loadCalendarMonth.mockResolvedValue(MONTH);
+  });
+
+  it("refuses an expired session without touching the database", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ error: "Your session expired." });
+
+    const result = await loadCalendarMonthAction("2026-09");
+
+    expect(result).toEqual({ ok: false, error: "Your session expired." });
+    expect(mocks.loadCalendarMonth).not.toHaveBeenCalled();
+  });
+
+  it.each(["", "2026-9", "2026-13", "1999-01", "9999-99", "2026-09-01"])(
+    "rejects the invalid month %j before querying",
+    async (monthKey) => {
+      const result = await loadCalendarMonthAction(monthKey);
+
+      expect(result).toEqual({ ok: false, error: "Choose a valid month." });
+      expect(mocks.loadCalendarMonth).not.toHaveBeenCalled();
+    }
+  );
+
+  it("loads the month for the signed-in clinic only, using the owner name for unassigned visits", async () => {
+    const result = await loadCalendarMonthAction("2026-09");
+
+    expect(mocks.loadCalendarMonth).toHaveBeenCalledWith({
+      businessId: "biz_1",
+      monthKey: "2026-09",
+      ownerName: "Owner Name",
+    });
+    expect(result).toEqual({ ok: true, ...MONTH });
   });
 });
