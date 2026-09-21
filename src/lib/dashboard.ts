@@ -266,15 +266,15 @@ export function buildVisitsSummary(args: {
     previousSevenDays > 0
       ? Math.round(((lastSevenDays - previousSevenDays) / previousSevenDays) * 100)
       : null;
-  const lastThirtyDays = Array.from(countsByDay.values()).reduce(
-    (sum, count) => sum + count,
-    0
-  );
+  // The buckets can reach back past 30 days (to the 1st of the month), so sum
+  // exactly the last 30 day keys rather than every bucket.
+  let lastThirtyDays = 0;
+
+  for (let offset = 29; offset >= 0; offset -= 1) {
+    lastThirtyDays += countsByDay.get(formatZonedDateKey(subDays(now, offset), timeZone)) ?? 0;
+  }
 
   // Calendar month-to-date, not a rolling window — distinct from lastThirtyDays.
-  // Approximate on days 29-31: the 30-day window this sums from can clip the
-  // very start of a 31-day month by up to a day, same precision tradeoff the
-  // rest of this function already accepts for its other rolling windows.
   const currentMonthPrefix = formatZonedDateKey(now, timeZone).slice(0, 7);
   const thisMonth = Array.from(countsByDay.entries())
     .filter(([key]) => key.startsWith(currentMonthPrefix))

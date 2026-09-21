@@ -71,7 +71,8 @@ describe("buildVisitsSummary", () => {
         { key: "2026-06-17", count: 1 }, // offset 6 (last 7)
         { key: "2026-06-16", count: 5 }, // offset 7 (prior 7)
         { key: "2026-06-10", count: 4 }, // offset 13 (prior 7)
-        { key: "2026-05-01", count: 9 }, // outside 14 days, still in 30-day total
+        { key: "2026-05-30", count: 9 }, // outside 14 days, still in 30-day total
+        { key: "2026-05-01", count: 7 }, // outside the 30-day window entirely
       ],
     });
 
@@ -79,11 +80,28 @@ describe("buildVisitsSummary", () => {
     expect(summary.days.at(-1)?.isToday).toBe(true);
     expect(summary.lastSevenDays).toBe(6); // 3 + 2 + 1
     expect(summary.previousSevenDays).toBe(9); // 5 + 4
-    expect(summary.lastThirtyDays).toBe(24); // sum of all buckets
-    expect(summary.thisMonth).toBe(15); // June buckets only; excludes 2026-05-01
+    expect(summary.lastThirtyDays).toBe(24); // last 30 day keys only; excludes 2026-05-01
+    expect(summary.thisMonth).toBe(15); // June buckets only; excludes both May buckets
     expect(summary.allTime).toBe(100);
     expect(summary.deltaLabel).toBe("-33% vs prior week"); // round((6-9)/9*100)
     expect(summary.deltaTone).toBe("down");
+  });
+
+  it("counts the 1st of a 31-day month in this month but not in the rolling 30 days", () => {
+    const summary = buildVisitsSummary({
+      now: new Date("2026-08-31T12:00:00.000Z"),
+      timeZone: "UTC",
+      allTime: 0,
+      visitCountsByDay: [
+        { key: "2026-08-31", count: 1 }, // today
+        { key: "2026-08-02", count: 2 }, // offset 29, last day of the 30-day window
+        { key: "2026-08-01", count: 4 }, // offset 30: month-to-date only
+        { key: "2026-07-31", count: 8 }, // previous month
+      ],
+    });
+
+    expect(summary.thisMonth).toBe(7); // 1 + 2 + 4
+    expect(summary.lastThirtyDays).toBe(3); // 1 + 2
   });
 
   it("reports a null delta when the prior week had no visits", () => {
