@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { deleteClientAction, saveClientAction } from "@/app/(workspace)/clients/actions";
-import { ClientProfileFields, clean } from "@/components/clients/client-profile-fields";
+import { ClientProfileFields } from "@/components/clients/client-profile-fields";
 import { ConfirmDeleteDialog } from "@/components/clients/record-form-dialog";
 import { DestructiveTextButton, FormActions, FormError } from "@/components/workspace/form-parts";
 import { WorkspaceFormSection } from "@/components/workspace/workspace-layout";
@@ -37,14 +37,6 @@ export function EditClientForm({ client }: EditClientFormProps) {
         status: field("status") as ClientStatus,
         notes: field("notes"),
         preferredChannel: field("preferredChannel"),
-        // The free-text medical background is edited from the record's Medical
-        // Info tab, not here — but this save writes every column, so carry the
-        // stored values through untouched or they'd be wiped.
-        medicalHistory: clean(client.medical.medicalHistory),
-        allergies: clean(client.medical.allergies),
-        importantHealthNotes: clean(client.medical.importantHealthNotes),
-        previousTreatments: clean(client.medical.previousTreatments),
-        treatmentPlan: clean(client.medical.treatmentPlan),
         // Not shown on the record and vestigial (clinic-type-per-patient is a
         // wrong concept, assigned-staff was free text). Clear them rather than
         // persist the view model's fabricated display default ("Clinic"). Tags

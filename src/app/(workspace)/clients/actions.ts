@@ -661,6 +661,10 @@ async function syncClientInboxThread(businessId: string, clientId: string) {
   });
 }
 
+function optionalMedicalText(value: string | undefined) {
+  return value === undefined ? undefined : value.trim() || null;
+}
+
 export async function saveClientAction(
   payload: SaveClientPayload
 ): Promise<SaveClientResult> {
@@ -703,11 +707,14 @@ export async function saveClientAction(
     patientType: payload.patientType?.trim() || "New Patient",
     clinicType: payload.clinicType?.trim() || null,
     notes: payload.notes.trim() || null,
-    medicalHistory: payload.medicalHistory?.trim() || null,
-    allergies: payload.allergies?.trim() || null,
-    importantHealthNotes: payload.importantHealthNotes?.trim() || null,
-    previousTreatments: payload.previousTreatments?.trim() || null,
-    treatmentPlan: payload.treatmentPlan?.trim() || null,
+    // Left untouched when omitted (undefined is skipped by Prisma): the profile
+    // form doesn't own these, so a stale form can't overwrite background edited
+    // meanwhile from the Medical Info tab.
+    medicalHistory: optionalMedicalText(payload.medicalHistory),
+    allergies: optionalMedicalText(payload.allergies),
+    importantHealthNotes: optionalMedicalText(payload.importantHealthNotes),
+    previousTreatments: optionalMedicalText(payload.previousTreatments),
+    treatmentPlan: optionalMedicalText(payload.treatmentPlan),
     status: toPrismaClientStatus(payload.status),
     isArchived: payload.status === "archived",
     preferredChannel: payload.preferredChannel.trim() || null,

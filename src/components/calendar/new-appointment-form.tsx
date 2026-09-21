@@ -46,13 +46,6 @@ type NewAppointmentFormProps = {
   initialAppointment?: CalendarAppointment;
 };
 
-const timeSlots = Array.from({ length: 96 }, (_, index) => {
-  const minutes = index * 15;
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
-});
-
 const statusOptions: CalendarAppointmentStatus[] = [
   "confirmed",
   "pending",
@@ -67,6 +60,8 @@ function minutesToTime(minutes: number) {
   const mins = minutes % 60;
   return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
 }
+
+const timeSlots = Array.from({ length: 96 }, (_, index) => minutesToTime(index * 15));
 
 function formatDuration(minutes: number) {
   if (minutes < 60) {
@@ -185,6 +180,23 @@ export function NewAppointmentForm({
   const effectiveDuration = durationOptions.includes(duration)
     ? duration
     : (durationOptions[durationOptions.length - 1] ?? duration);
+
+  // A new date can have different opening hours; if the chosen time no longer
+  // fits, move it to the day's first slot instead of leaving a hidden value
+  // that the select shows as blank.
+  function changeDate(nextDate: string) {
+    setDate(nextDate);
+
+    const nextHours = businessHoursForDate(nextDate, businessHours);
+    const minutes = timeToMinutes(startTime);
+
+    if (
+      nextHours.enabled &&
+      (minutes < timeToMinutes(nextHours.start) || minutes >= timeToMinutes(nextHours.end))
+    ) {
+      setStartTime(nextHours.start);
+    }
+  }
 
   function handleSubmit(formData: FormData) {
     setError("");
@@ -305,7 +317,7 @@ export function NewAppointmentForm({
               <Input
                 type="date"
                 value={date}
-                onChange={(event) => setDate(event.target.value)}
+                onChange={(event) => changeDate(event.target.value)}
                 className={fieldInputClass}
               />
             </FormField>
