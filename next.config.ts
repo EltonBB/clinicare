@@ -47,6 +47,11 @@ function contentSecurityPolicy() {
 }
 
 const nextConfig: NextConfig = {
+  // Lets the dev server's own LAN address request its HMR/chunk assets —
+  // otherwise Next blocks them as cross-origin and every client chunk
+  // fails-then-retries on first load, stalling hydration for several
+  // seconds. No effect outside dev.
+  allowedDevOrigins: isDev ? ["172.16.0.2"] : undefined,
   async headers() {
     return [
       {
