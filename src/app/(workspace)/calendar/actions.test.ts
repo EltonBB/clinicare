@@ -578,7 +578,8 @@ describe("loadCalendarMonthAction", () => {
 
     const result = await loadCalendarMonthAction("2026-09");
 
-    expect(result).toEqual({ ok: false, error: "Your session expired." });
+    // Flagged so the calendar offers a sign-in link, not a "Try again" that can never work.
+    expect(result).toEqual({ ok: false, error: "Your session expired.", sessionExpired: true });
     expect(mocks.loadCalendarMonth).not.toHaveBeenCalled();
   });
 
@@ -588,6 +589,8 @@ describe("loadCalendarMonthAction", () => {
       const result = await loadCalendarMonthAction(monthKey);
 
       expect(result).toEqual({ ok: false, error: "Choose a valid month." });
+      // Not an auth failure, so it must not be reported as one.
+      expect(result).not.toHaveProperty("sessionExpired");
       expect(mocks.loadCalendarMonth).not.toHaveBeenCalled();
     }
   );
