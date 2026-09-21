@@ -807,7 +807,10 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               ) : null}
             </WorkspaceCard>
 
-            {clinicalAlerts.length > 0 || client.medical.importantHealthNotes || currentMedications[0] ? (
+            {clinicalAlerts.length > 0 ||
+            client.medical.allergies ||
+            client.medical.importantHealthNotes ||
+            currentMedications[0] ? (
               <WorkspaceCard
                 title="Health"
                 action={
@@ -827,6 +830,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                       <span className="font-medium text-foreground">{item.label}</span>
                     </p>
                   ))}
+                  <HealthSummaryRow title="Allergies" value={client.medical.allergies} />
                   <HealthSummaryRow
                     title="Important health notes"
                     value={client.medical.importantHealthNotes}
