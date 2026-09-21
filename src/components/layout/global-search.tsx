@@ -98,11 +98,6 @@ export function GlobalSearchTrigger({
       <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
         {compact ? "Search" : "Search clients, appointments, staff, messages..."}
       </span>
-      {compact ? (
-        <kbd className="hidden shrink-0 rounded-[0.3rem] border border-border/70 bg-white px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground lg:inline-block">
-          /
-        </kbd>
-      ) : null}
     </button>
   );
 }

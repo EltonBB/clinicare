@@ -264,11 +264,6 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                         />
                       ) : null}
                     </p>
-                    {member.email || member.phone ? (
-                      <p className="truncate text-sm text-muted-foreground">
-                        {member.email || member.phone}
-                      </p>
-                    ) : null}
                   </div>
                 </Link>
                 <div className="min-w-0">
@@ -295,12 +290,6 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                   ) : (
                     <p className="text-muted-foreground">No shift planned</p>
                   )}
-                  {member.appointmentsToday > 0 ? (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {member.appointmentsToday}{" "}
-                      {member.appointmentsToday === 1 ? "appointment" : "appointments"} today
-                    </p>
-                  ) : null}
                 </div>
                 <div className="min-w-0">
                   {member.completionRate > 0 ? (
