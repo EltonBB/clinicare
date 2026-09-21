@@ -104,6 +104,39 @@ describe("buildVisitsSummary", () => {
     expect(summary.lastThirtyDays).toBe(3); // 1 + 2
   });
 
+  // 00:30 local on the first weekday after the clock change: a 24-hour step back
+  // from here lands on the wrong calendar day in that zone, so day keys must come
+  // from calendar arithmetic. Expected keys are built independently of the code.
+  it.each([
+    ["Europe/Budapest", "2026-03-29T22:30:00.000Z", "2026-03-30"],
+    ["America/New_York", "2026-03-09T04:30:00.000Z", "2026-03-09"],
+  ])("walks calendar days in %s across a DST change", (timeZone, nowIso, todayKey) => {
+    const keysEndingAt = (count: number) => {
+      const [year, month, day] = todayKey.split("-").map(Number);
+
+      return Array.from({ length: count }, (_, index) =>
+        new Date(Date.UTC(year, month - 1, day - (count - 1 - index))).toISOString().slice(0, 10)
+      );
+    };
+    const thirtyDays = keysEndingAt(30);
+    const summary = buildVisitsSummary({
+      now: new Date(nowIso),
+      timeZone,
+      allTime: 0,
+      visitCountsByDay: [
+        ...thirtyDays.map((key) => ({ key, count: 1 })),
+        { key: keysEndingAt(31)[0], count: 100 }, // the day before the 30-day window
+      ],
+    });
+
+    expect(summary.days.map((day) => day.key)).toEqual(keysEndingAt(7));
+    expect(summary.days.at(-1)?.label).toBe("Mon");
+    expect(summary.days.at(-1)?.isToday).toBe(true);
+    expect(summary.lastSevenDays).toBe(7);
+    expect(summary.previousSevenDays).toBe(7);
+    expect(summary.lastThirtyDays).toBe(30);
+  });
+
   it("reports a null delta when the prior week had no visits", () => {
     const summary = buildVisitsSummary({
       now,
