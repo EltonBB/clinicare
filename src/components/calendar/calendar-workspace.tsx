@@ -462,6 +462,9 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
   const [scheduleBlocks, setScheduleBlocks] = useState(initialView.scheduleBlocks);
   const [loadedRanges, setLoadedRanges] = useState<CalendarRange[]>([initialRange]);
   const [failedMonths, setFailedMonths] = useState<string[]>([]);
+  // An expired session can't be fixed by retrying, so it gets a sign-in link
+  // instead of "Try again".
+  const [sessionExpired, setSessionExpired] = useState(false);
   const requestedMonths = useRef(new Set<string>());
   const hasClients = initialView.hasClients;
   const todayDate = useMemo(() => parseISO(today), [today]);
@@ -501,6 +504,10 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
       loadCalendarMonthAction(monthKey)
         .then((result) => {
           if (!result.ok) {
+            if (result.sessionExpired) {
+              setSessionExpired(true);
+            }
+
             throw new Error(result.error);
           }
 
@@ -670,14 +677,27 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
             role="alert"
             className="flex items-center justify-between gap-3 rounded-(--radius-card) border border-destructive/20 bg-destructive/5 px-3.5 py-2.5 text-sm text-destructive"
           >
-            <span>We couldn&apos;t load these dates, so some appointments may be missing.</span>
-            <button
-              type="button"
-              onClick={retryLoading}
-              className="shrink-0 font-semibold underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
-            >
-              Try again
-            </button>
+            <span>
+              {sessionExpired
+                ? "Your session expired, so these dates couldn't load."
+                : "We couldn't load these dates, so some appointments may be missing."}
+            </span>
+            {sessionExpired ? (
+              <Link
+                href="/login"
+                className="shrink-0 font-semibold underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
+              >
+                Log in again
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={retryLoading}
+                className="shrink-0 font-semibold underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
+              >
+                Try again
+              </button>
+            )}
           </div>
         ) : null}
         {!hasClients ? (

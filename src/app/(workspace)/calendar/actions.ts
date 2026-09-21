@@ -586,7 +586,9 @@ export async function deleteAppointmentAction(
 
 export type LoadCalendarMonthResult =
   | ({ ok: true } & CalendarMonthData)
-  | { ok: false; error: string };
+  // `sessionExpired` marks the one failure a retry can never fix — the caller
+  // should send the user to sign in rather than offer "Try again".
+  | { ok: false; error: string; sessionExpired?: boolean };
 
 // The calendar loads one month at a time. This serves any month the user
 // navigates to that the page did not already load (older history, a distant
@@ -598,7 +600,7 @@ export async function loadCalendarMonthAction(monthKey: string): Promise<LoadCal
   );
 
   if ("error" in context) {
-    return { ok: false, error: context.error };
+    return { ok: false, error: context.error, sessionExpired: true };
   }
 
   if (!isValidMonthKey(monthKey)) {
