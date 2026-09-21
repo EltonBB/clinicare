@@ -128,10 +128,10 @@ function EventPill({
         onOpen(event);
       }}
       className={cn(
-        "flex w-full items-center justify-between gap-1.5 truncate rounded-(--radius-tile) text-left font-medium transition-[filter,transform] duration-(--duration-base) hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+        "flex w-full shrink-0 items-center justify-between gap-1.5 truncate rounded-(--radius-tile) text-left font-medium transition-[filter,transform] duration-(--duration-base) hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
         dense
           ? "pointer-events-auto gap-1.5 px-2 py-1 text-[11px] active:scale-[0.97]"
-          : "gap-2 px-2.5 py-1.5 text-xs active:scale-[0.98]",
+          : "gap-2.5 px-3 py-2.5 text-sm active:scale-[0.98]",
         monthChipClasses[appointment.status]
       )}
     >
@@ -145,7 +145,7 @@ function EventPill({
 
 function BlockPill({ block }: { block: CalendarScheduleBlock }) {
   return (
-    <div className="flex w-full items-center justify-between gap-2 rounded-(--radius-tile) bg-slate-100 px-2.5 py-1.5 text-left text-xs font-medium text-slate-700">
+    <div className="flex w-full shrink-0 items-center justify-between gap-2 rounded-(--radius-tile) bg-slate-100 px-2.5 py-1.5 text-left text-xs font-medium text-slate-700">
       <span className="flex min-w-0 items-center gap-1.5 truncate">
         <CalendarX2 className="size-3 shrink-0" />
         <span className="truncate">{block.title}</span>
@@ -153,6 +153,68 @@ function BlockPill({ block }: { block: CalendarScheduleBlock }) {
       <span className="shrink-0 tabular-nums opacity-80">
         {block.startTime} – {block.endTime}
       </span>
+    </div>
+  );
+}
+
+const DAY_COLUMN_VISIBLE_CAP = 8;
+
+// Week/Day columns can run well past a screen's worth of pills for a busy
+// provider roster — cap what renders up front and let "View more" reveal the
+// rest, rather than relying on scroll alone to surface a 30+ entry day.
+function DayColumn({
+  dayKey,
+  entries,
+  isToday,
+  isSelectedColumn,
+  isEmpty,
+  onOpen,
+}: {
+  dayKey: string;
+  entries: Array<CalendarAppointment | CalendarScheduleBlock>;
+  isToday: boolean;
+  isSelectedColumn: boolean;
+  isEmpty: boolean;
+  onOpen: (appointment: CalendarAppointment, event: MouseEvent<HTMLAnchorElement>) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const visibleEntries = expanded ? entries : entries.slice(0, DAY_COLUMN_VISIBLE_CAP);
+  const hiddenCount = entries.length - visibleEntries.length;
+
+  return (
+    <div
+      className={cn(
+        "flex max-h-[520px] min-h-[200px] flex-col gap-1.5 overflow-y-auto border-l border-t border-border/75 p-2.5 first:border-l-0 lg:h-full lg:max-h-none lg:min-h-0",
+        isEmpty && "justify-center",
+        isToday ? "bg-[#f6f9ff]" : isSelectedColumn && "bg-[#f8fafd]"
+      )}
+    >
+      {visibleEntries.map((entry) =>
+        "status" in entry ? (
+          <EventPill key={entry.id} appointment={entry} onOpen={(event) => onOpen(entry, event)} />
+        ) : (
+          <BlockPill key={entry.id} block={entry} />
+        )
+      )}
+      {hiddenCount > 0 ? (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="flex shrink-0 items-center justify-center rounded-(--radius-tile) px-2.5 py-2 text-sm font-semibold text-primary transition-colors duration-(--duration-base) hover:bg-primary/5"
+        >
+          View {hiddenCount} more
+        </button>
+      ) : null}
+      <Link
+        href={`/calendar/new?date=${dayKey}`}
+        className={cn(
+          "flex shrink-0 items-center justify-center gap-1.5 rounded-(--radius-tile) px-2.5 py-2 text-xs font-medium text-muted-foreground transition-[background-color,color,transform] duration-(--duration-base) hover:bg-primary/5 hover:text-primary active:scale-[0.97]",
+          isEmpty ? "border border-dashed border-border/70" : "mt-auto"
+        )}
+      >
+        <Plus className="size-3.5" />
+        Add
+      </Link>
     </div>
   );
 }
@@ -307,6 +369,10 @@ function AppointmentQuickView({
           </div>
         ) : null}
         <div className="flex items-center justify-between gap-3">
+          <span className="text-muted-foreground">Doctor</span>
+          <span className="truncate font-medium text-foreground">{appointment.staffName}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
           <span className="text-muted-foreground">Status</span>
           <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-semibold capitalize", monthChipClasses[appointment.status])}>
             {appointment.status}
@@ -412,9 +478,9 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
               type="button"
               onClick={() => startTransition(() => setView(option))}
               className={cn(
-                "h-8 rounded-(--radius-tile) px-3.5 text-sm font-semibold capitalize text-muted-foreground transition-[background-color,color] duration-(--duration-base) hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45",
+                "h-8 rounded-(--radius-tile) border border-transparent px-3.5 text-sm font-semibold capitalize text-muted-foreground transition-[background-color,border-color,color] duration-(--duration-base) hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45",
                 view === option &&
-                  "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground"
+                  "border-primary/40 text-primary hover:bg-transparent hover:text-primary"
               )}
             >
               {option}
@@ -498,14 +564,14 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                   const items = appointmentsByDate.get(key) ?? [];
                   const blocks = scheduleBlocksByDate.get(key) ?? [];
                   const isToday = isSameDay(day, todayDate);
-                  const visibleEntries = mergeEntriesByTime(items, blocks).slice(0, 3);
+                  const visibleEntries = mergeEntriesByTime(items, blocks).slice(0, 2);
                   const overflowCount = items.length + blocks.length - visibleEntries.length;
 
                   return (
                     <div
                       key={key}
                       className={cn(
-                        "relative min-h-20 border-b border-r border-border/75",
+                        "relative min-h-20 overflow-hidden border-b border-r border-border/75",
                         !isSameMonth(day, activeDate) && "bg-muted/35 text-muted-foreground"
                       )}
                     >
@@ -550,7 +616,7 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                             )
                           )}
                           {overflowCount > 0 ? (
-                            <p className="px-2 text-[10px] font-medium text-muted-foreground">+{overflowCount} more</p>
+                            <p className="px-2 pb-1 text-[10px] font-medium text-muted-foreground">+{overflowCount} more</p>
                           ) : null}
                         </div>
                         {items.length > 0 || blocks.length > 0 ? (
@@ -632,36 +698,15 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
                   const isEmpty = items.length === 0 && blocks.length === 0;
 
                   return (
-                    <div
+                    <DayColumn
                       key={key}
-                      className={cn(
-                        "flex max-h-[520px] min-h-[200px] flex-col gap-1.5 overflow-y-auto border-l border-t border-border/75 p-2.5 first:border-l-0 lg:h-full lg:max-h-none lg:min-h-0",
-                        isEmpty && "justify-center",
-                        isToday ? "bg-[#f6f9ff]" : isSelectedColumn && "bg-[#f8fafd]"
-                      )}
-                    >
-                      {dayEntries.map((entry) =>
-                        "status" in entry ? (
-                          <EventPill
-                            key={entry.id}
-                            appointment={entry}
-                            onOpen={(event) => openQuickView(entry, event)}
-                          />
-                        ) : (
-                          <BlockPill key={entry.id} block={entry} />
-                        )
-                      )}
-                      <Link
-                        href={`/calendar/new?date=${key}`}
-                        className={cn(
-                          "flex items-center justify-center gap-1.5 rounded-(--radius-tile) px-2.5 py-2 text-xs font-medium text-muted-foreground transition-[background-color,color,transform] duration-(--duration-base) hover:bg-primary/5 hover:text-primary active:scale-[0.97]",
-                          isEmpty ? "border border-dashed border-border/70" : "mt-auto"
-                        )}
-                      >
-                        <Plus className="size-3.5" />
-                        Add
-                      </Link>
-                    </div>
+                      dayKey={key}
+                      entries={dayEntries}
+                      isToday={isToday}
+                      isSelectedColumn={isSelectedColumn}
+                      isEmpty={isEmpty}
+                      onOpen={openQuickView}
+                    />
                   );
                 })}
               </div>
