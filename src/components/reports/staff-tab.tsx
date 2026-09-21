@@ -137,7 +137,6 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
                   </Avatar>
                   <span className="min-w-0">
                     <p className="truncate text-sm font-medium text-foreground">{row.name}</p>
-                    <p className="truncate text-xs text-muted-foreground">{row.role}</p>
                   </span>
                 </span>
                 <span className="w-16 shrink-0 text-right sm:w-24">
@@ -160,7 +159,7 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
                   </span>
                   <span className="relative block h-1.5 w-full overflow-hidden rounded-full bg-secondary">
                     <m.span
-                      className="block h-full w-full origin-left rounded-full bg-primary"
+                      className="block h-full w-full origin-left bg-primary"
                       initial={prefersReducedMotion ? false : { scaleX: 0 }}
                       animate={{ scaleX: Math.min(loadShare, 100) / 100 }}
                       transition={{ duration: durationEntrance, ease: easeOutExpo }}

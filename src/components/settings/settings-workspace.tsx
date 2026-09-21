@@ -1197,12 +1197,12 @@ export function SettingsWorkspace({
                       appearance: { accentColor: "custom", accentHex: event.target.value },
                     }))
                   }
-                  placeholder="#0A22FF"
+                  placeholder="#3142D8"
                   className="h-9 w-[120px] rounded-(--radius-card) bg-white text-right font-mono text-xs uppercase"
                 />
               </div>
 
-              <div className="rounded-(--radius-card) border border-border/70 bg-[#fafbfd] p-3.5">
+              <div className="rounded-(--radius-card) bg-[#fafbfd] p-3.5">
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                   Preview
                 </p>
@@ -1398,7 +1398,7 @@ export function SettingsWorkspace({
             active={activeSection === "whatsapp"}
           >
             <div className="space-y-4">
-              <div className="rounded-(--radius-card) border border-border/70 bg-[#fafbfd] p-3.5">
+              <div className="rounded-(--radius-card) bg-[#fafbfd] p-3.5">
                 <div className="flex items-center gap-2">
                   <span
                     className={cn(
@@ -1519,7 +1519,7 @@ export function SettingsWorkspace({
             active={activeSection === "billing"}
           >
             <div className="space-y-4">
-              <div className="rounded-(--radius-card) border border-border/70 bg-[#fafbfd] p-3.5">
+              <div className="rounded-(--radius-card) bg-[#fafbfd] p-3.5">
                 <div className="flex items-center gap-2.5">
                   <p className="text-lg font-semibold leading-6 text-foreground">
                     Vela {state.billing.planName}

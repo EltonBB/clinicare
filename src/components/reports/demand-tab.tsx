@@ -47,7 +47,7 @@ export function BookingPatternsCard({ period }: { period: ReportPeriodView }) {
       <h2 className="px-1 text-[15px] font-semibold text-foreground">Booking patterns</h2>
 
       {peakCell && peakCell.count > 0 ? (
-        <div className="mx-1 mt-2.5 rounded-(--radius-tile) border border-primary/20 bg-primary/5 px-3 py-2">
+        <div className="mx-1 mt-2.5 rounded-(--radius-tile) bg-primary/6 px-3 py-2">
           <p className="text-sm text-foreground">
             Peak: <span className="font-semibold">{peakCell.day} {peakCell.band.toLowerCase()}</span> —{" "}
             {peakCell.count} appointment{peakCell.count === 1 ? "" : "s"}, the clearest place to add coverage.
@@ -140,7 +140,7 @@ export function BookingPatternsCard({ period }: { period: ReportPeriodView }) {
               { value: bookingBehavior.unassignedAppointments, label: "Unassigned" },
             ] as const
           ).map((stat) => (
-            <div key={stat.label} className="flex-1 rounded-(--radius-tile) border border-border/70 px-3 py-2">
+            <div key={stat.label} className="flex-1 rounded-(--radius-tile) bg-secondary/40 px-3 py-2">
               <p className="text-sm font-semibold text-foreground">{stat.value}</p>
               <p className="text-xs text-muted-foreground">{stat.label}</p>
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { m, useReducedMotion } from "framer-motion";
 import {
   ArrowDownRight,
@@ -156,7 +156,6 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
   const [activeKpi, setActiveKpi] = useState<string | null>(null);
   const [chartWidth, setChartWidth] = useState(820);
   const chartAreaRef = useRef<HTMLDivElement | null>(null);
-  const chartGradientId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   // SVG `pathLength` isn't a transform/layout property, so MotionConfig's
   // reducedMotion="user" (motion-provider.tsx) doesn't cover it — the trace-in
   // draw has to be gated here explicitly (Codex P2).
@@ -304,12 +303,6 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                   role="img"
                   aria-label={period.chart.title}
                 >
-                  <defs>
-                    <linearGradient id={chartGradientId} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.15" />
-                      <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.01" />
-                    </linearGradient>
-                  </defs>
                   {yTicks.map((tick) => {
                     const y = PLOT_TOP + (1 - tick / maxChartValue) * PLOT_HEIGHT;
 
@@ -324,7 +317,8 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                   })}
                   <m.path
                     d={`${linePath} L ${plotWidth} ${PLOT_HEIGHT} L 0 ${PLOT_HEIGHT} Z`}
-                    fill={`url(#${chartGradientId})`}
+                    fill="var(--primary)"
+                    fillOpacity="0.07"
                     transform={`translate(${PLOT_LEFT} ${PLOT_TOP})`}
                     initial={prefersReducedMotion ? false : { opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -460,7 +454,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
             </span>
           </div>
 
-          <div className="mt-2.5 flex items-center gap-3 rounded-(--radius-tile) border border-border/70 bg-secondary/25 px-3 py-2.5">
+          <div className="mt-2.5 flex items-center gap-3 rounded-(--radius-tile) bg-secondary/25 px-3 py-2.5">
             <ScoreGauge score={period.snapshot.score} tone={period.snapshot.tone} />
             <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground">{snapshotToneLabel[period.snapshot.tone]}</p>
@@ -493,6 +487,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
 
 export function AppointmentStatusCard({ period }: { period: ReportPeriodView }) {
   const [statusHover, setStatusHover] = useState<string | null>(null);
+  const [statusMetric, setStatusMetric] = useState<"count" | "percent">("count");
   useResetOnPeriodChange(period, () => setStatusHover(null));
 
   const statusMix = period.diagnostics.statusMix;
@@ -506,7 +501,39 @@ export function AppointmentStatusCard({ period }: { period: ReportPeriodView }) 
       animate="animate"
       className="surface-card flex h-full flex-col p-3.5"
     >
-      <h2 className="px-1 text-[15px] font-semibold text-foreground">Appointment status</h2>
+      <div className="flex items-center justify-between gap-2 px-1">
+        <h2 className="text-[15px] font-semibold text-foreground">Appointment status</h2>
+        {period.statusTotal > 0 ? (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              aria-pressed={statusMetric === "count"}
+              onClick={() => setStatusMetric("count")}
+              className={cn(
+                "h-6 rounded-(--radius-tile) px-2 text-[11px] font-semibold transition-colors duration-(--duration-base)",
+                statusMetric === "count"
+                  ? "bg-primary/8 text-primary"
+                  : "text-muted-foreground hover:bg-secondary"
+              )}
+            >
+              #
+            </button>
+            <button
+              type="button"
+              aria-pressed={statusMetric === "percent"}
+              onClick={() => setStatusMetric("percent")}
+              className={cn(
+                "h-6 rounded-(--radius-tile) px-2 text-[11px] font-semibold transition-colors duration-(--duration-base)",
+                statusMetric === "percent"
+                  ? "bg-primary/8 text-primary"
+                  : "text-muted-foreground hover:bg-secondary"
+              )}
+            >
+              %
+            </button>
+          </div>
+        ) : null}
+      </div>
       {/* 2xl, not lg, for the row/column switch below — this card sits in a
           3-column row from xl (1280px) onward (reports-overview.tsx), so
           switching at lg leaves a narrow band right around that breakpoint
@@ -521,7 +548,11 @@ export function AppointmentStatusCard({ period }: { period: ReportPeriodView }) 
             <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
               <div>
                 <p className="text-xl font-semibold leading-6 tabular-nums text-foreground">
-                  {hoveredStatus ? hoveredStatus.count : period.statusTotal}
+                  {hoveredStatus
+                    ? statusMetric === "count"
+                      ? hoveredStatus.count
+                      : hoveredStatus.share.replace(/\.0%$/, "%")
+                    : period.statusTotal}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
                   {hoveredStatus ? hoveredStatus.label.toLowerCase() : "visits"}
@@ -543,7 +574,11 @@ export function AppointmentStatusCard({ period }: { period: ReportPeriodView }) 
                 key={item.label}
                 color={statusColor(item.label)}
                 label={item.label}
-                detail={`${item.count} · ${item.share.replace(/\.0%$/, "%")}`}
+                detail={
+                  statusMetric === "count"
+                    ? item.count.toLocaleString("en-US")
+                    : item.share.replace(/\.0%$/, "%")
+                }
                 muted={item.count === 0}
                 dimmed={statusHover !== null && statusHover !== item.label}
                 onHover={() => setStatusHover(item.label)}
@@ -599,7 +634,7 @@ export function HighlightsCard({ period }: { period: ReportPeriodView }) {
       {highlights.length > 0 ? (
         <div className="flex flex-1 flex-col justify-center gap-2">
           {highlights.map((highlight) => (
-            <div key={highlight.title} className="rounded-(--radius-tile) border border-border/70 px-3 py-2.5">
+            <div key={highlight.title} className="rounded-(--radius-tile) px-3 py-2.5">
               <p className="text-sm font-medium text-foreground">{highlight.title}</p>
               <p className="truncate text-xs text-muted-foreground">{highlight.detail}</p>
             </div>
@@ -825,10 +860,9 @@ export function LegendRow({
 }: {
   color: string;
   label: string;
-  // Visible text carries the exact count alongside the percentage (e.g.
-  // "12 · 25%") — a percentage alone can't be read back to a raw number
-  // without doing the total-times-share math, so a sighted user scanning
-  // the legend without hovering never saw the actual visit count (Codex).
+  // Owner decision, 2026-09-16 (locked, do not re-add via review): shows
+  // either the count or the percentage, never both at once — the caller
+  // (AppointmentStatusCard) switches this via its own #/% toggle.
   detail?: string;
   muted?: boolean;
   // true only while a *different* row is hovered — distinct from "nothing is
