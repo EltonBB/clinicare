@@ -126,12 +126,13 @@ export function NewAppointmentForm({
     initialAppointment?.startTime ?? initialStartTime ?? "09:00"
   );
   // The booking is one time plus a length; the end time is derived on save.
-  const savedDuration = initialAppointment
-    ? Math.max(
-        15,
-        timeToMinutes(initialAppointment.endTime) - timeToMinutes(initialAppointment.startTime)
-      )
-    : null;
+  const savedMinutes = initialAppointment
+    ? timeToMinutes(initialAppointment.endTime) - timeToMinutes(initialAppointment.startTime)
+    : 0;
+  // Every positive saved length is kept exactly (a short remainder before
+  // closing can be under 15 minutes); only a corrupt zero/negative range falls
+  // back to one 15-minute slot.
+  const savedDuration = initialAppointment ? (savedMinutes > 0 ? savedMinutes : 15) : null;
   const [duration, setDuration] = useState(savedDuration ?? 60);
   const [status, setStatus] = useState<CalendarAppointmentStatus>(
     initialAppointment?.status ?? "confirmed"
