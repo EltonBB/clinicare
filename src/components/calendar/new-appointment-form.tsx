@@ -126,14 +126,13 @@ export function NewAppointmentForm({
     initialAppointment?.startTime ?? initialStartTime ?? "09:00"
   );
   // The booking is one time plus a length; the end time is derived on save.
-  const [duration, setDuration] = useState(() =>
-    initialAppointment
-      ? Math.max(
-          15,
-          timeToMinutes(initialAppointment.endTime) - timeToMinutes(initialAppointment.startTime)
-        )
-      : 60
-  );
+  const savedDuration = initialAppointment
+    ? Math.max(
+        15,
+        timeToMinutes(initialAppointment.endTime) - timeToMinutes(initialAppointment.startTime)
+      )
+    : null;
+  const [duration, setDuration] = useState(savedDuration ?? 60);
   const [status, setStatus] = useState<CalendarAppointmentStatus>(
     initialAppointment?.status ?? "confirmed"
   );
@@ -171,17 +170,24 @@ export function NewAppointmentForm({
         .sort()
     : [];
   // Every 15-minute length that still finishes by closing time, like the old
-  // end-time picker; the current length stays listed so an existing off-grid
-  // duration isn't silently replaced.
+  // end-time picker. An off-grid start close to closing can have less than one
+  // slot left, so offer the exact remainder rather than an empty select.
   const maxDuration = closeMinutes - timeToMinutes(startTime);
+  const fittingDurations = Array.from(
+    { length: Math.max(0, Math.floor(maxDuration / 15)) },
+    (_, index) => (index + 1) * 15
+  );
+
+  if (fittingDurations.length === 0 && maxDuration > 0) {
+    fittingDurations.push(maxDuration);
+  }
+
+  // An existing booking always keeps its saved length as an option, even if the
+  // clinic's hours later shrank past it — an unrelated edit (notes, status) must
+  // not silently shorten it; the server refuses it with a clear message instead.
   const durationOptions = Array.from(
-    new Set([
-      ...Array.from({ length: Math.max(0, Math.floor(maxDuration / 15)) }, (_, index) => (index + 1) * 15),
-      duration,
-    ])
-  )
-    .filter((minutes) => minutes <= maxDuration)
-    .sort((a, b) => a - b);
+    new Set(savedDuration ? [...fittingDurations, savedDuration] : fittingDurations)
+  ).sort((a, b) => a - b);
   const effectiveDuration = durationOptions.includes(duration)
     ? duration
     : (durationOptions[durationOptions.length - 1] ?? duration);

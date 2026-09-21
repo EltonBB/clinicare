@@ -21,9 +21,6 @@ export function clean(value: string) {
 // (name, phone, email, dateOfBirth, gender, preferredChannel, address, notes and —
 // edit only — status, patientType). Render it inside a two-column grid.
 export function ClientProfileFields({ client }: { client?: ClientRecord }) {
-  const gender = client ? clean(client.gender) : "";
-  const genderOptions = genders.includes(gender) ? genders : [...genders, gender];
-
   return (
     <>
       <FormField label="Full name">
@@ -52,8 +49,8 @@ export function ClientProfileFields({ client }: { client?: ClientRecord }) {
       <FormSelect
         label="Gender"
         name="gender"
-        defaultValue={gender}
-        options={genderOptions}
+        defaultValue={client ? clean(client.gender) : ""}
+        options={genders}
         emptyLabel="Not set"
       />
       <FormSelect

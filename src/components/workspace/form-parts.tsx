@@ -47,6 +47,12 @@ export function FormSelect({
   className?: string;
   selectClassName?: string;
 }) {
+  // A stored value outside the fixed list (free text saved earlier, a legacy
+  // option) stays selectable. Without it the select shows the first option and
+  // saving the form silently overwrites what's stored.
+  const current = value ?? defaultValue ?? "";
+  const choices = current && !options.includes(current) ? [...options, current] : options;
+
   return (
     <FormField label={label} className={className}>
       <select
@@ -56,7 +62,7 @@ export function FormSelect({
         onChange={onChange ? (event) => onChange(event.target.value) : undefined}
         className={cn(fieldSelectClass, selectClassName)}
       >
-        {options.map((option) => (
+        {choices.map((option) => (
           <option key={option || "unset"} value={option}>
             {option || emptyLabel}
           </option>
