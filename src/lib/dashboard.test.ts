@@ -80,6 +80,7 @@ describe("buildVisitsSummary", () => {
     expect(summary.lastSevenDays).toBe(6); // 3 + 2 + 1
     expect(summary.previousSevenDays).toBe(9); // 5 + 4
     expect(summary.lastThirtyDays).toBe(24); // sum of all buckets
+    expect(summary.thisMonth).toBe(15); // June buckets only; excludes 2026-05-01
     expect(summary.allTime).toBe(100);
     expect(summary.deltaLabel).toBe("-33% vs prior week"); // round((6-9)/9*100)
     expect(summary.deltaTone).toBe("down");

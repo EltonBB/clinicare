@@ -67,6 +67,7 @@ export type DashboardVisitsSummary = {
   deltaLabel: string | null;
   deltaTone: DashboardTrendTone;
   lastThirtyDays: number;
+  thisMonth: number;
   allTime: number;
 };
 
@@ -270,6 +271,15 @@ export function buildVisitsSummary(args: {
     0
   );
 
+  // Calendar month-to-date, not a rolling window — distinct from lastThirtyDays.
+  // Approximate on days 29-31: the 30-day window this sums from can clip the
+  // very start of a 31-day month by up to a day, same precision tradeoff the
+  // rest of this function already accepts for its other rolling windows.
+  const currentMonthPrefix = formatZonedDateKey(now, timeZone).slice(0, 7);
+  const thisMonth = Array.from(countsByDay.entries())
+    .filter(([key]) => key.startsWith(currentMonthPrefix))
+    .reduce((sum, [, count]) => sum + count, 0);
+
   return {
     days,
     lastSevenDays,
@@ -285,6 +295,7 @@ export function buildVisitsSummary(args: {
           ? "up"
           : "down",
     lastThirtyDays,
+    thisMonth,
     allTime,
   };
 }

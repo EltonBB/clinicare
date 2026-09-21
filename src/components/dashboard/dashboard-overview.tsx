@@ -2,12 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import {
-  ArrowDownRight,
-  ArrowUpRight,
-  CalendarPlus2,
-  UsersRound,
-} from "lucide-react";
+import { ArrowUpRight, CalendarPlus2, UsersRound } from "lucide-react";
 
 import { DashboardMessagesCard } from "@/components/dashboard/dashboard-messages-card";
 import { useWorkspaceUnreadCount } from "@/components/layout/workspace-live-context";
@@ -20,11 +15,7 @@ import {
 } from "@/components/workspace/workspace-layout";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { cn, getInitials } from "@/lib/utils";
-import type {
-  DashboardAppointmentStatus,
-  DashboardTrendTone,
-  DashboardViewModel,
-} from "@/lib/dashboard";
+import type { DashboardAppointmentStatus, DashboardViewModel } from "@/lib/dashboard";
 
 const statusDotStyles: Record<DashboardAppointmentStatus, string> = {
   confirmed: "bg-primary",
@@ -45,27 +36,14 @@ const solidButtonClasses = cn(
   "rounded-(--radius-card) px-3.5"
 );
 
-type KpiChipTone = "neutral" | "good" | "attention" | "accent";
-
-const kpiChipStyles: Record<KpiChipTone, string> = {
-  neutral: "bg-secondary/80 text-muted-foreground",
-  good: "bg-emerald-50 text-emerald-700",
-  attention: "bg-amber-50 text-amber-700",
-  accent: "bg-primary/8 text-primary",
-};
-
 function KpiTile({
   label,
   value,
-  chipLabel,
-  chipTone = "neutral",
   href,
   className,
 }: {
   label: string;
   value: string;
-  chipLabel: string;
-  chipTone?: KpiChipTone;
   href: string;
   className?: string;
 }) {
@@ -84,37 +62,7 @@ function KpiTile({
       <p className="mt-2 text-[1.6rem] font-semibold leading-none tracking-tight text-foreground">
         <KpiValue value={value} animateOnMount />
       </p>
-      <p
-        className={cn(
-          "mt-2.5 inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold leading-4",
-          kpiChipStyles[chipTone]
-        )}
-      >
-        {chipLabel}
-      </p>
     </Link>
-  );
-}
-
-function TrendChip({ label, tone }: { label: string; tone: DashboardTrendTone }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-semibold leading-4",
-        tone === "up"
-          ? "bg-emerald-50 text-emerald-700"
-          : tone === "down"
-            ? "bg-red-50 text-red-600"
-            : "bg-secondary/80 text-muted-foreground"
-      )}
-    >
-      {tone === "up" ? (
-        <ArrowUpRight className="size-3" />
-      ) : tone === "down" ? (
-        <ArrowDownRight className="size-3" />
-      ) : null}
-      {label}
-    </span>
   );
 }
 
@@ -161,12 +109,6 @@ function NextUpCountdown({ startAtIso }: { startAtIso: string }) {
 
 export function DashboardOverview({ view }: { view: DashboardViewModel }) {
   const primaryAction = view.quickActions[0];
-  const completedToday = view.appointments.filter(
-    (appointment) => appointment.status === "completed"
-  ).length;
-  const upcomingToday = view.appointments.filter(
-    (appointment) => appointment.status === "confirmed" || appointment.status === "pending"
-  );
   const visits = view.visitsSummary;
   const revenue = view.revenueSummary;
   const maxVisits = Math.max(...visits.days.map((day) => day.count), 1);
@@ -194,63 +136,26 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           label="Appointments today"
           href="/calendar"
           value={view.appointments.length.toString()}
-          chipLabel={
-            upcomingToday.length > 0
-              ? `${upcomingToday.length} upcoming`
-              : view.appointments.length > 0
-                ? "Day complete"
-                : "None booked"
-          }
-          chipTone={
-            upcomingToday.length > 0
-              ? "accent"
-              : view.appointments.length > 0
-                ? "good"
-                : "neutral"
-          }
         />
         <KpiTile
           label="Completion rate"
           href="/reports"
           value={`${view.analyticsSummary.completionRate}%`}
-          chipLabel={`${view.analyticsSummary.completedThisMonth} done this month`}
-          chipTone={completedToday > 0 ? "good" : "neutral"}
         />
         <KpiTile
           label="Active clients"
           href="/clients"
           value={view.analyticsSummary.activeClients.toString()}
-          chipLabel={
-            view.lastClients.length > 0
-              ? `${view.lastClients.length} recently active`
-              : "No records yet"
-          }
         />
         <KpiTile
           label="Revenue this month"
           href="/reports"
           value={revenue.monthToDateDisplay}
-          chipLabel={
-            revenue.hasOutstanding
-              ? `${revenue.outstandingDisplay} outstanding`
-              : revenue.paidCountThisMonth > 0
-                ? `${revenue.paidCountThisMonth} payments recorded`
-                : "No payments yet"
-          }
-          chipTone={
-            revenue.hasOutstanding
-              ? "attention"
-              : revenue.paidCountThisMonth > 0
-                ? "good"
-                : "neutral"
-          }
         />
         <KpiTile
           label="Unread messages"
           href="/inbox"
           value={liveUnreadCount.toString()}
-          chipLabel={liveUnreadCount > 0 ? "Needs replies" : "All caught up"}
-          chipTone={liveUnreadCount > 0 ? "attention" : "good"}
           className="max-lg:col-span-2"
         />
       </div>
@@ -259,9 +164,8 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
         <WorkspaceCard
           fill
           title="Visits"
-          description="Booked visits, cancellations excluded."
           className="flex flex-col"
-          contentClassName="flex-1"
+          contentClassName="min-h-0 flex-1"
           action={
             <Link
               href="/reports"
@@ -273,21 +177,15 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
         >
           <div className="grid h-full gap-4 sm:grid-cols-[176px_minmax(0,1fr)]">
             <div className="grid grid-cols-1 content-start gap-2 min-[480px]:grid-cols-3 sm:grid-cols-1">
-              <div className="rounded-(--radius-card) border border-border/75 bg-[#fafbfd] p-3">
+              <div className="rounded-(--radius-card) bg-secondary/45 p-3">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                   Last 7 days
                 </p>
                 <p className="mt-1.5 text-xl font-semibold leading-none tracking-tight text-foreground">
                   {visits.lastSevenDays}
                 </p>
-                <div className="mt-2">
-                  <TrendChip
-                    label={visits.deltaLabel ?? "No prior week data"}
-                    tone={visits.deltaTone}
-                  />
-                </div>
               </div>
-              <div className="rounded-(--radius-card) border border-border/75 bg-[#fafbfd] p-3">
+              <div className="rounded-(--radius-card) bg-secondary/45 p-3">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                   Last 30 days
                 </p>
@@ -295,7 +193,15 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                   {visits.lastThirtyDays}
                 </p>
               </div>
-              <div className="rounded-(--radius-card) border border-border/75 bg-[#fafbfd] p-3">
+              <div className="rounded-(--radius-card) bg-secondary/45 p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                  This month
+                </p>
+                <p className="mt-1.5 text-xl font-semibold leading-none tracking-tight text-foreground">
+                  {visits.thisMonth}
+                </p>
+              </div>
+              <div className="rounded-(--radius-card) bg-secondary/45 p-3">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                   All time
                 </p>
@@ -352,6 +258,8 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
 
         <WorkspaceCard
           fill
+          className="flex flex-col"
+          contentClassName="flex min-h-0 flex-1 flex-col"
           title={
             <span className="inline-flex items-center gap-2">
               Today&apos;s schedule
@@ -372,7 +280,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           {view.nextAppointment ? (
             <Link
               href={`/calendar/${view.nextAppointment.id}/edit`}
-              className="mb-3 block rounded-(--radius-card) border border-primary/15 bg-primary/[0.05] p-3 transition-colors duration-(--duration-base) hover:bg-primary/[0.08]"
+              className="mb-3 block shrink-0 rounded-(--radius-card) bg-primary/[0.06] p-3 transition-colors duration-(--duration-base) hover:bg-primary/[0.1]"
             >
               <div className="flex items-center gap-3">
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-(--radius-tile) bg-primary text-xs font-semibold text-primary-foreground">
@@ -487,7 +395,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           }
         >
           {view.lastClients.length > 0 ? (
-            <div className="divide-y divide-border/65">
+            <div>
               {view.lastClients.slice(0, 4).map((client) => (
                 <Link
                   key={client.id}
