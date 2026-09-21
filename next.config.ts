@@ -20,6 +20,13 @@ function supabaseConnectSources() {
   }
 }
 
+function devAllowedOrigins() {
+  return (process.env.DEV_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((host) => host.trim())
+    .filter(Boolean);
+}
+
 function contentSecurityPolicy() {
   const connectSrc = ["'self'", ...supabaseConnectSources()];
 
@@ -50,8 +57,8 @@ const nextConfig: NextConfig = {
   // Lets the dev server's own LAN address request its HMR/chunk assets —
   // otherwise Next blocks them as cross-origin and every client chunk
   // fails-then-retries on first load, stalling hydration for several
-  // seconds. No effect outside dev.
-  allowedDevOrigins: isDev ? ["172.16.0.2"] : undefined,
+  // seconds. Comma-separated hosts in DEV_ALLOWED_ORIGINS; no effect outside dev.
+  allowedDevOrigins: isDev ? devAllowedOrigins() : undefined,
   async headers() {
     return [
       {
