@@ -28,6 +28,10 @@ export function ClientCombobox({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CalendarSelectOption[]>([]);
+  // The client picked from a search stays known on its own — a later search
+  // replaces `searchResults` and may not include them, which would blank the
+  // trigger while `value` still holds their id.
+  const [picked, setPicked] = useState<CalendarSelectOption | null>(null);
   const [loading, setLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -44,8 +48,9 @@ export function ClientCombobox({
     const map = new Map<string, string>();
     for (const option of initialOptions) map.set(option.id, option.name);
     for (const option of searchResults) map.set(option.id, option.name);
+    if (picked) map.set(picked.id, picked.name);
     return map;
-  }, [initialOptions, searchResults]);
+  }, [initialOptions, searchResults, picked]);
 
   const selectedLabel = nameById.get(value) ?? "";
 
@@ -142,6 +147,7 @@ export function ClientCombobox({
                   <button
                     type="button"
                     onClick={() => {
+                      setPicked(option);
                       onChange(option.id);
                       setQuery("");
                       setOpen(false);

@@ -1,4 +1,4 @@
-import { differenceInMinutes, subDays } from "date-fns";
+import { differenceInMinutes } from "date-fns";
 import type { Appointment, Business, Client } from "@prisma/client";
 import { isProBusinessPlan, planDisplayName, planStatusLabel } from "@/lib/billing";
 import { formatCurrency } from "@/lib/utils";
@@ -223,6 +223,17 @@ function toDashboardStatus(status: Appointment["status"]): DashboardAppointmentS
 
 const formatDashboardMoney = (cents: number) => formatCurrency(cents, { whole: true });
 
+// The calendar day `offset` days before `now` in the clinic's time zone. The
+// subtraction runs on the date parts in UTC, so it never depends on the
+// server's own zone, and a DST change can't push a 24-hour step onto the wrong
+// calendar day (which would skip one day and repeat another).
+function zonedDayBefore(now: Date, timeZone: string, offset: number) {
+  const [year, month, day] = formatZonedDateKey(now, timeZone).split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day - offset, 12));
+
+  return { key: date.toISOString().slice(0, 10), date };
+}
+
 export function buildVisitsSummary(args: {
   visitCountsByDay: Array<{ key: string; count: number }>;
   allTime: number;
@@ -236,16 +247,17 @@ export function buildVisitsSummary(args: {
     countsByDay.set(bucket.key, bucket.count);
   }
 
+  // `zonedDayBefore` returns UTC-noon of the calendar date, so the weekday is
+  // read in UTC — the clinic zone was already applied when picking the date.
   const weekdayFormatter = new Intl.DateTimeFormat("en-US", {
     weekday: "short",
-    timeZone,
+    timeZone: "UTC",
   });
   const days: DashboardVisitsDay[] = [];
   let previousSevenDays = 0;
 
   for (let offset = 13; offset >= 0; offset -= 1) {
-    const day = subDays(now, offset);
-    const key = formatZonedDateKey(day, timeZone);
+    const { key, date } = zonedDayBefore(now, timeZone, offset);
     const count = countsByDay.get(key) ?? 0;
 
     if (offset >= 7) {
@@ -255,7 +267,7 @@ export function buildVisitsSummary(args: {
 
     days.push({
       key,
-      label: weekdayFormatter.format(day),
+      label: weekdayFormatter.format(date),
       count,
       isToday: offset === 0,
     });
@@ -271,7 +283,7 @@ export function buildVisitsSummary(args: {
   let lastThirtyDays = 0;
 
   for (let offset = 29; offset >= 0; offset -= 1) {
-    lastThirtyDays += countsByDay.get(formatZonedDateKey(subDays(now, offset), timeZone)) ?? 0;
+    lastThirtyDays += countsByDay.get(zonedDayBefore(now, timeZone, offset).key) ?? 0;
   }
 
   // Calendar month-to-date, not a rolling window — distinct from lastThirtyDays.

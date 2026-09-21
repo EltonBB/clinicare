@@ -330,6 +330,11 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
     item.type.toLowerCase().includes("alert")
   );
   const clinicalAlerts = [...alerts, ...allergies];
+  // Background text with legacy "Not added" placeholders stripped — the same
+  // reading the Medical tab uses — so the Health card can't surface filler.
+  const backgroundValues = Object.fromEntries(
+    medicalBackgroundFields(client.medical).map((field) => [field.key, field.value])
+  );
   const selectedDocument =
     client.documents.find((document) => document.id === selectedDocumentId) ??
     client.documents[0];
@@ -808,8 +813,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             </WorkspaceCard>
 
             {clinicalAlerts.length > 0 ||
-            client.medical.allergies ||
-            client.medical.importantHealthNotes ||
+            backgroundValues.allergies ||
+            backgroundValues.importantHealthNotes ||
             currentMedications[0] ? (
               <WorkspaceCard
                 title="Health"
@@ -830,10 +835,10 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                       <span className="font-medium text-foreground">{item.label}</span>
                     </p>
                   ))}
-                  <HealthSummaryRow title="Allergies" value={client.medical.allergies} />
+                  <HealthSummaryRow title="Allergies" value={backgroundValues.allergies} />
                   <HealthSummaryRow
                     title="Important health notes"
-                    value={client.medical.importantHealthNotes}
+                    value={backgroundValues.importantHealthNotes}
                   />
                   <HealthSummaryRow
                     title="Current medication"
