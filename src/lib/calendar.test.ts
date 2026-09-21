@@ -187,6 +187,12 @@ describe("businessHoursForDate", () => {
     expect(businessHoursForDate("2026-09-27", hours.slice(0, 6))).toMatchObject({ weekday: 6, enabled: false });
   });
 
+  it("treats anything that is not a real calendar date as closed, not Monday's row", () => {
+    for (const date of ["", "not-a-date", "2026-9-1", "2026-13-01", "2026-02-31", "2027-02-29", "2026-04-31"]) {
+      expect(businessHoursForDate(date, hours)).toMatchObject({ enabled: false });
+    }
+  });
+
   it("does not shift across a year boundary or a leap day", () => {
     // 2026-01-01 is a Thursday; 2028-02-29 a Tuesday.
     expect(businessHoursForDate("2026-01-01", []).weekday).toBe(3);
