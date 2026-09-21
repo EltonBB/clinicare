@@ -231,7 +231,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
           schedule.map((item, index) => (
             <div
               key={item.date}
-              className="flex min-h-11 items-center gap-3 rounded-(--radius-card) px-2 transition-colors duration-(--duration-base) hover:bg-secondary/40"
+              className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-(--radius-card) px-2 py-1 transition-colors duration-(--duration-base) hover:bg-secondary/40"
             >
               <label className="flex w-36 shrink-0 items-center gap-2.5 text-sm font-medium text-foreground">
                 <input
@@ -248,7 +248,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
                     type="time"
                     value={item.startTime}
                     onChange={(event) => updateSchedule(index, { startTime: event.target.value })}
-                    className="h-9 w-32 rounded-(--radius-card) bg-white"
+                    className="h-9 w-28 rounded-(--radius-card) bg-white sm:w-32"
                     aria-label={`${item.day} shift start`}
                   />
                   <span className="text-muted-foreground">–</span>
@@ -256,7 +256,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
                     type="time"
                     value={item.endTime}
                     onChange={(event) => updateSchedule(index, { endTime: event.target.value })}
-                    className="h-9 w-32 rounded-(--radius-card) bg-white"
+                    className="h-9 w-28 rounded-(--radius-card) bg-white sm:w-32"
                     aria-label={`${item.day} shift end`}
                   />
                 </div>
