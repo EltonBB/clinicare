@@ -183,18 +183,23 @@ export function NewAppointmentForm({
     fittingDurations.push(maxDuration);
   }
 
-  // An existing booking keeps its saved length as an option while its date and
-  // start are unchanged, even if the clinic's hours later shrank past it — an
-  // unrelated edit (notes, status) must not silently shorten it; the server
-  // refuses it with a clear message instead. Once the booking is moved, only
-  // lengths that fit the new slot are offered.
+  // An existing booking keeps its saved length as an option in two cases: it
+  // still fits the slot (so a non-15-minute length survives being moved), or the
+  // date and start are unchanged — then even if the clinic's hours shrank past
+  // it, an unrelated edit (notes, status) must not silently shorten it; the
+  // server refuses it with a clear message instead. A moved booking whose length
+  // no longer fits only gets lengths that do.
   const keepsSavedSlot =
     initialAppointment !== undefined &&
     date === initialAppointment.date &&
     startTime === initialAppointment.startTime;
-  const durationOptions = Array.from(
-    new Set(savedDuration && keepsSavedSlot ? [...fittingDurations, savedDuration] : fittingDurations)
-  ).sort((a, b) => a - b);
+  const savedOption =
+    savedDuration !== null && (keepsSavedSlot || savedDuration <= maxDuration)
+      ? [savedDuration]
+      : [];
+  const durationOptions = Array.from(new Set([...fittingDurations, ...savedOption])).sort(
+    (a, b) => a - b
+  );
   const effectiveDuration = durationOptions.includes(duration)
     ? duration
     : (durationOptions[durationOptions.length - 1] ?? duration);
