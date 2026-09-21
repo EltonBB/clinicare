@@ -176,39 +176,27 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           }
         >
           <div className="grid h-full gap-4 sm:grid-cols-[176px_minmax(0,1fr)]">
-            <div className="grid grid-cols-1 content-start gap-2 min-[480px]:grid-cols-3 sm:grid-cols-1">
-              <div className="rounded-(--radius-card) bg-secondary/45 p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                  Last 7 days
-                </p>
-                <p className="mt-1.5 text-xl font-semibold leading-none tracking-tight text-foreground">
-                  {visits.lastSevenDays}
-                </p>
-              </div>
-              <div className="rounded-(--radius-card) bg-secondary/45 p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                  Last 30 days
-                </p>
-                <p className="mt-1.5 text-xl font-semibold leading-none tracking-tight text-foreground">
-                  {visits.lastThirtyDays}
-                </p>
-              </div>
-              <div className="rounded-(--radius-card) bg-secondary/45 p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                  This month
-                </p>
-                <p className="mt-1.5 text-xl font-semibold leading-none tracking-tight text-foreground">
-                  {visits.thisMonth}
-                </p>
-              </div>
-              <div className="rounded-(--radius-card) bg-secondary/45 p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                  All time
-                </p>
-                <p className="mt-1.5 text-xl font-semibold leading-none tracking-tight text-foreground">
-                  {visits.allTime}
-                </p>
-              </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-1 sm:grid-rows-4">
+              {(
+                [
+                  ["Last 7 days", visits.lastSevenDays],
+                  ["Last 30 days", visits.lastThirtyDays],
+                  ["This month", visits.thisMonth],
+                  ["All time", visits.allTime],
+                ] as const
+              ).map(([label, total]) => (
+                <div
+                  key={label}
+                  className="flex flex-col justify-center rounded-(--radius-card) bg-secondary/45 px-3 py-2"
+                >
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                    {label}
+                  </p>
+                  <p className="mt-1.5 text-2xl font-semibold leading-none tracking-tight tabular-nums text-foreground">
+                    {total}
+                  </p>
+                </div>
+              ))}
             </div>
             <div className="flex h-full min-h-[12rem] items-end gap-2 sm:gap-3">
               {visits.days.map((day, index) => (
@@ -312,7 +300,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           {view.appointments.length > 0 ? (
             <div
               className={cn(
-                "max-h-[268px] divide-y divide-border/65 overflow-y-auto pr-1",
+                "max-h-[220px] divide-y divide-border/65 overflow-y-auto pr-1",
                 view.appointments.length > 4 &&
                   "[mask-image:linear-gradient(to_bottom,black_calc(100%-32px),transparent)]"
               )}
