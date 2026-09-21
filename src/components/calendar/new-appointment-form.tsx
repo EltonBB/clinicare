@@ -1,28 +1,33 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { ArrowLeft, CalendarPlus2, Save, Trash2, UsersRound, XCircle } from "lucide-react";
+import { UsersRound } from "lucide-react";
 
 import {
   cancelAppointmentAction,
   deleteAppointmentAction,
   saveAppointmentAction,
 } from "@/app/(workspace)/calendar/actions";
-import { Button, buttonVariants } from "@/components/ui/button";
 import { ConfirmDeleteDialog } from "@/components/clients/record-form-dialog";
 import { ClientCombobox } from "@/components/calendar/client-combobox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  DestructiveTextButton,
+  FormActions,
+  FormError,
+  FormField,
+  FormSelect,
+} from "@/components/workspace/form-parts";
+import {
   fieldInputClass,
   fieldSelectClass,
+  fieldTextareaClass,
   WorkspaceEmptyState,
   WorkspaceFormSection,
 } from "@/components/workspace/workspace-layout";
 import { timeToMinutes } from "@/lib/calendar";
-import { cn } from "@/lib/utils";
 import type {
   CalendarAppointment,
   CalendarAppointmentStatus,
@@ -55,14 +60,27 @@ const statusOptions: CalendarAppointmentStatus[] = [
   "completed",
 ];
 
-// At creation a booking is only confirmed or pending; it becomes completed or
-// cancelled later via the calendar, never at the moment it's booked.
-const createStatusOptions: CalendarAppointmentStatus[] = ["confirmed", "pending"];
+const durationSteps = [15, 30, 45, 60, 90, 120];
 
 function minutesToTime(minutes: number) {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
   return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+}
+
+function formatDuration(minutes: number) {
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+
+  if (rest === 0) {
+    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+
+  return `${hours} h ${rest} min`;
 }
 
 function businessHoursForDate(date: string, hours: CalendarBusinessHours[]) {
@@ -114,11 +132,14 @@ export function NewAppointmentForm({
   const [startTime, setStartTime] = useState(
     initialAppointment?.startTime ?? initialStartTime ?? "09:00"
   );
-  const [endTime, setEndTime] = useState(
-    initialAppointment?.endTime ??
-      (initialStartTime
-        ? minutesToTime(Math.min(timeToMinutes(initialStartTime) + 60, 23 * 60 + 45))
-        : "10:00")
+  // The booking is one time plus a length; the end time is derived on save.
+  const [duration, setDuration] = useState(() =>
+    initialAppointment
+      ? Math.max(
+          15,
+          timeToMinutes(initialAppointment.endTime) - timeToMinutes(initialAppointment.startTime)
+        )
+      : 60
   );
   const [status, setStatus] = useState<CalendarAppointmentStatus>(
     initialAppointment?.status ?? "confirmed"
@@ -143,30 +164,27 @@ export function NewAppointmentForm({
     () => businessHoursForDate(date, businessHours),
     [businessHours, date]
   );
+  const openMinutes = timeToMinutes(selectedHours.start);
+  const closeMinutes = timeToMinutes(selectedHours.end);
+  // 15-minute slots inside opening hours. The booking's own start is kept as an
+  // option even when it sits off the grid (e.g. 12:39), so editing shows it
+  // instead of a blank select.
   const startOptions = selectedHours.enabled
-    ? timeSlots.filter((time) => {
-        const minutes = timeToMinutes(time);
-        return minutes >= timeToMinutes(selectedHours.start) && minutes < timeToMinutes(selectedHours.end);
-      })
+    ? Array.from(new Set([...timeSlots, startTime]))
+        .filter((time) => {
+          const minutes = timeToMinutes(time);
+          return minutes >= openMinutes && minutes < closeMinutes;
+        })
+        .sort()
     : [];
-  const endOptions = selectedHours.enabled
-    ? timeSlots.filter((time) => {
-        const minutes = timeToMinutes(time);
-        return minutes > timeToMinutes(startTime) && minutes <= timeToMinutes(selectedHours.end);
-      })
-    : [];
-
-  function handleStartChange(value: string) {
-    setStartTime(value);
-    if (timeToMinutes(endTime) <= timeToMinutes(value)) {
-      const nextEnd = timeSlots.find(
-        (time) =>
-          timeToMinutes(time) > timeToMinutes(value) &&
-          timeToMinutes(time) <= timeToMinutes(selectedHours.end)
-      );
-      setEndTime(nextEnd ?? endTime);
-    }
-  }
+  // Lengths that still finish before closing; the current length stays listed so
+  // an existing off-grid duration isn't silently replaced.
+  const durationOptions = Array.from(new Set([...durationSteps, duration]))
+    .filter((minutes) => timeToMinutes(startTime) + minutes <= closeMinutes)
+    .sort((a, b) => a - b);
+  const effectiveDuration = durationOptions.includes(duration)
+    ? duration
+    : (durationOptions[durationOptions.length - 1] ?? duration);
 
   function handleSubmit(formData: FormData) {
     setError("");
@@ -178,7 +196,7 @@ export function NewAppointmentForm({
         staffMemberId: staffMemberId || undefined,
         date,
         startTime,
-        endTime,
+        endTime: minutesToTime(timeToMinutes(startTime) + effectiveDuration),
         notes: String(formData.get("notes") ?? ""),
         status,
         baselineStatus,
@@ -236,7 +254,6 @@ export function NewAppointmentForm({
       <WorkspaceEmptyState
         icon={UsersRound}
         title="Add a client before booking"
-        description="Bookings need a client record so reminders, inbox threads, and visit history stay attached."
         actionHref="/clients/new?next=calendar"
         actionLabel="Add first client"
       />
@@ -244,32 +261,32 @@ export function NewAppointmentForm({
   }
 
   return (
-    <form action={handleSubmit} className="space-y-3.5">
-      <WorkspaceFormSection title="Client">
-        <label className="block space-y-2">
-          <span className="text-sm font-semibold text-foreground">Client</span>
-          <ClientCombobox
-            value={clientId}
-            onChange={setClientId}
-            initialOptions={clients}
-          />
-        </label>
-      </WorkspaceFormSection>
-
-      <WorkspaceFormSection title="Service and schedule">
-        <div className="grid gap-3.5 sm:grid-cols-2">
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-foreground">Service</span>
+    <form action={handleSubmit} className="space-y-3">
+      <WorkspaceFormSection>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <FormField label="Client" className={isEditing ? undefined : "sm:col-span-2"}>
+            <ClientCombobox value={clientId} onChange={setClientId} initialOptions={clients} />
+          </FormField>
+          {/* Status is only a choice when editing — a new booking is confirmed by
+              default and moves to completed/cancelled later from the calendar. */}
+          {isEditing ? (
+            <FormSelect
+              label="Status"
+              value={status}
+              options={editStatusOptions}
+              onChange={(value) => setStatus(value as CalendarAppointmentStatus)}
+              selectClassName="capitalize"
+            />
+          ) : null}
+          <FormField label="Service">
             <Input
               name="service"
               required
               defaultValue={initialAppointment?.service}
-              placeholder="Consultation, follow-up, treatment"
               className={fieldInputClass}
             />
-          </label>
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-foreground">Staff</span>
+          </FormField>
+          <FormField label="Staff">
             <select
               value={staffMemberId}
               onChange={(event) => setStaffMemberId(event.target.value)}
@@ -282,26 +299,24 @@ export function NewAppointmentForm({
                 </option>
               ))}
             </select>
-          </label>
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-foreground">Date</span>
-            <Input
-              type="date"
-              value={date}
-              onChange={(event) => setDate(event.target.value)}
-              className={fieldInputClass}
-            />
-          </label>
-          <div className="grid gap-3.5 sm:grid-cols-2">
-            <label className="space-y-2">
-              <span className="text-sm font-semibold text-foreground">Start</span>
+          </FormField>
+          <div className="grid grid-cols-2 gap-3 sm:col-span-2 sm:grid-cols-3">
+            <FormField label="Date" className="col-span-2 sm:col-span-1">
+              <Input
+                type="date"
+                value={date}
+                onChange={(event) => setDate(event.target.value)}
+                className={fieldInputClass}
+              />
+            </FormField>
+            <FormField label="Time">
               <select
                 value={startOptions.includes(startTime) ? startTime : ""}
-                onChange={(event) => handleStartChange(event.target.value)}
+                onChange={(event) => setStartTime(event.target.value)}
                 className={fieldSelectClass}
               >
                 <option value="" disabled>
-                  Choose time
+                  Select
                 </option>
                 {startOptions.map((time) => (
                   <option key={time} value={time}>
@@ -309,100 +324,51 @@ export function NewAppointmentForm({
                   </option>
                 ))}
               </select>
-            </label>
-            <label className="space-y-2">
-              <span className="text-sm font-semibold text-foreground">End</span>
+            </FormField>
+            <FormField label="Duration">
               <select
-                value={endOptions.includes(endTime) ? endTime : ""}
-                onChange={(event) => setEndTime(event.target.value)}
+                value={effectiveDuration}
+                onChange={(event) => setDuration(Number(event.target.value))}
                 className={fieldSelectClass}
               >
-                <option value="" disabled>
-                  Choose time
-                </option>
-                {endOptions.map((time) => (
-                  <option key={time} value={time}>
-                    {time}
+                {durationOptions.map((minutes) => (
+                  <option key={minutes} value={minutes}>
+                    {formatDuration(minutes)}
                   </option>
                 ))}
               </select>
-            </label>
+            </FormField>
           </div>
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-foreground">Status</span>
-            <select
-              value={status}
-              onChange={(event) => setStatus(event.target.value as CalendarAppointmentStatus)}
-              className={cn(fieldSelectClass, "capitalize")}
-            >
-              {/* A new booking can only be confirmed or pending; completed/cancelled
-                  are reached later from the calendar, not at creation. */}
-              {(isEditing ? editStatusOptions : createStatusOptions).map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-2 sm:col-span-2">
-            <span className="text-sm font-semibold text-foreground">Notes</span>
-            <Textarea name="notes" defaultValue={initialAppointment?.notes} placeholder="Reason, preparation notes, or appointment context" className="min-h-24 rounded-(--radius-card) bg-white px-3 py-3" />
-          </label>
+          {selectedHours.enabled ? null : (
+            <p className="text-sm text-destructive sm:col-span-2">The clinic is closed on this date.</p>
+          )}
+          <FormField label="Notes" className="sm:col-span-2">
+            <Textarea name="notes" defaultValue={initialAppointment?.notes} className={fieldTextareaClass} />
+          </FormField>
         </div>
-        <p className="text-xs text-muted-foreground">
-          {selectedHours.enabled
-            ? `Operating hours for this day: ${selectedHours.start} - ${selectedHours.end}.`
-            : "This clinic is closed on the selected date. Choose an open day before booking."}
-        </p>
       </WorkspaceFormSection>
 
-      {error ? (
-        <div className="rounded-(--radius-card) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
-      ) : null}
+      <FormError message={error} />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <FormActions
+        cancelHref={initialAppointment ? `/calendar?date=${initialAppointment.date}` : "/calendar"}
+        submitLabel={isEditing ? "Save" : "Book appointment"}
+        isPending={isPending}
+      >
         {initialAppointment ? (
-          <div className="flex flex-wrap gap-3">
-            <Button
-              type="button"
-              variant="destructive"
-              className="rounded-(--radius-card)"
+          <>
+            <DestructiveTextButton
               onClick={() => setConfirmingAction("cancel")}
               disabled={isPending || status === "cancelled" || baselineStatus === "completed"}
             >
-              <XCircle className="size-4" />
               Cancel booking
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-(--radius-card) border-destructive/25 bg-white text-destructive hover:bg-destructive/5 hover:text-destructive"
-              onClick={() => setConfirmingAction("delete")}
-              disabled={isPending}
-            >
-              <Trash2 className="size-4" />
+            </DestructiveTextButton>
+            <DestructiveTextButton onClick={() => setConfirmingAction("delete")} disabled={isPending}>
               Delete booking
-            </Button>
-          </div>
-        ) : (
-          <span />
-        )}
-        <div className="flex justify-end gap-3">
-        <Link
-          href="/calendar"
-          className={cn(buttonVariants({ variant: "outline" }), "rounded-(--radius-card) bg-white")}
-        >
-          <ArrowLeft className="size-4" />
-          Cancel
-        </Link>
-        <Button type="submit" className="rounded-(--radius-card)" disabled={isPending}>
-          {isEditing ? <Save className="size-4" /> : <CalendarPlus2 className="size-4" />}
-          {isPending ? "Saving..." : isEditing ? "Save booking" : "Book appointment"}
-        </Button>
-        </div>
-      </div>
+            </DestructiveTextButton>
+          </>
+        ) : null}
+      </FormActions>
 
       <ConfirmDeleteDialog
         open={confirmingAction !== null}

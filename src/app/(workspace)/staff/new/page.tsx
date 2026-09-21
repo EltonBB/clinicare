@@ -23,13 +23,7 @@ export default async function NewStaffPage() {
   });
 
   return (
-    <CreatePageShell
-      eyebrow="Staff workspace"
-      title="New staff member"
-      description="Add the team member profile used for booking ownership, time tracking, and staff performance records."
-      backHref="/staff"
-      backLabel="staff"
-    >
+    <CreatePageShell title="New staff member">
       <NewStaffForm businessHours={businessHours} />
     </CreatePageShell>
   );

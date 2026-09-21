@@ -110,13 +110,7 @@ export default async function EditAppointmentPage({
   const initialAppointment = calendarView.appointments[0];
 
   return (
-    <CreatePageShell
-      eyebrow="Booking timeline"
-      title="Edit booking"
-      description="Update the client, service, staff owner, time, status, and appointment notes."
-      backHref={`/calendar?date=${initialAppointment.date}`}
-      backLabel="calendar"
-    >
+    <CreatePageShell title="Edit booking">
       <NewAppointmentForm
         clients={calendarView.clients}
         staffMembers={calendarView.staffMembers}

@@ -104,13 +104,7 @@ export default async function NewAppointmentPage({
   const initialStartTime = isValidTimeParam(requestedTime) ? requestedTime : undefined;
 
   return (
-    <CreatePageShell
-      eyebrow="Booking timeline"
-      title="New booking"
-      description="Create a scheduled client visit with the right service, staff owner, date, time, and notes."
-      backHref="/calendar"
-      backLabel="calendar"
-    >
+    <CreatePageShell title="New booking">
       <NewAppointmentForm
         clients={pickerClients.map((client) => ({
           id: client.id,

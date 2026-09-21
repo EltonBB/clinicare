@@ -9,13 +9,7 @@ export default async function NewClientPage({
   const { next } = await searchParams;
 
   return (
-    <CreatePageShell
-      eyebrow="Client directory"
-      title="New client"
-      description="Create the client record once, then use it for bookings, reminders, notes, messages, and visit history."
-      backHref="/clients"
-      backLabel="clients"
-    >
+    <CreatePageShell title="New client">
       <NewClientForm nextAfterCreate={next === "calendar" ? "calendar" : undefined} />
     </CreatePageShell>
   );
