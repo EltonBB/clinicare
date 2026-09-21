@@ -349,7 +349,7 @@ export function NewAppointmentForm({
               </select>
             </FormField>
           </div>
-          {selectedHours.enabled ? null : (
+          {selectedHours.enabled || !date ? null : (
             <p className="text-sm text-destructive sm:col-span-2">The clinic is closed on this date.</p>
           )}
           <FormField label="Notes" className="sm:col-span-2">
