@@ -59,8 +59,8 @@ type WorkspaceToolbarProps = {
 };
 
 type WorkspaceFormSectionProps = {
-  title: ReactNode;
-  description?: ReactNode;
+  title?: ReactNode;
+  action?: ReactNode;
   children: ReactNode;
   className?: string;
   contentClassName?: string;
@@ -85,7 +85,7 @@ export const pageSizes = {
   default: "mx-auto w-full max-w-[1440px] space-y-3",
   wide: "mx-auto w-full max-w-[1520px] space-y-3",
   full: "w-full max-w-none space-y-3",
-  form: "mx-auto w-full max-w-[860px] space-y-3",
+  form: "mx-auto w-full max-w-[680px] space-y-3",
 };
 
 const mainGridWidths = {
@@ -107,6 +107,7 @@ const mainGridTypes = {
 export const fieldInputClass = "h-10 rounded-(--radius-card) bg-white";
 export const fieldSelectClass =
   "h-10 w-full rounded-(--radius-card) border border-border/80 bg-white px-3 text-sm text-foreground outline-none transition-[border-color,box-shadow] duration-(--duration-base) focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/40";
+export const fieldTextareaClass = "min-h-20 rounded-(--radius-card) bg-white px-3 py-2.5";
 // Borderless search fields — fully transparent at rest so search blends into
 // the toolbar chrome with no visible box, a quiet secondary tint on hover as
 // a discoverability cue, and lifts to white only once focused.
@@ -267,20 +268,20 @@ export function WorkspaceToolbar({ children, className, contentClassName }: Work
 
 export function WorkspaceFormSection({
   title,
-  description,
+  action,
   children,
   className,
   contentClassName,
 }: WorkspaceFormSectionProps) {
   return (
-    <section className={cn("surface-card p-3.5", className)}>
-      <div className="border-b border-border/70 pb-3">
-        <h2 className="text-[15px] font-semibold leading-5 text-foreground">{title}</h2>
-        {description ? (
-          <p className="mt-1 max-w-2xl text-sm leading-5 text-muted-foreground">{description}</p>
-        ) : null}
-      </div>
-      <div className={cn("mt-3 space-y-3", contentClassName)}>{children}</div>
+    <section className={cn("surface-card p-4", className)}>
+      {title ? (
+        <div className="mb-3 flex min-h-6 items-center justify-between gap-3">
+          <h2 className="text-[15px] font-semibold leading-5 text-foreground">{title}</h2>
+          {action}
+        </div>
+      ) : null}
+      <div className={cn("space-y-3", contentClassName)}>{children}</div>
     </section>
   );
 }

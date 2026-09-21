@@ -274,31 +274,19 @@ export function SettingsPageSkeleton() {
   );
 }
 
-// New/edit forms: back link → title → sectioned form cards.
+// New/edit forms: title → one form card (CreatePageShell renders a title-only header).
 export function FormPageSkeleton() {
   return (
     <div className={cn(pageSizes.form, "px-1 py-2 sm:py-3")}>
-      <SkeletonBlock className="h-4 w-28" />
-      {/* Every CreatePageShell caller passes both eyebrow and description, so
-          WorkspaceHeader always renders all 4 rows here (breadcrumb, eyebrow,
-          title, description) — 2 placeholders let the real header insert 2
-          more lines and push the form down once it resolves (Codex). */}
-      <div className="space-y-1.5">
-        <SkeletonBlock className="h-3 w-32" />
+      <div className="pb-2">
         <SkeletonBlock className="h-8 w-56" />
-        <SkeletonBlock className="h-4 w-full max-w-md" />
       </div>
-      <div className="surface-card space-y-4 p-3.5">
-        <SkeletonBlock className="h-4 w-40" />
+      <div className="surface-card p-4">
         <div className="grid gap-3 sm:grid-cols-2">
           {Array.from({ length: 4 }).map((_, index) => (
-            <SkeletonBlock key={index} className="h-10" />
+            <SkeletonBlock key={index} className="h-[4.25rem]" />
           ))}
         </div>
-      </div>
-      <div className="surface-card space-y-4 p-3.5">
-        <SkeletonBlock className="h-4 w-40" />
-        <SkeletonBlock className="h-24" />
       </div>
     </div>
   );
