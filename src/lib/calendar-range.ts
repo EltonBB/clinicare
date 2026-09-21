@@ -57,18 +57,32 @@ export function isCovered(dayKey: string, ranges: readonly CalendarRange[]) {
 }
 
 /**
- * The months that still need loading to show `dayKeys`: the distinct months
- * (`YYYY-MM`) of every day no loaded range covers, in date order. A week that
- * straddles two months is already covered if either month's grid was loaded,
- * so only genuinely missing days trigger a fetch.
+ * The months that still need loading to show `dayKeys`, in date order.
+ *
+ * `anchorMonth` is the month being viewed. Its Monday–Sunday grid contains every
+ * visible day — a month view is that grid, and a week or a day belongs to a week
+ * the grid spans — so when anything is missing, loading that one month covers it
+ * all. Attributing each missing day to its own calendar month instead would fetch
+ * a redundant neighbour: the leading days of a month view (say, late July on an
+ * August grid) would trigger a July load the August grid already includes. A day
+ * that somehow falls outside the anchor's grid still gets its own month.
  */
-export function monthsToLoad(dayKeys: readonly string[], ranges: readonly CalendarRange[]) {
+export function monthsToLoad(
+  dayKeys: readonly string[],
+  ranges: readonly CalendarRange[],
+  anchorMonth: string
+) {
+  const anchorGrid = monthGridRange(anchorMonth);
   const months = new Set<string>();
 
   for (const dayKey of dayKeys) {
-    if (!isCovered(dayKey, ranges)) {
-      months.add(dayKey.slice(0, 7));
+    if (isCovered(dayKey, ranges)) {
+      continue;
     }
+
+    const insideAnchorGrid = anchorGrid && dayKey >= anchorGrid.from && dayKey <= anchorGrid.to;
+
+    months.add(insideAnchorGrid ? anchorMonth : dayKey.slice(0, 7));
   }
 
   return [...months].sort();

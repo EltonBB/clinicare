@@ -43,6 +43,21 @@ describe("monthGridRange", () => {
   );
 });
 
+// Every day from `from` to `to` inclusive, as YYYY-MM-DD keys.
+function monthDays(from: string, to: string) {
+  const days: string[] = [];
+
+  for (
+    let time = Date.parse(`${from}T00:00:00Z`);
+    time <= Date.parse(`${to}T00:00:00Z`);
+    time += 86_400_000
+  ) {
+    days.push(new Date(time).toISOString().slice(0, 10));
+  }
+
+  return days;
+}
+
 describe("coverage", () => {
   const september = { from: "2026-08-31", to: "2026-10-04" };
 
@@ -57,22 +72,38 @@ describe("coverage", () => {
     // Week of Aug 31 – Sep 6 straddles two months but sits inside September's grid.
     const week = ["2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05", "2026-09-06"];
 
-    expect(monthsToLoad(week, [september])).toEqual([]);
+    expect(monthsToLoad(week, [september], "2026-09")).toEqual([]);
   });
 
-  it("asks only for the months of days that aren't loaded, in date order", () => {
-    const days = ["2026-10-05", "2026-09-15", "2026-08-30", "2026-10-06"];
+  it("loads only the viewed month for a month view, not its neighbours", () => {
+    // August 2026's month view runs Mon Jul 27 – Sun Sep 6. With only September's
+    // grid loaded, the leading July days must NOT trigger a July load: August's own
+    // grid already includes them.
+    const monthView = monthDays("2026-07-27", "2026-09-06");
 
-    expect(monthsToLoad(days, [september])).toEqual(["2026-08", "2026-10"]);
+    expect(monthsToLoad(monthView, [september], "2026-08")).toEqual(["2026-08"]);
+  });
+
+  it("loads one month for a week that straddles two unloaded months", () => {
+    const week = ["2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05", "2026-09-06"];
+
+    // Viewing from either side of the boundary, one grid covers the whole week.
+    expect(monthsToLoad(week, [], "2026-09")).toEqual(["2026-09"]);
+    expect(monthsToLoad(week, [], "2026-08")).toEqual(["2026-08"]);
+  });
+
+  it("loads the viewed month for a single day", () => {
+    expect(monthsToLoad(["2026-09-15"], [], "2026-09")).toEqual(["2026-09"]);
   });
 
   it("counts a day covered by any of several loaded ranges", () => {
     const august = { from: "2026-07-27", to: "2026-08-30" };
 
-    expect(monthsToLoad(["2026-08-30", "2026-08-31"], [august, september])).toEqual([]);
+    expect(monthsToLoad(["2026-08-30", "2026-08-31"], [august, september], "2026-09")).toEqual([]);
   });
 
-  it("asks for everything when nothing is loaded", () => {
-    expect(monthsToLoad(["2026-09-15", "2026-09-16"], [])).toEqual(["2026-09"]);
+  it("still gives a day outside the viewed month's grid its own month", () => {
+    // Defensive: should never happen in the workspace, but must not be dropped.
+    expect(monthsToLoad(["2026-09-15", "2027-03-02"], [], "2026-09")).toEqual(["2026-09", "2027-03"]);
   });
 });

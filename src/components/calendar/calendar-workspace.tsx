@@ -478,8 +478,8 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
     [view, activeDate, currentWeek, currentMonth]
   );
   const missingMonths = useMemo(
-    () => monthsToLoad(visibleDayKeys, loadedRanges),
-    [visibleDayKeys, loadedRanges]
+    () => monthsToLoad(visibleDayKeys, loadedRanges, format(activeDate, "yyyy-MM")),
+    [visibleDayKeys, loadedRanges, activeDate]
   );
   const pendingMonthsKey = missingMonths.filter((month) => !failedMonths.includes(month)).join(",");
   const isLoadingMonths = pendingMonthsKey !== "";
@@ -740,7 +740,7 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
                           </span>
                           {overflowCount > 0 ? (
                             <span
-                              aria-label={`${overflowCount} more appointments`}
+                              aria-label={`${overflowCount} more calendar entries`}
                               className="hidden shrink-0 text-[10px] font-semibold text-primary sm:block"
                             >
                               +{overflowCount}
