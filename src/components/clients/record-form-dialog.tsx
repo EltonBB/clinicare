@@ -205,6 +205,53 @@ export function RecordFormDialog({
   );
 }
 
+export type RecordTypeOption = {
+  key: string;
+  title: string;
+  description: string;
+};
+
+// First step of "Add record": pick which kind of record to create. The chosen
+// kind then opens its own RecordFormDialog, so a tab with nothing recorded
+// needs one Add button instead of a stack of empty sections.
+export function RecordTypeDialog({
+  open,
+  onOpenChange,
+  title,
+  options,
+  onSelect,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  options: RecordTypeOption[];
+  onSelect: (key: string) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md p-5">
+        <DialogHeader>
+          <DialogTitle className="text-lg font-semibold text-foreground">{title}</DialogTitle>
+          <DialogDescription className="sr-only">Choose the kind of record to add.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-1.5">
+          {options.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => onSelect(option.key)}
+              className="rounded-(--radius-card) bg-secondary/45 px-3.5 py-3 text-left transition-colors duration-(--duration-base) hover:bg-primary/8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+            >
+              <span className="block text-sm font-semibold text-foreground">{option.title}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">{option.description}</span>
+            </button>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function ConfirmDeleteDialog({
   open,
   onOpenChange,
