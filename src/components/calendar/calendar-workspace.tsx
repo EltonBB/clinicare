@@ -200,7 +200,10 @@ function EventPill({
 
 function BlockPill({ block }: { block: CalendarScheduleBlock }) {
   return (
-    <div className="flex w-full shrink-0 items-center justify-between gap-2 rounded-(--radius-tile) bg-slate-100 px-2.5 py-1.5 text-left text-xs font-medium text-slate-700">
+    <div
+      data-block-pill=""
+      className="flex min-h-10 w-full shrink-0 items-center justify-between gap-2 rounded-(--radius-tile) bg-slate-100 px-2.5 py-1.5 text-left text-xs font-medium text-slate-700"
+    >
       <span className="flex min-w-0 items-center gap-1.5 truncate">
         <CalendarX2 className="size-3 shrink-0" />
         <span className="truncate">{block.title}</span>
@@ -214,7 +217,8 @@ function BlockPill({ block }: { block: CalendarScheduleBlock }) {
 
 // A week column stretches to the viewport (`lg` and up), so how many rows fit is
 // measured; below that its height just follows its content, so there is nothing
-// to measure and it falls back to a fixed handful (8 entries plus the link).
+// to measure and it falls back to nine rows: up to nine entries, or eight plus
+// the "+N more" link (never a link standing in for a single hidden entry).
 const LG_MEDIA_QUERY = "(min-width: 1024px)";
 const DAY_COLUMN_FALLBACK_SLOTS = 9;
 const DAY_COLUMN_PILL_HEIGHT = 40;
@@ -231,7 +235,9 @@ function measureDayColumnSlots(column: HTMLElement) {
   const gap = parseFloat(styles.rowGap) || 0;
   const padding = (parseFloat(styles.paddingTop) || 0) + (parseFloat(styles.paddingBottom) || 0);
   const footerHeight = column.querySelector<HTMLElement>("[data-day-footer]")?.offsetHeight ?? 0;
-  const pillHeight = column.querySelector<HTMLElement>("a[data-pill]")?.offsetHeight ?? DAY_COLUMN_PILL_HEIGHT;
+  // A block row is held to the pill's height (min-h-10), so either one gives the row height.
+  const pillHeight =
+    column.querySelector<HTMLElement>("a[data-pill], [data-block-pill]")?.offsetHeight ?? DAY_COLUMN_PILL_HEIGHT;
 
   return rowsThatFit(column.clientHeight - padding - footerHeight - gap, pillHeight, gap);
 }
