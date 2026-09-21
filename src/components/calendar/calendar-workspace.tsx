@@ -128,6 +128,7 @@ function EventPill({
   appointment,
   onOpen,
   dense = false,
+  detailed = false,
 }: {
   appointment: CalendarAppointment;
   onOpen: (event: MouseEvent<HTMLAnchorElement>) => void;
@@ -135,6 +136,10 @@ function EventPill({
   // plus pointer-events-auto to punch through the cell's pointer-events-none
   // day-open overlay button.
   dense?: boolean;
+  // Day view is one full-width column, where a name-left/time-right pill leaves
+  // ~900px of dead space between the two. Same pill, laid out as a schedule row:
+  // time first, then who, what and with whom, then the status in words.
+  detailed?: boolean;
 }) {
   return (
     <Link
@@ -161,10 +166,32 @@ function EventPill({
         monthChipClasses[appointment.status]
       )}
     >
-      <span className={cn("truncate font-semibold", appointment.status === "cancelled" && "line-through")}>
-        {appointment.clientName}
-      </span>
-      <span className="shrink-0 tabular-nums opacity-80">{appointment.startTime}</span>
+      {detailed ? (
+        <>
+          <span className="w-12 shrink-0 tabular-nums opacity-80">{appointment.startTime}</span>
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate font-semibold",
+              appointment.status === "cancelled" && "line-through"
+            )}
+          >
+            {appointment.clientName}
+          </span>
+          <span className="hidden min-w-0 flex-[2] truncate opacity-80 sm:block">
+            {appointment.service} · {appointment.staffName}
+          </span>
+          <span className="hidden w-20 shrink-0 text-right text-xs font-semibold capitalize opacity-80 sm:block">
+            {appointment.status}
+          </span>
+        </>
+      ) : (
+        <>
+          <span className={cn("truncate font-semibold", appointment.status === "cancelled" && "line-through")}>
+            {appointment.clientName}
+          </span>
+          <span className="shrink-0 tabular-nums opacity-80">{appointment.startTime}</span>
+        </>
+      )}
     </Link>
   );
 }
@@ -195,6 +222,7 @@ function DayColumn({
   isSelectedColumn,
   isEmpty,
   onOpen,
+  detailed = false,
 }: {
   dayKey: string;
   entries: Array<CalendarAppointment | CalendarScheduleBlock>;
@@ -202,9 +230,13 @@ function DayColumn({
   isSelectedColumn: boolean;
   isEmpty: boolean;
   onOpen: (appointment: CalendarAppointment, event: MouseEvent<HTMLAnchorElement>) => void;
+  // Day view: the one wide column lists every entry (the column scrolls), since
+  // reading the whole day is what that view is for; week columns stay capped.
+  detailed?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const visibleEntries = expanded ? entries : entries.slice(0, DAY_COLUMN_VISIBLE_CAP);
+  const visibleEntries =
+    expanded || detailed ? entries : entries.slice(0, DAY_COLUMN_VISIBLE_CAP);
   const hiddenCount = entries.length - visibleEntries.length;
 
   return (
@@ -217,7 +249,12 @@ function DayColumn({
     >
       {visibleEntries.map((entry) =>
         "status" in entry ? (
-          <EventPill key={entry.id} appointment={entry} onOpen={(event) => onOpen(entry, event)} />
+          <EventPill
+            key={entry.id}
+            appointment={entry}
+            detailed={detailed}
+            onOpen={(event) => onOpen(entry, event)}
+          />
         ) : (
           <BlockPill key={entry.id} block={entry} />
         )
@@ -431,43 +468,6 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
 
   const currentWeek = useMemo(() => weekDays(activeDate), [activeDate]);
   const currentMonth = useMemo(() => monthDays(activeDate), [activeDate]);
-  const appointmentDateKeys = useMemo(
-    () =>
-      new Set(
-        appointments
-          .filter((appointment) => appointment.status !== "cancelled")
-          .map((appointment) => appointment.date)
-      ),
-    [appointments]
-  );
-  // Grouped once per appointments/scheduleBlocks change so month/week/day cells
-  // do an O(1) Map lookup instead of an O(n) filter over the whole ~6-month
-  // window on every render (a click that only opens the quick-view popover was
-  // re-scanning the full window per visible day before this).
-  const appointmentsByDate = useMemo(() => {
-    const map = new Map<string, CalendarAppointment[]>();
-    for (const appointment of appointments) {
-      const bucket = map.get(appointment.date);
-      if (bucket) {
-        bucket.push(appointment);
-      } else {
-        map.set(appointment.date, [appointment]);
-      }
-    }
-    return map;
-  }, [appointments]);
-  const scheduleBlocksByDate = useMemo(() => {
-    const map = new Map<string, CalendarScheduleBlock[]>();
-    for (const block of scheduleBlocks) {
-      const bucket = map.get(block.date);
-      if (bucket) {
-        bucket.push(block);
-      } else {
-        map.set(block.date, [block]);
-      }
-    }
-    return map;
-  }, [scheduleBlocks]);
   // Which months the visible days need that aren't loaded yet. Derived from what
   // is on screen, so there's no separate "loading" state to keep in sync.
   const visibleDayKeys = useMemo(
@@ -523,6 +523,43 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
     setFailedMonths([]);
   }
 
+  const appointmentDateKeys = useMemo(
+    () =>
+      new Set(
+        appointments
+          .filter((appointment) => appointment.status !== "cancelled")
+          .map((appointment) => appointment.date)
+      ),
+    [appointments]
+  );
+  // Grouped once per appointments/scheduleBlocks change so month/week/day cells
+  // do an O(1) Map lookup instead of an O(n) filter over the whole ~6-month
+  // window on every render (a click that only opens the quick-view popover was
+  // re-scanning the full window per visible day before this).
+  const appointmentsByDate = useMemo(() => {
+    const map = new Map<string, CalendarAppointment[]>();
+    for (const appointment of appointments) {
+      const bucket = map.get(appointment.date);
+      if (bucket) {
+        bucket.push(appointment);
+      } else {
+        map.set(appointment.date, [appointment]);
+      }
+    }
+    return map;
+  }, [appointments]);
+  const scheduleBlocksByDate = useMemo(() => {
+    const map = new Map<string, CalendarScheduleBlock[]>();
+    for (const block of scheduleBlocks) {
+      const bucket = map.get(block.date);
+      if (bucket) {
+        bucket.push(block);
+      } else {
+        map.set(block.date, [block]);
+      }
+    }
+    return map;
+  }, [scheduleBlocks]);
   const selectedDateKey = format(activeDate, "yyyy-MM-dd");
   const weekStart = currentWeek[0];
   const weekEnd = currentWeek[6];
@@ -585,6 +622,11 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
             rather than scrolling it, so a non-wrapping cluster here just
             clipped part of the date or the CTA off-screen (Codex). */}
         <div className="ml-auto flex flex-wrap items-center justify-end gap-3">
+          {isLoadingMonths ? (
+            <span role="status" className="text-sm text-muted-foreground">
+              Loading…
+            </span>
+          ) : null}
           <span className="text-[17px] font-semibold tracking-tight text-foreground">
             {rangeLabel}
           </span>
@@ -622,11 +664,6 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
         </div>
       </div>
 
-          {isLoadingMonths ? (
-            <span role="status" className="text-sm text-muted-foreground">
-              Loading…
-            </span>
-          ) : null}
       <div className="space-y-3" aria-busy={isLoadingMonths}>
         {loadFailed ? (
           <div
@@ -688,14 +725,29 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
                         className="absolute inset-0 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
                       />
                       <div className="pointer-events-none relative px-2.5 py-2">
-                        <span
-                          className={cn(
-                            "inline-flex size-6 items-center justify-center rounded-full text-sm font-medium",
-                            isToday && "bg-primary font-semibold text-primary-foreground"
-                          )}
-                        >
-                          {format(day, "d")}
-                        </span>
+                        {/* The overflow count lives in the date row, not under the pills: the
+                            cell clips its overflow, so on a busy day the line below two pills
+                            fell outside it and the count — the one thing that says how full
+                            the day is — was cut off. */}
+                        <div className="flex items-center justify-between gap-1">
+                          <span
+                            className={cn(
+                              "inline-flex size-6 items-center justify-center rounded-full text-sm font-medium",
+                              isToday && "bg-primary font-semibold text-primary-foreground"
+                            )}
+                          >
+                            {format(day, "d")}
+                          </span>
+                          {overflowCount > 0 ? (
+                            <span
+                              aria-label={`${overflowCount} more appointments`}
+                              className="hidden shrink-0 text-[10px] font-semibold text-primary sm:block"
+                            >
+                              +{overflowCount}
+                              <span className="hidden lg:inline"> more</span>
+                            </span>
+                          ) : null}
+                        </div>
                         {/* Below sm, a column is ~45px — full chips truncate to unreadable
                             fragments ("0...", "1..."), so mobile gets the same density-only
                             dot summary as the week/day header (see the day-column buttons
@@ -718,9 +770,6 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
                               </div>
                             )
                           )}
-                          {overflowCount > 0 ? (
-                            <p className="px-2 pb-1 text-[10px] font-medium text-muted-foreground">+{overflowCount} more</p>
-                          ) : null}
                         </div>
                         {items.length > 0 || blocks.length > 0 ? (
                           <div className="mt-1.5 flex flex-wrap items-center gap-1 sm:hidden">
@@ -808,6 +857,7 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
                       isToday={isToday}
                       isSelectedColumn={isSelectedColumn}
                       isEmpty={isEmpty}
+                      detailed={view === "day"}
                       onOpen={openQuickView}
                     />
                   );
