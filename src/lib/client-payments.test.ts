@@ -81,7 +81,7 @@ describe("full-history payment totals", () => {
     expect(record.paymentNextCursor?.id).toBe("p-59");
     expect(record.paymentStats).toMatchObject({
       totalBilledCents: 78_000, totalPaidCents: 70_000, unpaidBalanceCents: 8_000,
-      ledgerEntries: 80, paidEntries: 71, receiptsLinked: 73, paymentStatus: "Partially Paid",
+      ledgerEntries: 80, paidEntries: 70, receiptsLinked: 73, paymentStatus: "Partially Paid",
     });
     expect(record.paymentStats.totalBilledDisplay).toBe("$780.00");
     expect(mocks.paymentGroupBy).toHaveBeenCalledWith({

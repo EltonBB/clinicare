@@ -14,6 +14,13 @@ newer entries added elsewhere become visible when the record reloads. A mutation
 reload resets the loaded pages; an older in-flight response cannot append to that
 new record. Navigating to another client remounts the patient view.
 
+Patient-record reads take a database generation marker before querying. A save's
+returned record takes its marker after the write commits. The open screen ignores
+an older same-patient refresh that arrives late, including after a successful
+payment or medical-background save. This ordering assumes reads and writes use
+the same PostgreSQL primary; restoration onto an earlier database generation
+requires a full page reload. Each read consumes one transaction ID.
+
 `GET /api/clients/[clientId]/payments?format=csv` authenticates the owner and scopes
 the client and every payment query to that owner's business. It ignores no records
 and accepts no pagination cursor. The fixed attachment name avoids putting patient

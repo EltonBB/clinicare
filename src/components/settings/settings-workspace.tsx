@@ -1019,7 +1019,7 @@ export function SettingsWorkspace({
                 </div>
               </div>
 
-              <div className="flex items-center gap-4 border-t border-border/60 pt-4">
+              <div className="flex items-center gap-4 pt-2">
                 <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-(--radius-tile) border border-border/75 bg-white text-xl font-semibold text-primary">
                   {logoDisplayUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -1050,14 +1050,13 @@ export function SettingsWorkspace({
                 </div>
               </div>
 
-              <div className="space-y-3.5 border-t border-border/60 pt-4">
-                <div className="space-y-0.5">
-                  <p className="text-sm font-semibold text-foreground">Change password</p>
-                  <p className="text-xs leading-5 text-muted-foreground">
-                    Leave the fields blank to keep your current password. Changing it
-                    requires your current password.
-                  </p>
-                </div>
+              <div className="space-y-3 pt-2">
+                <p className="text-sm font-medium text-foreground">
+                  Change password{" "}
+                  <span className="font-normal text-muted-foreground">
+                    — leave blank to keep your current password, or fill in all three to change it
+                  </span>
+                </p>
                 <div className="space-y-1.5">
                   <FieldLabel>Current password</FieldLabel>
                   <Input
@@ -1198,12 +1197,12 @@ export function SettingsWorkspace({
                       appearance: { accentColor: "custom", accentHex: event.target.value },
                     }))
                   }
-                  placeholder="#0A22FF"
+                  placeholder="#3142D8"
                   className="h-9 w-[120px] rounded-(--radius-card) bg-white text-right font-mono text-xs uppercase"
                 />
               </div>
 
-              <div className="rounded-(--radius-card) border border-border/70 bg-[#fafbfd] p-3.5">
+              <div className="rounded-(--radius-card) bg-[#fafbfd] p-3.5">
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                   Preview
                 </p>
@@ -1230,16 +1229,11 @@ export function SettingsWorkspace({
                 </div>
               </div>
 
-              <p
-                className={cn(
-                  "text-xs",
-                  customAccentInvalid ? "font-medium text-destructive" : "text-muted-foreground"
-                )}
-              >
-                {customAccentInvalid
-                  ? "Use a valid HEX value like #0A22FF."
-                  : "Applied to primary actions, active states, and highlights across the workspace."}
-              </p>
+              {customAccentInvalid ? (
+                <p className="text-xs font-medium text-destructive">
+                  Use a valid HEX value like #0A22FF.
+                </p>
+              ) : null}
             </div>
           </SectionCard>
 
@@ -1404,7 +1398,7 @@ export function SettingsWorkspace({
             active={activeSection === "whatsapp"}
           >
             <div className="space-y-4">
-              <div className="rounded-(--radius-card) border border-border/70 bg-[#fafbfd] p-3.5">
+              <div className="rounded-(--radius-card) bg-[#fafbfd] p-3.5">
                 <div className="flex items-center gap-2">
                   <span
                     className={cn(
@@ -1525,7 +1519,7 @@ export function SettingsWorkspace({
             active={activeSection === "billing"}
           >
             <div className="space-y-4">
-              <div className="rounded-(--radius-card) border border-border/70 bg-[#fafbfd] p-3.5">
+              <div className="rounded-(--radius-card) bg-[#fafbfd] p-3.5">
                 <div className="flex items-center gap-2.5">
                   <p className="text-lg font-semibold leading-6 text-foreground">
                     Vela {state.billing.planName}

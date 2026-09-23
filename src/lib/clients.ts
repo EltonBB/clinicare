@@ -166,6 +166,7 @@ export type ClientRecord = {
   documents: ClientDocumentEntry[];
   payments: ClientPaymentEntry[];
   paymentNextCursor: PaymentCursor | null;
+  readGeneration?: string;
   messages: ClientMessageEntry[];
   healthItems: ClientHealthItemEntry[];
   careNotes: ClientCareNoteEntry[];
@@ -204,9 +205,7 @@ export type ClientDirectoryItem = Pick<
   "id" | "name" | "email" | "phone" | "lastVisit" | "totalVisits" | "status"
 > & {
   lastService: string;
-  lastProvider: string;
   needsAttention: boolean;
-  attentionReason: string;
 };
 
 export type ClientDirectoryFilter =
@@ -288,11 +287,7 @@ type ClientDirectoryRow = Pick<
   | "lastVisitAt"
   | "createdAt"
 > & {
-  appointments: Array<
-    Pick<Appointment, "title" | "startAt"> & {
-      staffMember: { name: string } | null;
-    }
-  >;
+  appointments: Array<Pick<Appointment, "title" | "startAt">>;
   _count?: {
     appointments: number;
   };
@@ -534,7 +529,19 @@ function buildTimeline(client: ClientWithRelations): ClientTimelineEntry[] {
   return entries.sort((a, b) => b.sortKey - a.sortKey).slice(0, 14);
 }
 
-export async function buildClientRecord(client: ClientWithRelations): Promise<ClientRecord> {
+export async function getClientReadGeneration(): Promise<string> {
+  // A refresh takes this marker before reading. A mutation takes it after its
+  // write commits, so a late response from a prior read cannot replace it.
+  const [row] = await prisma.$queryRaw<Array<{ generation: string }>>`
+    SELECT pg_current_xact_id()::text AS generation
+  `;
+  if (!row || !/^\d+$/.test(row.generation)) {
+    throw new Error("Could not establish patient record read order");
+  }
+  return row.generation;
+}
+
+export async function buildClientRecord(client: ClientWithRelations, readGeneration?: string): Promise<ClientRecord> {
   const now = new Date();
 
   // History relations have display limits (payments include one lookahead row).
@@ -580,7 +587,7 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
     paymentSumsByStatus.find((row) => row.status === status)?._sum.amountCents ?? 0;
   const totalBilledCents = paymentSumsByStatus.reduce((sum, row) => sum + (row._sum.amountCents ?? 0), 0);
   const ledgerEntries = paymentSumsByStatus.reduce((sum, row) => sum + row._count, 0);
-  const paidEntries = paymentSumsByStatus.reduce((sum, row) => sum + (row.status.toLowerCase() === "paid" ? row._count : 0), 0);
+  const paidEntries = paymentSumsByStatus.reduce((sum, row) => sum + (row.status === "Paid" ? row._count : 0), 0);
   const paymentPage = buildPaymentPage(client.payments);
   const totalPaidCents = paymentSum("Paid");
   const unpaidBalanceCents = paymentSum("Unpaid") + paymentSum("Partially Paid");
@@ -633,6 +640,7 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
     documents: await buildDocuments(client),
     payments: paymentPage.payments,
     paymentNextCursor: paymentPage.nextCursor,
+    readGeneration,
     messages: buildMessages(client),
     healthItems: buildHealthItems(client),
     careNotes: buildCareNotes(client),
@@ -673,25 +681,18 @@ export function attentionCutoffDate(now = new Date()) {
   return new Date(now.getTime() - ATTENTION_STALE_DAYS * 24 * 60 * 60 * 1000);
 }
 
-function deriveDirectoryAttention(client: ClientDirectoryRow, status: ClientStatus) {
+function deriveDirectoryAttention(client: ClientDirectoryRow, status: ClientStatus): boolean {
   if (status === "archived") {
-    return { needsAttention: false, attentionReason: "" };
+    return false;
   }
 
   if (status === "at-risk") {
-    return { needsAttention: true, attentionReason: "Marked at risk" };
+    return true;
   }
 
   // Mirror the DB "attention" filter exactly (page.tsx buildFilterWhere), which
   // keys on lastVisitAt — so the chip count and the row badge can never disagree.
-  if (client.lastVisitAt && client.lastVisitAt < attentionCutoffDate()) {
-    return {
-      needsAttention: true,
-      attentionReason: `No visit in ${ATTENTION_STALE_DAYS}+ days`,
-    };
-  }
-
-  return { needsAttention: false, attentionReason: "" };
+  return Boolean(client.lastVisitAt && client.lastVisitAt < attentionCutoffDate());
 }
 
 export function buildClientDirectoryViewFromRecords(
@@ -706,7 +707,6 @@ export function buildClientDirectoryViewFromRecords(
   const clients = records.map((client) => {
     const latestAppointment = client.appointments[0];
     const status = formatStatus(client.status, client.isArchived);
-    const attention = deriveDirectoryAttention(client, status);
 
     return {
       id: client.id,
@@ -717,9 +717,7 @@ export function buildClientDirectoryViewFromRecords(
       totalVisits: client._count?.appointments ?? 0,
       status,
       lastService: latestAppointment?.title ?? "",
-      lastProvider: latestAppointment?.staffMember?.name ?? "",
-      needsAttention: attention.needsAttention,
-      attentionReason: attention.attentionReason,
+      needsAttention: deriveDirectoryAttention(client, status),
     };
   });
 

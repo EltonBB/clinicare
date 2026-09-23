@@ -3,7 +3,9 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
+import { getAuthedBusiness as getAuthedBusinessContext, toBusinessIdentity } from "@/lib/business";
+import { loadCalendarMonth, type CalendarMonthData } from "@/lib/calendar-data";
+import { isValidMonthKey } from "@/lib/calendar-range";
 import {
   acquireSchedulingLock,
   APPOINTMENT_ALREADY_COMPLETED_ERROR,
@@ -23,6 +25,7 @@ import {
   parseZonedWallClock,
 } from "@/lib/time-zone";
 import {
+  timeToMinutes,
   toPrismaAppointmentStatus,
   type CalendarAppointment,
   type CalendarAppointmentStatus,
@@ -77,11 +80,6 @@ function getAuthedBusiness() {
 // the true UTC instant (shared helper — see lib/time-zone.ts).
 function parseDateTime(date: string, time: string) {
   return parseZonedWallClock(date, time);
-}
-
-function timeToMinutes(time: string) {
-  const [hours, minutes] = time.split(":").map(Number);
-  return (hours || 0) * 60 + (minutes || 0);
 }
 
 async function isInsideBusinessHours(args: {
@@ -586,3 +584,39 @@ export async function deleteAppointmentAction(
   };
 }
 
+export type LoadCalendarMonthResult =
+  | ({ ok: true } & CalendarMonthData)
+  // `sessionExpired` marks the one failure a retry can never fix — the caller
+  // should send the user to sign in rather than offer "Try again".
+  | { ok: false; error: string; sessionExpired?: boolean };
+
+// The calendar loads one month at a time. This serves any month the user
+// navigates to that the page did not already load (older history, a distant
+// future month), so the grid is never silently empty just because it sits
+// outside the first window.
+export async function loadCalendarMonthAction(monthKey: string): Promise<LoadCalendarMonthResult> {
+  const context = await getAuthedBusinessContext(
+    "Your session expired. Log in again to view the calendar."
+  );
+
+  if ("error" in context) {
+    return { ok: false, error: context.error, sessionExpired: true };
+  }
+
+  if (!isValidMonthKey(monthKey)) {
+    return { ok: false, error: "Choose a valid month." };
+  }
+
+  const { ownerName } = toBusinessIdentity(context.business, context.user);
+  const month = await loadCalendarMonth({
+    businessId: context.business.id,
+    monthKey,
+    ownerName,
+  });
+
+  if (!month) {
+    return { ok: false, error: "Choose a valid month." };
+  }
+
+  return { ok: true, ...month };
+}

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { generateAnalyticsSnapshotsForBusiness } from "@/lib/analytics-ai";
+import { analyticsSnapshotsCacheKey } from "@/lib/analytics-snapshot-cache";
 import { isProBusinessPlan } from "@/lib/billing";
+import { invalidateCacheVersioned } from "@/lib/cache";
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { logger } from "@/lib/logger";
@@ -69,18 +71,36 @@ export async function GET(request: Request) {
         const snapshots = await generateAnalyticsSnapshotsForBusiness(business.id, {
           force: true,
         });
+        // Same writer as the manual "Refresh AI" action — must invalidate the
+        // same Reports-page cache key, or a page cached just before this cron
+        // run serves pre-cron snapshots until the TTL lapses on its own.
+        const cacheInvalidated = await invalidateCacheVersioned(
+          analyticsSnapshotsCacheKey(business.id)
+        );
+        if (!cacheInvalidated) {
+          logger.warn("Reports cache invalidation failed after cron snapshot generation", {
+            businessId: business.id,
+          });
+        }
         return {
           businessId: business.id,
           generated: snapshots.filter((snapshot) => snapshot.usedAi).length,
           failed: snapshots.filter((snapshot) => !snapshot.usedAi).length,
           errored: false,
+          cacheInvalidated,
         };
       } catch (error) {
         // Isolate per-tenant failures so one bad business can't abort the batch.
         logger.error("Analytics snapshot generation failed for business.", error, {
           businessId: business.id,
         });
-        return { businessId: business.id, generated: 0, failed: 0, errored: true };
+        return {
+          businessId: business.id,
+          generated: 0,
+          failed: 0,
+          errored: true,
+          cacheInvalidated: false,
+        };
       }
     }
   );

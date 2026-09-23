@@ -1,17 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import type { ComponentType } from "react";
 import { useEffect, useState, useTransition } from "react";
 import {
   ArrowLeft,
-  BriefcaseBusiness,
-  CalendarCheck2,
   CalendarClock,
-  ChevronRight,
   Clock3,
-  Mail,
-  Phone,
   UserRoundPen,
 } from "lucide-react";
 
@@ -25,8 +19,11 @@ import { StaffMessagesTab } from "@/components/staff/staff-messages-tab";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { WorkspaceEmptyState, WorkspacePage } from "@/components/workspace/workspace-layout";
-import { HeaderStat } from "@/components/workspace/header-stat";
+import {
+  WorkspaceCard,
+  WorkspaceEmptyState,
+  WorkspacePage,
+} from "@/components/workspace/workspace-layout";
 import { cn, getInitials } from "@/lib/utils";
 import type { AdminThreadView } from "@/lib/mobile/admin-inbox";
 import type { MobileAccessStatus } from "@/lib/mobile/admin";
@@ -38,6 +35,12 @@ type StaffDetailsPageProps = {
   adminThread: AdminThreadView;
   initialTab?: "overview" | "messages";
 };
+
+// The <TabsTrigger> count below (Overview, Schedule, Messages) is mirrored
+// as STAFF_DETAIL_TAB_COUNT in lib/skeleton-counts.ts, not exported from
+// here — this is a "use client" module, and staff/[staffId]/loading.tsx (a
+// Server Component) importing a value from one gets a client reference, not
+// the number itself (Codex). Keep both in sync if the tab list changes.
 
 const statusLabels: Record<StaffStatus, string> = {
   ACTIVE: "Active",
@@ -116,14 +119,14 @@ export function StaffDetailsPage({
         </Link>
 
         <div className="flex flex-col gap-3.5 xl:flex-row xl:items-start xl:justify-between">
-          <div className="flex min-w-0 items-start gap-3.5">
+          <div className="flex min-w-0 items-center gap-3.5">
             <Avatar shape="square" className="size-20">
               <AvatarFallback className="bg-white text-3xl font-semibold text-primary">
                 {getInitials(staff.name)}
               </AvatarFallback>
             </Avatar>
 
-            <div className="min-w-0 pt-1">
+            <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-3">
                 <h1 className="truncate text-[28px] font-semibold leading-tight tracking-tight text-foreground">
                   {staff.name}
@@ -138,59 +141,17 @@ export function StaffDetailsPage({
                 </span>
               </div>
 
-              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
-                <span className="inline-flex items-center gap-2 font-medium text-foreground">
-                  <BriefcaseBusiness className="size-4 text-muted-foreground" />
-                  {staff.role || "Staff"}
-                </span>
-                {staff.phone ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Phone className="size-4 text-muted-foreground" />
-                    {staff.phone}
-                  </span>
-                ) : null}
-                {staff.email ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Mail className="size-4 text-muted-foreground" />
-                    {staff.email}
-                  </span>
-                ) : null}
-                {!staff.phone && !staff.email ? <span>No contact details yet</span> : null}
-              </div>
-
-              {staff.isCheckedIn || staff.shiftLabel || staff.nextShift ? (
-                <p className="mt-2 flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
-                  {staff.isCheckedIn ? (
-                    <span className="inline-flex items-center gap-2 font-medium text-emerald-600">
-                      <span className="inline-block size-2 rounded-full bg-emerald-500" />
-                      Checked in now
-                    </span>
-                  ) : null}
-                  {staff.shiftLabel ? (
-                    <span>
-                      {staff.isCheckedIn ? "· " : ""}
-                      Today&apos;s shift: {staff.shiftLabel}
-                    </span>
-                  ) : staff.nextShift ? (
-                    <span>Next shift: {staff.nextShift}</span>
-                  ) : null}
+              {staff.isCheckedIn ? (
+                <p className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-emerald-600">
+                  <span className="inline-block size-2 rounded-full bg-emerald-500" />
+                  Checked in now
                 </p>
               ) : null}
             </div>
           </div>
 
-          <div className="w-full space-y-3 xl:w-[560px]">
-            <div className="surface-card stagger-children grid grid-cols-2 sm:grid-cols-4 sm:divide-x sm:divide-border/70">
-              <HeaderStat label="Appts today" value={staff.appointmentsToday.toString()} />
-              <HeaderStat
-                label="This month"
-                value={staff.completedThisMonth.toString()}
-                tone="good"
-              />
-              <HeaderStat label="Completion" value={`${staff.completionRate}%`} />
-              <HeaderStat label="Weekly hours" value={`${staff.weeklyHours}h`} />
-            </div>
-            <div className="flex flex-wrap justify-end gap-2.5">
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2.5 xl:justify-end">
               <Button
                 className="h-10 rounded-(--radius-tile) px-4"
                 variant={staff.isCheckedIn ? "outline" : "default"}
@@ -213,7 +174,7 @@ export function StaffDetailsPage({
               </Link>
             </div>
             {!staff.isCheckedIn && !staff.canClock && staff.clockDisabledReason ? (
-              <p className="text-right text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground xl:text-right">
                 {staff.clockDisabledReason}
               </p>
             ) : null}
@@ -260,254 +221,187 @@ export function StaffDetailsPage({
 
         <TabsContent
           value="overview"
-          className="grid items-start gap-3.5 xl:grid-cols-[320px_minmax(0,1fr)]"
+          className="grid items-start gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]"
         >
-          <aside>
-            <section className="surface-card flex flex-col p-3.5 xl:sticky xl:top-[76px]">
-              <div className="flex items-center gap-3">
-                <Avatar size="lg" shape="square">
-                  <AvatarFallback className="bg-white text-xs font-semibold text-primary">
-                    {getInitials(staff.name)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0">
-                  <h2 className="truncate text-base font-semibold text-foreground">
-                    {staff.name}
-                  </h2>
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">
-                    {staff.role || "Staff"}
-                  </p>
-                </div>
-              </div>
-              <dl className="mt-4 space-y-2.5">
-                <OverviewLine label="Phone" value={staff.phone} />
-                <OverviewLine label="Email" value={staff.email} />
-                <OverviewLine label="Status" value={statusLabels[staff.status]} />
-                <OverviewLine label="Weekly hours" value={`${staff.weeklyHours}h`} />
-              </dl>
-              {staff.profileNote ? (
-                <div className="mt-3 border-t border-border/70 pt-3">
-                  <p className="text-sm text-muted-foreground">Staff notes</p>
-                  <p className="mt-1 text-sm leading-5 text-foreground">{staff.profileNote}</p>
-                </div>
-              ) : null}
-              <Link
-                href={`/staff/${staff.id}/edit`}
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
-                  "mt-4 w-full rounded-(--radius-tile) bg-white"
-                )}
-              >
-                <UserRoundPen className="size-4" />
-                Edit profile
-              </Link>
-
-              <div className="mt-5 border-t border-border/70 pt-4">
-                <SidebarSectionHeader icon={CalendarClock} title="Today" />
-                {staff.shiftLabel ? (
-                  <div className="mt-3 rounded-(--radius-card) bg-primary/7 px-3.5 py-3">
-                    <p className="text-sm font-semibold text-foreground">{staff.shiftLabel}</p>
-                    <p className="mt-1.5 text-sm text-muted-foreground">
-                      {staff.appointmentsToday > 0
-                        ? `${staff.appointmentsToday} ${
-                            staff.appointmentsToday === 1 ? "appointment" : "appointments"
-                          } assigned`
-                        : "No appointments assigned"}
-                    </p>
-                  </div>
-                ) : staff.nextShift ? (
-                  <p className="mt-3 text-sm text-muted-foreground">
-                    No shift today. Next shift: {staff.nextShift}.
-                  </p>
-                ) : (
-                  <p className="mt-3 text-sm text-muted-foreground">No shift planned.</p>
-                )}
-                <Link
-                  href="/calendar"
-                  className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-primary transition-colors duration-(--duration-base) hover:text-foreground"
-                >
-                  View in calendar
-                  <ChevronRight className="size-4" />
-                </Link>
-              </div>
-            </section>
-            <MobileAccessCard staffId={staff.id} initial={mobileAccess} />
-          </aside>
-
           <div className="grid gap-3">
-            {staff.todayAppointments.length > 0 ? (
-              <section className="surface-card p-3.5">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-[15px] font-semibold leading-5 text-foreground">
-                    Today&apos;s appointments
-                  </h2>
-                  <Link
-                    href="/calendar"
-                    className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
-                  >
-                    Open calendar
-                  </Link>
-                </div>
-                <div className="mt-2 divide-y divide-border/65">
+            <WorkspaceCard
+              title="Today"
+              action={
+                staff.shiftLabel ? (
+                  <span className="text-xs font-semibold text-muted-foreground">{staff.shiftLabel}</span>
+                ) : undefined
+              }
+            >
+              {staff.todayAppointments.length > 0 ? (
+                <div className="-mx-2">
                   {staff.todayAppointments.map((appointment) => (
-                    <div key={appointment.id} className="flex items-center gap-3 py-2.5">
+                    <div
+                      key={appointment.id}
+                      className="flex items-center gap-3 rounded-(--radius-card) px-2 py-2.5 transition-colors duration-(--duration-base) hover:bg-secondary/40"
+                    >
                       <span className="w-[72px] shrink-0 text-sm font-semibold tabular-nums text-foreground">
                         {appointment.time}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-foreground">
-                          {appointment.title}
-                        </p>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {appointment.clientName}
-                        </p>
+                        <p className="truncate text-sm font-semibold text-foreground">{appointment.title}</p>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">{appointment.clientName}</p>
                       </div>
                       <AppointmentStatusBadge status={appointment.status} />
                     </div>
                   ))}
                 </div>
-              </section>
-            ) : null}
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {staff.shiftLabel
+                    ? "No appointments today."
+                    : staff.nextShift
+                      ? `No shift today. Next shift: ${staff.nextShift}.`
+                      : "No shift planned."}
+                </p>
+              )}
+            </WorkspaceCard>
 
-            <section className="surface-card p-3.5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-[15px] font-semibold leading-5 text-foreground">
-                Recent completed work
-              </h2>
-              <Link
-                href="/calendar"
-                className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
-              >
-                Open calendar
-              </Link>
-            </div>
-            {staff.recentAppointments.length > 0 ? (
-              <div className="mt-2 divide-y divide-border/65">
-                {staff.recentAppointments.map((appointment) => (
-                  <div key={appointment.id} className="flex items-start gap-3 py-2.5">
-                    <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-(--radius-tile) border border-border/80 bg-white text-primary">
-                      <CalendarCheck2 className="size-4" />
-                    </span>
-                    <div className="min-w-0 flex-1">
+            <WorkspaceCard
+              title="Recent work"
+              action={
+                <Link
+                  href="/calendar"
+                  className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
+                >
+                  Open calendar
+                </Link>
+              }
+            >
+              {staff.recentAppointments.length > 0 ? (
+                <div className="-mx-2">
+                  {staff.recentAppointments.map((appointment) => (
+                    <div
+                      key={appointment.id}
+                      className="rounded-(--radius-card) px-2 py-2.5 transition-colors duration-(--duration-base) hover:bg-secondary/40"
+                    >
                       <div className="flex items-center justify-between gap-3">
-                        <p className="truncate text-sm font-semibold text-foreground">
-                          {appointment.title}
-                        </p>
+                        <p className="truncate text-sm font-semibold text-foreground">{appointment.title}</p>
                         <span className="shrink-0 text-xs text-muted-foreground">
                           {appointment.date} · {appointment.time}
                         </span>
                       </div>
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {appointment.clientName}
-                      </p>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">{appointment.clientName}</p>
                     </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="mt-3">
-                <WorkspaceEmptyState
-                  icon={CalendarCheck2}
-                  title="No completed appointments yet"
-                  description="Completed appointments assigned to this staff member will appear here."
-                  compact
-                />
-              </div>
-            )}
-            </section>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No completed appointments yet.</p>
+              )}
+            </WorkspaceCard>
+          </div>
+
+          <div className="grid gap-3">
+            <WorkspaceCard title="Profile">
+              <dl className="space-y-2.5">
+                <OverviewLine label="Role" value={staff.role || "Staff"} />
+                <OverviewLine label="Phone" value={staff.phone} />
+                <OverviewLine label="Email" value={staff.email} />
+              </dl>
+              {staff.profileNote ? (
+                <div className="mt-3">
+                  <p className="text-sm text-muted-foreground">Notes</p>
+                  <p className="mt-1 text-sm leading-5 text-foreground">{staff.profileNote}</p>
+                </div>
+              ) : null}
+            </WorkspaceCard>
+            <MobileAccessCard staffId={staff.id} initial={mobileAccess} />
           </div>
         </TabsContent>
 
-        <TabsContent value="schedule" className="grid items-start gap-3 xl:grid-cols-2">
-          <section className="surface-card p-3.5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-[15px] font-semibold leading-5 text-foreground">
-                Planned shifts
-              </h2>
-              <Link
-                href={`/staff/${staff.id}/edit`}
-                className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
+        <TabsContent value="schedule">
+          {staff.schedule.length === 0 && staff.weekTimeEntries.length === 0 ? (
+            <WorkspaceEmptyState
+              icon={CalendarClock}
+              title="No shifts planned"
+              className="py-12"
+              actionHref={`/staff/${staff.id}/edit`}
+              actionLabel="Plan shifts"
+            />
+          ) : (
+            <div className="grid items-start gap-3 xl:grid-cols-2">
+              <WorkspaceCard
+                title="Planned shifts"
+                action={
+                  <Link
+                    href={`/staff/${staff.id}/edit`}
+                    className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
+                  >
+                    Manage
+                  </Link>
+                }
               >
-                Manage shifts
-              </Link>
-            </div>
-            {staff.schedule.length > 0 ? (
-              <div className="mt-2 divide-y divide-border/65">
-                {staff.schedule.map((shift) => (
-                  <div key={shift.id} className="flex items-center gap-3 py-2.5">
-                    <span className="flex size-8 shrink-0 items-center justify-center rounded-(--radius-tile) border border-border/80 bg-white text-primary">
-                      <CalendarClock className="size-4" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-foreground">{shift.day}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {shift.startTime} – {shift.endTime}
-                      </p>
-                    </div>
-                    {shift.status && shift.status !== "Scheduled" ? (
-                      <span className="inline-flex rounded-full bg-secondary px-2 py-1 text-[11px] font-semibold text-muted-foreground">
-                        {shift.status}
-                      </span>
-                    ) : null}
+                {staff.schedule.length > 0 ? (
+                  <div className="-mx-2">
+                    {staff.schedule.map((shift) => (
+                      <div
+                        key={shift.id}
+                        className="flex items-center justify-between gap-3 rounded-(--radius-card) px-2 py-2.5 transition-colors duration-(--duration-base) hover:bg-secondary/40"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-foreground">{shift.day}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {shift.startTime} – {shift.endTime}
+                          </p>
+                        </div>
+                        {shift.status && shift.status !== "Scheduled" ? (
+                          <span className="inline-flex rounded-full bg-secondary px-2 py-1 text-[11px] font-semibold text-muted-foreground">
+                            {shift.status}
+                          </span>
+                        ) : null}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="mt-3">
-                <WorkspaceEmptyState
-                  icon={CalendarClock}
-                  title="No planned shifts"
-                  description="Plan this week's shifts from the staff edit page."
-                  actionHref={`/staff/${staff.id}/edit`}
-                  actionLabel="Manage shifts"
-                  compact
-                />
-              </div>
-            )}
-          </section>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No shifts planned.</p>
+                )}
+              </WorkspaceCard>
 
-          <section className="surface-card p-3.5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-[15px] font-semibold leading-5 text-foreground">
-                Time tracked this week
-              </h2>
-              <span className="text-xs font-semibold text-muted-foreground">
-                {staff.weeklyHours}h total
-              </span>
-            </div>
-            {staff.weekTimeEntries.length > 0 ? (
-              <div className="mt-2 divide-y divide-border/65">
-                {staff.weekTimeEntries.map((entry) => (
-                  <div key={entry.id} className="flex items-center gap-3 py-2.5">
-                    <span className="flex size-8 shrink-0 items-center justify-center rounded-(--radius-tile) border border-border/80 bg-white text-primary">
-                      <Clock3 className="size-4" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-foreground">{entry.day}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {entry.checkedIn}
-                        {entry.checkedOut ? ` – ${entry.checkedOut}` : ""}
-                      </p>
-                    </div>
-                    {entry.checkedOut ? (
-                      <span className="shrink-0 text-xs font-semibold tabular-nums text-foreground">
-                        {entry.duration}
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600">
-                        <span className="inline-block size-1.5 rounded-full bg-emerald-500" />
-                        In progress
-                      </span>
-                    )}
+              <WorkspaceCard
+                title="Time tracked this week"
+                action={
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    {staff.weeklyHours}h total
+                  </span>
+                }
+              >
+                {staff.weekTimeEntries.length > 0 ? (
+                  <div className="-mx-2">
+                    {staff.weekTimeEntries.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="flex items-center gap-3 rounded-(--radius-card) px-2 py-2.5 transition-colors duration-(--duration-base) hover:bg-secondary/40"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-foreground">{entry.day}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {entry.checkedIn}
+                            {entry.checkedOut ? ` – ${entry.checkedOut}` : ""}
+                          </p>
+                        </div>
+                        {entry.checkedOut ? (
+                          <span className="shrink-0 text-xs font-semibold tabular-nums text-foreground">
+                            {entry.duration}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+                            <span className="inline-block size-1.5 rounded-full bg-emerald-500" />
+                            In progress
+                          </span>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-3 text-sm text-muted-foreground">
-                No time tracked this week yet. Check-ins and check-outs will appear here.
-              </p>
-            )}
-          </section>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No time tracked yet.</p>
+                )}
+              </WorkspaceCard>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="messages">
@@ -522,42 +416,6 @@ export function StaffDetailsPage({
   );
 }
 
-function AppointmentStatusBadge({ status }: { status: string }) {
-  const normalized = status.toLowerCase();
-
-  return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold capitalize",
-        (normalized === "completed" || normalized === "confirmed") &&
-          "bg-emerald-100 text-emerald-700",
-        normalized === "cancelled" && "bg-destructive/10 text-destructive",
-        normalized === "pending" && "bg-primary/10 text-primary",
-        normalized === "scheduled" && "bg-secondary text-muted-foreground"
-      )}
-    >
-      {normalized}
-    </span>
-  );
-}
-
-function SidebarSectionHeader({
-  icon: Icon,
-  title,
-}: {
-  icon: ComponentType<{ className?: string }>;
-  title: string;
-}) {
-  return (
-    <h2 className="inline-flex items-center gap-3 text-[15px] font-semibold leading-5 text-foreground">
-      <span className="flex size-8 items-center justify-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
-        <Icon className="size-4" />
-      </span>
-      {title}
-    </h2>
-  );
-}
-
 function OverviewLine({ label, value }: { label: string; value: string }) {
   if (!value) {
     return null;
@@ -568,5 +426,24 @@ function OverviewLine({ label, value }: { label: string; value: string }) {
       <dt className="shrink-0 text-muted-foreground">{label}</dt>
       <dd className="min-w-0 truncate text-right font-medium text-foreground">{value}</dd>
     </div>
+  );
+}
+
+function AppointmentStatusBadge({ status }: { status: string }) {
+  const normalized = status.toLowerCase();
+
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold capitalize",
+        normalized === "completed" && "bg-emerald-100 text-emerald-700",
+        normalized === "confirmed" && "bg-primary/10 text-primary",
+        normalized === "cancelled" && "bg-destructive/10 text-destructive",
+        normalized === "pending" && "bg-amber-100 text-amber-700",
+        normalized === "scheduled" && "bg-secondary text-muted-foreground"
+      )}
+    >
+      {normalized}
+    </span>
   );
 }

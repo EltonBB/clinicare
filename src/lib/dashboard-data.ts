@@ -24,6 +24,10 @@ export async function getDashboardAppointmentAggregates(args: {
 }): Promise<DashboardAppointmentAggregates> {
   const { businessId, recentWindowStart, monthStart, todayEnd } = args;
   const timeZone = args.timeZone ?? getAppTimeZone();
+  // The day buckets feed both the rolling 30-day total and the calendar
+  // month-to-date total. On the 31st the 30-day window starts on day 2, so reach
+  // back to the 1st or the month tile would miss that day's visits.
+  const bucketStart = monthStart < recentWindowStart ? monthStart : recentWindowStart;
 
   const [statusCounts, completedThisMonth, avgRows, buckets] = await Promise.all([
     prisma.appointment.groupBy({
@@ -58,7 +62,7 @@ export async function getDashboardAppointmentAggregates(args: {
              count(*)::int AS count
       FROM "Appointment"
       WHERE "businessId" = ${businessId}
-        AND "startAt" >= ${recentWindowStart}
+        AND "startAt" >= ${bucketStart}
         AND "startAt" <= ${todayEnd}
         AND "status" <> 'CANCELLED'
       GROUP BY key

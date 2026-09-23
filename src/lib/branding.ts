@@ -2,10 +2,15 @@ export const brandAccentPresets = [
   {
     id: "vela",
     name: "Vela",
-    value: "#0A22FF",
-    hover: "#0a1ee2",
+    // Muted 2026-09-16 (owner decision) — same cobalt hue, less saturated so it
+    // reads as calm operational chrome rather than a marketing-vivid blue.
+    // Marketing keeps the original vivid #0A22FF via globals.css's :root
+    // (app-shell.tsx only overrides --primary inside the workspace and resets
+    // it on unmount, so this change never reaches marketing/auth surfaces).
+    value: "#3142D8",
+    hover: "#2636C5",
     soft: "#f0edff",
-    shadow: "rgba(10,34,255,0.25)",
+    shadow: "rgba(49,66,216,0.25)",
   },
   {
     id: "blue",

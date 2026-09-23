@@ -7,10 +7,14 @@
 ## Theme
 
 Calm, premium, light clinical SaaS. Soft blue-gray canvas, white floating cards with hairline
-borders and barely-there shadows, one confident cobalt accent. The feeling is an organized desk
-under even daylight — never dark "because tools look cool," never decorative. Depth comes from
-elevation and spacing, not from color washes. Identity tiles are **flat white bordered squares**,
-never gradient-filled blue chips (those were deliberately removed).
+borders and barely-there shadows, one confident (but muted, 2026-09-16) indigo-blue accent. The
+feeling is an organized desk under even daylight — never dark "because tools look cool," never
+decorative. Depth comes from elevation and spacing, not from color washes. Corners run tighter
+than a typical SaaS (squared up 2026-09-16) so chrome reads as structured rather than pill-soft.
+Identity tiles are **flat white bordered squares**, never gradient-filled blue chips (those were
+deliberately removed) — borders otherwise appear only where they carry real structure (a card's
+own outline, a table/calendar grid, a form control, an alert) and are omitted everywhere a
+background tint already does the grouping.
 
 ## Color
 
@@ -21,19 +25,34 @@ OKLCH-friendly hex tokens. Single saturated brand color on a tinted-neutral canv
 
 | Token | Value | Use |
 | --- | --- | --- |
-| `--brand-start` / `--primary` | `#0A22FF` | Cobalt. Primary actions, active nav, key data series, the one insight that matters. |
-| `--brand-end` | `#64B6FF` | Light blue. Gradient terminus; second chart series; never a fill for UI chrome. |
+| `--primary` (workspace) | `#3142D8` | Muted indigo-blue (2026-09-16 owner decision). Primary actions, active nav, key data series, focus rings — everywhere inside the authenticated workspace. |
+| `--brand-start` / `--primary` (CSS `:root` default) | `#0A22FF` | The original vivid cobalt. Still the `:root` fallback and marketing's own accent — marketing/auth pages are never wrapped by the workspace shell, so they keep this value untouched. |
+| `--brand-end` | `#64B6FF` | Light blue. Marketing gradient terminus; never a fill for UI chrome. |
 | `--brand-ink` | `#14152F` | Near-black ink for display headings. |
 | `--brand-wash` | `#F2F4FF` | Faint cobalt tint for selected/active backgrounds. |
 
-The gradient `cobalt → light-blue` (`135deg`) is a **marketing / hero** device (`.vela-gradient`).
-Inside the workspace, use the solid `--primary` and flat tiles.
+**Workspace vs. marketing accent (2026-09-16):** the workspace's live accent isn't read from
+`:root` — `app-shell.tsx` injects `--primary`/`--ring`/`--sidebar-primary`/etc. from
+`brandAccentPresets[0]` (`src/lib/branding.ts`, the "Vela" preset) as inline CSS vars on the shell
+wrapper and mirrors them onto `<html>` for portaled dialogs/dropdowns, resetting on unmount. That
+preset now points at the muted `#3142D8` instead of `#0A22FF`. Changing it there — not in
+`globals.css` — is what keeps the change scoped to the workspace: marketing/auth pages, which
+render outside the shell, keep reading the original vivid `:root` value automatically.
+
+The gradient `cobalt → light-blue` (`135deg`) is a **marketing / hero** device (`.vela-gradient`)
+and stays vivid/gradient there. **Inside the workspace there is no gradient color anywhere**
+(2026-09-16 owner decision) — solid `--primary` fills, flat tiles, and a single flat translucent
+tint in place of every fade (chart area fill, skeleton shimmer, dialog scrollbar thumb, the Staff
+directory completion bar). The one exception is `ScoreGauge` (Reports AI card): it draws a
+percentage ring with the `conic-gradient()` function, but the two regions are flat, hard-edged
+color blocks (like a pie chart), not a color blend — kept as the AGENTS.md-locked visual, not
+treated as a decorative gradient.
 
 ### Neutrals & surface
 
 | Token | Value | Use |
 | --- | --- | --- |
-| `--background` | `#EEF2F7` (canvas gradient to `#E9EEF6`) | App canvas behind cards. |
+| `--background` | `#FEFFFF` (flat — no gradient) | App canvas behind cards. |
 | `--foreground` | `#111827` | Body ink. |
 | white `#FFFFFF` | — | Card / surface fill. |
 | `--secondary` / `--muted` | `#F2F4FB` / `#F2F5FB` | Quiet fills, ghost tracks, hover. |
@@ -81,12 +100,18 @@ One family in multiple weights — no clashing pairing.
 
 ## Radii & Elevation
 
+Squared up 2026-09-16 (owner decision) — same scale, noticeably tighter corners so buttons/cards/
+tiles read as structured chrome rather than pill-rounded. Shared tokens (not workspace-scoped),
+so marketing picked up the same tightening; `--radius-hero` (marketing hero cards only) is
+untouched.
+
 | Token | Value | Use |
 | --- | --- | --- |
-| `--radius-tile` | `0.65rem` | Icon tiles, chips, inputs. |
-| `--radius-card` | `0.72rem` | Cards / sections (the workspace default — cards stay 12–16px, never over-rounded). |
-| `--radius-field` | `0.95rem` | Search / large fields. |
-| `--radius-modal` | `1.35rem` | Dialogs. |
+| `--radius-tile` | `0.375rem` | Icon tiles, chips, inputs. |
+| `--radius-card` | `0.5rem` | Cards / sections (the workspace default). |
+| `--radius-field` | `0.55rem` | Buttons, search / large fields. |
+| `--radius-panel` | `0.75rem` | Overlay panels (global search, notifications). |
+| `--radius-modal` | `0.85rem` | Dialogs. |
 
 - `--shadow-card`: `0 3px 9px rgba(20,21,47,0.018)` + inset top highlight — almost imperceptible;
   elevation is carried by the hairline border, not a heavy drop shadow. **Do not pair a 1px border
@@ -104,7 +129,9 @@ One family in multiple weights — no clashing pairing.
   labels allowed _only_ here.
 - **Delta pill** — `up` emerald, `down` red, `flat` gray; arrow glyph + value. Only on
   period-over-period numbers.
-- **Tables** — bordered card, `#F8FAFC` uppercase header row, `divide-y` body, row hover.
+- **Tables** — bordered card (outer border only, 2026-09-16), `#F8FAFC` uppercase header row (no
+  rule under it — the tint alone separates it), rows separated by padding and hover state, not a
+  `divide-y` hairline (removed 2026-09-16, matching the sub-record-row convention below).
 - **Badges / chips** — sentence case, rounded-full, tinted by tone.
 - **Empty states** — one quiet dashed-border state per section; never per-field placeholder text.
 
@@ -131,10 +158,10 @@ inside white tiles, muted inline. No filled/duotone icon sets.
 ## Data Visualization
 
 - KPI mini-charts: **track-style bars** (full-height ghost track, value fills from the bottom —
-  zero buckets show the track, never a tiny stub) and **gradient sparklines** with an end dot.
-- Performance chart: **monotone-cubic** smooth curves (no overshoot below baseline), gradient area
-  fill, left y-axis aligned to gridlines, both series on **one shared scale**, hover guide line +
-  tooltip (no permanent dots).
+  zero buckets show the track, never a tiny stub), flat `--primary` fill, no gradient.
+- Performance chart: **monotone-cubic** smooth curves (no overshoot below baseline), flat
+  low-opacity `--primary` area fill (no gradient, 2026-09-16), left y-axis aligned to gridlines,
+  both series on **one shared scale**, hover guide line + tooltip (no permanent dots).
 - Status donut: **SVG arc segments** (butt caps, small gaps), interactive from segment and legend;
   legend shows **all** statuses including zeros (zeros muted). Total centered.
 - Charts are interactive (per-bucket / per-segment hover) and never invent values the model can't back.

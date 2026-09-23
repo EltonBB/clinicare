@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 
 import { ClientDetailsPage } from "@/components/clients/client-details-page";
 import { requireCurrentWorkspace } from "@/lib/business";
-import { buildClientRecord } from "@/lib/clients";
+import { buildClientRecord, getClientReadGeneration } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
 import { initialPaymentHistory } from "@/lib/client-payments";
 
@@ -16,6 +16,7 @@ export default async function ClientDetailsRoute({
   });
   const { clientId } = await params;
 
+  const readGeneration = await getClientReadGeneration();
   const client = await prisma.client.findFirst({
     where: {
       id: clientId,
@@ -171,5 +172,5 @@ export default async function ClientDetailsRoute({
     notFound();
   }
 
-  return <ClientDetailsPage initialClient={await buildClientRecord(client)} />;
+  return <ClientDetailsPage initialClient={await buildClientRecord(client, readGeneration)} />;
 }
