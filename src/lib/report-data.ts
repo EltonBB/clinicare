@@ -1,7 +1,13 @@
-import { subDays } from "date-fns";
-
 import { prisma } from "@/lib/prisma";
-import { getAppTimeZone, getZonedDayWindow } from "@/lib/time-zone";
+import {
+  addZonedDays,
+  getAppTimeZone,
+  getZonedDateParts,
+  getZonedDayWindow,
+  getZonedDayWindowFromParts,
+  getZonedMonthWindow,
+  zonedCalendarDaysBetween,
+} from "@/lib/time-zone";
 
 export async function getReportWorkspaceData(
   businessId: string,
@@ -9,7 +15,22 @@ export async function getReportWorkspaceData(
 ) {
   const now = new Date();
   const timeZone = getAppTimeZone();
-  const defaultStart = getZonedDayWindow(subDays(now, 209), timeZone).start;
+  // The monthly chart's "previous period" ghost line shifts the same 6-month
+  // window back another 6 months (buildMonthlyChart's offsetMonths), so the
+  // oldest bucket it needs is 11 months before the current month — not the
+  // ~7 months the current-period chart alone would require. A shorter
+  // default fetch would report false zeros for those older buckets even
+  // when the clinic has real appointment history there (Codex P1).
+  const currentMonth = getZonedMonthWindow(now, timeZone);
+  const lookbackMonthDate = new Date(
+    Date.UTC(currentMonth.parts.year, currentMonth.parts.month - 1 - 11, 1)
+  );
+  const defaultStart = getZonedDayWindowFromParts(
+    lookbackMonthDate.getUTCFullYear(),
+    lookbackMonthDate.getUTCMonth() + 1,
+    1,
+    timeZone
+  ).start;
   const defaultEnd = getZonedDayWindow(now, timeZone).end;
   // A custom range needs its own comparison ("previous") period fetched too
   // — buildReportsViewFromWorkspace builds that as the same-length window
@@ -20,10 +41,26 @@ export async function getReportWorkspaceData(
   // A missing ScheduleBlock is the most dangerous case: it reads as capacity
   // that was never actually bookable (Codex P2).
   const customRangeStart = range
-    ? new Date(
-        range.start.getTime() -
-          Math.max(range.end.getTime() - range.start.getTime(), 86_400_000)
-      )
+    ? (() => {
+        // Same DST-safe zoned-calendar-day shift as reports.ts's own
+        // previous-window construction — the two must agree, since this
+        // fetch boundary is what makes that later window's data available
+        // at all. Raw millisecond subtraction (the bug this mirrors) can
+        // land up to an hour later than the true boundary across a DST
+        // transition, silently dropping appointments/messages/ScheduleBlocks
+        // from the comparison period's own fetch.
+        const rangeDays = Math.max(
+          zonedCalendarDaysBetween(range.start, range.end, timeZone) + 1,
+          1
+        );
+        const startParts = addZonedDays(getZonedDateParts(range.start, timeZone), -rangeDays);
+        return getZonedDayWindowFromParts(
+          startParts.year,
+          startParts.month,
+          startParts.day,
+          timeZone
+        ).start;
+      })()
     : undefined;
   const reportStart =
     customRangeStart && customRangeStart < defaultStart ? customRangeStart : defaultStart;

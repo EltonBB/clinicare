@@ -107,13 +107,7 @@ export default async function EditStaffPage({
   const record = buildStaffRecord(staff);
 
   return (
-    <CreatePageShell
-      eyebrow="Staff workspace"
-      title={`Edit ${record.name}`}
-      description="Update the staff profile used for booking ownership, time tracking, and completed work records."
-      backHref={`/staff/${record.id}`}
-      backLabel="staff details"
-    >
+    <CreatePageShell title={`Edit ${record.name}`}>
       <NewStaffForm staff={record} businessHours={businessHours} />
     </CreatePageShell>
   );

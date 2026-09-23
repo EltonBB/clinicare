@@ -50,6 +50,36 @@ export type CalendarBusinessHours = {
   end: string;
 };
 
+/**
+ * The clinic's hours for a calendar date (`YYYY-MM-DD`). A weekday with no
+ * configured row means closed, not a guessed Mon-Fri 9-5 default — the same rule
+ * as reports.ts and the server-side isInsideBusinessHours check in
+ * calendar/actions.ts. Anything that isn't a real calendar date is closed too,
+ * rather than borrowing Monday's row or a rolled-over date's weekday.
+ */
+export function businessHoursForDate(date: string, hours: CalendarBusinessHours[]) {
+  const closed = (weekday: number) => ({ weekday, enabled: false, start: "09:00", end: "17:00" });
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.trim());
+
+  if (!match) {
+    return closed(0);
+  }
+
+  // The weekday of a calendar date is purely calendrical — derive it from the
+  // date parts via UTC so it never shifts with the browser's time zone. Monday is 0.
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const utc = new Date(Date.UTC(year, month - 1, day));
+
+  // Date.UTC rolls an impossible date (2026-02-31) forward into the next month.
+  if (utc.getUTCFullYear() !== year || utc.getUTCMonth() !== month - 1 || utc.getUTCDate() !== day) {
+    return closed(0);
+  }
+
+  const weekday = (utc.getUTCDay() + 6) % 7;
+
+  return hours.find((item) => item.weekday === weekday) ?? closed(weekday);
+}
+
 export type CalendarViewModel = {
   initialDate: string;
   timeZoneLabel: string;
@@ -79,12 +109,34 @@ function getTimeZoneLabel() {
   }
 }
 
-type AppointmentWithRelations = Appointment & {
+export type AppointmentWithRelations = Appointment & {
   client: Pick<Client, "id" | "name">;
   staffMember: Pick<StaffMember, "id" | "name"> | null;
 };
 
 type ScheduleBlockWithRelations = ScheduleBlock;
+
+// One row → the shape the calendar renders. Shared by the page's first load and
+// the on-demand month loader so both produce identical appointments.
+export function toCalendarAppointment(
+  appointment: AppointmentWithRelations,
+  ownerName: string
+): CalendarAppointment {
+  return {
+    id: appointment.id,
+    clientId: appointment.clientId,
+    clientName: appointment.client.name,
+    service: appointment.title,
+    staffMemberId: appointment.staffMemberId ?? undefined,
+    staffName: appointment.staffMember?.name ?? ownerName,
+    date: formatZonedDateKey(appointment.startAt),
+    startTime: formatZonedTime24(appointment.startAt),
+    endTime: formatZonedTime24(appointment.endAt),
+    notes: appointment.notes ?? "",
+    status: toCalendarStatus(appointment.status),
+    tone: toCalendarTone(appointment.status),
+  };
+}
 
 function toCalendarStatus(status: Appointment["status"]): CalendarAppointmentStatus {
   if (status === "CANCELLED") {
@@ -139,7 +191,7 @@ export function toPrismaAppointmentStatus(status: CalendarAppointmentStatus) {
 // consumer (capacity math, the day-grid block card) keys off one `date`, so
 // a multi-day block needs one entry per day it touches, each clamped to that
 // day's portion, or every day after the first silently loses the block.
-function expandScheduleBlockDays(
+export function expandScheduleBlockDays(
   block: Pick<ScheduleBlock, "id" | "title" | "startsAt" | "endsAt" | "reason">,
   range?: { start: Date; end: Date }
 ): CalendarScheduleBlock[] {
@@ -200,6 +252,20 @@ function expandScheduleBlockDays(
   });
 }
 
+// Ceiling on the daily block entries one calendar payload carries. Each block
+// expands to one entry per day it touches, so many overlapping blocks could
+// otherwise multiply into a payload far beyond anything a clinic really has.
+export const MAX_EXPANDED_BLOCK_ENTRIES = 1500;
+
+export function expandScheduleBlocks(
+  blocks: Array<Pick<ScheduleBlock, "id" | "title" | "startsAt" | "endsAt" | "reason">>,
+  range?: { start: Date; end: Date }
+): CalendarScheduleBlock[] {
+  return blocks
+    .flatMap((block) => expandScheduleBlockDays(block, range))
+    .slice(0, MAX_EXPANDED_BLOCK_ENTRIES);
+}
+
 export function buildCalendarViewFromRecords(args: {
   appointments: AppointmentWithRelations[];
   scheduleBlocks?: ScheduleBlockWithRelations[];
@@ -241,21 +307,8 @@ export function buildCalendarViewFromRecords(args: {
   return {
     initialDate: initialDateValue,
     timeZoneLabel: getTimeZoneLabel(),
-    appointments: appointments.map((appointment) => ({
-      id: appointment.id,
-      clientId: appointment.clientId,
-      clientName: appointment.client.name,
-      service: appointment.title,
-      staffMemberId: appointment.staffMemberId ?? undefined,
-      staffName: appointment.staffMember?.name ?? ownerName,
-      date: formatZonedDateKey(appointment.startAt),
-      startTime: formatZonedTime24(appointment.startAt),
-      endTime: formatZonedTime24(appointment.endAt),
-      notes: appointment.notes ?? "",
-      status: toCalendarStatus(appointment.status),
-      tone: toCalendarTone(appointment.status),
-    })),
-    scheduleBlocks: scheduleBlocks.flatMap((block) => expandScheduleBlockDays(block, expandRange)),
+    appointments: appointments.map((appointment) => toCalendarAppointment(appointment, ownerName)),
+    scheduleBlocks: expandScheduleBlocks(scheduleBlocks, expandRange),
     clients: clientOptions,
     hasClients: hasClients ?? clientOptions.length > 0,
     staffMembers: staffMembers.map((member) => ({
@@ -273,4 +326,10 @@ export function buildCalendarViewFromRecords(args: {
 
 export function appointmentDurationMinutes(appointment: Pick<Appointment, "startAt" | "endAt">) {
   return Math.max(differenceInMinutes(appointment.endAt, appointment.startAt), 0);
+}
+
+/** Parses a "HH:mm" display time (as rendered on calendar pills/forms) into minutes since midnight, for sorting/comparison. */
+export function timeToMinutes(time: string) {
+  const [hours, minutes] = time.split(":").map(Number);
+  return (hours || 0) * 60 + (minutes || 0);
 }

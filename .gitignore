@@ -47,6 +47,11 @@ next-env.d.ts
 # local Claude Code settings (machine-specific)
 .claude/settings.local.json
 
+# Claude Code skill installs (fetched on demand from their source, e.g. GitHub — not project source)
+/.claude/skills/
+/.agents/
+/skills-lock.json
+
 # Playwright MCP browser artifacts (snapshots, console logs, screenshots — may capture page data; keep out of git)
 /.playwright-mcp/
 /qa-*.jpeg
@@ -61,3 +66,6 @@ next-env.d.ts
 
 # Ad-hoc on-device QA screenshots (may capture seeded demo data — keep local)
 /vela-staff-*.png
+
+# Superpowers brainstorming companion mockups (design scratch, not shipped code)
+/.superpowers/

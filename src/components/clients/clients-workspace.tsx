@@ -15,8 +15,10 @@ import {
   WorkspacePage,
   WorkspaceTable,
   WorkspaceToolbar,
+  searchFieldClass,
 } from "@/components/workspace/workspace-layout";
 import { cn, getInitials } from "@/lib/utils";
+import { CLIENT_DIRECTORY_FILTERS as filters } from "@/lib/skeleton-counts";
 import type {
   ClientDirectoryFilter,
   ClientStatus,
@@ -28,15 +30,6 @@ type ClientsWorkspaceProps = {
   initialQuery: string;
   activeFilter: ClientDirectoryFilter;
 };
-
-const filters: Array<{ label: string; value: ClientDirectoryFilter }> = [
-  { label: "All", value: "all" },
-  { label: "Active", value: "active" },
-  { label: "Inactive", value: "inactive" },
-  { label: "Archived", value: "archived" },
-  { label: "Attention", value: "attention" },
-  { label: "No visits", value: "no-visits" },
-];
 
 const statusColors: Record<ClientStatus, string> = {
   active: "text-primary",
@@ -133,7 +126,6 @@ export function ClientsWorkspace({
     <WorkspacePage>
       <WorkspaceHeader
         title="Clients"
-        description="Manage client records, visit history, documents, messages, and follow-up."
         actions={
           <Link
             href="/clients/new"
@@ -153,7 +145,7 @@ export function ClientsWorkspace({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search clients by name, email, or phone..."
-              className="h-10 rounded-(--radius-card) bg-white pl-9"
+              className={searchFieldClass}
             />
           </div>
           <div className="flex flex-wrap gap-2">
@@ -248,9 +240,6 @@ export function ClientsWorkspace({
                     </Avatar>
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-foreground">{client.name}</p>
-                      <p className="truncate text-sm text-muted-foreground">
-                        {client.phone || client.email || "No contact added"}
-                      </p>
                     </div>
                   </Link>
                   <p className="text-sm text-muted-foreground lg:block">
@@ -259,14 +248,7 @@ export function ClientsWorkspace({
                   </p>
                   <div className="min-w-0 text-sm">
                     {client.lastService ? (
-                      <>
-                        <p className="truncate font-medium text-foreground">{client.lastService}</p>
-                        {client.lastProvider ? (
-                          <p className="mt-1 truncate text-xs text-muted-foreground">
-                            {client.lastProvider}
-                          </p>
-                        ) : null}
-                      </>
+                      <p className="truncate font-medium text-foreground">{client.lastService}</p>
                     ) : (
                       <p className="text-muted-foreground">No appointments yet</p>
                     )}
@@ -285,11 +267,6 @@ export function ClientsWorkspace({
                       <span className={statusDot(client.status)} />
                       <span className="capitalize">{client.status}</span>
                     </div>
-                    {client.needsAttention ? (
-                      <p className="mt-0.5 truncate text-[11px] font-medium text-amber-600">
-                        {client.attentionReason}
-                      </p>
-                    ) : null}
                   </div>
                   <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                     <Link

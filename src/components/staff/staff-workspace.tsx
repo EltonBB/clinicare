@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { KpiValue } from "@/components/workspace/kpi-value";
 import {
   FilterChip,
   WorkspaceEmptyState,
@@ -16,23 +17,16 @@ import {
   WorkspacePage,
   WorkspaceTable,
   WorkspaceToolbar,
+  searchFieldClass,
 } from "@/components/workspace/workspace-layout";
 import { cn, getInitials } from "@/lib/utils";
+import { STAFF_DIRECTORY_FILTERS as filters } from "@/lib/skeleton-counts";
+import type { StaffDirectoryFilter as StaffFilter } from "@/lib/skeleton-counts";
 import type { StaffStatus, StaffViewModel } from "@/lib/staff";
 
 type StaffWorkspaceProps = {
   initialView: StaffViewModel;
 };
-
-type StaffFilter = "all" | StaffStatus | "checked-in";
-
-const filters: Array<{ label: string; value: StaffFilter }> = [
-  { label: "All", value: "all" },
-  { label: "Active", value: "ACTIVE" },
-  { label: "Away", value: "AWAY" },
-  { label: "Inactive", value: "INACTIVE" },
-  { label: "Checked in", value: "checked-in" },
-];
 
 const statusLabels: Record<StaffStatus, string> = {
   ACTIVE: "Active",
@@ -143,7 +137,6 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
     <WorkspacePage>
       <WorkspaceHeader
         title="Staff"
-        description="Manage your team, shifts, time tracking, and performance."
         actions={
           <Link
             href="/staff/new"
@@ -163,7 +156,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search staff by name, role, email, or phone..."
-              className="h-10 rounded-(--radius-card) bg-white pl-9"
+              className={searchFieldClass}
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -271,9 +264,6 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                         />
                       ) : null}
                     </p>
-                    <p className="truncate text-sm text-muted-foreground">
-                      {member.email || member.phone || "No contact added"}
-                    </p>
                   </div>
                 </Link>
                 <div className="min-w-0">
@@ -300,22 +290,19 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                   ) : (
                     <p className="text-muted-foreground">No shift planned</p>
                   )}
-                  {member.appointmentsToday > 0 ? (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {member.appointmentsToday}{" "}
-                      {member.appointmentsToday === 1 ? "appointment" : "appointments"} today
-                    </p>
-                  ) : null}
                 </div>
                 <div className="min-w-0">
                   {member.completionRate > 0 ? (
                     <>
                       <p className="text-sm font-semibold text-foreground">
-                        {member.completionRate}%
+                        <KpiValue value={`${member.completionRate}%`} animateOnMount />
                       </p>
-                      <div className="mt-1 h-1.5 w-24 rounded-full bg-secondary">
+                      {/* Mount-once CSS entrance (.bar-grow), not framer-motion — unlike
+                          Reports' staff-load bar, this directory has no period selector,
+                          so there's no "retarget an already-mounted bar" case to support. */}
+                      <div className="mt-1 h-1.5 w-24 overflow-hidden rounded-full bg-secondary">
                         <div
-                          className="vela-gradient h-full rounded-full"
+                          className="bar-grow h-full bg-primary"
                           style={{ width: `${Math.min(member.completionRate, 100)}%` }}
                         />
                       </div>

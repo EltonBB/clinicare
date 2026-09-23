@@ -3,6 +3,11 @@ import { isProBusinessPlan } from "@/lib/billing";
 import { ProFeatureLock } from "@/components/billing/pro-feature-lock";
 import { ReportsOverview } from "@/components/reports/reports-overview";
 import { buildReportsViewFromWorkspace } from "@/lib/reports";
+import {
+  analyticsSnapshotsCacheKey,
+  rehydrateAnalyticsSnapshotDates,
+} from "@/lib/analytics-snapshot-cache";
+import { getCachedVersioned } from "@/lib/cache";
 import { prisma } from "@/lib/prisma";
 import { getReportWorkspaceData } from "@/lib/report-data";
 import { getZonedDayWindowFromParts } from "@/lib/time-zone";
@@ -78,15 +83,42 @@ export default async function ReportsPage({
   // workspaceData has no such fallback, so its rejection still propagates.
   const [workspaceDataResult, aiSnapshotsResult] = await Promise.allSettled([
     getReportWorkspaceData(business.id, selectedRange),
-    prisma.analyticsSnapshot.findMany({
-      where: {
-        businessId: business.id,
-      },
-      orderBy: {
-        generatedAt: "desc",
-      },
-      take: 18,
-    }),
+    getCachedVersioned(
+      analyticsSnapshotsCacheKey(business.id),
+      60, // seconds; bounds staleness between explicit invalidations
+      () =>
+        prisma.analyticsSnapshot.findMany({
+          where: {
+            businessId: business.id,
+          },
+          // Narrowed to exactly what ReportAiSnapshotInput needs: id/businessId/
+          // createdAt/updatedAt would otherwise ride along uncached-for-a-reason
+          // (createdAt/updatedAt are also DateTime — leaving them out of the
+          // select means there's nothing left for rehydrateAnalyticsSnapshotDates
+          // to miss, instead of having to track every Date field by hand).
+          select: {
+            periodType: true,
+            periodStart: true,
+            periodEnd: true,
+            kpiPayload: true,
+            aiPayload: true,
+            provider: true,
+            model: true,
+            status: true,
+            error: true,
+            generatedAt: true,
+          },
+          orderBy: {
+            generatedAt: "desc",
+          },
+          take: 18,
+        })
+      // Chained inside the allSettled array, not after: a throw here (e.g. a
+      // malformed cached value) must land as a rejected settle result, same
+      // as any other snapshot-fetch hiccup — not escape past the allSettled
+      // boundary and crash the whole page (moving it to the extraction step
+      // below did exactly that; reverted, /code-review max).
+    ).then(rehydrateAnalyticsSnapshotDates),
   ]);
 
   if (workspaceDataResult.status === "rejected") {

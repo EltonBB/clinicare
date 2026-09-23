@@ -5,8 +5,10 @@ import {
   buildReportsViewFromWorkspace,
   chartSignature,
   metricSignature,
+  type ReportPeriodDiagnostics,
   type ReportPeriodKey,
 } from "@/lib/reports";
+import { allPeriodsRateLimited } from "@/lib/analytics-snapshot-cache";
 import { getReportWorkspaceData } from "@/lib/report-data";
 import { prisma } from "@/lib/prisma";
 
@@ -181,6 +183,21 @@ function extractOpenAIText(payload: unknown) {
   return null;
 }
 
+// staffLoad lost its top-6 cap in lib/reports.ts (removed so the now
+// independently-sortable Staff performance table can show every provider,
+// not just the top 6 by booked minutes) — but that same uncapped array also
+// feeds this file's OpenAI prompt payload below, twice per period, so a
+// clinic with a large roster would otherwise scale prompt size (and cost)
+// linearly with headcount. Re-cap it here, at the prompt boundary, rather
+// than in reports.ts, so the UI table stays fully sortable while the prompt
+// stays bounded.
+function promptDiagnostics(diagnostics: ReportPeriodDiagnostics): ReportPeriodDiagnostics {
+  return {
+    ...diagnostics,
+    staffLoad: diagnostics.staffLoad.slice(0, 6),
+  };
+}
+
 function buildAiPromptPayload(args: {
   businessName: string;
   businessType: string;
@@ -202,7 +219,7 @@ function buildAiPromptPayload(args: {
       comparisonLabel: period.comparisonLabel,
     },
     currentRuleSnapshot: period.snapshot,
-    diagnostics: period.diagnostics,
+    diagnostics: promptDiagnostics(period.diagnostics),
     keyMetrics: buildKeyMetrics(period),
     trend: period.chart.points,
     allTimeframes,
@@ -226,7 +243,7 @@ function buildAllTimeframesPayload(report: ReturnType<typeof buildReportsViewFro
         rangeLabel: period.rangeLabel,
         comparisonLabel: period.comparisonLabel,
         currentRuleSnapshot: period.snapshot,
-        diagnostics: period.diagnostics,
+        diagnostics: promptDiagnostics(period.diagnostics),
         keyMetrics: buildKeyMetrics(period),
         trend: period.chart.points,
       };
@@ -344,10 +361,6 @@ async function requestOpenAIInsight(
     error: lastError,
     model: lastModel,
   };
-}
-
-function allPeriodsRateLimited(results: GenerateAnalyticsSnapshotResult[]) {
-  return results.length === 3 && results.every((result) => result.rateLimited);
 }
 
 async function upsertSnapshot(args: {

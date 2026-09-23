@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   useDeferredValue,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -45,6 +46,7 @@ import {
   WorkspaceEmptyState,
   WorkspaceHeader,
   WorkspacePage,
+  searchFieldClass,
 } from "@/components/workspace/workspace-layout";
 import { cn, getInitials } from "@/lib/utils";
 import { fadeIn } from "@/lib/motion";
@@ -278,6 +280,60 @@ export function InboxWorkspace({
     };
   }, []);
 
+  // Jumps the thread to the newest message on every conversation switch, and
+  // whenever the active thread grows — but only if the operator was already
+  // near the bottom, so a reply landing via the 10s poll doesn't yank them
+  // away mid-scroll while they're rereading earlier messages. The container's
+  // DOM node itself is recreated on switch (see the m.div's
+  // key={activeConversation.id} below), so this runs against the fresh node.
+  const messageListRef = useRef<HTMLDivElement>(null);
+  const wasNearBottomRef = useRef(true);
+  const previousConversationIdRef = useRef<string | undefined>(undefined);
+  // Set right before sendMessage's own state update lands, so the operator
+  // always sees their own message appear even if they'd scrolled up to
+  // reread history — unlike an incoming poll reply, a local send should
+  // never be silently left off-screen.
+  const justSentRef = useRef(false);
+  // Bumped alongside justSentRef so the autoscroll effect below always
+  // re-runs after a send completes — if the 10s poll already delivered the
+  // identical message first, id/newestMessageId/messageCount wouldn't
+  // change a second time on their own, and the effect would never see
+  // justSentRef flip to true (Codex).
+  const [sendRevision, setSendRevision] = useState(0);
+
+  function handleMessageListScroll() {
+    const container = messageListRef.current;
+    if (!container) return;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    wasNearBottomRef.current = distanceFromBottom < 120;
+  }
+
+  // The server caps a conversation at RECENT_MESSAGE_LIMIT messages, so once
+  // a thread is already at that cap, a new incoming message evicts the
+  // oldest one instead of growing the array — messages.length alone would
+  // miss that change and skip the scroll. The newest message's own id
+  // catches it either way.
+  const newestMessageId = activeConversation?.messages.at(-1)?.id;
+  // Hydration (below) replaces a 1-message preview with the full thread —
+  // the newest id is unchanged (the preview already showed it), so without
+  // this the effect wouldn't re-run and scrollTop would stay pinned to the
+  // preview's tiny scrollHeight, stranding the view above the real content.
+  const messageCount = activeConversation?.messages.length ?? 0;
+
+  // Layout, not passive — runs before paint so a freshly-mounted long thread
+  // never flashes its top for a frame before snapping to the bottom.
+  useLayoutEffect(() => {
+    const container = messageListRef.current;
+    if (!container) return;
+    const isNewConversation = previousConversationIdRef.current !== activeConversation?.id;
+    previousConversationIdRef.current = activeConversation?.id;
+    if (isNewConversation || wasNearBottomRef.current || justSentRef.current) {
+      container.scrollTop = container.scrollHeight;
+      wasNearBottomRef.current = true;
+      justSentRef.current = false;
+    }
+  }, [activeConversation?.id, newestMessageId, messageCount, sendRevision]);
+
   // Fresh retry budget each time a different conversation is selected —
   // independent of the retry-token effect below, which bumps within the
   // same selection.
@@ -442,6 +498,8 @@ export function InboxWorkspace({
         return;
       }
 
+      justSentRef.current = true;
+      setSendRevision((current) => current + 1);
       setConversations((current) => [
         result.conversation!,
         ...current.filter((conversation) => conversation.id !== result.conversation!.id),
@@ -508,9 +566,6 @@ export function InboxWorkspace({
       <Dialog open={convertDialogOpen} onOpenChange={setConvertDialogOpen}>
         <DialogContent className="max-w-[460px]">
           <DialogHeader>
-            <div className="mb-2 flex size-10 items-center justify-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
-              <ArrowRightLeft className="size-4" />
-            </div>
             <DialogTitle className="text-[1.1rem] font-semibold">Convert to client</DialogTitle>
             <DialogDescription className="text-sm leading-6">
               Create or link a client profile for this conversation without losing the history.
@@ -571,10 +626,7 @@ export function InboxWorkspace({
       />
 
       <WorkspacePage size="wide">
-        <WorkspaceHeader
-          title="Inbox"
-          description="Client conversations, replies, and unknown contacts."
-        />
+        <WorkspaceHeader title="Inbox" />
 
         <div className="surface-card min-h-[640px] overflow-hidden p-0 lg:h-[calc(100vh-174px)]">
           <div className="grid h-full grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
@@ -586,7 +638,7 @@ export function InboxWorkspace({
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder="Search conversations..."
-                    className="h-10 rounded-(--radius-card) bg-white pl-9"
+                    className={searchFieldClass}
                   />
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -746,7 +798,11 @@ export function InboxWorkspace({
                     </div>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto bg-muted/22 px-4 py-4">
+                  <div
+                    ref={messageListRef}
+                    onScroll={handleMessageListScroll}
+                    className="flex-1 overflow-y-auto bg-muted/22 px-4 py-4"
+                  >
                     <div className="mx-auto max-w-3xl space-y-2.5">
                       {activeConversation.messages.map((message, index) => {
                         const previousMessage = activeConversation.messages[index - 1];
@@ -811,7 +867,11 @@ export function InboxWorkspace({
                     </div>
                   </div>
 
-                  <div className="border-t border-border/70 px-4 py-3">
+                  {/* Background contrast, not a border-t — the composer's
+                      own bordered pill below already gives it visual weight,
+                      and a rule above it isn't card/table structure (AGENTS.md
+                      rule 6), same as the directory table's bg-only header row. */}
+                  <div className="bg-[#f8fafc] px-4 py-3">
                     <div className="mx-auto flex max-w-3xl items-end gap-3 rounded-(--radius-field) border border-border/75 bg-white px-3 py-2">
                       <Input
                         value={draftMessage}

@@ -83,12 +83,15 @@
   --chart-3: #8fa3ff;
   --chart-4: #d9e7ff;
   --chart-5: #eef3ff;
-  --radius: 0.72rem;
-  --radius-tile: 0.65rem;
-  --radius-card: 0.72rem;
-  --radius-field: 0.95rem;
-  --radius-panel: 1.15rem;
-  --radius-modal: 1.35rem;
+  /* Squared up 2026-09-16 (owner decision) — same scale, tighter corners so
+     buttons/cards/tiles read as structured chrome instead of pill-rounded.
+     --radius-hero stays untouched (marketing hero cards only). */
+  --radius: 0.4rem;
+  --radius-tile: 0.375rem;
+  --radius-card: 0.5rem;
+  --radius-field: 0.4rem;
+  --radius-panel: 0.75rem;
+  --radius-modal: 0.85rem;
   --radius-hero: 1.5rem;
   --duration-fast: 140ms;
   --duration-base: 190ms;
@@ -260,6 +263,11 @@
     animation: vela-bar-rise calc(var(--duration-entrance) + 120ms) var(--ease-out-expo) both;
   }
 
+  .bar-grow {
+    transform-origin: left;
+    animation: vela-bar-grow calc(var(--duration-entrance) + 120ms) var(--ease-out-expo) both;
+  }
+
   .badge-pulse {
     animation: vela-badge-pulse 360ms var(--ease-out-quint);
   }
@@ -352,20 +360,12 @@
   .dialog-scroll-body::-webkit-scrollbar-thumb {
     border: 3px solid transparent;
     border-radius: 999px;
-    background: linear-gradient(
-      180deg,
-      color-mix(in oklab, var(--primary) 56%, transparent),
-      color-mix(in oklab, var(--primary) 24%, transparent)
-    );
+    background: color-mix(in oklab, var(--primary) 38%, transparent);
     background-clip: padding-box;
   }
 
   .dialog-scroll-body::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(
-      180deg,
-      color-mix(in oklab, var(--primary) 66%, transparent),
-      color-mix(in oklab, var(--primary) 32%, transparent)
-    );
+    background: color-mix(in oklab, var(--primary) 48%, transparent);
     background-clip: padding-box;
   }
 
@@ -499,6 +499,7 @@
     .landing-card-pop,
     .landing-streak,
     .bar-rise,
+    .bar-grow,
     .badge-pulse,
     .event-enter,
     .now-ping {
@@ -562,6 +563,15 @@
   }
   to {
     transform: scaleY(1);
+  }
+}
+
+@keyframes vela-bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
   }
 }
 
@@ -719,6 +729,7 @@
   .landing-card-pop,
   .landing-streak,
   .bar-rise,
+  .bar-grow,
   .badge-pulse,
   .event-enter,
   .now-ping {

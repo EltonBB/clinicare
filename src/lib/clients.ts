@@ -197,9 +197,7 @@ export type ClientDirectoryItem = Pick<
   "id" | "name" | "email" | "phone" | "lastVisit" | "totalVisits" | "status"
 > & {
   lastService: string;
-  lastProvider: string;
   needsAttention: boolean;
-  attentionReason: string;
 };
 
 export type ClientDirectoryFilter =
@@ -281,11 +279,7 @@ type ClientDirectoryRow = Pick<
   | "lastVisitAt"
   | "createdAt"
 > & {
-  appointments: Array<
-    Pick<Appointment, "title" | "startAt"> & {
-      staffMember: { name: string } | null;
-    }
-  >;
+  appointments: Array<Pick<Appointment, "title" | "startAt">>;
   _count?: {
     appointments: number;
   };
@@ -675,25 +669,18 @@ export function attentionCutoffDate(now = new Date()) {
   return new Date(now.getTime() - ATTENTION_STALE_DAYS * 24 * 60 * 60 * 1000);
 }
 
-function deriveDirectoryAttention(client: ClientDirectoryRow, status: ClientStatus) {
+function deriveDirectoryAttention(client: ClientDirectoryRow, status: ClientStatus): boolean {
   if (status === "archived") {
-    return { needsAttention: false, attentionReason: "" };
+    return false;
   }
 
   if (status === "at-risk") {
-    return { needsAttention: true, attentionReason: "Marked at risk" };
+    return true;
   }
 
   // Mirror the DB "attention" filter exactly (page.tsx buildFilterWhere), which
   // keys on lastVisitAt — so the chip count and the row badge can never disagree.
-  if (client.lastVisitAt && client.lastVisitAt < attentionCutoffDate()) {
-    return {
-      needsAttention: true,
-      attentionReason: `No visit in ${ATTENTION_STALE_DAYS}+ days`,
-    };
-  }
-
-  return { needsAttention: false, attentionReason: "" };
+  return Boolean(client.lastVisitAt && client.lastVisitAt < attentionCutoffDate());
 }
 
 export function buildClientDirectoryViewFromRecords(
@@ -708,7 +695,6 @@ export function buildClientDirectoryViewFromRecords(
   const clients = records.map((client) => {
     const latestAppointment = client.appointments[0];
     const status = formatStatus(client.status, client.isArchived);
-    const attention = deriveDirectoryAttention(client, status);
 
     return {
       id: client.id,
@@ -719,9 +705,7 @@ export function buildClientDirectoryViewFromRecords(
       totalVisits: client._count?.appointments ?? 0,
       status,
       lastService: latestAppointment?.title ?? "",
-      lastProvider: latestAppointment?.staffMember?.name ?? "",
-      needsAttention: attention.needsAttention,
-      attentionReason: attention.attentionReason,
+      needsAttention: deriveDirectoryAttention(client, status),
     };
   });
 

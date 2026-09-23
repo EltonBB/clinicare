@@ -86,8 +86,24 @@ export async function getCached<T>(
   ttlSeconds: number,
   producer: () => Promise<T>
 ): Promise<T> {
+  return getCachedWith(getRedis(), key, ttlSeconds, producer);
+}
+
+// Core of getCached, parameterized by an already-resolved client instead of
+// resolving its own — so a caller composing multiple cache operations into
+// one logical unit (getCachedVersioned below) can resolve Redis-vs-memory
+// ONCE and have every operation in that unit agree on it. Calling getRedis()
+// independently per operation risks two operations disagreeing (the breaker
+// can flip open/closed between them), which is exactly how a versioned read
+// could pair a Redis-resolved version number with a memory-resolved data
+// entry (or vice-versa) and defeat the invalidation guarantee. (CodeRabbit)
+async function getCachedWith<T>(
+  redis: ReturnType<typeof getRedis>,
+  key: string,
+  ttlSeconds: number,
+  producer: () => Promise<T>
+): Promise<T> {
   const namespaced = NAMESPACE + key;
-  const redis = getRedis();
 
   if (redis) {
     try {
@@ -150,4 +166,139 @@ export async function invalidateCache(key: string): Promise<void> {
   }
 
   memory.delete(namespaced);
+}
+
+// Version counters live 7 days — they only need to outlive every versioned
+// entry's own (much shorter) TTL by a wide margin, so a version number is
+// never reused while data cached under it could still be live.
+const VERSION_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+function versionCounterKey(key: string): string {
+  return `${key}:version`;
+}
+
+function versionedDataKey(key: string, version: number): string {
+  return `${key}:v${version}`;
+}
+
+async function readVersion(
+  redis: ReturnType<typeof getRedis>,
+  key: string
+): Promise<number | null> {
+  const namespaced = NAMESPACE + versionCounterKey(key);
+
+  if (redis) {
+    try {
+      const value = await redis.get<number>(namespaced);
+      return value ?? 0;
+    } catch {
+      noteRedisFailure();
+      return null;
+    }
+  }
+
+  return memoryGet<number>(namespaced) ?? 0;
+}
+
+/**
+ * Like getCached, but immune to the classic cache-aside invalidation race:
+ * a producer() that started before invalidateCacheVersioned() ran and only
+ * finishes after it would otherwise repopulate the live key with the stale
+ * value it read (invalidateCache's plain DEL does nothing to stop that — the
+ * late SET lands right after the DEL and looks like a fresh cache entry).
+ *
+ * Versioned reads fold a separately-tracked version number into the actual
+ * cache key; invalidation bumps that number instead of deleting data, so a
+ * producer call that's still in flight when the version moves on ends up
+ * writing under the OLD version's key — which nothing reads anymore once the
+ * version has advanced, and which simply expires on its own short TTL. Use
+ * this (with invalidateCacheVersioned) instead of getCached/invalidateCache
+ * whenever a caller needs "invalidate is visible on the very next read," not
+ * just "eventually," which plain TTL expiry already gives for free.
+ *
+ * If the version itself can't be read (a cache fault), this bypasses caching
+ * entirely for that call rather than guess — reading under the wrong version
+ * number is exactly the inconsistency this function exists to prevent.
+ *
+ * Known residual gap, accepted: this guards the NORMAL (Redis-healthy)
+ * operating mode. It does not track invalidations across a Redis outage —
+ * a version bumped only in the in-memory fallback while Redis is down is
+ * invisible to Redis's own counter, so a request served just after Redis
+ * recovers could still read a pre-outage Redis entry until it hits its own
+ * TTL. Closing that fully would mean treating every invalidation as durable
+ * across backend switches (storing versions in both backends and merging),
+ * real complexity for a compound, self-healing edge case no worse than
+ * plain invalidateCache's own behavior during the same outage.
+ */
+export async function getCachedVersioned<T>(
+  key: string,
+  ttlSeconds: number,
+  producer: () => Promise<T>
+): Promise<T> {
+  // Resolved once and reused for both the version read and the data
+  // read/write below — see getCachedWith's docstring for why resolving
+  // independently per operation is unsafe here.
+  const redis = getRedis();
+  const version = await readVersion(redis, key);
+  if (version === null) {
+    return producer();
+  }
+  return getCachedWith(redis, versionedDataKey(key, version), ttlSeconds, producer);
+}
+
+/**
+ * Invalidate a versioned key (see getCachedVersioned) by advancing its
+ * version. Returns whether the version is confirmed to have advanced —
+ * `false` means the caller's write is NOT guaranteed visible on the very
+ * next read (the whole point of the versioned/invalidated path over plain
+ * TTL expiry), so callers should surface that rather than silently swallow
+ * it, even though this itself never throws (a cache fault still isn't a
+ * hard failure for the caller's own request/job).
+ *
+ * INCR is retried once beyond the Upstash client's own per-call retry
+ * (lib/redis.ts) before giving up — it's the operation that actually moves
+ * readers onto a fresh version, so it's worth one more attempt. EXPIRE is
+ * NOT retried on its own failure: by the time it runs, INCR has already
+ * succeeded and the invalidation is already correct — a missing/stale TTL
+ * on the counter is a minor storage-hygiene concern, not a correctness one,
+ * so it's reported (for observability) without failing the whole call or
+ * re-running INCR (which would just skip an extra version for no benefit).
+ */
+export async function invalidateCacheVersioned(key: string): Promise<boolean> {
+  const namespaced = NAMESPACE + versionCounterKey(key);
+  const redis = getRedis();
+
+  if (redis) {
+    const incremented = await tryTwice(() => redis.incr(namespaced));
+    if (!incremented) {
+      noteRedisFailure();
+      return false;
+    }
+    // INCR is denyoom-flagged like SET, so a completed one is a valid
+    // store-succeeded signal for the breaker — same reasoning as SET.
+    noteRedisStoreSucceeded();
+
+    try {
+      await redis.expire(namespaced, VERSION_TTL_SECONDS);
+    } catch {
+      noteRedisFailure();
+    }
+    return true;
+  }
+
+  const current = memoryGet<number>(namespaced) ?? 0;
+  memorySet(namespaced, current + 1, VERSION_TTL_SECONDS);
+  return true;
+}
+
+async function tryTwice<T>(operation: () => Promise<T>): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await operation();
+      return true;
+    } catch {
+      // Fall through to the retry, or exhaust below.
+    }
+  }
+  return false;
 }

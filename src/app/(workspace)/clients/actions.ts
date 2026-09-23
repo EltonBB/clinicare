@@ -96,6 +96,15 @@ export type AddClientCareNotePayload = {
   staffMemberId?: string;
 };
 
+export type UpdateClientMedicalBackgroundPayload = {
+  clientId: string;
+  medicalHistory: string;
+  allergies: string;
+  importantHealthNotes: string;
+  previousTreatments: string;
+  treatmentPlan: string;
+};
+
 export type AddClientTreatmentPlanItemPayload = {
   clientId: string;
   title: string;
@@ -227,6 +236,15 @@ const addClientCareNoteSchema = z.object({
   title: optionalText(200),
   body: text(5000),
   staffMemberId: optionalText(400),
+});
+
+const updateClientMedicalBackgroundSchema = z.object({
+  clientId: idField,
+  medicalHistory: text(5000),
+  allergies: text(5000),
+  importantHealthNotes: text(5000),
+  previousTreatments: text(5000),
+  treatmentPlan: text(5000),
 });
 
 const addClientTreatmentPlanItemSchema = z.object({
@@ -643,6 +661,10 @@ async function syncClientInboxThread(businessId: string, clientId: string) {
   });
 }
 
+function optionalMedicalText(value: string | undefined) {
+  return value === undefined ? undefined : value.trim() || null;
+}
+
 export async function saveClientAction(
   payload: SaveClientPayload
 ): Promise<SaveClientResult> {
@@ -685,11 +707,14 @@ export async function saveClientAction(
     patientType: payload.patientType?.trim() || "New Patient",
     clinicType: payload.clinicType?.trim() || null,
     notes: payload.notes.trim() || null,
-    medicalHistory: payload.medicalHistory?.trim() || null,
-    allergies: payload.allergies?.trim() || null,
-    importantHealthNotes: payload.importantHealthNotes?.trim() || null,
-    previousTreatments: payload.previousTreatments?.trim() || null,
-    treatmentPlan: payload.treatmentPlan?.trim() || null,
+    // Left untouched when omitted (undefined is skipped by Prisma): the profile
+    // form doesn't own these, so a stale form can't overwrite background edited
+    // meanwhile from the Medical Info tab.
+    medicalHistory: optionalMedicalText(payload.medicalHistory),
+    allergies: optionalMedicalText(payload.allergies),
+    importantHealthNotes: optionalMedicalText(payload.importantHealthNotes),
+    previousTreatments: optionalMedicalText(payload.previousTreatments),
+    treatmentPlan: optionalMedicalText(payload.treatmentPlan),
     status: toPrismaClientStatus(payload.status),
     isArchived: payload.status === "archived",
     preferredChannel: payload.preferredChannel.trim() || null,
@@ -1003,6 +1028,43 @@ export async function addClientCareNoteAction(
       staffMemberId: validStaffMember?.id ?? null,
       title: payload.title?.trim() || null,
       body,
+    },
+  });
+
+  return respondWithClientRecord(context.business.id, payload.clientId);
+}
+
+// The free-text medical background (history, allergies, notes, previous
+// treatments, plan summary) is edited from the record's Medical Info tab, not
+// the profile form — so it needs its own narrow write that never touches the
+// profile fields saveClientAction owns.
+export async function updateClientMedicalBackgroundAction(
+  payload: UpdateClientMedicalBackgroundPayload
+): Promise<ClientRecordMutationResult> {
+  const parsed = updateClientMedicalBackgroundSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: INVALID_RECORD_ERROR };
+  }
+
+  payload = parsed.data;
+
+  const context = await requireOwnedClient(payload.clientId);
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  await prisma.client.update({
+    where: {
+      id: payload.clientId,
+    },
+    data: {
+      medicalHistory: payload.medicalHistory.trim() || null,
+      allergies: payload.allergies.trim() || null,
+      importantHealthNotes: payload.importantHealthNotes.trim() || null,
+      previousTreatments: payload.previousTreatments.trim() || null,
+      treatmentPlan: payload.treatmentPlan.trim() || null,
     },
   });
 

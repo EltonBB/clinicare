@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildCalendarViewFromRecords } from "@/lib/calendar";
+import { buildCalendarViewFromRecords, businessHoursForDate } from "@/lib/calendar";
 import {
   addZonedDays,
   formatZonedDateKey,
@@ -162,5 +162,40 @@ describe("buildCalendarViewFromRecords — ScheduleBlock day expansion", () => {
     }
     expect(view.scheduleBlocks[0].date).toBe(formatZonedDateKey(rangeStart));
     expect(view.scheduleBlocks[2].date).toBe(formatZonedDateKey(rangeEnd));
+  });
+});
+
+describe("businessHoursForDate", () => {
+  // Monday-first weekdays (0 = Monday): open Monday-Friday, closed the weekend.
+  const hours = [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+    weekday,
+    enabled: weekday <= 4,
+    start: "09:00",
+    end: "17:00",
+  }));
+
+  it("finds the row for the date's weekday", () => {
+    // 2026-09-21 is a Monday, 2026-09-26 a Saturday, 2026-09-27 a Sunday.
+    expect(businessHoursForDate("2026-09-21", hours)).toMatchObject({ weekday: 0, enabled: true });
+    expect(businessHoursForDate("2026-09-25", hours)).toMatchObject({ weekday: 4, enabled: true });
+    expect(businessHoursForDate("2026-09-26", hours)).toMatchObject({ weekday: 5, enabled: false });
+    expect(businessHoursForDate("2026-09-27", hours)).toMatchObject({ weekday: 6, enabled: false });
+  });
+
+  it("treats a weekday with no configured row as closed", () => {
+    expect(businessHoursForDate("2026-09-21", [])).toMatchObject({ weekday: 0, enabled: false });
+    expect(businessHoursForDate("2026-09-27", hours.slice(0, 6))).toMatchObject({ weekday: 6, enabled: false });
+  });
+
+  it("treats anything that is not a real calendar date as closed, not Monday's row", () => {
+    for (const date of ["", "not-a-date", "2026-9-1", "2026-13-01", "2026-02-31", "2027-02-29", "2026-04-31"]) {
+      expect(businessHoursForDate(date, hours)).toMatchObject({ enabled: false });
+    }
+  });
+
+  it("does not shift across a year boundary or a leap day", () => {
+    // 2026-01-01 is a Thursday; 2028-02-29 a Tuesday.
+    expect(businessHoursForDate("2026-01-01", []).weekday).toBe(3);
+    expect(businessHoursForDate("2028-02-29", []).weekday).toBe(1);
   });
 });
