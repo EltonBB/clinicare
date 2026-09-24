@@ -2,7 +2,7 @@
 
 This update stays within the existing package ranges. It upgrades Vitest to 4.1.11, Browserslist to 4.28.9, baseline-browser-mapping to 2.11.21, @humanfs/node to 0.16.8 and the three-stdlib copy of fflate to 0.6.11. Their required tooling, browser data and native optional dependencies follow those updates. No application code, Prisma schema or direct dependency ranges change.
 
-The September 9 baseline audit reports 9 vulnerable package entries (4 high, 5 moderate). A fresh September 23 audit of this lock reports 3 high entries and no moderate/critical entries. These 3 entries represent one advisory propagated through deepmerge-ts -> @prisma/config -> prisma; they are not three independent application defects. Installation and verification must pass before this update is ready.
+The September 9 baseline audit reports 9 vulnerable package entries (4 high, 5 moderate). A fresh September 24 audit of this lock reports 3 high entries and no moderate/critical entries. These 3 entries represent one advisory propagated through deepmerge-ts -> @prisma/config -> prisma; they are not three independent application defects. A clean `npm ci`, 452 backend tests, TypeScript, ESLint, and a synthetic-environment production build passed on Windows. GitHub CI and independent review remain required before this update is ready.
 
 ## Remaining Prisma configuration advisory
 
@@ -13,4 +13,3 @@ The inspected call is in @prisma/config's loadConfigTsOrJs: it supplies deepmerg
 On that evidence, no route from tenant or unauthenticated request data to the vulnerable cyclic-object configuration merge was identified in this baseline. This is a scoped non-reachability assessment, not a patched-library claim. Reassess if runtime configuration loading, remote config extensions, dynamic JavaScript configuration or untrusted configuration inputs are introduced. A user who can execute a malicious local config already has code execution at that build/tool boundary.
 
 Do not force a Prisma major migration or the audit tool's downgrade suggestion just to erase the report. Keep the advisory visible and revisit a compatible upstream fix. Worker and mobile audits, their reachable vulnerabilities, production configuration and deployment verification remain separate remediation work.
-
