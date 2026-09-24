@@ -2,7 +2,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { requireTestDatabaseUrl, requireTestSchema } from './database-safety.mjs';
 
@@ -40,6 +40,12 @@ beforeEach(async () => {
   clientId = client.id;
   const staff = await db.staffMember.create({ data: { businessId, name: 'Synthetic Staff', role: 'Doctor' } });
   staffMemberId = staff.id;
+});
+
+afterEach(async () => {
+  if (!businessId) return;
+  await db.business.delete({ where: { id: businessId } });
+  businessId = '';
 });
 
 afterAll(async () => {
