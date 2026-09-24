@@ -11,12 +11,14 @@ import type {
   ClientPayment,
   ClientTreatmentPlanItem,
   Message,
+  Prisma,
 } from "@prisma/client";
 import { format } from "date-fns";
 
 import { resolveMediaDisplayUrls } from "@/lib/media-storage-server";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
+import { buildPaymentPage, type PaymentCursor } from "@/lib/client-payments";
 
 export type ClientStatus = "active" | "at-risk" | "inactive" | "archived";
 
@@ -164,6 +166,8 @@ export type ClientRecord = {
   medications: ClientMedicationEntry[];
   documents: ClientDocumentEntry[];
   payments: ClientPaymentEntry[];
+  paymentNextCursor: PaymentCursor | null;
+  readSnapshot?: string;
   messages: ClientMessageEntry[];
   healthItems: ClientHealthItemEntry[];
   careNotes: ClientCareNoteEntry[];
@@ -177,6 +181,11 @@ export type ClientRecord = {
     noShows: number;
   };
   paymentStats: {
+    totalBilledCents: number;
+    totalBilledDisplay: string;
+    ledgerEntries: number;
+    paidEntries: number;
+    receiptsLinked: number;
     totalPaidCents: number;
     unpaidBalanceCents: number;
     totalPaidDisplay: string;
@@ -423,26 +432,6 @@ async function buildDocuments(client: ClientWithRelations): Promise<ClientDocume
   });
 }
 
-function buildPayments(client: ClientWithRelations): ClientPaymentEntry[] {
-  return client.payments.map((payment) => ({
-    id: payment.id,
-    appointmentId: payment.appointmentId ?? "",
-    amountCents: payment.amountCents,
-    amountDisplay: formatMoney(payment.amountCents),
-    amountInput: (payment.amountCents / 100).toFixed(2),
-    status: payment.status,
-    description: payment.description ?? "",
-    invoiceNumber: payment.invoiceNumber ?? "",
-    receiptNumber: payment.receiptNumber ?? "",
-    paymentMethod: payment.paymentMethod ?? "",
-    billingNote: payment.billingNote ?? "",
-    receiptUrl: payment.receiptUrl ?? "",
-    paidAt: payment.paidAt ? format(payment.paidAt, "MMM d, yyyy") : "",
-    paidAtInput: payment.paidAt ? format(payment.paidAt, "yyyy-MM-dd") : "",
-    createdAt: format(payment.createdAt, "MMM d, yyyy"),
-  }));
-}
-
 function buildHealthItems(client: ClientWithRelations): ClientHealthItemEntry[] {
   return client.healthItems.map((item) => ({
     id: item.id,
@@ -541,22 +530,18 @@ function buildTimeline(client: ClientWithRelations): ClientTimelineEntry[] {
   return entries.sort((a, b) => b.sortKey - a.sortKey).slice(0, 14);
 }
 
-export async function buildClientRecord(client: ClientWithRelations): Promise<ClientRecord> {
+async function loadClientRecordAggregates(db: Prisma.TransactionClient, client: ClientWithRelations) {
   const now = new Date();
-
-  // The appointments/payments arrays on `client` are display lists capped at
-  // take:25/take:60 (ordered most-recent-first) — fine for rendering history,
-  // but a patient with more visits/invoices than that would silently undercount
-  // completed/cancelled/pending and understate money totals. Aggregate those
-  // over the FULL history in the DB instead, unbounded by the display take limit.
-  const [appointmentCountsByStatus, upcomingCount, paymentSumsByStatus, galleryUrlMap] =
+  // History relations have display limits (payments include one lookahead row).
+  // Aggregate counts and money over the full history, independently of that page.
+  const [appointmentCountsByStatus, upcomingCount, paymentSumsByStatus, receiptsLinked] =
     await Promise.all([
-      prisma.appointment.groupBy({
+      db.appointment.groupBy({
         by: ["status"],
         where: { businessId: client.businessId, clientId: client.id },
         _count: true,
       }),
-      prisma.appointment.count({
+      db.appointment.count({
         where: {
           businessId: client.businessId,
           clientId: client.id,
@@ -564,16 +549,48 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
           status: { in: ["PENDING", "CONFIRMED"] },
         },
       }),
-      prisma.clientPayment.groupBy({
+      db.clientPayment.groupBy({
         by: ["status"],
         where: { businessId: client.businessId, clientId: client.id },
         _sum: { amountCents: true },
+        _count: true,
       }),
-      // Batch-sign gallery images once (one request per bucket) instead of a
-      // round-trip per item; independent of the aggregates above, so it runs
-      // alongside them rather than after.
-      resolveMediaDisplayUrls(client.galleryItems.map((item) => item.imageUrl)),
+      db.clientPayment.count({
+        where: { businessId: client.businessId, clientId: client.id, receiptUrl: { not: null }, NOT: { receiptUrl: "" } },
+      }),
     ]);
+  return { appointmentCountsByStatus, upcomingCount, paymentSumsByStatus, receiptsLinked };
+}
+
+export async function readClientRecordSnapshot(
+  load: (tx: Prisma.TransactionClient) => Promise<ClientWithRelations | null>
+): Promise<ClientRecord | null> {
+  const data = await prisma.$transaction(async (tx) => {
+    // Repeatable Read fixes the snapshot used by this marker, the relations,
+    // and the full-history aggregates. No external URL signing holds the DB open.
+    const [row] = await tx.$queryRaw<Array<{ snapshot: string }>>`
+      SELECT pg_current_snapshot()::text AS snapshot
+    `;
+    if (!row || !/^\d+:\d+:(?:\d+(?:,\d+)*)?$/.test(row.snapshot)) {
+      throw new Error("Could not establish patient record snapshot");
+    }
+    const client = await load(tx);
+    if (!client) return null;
+    return { client, snapshot: row.snapshot, aggregates: await loadClientRecordAggregates(tx, client) };
+  }, { isolationLevel: "RepeatableRead", maxWait: 5_000, timeout: 20_000 });
+
+  return data ? buildClientRecord(data.client, data.snapshot, data.aggregates) : null;
+}
+
+export async function buildClientRecord(
+  client: ClientWithRelations,
+  readSnapshot?: string,
+  loadedAggregates?: Awaited<ReturnType<typeof loadClientRecordAggregates>>
+): Promise<ClientRecord> {
+  const { appointmentCountsByStatus, upcomingCount, paymentSumsByStatus, receiptsLinked } =
+    loadedAggregates ?? await loadClientRecordAggregates(prisma, client);
+  // Sign gallery images after the database snapshot is released.
+  const galleryUrlMap = await resolveMediaDisplayUrls(client.galleryItems.map((item) => item.imageUrl));
 
   const appointmentCount = (status: AppointmentStatus) =>
     appointmentCountsByStatus.find((row) => row.status === status)?._count ?? 0;
@@ -584,6 +601,10 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
 
   const paymentSum = (status: string) =>
     paymentSumsByStatus.find((row) => row.status === status)?._sum.amountCents ?? 0;
+  const totalBilledCents = paymentSumsByStatus.reduce((sum, row) => sum + (row._sum.amountCents ?? 0), 0);
+  const ledgerEntries = paymentSumsByStatus.reduce((sum, row) => sum + row._count, 0);
+  const paidEntries = paymentSumsByStatus.reduce((sum, row) => sum + (row.status === "Paid" ? row._count : 0), 0);
+  const paymentPage = buildPaymentPage(client.payments);
   const totalPaidCents = paymentSum("Paid");
   const unpaidBalanceCents = paymentSum("Unpaid") + paymentSum("Partially Paid");
   const paymentStatus =
@@ -633,7 +654,9 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
     appointments: buildAppointments(client),
     medications: buildMedications(client),
     documents: await buildDocuments(client),
-    payments: buildPayments(client),
+    payments: paymentPage.payments,
+    paymentNextCursor: paymentPage.nextCursor,
+    readSnapshot,
     messages: buildMessages(client),
     healthItems: buildHealthItems(client),
     careNotes: buildCareNotes(client),
@@ -647,6 +670,11 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
       noShows: 0,
     },
     paymentStats: {
+      totalBilledCents,
+      totalBilledDisplay: formatMoney(totalBilledCents),
+      ledgerEntries,
+      paidEntries,
+      receiptsLinked,
       totalPaidCents,
       unpaidBalanceCents,
       totalPaidDisplay: formatMoney(totalPaidCents),

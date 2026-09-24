@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ComponentType } from "react";
-import { useState, useTransition } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -49,6 +49,7 @@ import {
 } from "@/app/(workspace)/clients/actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ClientMedicalTab,
@@ -56,6 +57,7 @@ import {
   medicalRecordTypes,
   type MedicalKind,
 } from "@/components/clients/client-medical-tab";
+import { olderClientRecord, reconcileIncomingClient } from "@/components/clients/client-record-state";
 import {
   ConfirmDeleteDialog,
   RecordFormDialog,
@@ -70,7 +72,8 @@ import {
   WorkspacePage,
 } from "@/components/workspace/workspace-layout";
 import { safeUploadErrorMessage, uploadWorkspaceDocument } from "@/lib/media-storage-client";
-import { cn, formatCurrency, getInitials } from "@/lib/utils";
+import { useClientPaymentHistory } from "@/hooks/use-client-payment-history";
+import { cn, getInitials } from "@/lib/utils";
 import type {
   ClientRecord,
   ClientStatus,
@@ -301,10 +304,29 @@ function stripPlaceholder(value: string, ...placeholders: string[]) {
 }
 
 export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
-  const [client, setClient] = useState(initialClient);
+  return <ClientDetailsContent key={initialClient.id} initialClient={initialClient} />;
+}
+
+function ClientDetailsContent({ initialClient }: ClientDetailsPageProps) {
+  const [recordState, setRecordState] = useState(() => ({ source: initialClient, client: initialClient }));
+  const mutationInFlight = useRef(0);
+  const [mutationsPending, setMutationsPending] = useState(0);
+  const latestIncomingClient = useRef(initialClient);
+  useLayoutEffect(() => {
+    latestIncomingClient.current = initialClient;
+  }, [initialClient]);
+  const resolvedState = reconcileIncomingClient(recordState, initialClient, mutationsPending > 0);
+  if (resolvedState !== recordState) setRecordState(resolvedState);
+  const client = resolvedState.client;
+  const paymentHistory = useClientPaymentHistory(client);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+  const exportRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => exportRequest.current?.abort(), []);
   const [dialog, setDialog] = useState<DialogState>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
+  const [refreshNotice, setRefreshNotice] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<{
     storageUrl: string;
@@ -320,9 +342,6 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   );
   const latestPayment = client.payments[0];
   const currentMedications = client.medications.filter((medication) => medication.isActive);
-  const totalBilledDisplay = formatCurrency(
-    client.payments.reduce((sum, payment) => sum + payment.amountCents, 0)
-  );
   const allergies = client.healthItems.filter((item) =>
     item.type.toLowerCase().includes("allerg")
   );
@@ -343,19 +362,53 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
     mutate: () => Promise<ClientRecordMutationResult>,
     successMessage: string
   ) {
+    if (refreshNotice) return;
+    mutationInFlight.current += 1;
+    setMutationsPending((count) => count + 1);
     startSaving(async () => {
-      const result = await mutate();
+      try {
+        const result = await mutate();
 
-      if (!result.ok || !result.client) {
-        setErrorMessage(result.error ?? "We couldn't save this change.");
+        if (!result.ok) {
+          setErrorMessage(result.error ?? "We couldn't save this change.");
+          setStatusMessage("");
+          return;
+        }
+
+        if (!result.client) {
+          setDialog(null);
+          setErrorMessage("");
+          setStatusMessage("");
+          setRefreshNotice(`${successMessage} Reload this page to see the latest record before making another change.`);
+          return;
+        }
+
+        const savedClient = result.client;
+        setRecordState((current) => olderClientRecord(savedClient, current.client)
+          ? current
+          : { source: latestIncomingClient.current, client: savedClient });
+        setDialog(null);
+        setErrorMessage("");
+        if (result.recordRefreshRequired) {
+          setStatusMessage("");
+          setRefreshNotice(`${successMessage} Reload this page before making another change.`);
+        } else {
+          setStatusMessage(successMessage);
+        }
+      } catch {
+        // A transport failure gives no reliable answer about whether the write
+        // committed. Ask for a fresh read before allowing an intentional retry.
+        setDialog(null);
+        setErrorMessage("");
         setStatusMessage("");
-        return;
+        setRefreshNotice("We couldn't confirm the result. Reload this page and check the record before trying again.");
+      } finally {
+        mutationInFlight.current -= 1;
+        setMutationsPending((count) => count - 1);
+        setRecordState((current) =>
+          reconcileIncomingClient(current, latestIncomingClient.current, mutationInFlight.current > 0)
+        );
       }
-
-      setClient(result.client);
-      setDialog(null);
-      setErrorMessage("");
-      setStatusMessage(successMessage);
     });
   }
 
@@ -594,33 +647,33 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
     }
   }
 
-  function downloadPaymentStatement() {
-    const rows = [
-      ["Date", "Invoice", "Description", "Amount", "Status", "Payment method", "Receipt"],
-      ...client.payments.map((payment) => [
-        payment.paidAt || payment.createdAt,
-        payment.invoiceNumber || "",
-        payment.description || "Manual ledger entry",
-        payment.amountDisplay,
-        payment.status,
-        payment.paymentMethod || "Manual",
-        payment.receiptNumber || "",
-      ]),
-    ];
-    const csv = rows
-      .map((row) =>
-        row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")
-      )
-      .join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${client.name.replaceAll(" ", "-").toLowerCase()}-payment-statement.csv`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
+  async function downloadPaymentStatement() {
+    if (exportRequest.current) return;
+    const controller = new AbortController();
+    exportRequest.current = controller;
+    setIsExporting(true);
+    setExportError("");
+    try {
+      const response = await fetch(`/api/clients/${encodeURIComponent(client.id)}/payments?format=csv`, {
+        cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]),
+      });
+      if (!response.ok) throw new Error("Statement unavailable");
+      const blob = await response.blob();
+      if (controller.signal.aborted) return;
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "payment-statement.csv";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    } catch {
+      if (!controller.signal.aborted) setExportError("We couldn't download the statement. Please try again.");
+    } finally {
+      exportRequest.current = null;
+      setIsExporting(false);
+    }
   }
 
   // Opening "create" for the background kind pre-fills the current values,
@@ -671,6 +724,17 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
 
   return (
     <WorkspacePage>
+      {refreshNotice ? (
+        <Dialog open onOpenChange={() => {}}>
+          <DialogContent showCloseButton={false} className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Reload patient record</DialogTitle>
+              <DialogDescription>{refreshNotice}</DialogDescription>
+            </DialogHeader>
+            <Button type="button" onClick={() => window.location.reload()}>Reload page</Button>
+          </DialogContent>
+        </Dialog>
+      ) : null}
       <section className="section-reveal space-y-3.5 pb-1">
         <Link
           href="/clients"
@@ -1161,7 +1225,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
         </TabsContent>
 
         <TabsContent value="payments">
-          {client.payments.length === 0 ? (
+          {client.paymentStats.ledgerEntries === 0 ? (
             <WorkspaceEmptyState
               icon={CreditCard}
               title="No payments yet"
@@ -1180,8 +1244,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           ) : (
             <div className="space-y-3">
               <section className="surface-card grid gap-3 p-3.5 md:grid-cols-4">
-                <PaymentMetric label="Total billed" value={totalBilledDisplay} helper={countLabel(client.payments.length, "ledger entry", "ledger entries")} />
-                <PaymentMetric label="Total paid" value={client.paymentStats.totalPaidDisplay} helper={countLabel(client.payments.filter((payment) => payment.status.toLowerCase() === "paid").length, "paid entry", "paid entries")} tone="good" />
+                <PaymentMetric label="Total billed" value={client.paymentStats.totalBilledDisplay} helper={countLabel(client.paymentStats.ledgerEntries, "ledger entry", "ledger entries")} />
+                <PaymentMetric label="Total paid" value={client.paymentStats.totalPaidDisplay} helper={countLabel(client.paymentStats.paidEntries, "paid entry", "paid entries")} tone="good" />
                 <PaymentMetric label="Outstanding" value={client.paymentStats.unpaidBalanceDisplay} helper="Open balance" tone={client.paymentStats.unpaidBalanceCents > 0 ? "danger" : "default"} />
                 <PaymentMetric
                   label="Last payment"
@@ -1197,9 +1261,10 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                     <button
                       type="button"
                       onClick={downloadPaymentStatement}
+                      disabled={isExporting}
                       className="text-sm font-medium text-primary transition-colors duration-(--duration-base) hover:text-foreground"
                     >
-                      Download statement
+                      {isExporting ? "Preparing statement…" : exportError ? "Retry statement" : "Download statement"}
                     </button>
                     <Button
                       size="sm"
@@ -1225,7 +1290,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                       </tr>
                     </thead>
                     <tbody>
-                      {client.payments.map((payment) => (
+                      {paymentHistory.payments.map((payment) => (
                         <tr key={payment.id} className="transition-colors duration-(--duration-base) hover:bg-secondary/40">
                           <td className="px-3 py-2.5 font-medium text-foreground">{payment.paidAt || payment.createdAt}</td>
                           <td className="px-3 py-2.5 text-muted-foreground">{payment.invoiceNumber}</td>
@@ -1278,6 +1343,18 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                       ))}
                     </tbody>
                   </table>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-3">
+                  <p className="text-sm text-muted-foreground" aria-live="polite">
+                    {paymentHistory.payments.length} of {client.paymentStats.ledgerEntries} entries shown
+                  </p>
+                  {paymentHistory.nextCursor ? (
+                    <Button variant="outline" size="sm" onClick={paymentHistory.loadMore} disabled={paymentHistory.loading || isPending}>
+                      {paymentHistory.loading ? "Loading…" : paymentHistory.error ? "Retry" : "Load more"}
+                    </Button>
+                  ) : null}
+                  {paymentHistory.error ? <p role="alert" className="w-full text-sm text-destructive">{paymentHistory.error}</p> : null}
+                  {exportError ? <p role="alert" className="w-full text-sm text-destructive">{exportError}</p> : null}
                 </div>
               </WorkspaceCard>
             </div>
@@ -1339,7 +1416,6 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
     </WorkspacePage>
   );
 }
-
 function StatusBadge({ status }: { status: string }) {
   const normalized = status.toLowerCase();
   return (
@@ -1415,4 +1491,3 @@ function OverviewLine({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-

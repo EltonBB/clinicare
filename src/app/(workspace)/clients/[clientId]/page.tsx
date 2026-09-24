@@ -2,8 +2,8 @@ import { notFound } from "next/navigation";
 
 import { ClientDetailsPage } from "@/components/clients/client-details-page";
 import { requireCurrentWorkspace } from "@/lib/business";
-import { buildClientRecord } from "@/lib/clients";
-import { prisma } from "@/lib/prisma";
+import { readClientRecordSnapshot } from "@/lib/clients";
+import { initialPaymentHistory } from "@/lib/client-payments";
 
 export default async function ClientDetailsRoute({
   params,
@@ -15,7 +15,7 @@ export default async function ClientDetailsRoute({
   });
   const { clientId } = await params;
 
-  const client = await prisma.client.findFirst({
+  const client = await readClientRecordSnapshot((tx) => tx.client.findFirst({
     where: {
       id: clientId,
       businessId: business.id,
@@ -93,26 +93,7 @@ export default async function ClientDetailsRoute({
         },
         take: 60,
       },
-      payments: {
-        select: {
-          id: true,
-          appointmentId: true,
-          amountCents: true,
-          status: true,
-          description: true,
-          invoiceNumber: true,
-          receiptNumber: true,
-          paymentMethod: true,
-          billingNote: true,
-          receiptUrl: true,
-          paidAt: true,
-          createdAt: true,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-        take: 60,
-      },
+      payments: { ...initialPaymentHistory, where: { businessId: business.id } },
       healthItems: {
         select: {
           id: true,
@@ -183,11 +164,11 @@ export default async function ClientDetailsRoute({
         },
       },
     },
-  });
+  }));
 
   if (!client) {
     notFound();
   }
 
-  return <ClientDetailsPage initialClient={await buildClientRecord(client)} />;
+  return <ClientDetailsPage initialClient={client} />;
 }

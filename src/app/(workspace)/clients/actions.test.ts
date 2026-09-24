@@ -4,13 +4,15 @@ const mocks = vi.hoisted(() => {
   const client = {
     findFirst: vi.fn(),
     deleteMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
   };
   const clientMedication = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientHealthItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientCareNote = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientTreatmentPlanItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientFollowUpReminder = { findFirst: vi.fn(), deleteMany: vi.fn() };
-  const clientPayment = { findFirst: vi.fn(), deleteMany: vi.fn() };
+  const clientPayment = { findFirst: vi.fn(), deleteMany: vi.fn(), create: vi.fn() };
   const clientDocument = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientGalleryItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const $transaction = vi.fn();
@@ -18,6 +20,10 @@ const mocks = vi.hoisted(() => {
   const attemptStorageCleanup = vi.fn();
   const recordPendingStorageCleanup = vi.fn();
   const after = vi.fn();
+  const readClientRecordSnapshot = vi.fn();
+  const revalidatePath = vi.fn();
+  const normalizeConversationsForBusiness = vi.fn();
+  const ensureConversationForClient = vi.fn();
   return {
     client,
     clientMedication,
@@ -33,6 +39,10 @@ const mocks = vi.hoisted(() => {
     attemptStorageCleanup,
     recordPendingStorageCleanup,
     after,
+    readClientRecordSnapshot,
+    revalidatePath,
+    normalizeConversationsForBusiness,
+    ensureConversationForClient,
   };
 });
 
@@ -55,13 +65,22 @@ vi.mock("@/lib/business", () => ({
   getAuthedBusiness: mocks.getAuthedBusiness,
 }));
 
+vi.mock("@/lib/clients", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/clients")>(),
+  readClientRecordSnapshot: mocks.readClientRecordSnapshot,
+}));
+
 vi.mock("@/lib/media-storage-server", () => ({
   attemptStorageCleanup: mocks.attemptStorageCleanup,
   recordPendingStorageCleanup: mocks.recordPendingStorageCleanup,
 }));
 
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/server", () => ({ after: mocks.after }));
+vi.mock("@/lib/inbox-server", () => ({
+  normalizeConversationsForBusiness: mocks.normalizeConversationsForBusiness,
+  ensureConversationForClient: mocks.ensureConversationForClient,
+}));
 
 // after() defers its callback until after the response — production code
 // never awaits it. To assert on what it defers, capture the callback each
@@ -73,6 +92,8 @@ async function flushAfter() {
 }
 
 import {
+  addClientPaymentAction,
+  saveClientAction,
   deleteClientAction,
   deleteClientCareNoteAction,
   deleteClientHealthItemAction,
@@ -96,7 +117,12 @@ const EXISTING = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.revalidatePath.mockReset();
+  mocks.readClientRecordSnapshot.mockReset();
+  mocks.normalizeConversationsForBusiness.mockReset();
   mocks.getAuthedBusiness.mockResolvedValue({ business: BUSINESS, user: {} });
+  mocks.normalizeConversationsForBusiness.mockResolvedValue(undefined);
+  mocks.ensureConversationForClient.mockResolvedValue(null);
   mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) =>
     cb({
       client: mocks.client,
@@ -104,6 +130,74 @@ beforeEach(() => {
       clientGalleryItem: mocks.clientGalleryItem,
     })
   );
+});
+
+describe("payment save result", () => {
+  it("confirms a committed payment even when its follow-up record read fails", async () => {
+    mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID });
+    mocks.clientPayment.create.mockResolvedValue({ id: "payment_1" });
+    mocks.readClientRecordSnapshot.mockRejectedValue(new Error("read timed out"));
+
+    const result = await addClientPaymentAction({
+      clientId: CLIENT_ID, amount: "85.50", status: "Paid", description: "visit",
+      receiptUrl: "", paidAt: "", invoiceNumber: "", receiptNumber: "",
+      paymentMethod: "", billingNote: "",
+    });
+
+    expect(mocks.clientPayment.create).toHaveBeenCalledOnce();
+    expect(result).toEqual({ ok: true, recordRefreshRequired: true });
+  });
+
+  it("still confirms a committed payment when dashboard invalidation fails", async () => {
+    mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID });
+    mocks.clientPayment.create.mockResolvedValue({ id: "payment_1" });
+    const refreshed = { id: CLIENT_ID };
+    mocks.readClientRecordSnapshot.mockResolvedValue(refreshed);
+    mocks.revalidatePath.mockImplementation((path: string) => {
+      if (path === "/dashboard") throw new Error("cache unavailable");
+    });
+
+    const result = await addClientPaymentAction({
+      clientId: CLIENT_ID, amount: "85.50", status: "Paid", description: "visit",
+      receiptUrl: "", paidAt: "", invoiceNumber: "", receiptNumber: "",
+      paymentMethod: "", billingNote: "",
+    });
+
+    expect(mocks.clientPayment.create).toHaveBeenCalledOnce();
+    expect(result).toEqual({ ok: true, client: refreshed, recordRefreshRequired: true });
+  });
+});
+
+describe("patient profile save result", () => {
+  it("returns the created patient ID when its post-write record read fails", async () => {
+    mocks.client.create.mockResolvedValue({ id: CLIENT_ID });
+    mocks.readClientRecordSnapshot.mockRejectedValue(new Error("read timed out"));
+
+    const result = await saveClientAction({
+      name: "Synthetic patient", phone: "+38344123456", email: "", gender: "",
+      dateOfBirth: "", address: "", patientType: "New Patient", clinicType: "",
+      notes: "", preferredChannel: "", status: "active", assignedStaff: "", tags: "New Patient",
+    });
+
+    expect(mocks.client.create).toHaveBeenCalledOnce();
+    expect(result).toEqual({ ok: true, clientId: CLIENT_ID, recordRefreshRequired: true });
+  });
+
+  it("reports incomplete inbox linking separately from a successful patient create", async () => {
+    mocks.client.create.mockResolvedValue({ id: CLIENT_ID });
+    mocks.normalizeConversationsForBusiness.mockRejectedValue(new Error("inbox unavailable"));
+    const refreshed = { id: CLIENT_ID };
+    mocks.readClientRecordSnapshot.mockResolvedValue(refreshed);
+
+    const result = await saveClientAction({
+      name: "Synthetic patient", phone: "+38344123456", email: "", gender: "",
+      dateOfBirth: "", address: "", patientType: "New Patient", clinicType: "",
+      notes: "", preferredChannel: "", status: "active", assignedStaff: "", tags: "New Patient",
+    });
+
+    expect(mocks.client.create).toHaveBeenCalledOnce();
+    expect(result).toEqual({ ok: true, clientId: CLIENT_ID, client: refreshed, inboxSyncRequired: true });
+  });
 });
 
 describe("deleteClientAction", () => {
