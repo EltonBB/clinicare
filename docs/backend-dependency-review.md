@@ -1,6 +1,6 @@
-# Backend dependency review — September 23, 2026
+# Backend dependency review — September 24, 2026
 
-This update stays within the existing package ranges. It upgrades Vitest to 4.1.11, Browserslist to 4.28.9, baseline-browser-mapping to 2.11.21, @humanfs/node to 0.16.8 and the three-stdlib copy of fflate to 0.6.11. Their required tooling, browser data and native optional dependencies follow those updates. No application code, Prisma schema or direct dependency ranges change.
+This update refreshes compatible tooling dependencies. It upgrades Vitest to 4.1.11, Browserslist to 4.28.9, baseline-browser-mapping to 2.11.21, @humanfs/node to 0.16.8 and the three-stdlib copy of fflate to 0.6.11. Their required tooling, browser data and native optional dependencies follow those updates. The PostCSS override minimum rises to 8.5.28 to meet Vite 8's declared dependency floor. No application code or Prisma schema changes.
 
 The September 9 baseline audit reports 9 vulnerable package entries (4 high, 5 moderate). A fresh September 24 audit of this lock reports 3 high entries and no moderate/critical entries. These 3 entries represent one advisory propagated through deepmerge-ts -> @prisma/config -> prisma; they are not three independent application defects. A clean `npm ci`, 452 backend tests, TypeScript, ESLint, and a synthetic-environment production build passed on Windows. GitHub CI and independent review remain required before this update is ready.
 
