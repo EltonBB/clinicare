@@ -11,6 +11,7 @@ import type {
   ClientPayment,
   ClientTreatmentPlanItem,
   Message,
+  Prisma,
 } from "@prisma/client";
 import { format } from "date-fns";
 
@@ -166,7 +167,7 @@ export type ClientRecord = {
   documents: ClientDocumentEntry[];
   payments: ClientPaymentEntry[];
   paymentNextCursor: PaymentCursor | null;
-  readGeneration?: string;
+  readSnapshot?: string;
   messages: ClientMessageEntry[];
   healthItems: ClientHealthItemEntry[];
   careNotes: ClientCareNoteEntry[];
@@ -529,31 +530,18 @@ function buildTimeline(client: ClientWithRelations): ClientTimelineEntry[] {
   return entries.sort((a, b) => b.sortKey - a.sortKey).slice(0, 14);
 }
 
-export async function getClientReadGeneration(): Promise<string> {
-  // A refresh takes this marker before reading. A mutation takes it after its
-  // write commits, so a late response from a prior read cannot replace it.
-  const [row] = await prisma.$queryRaw<Array<{ generation: string }>>`
-    SELECT pg_current_xact_id()::text AS generation
-  `;
-  if (!row || !/^\d+$/.test(row.generation)) {
-    throw new Error("Could not establish patient record read order");
-  }
-  return row.generation;
-}
-
-export async function buildClientRecord(client: ClientWithRelations, readGeneration?: string): Promise<ClientRecord> {
+async function loadClientRecordAggregates(db: Prisma.TransactionClient, client: ClientWithRelations) {
   const now = new Date();
-
   // History relations have display limits (payments include one lookahead row).
   // Aggregate counts and money over the full history, independently of that page.
-  const [appointmentCountsByStatus, upcomingCount, paymentSumsByStatus, receiptsLinked, galleryUrlMap] =
+  const [appointmentCountsByStatus, upcomingCount, paymentSumsByStatus, receiptsLinked] =
     await Promise.all([
-      prisma.appointment.groupBy({
+      db.appointment.groupBy({
         by: ["status"],
         where: { businessId: client.businessId, clientId: client.id },
         _count: true,
       }),
-      prisma.appointment.count({
+      db.appointment.count({
         where: {
           businessId: client.businessId,
           clientId: client.id,
@@ -561,20 +549,48 @@ export async function buildClientRecord(client: ClientWithRelations, readGenerat
           status: { in: ["PENDING", "CONFIRMED"] },
         },
       }),
-      prisma.clientPayment.groupBy({
+      db.clientPayment.groupBy({
         by: ["status"],
         where: { businessId: client.businessId, clientId: client.id },
         _sum: { amountCents: true },
         _count: true,
       }),
-      prisma.clientPayment.count({
+      db.clientPayment.count({
         where: { businessId: client.businessId, clientId: client.id, receiptUrl: { not: null }, NOT: { receiptUrl: "" } },
       }),
-      // Batch-sign gallery images once (one request per bucket) instead of a
-      // round-trip per item; independent of the aggregates above, so it runs
-      // alongside them rather than after.
-      resolveMediaDisplayUrls(client.galleryItems.map((item) => item.imageUrl)),
     ]);
+  return { appointmentCountsByStatus, upcomingCount, paymentSumsByStatus, receiptsLinked };
+}
+
+export async function readClientRecordSnapshot(
+  load: (tx: Prisma.TransactionClient) => Promise<ClientWithRelations | null>
+): Promise<ClientRecord | null> {
+  const data = await prisma.$transaction(async (tx) => {
+    // Repeatable Read fixes the snapshot used by this marker, the relations,
+    // and the full-history aggregates. No external URL signing holds the DB open.
+    const [row] = await tx.$queryRaw<Array<{ snapshot: string }>>`
+      SELECT pg_current_snapshot()::text AS snapshot
+    `;
+    if (!row || !/^\d+:\d+:(?:\d+(?:,\d+)*)?$/.test(row.snapshot)) {
+      throw new Error("Could not establish patient record snapshot");
+    }
+    const client = await load(tx);
+    if (!client) return null;
+    return { client, snapshot: row.snapshot, aggregates: await loadClientRecordAggregates(tx, client) };
+  }, { isolationLevel: "RepeatableRead", maxWait: 5_000, timeout: 20_000 });
+
+  return data ? buildClientRecord(data.client, data.snapshot, data.aggregates) : null;
+}
+
+export async function buildClientRecord(
+  client: ClientWithRelations,
+  readSnapshot?: string,
+  loadedAggregates?: Awaited<ReturnType<typeof loadClientRecordAggregates>>
+): Promise<ClientRecord> {
+  const { appointmentCountsByStatus, upcomingCount, paymentSumsByStatus, receiptsLinked } =
+    loadedAggregates ?? await loadClientRecordAggregates(prisma, client);
+  // Sign gallery images after the database snapshot is released.
+  const galleryUrlMap = await resolveMediaDisplayUrls(client.galleryItems.map((item) => item.imageUrl));
 
   const appointmentCount = (status: AppointmentStatus) =>
     appointmentCountsByStatus.find((row) => row.status === status)?._count ?? 0;
@@ -640,7 +656,7 @@ export async function buildClientRecord(client: ClientWithRelations, readGenerat
     documents: await buildDocuments(client),
     payments: paymentPage.payments,
     paymentNextCursor: paymentPage.nextCursor,
-    readGeneration,
+    readSnapshot,
     messages: buildMessages(client),
     healthItems: buildHealthItems(client),
     careNotes: buildCareNotes(client),

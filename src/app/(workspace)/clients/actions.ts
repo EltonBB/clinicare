@@ -14,8 +14,7 @@ import {
   normalizeOptionalPublicUrl,
 } from "@/lib/safe-url";
 import {
-  buildClientRecord,
-  getClientReadGeneration,
+  readClientRecordSnapshot,
   toPrismaClientStatus,
   type ClientRecord,
   type SaveClientPayload,
@@ -27,6 +26,9 @@ export type SaveClientResult = {
   ok: boolean;
   error?: string;
   client?: ClientRecord;
+  clientId?: string;
+  recordRefreshRequired?: boolean;
+  inboxSyncRequired?: boolean;
 };
 
 export type DeleteClientResult = {
@@ -128,6 +130,7 @@ export type ClientRecordMutationResult = {
   ok: boolean;
   error?: string;
   client?: ClientRecord;
+  recordRefreshRequired?: boolean;
 };
 
 export type UpdateClientMedicationPayload = AddClientMedicationPayload & { id: string };
@@ -319,18 +322,36 @@ function revalidatePaymentSurfaces() {
 // isn't stale. (The open detail view also consumes the returned record live.)
 async function respondWithClientRecord(
   businessId: string,
-  clientId: string
+  clientId: string,
+  refreshPaymentSurfaces = false
 ): Promise<ClientRecordMutationResult> {
-  const client = await fetchClientRecord(businessId, clientId);
-  revalidateClientDetail(clientId);
-  return { ok: true, client };
+  let recordRefreshRequired = false;
+  try {
+    revalidateClientDetail(clientId);
+  } catch {
+    recordRefreshRequired = true;
+  }
+  if (refreshPaymentSurfaces) {
+    try {
+      revalidatePaymentSurfaces();
+    } catch {
+      recordRefreshRequired = true;
+    }
+  }
+  try {
+    const client = await fetchClientRecord(businessId, clientId);
+    return { ok: true, client, ...(recordRefreshRequired ? { recordRefreshRequired: true } : {}) };
+  } catch {
+    // The mutation already committed. Never report a failed save solely because
+    // its follow-up record read or route invalidation failed.
+    return { ok: true, recordRefreshRequired: true };
+  }
 }
 
 async function fetchClientRecord(businessId: string, clientId: string) {
   // Tenant scoping by construction: even though every caller checks ownership
   // first, this query must never be able to cross a business boundary.
-  const readGeneration = await getClientReadGeneration();
-  const client = await prisma.client.findFirstOrThrow({
+  const record = await readClientRecordSnapshot((tx) => tx.client.findFirst({
     where: {
       id: clientId,
       businessId,
@@ -479,9 +500,10 @@ async function fetchClientRecord(businessId: string, clientId: string) {
         },
       },
     },
-  });
+  }));
 
-  return buildClientRecord(client, readGeneration);
+  if (!record) throw new Error("Patient record not found");
+  return record;
 }
 
 async function requireOwnedClient(clientId: string) {
@@ -706,6 +728,7 @@ export async function saveClientAction(
     tags: tagList,
   };
 
+  let committedClientId: string | undefined;
   try {
     let clientId = payload.id;
 
@@ -717,7 +740,6 @@ export async function saveClientAction(
         },
         select: {
           id: true,
-          phone: true,
         },
       });
 
@@ -734,10 +756,8 @@ export async function saveClientAction(
         },
         data,
       });
+      committedClientId = payload.id;
 
-      if (normalizePhone(existing.phone) !== cleanedPhone) {
-        await normalizeConversationsForBusiness(business.id);
-      }
     } else {
       const created = await prisma.client.create({
         data: {
@@ -746,18 +766,33 @@ export async function saveClientAction(
         },
       });
       clientId = created.id;
+      committedClientId = created.id;
     }
 
-    await syncClientInboxThread(business.id, clientId!);
+    let inboxSyncRequired = false;
+    try {
+      await syncClientInboxThread(business.id, clientId!);
+    } catch {
+      inboxSyncRequired = true;
+    }
 
-    revalidateClientDirectory();
-    revalidateClientDetail(clientId!);
-
+    let directoryRefreshRequired = false;
+    try {
+      revalidateClientDirectory();
+    } catch {
+      directoryRefreshRequired = true;
+    }
+    const refreshed = await respondWithClientRecord(business.id, clientId!);
     return {
-      ok: true,
-      client: await fetchClientRecord(business.id, clientId!),
+      ...refreshed,
+      clientId: clientId!,
+      ...(inboxSyncRequired ? { inboxSyncRequired: true } : {}),
+      ...(directoryRefreshRequired ? { recordRefreshRequired: true } : {}),
     };
   } catch {
+    if (committedClientId) {
+      return { ok: true, clientId: committedClientId, recordRefreshRequired: true };
+    }
     return {
       ok: false,
       error: "We couldn't save the client record.",
@@ -926,9 +961,7 @@ export async function addClientPaymentAction(
     },
   });
 
-  revalidatePaymentSurfaces();
-
-  return respondWithClientRecord(context.business.id, payload.clientId);
+  return respondWithClientRecord(context.business.id, payload.clientId, true);
 }
 
 export async function addClientHealthItemAction(
@@ -1653,9 +1686,7 @@ export async function updateClientPaymentAction(
     },
   });
 
-  revalidatePaymentSurfaces();
-
-  return respondWithClientRecord(context.business.id, payload.clientId);
+  return respondWithClientRecord(context.business.id, payload.clientId, true);
 }
 
 export async function deleteClientPaymentAction(
@@ -1685,9 +1716,7 @@ export async function deleteClientPaymentAction(
     return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
   }
 
-  revalidatePaymentSurfaces();
-
-  return respondWithClientRecord(context.business.id, payload.clientId);
+  return respondWithClientRecord(context.business.id, payload.clientId, true);
 }
 
 export async function updateClientDocumentAction(

@@ -3,12 +3,12 @@ import { describe, expect, it } from "vitest";
 import { olderClientRecord, reconcileIncomingClient } from "@/components/clients/client-record-state";
 import type { ClientRecord } from "@/lib/clients";
 
-function record(paymentId: string, medicalHistory: string, readGeneration?: string) {
+function record(paymentId: string, medicalHistory: string, readSnapshot?: string) {
   return {
     id: "patient-1",
     payments: [{ id: paymentId }],
     medical: { medicalHistory },
-    readGeneration,
+    readSnapshot,
   } as ClientRecord;
 }
 
@@ -47,14 +47,29 @@ describe("patient record refresh", () => {
   });
 
   it("rejects a pre-save refresh that arrives after success, then accepts a newer read", () => {
-    const oldRecord = record("payment-1", "old history", "9");
-    const saved = record("payment-2", "updated history", "11");
-    const lateStaleRefresh = record("payment-1", "old history", "10");
-    const laterFreshRefresh = record("payment-2", "updated history", "12");
+    const oldRecord = record("payment-1", "old history", "8:9:");
+    const saved = record("payment-2", "updated history", "8:11:");
+    const lateStaleRefresh = record("payment-1", "old history", "8:10:");
+    const laterFreshRefresh = record("payment-2", "updated history", "8:12:");
     const afterSave = { source: oldRecord, client: saved };
 
     expect(olderClientRecord(lateStaleRefresh, saved)).toBe(true);
     expect(reconcileIncomingClient(afterSave, lateStaleRefresh, false)).toBe(afterSave);
     expect(reconcileIncomingClient(afterSave, laterFreshRefresh, false).client).toBe(laterFreshRefresh);
+  });
+
+  it("orders equal high-water snapshots by committed transactions", () => {
+    const stale = record("payment-1", "old history", "8:12:9,10");
+    const fresh = record("payment-2", "new history", "8:12:10");
+    expect(olderClientRecord(stale, fresh)).toBe(true);
+    expect(olderClientRecord(fresh, stale)).toBe(false);
+  });
+
+  it("does not discard a genuinely newer read merely because an older request began first", () => {
+    const earlierRead = record("payment-1", "old history", "8:12:10");
+    const laterRead = record("payment-2", "new history", "8:13:10");
+    expect(olderClientRecord(laterRead, earlierRead)).toBe(false);
+    expect(reconcileIncomingClient({ source: earlierRead, client: earlierRead }, laterRead, false).client)
+      .toBe(laterRead);
   });
 });

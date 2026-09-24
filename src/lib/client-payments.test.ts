@@ -4,14 +4,19 @@ import { buildPaymentPage, buildPaymentStatement, csvCell, type PaymentRow } fro
 const mocks = vi.hoisted(() => ({
   paymentGroupBy: vi.fn(), paymentCount: vi.fn(),
   appointmentGroupBy: vi.fn(), appointmentCount: vi.fn(),
+  transaction: vi.fn(), events: [] as string[],
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: {
+  $transaction: mocks.transaction,
   clientPayment: { groupBy: mocks.paymentGroupBy, count: mocks.paymentCount },
   appointment: { groupBy: mocks.appointmentGroupBy, count: mocks.appointmentCount },
 } }));
-vi.mock("@/lib/media-storage-server", () => ({ resolveMediaDisplayUrls: async () => new Map() }));
+vi.mock("@/lib/media-storage-server", () => ({ resolveMediaDisplayUrls: async () => {
+  mocks.events.push("sign URLs");
+  return new Map();
+} }));
 
-import { buildClientRecord } from "./clients";
+import { buildClientRecord, readClientRecordSnapshot } from "./clients";
 
 const row: PaymentRow = {
   id: "payment-001", appointmentId: null, amountCents: 1234,
@@ -22,6 +27,7 @@ const row: PaymentRow = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.events.length = 0;
   mocks.appointmentGroupBy.mockResolvedValue([]);
   mocks.appointmentCount.mockResolvedValue(0);
   mocks.paymentGroupBy.mockResolvedValue([]);
@@ -91,5 +97,42 @@ describe("full-history payment totals", () => {
     expect(mocks.paymentCount).toHaveBeenCalledWith({ where: {
       businessId: "business-1", clientId: "client-1", receiptUrl: { not: null }, NOT: { receiptUrl: "" },
     } });
+  });
+});
+
+describe("patient record snapshot", () => {
+  it("reads relations and aggregates in one repeatable-read transaction before signing URLs", async () => {
+    const client = {
+      id: "client-1", businessId: "business-1", name: "Synthetic client", phone: "15550000001",
+      createdAt: row.createdAt, tags: [], appointments: [], messages: [], galleryItems: [],
+      medications: [], documents: [], healthItems: [], careNotes: [], treatmentPlanItems: [], followUpReminders: [],
+      payments: [],
+    } as unknown as Parameters<typeof buildClientRecord>[0];
+    const tx = {
+      $queryRaw: async () => { mocks.events.push("snapshot"); return [{ snapshot: "8:10:9" }]; },
+      appointment: { groupBy: mocks.appointmentGroupBy, count: mocks.appointmentCount },
+      clientPayment: { groupBy: mocks.paymentGroupBy, count: mocks.paymentCount },
+    };
+    mocks.transaction.mockImplementation(async (callback, options) => {
+      expect(options).toEqual({ isolationLevel: "RepeatableRead", maxWait: 5_000, timeout: 20_000 });
+      mocks.events.push("transaction start");
+      const value = await callback(tx);
+      expect(mocks.paymentGroupBy).toHaveBeenCalledOnce();
+      mocks.events.push("transaction end");
+      return value;
+    });
+
+    const record = await readClientRecordSnapshot(async (db) => {
+      expect(db).toBe(tx);
+      mocks.events.push("client and relations");
+      return client;
+    });
+
+    expect(record?.readSnapshot).toBe("8:10:9");
+    expect(mocks.events.slice(0, 4)).toEqual([
+      "transaction start", "snapshot", "client and relations", "transaction end",
+    ]);
+    expect(mocks.events.slice(4)).toContain("sign URLs");
+    expect(mocks.paymentGroupBy).toHaveBeenCalledOnce();
   });
 });

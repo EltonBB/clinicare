@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ComponentType } from "react";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -49,6 +49,7 @@ import {
 } from "@/app/(workspace)/clients/actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ClientMedicalTab,
@@ -309,9 +310,12 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
 function ClientDetailsContent({ initialClient }: ClientDetailsPageProps) {
   const [recordState, setRecordState] = useState(() => ({ source: initialClient, client: initialClient }));
   const mutationInFlight = useRef(0);
+  const [mutationsPending, setMutationsPending] = useState(0);
   const latestIncomingClient = useRef(initialClient);
-  latestIncomingClient.current = initialClient;
-  const resolvedState = reconcileIncomingClient(recordState, initialClient, mutationInFlight.current > 0);
+  useLayoutEffect(() => {
+    latestIncomingClient.current = initialClient;
+  }, [initialClient]);
+  const resolvedState = reconcileIncomingClient(recordState, initialClient, mutationsPending > 0);
   if (resolvedState !== recordState) setRecordState(resolvedState);
   const client = resolvedState.client;
   const paymentHistory = useClientPaymentHistory(client);
@@ -322,6 +326,7 @@ function ClientDetailsContent({ initialClient }: ClientDetailsPageProps) {
   const [dialog, setDialog] = useState<DialogState>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
+  const [refreshNotice, setRefreshNotice] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<{
     storageUrl: string;
@@ -357,14 +362,24 @@ function ClientDetailsContent({ initialClient }: ClientDetailsPageProps) {
     mutate: () => Promise<ClientRecordMutationResult>,
     successMessage: string
   ) {
+    if (refreshNotice) return;
     mutationInFlight.current += 1;
+    setMutationsPending((count) => count + 1);
     startSaving(async () => {
       try {
         const result = await mutate();
 
-        if (!result.ok || !result.client) {
+        if (!result.ok) {
           setErrorMessage(result.error ?? "We couldn't save this change.");
           setStatusMessage("");
+          return;
+        }
+
+        if (!result.client) {
+          setDialog(null);
+          setErrorMessage("");
+          setStatusMessage("");
+          setRefreshNotice(`${successMessage} Reload this page to see the latest record before making another change.`);
           return;
         }
 
@@ -374,9 +389,22 @@ function ClientDetailsContent({ initialClient }: ClientDetailsPageProps) {
           : { source: latestIncomingClient.current, client: savedClient });
         setDialog(null);
         setErrorMessage("");
-        setStatusMessage(successMessage);
+        if (result.recordRefreshRequired) {
+          setStatusMessage("");
+          setRefreshNotice(`${successMessage} Reload this page before making another change.`);
+        } else {
+          setStatusMessage(successMessage);
+        }
+      } catch {
+        // A transport failure gives no reliable answer about whether the write
+        // committed. Ask for a fresh read before allowing an intentional retry.
+        setDialog(null);
+        setErrorMessage("");
+        setStatusMessage("");
+        setRefreshNotice("We couldn't confirm the result. Reload this page and check the record before trying again.");
       } finally {
         mutationInFlight.current -= 1;
+        setMutationsPending((count) => count - 1);
         setRecordState((current) =>
           reconcileIncomingClient(current, latestIncomingClient.current, mutationInFlight.current > 0)
         );
@@ -639,7 +667,7 @@ function ClientDetailsContent({ initialClient }: ClientDetailsPageProps) {
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
     } catch {
       if (!controller.signal.aborted) setExportError("We couldn't download the statement. Please try again.");
     } finally {
@@ -696,6 +724,17 @@ function ClientDetailsContent({ initialClient }: ClientDetailsPageProps) {
 
   return (
     <WorkspacePage>
+      {refreshNotice ? (
+        <Dialog open onOpenChange={() => {}}>
+          <DialogContent showCloseButton={false} className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Reload patient record</DialogTitle>
+              <DialogDescription>{refreshNotice}</DialogDescription>
+            </DialogHeader>
+            <Button type="button" onClick={() => window.location.reload()}>Reload page</Button>
+          </DialogContent>
+        </Dialog>
+      ) : null}
       <section className="section-reveal space-y-3.5 pb-1">
         <Link
           href="/clients"
@@ -1305,7 +1344,7 @@ function ClientDetailsContent({ initialClient }: ClientDetailsPageProps) {
                     </tbody>
                   </table>
                 </div>
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/75 pt-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-3">
                   <p className="text-sm text-muted-foreground" aria-live="polite">
                     {paymentHistory.payments.length} of {client.paymentStats.ledgerEntries} entries shown
                   </p>

@@ -14,12 +14,29 @@ newer entries added elsewhere become visible when the record reloads. A mutation
 reload resets the loaded pages; an older in-flight response cannot append to that
 new record. Navigating to another client remounts the patient view.
 
-Patient-record reads take a database generation marker before querying. A save's
-returned record takes its marker after the write commits. The open screen ignores
-an older same-patient refresh that arrives late, including after a successful
-payment or medical-background save. This ordering assumes reads and writes use
-the same PostgreSQL primary; restoration onto an earlier database generation
-requires a full page reload. Each read consumes one transaction ID.
+Patient-record reads load the client, relations, and full-history aggregates in
+one PostgreSQL Repeatable Read snapshot. The snapshot marker belongs to those
+database values; external storage URL signing happens after the transaction.
+A save's returned record takes its snapshot after the write commits. The open
+screen ignores an older same-patient refresh that arrives late, including after
+a successful payment or medical-background save. This ordering assumes reads and
+writes use the same PostgreSQL primary; restoration onto an earlier database
+generation requires a full page reload. Read-only snapshots do not allocate an
+extra transaction ID.
+The snapshot uses one connection, so its queries run serially; the read has a
+20-second transaction limit and a five-second connection wait. Check patient
+record latency under staging load before release, especially for large histories.
+If a write commits but the follow-up record read fails, the action reports the
+save as complete and asks the user to refresh the page. If a transport error
+prevents the client from learning whether a write committed, the screen asks for
+a refresh before any intentional retry. The notice remains visible at the current
+scroll position, and further patient-file saves are blocked until reload. A
+profile save similarly returns its committed patient ID when its follow-up read
+fails, so creation cannot be mistaken for a failed write. If post-save inbox
+linking fails, the profile form identifies that separate problem and directs an
+owner to reopen and save the existing profile to retry linking; reloading alone
+does not perform that repair. Payment creation does not yet have an idempotency
+key across separate attempts or devices.
 
 `GET /api/clients/[clientId]/payments?format=csv` authenticates the owner and scopes
 the client and every payment query to that owner's business. It ignores no records
