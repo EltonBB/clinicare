@@ -1,6 +1,6 @@
 /** @param {string | undefined} value */
 export function requireTestDatabaseUrl(value) {
-  const error = 'Set VELA_TEST_DATABASE_URL to the dedicated local vela_test database on 127.0.0.1:55432.';
+  const error = 'Set VELA_TEST_DATABASE_URL to the dedicated local vela_integration_test database (user vela_test) on 127.0.0.1:55432.';
   let url;
   try {
     url = new URL(value ?? '');

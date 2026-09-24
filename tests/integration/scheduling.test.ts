@@ -23,6 +23,14 @@ let businessId: string;
 let clientId: string;
 let staffMemberId: string;
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
 beforeEach(async () => {
   const business = await db.business.create({
     data: { ownerId: `synthetic-${randomUUID()}`, name: 'Synthetic Clinic', businessType: 'Clinic' },
@@ -41,9 +49,9 @@ afterAll(async () => {
 
 describe('real PostgreSQL scheduling concurrency', () => {
   it('serializes competing overlapping bookings so only the first is created', async () => {
-    const held = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<void>();
-    const contenderPid = Promise.withResolvers<number>();
+    const held = deferred<void>();
+    const release = deferred<void>();
+    const contenderPid = deferred<number>();
     const window = { businessId, staffMemberId, startAt, endAt };
     const first = db.$transaction(async (tx) => {
       await acquireSchedulingLock(tx, staffMemberId);
