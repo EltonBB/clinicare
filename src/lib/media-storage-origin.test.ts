@@ -30,15 +30,34 @@ describe("storage URL provenance", () => {
     expect(normalizeStorageReference(`supabase-storage://${mediaBucket}/owner/logos/`, "owner", "logos")).toBeNull();
   });
 
+  it("keeps an external HTTPS image link", () => {
+    const externalUrl = ownUrl.replace("clinic.example", "other.example");
+    expect(normalizeStorageReference(externalUrl, "owner", "logos")).toBe(externalUrl);
+  });
+
   it.each([
-    ownUrl.replace("clinic.example", "other.example"),
     ownUrl.replace("/storage/v1/object/", "/other/storage/v1/object/"),
     ownUrl.replace(`/${mediaBucket}/`, "/other-bucket/"),
     ownUrl.replace("owner/logos/image.jpg", "owner/logos%2Fprivate/image.jpg"),
     ownUrl.replace("owner/logos/image.jpg", "other-owner/logos/image.jpg"),
     ownUrl.replace("owner/logos/image.jpg", "owner/client-gallery/image.jpg"),
     ownUrl.replace("owner/logos/image.jpg", "owner/logos//image.jpg"),
-  ])("keeps an unverified URL as an external link: %s", (url) => {
+    ownUrl.replace("/storage/", "/%73torage/"),
+    ownUrl.replace("/storage/", "/%2573torage/"),
+    ownUrl.replace("/storage/", "/%ZZtorage/"),
+    ownUrl.replace("/storage/v1/object/sign/", "/storage/v1/render/image/sign/"),
+    ownUrl.replace("/storage/v1/object/sign/", "/storage/v1/render/image/sign/").replace("owner/logos/image.jpg", "other-owner/logos/image.jpg"),
+  ])("rejects an unverified same-project Storage URL: %s", (url) => {
+    expect(normalizeStorageReference(url, "owner", "logos")).toBeNull();
+  });
+
+  it("keeps an unrelated unencoded HTTPS path on a shared project origin", () => {
+    const url = "https://clinic.example/images/public-logo.jpg";
+    expect(normalizeStorageReference(url, "owner", "logos")).toBe(url);
+  });
+
+  it("keeps an unrelated HTTPS path with an encoded space", () => {
+    const url = "https://clinic.example/images/My%20Logo.jpg";
     expect(normalizeStorageReference(url, "owner", "logos")).toBe(url);
   });
 
@@ -51,7 +70,7 @@ describe("storage URL provenance", () => {
       expect(normalizeStorageReference(nestedUrl, "owner", "logos")).toBe(
         `supabase-storage://${mediaBucket}/${objectPath}`
       );
-      expect(normalizeStorageReference(ownUrl, "owner", "logos")).toBe(ownUrl);
+      expect(normalizeStorageReference(ownUrl, "owner", "logos")).toBeNull();
     } finally {
       process.env.NEXT_PUBLIC_SUPABASE_URL = "https://clinic.example";
     }

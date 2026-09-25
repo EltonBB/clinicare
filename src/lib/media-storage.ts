@@ -113,6 +113,32 @@ export function normalizeStorageReference(
     return createStorageReference(urlReference.bucket, urlReference.path);
   }
 
+  // A same-project Storage URL that failed the owner/folder/bucket checks
+  // must not fall through as an ordinary HTTPS link with someone else's
+  // signed token. This includes transformed-image routes and percent-encoded
+  // paths whose decoding at a proxy/router could hide a Storage route.
+  // Historical values remain untouched by the read path.
+  try {
+    const url = new URL(value.trim());
+    const configuredUrl = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || "");
+    if (url.origin === configuredUrl.origin) {
+      let decodedPath: string;
+      try {
+        decodedPath = decodeURIComponent(url.pathname);
+      } catch {
+        return null;
+      }
+      if (
+        decodedPath.includes("%") ||
+        /(?:^|\/)storage\/v1\/(?:object|render\/image)(?:\/|$)/i.test(decodedPath)
+      ) {
+        return null;
+      }
+    }
+  } catch {
+    // Generic URL validation remains the caller's responsibility.
+  }
+
   return value.trim();
 }
 

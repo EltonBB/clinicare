@@ -87,6 +87,10 @@ configured `NEXT_PUBLIC_SUPABASE_URL`, in the configured media bucket and upload
 path shape, with the row's clinic owner and matching `logos` or `client-gallery`
 folder. Other HTTPS links remain available for review; do not infer that they
 belong to this clinic's Storage objects from their host or bucket alone.
+New application writes reject unverified URLs from the configured project's
+Storage object and transformed-image routes, including ambiguous encoded paths.
+The maintenance command leaves historical mismatches
+unchanged so they can be reviewed rather than silently rewritten.
 
 Use a reviewed database backup and a staging run before applying it to a live
 database. The command verifies remote PostgreSQL certificates; set
