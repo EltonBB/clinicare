@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const client = {
     findFirst: vi.fn(),
+    findFirstOrThrow: vi.fn(),
     deleteMany: vi.fn(),
   };
   const clientMedication = { findFirst: vi.fn(), deleteMany: vi.fn() };
@@ -15,6 +16,7 @@ const mocks = vi.hoisted(() => {
   const clientGalleryItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const $transaction = vi.fn();
   const getAuthedBusiness = vi.fn();
+  const buildClientRecord = vi.fn();
   const attemptStorageCleanup = vi.fn();
   const recordPendingStorageCleanup = vi.fn();
   const after = vi.fn();
@@ -30,6 +32,7 @@ const mocks = vi.hoisted(() => {
     clientGalleryItem,
     $transaction,
     getAuthedBusiness,
+    buildClientRecord,
     attemptStorageCleanup,
     recordPendingStorageCleanup,
     after,
@@ -53,6 +56,11 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("@/lib/business", () => ({
   getAuthedBusiness: mocks.getAuthedBusiness,
+}));
+
+vi.mock("@/lib/clients", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/clients")>()),
+  buildClientRecord: mocks.buildClientRecord,
 }));
 
 vi.mock("@/lib/media-storage-server", () => ({
@@ -109,6 +117,31 @@ beforeEach(() => {
 });
 
 describe("payment amount validation", () => {
+  it("writes comma-decimal amounts as exact cents on create and update", async () => {
+    mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID });
+    mocks.client.findFirstOrThrow.mockResolvedValue({ id: CLIENT_ID });
+    mocks.clientPayment.findFirst.mockResolvedValue({ id: SUB_RECORD_ID });
+    mocks.buildClientRecord.mockResolvedValue({ id: CLIENT_ID });
+    const payload = {
+      clientId: CLIENT_ID,
+      amount: "85,50",
+      status: "Unpaid",
+      description: "",
+      receiptUrl: "",
+      paidAt: "",
+    };
+
+    expect((await addClientPaymentAction(payload)).ok).toBe(true);
+    expect((await updateClientPaymentAction({ ...payload, id: SUB_RECORD_ID })).ok).toBe(true);
+    expect(mocks.clientPayment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ amountCents: 8550 }),
+    });
+    expect(mocks.clientPayment.update).toHaveBeenCalledWith({
+      where: { id: SUB_RECORD_ID },
+      data: expect.objectContaining({ amountCents: 8550 }),
+    });
+  });
+
   it.each(["abc", "1e3", "85.501", "1.000,00", "1000000.01"])(
     "rejects %j on create and update without writing a payment",
     async (amount) => {
