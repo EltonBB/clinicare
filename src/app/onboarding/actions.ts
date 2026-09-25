@@ -44,7 +44,7 @@ async function bootstrapWorkspaceFromOnboarding(user: {
   id: string;
   email?: string | null;
   user_metadata?: Record<string, unknown>;
-}, nextState: OnboardingState) {
+}, nextState: OnboardingState, logoUrl: string | null) {
   const metadata = user.user_metadata ?? {};
   const businessName =
     nextState.clinic.name.trim().length > 0
@@ -64,12 +64,6 @@ async function bootstrapWorkspaceFromOnboarding(user: {
     nextState.clinic.accentColor === "custom" && customAccentHex
       ? customAccentHex
       : accentPreset.id;
-  // Accept only a Supabase storage reference or a safe HTTPS URL — never a
-  // data: URL or other scheme that later flows into a CSS url() in the shell.
-  const logoUrl =
-    normalizeOptionalPublicUrl(normalizeStorageReference(nextState.clinic.logoUrl)) ||
-    null;
-
   return prisma.$transaction(async (tx) => {
     const business = await tx.business.upsert({
       where: {
@@ -263,8 +257,19 @@ export async function saveOnboardingStateAction(
     if (validationError) {
       return { ok: false, error: validationError, state: normalizedState };
     }
+    // Reject a nonempty logo that cannot be safely stored. Treating it as an
+    // empty logo here would overwrite a clinic's existing logo on re-bootstrap.
+    const logoCandidate = normalizeStorageReference(normalizedState.clinic.logoUrl, user.id, "logos");
+    const logoUrl = logoCandidate === null ? "" : normalizeOptionalPublicUrl(logoCandidate);
+    if (logoCandidate === null || (logoCandidate.trim() && !logoUrl)) {
+      return {
+        ok: false,
+        error: "Upload the clinic logo again before completing onboarding.",
+        state: normalizedState,
+      };
+    }
     try {
-      await bootstrapWorkspaceFromOnboarding(user, normalizedState);
+      await bootstrapWorkspaceFromOnboarding(user, normalizedState, logoUrl || null);
       // The Business row now exists. (workspace)/layout.tsx server-fetches
       // owner/business identity on every authenticated route, so anything
       // already cached — including a Router-Cache entry from this page's own

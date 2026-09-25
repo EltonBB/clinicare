@@ -132,7 +132,9 @@ export async function saveSettingsAction(
   const normalizedWhatsAppNumber = normalizePhone(payload.whatsapp.phoneNumber);
   const customAccentHex = normalizeBrandHexColor(payload.appearance.accentHex);
   const accentPreset = resolveBrandAccentPreset(payload.appearance.accentColor);
-  const candidateLogoUrl = normalizeStorageReference(payload.business.logoUrl);
+  const candidateLogoUrl = normalizeStorageReference(
+    payload.business.logoUrl, business.ownerId, "logos"
+  );
 
   if (payload.appearance.accentColor === "custom" && !customAccentHex) {
     return {
@@ -143,7 +145,7 @@ export async function saveSettingsAction(
 
   // Only a Supabase storage reference or a safe HTTPS URL may be stored — the
   // logo is later interpolated into a CSS url() in the app shell.
-  if (hasUnsafePublicUrl(candidateLogoUrl)) {
+  if (candidateLogoUrl === null || hasUnsafePublicUrl(candidateLogoUrl)) {
     return {
       ok: false,
       error: "Upload the clinic logo again, or use a safe HTTPS link.",
@@ -316,7 +318,7 @@ export async function discardUnsavedLogoAction(uploadedLogoUrl: string): Promise
     missingBusinessRedirect: "/onboarding",
   });
 
-  const candidate = normalizeStorageReference(uploadedLogoUrl);
+  const candidate = normalizeStorageReference(uploadedLogoUrl, business.ownerId, "logos");
 
   if (!candidate || candidate === (business.logoUrl ?? "")) {
     return;
