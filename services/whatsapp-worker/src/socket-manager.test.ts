@@ -25,6 +25,7 @@ vi.mock("./bridge", () => ({ postToApp: mocks.postToApp }));
 vi.mock("./logger", () => ({ logger: mocks.logger, scrubError: () => "test-error" }));
 vi.mock("qrcode-terminal", () => ({ default: { generate: vi.fn() } }));
 
+/** Creates a mock socket with event and method spies for lifecycle tests. */
 function makeSocket() {
   return { ev: new EventEmitter(), end: vi.fn(), sendMessage: vi.fn() };
 }
