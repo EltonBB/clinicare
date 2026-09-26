@@ -4,19 +4,48 @@ const mocks = vi.hoisted(() => {
   const message = { findFirst: vi.fn(), create: vi.fn() };
   const client = { findFirst: vi.fn() };
   const conversation = { upsert: vi.fn() };
+  const appointment = { findMany: vi.fn() };
   const $transaction = vi.fn();
-  return { message, client, conversation, $transaction };
+  const confirmAppointmentCore = vi.fn();
+  const cancelAppointmentCore = vi.fn();
+  const notifyStaffOfAppointmentChange = vi.fn();
+  const revalidateCalendarSurfaces = vi.fn();
+  const sendMessage = vi.fn();
+  return {
+    message,
+    client,
+    conversation,
+    appointment,
+    $transaction,
+    confirmAppointmentCore,
+    cancelAppointmentCore,
+    notifyStaffOfAppointmentChange,
+    revalidateCalendarSurfaces,
+    sendMessage,
+  };
 });
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     message: mocks.message,
     client: mocks.client,
+    appointment: mocks.appointment,
     $transaction: mocks.$transaction,
   },
 }));
 
-import { recordInboundMessage } from "./inbound";
+vi.mock("@/lib/appointments-shared", () => ({
+  confirmAppointmentCore: mocks.confirmAppointmentCore,
+  cancelAppointmentCore: mocks.cancelAppointmentCore,
+  notifyStaffOfAppointmentChange: mocks.notifyStaffOfAppointmentChange,
+  revalidateCalendarSurfaces: mocks.revalidateCalendarSurfaces,
+}));
+
+vi.mock("@/lib/messaging", () => ({
+  sendMessage: mocks.sendMessage,
+}));
+
+import { applyInboundReplyIntent, recordInboundMessage } from "./inbound";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -75,7 +104,7 @@ describe("recordInboundMessage", () => {
       providerMessageId: "M2",
     });
 
-    expect(result).toEqual({ recorded: true, conversationId: "conv_1" });
+    expect(result).toEqual({ recorded: true, conversationId: "conv_1", clientId: "client_9" });
 
     expect(mocks.conversation.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -95,5 +124,71 @@ describe("recordInboundMessage", () => {
         }),
       })
     );
+  });
+});
+
+describe("applyInboundReplyIntent", () => {
+  const NOW = new Date("2026-07-01T12:00:00Z");
+  const REMINDED_UPCOMING = {
+    id: "appt_1",
+    startAt: new Date("2026-07-02T09:00:00Z"),
+    staffMemberId: "staff_1",
+    client: { phone: "+38344123456" },
+  };
+
+  it("does nothing when the body has no intent", async () => {
+    const result = await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "hello", now: NOW });
+    expect(result).toEqual({ applied: false, reason: "no_intent" });
+    expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when the phone didn't match a client", async () => {
+    const result = await applyInboundReplyIntent({ businessId: "biz_1", clientId: null, body: "1", now: NOW });
+    expect(result).toEqual({ applied: false, reason: "no_client" });
+  });
+
+  it("does nothing when there's no unambiguous match", async () => {
+    mocks.appointment.findMany.mockResolvedValueOnce([]);
+    expect(await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "1", now: NOW })).toEqual({
+      applied: false,
+      reason: "no_match",
+    });
+
+    mocks.appointment.findMany.mockResolvedValueOnce([REMINDED_UPCOMING, { ...REMINDED_UPCOMING, id: "appt_2" }]);
+    expect(await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "1", now: NOW })).toEqual({
+      applied: false,
+      reason: "ambiguous",
+    });
+  });
+
+  it("confirms the one unambiguous match and sends a confirmation", async () => {
+    mocks.appointment.findMany.mockResolvedValueOnce([REMINDED_UPCOMING]);
+    mocks.confirmAppointmentCore.mockResolvedValueOnce({ ok: true, appointmentId: "appt_1", clientId: "client_1", staffMemberId: "staff_1", changed: true });
+
+    const result = await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "yes", now: NOW });
+
+    expect(result).toEqual({ applied: true, intent: "confirm", appointmentId: "appt_1" });
+    expect(mocks.confirmAppointmentCore).toHaveBeenCalledWith({ id: "appt_1", businessId: "biz_1" });
+    expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ channel: "WHATSAPP", to: "+38344123456" }));
+  });
+
+  it("cancels the one unambiguous match, sends a confirmation, and notifies staff", async () => {
+    mocks.appointment.findMany.mockResolvedValueOnce([REMINDED_UPCOMING]);
+    mocks.cancelAppointmentCore.mockResolvedValueOnce({ ok: true, appointmentId: "appt_1", clientId: "client_1", staffMemberId: "staff_1", changed: true });
+
+    const result = await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "2", now: NOW });
+
+    expect(result).toEqual({ applied: true, intent: "cancel", appointmentId: "appt_1" });
+    expect(mocks.notifyStaffOfAppointmentChange).toHaveBeenCalledWith("biz_1", "staff_1", "appt_1", "changed");
+    expect(mocks.revalidateCalendarSurfaces).toHaveBeenCalledWith(["client_1"], ["staff_1"]);
+  });
+
+  it("reports no_match instead of throwing when the guarded mutation itself found nothing to change", async () => {
+    mocks.appointment.findMany.mockResolvedValueOnce([REMINDED_UPCOMING]);
+    mocks.confirmAppointmentCore.mockResolvedValueOnce({ ok: false, status: 409, error: "conflict" });
+    expect(await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "1", now: NOW })).toEqual({
+      applied: false,
+      reason: "no_match",
+    });
   });
 });

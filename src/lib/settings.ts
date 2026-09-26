@@ -22,7 +22,7 @@ import {
 } from "@/lib/branding";
 
 export const defaultReminderTemplate =
-  "Hi {client_name}, this is a reminder for your appointment at {time} on {date}. Reply here if you need to reschedule.";
+  "Hi {client_name}, this is a reminder for your appointment at {time} on {date}. Reply 1 to confirm or 2 to cancel.";
 
 // Matches saveSettingsSchema's z.string().max() in (workspace)/settings/actions.ts —
 // shared so the textarea can't accept input the server will reject as a whole

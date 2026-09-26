@@ -38,6 +38,7 @@ import {
   APPOINTMENT_NOT_FOUND_ERROR,
   APPOINTMENT_NOT_STARTED_ERROR,
   cancelAppointmentCore,
+  confirmAppointmentCore,
   deleteAppointmentCore,
   recordAppointmentAttendanceCore,
   revalidateCalendarSurfaces,
@@ -416,5 +417,35 @@ describe("recordAppointmentAttendanceCore", () => {
       status: 404,
       error: APPOINTMENT_NOT_FOUND_ERROR,
     });
+  });
+});
+
+describe("confirmAppointmentCore", () => {
+  it("confirms a pending appointment", async () => {
+    mockGuardHit();
+    const result = await confirmAppointmentCore(WHERE);
+    expect(result).toMatchObject({ ok: true, changed: true });
+    expect(mocks.appointment.updateMany).toHaveBeenCalledWith({
+      where: { ...WHERE, status: "PENDING" },
+      data: { status: "CONFIRMED" },
+    });
+  });
+
+  it("is a no-op success when already confirmed", async () => {
+    mocks.appointment.updateMany.mockResolvedValue({ count: 0 });
+    mocks.appointment.findFirst.mockResolvedValue({ ...RECORD, status: "CONFIRMED" });
+    expect(await confirmAppointmentCore(WHERE)).toMatchObject({ ok: true, changed: false });
+  });
+
+  it("returns 404 for an appointment outside this workspace", async () => {
+    mocks.appointment.updateMany.mockResolvedValue({ count: 0 });
+    mocks.appointment.findFirst.mockResolvedValue(null);
+    expect(await confirmAppointmentCore(WHERE)).toEqual({ ok: false, status: 404, error: APPOINTMENT_NOT_FOUND_ERROR });
+  });
+
+  it("reports a conflict for anything else (cancelled, completed, no-show)", async () => {
+    mocks.appointment.updateMany.mockResolvedValue({ count: 0 });
+    mocks.appointment.findFirst.mockResolvedValue({ ...RECORD, status: "CANCELLED" });
+    expect(await confirmAppointmentCore(WHERE)).toEqual({ ok: false, status: 409, error: APPOINTMENT_CONFLICT_ERROR });
   });
 });

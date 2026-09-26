@@ -148,6 +148,7 @@ If a component does not help the user make a decision, take action, or understan
 - **Channel plan** (ROADMAP.md): **Baileys WhatsApp is the only wired messaging channel today** (Kosovo-only, disposable, isolated) — confirmed sending and receiving real messages 2026-08-29. Resend already handles transactional auth email as Supabase Auth's custom SMTP, but has no application-level channel adapter yet for reminders/marketing; Twilio (SMS) isn't wired at all. The official WhatsApp upgrade (once a US entity + Meta access exist) is a later step, paused alongside the US market rather than actively gated; all channels stay behind the messaging seam so a provider can be swapped if needed.
 - All outbound messaging must flow through the messaging abstraction (`sendMessage(channel, payload)` — ROADMAP Step 1). Never call a provider directly from feature code.
 - **Minimum-necessary content** on every patient-facing message: name + appointment time. No clinical details over SMS/WhatsApp, ever.
+- Reminders now carry a simple reply-driven action — a client can confirm or cancel their appointment straight from the reminder, no phone call needed.
 - **Customer-facing language hides providers.** Never surface Twilio, Meta, Supabase, Prisma, Baileys, or OpenAI names, internals, or raw errors in UI. Connection states, errors, and settings use simple product language with support-friendly fallbacks.
 
 ---

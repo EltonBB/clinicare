@@ -636,6 +636,11 @@ export async function recordAppointmentAttendanceAction(
   return { ok: true, status: attended ? "completed" : "no-show" };
 }
 
+// Generous upper bound on any real call site (one popover = 1 id; one Day view
+// = at most a very busy day's appointments) — guards against an unbounded
+// Prisma `IN` clause from a runaway caller.
+const MAX_RISK_BATCH_SIZE = 200;
+
 /**
  * Batched risk lookup for whatever's currently on screen (a quick-view
  * popover, one Day-view column). Pro only — a Basic workspace gets an empty
@@ -648,6 +653,8 @@ export async function getNoShowRiskAction(
   if (appointmentIds.length === 0) {
     return {};
   }
+
+  const ids = appointmentIds.slice(0, MAX_RISK_BATCH_SIZE);
 
   const context = await getAuthedBusiness();
 
@@ -663,7 +670,7 @@ export async function getNoShowRiskAction(
 
   const rows = await prisma.appointment.findMany({
     where: {
-      id: { in: appointmentIds },
+      id: { in: ids },
       businessId: business.id,
       status: { in: ["PENDING", "CONFIRMED"] },
     },

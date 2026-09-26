@@ -2,8 +2,8 @@ import { cn } from "@/lib/utils";
 import type { NoShowRiskAssessment } from "@/lib/no-show-risk";
 
 const LEVEL_STYLES = {
-  medium: "bg-amber-50 text-amber-700",
-  high: "bg-red-50 text-red-700",
+  medium: "border border-amber-400 bg-white text-amber-700",
+  high: "border border-red-400 bg-white text-red-700",
 } as const;
 
 const LEVEL_LABELS = {

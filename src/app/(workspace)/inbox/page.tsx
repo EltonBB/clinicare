@@ -5,6 +5,7 @@ import { InboxWorkspace } from "@/components/inbox/inbox-workspace";
 import { buildInboxViewFromWorkspace } from "@/lib/inbox";
 import { buildWhatsAppConnectionSummary } from "@/lib/settings";
 import { ensureConversationForClient, fetchInboxConversations } from "@/lib/inbox-server";
+import { getPendingFollowUpDraftCount } from "@/lib/follow-ups-data";
 import { prisma } from "@/lib/prisma";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 
@@ -32,41 +33,43 @@ export default async function InboxPage({
     }
   });
 
-  const [clients, clientCount, { conversations, totalUnreadCount }, whatsappConnection] = await Promise.all([
-    prisma.client.findMany({
-      where: {
-        businessId: business.id,
-      },
-      select: {
-        id: true,
-        name: true,
-        phone: true,
-      },
-      orderBy: [
-        {
-          updatedAt: "desc",
+  const [clients, clientCount, { conversations, totalUnreadCount }, whatsappConnection, followUpsCount] =
+    await Promise.all([
+      prisma.client.findMany({
+        where: {
+          businessId: business.id,
         },
-        {
-          createdAt: "desc",
+        select: {
+          id: true,
+          name: true,
+          phone: true,
         },
-      ],
-      take: 150,
-    }),
-    prisma.client.count({
-      where: {
-        businessId: business.id,
-      },
-    }),
-    // Owns the business-wide unread aggregate itself — matches what the
-    // dashboard KPI and sidebar badge already use (see dashboard/page.tsx and
-    // (workspace)/actions.ts's refreshWorkspaceNotificationsAction).
-    fetchInboxConversations(business.id),
-    prisma.whatsAppConnection.findUnique({
-      where: {
-        businessId: business.id,
-      },
-    }),
-  ]);
+        orderBy: [
+          {
+            updatedAt: "desc",
+          },
+          {
+            createdAt: "desc",
+          },
+        ],
+        take: 150,
+      }),
+      prisma.client.count({
+        where: {
+          businessId: business.id,
+        },
+      }),
+      // Owns the business-wide unread aggregate itself — matches what the
+      // dashboard KPI and sidebar badge already use (see dashboard/page.tsx and
+      // (workspace)/actions.ts's refreshWorkspaceNotificationsAction).
+      fetchInboxConversations(business.id),
+      prisma.whatsAppConnection.findUnique({
+        where: {
+          businessId: business.id,
+        },
+      }),
+      getPendingFollowUpDraftCount(business.id),
+    ]);
   const inboxView = buildInboxViewFromWorkspace({
     conversations,
     clients,
@@ -91,6 +94,7 @@ export default async function InboxPage({
       connection={buildWhatsAppConnectionSummary(whatsappConnection)}
       clientCount={clientCount}
       recommendedClientId={clients[0]?.id}
+      followUpsCount={followUpsCount}
     />
   );
 }
