@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
@@ -11,13 +12,30 @@ import type { SendMessageResult } from "@/lib/messaging/types";
 import {
   dismissFollowUpDraft,
   markFollowUpDraftSent,
+  passSlotOffer,
   revertFollowUpDraftToPending,
+  SLOT_OFFER_UNAVAILABLE_ERROR,
 } from "@/lib/follow-ups-data";
+import { liveSlotOfferWhere } from "@/lib/slot-offers";
+import { formatZonedDateKey, formatZonedTime24 } from "@/lib/time-zone";
 
 export type FollowUpDraftActionResult = { ok: boolean; error?: string };
 
+const draftIdSchema = z.string().min(1).max(100);
+
+const TRY_AGAIN_ERROR = "Something went wrong. Try again.";
+
 function getAuthedBusiness() {
   return getAuthedBusinessContext("Your session expired. Log in again to manage follow-ups.");
+}
+
+// Every surface a follow-up mutation feeds: the Follow-ups list, the Inbox's
+// pending count, and — for slot offers — the Calendar's waiting-list panel,
+// which shows each entry's offer state.
+function revalidateFollowUpSurfaces() {
+  revalidatePath("/inbox/follow-ups");
+  revalidatePath("/inbox");
+  revalidatePath("/calendar");
 }
 
 /**
@@ -154,19 +172,20 @@ export async function sendFollowUpDraftAction(
     }
   }
 
-  revalidatePath("/inbox/follow-ups");
-  revalidatePath("/inbox");
+  revalidateFollowUpSurfaces();
   return { ok: true };
 }
 
 export type BookFollowUpSlotResult = { ok: true; bookingUrl: string } | { ok: false; error: string };
 
 /**
- * Turns a sent slot-offer draft into a pre-filled booking link. Only a SENT
- * SLOT_OFFER draft qualifies (mirrors FollowUpDraftItem.canBook) — anything
- * else (not found, wrong kind, still PENDING, already DISMISSED/EXPIRED)
- * returns the same plain "no longer available" error, since none of those
- * cases are actionable here.
+ * Turns a sent slot-offer draft into a booking link pre-filled with the
+ * client, service, staff member, and the freed slot's date and time (in the
+ * clinic's zone). Only a live SENT SLOT_OFFER draft qualifies (mirrors
+ * FollowUpDraftItem.canBook plus liveSlotOfferWhere) — anything else (not
+ * found, wrong kind, still PENDING, already DISMISSED/EXPIRED, the slot has
+ * passed) returns the same plain "no longer available" error, since none of
+ * those cases are actionable here.
  *
  * The linked waitlist entry is flipped OFFERED -> FILLED right here, at the
  * point staff commits to booking by clicking "Book" — not when the booking
@@ -190,35 +209,54 @@ export async function bookFollowUpSlotAction(draftId: string): Promise<BookFollo
   const business = context.business;
 
   const draft = await prisma.followUpDraft.findFirst({
-    where: { id: draftId, businessId: business.id, kind: "SLOT_OFFER", status: "SENT" },
+    where: { id: draftId, businessId: business.id, status: "SENT", ...liveSlotOfferWhere(new Date()) },
     select: {
       clientId: true,
-      appointment: { select: { title: true, staffMemberId: true } },
+      appointment: { select: { title: true, staffMemberId: true, startAt: true } },
     },
   });
 
-  if (!draft) {
-    return { ok: false, error: "This slot offer is no longer available." };
+  if (!draft?.appointment) {
+    return { ok: false, error: SLOT_OFFER_UNAVAILABLE_ERROR };
   }
 
-  const params = new URLSearchParams({ client: draft.clientId });
-  if (draft.appointment?.title) {
-    params.set("service", draft.appointment.title);
-  }
-  if (draft.appointment?.staffMemberId) {
-    params.set("staffMemberId", draft.appointment.staffMemberId);
+  const { title, staffMemberId, startAt } = draft.appointment;
+  const params = new URLSearchParams({
+    client: draft.clientId,
+    service: title,
+    date: formatZonedDateKey(startAt),
+    time: formatZonedTime24(startAt),
+  });
+  if (staffMemberId) {
+    params.set("staffMemberId", staffMemberId);
   }
 
-  await prisma.waitlistEntry.updateMany({
-    where: { businessId: business.id, status: "OFFERED", followUpDrafts: { some: { id: draftId } } },
+  // Pinned to this draft still being SENT: if it was declined and the entry
+  // re-offered another slot between the read above and this write, the
+  // entry's OFFERED now belongs to that other offer — leave it alone.
+  const { count } = await prisma.waitlistEntry.updateMany({
+    where: {
+      businessId: business.id,
+      status: "OFFERED",
+      followUpDrafts: { some: { id: draftId, status: "SENT" } },
+    },
     data: { status: "FILLED" },
   });
 
-  revalidatePath("/inbox/follow-ups");
+  if (count === 0) {
+    // Declined, removed, or booked by someone else since the read above.
+    return { ok: false, error: SLOT_OFFER_UNAVAILABLE_ERROR };
+  }
+
+  revalidateFollowUpSurfaces();
 
   return { ok: true, bookingUrl: `/calendar/new?${params.toString()}` };
 }
 
+/**
+ * Skip. Skipping a slot offer also puts the client back on the waiting list
+ * and offers the same slot to the next match (see dismissFollowUpDraft).
+ */
 export async function dismissFollowUpDraftAction(draftId: string): Promise<FollowUpDraftActionResult> {
   const context = await getAuthedBusiness();
 
@@ -226,13 +264,58 @@ export async function dismissFollowUpDraftAction(draftId: string): Promise<Follo
     return { ok: false, error: context.error };
   }
 
-  const outcome = await dismissFollowUpDraft({ id: draftId, businessId: context.business.id });
+  let outcome;
+  try {
+    outcome = await dismissFollowUpDraft({ id: draftId, businessId: context.business.id });
+  } catch (error) {
+    // Already retried once on a write conflict (see retryOnWriteConflict).
+    logger.error("Couldn't skip a follow-up draft.", error, { businessId: context.business.id, draftId });
+    return { ok: false, error: TRY_AGAIN_ERROR };
+  }
 
   if (!outcome.ok) {
     return outcome;
   }
 
-  revalidatePath("/inbox/follow-ups");
-  revalidatePath("/inbox");
+  revalidateFollowUpSurfaces();
+  return { ok: true };
+}
+
+/**
+ * "Declined": the patient turned down a sent slot offer. Puts them back on
+ * the waiting list and offers the same slot to the next match (see
+ * passSlotOffer). No plan check here, like Skip and Book: a workspace that
+ * dropped to Basic must still be able to release an outstanding offer. The
+ * re-offer half is Pro-gated inside offerFreedSlot, so Basic drafts nothing.
+ */
+export async function passSlotOfferAction(draftId: string): Promise<FollowUpDraftActionResult> {
+  const context = await getAuthedBusiness();
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  const business = context.business;
+
+  const parsedId = draftIdSchema.safeParse(draftId);
+
+  if (!parsedId.success) {
+    return { ok: false, error: SLOT_OFFER_UNAVAILABLE_ERROR };
+  }
+
+  let outcome;
+  try {
+    outcome = await passSlotOffer({ id: parsedId.data, businessId: business.id });
+  } catch (error) {
+    // Already retried once on a write conflict (see retryOnWriteConflict).
+    logger.error("Couldn't record a declined slot offer.", error, { businessId: business.id, draftId: parsedId.data });
+    return { ok: false, error: TRY_AGAIN_ERROR };
+  }
+
+  if (!outcome.ok) {
+    return outcome;
+  }
+
+  revalidateFollowUpSurfaces();
   return { ok: true };
 }

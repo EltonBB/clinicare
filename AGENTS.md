@@ -139,7 +139,7 @@ If a component does not help the user make a decision, take action, or understan
 - Full Reports analytics is the flagship Pro feature. On Basic, Reports shows a polished upgrade state — never a degraded or broken analytics page.
 - Billing will run on **Paddle**. `/checkout` currently detects plan context (first purchase / current plan / upgrade / downgrade / reactivation) but the payment session, webhooks, and plan activation are **not implemented yet**. Keep the final payment button reserved for the Paddle handoff — never fake a successful purchase or activate a plan without real payment state.
 - Pricing/plan copy lives on the public Pricing page and must stay consistent with the in-app plan card and checkout summary.
-- No-show tracking (recording a no-show, the no-show rate in Reports, the no-show risk score on upcoming appointments, and the waiting list's automatic slot-offer matching when a booking is cancelled) is Pro. Basic workspaces keep the four existing statuses and no risk markers.
+- No-show tracking (recording a no-show, the no-show rate in Reports, the no-show risk score on upcoming appointments, and the waiting list's automatic slot-offer matching when a booking is cancelled) is Pro. Basic workspaces keep the four existing statuses and no risk markers. Rebooking nudges (drafted follow-ups to clients overdue for a visit) are Pro too; unpaid-payment reminders and after-visit thank-yous are on every plan.
 
 ---
 
@@ -149,6 +149,7 @@ If a component does not help the user make a decision, take action, or understan
 - All outbound messaging must flow through the messaging abstraction (`sendMessage(channel, payload)` — ROADMAP Step 1). Never call a provider directly from feature code.
 - **Minimum-necessary content** on every patient-facing message: name + appointment time. No clinical details over SMS/WhatsApp, ever.
 - Reminders now carry a simple reply-driven action — a client can confirm or cancel their appointment straight from the reminder, no phone call needed.
+- Suggested follow-ups (waiting-list slot offers, rebooking nudges, unpaid-payment reminders, thank-yous) are **drafts** a person reviews and sends from Inbox › Follow-ups — nothing in that family ever sends itself, and each draft stays minimum-necessary (the client's name plus, at most, a slot time or a payment amount — never clinical detail).
 - **Customer-facing language hides providers.** Never surface Twilio, Meta, Supabase, Prisma, Baileys, or OpenAI names, internals, or raw errors in UI. Connection states, errors, and settings use simple product language with support-friendly fallbacks.
 
 ---
@@ -446,6 +447,7 @@ Settings is a **popup opened from the sidebar/mobile nav** (Claude-style), not a
   - **Appearance**: one wrapping row of **color chip pills** (color dot with a check on the selected one + name) plus an inline custom chip (native color input dot + hex field); a single helper line below.
   - **Working hours**: 7 days as fixed-height divided toggle rows split across two columns; enabled days show inline start–end selects, closed days a muted "Closed".
   - **Reminders**: two fixed-height divided toggle rows ("First/Second reminder" + inline "Nh before" select; "Off" when disabled), then the message template with a variables hint line.
+  - **Workflows**: three divided toggle rows — Rebooking nudge (Pro only, hidden on Basic), Unpaid payment reminder, Thank-you message — each with an inline timing select while on ("after N months/days", "N hours after the visit"), a muted "Off" when disabled; the section description says the suggestions land as drafts in Inbox › Follow-ups and nothing sends without review. Payment reminders and thank-yous are on by default, rebooking nudges off.
   - **WhatsApp**: a status panel (dot + Connected/Not connected + quiet Refresh, plus the connection detail and next-step line) above the number input + Connect, a format hint, and a checklist of what connecting enables — including the minimum-necessary "name + appointment time only, never clinical detail" line.
   - **Billing**: a plan panel (name + status pill + one-line note) above a feature checklist ("Included in your plan" on Pro / "Unlock with Pro" on Basic) and a support line + Manage plan CTA.
 - The workspace tour anchors to the WhatsApp **nav button** (`settings-whatsapp`), which is always rendered.

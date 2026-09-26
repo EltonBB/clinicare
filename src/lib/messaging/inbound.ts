@@ -9,6 +9,7 @@ import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
 import { prisma } from "@/lib/prisma";
 import { classifyReplyIntent } from "@/lib/reply-intent";
+import { liveSlotOfferWhere } from "@/lib/slot-offers";
 import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 
 import type { AppointmentStatus } from "@prisma/client";
@@ -143,7 +144,7 @@ export async function recordInboundMessage(
 }
 
 export type ApplyReplyIntentResult =
-  | { applied: false; reason: "no_intent" | "no_client" | "no_match" | "ambiguous" | "already_confirmed" }
+  | { applied: false; reason: "no_intent" | "no_client" | "no_match" | "ambiguous" | "already_confirmed" | "open_offer" }
   | { applied: true; intent: "confirm" | "cancel"; appointmentId: string };
 
 /**
@@ -210,6 +211,9 @@ async function mirrorOutboundReplyToInbox(args: {
   }
 }
 
+// How long after a slot offer goes out a reply is read as answering it.
+const OPEN_OFFER_WINDOW_MS = 48 * 60 * 60 * 1000;
+
 /**
  * Reads an inbound message for a confirm/cancel reply and, only when exactly
  * one upcoming reminded appointment matches, acts on it. Called by the
@@ -231,6 +235,26 @@ export async function applyInboundReplyIntent(args: {
   }
   if (!clientId) {
     return { applied: false, reason: "no_client" };
+  }
+
+  // While a waiting-list slot offer to this client is open, a "yes" most
+  // likely answers the offer — not a reminder — so it must not confirm (or a
+  // "no" cancel) some other appointment. Stand down; the message is already
+  // in the Inbox for staff to act on. Only while the offer is still live
+  // (entry still holds it, slot still cancelled and ahead) — once its slot
+  // passes or the appointment is back on, replies go back to normal.
+  const openOffer = await prisma.followUpDraft.findFirst({
+    where: {
+      businessId,
+      clientId,
+      status: "SENT",
+      sentAt: { gte: new Date(now.getTime() - OPEN_OFFER_WINDOW_MS) },
+      ...liveSlotOfferWhere(now),
+    },
+    select: { id: true },
+  });
+  if (openOffer) {
+    return { applied: false, reason: "open_offer" };
   }
 
   // A reminder goes to pending and confirmed appointments alike and invites

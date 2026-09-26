@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => {
   const client = { findMany: vi.fn() };
   const conversation = { upsert: vi.fn() };
   const appointment = { findMany: vi.fn() };
+  const followUpDraft = { findFirst: vi.fn() };
   const $transaction = vi.fn();
   const confirmAppointmentCore = vi.fn();
   const cancelAppointmentCore = vi.fn();
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => {
     client,
     conversation,
     appointment,
+    followUpDraft,
     $transaction,
     confirmAppointmentCore,
     cancelAppointmentCore,
@@ -30,6 +32,7 @@ vi.mock("@/lib/prisma", () => ({
     message: mocks.message,
     client: mocks.client,
     appointment: mocks.appointment,
+    followUpDraft: mocks.followUpDraft,
     $transaction: mocks.$transaction,
   },
 }));
@@ -51,6 +54,9 @@ import { applyInboundReplyIntent, recordInboundMessage } from "./inbound";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // No open slot offer by default — the reply-intent tests below run the
+  // normal confirm/cancel path unless a test opens one.
+  mocks.followUpDraft.findFirst.mockResolvedValue(null);
   mocks.$transaction.mockImplementation(
     async (cb: (tx: unknown) => unknown) =>
       cb({ conversation: mocks.conversation, message: mocks.message })
@@ -332,6 +338,63 @@ describe("applyInboundReplyIntent", () => {
 
     // The mirror write is best-effort — its failure must not surface as a
     // failed confirm.
+    expect(result).toEqual({ applied: true, intent: "confirm", appointmentId: "appt_1" });
+  });
+
+  it.each([
+    ["yes", "confirm"],
+    ["2", "cancel"],
+  ])("stands down on %j while the client has an open slot offer — nothing is confirmed or cancelled", async (body) => {
+    mocks.followUpDraft.findFirst.mockResolvedValueOnce({ id: "draft_offer" });
+
+    const result = await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body, now: NOW });
+
+    expect(result).toEqual({ applied: false, reason: "open_offer" });
+    // Scoped to this client in this business: a SENT offer from the last 48
+    // hours that is still live — its entry still holds it and the offered
+    // slot is still cancelled and ahead.
+    expect(mocks.followUpDraft.findFirst).toHaveBeenCalledWith({
+      where: {
+        businessId: "biz_1",
+        clientId: "client_1",
+        kind: "SLOT_OFFER",
+        status: "SENT",
+        sentAt: { gte: new Date("2026-06-29T12:00:00Z") },
+        waitlistEntry: { status: "OFFERED" },
+        appointment: { status: "CANCELLED", startAt: { gt: NOW } },
+      },
+      select: { id: true },
+    });
+    expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+    expect(mocks.confirmAppointmentCore).not.toHaveBeenCalled();
+    expect(mocks.cancelAppointmentCore).not.toHaveBeenCalled();
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("ends the stand-down once the offer is no longer live (its slot passed, or the appointment is back on)", async () => {
+    // The live-offer filter finds nothing for an offer whose slot has passed
+    // (appointment.startAt <= now) or whose appointment was un-cancelled, even
+    // inside the 48-hour window — so the reply acts on the reminder as usual.
+    mocks.followUpDraft.findFirst.mockResolvedValueOnce(null);
+    mocks.appointment.findMany.mockResolvedValueOnce([REMINDED_UPCOMING]);
+    mocks.cancelAppointmentCore.mockResolvedValueOnce({ ok: true, appointmentId: "appt_1", clientId: "client_1", staffMemberId: "staff_1", changed: true });
+    mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });
+
+    const result = await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "2", now: NOW });
+
+    const [{ where }] = mocks.followUpDraft.findFirst.mock.calls[0];
+    expect(where.appointment).toEqual({ status: "CANCELLED", startAt: { gt: NOW } });
+    expect(result).toEqual({ applied: true, intent: "cancel", appointmentId: "appt_1" });
+  });
+
+  it("keeps the normal confirm path when the client has no open slot offer", async () => {
+    mocks.appointment.findMany.mockResolvedValueOnce([REMINDED_UPCOMING]);
+    mocks.confirmAppointmentCore.mockResolvedValueOnce({ ok: true, appointmentId: "appt_1", clientId: "client_1", staffMemberId: "staff_1", changed: true });
+    mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });
+
+    const result = await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "yes", now: NOW });
+
+    expect(mocks.followUpDraft.findFirst).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ applied: true, intent: "confirm", appointmentId: "appt_1" });
   });
 

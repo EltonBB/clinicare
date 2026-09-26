@@ -21,6 +21,7 @@ import {
   ImageUp,
   MessageCircle,
   Palette,
+  Workflow,
 } from "lucide-react";
 
 import { updateOwnerProfileAction } from "@/app/(auth)/actions";
@@ -29,6 +30,7 @@ import {
   discardUnsavedLogoAction,
   getBaileysPairingStatusAction,
   saveSettingsAction,
+  saveWorkflowSettingsAction,
 } from "@/app/(workspace)/settings/actions";
 import { businessTypes } from "@/lib/constants";
 import { brandAccentPresets, normalizeBrandHexColor } from "@/lib/branding";
@@ -36,6 +38,7 @@ import { cn } from "@/lib/utils";
 import { isStorageReference } from "@/lib/media-storage";
 import { safeUploadErrorMessage, uploadWorkspaceImage } from "@/lib/media-storage-client";
 import {
+  buildWorkflowSavePayload,
   phaseLabelMap,
   REMINDER_TEMPLATE_MAX_LENGTH,
   timeOptions,
@@ -48,6 +51,8 @@ import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Toggle } from "@/components/settings/settings-toggle";
+import { WorkflowsSection } from "@/components/settings/workflows-section";
 import {
   WorkspaceHeader,
   WorkspacePage,
@@ -106,6 +111,7 @@ type SettingsSectionId =
   | "appearance"
   | "hours"
   | "reminders"
+  | "workflows"
   | "whatsapp"
   | "billing";
 
@@ -119,6 +125,7 @@ const settingsNav: Array<{
   { id: "appearance", icon: Palette, title: "Appearance", subtitle: "Workspace accent color" },
   { id: "hours", icon: Clock3, title: "Working hours", subtitle: "Booking availability" },
   { id: "reminders", icon: BellRing, title: "Reminders", subtitle: "Send times and message" },
+  { id: "workflows", icon: Workflow, title: "Workflows", subtitle: "Follow-up drafts and timing" },
   { id: "whatsapp", icon: MessageCircle, title: "WhatsApp", subtitle: "Pairing and connection" },
   { id: "billing", icon: CreditCard, title: "Billing", subtitle: "Plan and checkout" },
 ];
@@ -132,33 +139,6 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
     <label className="text-xs font-medium text-muted-foreground">
       {children}
     </label>
-  );
-}
-
-function Toggle({
-  checked,
-  onPressedChange,
-}: {
-  checked: boolean;
-  onPressedChange: (checked: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={checked}
-      onClick={() => onPressedChange(!checked)}
-      className={cn(
-        "relative inline-flex h-6 w-10 shrink-0 rounded-full shadow-[inset_0_1px_3px_rgba(20,32,51,0.12)] transition-colors duration-(--duration-base)",
-        checked ? "bg-primary" : "bg-border"
-      )}
-    >
-      <span
-        className={cn(
-          "absolute top-1 size-4 rounded-full bg-white transition-transform",
-          checked ? "translate-x-5" : "translate-x-1"
-        )}
-      />
-    </button>
   );
 }
 
@@ -467,6 +447,26 @@ export function SettingsWorkspace({
           email: submittedAccount.email,
           phone: submittedAccount.phone,
         });
+      }
+
+      // Workflows save through their own action (it re-checks the plan
+      // server-side) — only when they changed, and before the main settings
+      // save so a failure here stops the save before anything else is written.
+      // If the main save then fails, the persisted workflow values are already
+      // reflected in savedState, so they don't show as unsaved edits.
+      if (JSON.stringify(state.workflows) !== JSON.stringify(savedState.workflows)) {
+        const workflowResult = await saveWorkflowSettingsAction(
+          buildWorkflowSavePayload(state.workflows, state.billing.isPro)
+        );
+
+        if (!workflowResult.ok || !workflowResult.workflows) {
+          setErrorMessage(workflowResult.error ?? "We couldn't save your workflow settings.");
+          setMessage("");
+          return;
+        }
+
+        const persistedWorkflows = workflowResult.workflows;
+        setSavedState((current) => ({ ...current, workflows: persistedWorkflows }));
       }
 
       // Submit only the editable subset — derived/display fields stay server-owned.
@@ -1256,6 +1256,7 @@ export function SettingsWorkspace({
                       <Toggle
                         checked={item.enabled}
                         onPressedChange={(checked) => updateDay(day, { enabled: checked })}
+                        ariaLabel={weekdayLabels[day]}
                       />
                       <p className="text-sm font-medium text-foreground">{weekdayLabels[day]}</p>
                     </div>
@@ -1296,6 +1297,7 @@ export function SettingsWorkspace({
               <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                 <div className="flex min-w-0 items-center gap-3">
                   <Toggle
+                    ariaLabel="First reminder"
                     checked={state.reminders.twentyFourHour}
                     onPressedChange={(checked) =>
                       setState((current) => ({
@@ -1333,6 +1335,7 @@ export function SettingsWorkspace({
               <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                 <div className="flex min-w-0 items-center gap-3">
                   <Toggle
+                    ariaLabel="Second reminder"
                     checked={state.reminders.twoHour}
                     onPressedChange={(checked) =>
                       setState((current) => ({
@@ -1389,6 +1392,24 @@ export function SettingsWorkspace({
                 </p>
               </div>
             </div>
+          </SectionCard>
+
+          <SectionCard
+            id="workflows"
+            title="Workflows"
+            description="Suggested follow-up messages appear in Inbox › Follow-ups for you to review and send."
+            active={activeSection === "workflows"}
+          >
+            <WorkflowsSection
+              workflows={state.workflows}
+              isPro={state.billing.isPro}
+              onChange={(patch) =>
+                setState((current) => ({
+                  ...current,
+                  workflows: { ...current.workflows, ...patch },
+                }))
+              }
+            />
           </SectionCard>
 
           <SectionCard

@@ -9,13 +9,20 @@ const mocks = vi.hoisted(() => {
   };
   const appointmentReminder = { deleteMany: vi.fn() };
   const client = { updateMany: vi.fn() };
+  // The slot-offer models live on the TRANSACTION client only, and the outer
+  // client gets its own separate copies — so a test can prove the plan
+  // re-check, the match read, the entry flip and the draft insert all ran on
+  // `tx` (atomic with the cancel), never on the outer client.
   const business = { findUniqueOrThrow: vi.fn() };
-  const waitlistEntry = { updateMany: vi.fn() };
-  const followUpDraft = { create: vi.fn() };
+  const waitlistEntry = { findMany: vi.fn(), updateMany: vi.fn() };
+  const followUpDraft = { createMany: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() };
+  const outer = {
+    business: { findUniqueOrThrow: vi.fn() },
+    waitlistEntry: { findMany: vi.fn(), updateMany: vi.fn() },
+    followUpDraft: { createMany: vi.fn() },
+  };
   const $transaction = vi.fn();
   const revalidatePath = vi.fn();
-  const isProBusinessPlan = vi.fn();
-  const findMatchingWaitlistCandidates = vi.fn();
   return {
     appointment,
     appointmentReminder,
@@ -23,10 +30,9 @@ const mocks = vi.hoisted(() => {
     business,
     waitlistEntry,
     followUpDraft,
+    outer,
     $transaction,
     revalidatePath,
-    isProBusinessPlan,
-    findMatchingWaitlistCandidates,
   };
 });
 
@@ -35,9 +41,9 @@ vi.mock("@/lib/prisma", () => ({
     appointment: mocks.appointment,
     appointmentReminder: mocks.appointmentReminder,
     client: mocks.client,
-    business: mocks.business,
-    waitlistEntry: mocks.waitlistEntry,
-    followUpDraft: mocks.followUpDraft,
+    business: mocks.outer.business,
+    waitlistEntry: mocks.outer.waitlistEntry,
+    followUpDraft: mocks.outer.followUpDraft,
     $transaction: mocks.$transaction,
   },
 }));
@@ -47,10 +53,6 @@ vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: 
 vi.mock("@/lib/mobile/push", () => ({
   buildStaffPushPayload: vi.fn(),
   sendStaffPush: vi.fn(),
-}));
-vi.mock("@/lib/billing", () => ({ isProBusinessPlan: mocks.isProBusinessPlan }));
-vi.mock("@/lib/waitlist-data", () => ({
-  findMatchingWaitlistCandidates: mocks.findMatchingWaitlistCandidates,
 }));
 
 import {
@@ -88,9 +90,8 @@ function mockGuardHit() {
   mocks.client.updateMany.mockResolvedValue({ count: 1 });
   // Slot-fill matching defaults to off (Basic plan) so every pre-existing
   // cancelAppointmentCore test — none of which know about waiting lists —
-  // keeps working unchanged; Pro-specific tests below override both.
+  // keeps working unchanged; Pro-specific tests below override it.
   mocks.business.findUniqueOrThrow.mockResolvedValue({ plan: "BASIC" });
-  mocks.isProBusinessPlan.mockReturnValue(false);
 }
 
 /** The guarded update matched nothing — diagnostic lookup returns `status`. */
@@ -101,6 +102,8 @@ function mockGuardMiss(status: "COMPLETED" | "CANCELLED" | "CONFIRMED" | "NO_SHO
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // No open slot offers unless a test adds one (deleteAppointmentCore's withdraw).
+  mocks.followUpDraft.findMany.mockResolvedValue([]);
   mocks.$transaction.mockImplementation(
     async (cb: (tx: unknown) => unknown) =>
       cb({
@@ -260,7 +263,8 @@ describe("cancelAppointmentCore", () => {
   });
 });
 
-const WAITLIST_CANDIDATE = {
+// A findMany row as findMatchingWaitlistCandidates reads it (client name joined).
+const WAITLIST_ROW = {
   id: "wl_1",
   clientId: "client_2",
   service: "Checkup",
@@ -270,6 +274,7 @@ const WAITLIST_CANDIDATE = {
   preferredFrom: null,
   preferredTo: null,
   createdAt: new Date("2026-01-01"),
+  client: { name: "Mira" },
 };
 
 describe("cancelAppointmentCore — slot-fill matching", () => {
@@ -278,7 +283,15 @@ describe("cancelAppointmentCore — slot-fill matching", () => {
   // beforehand so this suite can't leak into other files/tests.
   const originalTimeZone = process.env.APP_TIME_ZONE;
 
+  beforeEach(() => {
+    // The fixtures' slots (June 2026, Jan 14 2026) must still be ahead —
+    // a slot that already started is never offered.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+  });
+
   afterEach(() => {
+    vi.useRealTimers();
     if (originalTimeZone === undefined) {
       delete process.env.APP_TIME_ZONE;
     } else {
@@ -286,72 +299,149 @@ describe("cancelAppointmentCore — slot-fill matching", () => {
     }
   });
 
+  function mockPro() {
+    mocks.business.findUniqueOrThrow.mockResolvedValue({ plan: "PRO" });
+    mocks.followUpDraft.findFirst.mockResolvedValue(null); // no live offer for this slot yet
+    mocks.waitlistEntry.updateMany.mockResolvedValue({ count: 1 });
+    mocks.followUpDraft.createMany.mockResolvedValue({ count: 1 });
+  }
+
   it("does nothing extra when the workspace isn't on Pro", async () => {
-    mockGuardHit(); // defaults business plan to BASIC / isProBusinessPlan to false
+    mockGuardHit(); // defaults business plan to BASIC
 
     await cancelAppointmentCore(WHERE);
 
     expect(mocks.business.findUniqueOrThrow).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "biz_1" } })
     );
-    expect(mocks.findMatchingWaitlistCandidates).not.toHaveBeenCalled();
-    expect(mocks.followUpDraft.create).not.toHaveBeenCalled();
+    expect(mocks.waitlistEntry.findMany).not.toHaveBeenCalled();
+    expect(mocks.followUpDraft.createMany).not.toHaveBeenCalled();
   });
 
-  it("creates one SLOT_OFFER draft and flips the matched entry to OFFERED when a match exists", async () => {
+  it("runs the plan re-check, the match, the entry flip and the draft insert on the cancel's own transaction", async () => {
     mockGuardHit();
-    mocks.isProBusinessPlan.mockReturnValue(true);
-    mocks.business.findUniqueOrThrow.mockResolvedValue({ plan: "PRO" });
-    mocks.findMatchingWaitlistCandidates.mockResolvedValue([WAITLIST_CANDIDATE]);
-    mocks.waitlistEntry.updateMany.mockResolvedValue({ count: 1 });
+    mockPro();
+    mocks.waitlistEntry.findMany.mockResolvedValue([WAITLIST_ROW]);
 
     await cancelAppointmentCore(WHERE);
 
-    expect(mocks.findMatchingWaitlistCandidates).toHaveBeenCalledWith(
-      expect.objectContaining({ businessId: "biz_1", service: "Checkup" })
+    expect(mocks.business.findUniqueOrThrow).toHaveBeenCalled();
+    expect(mocks.waitlistEntry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          businessId: "biz_1",
+          service: { equals: "Checkup", mode: "insensitive" },
+          // Never offered back to the client who just cancelled it.
+          clientId: { not: "client_1" },
+          client: { isArchived: false, status: { not: "ARCHIVED" } },
+        }),
+      })
     );
     expect(mocks.waitlistEntry.updateMany).toHaveBeenCalledWith({
-      where: { id: "wl_1", status: "WAITING" },
+      where: { id: "wl_1", businessId: "biz_1", status: "WAITING" },
       data: { status: "OFFERED" },
     });
-    expect(mocks.followUpDraft.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
+    expect(mocks.followUpDraft.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
           kind: "SLOT_OFFER",
           clientId: "client_2",
           waitlistEntryId: "wl_1",
           appointmentId: "appt_1",
           dedupeKey: "SLOT_OFFER:appt_1:wl_1",
         }),
-      })
+      ],
+      skipDuplicates: true,
+    });
+    // Nothing touched the outer client — it's all atomic with the cancel.
+    expect(mocks.outer.business.findUniqueOrThrow).not.toHaveBeenCalled();
+    expect(mocks.outer.waitlistEntry.findMany).not.toHaveBeenCalled();
+    expect(mocks.outer.waitlistEntry.updateMany).not.toHaveBeenCalled();
+    expect(mocks.outer.followUpDraft.createMany).not.toHaveBeenCalled();
+  });
+
+  it("drafts a minimum-necessary offer: the waiting client's name and the slot's time, never the service", async () => {
+    process.env.APP_TIME_ZONE = "Europe/Budapest";
+    mockGuardHit();
+    mockPro();
+    mocks.waitlistEntry.findMany.mockResolvedValue([WAITLIST_ROW]);
+
+    await cancelAppointmentCore(WHERE);
+
+    const [{ data }] = mocks.followUpDraft.createMany.mock.calls[0];
+    // RECORD.startAt is 09:00 UTC on June 10 = 11:00 in Budapest (CEST).
+    expect(data[0].body).toBe("Hi Mira, a slot has opened up on June 10, 2026 at 11:00 AM. Reply here if you'd like it.");
+    expect(data[0].body).not.toContain("Checkup");
+  });
+
+  it("offers nothing for a slot that has already started", async () => {
+    mockGuardHit();
+    mockPro();
+    mocks.waitlistEntry.findMany.mockResolvedValue([WAITLIST_ROW]);
+    vi.setSystemTime(new Date("2026-06-10T09:00:00.000Z")); // RECORD's own start
+
+    const result = await cancelAppointmentCore(WHERE);
+
+    expect(result).toMatchObject({ ok: true, changed: true });
+    expect(mocks.waitlistEntry.findMany).not.toHaveBeenCalled();
+    expect(mocks.followUpDraft.createMany).not.toHaveBeenCalled();
+  });
+
+  it("re-cancelling a slot that still has a live offer doesn't offer it to a second patient", async () => {
+    mockGuardHit();
+    mockPro();
+    mocks.followUpDraft.findFirst.mockResolvedValue({ id: "d_live" });
+    mocks.waitlistEntry.findMany.mockResolvedValue([WAITLIST_ROW]);
+
+    const result = await cancelAppointmentCore(WHERE);
+
+    expect(result).toMatchObject({ ok: true, changed: true });
+    expect(mocks.followUpDraft.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ businessId: "biz_1", appointmentId: "appt_1" }) })
     );
+    expect(mocks.waitlistEntry.updateMany).not.toHaveBeenCalled();
+    expect(mocks.followUpDraft.createMany).not.toHaveBeenCalled();
   });
 
   it("creates nothing when no candidate matches", async () => {
     mockGuardHit();
-    mocks.isProBusinessPlan.mockReturnValue(true);
-    mocks.business.findUniqueOrThrow.mockResolvedValue({ plan: "PRO" });
-    mocks.findMatchingWaitlistCandidates.mockResolvedValue([]);
+    mockPro();
+    mocks.waitlistEntry.findMany.mockResolvedValue([]);
 
     await cancelAppointmentCore(WHERE);
 
     expect(mocks.waitlistEntry.updateMany).not.toHaveBeenCalled();
-    expect(mocks.followUpDraft.create).not.toHaveBeenCalled();
+    expect(mocks.followUpDraft.createMany).not.toHaveBeenCalled();
   });
 
   it("does not create an orphaned draft when the matched entry was already claimed between the read and the flip", async () => {
     // The status-flip updateMany is its own CAS — a concurrent offer/removal
-    // could win the race between findMatchingWaitlistCandidates' read and
-    // this write, so `count` comes back 0 (no row still WAITING).
+    // could win the race between the candidate read and this write, so
+    // `count` comes back 0 (no row still WAITING).
     mockGuardHit();
-    mocks.isProBusinessPlan.mockReturnValue(true);
-    mocks.business.findUniqueOrThrow.mockResolvedValue({ plan: "PRO" });
-    mocks.findMatchingWaitlistCandidates.mockResolvedValue([WAITLIST_CANDIDATE]);
+    mockPro();
+    mocks.waitlistEntry.findMany.mockResolvedValue([WAITLIST_ROW]);
     mocks.waitlistEntry.updateMany.mockResolvedValue({ count: 0 });
 
     await cancelAppointmentCore(WHERE);
 
-    expect(mocks.followUpDraft.create).not.toHaveBeenCalled();
+    expect(mocks.followUpDraft.createMany).not.toHaveBeenCalled();
+  });
+
+  it("still completes the cancel cleanly when the offer's draft already exists (dedupe collision)", async () => {
+    mockGuardHit();
+    mockPro();
+    mocks.waitlistEntry.findMany.mockResolvedValue([WAITLIST_ROW]);
+    mocks.followUpDraft.createMany.mockResolvedValue({ count: 0 });
+
+    const result = await cancelAppointmentCore(WHERE);
+
+    expect(result).toMatchObject({ ok: true, changed: true });
+    // The entry isn't left OFFERED without a live draft.
+    expect(mocks.waitlistEntry.updateMany).toHaveBeenLastCalledWith({
+      where: { id: "wl_1", businessId: "biz_1", status: "OFFERED" },
+      data: { status: "WAITING" },
+    });
   });
 
   it("derives weekday and time-of-day from the clinic's time zone, not raw UTC", async () => {
@@ -366,12 +456,10 @@ describe("cancelAppointmentCore — slot-fill matching", () => {
       ...RECORD,
       startAt: new Date("2026-01-14T23:30:00.000Z"),
     });
-    mocks.isProBusinessPlan.mockReturnValue(true);
-    mocks.business.findUniqueOrThrow.mockResolvedValue({ plan: "PRO" });
-    mocks.waitlistEntry.updateMany.mockResolvedValue({ count: 1 });
-    mocks.findMatchingWaitlistCandidates.mockResolvedValue([
+    mockPro();
+    mocks.waitlistEntry.findMany.mockResolvedValue([
       {
-        ...WAITLIST_CANDIDATE,
+        ...WAITLIST_ROW,
         preferredDays: [3], // Thursday only (Mon=0..Sun=6)
         preferredFrom: "00:00",
         preferredTo: "01:00",
@@ -380,7 +468,7 @@ describe("cancelAppointmentCore — slot-fill matching", () => {
 
     await cancelAppointmentCore(WHERE);
 
-    expect(mocks.followUpDraft.create).toHaveBeenCalled();
+    expect(mocks.followUpDraft.createMany).toHaveBeenCalled();
   });
 
   it("does not match when the zoned weekday/time fall outside the candidate's preference", async () => {
@@ -394,15 +482,14 @@ describe("cancelAppointmentCore — slot-fill matching", () => {
       ...RECORD,
       startAt: new Date("2026-01-14T23:30:00.000Z"),
     });
-    mocks.isProBusinessPlan.mockReturnValue(true);
-    mocks.business.findUniqueOrThrow.mockResolvedValue({ plan: "PRO" });
-    mocks.findMatchingWaitlistCandidates.mockResolvedValue([
-      { ...WAITLIST_CANDIDATE, preferredDays: [2] }, // Wednesday only
+    mockPro();
+    mocks.waitlistEntry.findMany.mockResolvedValue([
+      { ...WAITLIST_ROW, preferredDays: [2] }, // Wednesday only
     ]);
 
     await cancelAppointmentCore(WHERE);
 
-    expect(mocks.followUpDraft.create).not.toHaveBeenCalled();
+    expect(mocks.followUpDraft.createMany).not.toHaveBeenCalled();
   });
 });
 
@@ -478,6 +565,38 @@ describe("deleteAppointmentCore", () => {
     expect(result).toEqual({ ok: false, status: 404, error: APPOINTMENT_NOT_FOUND_ERROR });
     // The loser must not refresh lastVisitAt for a delete that didn't happen.
     expect(mocks.client.updateMany).not.toHaveBeenCalled();
+    // ...and its transaction is rolled back (the callback threw), so the
+    // slot-offer withdraw that ran first doesn't stick either.
+    await expect(mocks.$transaction.mock.results[0].value).rejects.toThrow();
+  });
+
+  it("withdraws the appointment's open waiting-list offer inside the delete's transaction, before the row goes", async () => {
+    mockDeleteGuardHit();
+    mocks.followUpDraft.findMany.mockResolvedValue([{ id: "d_offer", businessId: "biz_1", waitlistEntryId: "wl_1" }]);
+    mocks.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
+    mocks.waitlistEntry.updateMany.mockResolvedValue({ count: 1 });
+
+    const result = await deleteAppointmentCore(WHERE);
+
+    expect(result).toMatchObject({ ok: true, changed: true });
+    expect(mocks.followUpDraft.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ businessId: "biz_1", kind: "SLOT_OFFER", appointmentId: "appt_1" }),
+      })
+    );
+    expect(mocks.followUpDraft.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: "d_offer" }), data: { status: "EXPIRED" } })
+    );
+    expect(mocks.waitlistEntry.updateMany).toHaveBeenCalledWith({
+      where: { id: "wl_1", businessId: "biz_1", status: "OFFERED" },
+      data: { status: "WAITING" },
+    });
+    // Withdrawn first — the FK's SET NULL would unlink the draft once the row is deleted.
+    expect(mocks.followUpDraft.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.appointment.deleteMany.mock.invocationCallOrder[0]
+    );
+    // All on the transaction client.
+    expect(mocks.outer.waitlistEntry.updateMany).not.toHaveBeenCalled();
   });
 
   it("returns 404 when the appointment doesn't exist (or isn't in scope)", async () => {

@@ -10,15 +10,22 @@ import { WorkspaceEmptyState, fieldTextareaClass } from "@/components/workspace/
 import {
   bookFollowUpSlotAction,
   dismissFollowUpDraftAction,
+  passSlotOfferAction,
   sendFollowUpDraftAction,
 } from "@/app/(workspace)/inbox/follow-ups/actions";
 import { cn } from "@/lib/utils";
-import type { FollowUpDraftItem } from "@/lib/follow-ups";
+import { followUpRowKey, visibleFollowUps, type FollowUpDraftItem } from "@/lib/follow-ups";
 
-type FollowUpBusyState = "send" | "skip" | "book" | null;
+type FollowUpBusyState = "send" | "skip" | "book" | "pass" | null;
 
 export function FollowUpsList({ items }: { items: FollowUpDraftItem[] }) {
-  const [drafts, setDrafts] = useState(items);
+  const router = useRouter();
+  // Rows handled here disappear at once; the list itself stays driven by the
+  // server so a refresh brings in anything new — skipping or declining a slot
+  // offer drafts a fresh one for the next person on the waiting list, and a
+  // sent slot offer comes back as a bookable row (see followUpRowKey).
+  const [handledKeys, setHandledKeys] = useState<string[]>([]);
+  const drafts = visibleFollowUps(items, handledKeys);
 
   if (drafts.length === 0) {
     return <WorkspaceEmptyState icon={MessageSquareText} title="No follow-ups right now." />;
@@ -28,11 +35,12 @@ export function FollowUpsList({ items }: { items: FollowUpDraftItem[] }) {
     <div className="overflow-hidden rounded-(--radius-card) border border-border/80 bg-white shadow-(--shadow-card)">
       {drafts.map((draft) => (
         <FollowUpDraftRow
-          key={draft.id}
+          key={followUpRowKey(draft)}
           draft={draft}
-          onHandled={() =>
-            setDrafts((current) => current.filter((entry) => entry.id !== draft.id))
-          }
+          onHandled={() => {
+            setHandledKeys((current) => [...current, followUpRowKey(draft)]);
+            router.refresh();
+          }}
         />
       ))}
     </div>
@@ -135,6 +143,28 @@ function FollowUpDraftRow({
     router.push(result.bookingUrl);
   }
 
+  async function handlePass() {
+    setBusy("pass");
+    setError("");
+
+    let result;
+    try {
+      result = await passSlotOfferAction(draft.id);
+    } catch {
+      setError("Something went wrong. Try again.");
+      setBusy(null);
+      return;
+    }
+
+    if (!result.ok) {
+      setError(result.error ?? "This slot offer is no longer available.");
+      setBusy(null);
+      return;
+    }
+
+    onHandled();
+  }
+
   return (
     <div className="p-3.5 transition-colors duration-(--duration-base) hover:bg-[#fbfcfe]">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -168,15 +198,26 @@ function FollowUpDraftRow({
 
       <div className="mt-2.5 flex items-center gap-2">
         {draft.canBook ? (
-          <Button
-            type="button"
-            size="sm"
-            className="h-9 rounded-(--radius-card)"
-            onClick={() => void handleBook()}
-            disabled={isBusy}
-          >
-            {busy === "book" ? "Booking..." : "Book"}
-          </Button>
+          <>
+            <Button
+              type="button"
+              size="sm"
+              className="h-9 rounded-(--radius-card)"
+              onClick={() => void handleBook()}
+              disabled={isBusy}
+            >
+              {busy === "book" ? "Booking..." : "Book"}
+            </Button>
+            {/* The patient said no: back to the waiting list, and the slot goes to the next match. */}
+            <button
+              type="button"
+              onClick={() => void handlePass()}
+              disabled={isBusy}
+              className="h-9 px-2 text-sm font-medium text-muted-foreground transition-colors duration-(--duration-base) hover:text-foreground disabled:opacity-60"
+            >
+              {busy === "pass" ? "Updating..." : "Declined"}
+            </button>
+          </>
         ) : (
           <>
             <Button

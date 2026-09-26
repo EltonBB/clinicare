@@ -12,8 +12,12 @@ import {
   type WorkingHoursState,
   weekdayOrder,
 } from "@/lib/onboarding";
-import { planDisplayName, planStatusLabel } from "@/lib/billing";
+import { isProBusinessPlan, planDisplayName, planStatusLabel } from "@/lib/billing";
 import { proAddedFeatures } from "@/lib/public-plans";
+// Type-only: workflow-generators pulls in prisma, which must never reach the
+// client bundle this module is part of. The server-side loader
+// (settings-server.ts) supplies the values, defaults included.
+import type { WorkflowSettingsValues } from "@/lib/workflow-generators";
 import {
   defaultBrandAccent,
   normalizeBrandHexColor,
@@ -37,6 +41,44 @@ export type SettingsReminders = {
   secondReminderHours: number;
   template: string;
 };
+
+// Server-enforced bounds for the Workflows section (saveWorkflowSettingsAction).
+// Minimum 1 everywhere: a 0 would make every client a rebook candidate.
+export const WORKFLOW_LIMITS = {
+  rebookAfterMonths: { min: 1, max: 24 },
+  paymentReminderAfterDays: { min: 1, max: 30 },
+  thankYouDelayHours: { min: 1, max: 72 },
+} as const;
+
+export const REBOOK_PLAN_ERROR = "Rebooking nudges are part of the Pro plan.";
+
+// The choices the Workflows selects offer. Any value inside WORKFLOW_LIMITS is
+// still valid to store, so a saved value that isn't listed here is added back
+// by withCurrentOption rather than silently displayed as something else.
+export const REBOOK_MONTH_OPTIONS = [3, 6, 9, 12] as const;
+export const PAYMENT_REMINDER_DAY_OPTIONS = [1, 3, 7, 14] as const;
+export const THANK_YOU_HOUR_OPTIONS = [1, 2, 4, 24] as const;
+
+export function withCurrentOption(options: readonly number[], current: number): number[] {
+  return options.includes(current)
+    ? [...options]
+    : [...options, current].sort((a, b) => a - b);
+}
+
+/**
+ * What the Settings dialog sends to saveWorkflowSettingsAction. The rebooking
+ * row is Pro-only and hidden on Basic, so a stored `rebookEnabled: true` (from
+ * before a downgrade) can't be edited there — it is never sent for a non-Pro
+ * workspace, or the server's Pro check would reject every other workflow
+ * change. The timing fields pass through untouched: the server range-checks
+ * them and, for a non-Pro workspace, drops the rebook ones without storing.
+ */
+export function buildWorkflowSavePayload(
+  workflows: WorkflowSettingsValues,
+  isPro: boolean
+): WorkflowSettingsValues {
+  return { ...workflows, rebookEnabled: isPro && workflows.rebookEnabled };
+}
 
 export type SettingsState = {
   business: {
@@ -66,7 +108,10 @@ export type SettingsState = {
     };
   };
   reminders: SettingsReminders;
+  workflows: WorkflowSettingsValues;
   billing: {
+    // Server-computed (isProBusinessPlan) — gates the Pro-only rebooking row.
+    isPro: boolean;
     planName: string;
     statusLabel: string;
     note: string;
@@ -83,6 +128,8 @@ type SettingsWorkspaceData = {
   ownerName: string;
   businessHours: BusinessHours[];
   reminderSettings: ReminderSettings | null;
+  // Already resolved (saved row or DEFAULT_WORKFLOW_SETTINGS) by the caller.
+  workflows: WorkflowSettingsValues;
   whatsappConnection: WhatsAppConnection | null;
   logoDisplayUrl?: string;
 };
@@ -116,6 +163,7 @@ function buildBillingSummary(business: Business): SettingsState["billing"] {
   const planName = planDisplayName(business.plan);
 
   return {
+    isPro: isProBusinessPlan(business.plan),
     planName,
     statusLabel: planStatusLabel(business.planStatus),
     note:
@@ -194,6 +242,7 @@ export function buildSettingsStateFromWorkspace({
   ownerName,
   businessHours,
   reminderSettings,
+  workflows,
   whatsappConnection,
   logoDisplayUrl: resolvedLogoDisplayUrl,
 }: SettingsWorkspaceData): SettingsState {
@@ -234,6 +283,7 @@ export function buildSettingsStateFromWorkspace({
       secondReminderHours: reminderSettings?.secondReminderHours ?? 2,
       template: reminderTemplate,
     },
+    workflows,
     billing: buildBillingSummary(business),
   };
 }

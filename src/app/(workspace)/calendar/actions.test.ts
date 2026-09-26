@@ -26,7 +26,11 @@ const mocks = vi.hoisted(() => {
   const revalidateCalendarSurfaces = vi.fn();
   const recordAttendance = vi.fn();
   const getRiskAssessments = vi.fn();
+  const offerFreedSlot = vi.fn();
+  const withdrawSlotOffers = vi.fn();
   return {
+    offerFreedSlot,
+    withdrawSlotOffers,
     appointment,
     client,
     staffMember,
@@ -69,6 +73,11 @@ vi.mock("@/lib/calendar-data", () => ({
 
 vi.mock("@/lib/no-show-risk-data", () => ({
   getNoShowRiskAssessments: mocks.getRiskAssessments,
+}));
+
+vi.mock("@/lib/slot-offers", () => ({
+  offerFreedSlot: mocks.offerFreedSlot,
+  withdrawSlotOffers: mocks.withdrawSlotOffers,
 }));
 
 vi.mock("@/lib/appointments-shared", async () => {
@@ -330,6 +339,111 @@ describe("saveAppointmentAction — concurrent-edit guard", () => {
     });
 
     expect(result.ok).toBe(true);
+  });
+});
+
+describe("saveAppointmentAction — cancelling from the Status dropdown offers the slot", () => {
+  const CANCELLED_ROW = {
+    ...EXISTING,
+    client: { id: "client_1", name: "Mira" },
+    staffMember: null,
+    status: "CANCELLED",
+  };
+
+  beforeEach(() => {
+    mocks.appointment.updateMany.mockResolvedValue({ count: 1 });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue(CANCELLED_ROW);
+  });
+
+  it("offers the freed slot to the waiting list inside the save's own transaction", async () => {
+    const txClient = {
+      appointment: mocks.appointment,
+      appointmentReminder: mocks.appointmentReminder,
+      scheduleBlock: mocks.scheduleBlock,
+      $executeRaw: mocks.$executeRaw,
+    };
+    mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(txClient));
+
+    const result = await saveAppointmentAction({ ...PAYLOAD, status: "cancelled", baselineStatus: "confirmed" });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.offerFreedSlot).toHaveBeenCalledTimes(1);
+    expect(mocks.offerFreedSlot).toHaveBeenCalledWith(txClient, {
+      businessId: "biz_1",
+      cancelled: {
+        id: "appt_1",
+        clientId: "client_1",
+        staffMemberId: null,
+        title: "Checkup",
+        startAt: parseZonedWallClock("2026-06-01", "09:00"),
+      },
+    });
+  });
+
+  it("offers nothing when the appointment was already cancelled, or the save isn't a cancel", async () => {
+    mocks.appointment.findFirst.mockResolvedValueOnce({ ...EXISTING, status: "CANCELLED" });
+    await saveAppointmentAction({ ...PAYLOAD, status: "cancelled", baselineStatus: "cancelled" });
+
+    await saveAppointmentAction(PAYLOAD); // confirmed -> confirmed
+
+    expect(mocks.offerFreedSlot).not.toHaveBeenCalled();
+  });
+
+  it("offers nothing when the compare-and-set guard misses", async () => {
+    mocks.appointment.updateMany.mockResolvedValue({ count: 0 });
+
+    const result = await saveAppointmentAction({ ...PAYLOAD, status: "cancelled", baselineStatus: "confirmed" });
+
+    expect(result).toEqual({ ok: false, error: APPOINTMENT_CONFLICT_ERROR });
+    expect(mocks.offerFreedSlot).not.toHaveBeenCalled();
+  });
+});
+
+describe("saveAppointmentAction — un-cancelling withdraws the slot's offer", () => {
+  // Same staff/time as the payload, so the reactivation's conflict re-check
+  // finds nothing (no staff assigned -> only the schedule-block check runs).
+  const CANCELLED_EXISTING = {
+    ...EXISTING,
+    status: "CANCELLED" as const,
+    startAt: parseZonedWallClock("2026-06-01", "09:00"),
+    endAt: parseZonedWallClock("2026-06-01", "09:30"),
+  };
+
+  beforeEach(() => {
+    mocks.appointment.updateMany.mockResolvedValue({ count: 1 });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      ...EXISTING,
+      client: { id: "client_1", name: "Mira" },
+      staffMember: null,
+    });
+  });
+
+  it("withdraws any open offer for the appointment inside the save's own transaction", async () => {
+    const txClient = {
+      appointment: mocks.appointment,
+      appointmentReminder: mocks.appointmentReminder,
+      scheduleBlock: mocks.scheduleBlock,
+      $executeRaw: mocks.$executeRaw,
+    };
+    mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(txClient));
+    mocks.appointment.findFirst.mockResolvedValueOnce(CANCELLED_EXISTING);
+
+    const result = await saveAppointmentAction({ ...PAYLOAD, status: "confirmed", baselineStatus: "cancelled" });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.withdrawSlotOffers).toHaveBeenCalledWith(txClient, { businessId: "biz_1", appointmentId: "appt_1" });
+    expect(mocks.offerFreedSlot).not.toHaveBeenCalled();
+  });
+
+  it("withdraws nothing for a save that neither leaves CANCELLED nor fails its guard", async () => {
+    await saveAppointmentAction(PAYLOAD); // confirmed -> confirmed
+    await saveAppointmentAction({ ...PAYLOAD, status: "cancelled", baselineStatus: "confirmed" }); // a cancel
+
+    mocks.appointment.findFirst.mockResolvedValueOnce(CANCELLED_EXISTING);
+    mocks.appointment.updateMany.mockResolvedValue({ count: 0 }); // reactivation lost its CAS
+    await saveAppointmentAction({ ...PAYLOAD, status: "confirmed", baselineStatus: "cancelled" });
+
+    expect(mocks.withdrawSlotOffers).not.toHaveBeenCalled();
   });
 });
 

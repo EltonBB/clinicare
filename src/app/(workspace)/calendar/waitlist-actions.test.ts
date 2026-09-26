@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => {
   const createWaitlistEntry = vi.fn();
   const removeWaitlistEntry = vi.fn();
   const revalidatePath = vi.fn();
+  const loggerError = vi.fn();
   return {
+    loggerError,
     client,
     staffMember,
     getAuthedBusiness,
@@ -30,17 +32,22 @@ vi.mock("@/lib/business", () => ({
 
 vi.mock("@/lib/waitlist-data", () => ({
   createWaitlistEntry: mocks.createWaitlistEntry,
+}));
+
+vi.mock("@/lib/slot-offers", () => ({
   removeWaitlistEntry: mocks.removeWaitlistEntry,
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
+
+vi.mock("@/lib/logger", () => ({ logger: { error: mocks.loggerError, warn: vi.fn(), info: vi.fn() } }));
 
 import {
   addWaitlistEntryAction,
   removeWaitlistEntryAction,
   type AddWaitlistEntryPayload,
 } from "./waitlist-actions";
-import { WAITLIST_PLAN_ERROR } from "@/lib/waitlist";
+import { WAITLIST_PLAN_ERROR, WAITLIST_TIME_RANGE_ERROR } from "@/lib/waitlist";
 
 const PRO_BUSINESS = { id: "biz_1", plan: "PRO" as const };
 const BASIC_BUSINESS = { id: "biz_1", plan: "BASIC" as const };
@@ -128,6 +135,22 @@ describe("addWaitlistEntryAction — successful add", () => {
     );
   });
 
+  it.each([
+    ["later than", "14:00", "09:00"],
+    ["equal to", "09:00", "09:00"],
+  ])("rejects a From time %s the To time, with a specific message, before touching the database", async (_label, from, to) => {
+    const result = await addWaitlistEntryAction({ ...VALID_PAYLOAD, preferredFrom: from, preferredTo: to });
+
+    expect(result).toEqual({ ok: false, error: WAITLIST_TIME_RANGE_ERROR });
+    expect(mocks.client.findFirst).not.toHaveBeenCalled();
+    expect(mocks.createWaitlistEntry).not.toHaveBeenCalled();
+  });
+
+  it("accepts a one-sided window (only From or only To set)", async () => {
+    expect(await addWaitlistEntryAction({ ...VALID_PAYLOAD, preferredFrom: "14:00" })).toEqual({ ok: true });
+    expect(await addWaitlistEntryAction({ ...VALID_PAYLOAD, preferredTo: "09:00" })).toEqual({ ok: true });
+  });
+
   it("rejects a payload missing a required field before touching the database", async () => {
     const result = await addWaitlistEntryAction({ clientId: "", service: "" });
 
@@ -162,12 +185,28 @@ describe("addWaitlistEntryAction — successful add", () => {
 });
 
 describe("removeWaitlistEntryAction — successful remove", () => {
-  it("removes the entry for this business and revalidates the calendar", async () => {
+  it("removes the entry for this business and revalidates the calendar and the follow-ups surfaces", async () => {
     const result = await removeWaitlistEntryAction("entry_1");
 
     expect(result).toEqual({ ok: true });
     expect(mocks.removeWaitlistEntry).toHaveBeenCalledWith({ id: "entry_1", businessId: "biz_1" });
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/calendar");
+    // An entry holding an offer drops out of the Follow-ups list/count.
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/inbox");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/inbox/follow-ups");
+  });
+
+  it("turns an unexpected failure (e.g. a deadlock that survived its retry) into a plain retry message, logging ids only", async () => {
+    mocks.removeWaitlistEntry.mockRejectedValue(new Error("deadlock detected"));
+
+    const result = await removeWaitlistEntryAction("entry_1");
+
+    expect(result).toEqual({ ok: false, error: "Couldn't remove this entry. Try again." });
+    expect(mocks.loggerError).toHaveBeenCalledWith(expect.any(String), expect.any(Error), {
+      businessId: "biz_1",
+      waitlistEntryId: "entry_1",
+    });
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
   it("surfaces the data layer's 'already removed' error unchanged", async () => {

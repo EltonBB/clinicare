@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findBestWaitlistMatch, type WaitlistCandidate } from "@/lib/slot-fill-matching";
+import { rankWaitlistMatches, type FreedSlot, type WaitlistCandidate } from "@/lib/slot-fill-matching";
 
 const SLOT = {
   service: "Checkup",
@@ -24,42 +24,60 @@ function candidate(overrides: Partial<WaitlistCandidate> = {}): WaitlistCandidat
   };
 }
 
-describe("findBestWaitlistMatch", () => {
+// The top-ranked match, or null — what the slot offer tries first.
+function best(candidates: WaitlistCandidate[], slot: FreedSlot) {
+  return rankWaitlistMatches(candidates, slot)[0] ?? null;
+}
+
+describe("rankWaitlistMatches", () => {
   it("matches on service, case/whitespace-insensitively", () => {
-    expect(findBestWaitlistMatch([candidate({ service: " checkup " })], SLOT)?.id).toBe("wl_1");
-    expect(findBestWaitlistMatch([candidate({ service: "Cleaning" })], SLOT)).toBeNull();
+    expect(best([candidate({ service: " checkup " })], SLOT)?.id).toBe("wl_1");
+    expect(best([candidate({ service: "Cleaning" })], SLOT)).toBeNull();
   });
 
   it("requires an exact provider match only when the candidate named one", () => {
-    expect(findBestWaitlistMatch([candidate({ staffMemberId: null })], SLOT)?.id).toBe("wl_1");
-    expect(findBestWaitlistMatch([candidate({ staffMemberId: "staff_1" })], SLOT)?.id).toBe("wl_1");
-    expect(findBestWaitlistMatch([candidate({ staffMemberId: "staff_2" })], SLOT)).toBeNull();
+    expect(best([candidate({ staffMemberId: null })], SLOT)?.id).toBe("wl_1");
+    expect(best([candidate({ staffMemberId: "staff_1" })], SLOT)?.id).toBe("wl_1");
+    expect(best([candidate({ staffMemberId: "staff_2" })], SLOT)).toBeNull();
   });
 
   it("respects earliestDate", () => {
-    expect(findBestWaitlistMatch([candidate({ earliestDate: new Date("2026-07-11T00:00:00Z") })], SLOT)).toBeNull();
-    expect(findBestWaitlistMatch([candidate({ earliestDate: new Date("2026-07-01T00:00:00Z") })], SLOT)?.id).toBe("wl_1");
+    expect(best([candidate({ earliestDate: new Date("2026-07-11T00:00:00Z") })], SLOT)).toBeNull();
+    expect(best([candidate({ earliestDate: new Date("2026-07-01T00:00:00Z") })], SLOT)?.id).toBe("wl_1");
   });
 
   it("respects preferredDays when set, ignores it when empty", () => {
-    expect(findBestWaitlistMatch([candidate({ preferredDays: [0, 1, 2] })], SLOT)).toBeNull(); // Fri (4) not in Mon-Wed
-    expect(findBestWaitlistMatch([candidate({ preferredDays: [4] })], SLOT)?.id).toBe("wl_1");
-    expect(findBestWaitlistMatch([candidate({ preferredDays: [] })], SLOT)?.id).toBe("wl_1");
+    expect(best([candidate({ preferredDays: [0, 1, 2] })], SLOT)).toBeNull(); // Fri (4) not in Mon-Wed
+    expect(best([candidate({ preferredDays: [4] })], SLOT)?.id).toBe("wl_1");
+    expect(best([candidate({ preferredDays: [] })], SLOT)?.id).toBe("wl_1");
   });
 
   it("respects a preferred time window inclusive of its edges", () => {
-    expect(findBestWaitlistMatch([candidate({ preferredFrom: "10:00", preferredTo: "12:00" })], SLOT)).toBeNull();
-    expect(findBestWaitlistMatch([candidate({ preferredFrom: "09:00", preferredTo: "12:00" })], SLOT)?.id).toBe("wl_1");
+    expect(best([candidate({ preferredFrom: "10:00", preferredTo: "12:00" })], SLOT)).toBeNull();
+    expect(best([candidate({ preferredFrom: "09:00", preferredTo: "12:00" })], SLOT)?.id).toBe("wl_1");
   });
 
   it("picks whoever has waited longest among equally good matches", () => {
     const older = candidate({ id: "wl_old", createdAt: new Date("2026-01-01T00:00:00Z") });
     const newer = candidate({ id: "wl_new", createdAt: new Date("2026-06-15T00:00:00Z") });
-    expect(findBestWaitlistMatch([newer, older], SLOT)?.id).toBe("wl_old");
+    expect(best([newer, older], SLOT)?.id).toBe("wl_old");
   });
 
   it("returns null when nothing matches", () => {
-    expect(findBestWaitlistMatch([], SLOT)).toBeNull();
-    expect(findBestWaitlistMatch([candidate({ service: "Cleaning" })], SLOT)).toBeNull();
+    expect(best([], SLOT)).toBeNull();
+    expect(best([candidate({ service: "Cleaning" })], SLOT)).toBeNull();
+  });
+
+  it("returns every eligible entry longest-waiting first, dropping the ones that don't fit", () => {
+    const ranked = rankWaitlistMatches(
+      [
+        candidate({ id: "wl_mid", createdAt: new Date("2026-03-01T00:00:00Z") }),
+        candidate({ id: "wl_wrong_service", service: "Cleaning", createdAt: new Date("2025-01-01T00:00:00Z") }),
+        candidate({ id: "wl_old", createdAt: new Date("2026-01-01T00:00:00Z") }),
+        candidate({ id: "wl_new", createdAt: new Date("2026-06-15T00:00:00Z") }),
+      ],
+      SLOT
+    );
+    expect(ranked.map((entry) => entry.id)).toEqual(["wl_old", "wl_mid", "wl_new"]);
   });
 });

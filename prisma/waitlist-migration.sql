@@ -34,3 +34,11 @@ ALTER TABLE "WaitlistEntry" ADD CONSTRAINT "WaitlistEntry_staffMemberId_fkey" FO
 
 ALTER TABLE "FollowUpDraft" ADD COLUMN "waitlistEntryId" TEXT;
 ALTER TABLE "FollowUpDraft" ADD CONSTRAINT "FollowUpDraft_waitlistEntryId_fkey" FOREIGN KEY ("waitlistEntryId") REFERENCES "WaitlistEntry"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+CREATE INDEX "FollowUpDraft_waitlistEntryId_idx" ON "FollowUpDraft"("waitlistEntryId");
+
+-- Row-level security. Rows link patients to the services they are waiting for.
+-- Like every other app table, RLS is enabled with NO public policies, so the
+-- browser-exposed anon/authenticated Supabase roles cannot read or write it. The
+-- app connects as the table owner, which bypasses RLS, so normal server-side
+-- access is unaffected. Idempotent; safe to re-run.
+ALTER TABLE "WaitlistEntry" ENABLE ROW LEVEL SECURITY;

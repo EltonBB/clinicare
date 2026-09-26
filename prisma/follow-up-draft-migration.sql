@@ -16,6 +16,7 @@ CREATE TABLE "FollowUpDraft" (
     "body" TEXT NOT NULL,
     "status" "FollowUpDraftStatus" NOT NULL DEFAULT 'PENDING',
     "appointmentId" TEXT,
+    "paymentId" TEXT,
     "dedupeKey" TEXT NOT NULL,
     "expiresAt" TIMESTAMP(3),
     "sentAt" TIMESTAMP(3),
@@ -26,11 +27,13 @@ CREATE TABLE "FollowUpDraft" (
 );
 
 CREATE UNIQUE INDEX "FollowUpDraft_businessId_dedupeKey_key" ON "FollowUpDraft"("businessId", "dedupeKey");
+CREATE INDEX "FollowUpDraft_paymentId_idx" ON "FollowUpDraft"("paymentId");
 CREATE INDEX "FollowUpDraft_businessId_status_createdAt_idx" ON "FollowUpDraft"("businessId", "status", "createdAt");
 
 ALTER TABLE "FollowUpDraft" ADD CONSTRAINT "FollowUpDraft_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "FollowUpDraft" ADD CONSTRAINT "FollowUpDraft_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "FollowUpDraft" ADD CONSTRAINT "FollowUpDraft_appointmentId_fkey" FOREIGN KEY ("appointmentId") REFERENCES "Appointment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "FollowUpDraft" ADD CONSTRAINT "FollowUpDraft_paymentId_fkey" FOREIGN KEY ("paymentId") REFERENCES "ClientPayment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- Row-level security. The drafted message text carries patient names. Like every
 -- other app table, RLS is enabled with NO public policies, so the browser-exposed

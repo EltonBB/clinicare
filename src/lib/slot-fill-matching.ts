@@ -50,22 +50,15 @@ function matches(candidate: WaitlistCandidate, slot: FreedSlot): boolean {
 }
 
 /**
- * The single best waiting-list match for a freed slot: same service, the
- * named provider if the entry has one, inside any day/time preference, then
- * whoever has waited longest. Returns null when nobody matches — never
- * guesses or relaxes a constraint to force a match.
+ * Every waiting-list entry that fits a freed slot, best first: same service,
+ * the named provider if the entry has one, inside any day/time preference,
+ * ordered by who has waited longest. Empty when nobody matches — never
+ * guesses or relaxes a constraint to force a match. Returns the full ranked
+ * list (not just the winner) so the caller can fall through to the next
+ * entry when a concurrent offer claims the first one.
  */
-export function findBestWaitlistMatch(
-  candidates: WaitlistCandidate[],
-  freedSlot: FreedSlot
-): WaitlistCandidate | null {
-  const eligible = candidates.filter((candidate) => matches(candidate, freedSlot));
-
-  if (eligible.length === 0) {
-    return null;
-  }
-
-  return eligible.reduce((longestWaiting, candidate) =>
-    candidate.createdAt.getTime() < longestWaiting.createdAt.getTime() ? candidate : longestWaiting
-  );
+export function rankWaitlistMatches<T extends WaitlistCandidate>(candidates: T[], freedSlot: FreedSlot): T[] {
+  return candidates
+    .filter((candidate) => matches(candidate, freedSlot))
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 }

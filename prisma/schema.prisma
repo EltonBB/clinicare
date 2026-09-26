@@ -33,6 +33,7 @@ model Business {
   businessHours          BusinessHours[]
   conversations          Conversation[]
   reminderSettings       ReminderSettings?
+  workflowSettings       WorkflowSettings?
   whatsappConnection     WhatsAppConnection?
   whatsappSession        WhatsAppSession?
   whatsappSessionKeys    WhatsAppSessionKey[]
@@ -195,23 +196,24 @@ model ClientDocument {
 }
 
 model ClientPayment {
-  id            String       @id @default(cuid())
-  businessId    String
-  clientId      String
-  client        Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  appointmentId String?
-  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
-  amountCents   Int
-  status        String
-  description   String?
-  invoiceNumber String?
-  receiptNumber String?
-  paymentMethod String?
-  billingNote   String?
-  receiptUrl    String?
-  paidAt        DateTime?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id             String          @id @default(cuid())
+  businessId     String
+  clientId       String
+  client         Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  appointmentId  String?
+  appointment    Appointment?    @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  amountCents    Int
+  status         String
+  description    String?
+  invoiceNumber  String?
+  receiptNumber  String?
+  paymentMethod  String?
+  billingNote    String?
+  receiptUrl     String?
+  paidAt         DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  followUpDrafts FollowUpDraft[]
 
   @@index([businessId, clientId, status])
   @@index([businessId, clientId, createdAt])
@@ -383,6 +385,8 @@ model FollowUpDraft {
   appointment     Appointment?        @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
   waitlistEntryId String?
   waitlistEntry   WaitlistEntry?      @relation(fields: [waitlistEntryId], references: [id], onDelete: SetNull)
+  paymentId       String?
+  payment         ClientPayment?      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
   dedupeKey       String
   expiresAt       DateTime?
   sentAt          DateTime?
@@ -390,6 +394,8 @@ model FollowUpDraft {
   updatedAt       DateTime            @updatedAt
 
   @@unique([businessId, dedupeKey])
+  @@index([paymentId])
+  @@index([waitlistEntryId])
   @@index([businessId, status, createdAt])
   // Postgres doesn't index foreign keys on its own: without these, deleting a
   // Client (cascade) or an Appointment (SET NULL) scans the whole table.
@@ -500,6 +506,19 @@ model ReminderSettings {
   secondReminderHours Int      @default(2)
   template            String?
   updatedAt           DateTime @updatedAt
+}
+
+model WorkflowSettings {
+  id                       String   @id @default(cuid())
+  businessId               String   @unique
+  business                 Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  rebookEnabled            Boolean  @default(false)
+  rebookAfterMonths        Int      @default(6)
+  paymentReminderEnabled   Boolean  @default(true)
+  paymentReminderAfterDays Int      @default(3)
+  thankYouEnabled          Boolean  @default(true)
+  thankYouDelayHours       Int      @default(2)
+  updatedAt                DateTime @updatedAt
 }
 
 model WhatsAppConnection {

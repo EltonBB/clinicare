@@ -26,6 +26,7 @@ import {
 import { isProBusinessPlan } from "@/lib/billing";
 import { getNoShowRiskAssessments } from "@/lib/no-show-risk-data";
 import { MAX_RISK_BATCH_SIZE, type NoShowRiskAssessment } from "@/lib/no-show-risk";
+import { offerFreedSlot, withdrawSlotOffers } from "@/lib/slot-offers";
 import {
   formatZonedDateKey,
   formatZonedTime24,
@@ -286,6 +287,9 @@ export async function saveAppointmentAction(
     // (not just the dedicated Cancel booking action) — the doctor's app
     // needs to hear about that path too, not just cancelAppointmentAction.
     let wasNewlyCancelled = false;
+    // Un-cancelling (CANCELLED -> any other status) takes the slot back, so
+    // any waiting-list offer for it must be withdrawn.
+    let wasReactivated = false;
 
     if (payload.id) {
       const existing = await prisma.appointment.findFirst({
@@ -349,6 +353,7 @@ export async function saveAppointmentAction(
       }
 
       wasNewlyCancelled = existing.status !== "CANCELLED" && newStatus === "CANCELLED";
+      wasReactivated = existing.status === "CANCELLED" && newStatus !== "CANCELLED";
       needsConflictCheck =
         existing.staffMemberId !== staffMemberId ||
         existing.startAt.getTime() !== startAt.getTime() ||
@@ -461,6 +466,31 @@ export async function saveAppointmentAction(
         );
         for (const clientId of affectedClientIds) {
           await refreshClientLastVisitAt(clientId, business.id, tx);
+        }
+
+        // Cancelling from the Status dropdown frees the slot exactly like the
+        // dedicated Cancel action does, so it offers it to the waiting list
+        // the same way (Pro only — checked inside offerFreedSlot). Uses the
+        // row as just saved, so the offer, the Follow-ups row and Book's
+        // pre-fill all read the same time.
+        if (wasNewlyCancelled) {
+          await offerFreedSlot(tx, {
+            businessId: business.id,
+            cancelled: {
+              id: payload.id,
+              clientId: payload.clientId,
+              staffMemberId,
+              title: payload.service.trim(),
+              startAt,
+            },
+          });
+        }
+
+        // Un-cancelled: the slot is taken again, so withdraw any open offer
+        // for it (draft expired, entry back to WAITING) — otherwise a later
+        // cancel would revive it beside a new offer for the same slot.
+        if (wasReactivated) {
+          await withdrawSlotOffers(tx, { businessId: business.id, appointmentId: payload.id });
         }
       } else {
         const created = await tx.appointment.create({
