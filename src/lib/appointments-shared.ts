@@ -126,6 +126,14 @@ export type AppointmentMutationOutcome =
     }
   | { ok: false; status: 404 | 409; error: string };
 
+/** The success outcome for one appointment row (`changed` false = an idempotent no-op). */
+function mutationDone(
+  row: { id: string; clientId: string; staffMemberId: string | null },
+  changed: boolean
+): AppointmentMutationOutcome {
+  return { ok: true, appointmentId: row.id, clientId: row.clientId, staffMemberId: row.staffMemberId, changed };
+}
+
 /**
  * Cancel an appointment via compare-and-set: the terminal-state guard
  * (refuses COMPLETED — the visit already happened, flipping it to CANCELLED
@@ -219,13 +227,7 @@ export async function cancelAppointmentCore(where: {
       }
 
       // existing.status === "CANCELLED": idempotent, nothing left to do.
-      return {
-        ok: true,
-        appointmentId: existing.id,
-        clientId: existing.clientId,
-        staffMemberId: existing.staffMemberId,
-        changed: false,
-      };
+      return mutationDone(existing, false);
     }
 
     // The guarded update applied — this call is the one that just cancelled it.
@@ -256,13 +258,7 @@ export async function cancelAppointmentCore(where: {
     // caller — web, mobile, or the reply-cancel path — can skip the gate).
     await offerFreedSlot(tx, { businessId: where.businessId, cancelled });
 
-    return {
-      ok: true,
-      appointmentId: cancelled.id,
-      clientId: cancelled.clientId,
-      staffMemberId: cancelled.staffMemberId,
-      changed: true,
-    };
+    return mutationDone(cancelled, true);
   });
 }
 
@@ -318,13 +314,7 @@ export async function recordAppointmentAttendanceCore(args: {
 
       if (existing.status === target) {
         // Already in the requested state: nothing to write, nothing to announce.
-        return {
-          ok: true,
-          appointmentId: existing.id,
-          clientId: existing.clientId,
-          staffMemberId: existing.staffMemberId,
-          changed: false,
-        };
+        return mutationDone(existing, false);
       }
 
       if (!attended && existing.status === "CANCELLED") {
@@ -346,13 +336,7 @@ export async function recordAppointmentAttendanceCore(args: {
 
     await refreshClientLastVisitAt(updated.clientId, businessId, tx);
 
-    return {
-      ok: true,
-      appointmentId: updated.id,
-      clientId: updated.clientId,
-      staffMemberId: updated.staffMemberId,
-      changed: true,
-    };
+    return mutationDone(updated, true);
   });
 }
 
@@ -383,13 +367,7 @@ export async function confirmAppointmentCore(where: {
       }
 
       if (existing.status === "CONFIRMED") {
-        return {
-          ok: true,
-          appointmentId: existing.id,
-          clientId: existing.clientId,
-          staffMemberId: existing.staffMemberId,
-          changed: false,
-        };
+        return mutationDone(existing, false);
       }
 
       return { ok: false, status: 409, error: APPOINTMENT_CONFLICT_ERROR };
@@ -400,13 +378,7 @@ export async function confirmAppointmentCore(where: {
       select: { id: true, clientId: true, staffMemberId: true },
     });
 
-    return {
-      ok: true,
-      appointmentId: updated.id,
-      clientId: updated.clientId,
-      staffMemberId: updated.staffMemberId,
-      changed: true,
-    };
+    return mutationDone(updated, true);
   });
 }
 
