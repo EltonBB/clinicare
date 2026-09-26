@@ -93,8 +93,10 @@ describe("socket lifecycle", () => {
     await manager.startSession("business-test");
     sockets[0].ev.emit("connection.update", { connection: "close" });
     expect(manager.getStatus("business-test").status).toBe("connecting");
+    expect(vi.getTimerCount()).toBe(1);
 
     manager.closeAllSessions();
+    expect(vi.getTimerCount()).toBe(0);
     await vi.advanceTimersByTimeAsync(120_000);
     await manager.startSession("another-business");
 

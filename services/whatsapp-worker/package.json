@@ -32,6 +32,6 @@
     "@types/qrcode-terminal": "^0.12.2",
     "prisma": "^6.19.3",
     "typescript": "^5.9.3",
-    "vitest": "4.1.9"
+    "vitest": "4.1.11"
   }
 }
