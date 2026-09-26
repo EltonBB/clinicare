@@ -4,9 +4,9 @@ import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
-import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
+import { mirrorOutboundToInbox } from "@/lib/messaging/inbox-mirror";
 import type { SendMessageResult } from "@/lib/messaging/types";
 import {
   ALREADY_HANDLED_ERROR,
@@ -132,54 +132,17 @@ export async function sendFollowUpDraftAction(
     return { ok: false, error: failure ?? "Couldn't send this message. Try again." };
   }
 
-  // Mirror into the client's Inbox thread — same pattern as reminders.ts and
-  // sendInboxMessageAction: upsert the Conversation by its (businessId,
-  // phoneKey) key, then create the OUTBOUND Message with the provider ids so
-  // a later delivery-status webhook has a row to match against. Best-effort:
-  // the draft is already flipped to SENT and the WhatsApp message already
-  // went out, so a failure here must not undo either — only the Inbox mirror
-  // is lost.
-  const phoneKey = phoneLookupKey(sent.phone);
-  if (phoneKey) {
-    const normalizedPhone = normalizePhone(sent.phone);
-    try {
-      await prisma.$transaction(async (tx) => {
-        const conversation = await tx.conversation.upsert({
-          where: {
-            businessId_phoneKey: { businessId: business.id, phoneKey },
-          },
-          update: {
-            contactName: sent.clientName || undefined,
-          },
-          create: {
-            businessId: business.id,
-            phoneNumber: normalizedPhone,
-            phoneKey,
-            contactName: sent.clientName || normalizedPhone,
-            unreadCount: 0,
-          },
-          select: { id: true },
-        });
-
-        await tx.message.create({
-          data: {
-            conversationId: conversation.id,
-            clientId: sent.clientId,
-            direction: "OUTBOUND",
-            body: sent.result.body,
-            providerMessageSid: sent.result.providerMessageId,
-            deliveryStatus: sent.result.status,
-            deliveryUpdatedAt: new Date(),
-          },
-        });
-      });
-    } catch (error) {
-      logger.error("Sent a follow-up draft but couldn't mirror it to the inbox.", error, {
-        businessId: business.id,
-        draftId,
-      });
-    }
-  }
+  // Best-effort Inbox mirror: the draft is already flipped to SENT and the
+  // WhatsApp message already went out, so a failure here must not undo either.
+  await mirrorOutboundToInbox({
+    businessId: business.id,
+    clientId: sent.clientId,
+    clientName: sent.clientName,
+    phone: sent.phone,
+    result: sent.result,
+    failureMessage: "Sent a follow-up draft but couldn't mirror it to the inbox.",
+    logContext: { businessId: business.id, draftId },
+  });
 
   revalidateFollowUpSurfaces();
   return { ok: true };
