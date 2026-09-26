@@ -52,7 +52,7 @@ import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Toggle } from "@/components/settings/settings-toggle";
+import { Toggle, ToggleRow } from "@/components/settings/settings-toggle";
 import { WorkflowsSection } from "@/components/settings/workflows-section";
 import {
   WorkspaceHeader,
@@ -1317,81 +1317,49 @@ export function SettingsWorkspace({
             active={activeSection === "reminders"}
           >
             <div className="divide-y divide-border/65">
-              <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <Toggle
-                    ariaLabel="First reminder"
-                    checked={state.reminders.twentyFourHour}
-                    onPressedChange={(checked) =>
-                      setState((current) => ({
-                        ...current,
-                        reminders: {
-                          ...current.reminders,
-                          twentyFourHour: checked,
-                        },
-                      }))
-                    }
-                  />
-                  <p className="text-sm font-medium text-foreground">First reminder</p>
-                </div>
-                {state.reminders.twentyFourHour ? (
-                  <div className="pl-[52px] sm:pl-0">
-                    <HourSelect
-                      value={state.reminders.firstReminderHours}
-                      onChange={(value) =>
-                        setState((current) => ({
-                          ...current,
-                          reminders: {
-                            ...current.reminders,
-                            firstReminderHours: value,
-                          },
-                        }))
-                      }
-                      ariaLabel="First reminder send time"
-                    />
-                  </div>
-                ) : (
-                  <span className="pl-[52px] text-xs text-muted-foreground sm:pl-0">Off</span>
-                )}
-              </div>
+              <ToggleRow
+                label="First reminder"
+                enabled={state.reminders.twentyFourHour}
+                onEnabledChange={(checked) =>
+                  setState((current) => ({
+                    ...current,
+                    reminders: { ...current.reminders, twentyFourHour: checked },
+                  }))
+                }
+              >
+                <HourSelect
+                  value={state.reminders.firstReminderHours}
+                  onChange={(value) =>
+                    setState((current) => ({
+                      ...current,
+                      reminders: { ...current.reminders, firstReminderHours: value },
+                    }))
+                  }
+                  ariaLabel="First reminder send time"
+                />
+              </ToggleRow>
 
-              <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <Toggle
-                    ariaLabel="Second reminder"
-                    checked={state.reminders.twoHour}
-                    onPressedChange={(checked) =>
-                      setState((current) => ({
-                        ...current,
-                        reminders: {
-                          ...current.reminders,
-                          twoHour: checked,
-                        },
-                      }))
-                    }
-                  />
-                  <p className="text-sm font-medium text-foreground">Second reminder</p>
-                </div>
-                {state.reminders.twoHour ? (
-                  <div className="pl-[52px] sm:pl-0">
-                    <HourSelect
-                      value={state.reminders.secondReminderHours}
-                      onChange={(value) =>
-                        setState((current) => ({
-                          ...current,
-                          reminders: {
-                            ...current.reminders,
-                            secondReminderHours: value,
-                          },
-                        }))
-                      }
-                      ariaLabel="Second reminder send time"
-                    />
-                  </div>
-                ) : (
-                  <span className="pl-[52px] text-xs text-muted-foreground sm:pl-0">Off</span>
-                )}
-              </div>
+              <ToggleRow
+                label="Second reminder"
+                enabled={state.reminders.twoHour}
+                onEnabledChange={(checked) =>
+                  setState((current) => ({
+                    ...current,
+                    reminders: { ...current.reminders, twoHour: checked },
+                  }))
+                }
+              >
+                <HourSelect
+                  value={state.reminders.secondReminderHours}
+                  onChange={(value) =>
+                    setState((current) => ({
+                      ...current,
+                      reminders: { ...current.reminders, secondReminderHours: value },
+                    }))
+                  }
+                  ariaLabel="Second reminder send time"
+                />
+              </ToggleRow>
 
               <div className="space-y-1.5 pt-3.5">
                 <FieldLabel>Message template</FieldLabel>
