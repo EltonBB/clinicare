@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFollowUpsViewFromRecords } from "@/lib/follow-ups";
+import { buildFollowUpsViewFromRecords, followUpRowKey, visibleFollowUps } from "@/lib/follow-ups";
 
 function draft(overrides: Partial<Parameters<typeof buildFollowUpsViewFromRecords>[0]["drafts"][number]> = {}) {
   return {
@@ -52,5 +52,25 @@ describe("buildFollowUpsViewFromRecords", () => {
     });
 
     expect(view.items.map((item) => item.canBook)).toEqual([true, false, false]);
+  });
+});
+
+describe("visibleFollowUps", () => {
+  it("brings a slot offer back as a bookable row after Send + refresh, while other handled rows stay hidden", () => {
+    const pendingOffer = buildFollowUpsViewFromRecords({
+      drafts: [draft({ id: "d_offer", kind: "SLOT_OFFER", status: "PENDING" }), draft({ id: "d_rebook" })],
+      timeZone: "UTC",
+    }).items;
+    // Staff sent the offer and skipped the rebook on this page.
+    const handled = pendingOffer.map(followUpRowKey);
+
+    // After router.refresh() the server returns the offer as SENT (bookable);
+    // the skipped rebook is gone server-side but would stay hidden anyway.
+    const refreshed = buildFollowUpsViewFromRecords({
+      drafts: [draft({ id: "d_offer", kind: "SLOT_OFFER", status: "SENT" }), draft({ id: "d_rebook" })],
+      timeZone: "UTC",
+    }).items;
+
+    expect(visibleFollowUps(refreshed, handled).map((item) => [item.id, item.canBook])).toEqual([["d_offer", true]]);
   });
 });

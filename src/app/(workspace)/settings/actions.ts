@@ -32,11 +32,15 @@ import {
 import { logger } from "@/lib/logger";
 import { normalizeBrandHexColor, resolveBrandAccentPreset } from "@/lib/branding";
 import {
+  REBOOK_PLAN_ERROR,
   REMINDER_TEMPLATE_MAX_LENGTH,
+  WORKFLOW_LIMITS,
   type SaveSettingsPayload,
   type SettingsState,
 } from "@/lib/settings";
-import { loadSettingsState } from "@/lib/settings-server";
+import { loadSettingsState, WORKFLOW_SETTINGS_SELECT } from "@/lib/settings-server";
+import type { WorkflowSettingsValues } from "@/lib/workflow-generators";
+import { isProBusinessPlan } from "@/lib/billing";
 import { weekdayOrder } from "@/lib/onboarding";
 
 function clampReminderHours(value: number, fallback: number) {
@@ -87,6 +91,34 @@ export type SaveSettingsResult = {
   state?: SettingsState;
 };
 
+
+const workflowSettingsSchema = z.object({
+  rebookEnabled: z.boolean(),
+  rebookAfterMonths: z
+    .number()
+    .int()
+    .min(WORKFLOW_LIMITS.rebookAfterMonths.min)
+    .max(WORKFLOW_LIMITS.rebookAfterMonths.max),
+  paymentReminderEnabled: z.boolean(),
+  paymentReminderAfterDays: z
+    .number()
+    .int()
+    .min(WORKFLOW_LIMITS.paymentReminderAfterDays.min)
+    .max(WORKFLOW_LIMITS.paymentReminderAfterDays.max),
+  thankYouEnabled: z.boolean(),
+  thankYouDelayHours: z
+    .number()
+    .int()
+    .min(WORKFLOW_LIMITS.thankYouDelayHours.min)
+    .max(WORKFLOW_LIMITS.thankYouDelayHours.max),
+});
+
+export type SaveWorkflowSettingsResult = {
+  ok: boolean;
+  error?: string;
+  /** The persisted values, for the caller to reconcile its saved snapshot with. */
+  workflows?: WorkflowSettingsValues;
+};
 
 export async function getSettingsDataAction(): Promise<SettingsState> {
   const { user, business } = await requireCurrentWorkspace("/settings", {
@@ -294,6 +326,73 @@ export async function saveSettingsAction(
     ok: true,
     state: nextState,
   };
+}
+
+/**
+ * Saves the Workflows section (rebooking nudge, unpaid-payment reminder,
+ * thank-you message) — called from the Settings dialog's shared Save handler,
+ * ahead of saveSettingsAction, only when those values changed. Each workflow
+ * only ever creates a draft for the owner to review in Inbox › Follow-ups.
+ *
+ * The rebooking nudge is Pro-only and re-checked here, not just hidden in the
+ * UI: a Basic workspace can never store `rebookEnabled: true`, and its rebook
+ * timing is left exactly as stored.
+ */
+export async function saveWorkflowSettingsAction(
+  payload: WorkflowSettingsValues
+): Promise<SaveWorkflowSettingsResult> {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      error: "Your session expired. Log in again to update settings.",
+    };
+  }
+
+  const validation = workflowSettingsSchema.safeParse(payload);
+  if (!validation.success) {
+    return { ok: false, error: "Some workflow settings aren't valid." };
+  }
+
+  const values = validation.data;
+  const business = await requireCurrentBusiness(user, {
+    missingBusinessRedirect: "/onboarding",
+  });
+  const isPro = isProBusinessPlan(business.plan);
+
+  if (!isPro && values.rebookEnabled) {
+    return { ok: false, error: REBOOK_PLAN_ERROR };
+  }
+
+  const sharedValues = {
+    paymentReminderEnabled: values.paymentReminderEnabled,
+    paymentReminderAfterDays: values.paymentReminderAfterDays,
+    thankYouEnabled: values.thankYouEnabled,
+    thankYouDelayHours: values.thankYouDelayHours,
+  };
+  // Basic never writes the rebook fields at all: a downgraded workspace keeps
+  // whatever was stored (the cron re-checks the plan), and a first-ever save
+  // falls back to the column defaults (rebook off, 6 months).
+  const rebookValues = isPro
+    ? {
+        rebookEnabled: values.rebookEnabled,
+        rebookAfterMonths: values.rebookAfterMonths,
+      }
+    : {};
+
+  const saved = await prisma.workflowSettings.upsert({
+    where: { businessId: business.id },
+    update: { ...sharedValues, ...rebookValues },
+    create: { businessId: business.id, ...sharedValues, ...rebookValues },
+    select: WORKFLOW_SETTINGS_SELECT,
+  });
+
+  // Same as saveSettingsAction: settings changes are revalidated at the layout
+  // level so no cached workspace route serves stale values.
+  revalidatePath("/", "layout");
+
+  return { ok: true, workflows: saved };
 }
 
 /**

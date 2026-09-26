@@ -2,14 +2,10 @@ import { revalidatePath } from "next/cache";
 
 import { Prisma } from "@prisma/client";
 
-import { isProBusinessPlan } from "@/lib/billing";
-import { timeToMinutes } from "@/lib/calendar";
 import { logger } from "@/lib/logger";
 import { buildStaffPushPayload, sendStaffPush } from "@/lib/mobile/push";
 import { prisma } from "@/lib/prisma";
-import { findBestWaitlistMatch } from "@/lib/slot-fill-matching";
-import { formatZonedTime24, getZonedWeekday } from "@/lib/time-zone";
-import { findMatchingWaitlistCandidates } from "@/lib/waitlist-data";
+import { offerFreedSlot, withdrawSlotOffers } from "@/lib/slot-offers";
 
 /**
  * Appointment-mutation side effects shared by the web calendar actions and the
@@ -316,7 +312,7 @@ export async function cancelAppointmentCore(where: {
 
     // The guarded update applied — this call is the one that just cancelled it.
     // title/startAt are pulled here too (rather than a second read) so the
-    // slot-fill matching below reuses this row instead of re-fetching it.
+    // slot offer below reuses this row instead of re-fetching it.
     const cancelled = await tx.appointment.findFirstOrThrow({
       where: { id: where.id },
       select: { id: true, clientId: true, staffMemberId: true, title: true, startAt: true },
@@ -337,69 +333,10 @@ export async function cancelAppointmentCore(where: {
     await tx.appointmentReminder.deleteMany({ where: { appointmentId: cancelled.id } });
     await refreshClientLastVisitAt(cancelled.clientId, where.businessId, tx);
 
-    // Slot-fill matching (Pro only): a cancellation just freed a slot, so
-    // check the waiting list for someone who wants it and draft an offer.
-    // Looked up from inside the transaction (rather than widening this
-    // function's public `where` signature with a plan flag) so no caller —
-    // web, mobile, or the reply-cancel path — can accidentally skip the gate
-    // by forgetting to pass one.
-    const business = await tx.business.findUniqueOrThrow({
-      where: { id: where.businessId },
-      select: { plan: true },
-    });
-
-    if (isProBusinessPlan(business.plan)) {
-      const candidates = await findMatchingWaitlistCandidates({
-        businessId: where.businessId,
-        service: cancelled.title,
-        tx,
-      });
-
-      // WaitlistEntry.preferredDays/preferredFrom/preferredTo are entered by
-      // staff in clinic-local wall-clock time, so the freed slot's weekday
-      // and time-of-day must be derived in the clinic's zone too — not raw
-      // UTC, which would silently shift every match by the clinic's UTC
-      // offset. Same conversion as isInsideBusinessHours in
-      // calendar/actions.ts and businessHoursForDate in calendar.ts: map the
-      // zoned Sun=0..Sat=6 weekday onto the schedule's Monday=0 convention.
-      const weekday = (getZonedWeekday(cancelled.startAt) + 6) % 7;
-      const timeMinutes = timeToMinutes(formatZonedTime24(cancelled.startAt));
-
-      const match = findBestWaitlistMatch(candidates, {
-        service: cancelled.title,
-        staffMemberId: cancelled.staffMemberId,
-        startAt: cancelled.startAt,
-        weekday,
-        timeMinutes,
-      });
-
-      if (match) {
-        // Guard the status flip with its own CAS so a race where the entry
-        // was already claimed/removed between the read above and this write
-        // can't create an orphaned draft for an entry no longer WAITING.
-        const { count: offered } = await tx.waitlistEntry.updateMany({
-          where: { id: match.id, status: "WAITING" },
-          data: { status: "OFFERED" },
-        });
-
-        if (offered > 0) {
-          // dedupeKey's uniqueness constraint is what makes this idempotent
-          // across retries — no separate duplicate check needed.
-          await tx.followUpDraft.create({
-            data: {
-              businessId: where.businessId,
-              clientId: match.clientId,
-              kind: "SLOT_OFFER",
-              status: "PENDING",
-              appointmentId: cancelled.id,
-              waitlistEntryId: match.id,
-              dedupeKey: `SLOT_OFFER:${cancelled.id}:${match.id}`,
-              body: `A ${cancelled.title} slot just opened up. Would you like it?`,
-            },
-          });
-        }
-      }
-    }
+    // A cancellation just freed a slot: offer it to the waiting list (Pro
+    // only — offerFreedSlot re-checks the plan inside this transaction, so no
+    // caller — web, mobile, or the reply-cancel path — can skip the gate).
+    await offerFreedSlot(tx, { businessId: where.businessId, cancelled });
 
     return {
       ok: true,
@@ -584,28 +521,46 @@ export async function deleteAppointmentCore(where: {
     return { ok: false, status: 404, error: APPOINTMENT_NOT_FOUND_ERROR };
   }
 
-  return prisma.$transaction(async (tx) => {
-    // Compare-and-set: scope the delete by the same `where` used to find the
-    // row above. If a concurrent request already deleted it between that
-    // read and this statement, `count` is 0 and this call becomes a no-op
-    // instead of throwing.
-    const { count } = await tx.appointment.deleteMany({ where });
+  try {
+    return await prisma.$transaction(async (tx) => {
+      // A deleted cancelled appointment's slot can no longer be booked, so
+      // withdraw any waiting-list offer for it now (draft expired, entry
+      // back to WAITING). Must run before the delete: the FK's SET NULL
+      // unlinks the drafts from the appointment as soon as the row goes.
+      await withdrawSlotOffers(tx, { businessId: where.businessId, appointmentId: where.id });
 
-    if (count === 0) {
+      // Compare-and-set: scope the delete by the same `where` used to find the
+      // row above. If a concurrent request already deleted it between that
+      // read and this statement, `count` is 0 — roll back (so the withdraw
+      // above doesn't stick for a delete that didn't happen) and report it
+      // as not found instead of throwing.
+      const { count } = await tx.appointment.deleteMany({ where });
+
+      if (count === 0) {
+        throw new NothingDeleted();
+      }
+
+      await refreshClientLastVisitAt(existing.clientId, where.businessId, tx);
+
+      return {
+        ok: true as const,
+        appointmentId: where.id,
+        clientId: existing.clientId,
+        staffMemberId: existing.staffMemberId,
+        changed: true,
+      };
+    });
+  } catch (error) {
+    if (error instanceof NothingDeleted) {
       return { ok: false, status: 404, error: APPOINTMENT_NOT_FOUND_ERROR };
     }
-
-    await refreshClientLastVisitAt(existing.clientId, where.businessId, tx);
-
-    return {
-      ok: true,
-      appointmentId: where.id,
-      clientId: existing.clientId,
-      staffMemberId: existing.staffMemberId,
-      changed: true,
-    };
-  });
+    throw error;
+  }
 }
+
+// Rolls back deleteAppointmentCore's transaction when its guarded delete hit
+// nothing.
+class NothingDeleted extends Error {}
 
 // Invalidate the Router Cache for every surface an appointment mutation touches
 // (calendar grid, dashboard schedule/KPIs, the client's directory row + detail
@@ -623,6 +578,10 @@ export function revalidateCalendarSurfaces(
   // Staff directory derives today's appointment counts; each staff detail page
   // lists that member's appointments.
   revalidatePath("/staff");
+  // A cancel can draft a waiting-list slot offer (the Inbox's Follow-ups count
+  // + list), and every follow-up row names its linked appointment's time.
+  revalidatePath("/inbox");
+  revalidatePath("/inbox/follow-ups");
   // Dedup so a move that keeps the same client/staff doesn't revalidate twice.
   for (const clientId of new Set(clientIds)) {
     if (clientId) {

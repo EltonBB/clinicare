@@ -6,8 +6,10 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { isProBusinessPlan } from "@/lib/billing";
-import { WAITLIST_PLAN_ERROR } from "@/lib/waitlist";
-import { createWaitlistEntry, removeWaitlistEntry } from "@/lib/waitlist-data";
+import { logger } from "@/lib/logger";
+import { removeWaitlistEntry } from "@/lib/slot-offers";
+import { createWaitlistEntry } from "@/lib/waitlist-data";
+import { isInvalidPreferredWindow, WAITLIST_PLAN_ERROR, WAITLIST_TIME_RANGE_ERROR } from "@/lib/waitlist";
 import { parseZonedWallClock } from "@/lib/time-zone";
 
 export type AddWaitlistEntryPayload = {
@@ -28,19 +30,27 @@ export type WaitlistActionResult = {
 
 const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-const addWaitlistEntrySchema = z.object({
-  clientId: z.string().min(1),
-  service: z.string().trim().min(1).max(200),
-  staffMemberId: z.string().min(1).optional(),
-  earliestDate: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
-  preferredDays: z.array(z.number().int().min(0).max(6)).optional(),
-  preferredFrom: z.string().regex(timePattern).optional(),
-  preferredTo: z.string().regex(timePattern).optional(),
-  notes: z.string().max(2000).optional(),
-});
+const REMOVE_FAILED_ERROR = "Couldn't remove this entry. Try again.";
+
+const addWaitlistEntrySchema = z
+  .object({
+    clientId: z.string().min(1),
+    service: z.string().trim().min(1).max(200),
+    staffMemberId: z.string().min(1).optional(),
+    earliestDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+    preferredDays: z.array(z.number().int().min(0).max(6)).optional(),
+    preferredFrom: z.string().regex(timePattern).optional(),
+    preferredTo: z.string().regex(timePattern).optional(),
+    notes: z.string().max(2000).optional(),
+  })
+  // A window that ends before it starts can never match a slot.
+  .refine((data) => !isInvalidPreferredWindow(data.preferredFrom, data.preferredTo), {
+    message: WAITLIST_TIME_RANGE_ERROR,
+    path: ["preferredTo"],
+  });
 
 function getAuthedBusiness() {
   return getAuthedBusinessContext(
@@ -66,7 +76,13 @@ export async function addWaitlistEntryAction(
   const parsed = addWaitlistEntrySchema.safeParse(payload);
 
   if (!parsed.success) {
-    return { ok: false, error: "Choose a client and enter a valid service before saving." };
+    const invalidWindow = parsed.error.issues.some((issue) => issue.message === WAITLIST_TIME_RANGE_ERROR);
+    return {
+      ok: false,
+      error: invalidWindow
+        ? WAITLIST_TIME_RANGE_ERROR
+        : "Choose a client and enter a valid service before saving.",
+    };
   }
 
   const data = parsed.data;
@@ -149,13 +165,25 @@ export async function removeWaitlistEntryAction(id: string): Promise<WaitlistAct
     return { ok: false, error: WAITLIST_PLAN_ERROR };
   }
 
-  const result = await removeWaitlistEntry({ id, businessId: business.id });
+  let result;
+  try {
+    result = await removeWaitlistEntry({ id, businessId: business.id });
+  } catch (error) {
+    // Already retried once on a write conflict (see retryOnWriteConflict) —
+    // a plain retry message, never the raw error, and never the error page.
+    logger.error("Couldn't remove a waiting-list entry.", error, { businessId: business.id, waitlistEntryId: id });
+    return { ok: false, error: REMOVE_FAILED_ERROR };
+  }
 
   if (!result.ok) {
     return { ok: false, error: result.error };
   }
 
   revalidatePath("/calendar");
+  // Removing an entry that holds an offer retires that offer (and may draft
+  // one for the next match) — the Follow-ups list and the Inbox's count.
+  revalidatePath("/inbox");
+  revalidatePath("/inbox/follow-ups");
 
   return { ok: true };
 }

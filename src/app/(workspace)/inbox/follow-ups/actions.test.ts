@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const followUpDraft = { findFirst: vi.fn() };
@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
   const markFollowUpDraftSent = vi.fn();
   const revertFollowUpDraftToPending = vi.fn();
   const dismissFollowUpDraft = vi.fn();
+  const passSlotOffer = vi.fn();
   const sendMessage = vi.fn();
   const revalidatePath = vi.fn();
   return {
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => {
     markFollowUpDraftSent,
     revertFollowUpDraftToPending,
     dismissFollowUpDraft,
+    passSlotOffer,
     sendMessage,
     revalidatePath,
   };
@@ -45,6 +47,8 @@ vi.mock("@/lib/follow-ups-data", () => ({
   markFollowUpDraftSent: mocks.markFollowUpDraftSent,
   revertFollowUpDraftToPending: mocks.revertFollowUpDraftToPending,
   dismissFollowUpDraft: mocks.dismissFollowUpDraft,
+  passSlotOffer: mocks.passSlotOffer,
+  SLOT_OFFER_UNAVAILABLE_ERROR: "This slot offer is no longer available.",
 }));
 
 vi.mock("@/lib/messaging", () => ({
@@ -56,9 +60,30 @@ vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: 
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 
-import { bookFollowUpSlotAction, dismissFollowUpDraftAction, sendFollowUpDraftAction } from "./actions";
+import {
+  bookFollowUpSlotAction,
+  dismissFollowUpDraftAction,
+  passSlotOfferAction,
+  sendFollowUpDraftAction,
+} from "./actions";
 
-const BUSINESS = { id: "biz_1" };
+const BUSINESS = { id: "biz_1", plan: "PRO" as const };
+const ORIGINAL_TIME_ZONE = process.env.APP_TIME_ZONE;
+
+afterEach(() => {
+  if (ORIGINAL_TIME_ZONE === undefined) {
+    delete process.env.APP_TIME_ZONE;
+  } else {
+    process.env.APP_TIME_ZONE = ORIGINAL_TIME_ZONE;
+  }
+});
+
+function expectFollowUpSurfacesRevalidated() {
+  expect(mocks.revalidatePath).toHaveBeenCalledWith("/inbox/follow-ups");
+  expect(mocks.revalidatePath).toHaveBeenCalledWith("/inbox");
+  // The waiting-list panel shows each entry's offer state.
+  expect(mocks.revalidatePath).toHaveBeenCalledWith("/calendar");
+}
 const DRAFT_ID = "draft_1";
 const ALREADY_HANDLED_ERROR = "This follow-up was already handled.";
 
@@ -288,8 +313,14 @@ describe("dismissFollowUpDraftAction", () => {
       businessId: BUSINESS.id,
     });
     expect(mocks.sendMessage).not.toHaveBeenCalled();
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/inbox/follow-ups");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/inbox");
+    expectFollowUpSurfacesRevalidated();
+  });
+
+  it("turns an unexpected failure (e.g. a deadlock that survived its retry) into a plain retry message", async () => {
+    mocks.dismissFollowUpDraft.mockRejectedValue(new Error("deadlock detected"));
+
+    expect(await dismissFollowUpDraftAction(DRAFT_ID)).toEqual({ ok: false, error: "Something went wrong. Try again." });
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
   it("mirrors the already-handled case, with no sendMessage call at all", async () => {
@@ -303,10 +334,13 @@ describe("dismissFollowUpDraftAction", () => {
 });
 
 describe("bookFollowUpSlotAction", () => {
-  it("returns a pre-filled booking url and flips the waitlist entry to FILLED", async () => {
+  it("returns a booking url pre-filled with the freed slot's clinic-zone date and time, and flips the entry to FILLED", async () => {
+    process.env.APP_TIME_ZONE = "Europe/Budapest";
     mocks.followUpDraft.findFirst.mockResolvedValue({
       clientId: "client_1",
-      appointment: { title: "Follow-up visit", staffMemberId: "staff_1" },
+      // 22:30 UTC on Oct 4 is 00:30 on Oct 5 in Budapest (CEST) — a raw-UTC
+      // date/time would land on the wrong day.
+      appointment: { title: "Follow-up visit", staffMemberId: "staff_1", startAt: new Date("2026-10-04T22:30:00.000Z") },
     });
     mocks.waitlistEntry.updateMany.mockResolvedValue({ count: 1 });
 
@@ -314,30 +348,61 @@ describe("bookFollowUpSlotAction", () => {
 
     expect(result).toEqual({
       ok: true,
-      bookingUrl: "/calendar/new?client=client_1&service=Follow-up+visit&staffMemberId=staff_1",
+      bookingUrl:
+        "/calendar/new?client=client_1&service=Follow-up+visit&date=2026-10-05&time=00%3A30&staffMemberId=staff_1",
     });
+    // Only a live sent offer: entry still OFFERED, slot still cancelled and ahead.
     expect(mocks.followUpDraft.findFirst).toHaveBeenCalledWith({
-      where: { id: DRAFT_ID, businessId: BUSINESS.id, kind: "SLOT_OFFER", status: "SENT" },
-      select: { clientId: true, appointment: { select: { title: true, staffMemberId: true } } },
+      where: expect.objectContaining({
+        id: DRAFT_ID,
+        businessId: BUSINESS.id,
+        kind: "SLOT_OFFER",
+        status: "SENT",
+        waitlistEntry: { status: "OFFERED" },
+        appointment: { status: "CANCELLED", startAt: { gt: expect.any(Date) } },
+      }),
+      select: { clientId: true, appointment: { select: { title: true, staffMemberId: true, startAt: true } } },
     });
     expect(mocks.waitlistEntry.updateMany).toHaveBeenCalledWith({
       where: {
         businessId: BUSINESS.id,
         status: "OFFERED",
-        followUpDrafts: { some: { id: DRAFT_ID } },
+        // Pinned to this draft still being SENT (not declined meanwhile).
+        followUpDrafts: { some: { id: DRAFT_ID, status: "SENT" } },
       },
       data: { status: "FILLED" },
     });
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/inbox/follow-ups");
+    expectFollowUpSurfacesRevalidated();
   });
 
-  it("omits service/staffMemberId when the draft has no linked appointment", async () => {
-    mocks.followUpDraft.findFirst.mockResolvedValue({ clientId: "client_1", appointment: null });
+  it("omits staffMemberId when the freed slot had nobody assigned", async () => {
+    process.env.APP_TIME_ZONE = "Europe/Budapest";
+    mocks.followUpDraft.findFirst.mockResolvedValue({
+      clientId: "client_1",
+      appointment: { title: "Checkup", staffMemberId: null, startAt: new Date("2026-10-05T07:00:00.000Z") },
+    });
     mocks.waitlistEntry.updateMany.mockResolvedValue({ count: 1 });
 
     const result = await bookFollowUpSlotAction(DRAFT_ID);
 
-    expect(result).toEqual({ ok: true, bookingUrl: "/calendar/new?client=client_1" });
+    expect(result).toEqual({
+      ok: true,
+      bookingUrl: "/calendar/new?client=client_1&service=Checkup&date=2026-10-05&time=09%3A00",
+    });
+  });
+
+  it("refuses when the entry was declined, removed, or booked since the read", async () => {
+    mocks.followUpDraft.findFirst.mockResolvedValue({
+      clientId: "client_1",
+      appointment: { title: "Checkup", staffMemberId: null, startAt: new Date("2026-10-05T07:00:00.000Z") },
+    });
+    mocks.waitlistEntry.updateMany.mockResolvedValue({ count: 0 });
+
+    expect(await bookFollowUpSlotAction(DRAFT_ID)).toEqual({
+      ok: false,
+      error: "This slot offer is no longer available.",
+    });
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
   it("returns a plain error and never touches the waitlist entry when the draft isn't a bookable slot offer", async () => {
@@ -360,5 +425,56 @@ describe("bookFollowUpSlotAction", () => {
       error: "Your session expired. Log in again to manage follow-ups.",
     });
     expect(mocks.followUpDraft.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("passSlotOfferAction (Declined)", () => {
+  it("records the decline for this business and revalidates every surface it feeds", async () => {
+    mocks.passSlotOffer.mockResolvedValue({ ok: true });
+
+    expect(await passSlotOfferAction(DRAFT_ID)).toEqual({ ok: true });
+    expect(mocks.passSlotOffer).toHaveBeenCalledWith({ id: DRAFT_ID, businessId: BUSINESS.id });
+    expectFollowUpSurfacesRevalidated();
+  });
+
+  it("passes the data layer's plain error through without revalidating", async () => {
+    mocks.passSlotOffer.mockResolvedValue({ ok: false, error: "This slot offer is no longer available." });
+
+    expect(await passSlotOfferAction(DRAFT_ID)).toEqual({
+      ok: false,
+      error: "This slot offer is no longer available.",
+    });
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("still lets a workspace that dropped to Basic record the decline (the re-offer is gated further down)", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_2", plan: "BASIC" }, user: {} });
+    mocks.passSlotOffer.mockResolvedValue({ ok: true });
+
+    expect(await passSlotOfferAction(DRAFT_ID)).toEqual({ ok: true });
+    // Still scoped to the signed-in workspace.
+    expect(mocks.passSlotOffer).toHaveBeenCalledWith({ id: DRAFT_ID, businessId: "biz_2" });
+  });
+
+  it("turns an unexpected failure into a plain retry message instead of throwing", async () => {
+    mocks.passSlotOffer.mockRejectedValue(new Error("deadlock detected"));
+
+    expect(await passSlotOfferAction(DRAFT_ID)).toEqual({ ok: false, error: "Something went wrong. Try again." });
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed id before touching the offer", async () => {
+    expect(await passSlotOfferAction("")).toEqual({ ok: false, error: "This slot offer is no longer available." });
+    expect(mocks.passSlotOffer).not.toHaveBeenCalled();
+  });
+
+  it("returns the session-expired error when unauthenticated", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ error: "Your session expired. Log in again to manage follow-ups." });
+
+    expect(await passSlotOfferAction(DRAFT_ID)).toEqual({
+      ok: false,
+      error: "Your session expired. Log in again to manage follow-ups.",
+    });
+    expect(mocks.passSlotOffer).not.toHaveBeenCalled();
   });
 });

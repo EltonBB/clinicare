@@ -37,6 +37,20 @@ export type FollowUpDraftRecord = {
 };
 
 /**
+ * A row's identity on the Follow-ups page. A slot offer that staff just sent
+ * comes back from the server as a new, bookable row (Book / Declined), so it
+ * must not stay hidden under the key of the pending row that was handled.
+ */
+export function followUpRowKey(item: Pick<FollowUpDraftItem, "id" | "canBook">) {
+  return `${item.id}:${item.canBook}`;
+}
+
+/** The server's rows minus the ones handled on this page since it loaded. */
+export function visibleFollowUps(items: FollowUpDraftItem[], handledKeys: string[]) {
+  return items.filter((item) => !handledKeys.includes(followUpRowKey(item)));
+}
+
+/**
  * Every kind gets an honest, generic reason label; when a linked appointment
  * exists (set by a future generator — PR 4/5), the reason names it instead.
  * See this plan's Deviation 4 for why the reason isn't a stored field.

@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { format } from "date-fns";
 import { Plus } from "lucide-react";
 
 import {
@@ -29,6 +28,7 @@ import {
   WorkspaceEmptyState,
 } from "@/components/workspace/workspace-layout";
 import type { CalendarSelectOption } from "@/lib/calendar";
+import { isInvalidPreferredWindow, WAITLIST_TIME_RANGE_ERROR } from "@/lib/waitlist";
 import type { WaitlistEntryRow } from "@/lib/waitlist-data";
 
 type WaitlistPanelProps = {
@@ -78,8 +78,8 @@ function formatPreferredWindow(entry: WaitlistEntryRow) {
     parts.push(`${entry.preferredFrom ?? "any"}–${entry.preferredTo ?? "any"}`);
   }
 
-  if (entry.earliestDate) {
-    parts.push(`from ${format(entry.earliestDate, "MMM d")}`);
+  if (entry.earliestDateLabel) {
+    parts.push(`from ${entry.earliestDateLabel}`);
   }
 
   return parts.join(" · ");
@@ -118,17 +118,31 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
       return;
     }
 
+    if (isInvalidPreferredWindow(form.preferredFrom, form.preferredTo)) {
+      setError(WAITLIST_TIME_RANGE_ERROR);
+      return;
+    }
+
     startAdding(async () => {
-      const result = await addWaitlistEntryAction({
-        clientId: form.clientId,
-        service: form.service.trim(),
-        staffMemberId: form.staffMemberId || undefined,
-        earliestDate: form.earliestDate || undefined,
-        preferredDays: form.preferredDays.length > 0 ? form.preferredDays : undefined,
-        preferredFrom: form.preferredFrom || undefined,
-        preferredTo: form.preferredTo || undefined,
-        notes: form.notes.trim() || undefined,
-      });
+      let result;
+      try {
+        result = await addWaitlistEntryAction({
+          clientId: form.clientId,
+          service: form.service.trim(),
+          staffMemberId: form.staffMemberId || undefined,
+          earliestDate: form.earliestDate || undefined,
+          preferredDays: form.preferredDays.length > 0 ? form.preferredDays : undefined,
+          preferredFrom: form.preferredFrom || undefined,
+          preferredTo: form.preferredTo || undefined,
+          notes: form.notes.trim() || undefined,
+        });
+      } catch {
+        // A rejected server action (network drop, 5xx, deploy skew) must not
+        // throw out of the transition — that would swap the whole Calendar
+        // for the error page. A plain message instead.
+        setError("Something went wrong. Try again.");
+        return;
+      }
 
       if (!result.ok) {
         setError(result.error ?? "We couldn't add this entry.");
@@ -148,7 +162,15 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
     setError("");
     setRemovingId(id);
     startRemoving(async () => {
-      const result = await removeWaitlistEntryAction(id);
+      let result;
+      try {
+        result = await removeWaitlistEntryAction(id);
+      } catch {
+        // Same as submitAdd: never let a rejected action reach the error page.
+        setError("Something went wrong. Try again.");
+        setRemovingId(null);
+        return;
+      }
 
       if (!result.ok) {
         setError(result.error ?? "We couldn't remove this entry.");
@@ -202,6 +224,11 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
                           .filter(Boolean)
                           .join(" · ")}
                       </p>
+                      {entry.offer ? (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {entry.offer === "sent" ? "Offer sent" : "Offer pending"}
+                        </p>
+                      ) : null}
                     </div>
                     <button
                       type="button"
