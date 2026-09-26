@@ -44,9 +44,9 @@ describe("storage URL provenance", () => {
     ownUrl.replace("owner/logos/image.jpg", "owner/logos//image.jpg"),
     ownUrl.replace("/storage/", "/%73torage/"),
     ownUrl.replace("/storage/", "/%2573torage/"),
-    ownUrl.replace("/storage/", "/%ZZtorage/"),
     ownUrl.replace("/storage/v1/object/sign/", "/storage/v1/render/image/sign/"),
     ownUrl.replace("/storage/v1/object/sign/", "/storage/v1/render/image/sign/").replace("owner/logos/image.jpg", "other-owner/logos/image.jpg"),
+    "https://clinic.example/%2573torage/v1/object/sign/clinic-media/other/logos/a%25ZZ.jpg",
   ])("rejects an unverified same-project Storage URL: %s", (url) => {
     expect(normalizeStorageReference(url, "owner", "logos")).toBeNull();
   });
@@ -58,6 +58,16 @@ describe("storage URL provenance", () => {
 
   it("keeps an unrelated HTTPS path with an encoded space", () => {
     const url = "https://clinic.example/images/My%20Logo.jpg";
+    expect(normalizeStorageReference(url, "owner", "logos")).toBe(url);
+  });
+
+  it("keeps an unrelated HTTPS path with an encoded literal percent", () => {
+    const url = "https://clinic.example/images/Discount%25.jpg";
+    expect(normalizeStorageReference(url, "owner", "logos")).toBe(url);
+  });
+
+  it("keeps an unrelated HTTPS path with a malformed percent escape", () => {
+    const url = "https://clinic.example/images/Discount%ZZ.jpg";
     expect(normalizeStorageReference(url, "owner", "logos")).toBe(url);
   });
 

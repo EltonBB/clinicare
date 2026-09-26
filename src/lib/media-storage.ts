@@ -91,6 +91,23 @@ export function parseSupabaseStorageUrl(
   }
 }
 
+function couldResolveToStorageRoute(pathname: string): boolean {
+  let path = pathname;
+  for (let depth = 0; depth < 8; depth += 1) {
+    if (/(?:^|\/)storage\/v1\/(?:object|render\/image)(?:\/|$)/i.test(path)) {
+      return true;
+    }
+    // Decode valid ASCII escapes one at a time so a malformed escape in an
+    // unrelated filename cannot stop detection in another path segment.
+    const decoded = path.replace(/%([0-7][0-9a-f])/gi, (_, hex: string) =>
+      String.fromCharCode(Number.parseInt(hex, 16))
+    );
+    if (decoded === path) return false;
+    path = decoded;
+  }
+  return /%[0-7][0-9a-f]/i.test(path);
+}
+
 export function normalizeStorageReference(
   value: string,
   expectedOwnerId: string,
@@ -121,19 +138,8 @@ export function normalizeStorageReference(
   try {
     const url = new URL(value.trim());
     const configuredUrl = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || "");
-    if (url.origin === configuredUrl.origin) {
-      let decodedPath: string;
-      try {
-        decodedPath = decodeURIComponent(url.pathname);
-      } catch {
-        return null;
-      }
-      if (
-        decodedPath.includes("%") ||
-        /(?:^|\/)storage\/v1\/(?:object|render\/image)(?:\/|$)/i.test(decodedPath)
-      ) {
-        return null;
-      }
+    if (url.origin === configuredUrl.origin && couldResolveToStorageRoute(url.pathname)) {
+      return null;
     }
   } catch {
     // Generic URL validation remains the caller's responsibility.
