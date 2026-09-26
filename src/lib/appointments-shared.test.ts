@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const appointment = {
@@ -10,9 +10,25 @@ const mocks = vi.hoisted(() => {
   };
   const appointmentReminder = { deleteMany: vi.fn() };
   const client = { updateMany: vi.fn() };
+  const business = { findUniqueOrThrow: vi.fn() };
+  const waitlistEntry = { updateMany: vi.fn() };
+  const followUpDraft = { create: vi.fn() };
   const $transaction = vi.fn();
   const revalidatePath = vi.fn();
-  return { appointment, appointmentReminder, client, $transaction, revalidatePath };
+  const isProBusinessPlan = vi.fn();
+  const findMatchingWaitlistCandidates = vi.fn();
+  return {
+    appointment,
+    appointmentReminder,
+    client,
+    business,
+    waitlistEntry,
+    followUpDraft,
+    $transaction,
+    revalidatePath,
+    isProBusinessPlan,
+    findMatchingWaitlistCandidates,
+  };
 });
 
 vi.mock("@/lib/prisma", () => ({
@@ -20,6 +36,9 @@ vi.mock("@/lib/prisma", () => ({
     appointment: mocks.appointment,
     appointmentReminder: mocks.appointmentReminder,
     client: mocks.client,
+    business: mocks.business,
+    waitlistEntry: mocks.waitlistEntry,
+    followUpDraft: mocks.followUpDraft,
     $transaction: mocks.$transaction,
   },
 }));
@@ -29,6 +48,10 @@ vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: 
 vi.mock("@/lib/mobile/push", () => ({
   buildStaffPushPayload: vi.fn(),
   sendStaffPush: vi.fn(),
+}));
+vi.mock("@/lib/billing", () => ({ isProBusinessPlan: mocks.isProBusinessPlan }));
+vi.mock("@/lib/waitlist-data", () => ({
+  findMatchingWaitlistCandidates: mocks.findMatchingWaitlistCandidates,
 }));
 
 import {
@@ -46,7 +69,13 @@ import {
 } from "./appointments-shared";
 
 const WHERE = { id: "appt_1", businessId: "biz_1" };
-const RECORD = { id: "appt_1", clientId: "client_1", staffMemberId: "staff_1", startAt: new Date("2026-06-01T09:00:00Z") };
+const RECORD = {
+  id: "appt_1",
+  clientId: "client_1",
+  staffMemberId: "staff_1",
+  title: "Checkup",
+  startAt: new Date("2026-06-10T09:00:00.000Z"),
+};
 // deleteAppointmentCore's pre-read select drops `id` (it returns `where.id`
 // instead) — a narrower fixture so a future regression reintroducing a read
 // of `existing.id` can't hide behind an over-permissive mock.
@@ -58,6 +87,11 @@ function mockGuardHit() {
   mocks.appointment.findFirstOrThrow.mockResolvedValue(RECORD);
   mocks.appointment.findFirst.mockResolvedValue(null); // refreshClientLastVisitAt's latest-visit lookup
   mocks.client.updateMany.mockResolvedValue({ count: 1 });
+  // Slot-fill matching defaults to off (Basic plan) so every pre-existing
+  // cancelAppointmentCore test — none of which know about waiting lists —
+  // keeps working unchanged; Pro-specific tests below override both.
+  mocks.business.findUniqueOrThrow.mockResolvedValue({ plan: "BASIC" });
+  mocks.isProBusinessPlan.mockReturnValue(false);
 }
 
 /** The guarded update matched nothing — diagnostic lookup returns `status`. */
@@ -74,6 +108,9 @@ beforeEach(() => {
         appointment: mocks.appointment,
         appointmentReminder: mocks.appointmentReminder,
         client: mocks.client,
+        business: mocks.business,
+        waitlistEntry: mocks.waitlistEntry,
+        followUpDraft: mocks.followUpDraft,
       })
   );
 });
@@ -228,6 +265,152 @@ describe("cancelAppointmentCore", () => {
       where: { ...WHERE, staffMemberId: "staff_1", status: { notIn: ["COMPLETED", "CANCELLED", "NO_SHOW"] } },
       data: { status: "CANCELLED", cancelledAt: expect.any(Date) },
     });
+  });
+});
+
+const WAITLIST_CANDIDATE = {
+  id: "wl_1",
+  clientId: "client_2",
+  service: "Checkup",
+  staffMemberId: null,
+  earliestDate: null,
+  preferredDays: [] as number[],
+  preferredFrom: null,
+  preferredTo: null,
+  createdAt: new Date("2026-01-01"),
+};
+
+describe("cancelAppointmentCore — slot-fill matching", () => {
+  // A couple of these tests pin APP_TIME_ZONE to prove the weekday/time
+  // derivation is zone-aware, not raw UTC — restore whatever was ambient
+  // beforehand so this suite can't leak into other files/tests.
+  const originalTimeZone = process.env.APP_TIME_ZONE;
+
+  afterEach(() => {
+    if (originalTimeZone === undefined) {
+      delete process.env.APP_TIME_ZONE;
+    } else {
+      process.env.APP_TIME_ZONE = originalTimeZone;
+    }
+  });
+
+  it("does nothing extra when the workspace isn't on Pro", async () => {
+    mockGuardHit(); // defaults business plan to BASIC / isProBusinessPlan to false
+
+    await cancelAppointmentCore(WHERE);
+
+    expect(mocks.business.findUniqueOrThrow).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "biz_1" } })
+    );
+    expect(mocks.findMatchingWaitlistCandidates).not.toHaveBeenCalled();
+    expect(mocks.followUpDraft.create).not.toHaveBeenCalled();
+  });
+
+  it("creates one SLOT_OFFER draft and flips the matched entry to OFFERED when a match exists", async () => {
+    mockGuardHit();
+    mocks.isProBusinessPlan.mockReturnValue(true);
+    mocks.business.findUniqueOrThrow.mockResolvedValue({ plan: "PRO" });
+    mocks.findMatchingWaitlistCandidates.mockResolvedValue([WAITLIST_CANDIDATE]);
+    mocks.waitlistEntry.updateMany.mockResolvedValue({ count: 1 });
+
+    await cancelAppointmentCore(WHERE);
+
+    expect(mocks.findMatchingWaitlistCandidates).toHaveBeenCalledWith(
+      expect.objectContaining({ businessId: "biz_1", service: "Checkup" })
+    );
+    expect(mocks.waitlistEntry.updateMany).toHaveBeenCalledWith({
+      where: { id: "wl_1", status: "WAITING" },
+      data: { status: "OFFERED" },
+    });
+    expect(mocks.followUpDraft.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kind: "SLOT_OFFER",
+          clientId: "client_2",
+          waitlistEntryId: "wl_1",
+          appointmentId: "appt_1",
+          dedupeKey: "SLOT_OFFER:appt_1:wl_1",
+        }),
+      })
+    );
+  });
+
+  it("creates nothing when no candidate matches", async () => {
+    mockGuardHit();
+    mocks.isProBusinessPlan.mockReturnValue(true);
+    mocks.business.findUniqueOrThrow.mockResolvedValue({ plan: "PRO" });
+    mocks.findMatchingWaitlistCandidates.mockResolvedValue([]);
+
+    await cancelAppointmentCore(WHERE);
+
+    expect(mocks.waitlistEntry.updateMany).not.toHaveBeenCalled();
+    expect(mocks.followUpDraft.create).not.toHaveBeenCalled();
+  });
+
+  it("does not create an orphaned draft when the matched entry was already claimed between the read and the flip", async () => {
+    // The status-flip updateMany is its own CAS — a concurrent offer/removal
+    // could win the race between findMatchingWaitlistCandidates' read and
+    // this write, so `count` comes back 0 (no row still WAITING).
+    mockGuardHit();
+    mocks.isProBusinessPlan.mockReturnValue(true);
+    mocks.business.findUniqueOrThrow.mockResolvedValue({ plan: "PRO" });
+    mocks.findMatchingWaitlistCandidates.mockResolvedValue([WAITLIST_CANDIDATE]);
+    mocks.waitlistEntry.updateMany.mockResolvedValue({ count: 0 });
+
+    await cancelAppointmentCore(WHERE);
+
+    expect(mocks.followUpDraft.create).not.toHaveBeenCalled();
+  });
+
+  it("derives weekday and time-of-day from the clinic's time zone, not raw UTC", async () => {
+    process.env.APP_TIME_ZONE = "Europe/Budapest"; // UTC+1 in January — no DST
+
+    mockGuardHit();
+    // 23:30 UTC on Wed Jan 14 2026 is 00:30 local Thu Jan 15 in Budapest. A
+    // raw-UTC derivation would land this on Wednesday (weekday 2, Mon=0)
+    // at 23:30; the zoned derivation correctly lands it on Thursday
+    // (weekday 3) at 00:30 — only the zoned result matches this candidate.
+    mocks.appointment.findFirstOrThrow.mockResolvedValue({
+      ...RECORD,
+      startAt: new Date("2026-01-14T23:30:00.000Z"),
+    });
+    mocks.isProBusinessPlan.mockReturnValue(true);
+    mocks.business.findUniqueOrThrow.mockResolvedValue({ plan: "PRO" });
+    mocks.waitlistEntry.updateMany.mockResolvedValue({ count: 1 });
+    mocks.findMatchingWaitlistCandidates.mockResolvedValue([
+      {
+        ...WAITLIST_CANDIDATE,
+        preferredDays: [3], // Thursday only (Mon=0..Sun=6)
+        preferredFrom: "00:00",
+        preferredTo: "01:00",
+      },
+    ]);
+
+    await cancelAppointmentCore(WHERE);
+
+    expect(mocks.followUpDraft.create).toHaveBeenCalled();
+  });
+
+  it("does not match when the zoned weekday/time fall outside the candidate's preference", async () => {
+    process.env.APP_TIME_ZONE = "Europe/Budapest";
+
+    mockGuardHit();
+    // Same instant as above, but the candidate only wants Wednesday — the
+    // raw-UTC weekday, not the correct zoned (Thursday) one. If the
+    // implementation regressed to raw UTC this would wrongly match.
+    mocks.appointment.findFirstOrThrow.mockResolvedValue({
+      ...RECORD,
+      startAt: new Date("2026-01-14T23:30:00.000Z"),
+    });
+    mocks.isProBusinessPlan.mockReturnValue(true);
+    mocks.business.findUniqueOrThrow.mockResolvedValue({ plan: "PRO" });
+    mocks.findMatchingWaitlistCandidates.mockResolvedValue([
+      { ...WAITLIST_CANDIDATE, preferredDays: [2] }, // Wednesday only
+    ]);
+
+    await cancelAppointmentCore(WHERE);
+
+    expect(mocks.followUpDraft.create).not.toHaveBeenCalled();
   });
 });
 

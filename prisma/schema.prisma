@@ -43,6 +43,7 @@ model Business {
   staffNotifications     StaffNotification[]
   pendingStorageCleanups PendingStorageCleanup[]
   followUpDrafts         FollowUpDraft[]
+  waitlistEntries        WaitlistEntry[]
 }
 
 model BusinessHours {
@@ -61,26 +62,27 @@ model BusinessHours {
 }
 
 model StaffMember {
-  id            String              @id @default(cuid())
-  businessId    String
-  business      Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  name          String
-  role          String
-  email         String?
-  phone         String?
-  profileNote   String?
-  status        StaffStatus         @default(ACTIVE)
-  isActive      Boolean             @default(true)
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-  appointments  Appointment[]
-  timeEntries   StaffTimeEntry[]
-  shifts        StaffShift[]
-  careNotes     ClientCareNote[]
-  accessCodes   StaffAccessCode[]
-  devices       StaffDevice[]
-  threads       StaffThread[]
-  notifications StaffNotification[]
+  id              String              @id @default(cuid())
+  businessId      String
+  business        Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name            String
+  role            String
+  email           String?
+  phone           String?
+  profileNote     String?
+  status          StaffStatus         @default(ACTIVE)
+  isActive        Boolean             @default(true)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  appointments    Appointment[]
+  timeEntries     StaffTimeEntry[]
+  shifts          StaffShift[]
+  careNotes       ClientCareNote[]
+  accessCodes     StaffAccessCode[]
+  devices         StaffDevice[]
+  threads         StaffThread[]
+  notifications   StaffNotification[]
+  waitlistEntries WaitlistEntry[]
 
   @@index([businessId])
 }
@@ -146,6 +148,7 @@ model Client {
   treatmentPlanItems   ClientTreatmentPlanItem[]
   followUpReminders    ClientFollowUpReminder[]
   followUpDrafts       FollowUpDraft[]
+  waitlistEntries      WaitlistEntry[]
 
   @@unique([businessId, phone])
   @@index([businessId, isArchived])
@@ -382,21 +385,23 @@ model Appointment {
 }
 
 model FollowUpDraft {
-  id            String              @id @default(cuid())
-  businessId    String
-  business      Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  clientId      String
-  client        Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  kind          FollowUpDraftKind
-  body          String
-  status        FollowUpDraftStatus @default(PENDING)
-  appointmentId String?
-  appointment   Appointment?        @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
-  dedupeKey     String
-  expiresAt     DateTime?
-  sentAt        DateTime?
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
+  id              String              @id @default(cuid())
+  businessId      String
+  business        Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  clientId        String
+  client          Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  kind            FollowUpDraftKind
+  body            String
+  status          FollowUpDraftStatus @default(PENDING)
+  appointmentId   String?
+  appointment     Appointment?        @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  waitlistEntryId String?
+  waitlistEntry   WaitlistEntry?      @relation(fields: [waitlistEntryId], references: [id], onDelete: SetNull)
+  dedupeKey       String
+  expiresAt       DateTime?
+  sentAt          DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
   @@unique([businessId, dedupeKey])
   @@index([businessId, status, createdAt])
@@ -404,6 +409,30 @@ model FollowUpDraft {
   // Client (cascade) or an Appointment (SET NULL) scans the whole table.
   @@index([clientId])
   @@index([appointmentId])
+}
+
+model WaitlistEntry {
+  id             String              @id @default(cuid())
+  businessId     String
+  business       Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  clientId       String
+  client         Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  service        String
+  staffMemberId  String?
+  staffMember    StaffMember?        @relation(fields: [staffMemberId], references: [id], onDelete: SetNull)
+  earliestDate   DateTime?
+  preferredDays  Int[]               @default([])
+  preferredFrom  String?
+  preferredTo    String?
+  notes          String?
+  status         WaitlistEntryStatus @default(WAITING)
+  followUpDrafts FollowUpDraft[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([businessId, status])
+  @@index([clientId])
+  @@index([staffMemberId])
 }
 
 model AppointmentReminder {
@@ -593,6 +622,13 @@ enum FollowUpDraftStatus {
   SENT
   DISMISSED
   EXPIRED
+}
+
+enum WaitlistEntryStatus {
+  WAITING
+  OFFERED
+  FILLED
+  REMOVED
 }
 
 enum StaffStatus {

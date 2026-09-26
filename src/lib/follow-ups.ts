@@ -1,6 +1,7 @@
 import { formatZonedShortDate, formatZonedTime, getAppTimeZone } from "@/lib/time-zone";
 
 export type FollowUpDraftKind = "SLOT_OFFER" | "REBOOK" | "PAYMENT" | "THANK_YOU";
+export type FollowUpDraftStatus = "PENDING" | "SENT" | "DISMISSED" | "EXPIRED";
 
 export type FollowUpDraftItem = {
   id: string;
@@ -11,6 +12,10 @@ export type FollowUpDraftItem = {
   body: string;
   reasonLabel: string;
   createdLabel: string;
+  // A SENT slot offer whose waitlist entry is still OFFERED (see
+  // listPendingFollowUpDrafts) can be booked directly from this row — the
+  // client was already told about the opening, so send/skip no longer apply.
+  canBook: boolean;
 };
 
 const KIND_LABELS: Record<FollowUpDraftKind, string> = {
@@ -25,6 +30,7 @@ export type FollowUpDraftRecord = {
   clientId: string;
   client: { name: string };
   kind: FollowUpDraftKind;
+  status: FollowUpDraftStatus;
   body: string;
   appointment: { startAt: Date; title: string } | null;
   createdAt: Date;
@@ -53,6 +59,7 @@ export function buildFollowUpsViewFromRecords(args: {
       ? `${draft.appointment.title} · ${formatZonedShortDate(draft.appointment.startAt, timeZone)} ${formatZonedTime(draft.appointment.startAt, timeZone)}`
       : KIND_LABELS[draft.kind],
     createdLabel: formatZonedShortDate(draft.createdAt, timeZone),
+    canBook: draft.kind === "SLOT_OFFER" && draft.status === "SENT",
   }));
 
   return { items, pendingCount: items.length };

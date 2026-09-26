@@ -43,6 +43,8 @@ type NewAppointmentFormProps = {
   initialClientId?: string;
   initialDate: string;
   initialStartTime?: string;
+  initialService?: string;
+  initialStaffMemberId?: string;
   initialAppointment?: CalendarAppointment;
   canRecordNoShows?: boolean;
 };
@@ -86,6 +88,8 @@ export function NewAppointmentForm({
   initialClientId,
   initialDate,
   initialStartTime,
+  initialService,
+  initialStaffMemberId,
   initialAppointment,
   canRecordNoShows = false,
 }: NewAppointmentFormProps) {
@@ -97,7 +101,7 @@ export function NewAppointmentForm({
     initialAppointment?.clientId ?? initialClientId ?? clients[0]?.id ?? ""
   );
   const [staffMemberId, setStaffMemberId] = useState(
-    initialAppointment?.staffMemberId ?? staffMembers[0]?.id ?? ""
+    initialAppointment?.staffMemberId ?? initialStaffMemberId ?? staffMembers[0]?.id ?? ""
   );
   const [date, setDate] = useState(initialAppointment?.date ?? initialDate);
   const [startTime, setStartTime] = useState(
@@ -299,7 +303,7 @@ export function NewAppointmentForm({
             <Input
               name="service"
               required
-              defaultValue={initialAppointment?.service}
+              defaultValue={initialAppointment?.service ?? initialService}
               className={fieldInputClass}
             />
           </FormField>

@@ -1,19 +1,21 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { MessageSquareText } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { WorkspaceEmptyState, fieldTextareaClass } from "@/components/workspace/workspace-layout";
 import {
+  bookFollowUpSlotAction,
   dismissFollowUpDraftAction,
   sendFollowUpDraftAction,
 } from "@/app/(workspace)/inbox/follow-ups/actions";
 import { cn } from "@/lib/utils";
 import type { FollowUpDraftItem } from "@/lib/follow-ups";
 
-type FollowUpBusyState = "send" | "skip" | null;
+type FollowUpBusyState = "send" | "skip" | "book" | null;
 
 export function FollowUpsList({ items }: { items: FollowUpDraftItem[] }) {
   const [drafts, setDrafts] = useState(items);
@@ -44,6 +46,7 @@ function FollowUpDraftRow({
   draft: FollowUpDraftItem;
   onHandled: () => void;
 }) {
+  const router = useRouter();
   const [body, setBody] = useState(draft.body);
   const [busy, setBusy] = useState<FollowUpBusyState>(null);
   const [error, setError] = useState("");
@@ -64,45 +67,72 @@ function FollowUpDraftRow({
     setBusy("send");
     setError("");
 
-    // A rejected server action (network failure, thrown error) must not leave the
-    // row disabled with no message, so it resets the same way a returned failure does.
+    let result;
     try {
-      const result = await sendFollowUpDraftAction(
+      result = await sendFollowUpDraftAction(
         draft.id,
         trimmed !== draft.body ? trimmed : undefined
       );
-
-      if (!result.ok) {
-        setError(result.error ?? "Couldn't send this message. Try again.");
-        setBusy(null);
-        return;
-      }
-
-      onHandled();
     } catch {
-      setError("Couldn't send this message. Try again.");
+      // A rejected server action (network drop, 5xx, deploy skew) — a plain
+      // message, never the raw error, and re-enable the buttons instead of
+      // leaving them stuck disabled with no feedback.
+      setError("Something went wrong. Try again.");
       setBusy(null);
+      return;
     }
+
+    if (!result.ok) {
+      setError(result.error ?? "Couldn't send this message. Try again.");
+      setBusy(null);
+      return;
+    }
+
+    onHandled();
   }
 
   async function handleSkip() {
     setBusy("skip");
     setError("");
 
+    let result;
     try {
-      const result = await dismissFollowUpDraftAction(draft.id);
-
-      if (!result.ok) {
-        setError(result.error ?? "We couldn't skip this follow-up.");
-        setBusy(null);
-        return;
-      }
-
-      onHandled();
+      result = await dismissFollowUpDraftAction(draft.id);
     } catch {
-      setError("We couldn't skip this follow-up.");
+      setError("Something went wrong. Try again.");
       setBusy(null);
+      return;
     }
+
+    if (!result.ok) {
+      setError(result.error ?? "We couldn't skip this follow-up.");
+      setBusy(null);
+      return;
+    }
+
+    onHandled();
+  }
+
+  async function handleBook() {
+    setBusy("book");
+    setError("");
+
+    let result;
+    try {
+      result = await bookFollowUpSlotAction(draft.id);
+    } catch {
+      setError("Something went wrong. Try again.");
+      setBusy(null);
+      return;
+    }
+
+    if (!result.ok) {
+      setError(result.error ?? "This slot offer is no longer available.");
+      setBusy(null);
+      return;
+    }
+
+    router.push(result.bookingUrl);
   }
 
   return (
@@ -117,13 +147,18 @@ function FollowUpDraftRow({
         <p className="mt-0.5 text-xs text-muted-foreground">{draft.reasonLabel}</p>
       ) : null}
 
-      <Textarea
-        value={body}
-        onChange={(event) => setBody(event.target.value)}
-        disabled={isBusy}
-        rows={3}
-        className={cn(fieldTextareaClass, "mt-2.5")}
-      />
+      {draft.canBook ? (
+        // Already sent — read-only, since there's nothing left to edit-and-send.
+        <p className="mt-2.5 text-sm text-foreground">{draft.body}</p>
+      ) : (
+        <Textarea
+          value={body}
+          onChange={(event) => setBody(event.target.value)}
+          disabled={isBusy}
+          rows={3}
+          className={cn(fieldTextareaClass, "mt-2.5")}
+        />
+      )}
 
       {error ? (
         <p role="alert" className="mt-2 text-xs text-destructive">
@@ -132,25 +167,39 @@ function FollowUpDraftRow({
       ) : null}
 
       <div className="mt-2.5 flex items-center gap-2">
-        <Button
-          type="button"
-          size="sm"
-          className="h-9 rounded-(--radius-card)"
-          onClick={() => void handleSend()}
-          disabled={isBusy}
-        >
-          {busy === "send" ? "Sending..." : "Send"}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-9 rounded-(--radius-card) bg-white"
-          onClick={() => void handleSkip()}
-          disabled={isBusy}
-        >
-          {busy === "skip" ? "Skipping..." : "Skip"}
-        </Button>
+        {draft.canBook ? (
+          <Button
+            type="button"
+            size="sm"
+            className="h-9 rounded-(--radius-card)"
+            onClick={() => void handleBook()}
+            disabled={isBusy}
+          >
+            {busy === "book" ? "Booking..." : "Book"}
+          </Button>
+        ) : (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              className="h-9 rounded-(--radius-card)"
+              onClick={() => void handleSend()}
+              disabled={isBusy}
+            >
+              {busy === "send" ? "Sending..." : "Send"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 rounded-(--radius-card) bg-white"
+              onClick={() => void handleSkip()}
+              disabled={isBusy}
+            >
+              {busy === "skip" ? "Skipping..." : "Skip"}
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );

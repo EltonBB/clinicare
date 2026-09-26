@@ -6,6 +6,7 @@ import { buildInboxViewFromWorkspace } from "@/lib/inbox";
 import { buildWhatsAppConnectionSummary } from "@/lib/settings";
 import { ensureConversationForClient, fetchInboxConversations } from "@/lib/inbox-server";
 import { getPendingFollowUpDraftCount } from "@/lib/follow-ups-data";
+import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 
@@ -68,7 +69,16 @@ export default async function InboxPage({
           businessId: business.id,
         },
       }),
-      getPendingFollowUpDraftCount(business.id),
+      // Best-effort: the FollowUpDraft table's migration may not be applied
+      // yet in every environment (nothing else on this page depends on it).
+      // Degrade to a count of 0 instead of letting one missing table crash
+      // the whole Inbox page for every business.
+      getPendingFollowUpDraftCount(business.id).catch((error) => {
+        logger.error("Failed to load pending follow-up draft count for Inbox.", error, {
+          businessId: business.id,
+        });
+        return 0;
+      }),
     ]);
   const inboxView = buildInboxViewFromWorkspace({
     conversations,

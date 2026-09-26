@@ -46,7 +46,7 @@ export const publicPlans: PublicPlan[] = [
       "Everything in Basic",
       "Advanced AI-assisted operational insights",
       "Staff activity and utilization",
-      "No-show tracking, reporting, and risk alerts",
+      "No-show tracking, reporting, risk alerts, and automatic slot-offer drafts from your waiting list",
       "More workflow automation",
       "Priority setup support",
       "Launch-ready clinic operations",

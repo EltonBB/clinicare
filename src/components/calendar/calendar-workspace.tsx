@@ -25,6 +25,7 @@ import {
 import {
   CalendarDays,
   CalendarX2,
+  Clock,
   Plus,
   UsersRound,
   X,
@@ -43,11 +44,13 @@ import {
 } from "@/components/workspace/workspace-layout";
 import { MonthGrid } from "@/components/workspace/month-grid";
 import { NoShowRiskBadge } from "./no-show-risk-badge";
+import { WaitlistPanel } from "./waitlist-panel";
 import { useDismissOnOutsideOrEscape } from "@/hooks/use-dismiss-on-outside-or-escape";
 import { businessHoursForDate, timeToMinutes } from "@/lib/calendar";
 import { rowsThatFit, visibleEntryCount } from "@/lib/calendar-fit";
 import { monthsToLoad, type CalendarRange } from "@/lib/calendar-range";
 import { MAX_RISK_BATCH_SIZE, type NoShowRiskAssessment } from "@/lib/no-show-risk";
+import type { WaitlistEntryRow } from "@/lib/waitlist-data";
 import { cn } from "@/lib/utils";
 import type {
   CalendarAppointment,
@@ -68,6 +71,10 @@ type CalendarWorkspaceProps = {
   canRecordNoShows: boolean;
   /** Pro workspaces see a no-show risk badge in the quick view and Day view. */
   canViewNoShowRisk: boolean;
+  /** Pro workspaces can open the waiting-list panel from the header. */
+  canManageWaitlist: boolean;
+  /** Empty on a Basic workspace — page.tsx skips the query entirely there. */
+  waitlistEntries: WaitlistEntryRow[];
 };
 
 const views: CalendarView[] = ["day", "week", "month"];
@@ -627,10 +634,13 @@ export function CalendarWorkspace({
   today,
   canRecordNoShows,
   canViewNoShowRisk,
+  canManageWaitlist,
+  waitlistEntries,
 }: CalendarWorkspaceProps) {
   const [view, setView] = useState<CalendarView>("week");
   const [activeDate, setActiveDate] = useState(() => parseISO(initialView.initialDate));
   const [quickView, setQuickView] = useState<{ appointment: CalendarAppointment; rect: DOMRect } | null>(null);
+  const [waitlistOpen, setWaitlistOpen] = useState(false);
   const [risk, setRisk] = useState<Record<string, NoShowRiskAssessment>>({});
   // Ids whose risk was already requested (whether or not an assessment came
   // back), kept in a ref rather than read from `risk`: an empty answer — a visit
@@ -978,6 +988,17 @@ export function CalendarWorkspace({
             onSelect={(day) => setActiveDate(day)}
           />
 
+          {canManageWaitlist ? (
+            <button
+              type="button"
+              onClick={() => setWaitlistOpen(true)}
+              className={cn(buttonVariants({ variant: "outline" }), "h-9 rounded-(--radius-card) px-3.5")}
+            >
+              <Clock className="size-4" />
+              Waiting list
+            </button>
+          ) : null}
+
           {hasClients ? (
             <Link
               href={`/calendar/new?date=${selectedDateKey}`}
@@ -1244,6 +1265,16 @@ export function CalendarWorkspace({
               ? risk[quickView.appointment.id]
               : undefined
           }
+        />
+      ) : null}
+
+      {canManageWaitlist ? (
+        <WaitlistPanel
+          open={waitlistOpen}
+          onOpenChange={setWaitlistOpen}
+          entries={waitlistEntries}
+          clients={initialView.clients}
+          staffMembers={initialView.staffMembers}
         />
       ) : null}
     </WorkspacePage>
