@@ -170,21 +170,12 @@ export type ClientRecord = {
   careNotes: ClientCareNoteEntry[];
   treatmentPlanItems: ClientTreatmentPlanEntry[];
   followUpReminders: ClientFollowUpReminderEntry[];
-  appointmentStats: {
-    completed: number;
-    cancelled: number;
-    pending: number;
-    upcoming: number;
-    noShows: number;
-  };
   paymentStats: {
-    totalPaidCents: number;
     unpaidBalanceCents: number;
     totalPaidDisplay: string;
     unpaidBalanceDisplay: string;
     /** Sum of the payment entries shown on the record (billed = every status). */
     totalBilledDisplay: string;
-    paymentStatus: string;
   };
   gallery: Array<{
     id: string;
@@ -550,58 +541,26 @@ export async function buildClientRecord(
   client: ClientWithRelations,
   currency: string
 ): Promise<ClientRecord> {
-  const now = new Date();
-
-  // The appointments/payments arrays on `client` are display lists capped at
-  // take:25/take:60 (ordered most-recent-first) — fine for rendering history,
-  // but a patient with more visits/invoices than that would silently undercount
-  // completed/cancelled/pending and understate money totals. Aggregate those
-  // over the FULL history in the DB instead, unbounded by the display take limit.
-  const [appointmentCountsByStatus, upcomingCount, paymentSumsByStatus, galleryUrlMap] =
-    await Promise.all([
-      prisma.appointment.groupBy({
-        by: ["status"],
-        where: { businessId: client.businessId, clientId: client.id },
-        _count: true,
-      }),
-      prisma.appointment.count({
-        where: {
-          businessId: client.businessId,
-          clientId: client.id,
-          startAt: { gte: now },
-          status: { in: ["PENDING", "CONFIRMED"] },
-        },
-      }),
-      prisma.clientPayment.groupBy({
-        by: ["status"],
-        where: { businessId: client.businessId, clientId: client.id },
-        _sum: { amountCents: true },
-      }),
-      // Batch-sign gallery images once (one request per bucket) instead of a
-      // round-trip per item; independent of the aggregates above, so it runs
-      // alongside them rather than after.
-      resolveMediaDisplayUrls(client.galleryItems.map((item) => item.imageUrl)),
-    ]);
-
-  const appointmentCount = (status: AppointmentStatus) =>
-    appointmentCountsByStatus.find((row) => row.status === status)?._count ?? 0;
-  const completed = appointmentCount("COMPLETED");
-  const cancelled = appointmentCount("CANCELLED");
-  const pending = appointmentCount("PENDING");
-  const upcoming = upcomingCount;
+  // The payments array on `client` is a display list capped at take:60
+  // (most-recent-first) — fine for rendering history, but a patient with more
+  // invoices than that would understate the paid/unpaid totals. Sum those over
+  // the FULL history in the DB instead, unbounded by the display take limit.
+  const [paymentSumsByStatus, galleryUrlMap] = await Promise.all([
+    prisma.clientPayment.groupBy({
+      by: ["status"],
+      where: { businessId: client.businessId, clientId: client.id },
+      _sum: { amountCents: true },
+    }),
+    // Batch-sign gallery images once (one request per bucket) instead of a
+    // round-trip per item; independent of the sums above, so it runs alongside
+    // them rather than after.
+    resolveMediaDisplayUrls(client.galleryItems.map((item) => item.imageUrl)),
+  ]);
 
   const paymentSum = (status: string) =>
     paymentSumsByStatus.find((row) => row.status === status)?._sum.amountCents ?? 0;
   const totalPaidCents = paymentSum("Paid");
   const unpaidBalanceCents = paymentSum("Unpaid") + paymentSum("Partially Paid");
-  const paymentStatus =
-    unpaidBalanceCents > 0
-      ? totalPaidCents > 0
-        ? "Partially Paid"
-        : "Unpaid"
-      : totalPaidCents > 0
-        ? "Paid"
-        : "No payments yet";
 
   return {
     id: client.id,
@@ -647,15 +606,7 @@ export async function buildClientRecord(
     careNotes: buildCareNotes(client),
     treatmentPlanItems: buildTreatmentPlanItems(client),
     followUpReminders: buildFollowUpReminders(client),
-    appointmentStats: {
-      completed,
-      cancelled,
-      pending,
-      upcoming,
-      noShows: appointmentCount("NO_SHOW"),
-    },
     paymentStats: {
-      totalPaidCents,
       unpaidBalanceCents,
       totalPaidDisplay: formatCurrency(totalPaidCents, currency),
       unpaidBalanceDisplay: formatCurrency(unpaidBalanceCents, currency),
@@ -663,7 +614,6 @@ export async function buildClientRecord(
         client.payments.reduce((sum, payment) => sum + payment.amountCents, 0),
         currency
       ),
-      paymentStatus,
     },
     gallery: client.galleryItems.map((item) => ({
       id: item.id,

@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   prisma: {
-    appointment: { groupBy: vi.fn(), count: vi.fn() },
     clientPayment: { groupBy: vi.fn() },
   },
   resolveMediaDisplayUrls: vi.fn(),
@@ -84,8 +83,6 @@ function clientFixture(): Parameters<typeof buildClientRecord>[0] {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.prisma.appointment.groupBy.mockResolvedValue([]);
-  mocks.prisma.appointment.count.mockResolvedValue(0);
   mocks.prisma.clientPayment.groupBy.mockResolvedValue([
     { status: "Paid", _sum: { amountCents: 12500 } },
     { status: "Unpaid", _sum: { amountCents: 4050 } },
