@@ -21,6 +21,7 @@ import {
   type StaffRecord,
 } from "@/lib/staff";
 import { logger } from "@/lib/logger";
+import { parseRecordId } from "@/lib/record-id";
 import {
   markAdminThreadRead,
   postAdminThreadMessage,
@@ -64,6 +65,8 @@ function staffShiftCutoff() {
 function parseDateTime(date: string, time: string) {
   return parseZonedWallClock(date, time);
 }
+
+const STAFF_NOT_FOUND_ERROR = "Staff member not found in this workspace.";
 
 function getAuthedBusiness() {
   return getAuthedBusinessContext(
@@ -262,6 +265,17 @@ export async function saveStaffAction(payload: SaveStaffPayload): Promise<SaveSt
   }
 
   const business = context.business;
+
+  // An empty id means a new staff member; anything else must be a plain id
+  // string, never an object Prisma would read as a filter.
+  const existingStaffId = payload.id ? parseRecordId(payload.id) : undefined;
+
+  if (existingStaffId === null) {
+    return { ok: false, error: STAFF_NOT_FOUND_ERROR };
+  }
+
+  payload = { ...payload, id: existingStaffId };
+
   const name = payload.name.trim();
 
   if (!name) {
@@ -299,7 +313,7 @@ export async function saveStaffAction(payload: SaveStaffPayload): Promise<SaveSt
       if (!existing) {
         return {
           ok: false,
-          error: "Staff member not found in this workspace.",
+          error: STAFF_NOT_FOUND_ERROR,
         };
       }
 
@@ -344,7 +358,7 @@ export async function saveStaffAction(payload: SaveStaffPayload): Promise<SaveSt
   }
 }
 
-export async function deleteStaffAction(staffId: string): Promise<DeleteStaffResult> {
+export async function deleteStaffAction(rawStaffId: string): Promise<DeleteStaffResult> {
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -352,6 +366,13 @@ export async function deleteStaffAction(staffId: string): Promise<DeleteStaffRes
       ok: false,
       error: context.error,
     };
+  }
+
+  // A non-string id would delete every staff member in the workspace.
+  const staffId = parseRecordId(rawStaffId);
+
+  if (!staffId) {
+    return { ok: false, error: STAFF_NOT_FOUND_ERROR };
   }
 
   const business = context.business;
@@ -368,7 +389,7 @@ export async function deleteStaffAction(staffId: string): Promise<DeleteStaffRes
   if (!existing) {
     return {
       ok: false,
-      error: "Staff member not found in this workspace.",
+      error: STAFF_NOT_FOUND_ERROR,
     };
   }
 
@@ -387,7 +408,7 @@ export async function deleteStaffAction(staffId: string): Promise<DeleteStaffRes
   if (count === 0) {
     return {
       ok: false,
-      error: "Staff member not found in this workspace.",
+      error: STAFF_NOT_FOUND_ERROR,
     };
   }
 
@@ -399,7 +420,7 @@ export async function deleteStaffAction(staffId: string): Promise<DeleteStaffRes
   };
 }
 
-export async function checkInStaffAction(staffId: string): Promise<StaffClockResult> {
+export async function checkInStaffAction(rawStaffId: string): Promise<StaffClockResult> {
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -407,6 +428,12 @@ export async function checkInStaffAction(staffId: string): Promise<StaffClockRes
       ok: false,
       error: context.error,
     };
+  }
+
+  const staffId = parseRecordId(rawStaffId);
+
+  if (!staffId) {
+    return { ok: false, error: STAFF_NOT_FOUND_ERROR };
   }
 
   const business = context.business;
@@ -442,7 +469,7 @@ export async function checkInStaffAction(staffId: string): Promise<StaffClockRes
   if (!staff) {
     return {
       ok: false,
-      error: "Staff member not found in this workspace.",
+      error: STAFF_NOT_FOUND_ERROR,
     };
   }
 
@@ -479,7 +506,7 @@ export async function checkInStaffAction(staffId: string): Promise<StaffClockRes
   };
 }
 
-export async function checkOutStaffAction(staffId: string): Promise<StaffClockResult> {
+export async function checkOutStaffAction(rawStaffId: string): Promise<StaffClockResult> {
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -487,6 +514,13 @@ export async function checkOutStaffAction(staffId: string): Promise<StaffClockRe
       ok: false,
       error: context.error,
     };
+  }
+
+  // A non-string id would check out every checked-in staff member.
+  const staffId = parseRecordId(rawStaffId);
+
+  if (!staffId) {
+    return { ok: false, error: STAFF_NOT_FOUND_ERROR };
   }
 
   const business = context.business;
@@ -516,8 +550,9 @@ export type MobileAccessResult = {
   code?: string;
 };
 
-async function requireOwnedStaff(staffId: unknown) {
-  if (typeof staffId !== "string" || !staffId.trim()) {
+async function requireOwnedStaff(rawStaffId: unknown) {
+  const staffId = parseRecordId(rawStaffId);
+  if (!staffId) {
     return { error: "Staff member not found." } as const;
   }
   const context = await getAuthedBusinessContext();

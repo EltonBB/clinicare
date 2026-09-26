@@ -26,6 +26,7 @@ import {
 import { isProBusinessPlan } from "@/lib/billing";
 import { getNoShowRiskAssessments } from "@/lib/no-show-risk-data";
 import { MAX_RISK_BATCH_SIZE, type NoShowRiskAssessment } from "@/lib/no-show-risk";
+import { parseRecordId } from "@/lib/record-id";
 import { offerFreedSlot, withdrawSlotOffers } from "@/lib/slot-offers";
 import {
   formatZonedDateKey,
@@ -80,6 +81,9 @@ export type DeleteAppointmentResult = {
   error?: string;
   appointmentId?: string;
 };
+
+const APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR = "Appointment not found in this clinic workspace.";
+const STAFF_NOT_IN_WORKSPACE_ERROR = "The selected staff member does not belong to this clinic workspace.";
 
 function getAuthedBusiness() {
   return getAuthedBusinessContext(
@@ -181,6 +185,29 @@ export async function saveAppointmentAction(
   }
 
   const business = context.business;
+
+  // Ids come from the client: parse them before any query, or a crafted id
+  // would turn the compare-and-set update below into a filter over the whole
+  // workspace. Empty id/staff keep meaning "new booking" / "unassigned".
+  const appointmentId = payload.id ? parseRecordId(payload.id) : undefined;
+
+  if (appointmentId === null) {
+    return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
+  }
+
+  const requestedStaffMemberId = payload.staffMemberId ? parseRecordId(payload.staffMemberId) : undefined;
+
+  if (requestedStaffMemberId === null) {
+    return { ok: false, error: STAFF_NOT_IN_WORKSPACE_ERROR };
+  }
+
+  payload = {
+    ...payload,
+    id: appointmentId,
+    clientId: parseRecordId(payload.clientId) ?? "",
+    staffMemberId: requestedStaffMemberId,
+  };
+
   const startAt = parseDateTime(payload.date, payload.startTime);
   const endAt = parseDateTime(payload.date, payload.endTime);
 
@@ -255,7 +282,7 @@ export async function saveAppointmentAction(
     if (!staff) {
       return {
         ok: false,
-        error: "The selected staff member does not belong to this clinic workspace.",
+        error: STAFF_NOT_IN_WORKSPACE_ERROR,
       };
     }
 
@@ -311,7 +338,7 @@ export async function saveAppointmentAction(
       if (!existing) {
         return {
           ok: false,
-          error: "Appointment not found in this clinic workspace.",
+          error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR,
         };
       }
 
@@ -579,7 +606,7 @@ export async function saveAppointmentAction(
 }
 
 export async function cancelAppointmentAction(
-  appointmentId: string
+  rawAppointmentId: string
 ): Promise<CancelAppointmentResult> {
   const context = await getAuthedBusiness();
 
@@ -590,6 +617,13 @@ export async function cancelAppointmentAction(
     };
   }
 
+  // A non-string id would cancel every open appointment in the workspace.
+  const appointmentId = parseRecordId(rawAppointmentId);
+
+  if (!appointmentId) {
+    return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
+  }
+
   const business = context.business;
   const outcome = await cancelAppointmentCore({ id: appointmentId, businessId: business.id });
 
@@ -598,7 +632,7 @@ export async function cancelAppointmentAction(
       ok: false,
       error:
         outcome.status === 404
-          ? "Appointment not found in this clinic workspace."
+          ? APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR
           : outcome.error,
     };
   }
@@ -628,7 +662,7 @@ export type RecordAttendanceResult = {
  * status changes. Pro only; the plan is re-checked here, not just in the UI.
  */
 export async function recordAppointmentAttendanceAction(
-  appointmentId: string,
+  rawAppointmentId: string,
   attended: boolean
 ): Promise<RecordAttendanceResult> {
   const context = await getAuthedBusiness();
@@ -643,6 +677,12 @@ export async function recordAppointmentAttendanceAction(
     return { ok: false, error: NO_SHOW_PLAN_ERROR };
   }
 
+  const appointmentId = parseRecordId(rawAppointmentId);
+
+  if (!appointmentId) {
+    return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
+  }
+
   const outcome = await recordAppointmentAttendanceCore({
     id: appointmentId,
     businessId: business.id,
@@ -654,7 +694,7 @@ export async function recordAppointmentAttendanceAction(
       ok: false,
       error:
         outcome.status === 404
-          ? "Appointment not found in this clinic workspace."
+          ? APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR
           : outcome.error,
     };
   }
@@ -675,11 +715,14 @@ export async function recordAppointmentAttendanceAction(
 export async function getNoShowRiskAction(
   appointmentIds: string[]
 ): Promise<Record<string, NoShowRiskAssessment>> {
-  if (appointmentIds.length === 0) {
+  // Client-supplied, so keep only plain id strings (see lib/record-id.ts).
+  const ids = Array.isArray(appointmentIds)
+    ? appointmentIds.slice(0, MAX_RISK_BATCH_SIZE).flatMap((id) => parseRecordId(id) ?? [])
+    : [];
+
+  if (ids.length === 0) {
     return {};
   }
-
-  const ids = appointmentIds.slice(0, MAX_RISK_BATCH_SIZE);
 
   const context = await getAuthedBusiness();
 
@@ -717,7 +760,7 @@ export async function getNoShowRiskAction(
 }
 
 export async function deleteAppointmentAction(
-  appointmentId: string
+  rawAppointmentId: string
 ): Promise<DeleteAppointmentResult> {
   const context = await getAuthedBusiness();
 
@@ -728,6 +771,13 @@ export async function deleteAppointmentAction(
     };
   }
 
+  // A non-string id would delete every appointment in the workspace.
+  const appointmentId = parseRecordId(rawAppointmentId);
+
+  if (!appointmentId) {
+    return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
+  }
+
   const business = context.business;
   const outcome = await deleteAppointmentCore({ id: appointmentId, businessId: business.id });
 
@@ -736,7 +786,7 @@ export async function deleteAppointmentAction(
       ok: false,
       error:
         outcome.status === 404
-          ? "Appointment not found in this clinic workspace."
+          ? APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR
           : outcome.error,
     };
   }

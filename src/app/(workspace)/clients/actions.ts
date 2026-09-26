@@ -20,6 +20,7 @@ import {
 } from "@/lib/clients";
 import { normalizeStorageReference } from "@/lib/media-storage";
 import { attemptStorageCleanup, recordPendingStorageCleanup } from "@/lib/media-storage-server";
+import { parseRecordId, recordIdSchema } from "@/lib/record-id";
 
 export type SaveClientResult = {
   ok: boolean;
@@ -156,7 +157,7 @@ export type DeleteClientSubRecordPayload = {
 // unexpected value degrades to a safe default (bounding what reaches the DB)
 // instead of rejecting the whole save. Required-text emptiness is still checked
 // inside each action so its specific message is preserved.
-const idField = z.string().min(1);
+const idField = recordIdSchema;
 const text = (max: number) => z.string().max(max);
 const optionalText = (max: number) => z.string().max(max).optional();
 
@@ -678,6 +679,17 @@ export async function saveClientAction(
   }
 
   const business = context.business;
+
+  // An empty id means a new client; anything else must be a plain id string,
+  // never an object Prisma would read as a filter.
+  const existingClientId = payload.id ? parseRecordId(payload.id) : undefined;
+
+  if (existingClientId === null) {
+    return { ok: false, error: "Client not found in this clinic workspace." };
+  }
+
+  payload = { ...payload, id: existingClientId };
+
   const cleanedName = payload.name.trim();
   const cleanedPhone = normalizePhone(payload.phone);
   // Canonical digit key kept in lockstep with phone so inbox/webhook/reminder
@@ -1147,7 +1159,7 @@ export async function addClientFollowUpReminderAction(
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
-export async function deleteClientAction(clientId: string): Promise<DeleteClientResult> {
+export async function deleteClientAction(rawClientId: string): Promise<DeleteClientResult> {
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -1155,6 +1167,13 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
       ok: false,
       error: context.error,
     };
+  }
+
+  // A non-string id would delete every client in the workspace.
+  const clientId = parseRecordId(rawClientId);
+
+  if (!clientId) {
+    return { ok: false, error: "Client not found in this clinic workspace." };
   }
 
   const business = context.business;
@@ -1245,6 +1264,10 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
 // genuine not-found show the same message instead of drifting.
 const SUB_RECORD_NOT_FOUND_ERROR = "This record was not found in the patient file.";
 
+// Every sub-record delete parses its ids first: a non-string id reaching the
+// guarded deleteMany would delete every such record in the workspace.
+const deleteClientSubRecordSchema = z.object({ id: idField, clientId: idField });
+
 type OwnedSubRecordContext =
   | { error: string }
   | { business: { id: string } };
@@ -1315,6 +1338,14 @@ export async function updateClientMedicationAction(
 export async function deleteClientMedicationAction(
   payload: DeleteClientSubRecordPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = deleteClientSubRecordSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedSubRecord(payload, (businessId) =>
     prisma.clientMedication.findFirst({
       where: { id: payload.id, clientId: payload.clientId, businessId },
@@ -1386,6 +1417,14 @@ export async function updateClientHealthItemAction(
 export async function deleteClientHealthItemAction(
   payload: DeleteClientSubRecordPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = deleteClientSubRecordSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedSubRecord(payload, (businessId) =>
     prisma.clientHealthItem.findFirst({
       where: { id: payload.id, clientId: payload.clientId, businessId },
@@ -1454,6 +1493,14 @@ export async function updateClientCareNoteAction(
 export async function deleteClientCareNoteAction(
   payload: DeleteClientSubRecordPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = deleteClientSubRecordSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedSubRecord(payload, (businessId) =>
     prisma.clientCareNote.findFirst({
       where: { id: payload.id, clientId: payload.clientId, businessId },
@@ -1524,6 +1571,14 @@ export async function updateClientTreatmentPlanItemAction(
 export async function deleteClientTreatmentPlanItemAction(
   payload: DeleteClientSubRecordPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = deleteClientSubRecordSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedSubRecord(payload, (businessId) =>
     prisma.clientTreatmentPlanItem.findFirst({
       where: { id: payload.id, clientId: payload.clientId, businessId },
@@ -1596,6 +1651,14 @@ export async function updateClientFollowUpReminderAction(
 export async function deleteClientFollowUpReminderAction(
   payload: DeleteClientSubRecordPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = deleteClientSubRecordSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedSubRecord(payload, (businessId) =>
     prisma.clientFollowUpReminder.findFirst({
       where: { id: payload.id, clientId: payload.clientId, businessId },
@@ -1677,6 +1740,14 @@ export async function updateClientPaymentAction(
 export async function deleteClientPaymentAction(
   payload: DeleteClientSubRecordPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = deleteClientSubRecordSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedSubRecord(payload, (businessId) =>
     prisma.clientPayment.findFirst({
       where: { id: payload.id, clientId: payload.clientId, businessId },
@@ -1751,6 +1822,14 @@ export async function updateClientDocumentAction(
 export async function deleteClientDocumentAction(
   payload: DeleteClientSubRecordPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = deleteClientSubRecordSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedClient(payload.clientId);
 
   if ("error" in context) {
@@ -1805,6 +1884,14 @@ export async function deleteClientDocumentAction(
 export async function deleteClientGalleryItemAction(
   payload: DeleteClientSubRecordPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = deleteClientSubRecordSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedClient(payload.clientId);
 
   if ("error" in context) {

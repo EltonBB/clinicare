@@ -20,7 +20,13 @@ vi.mock("@/lib/business", () => ({
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
-import { deleteConversationAction } from "./actions";
+import {
+  convertConversationToClientAction,
+  deleteConversationAction,
+  hydrateConversationAction,
+  markConversationReadAction,
+  sendInboxMessageAction,
+} from "./actions";
 
 const BUSINESS = { id: "biz_1" };
 const CONVERSATION_ID = "conv_1";
@@ -78,5 +84,25 @@ describe("deleteConversationAction", () => {
       error: "Conversation not found in this clinic workspace.",
     });
     expect(mocks.conversation.deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+// Server actions take client-serialized arguments: an object id like
+// `{ not: "" }` would reach Prisma's `where` as a filter over the workspace
+// (the delete would remove every conversation).
+describe("inbox actions refuse a non-string conversation id before touching the database", () => {
+  const CRAFTED_ID = { not: "" } as unknown as string;
+
+  it.each([
+    ["delete", () => deleteConversationAction(CRAFTED_ID)],
+    ["send", () => sendInboxMessageAction(CRAFTED_ID, "Hello")],
+    ["mark read", () => markConversationReadAction(CRAFTED_ID)],
+    ["open full history", () => hydrateConversationAction(CRAFTED_ID)],
+    ["convert to client", () => convertConversationToClientAction(CRAFTED_ID, { name: "Alex" })],
+  ])("%s", async (_name, run) => {
+    expect(await run()).toEqual({ ok: false, error: "Conversation not found in this clinic workspace." });
+    expect(mocks.conversation.findFirst).not.toHaveBeenCalled();
+    expect(mocks.conversation.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.client.findFirst).not.toHaveBeenCalled();
   });
 });

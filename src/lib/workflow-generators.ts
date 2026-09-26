@@ -1,5 +1,6 @@
+import type { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/prisma";
-import { formatCurrency } from "@/lib/utils";
 
 export type WorkflowSettingsValues = {
   rebookEnabled: boolean;
@@ -37,6 +38,36 @@ export type FollowUpDraftInput = {
 const MAX_CANDIDATES_PER_RUN = 200;
 
 const HOUR_MS = 3_600_000;
+const DAY_MS = 24 * HOUR_MS;
+
+/**
+ * A pending rebook draft lives at most ~35 days (follow-up-generation.ts), so a
+ * confirmed or completed visit inside the last 28 days means the nudge is
+ * stale — e.g. a walk-in recorded after the draft was made. The generator's
+ * own `lastVisitAt < cutoff` filter already keeps a fresh draft from being
+ * made for such a client at the normal (3+ month) settings; a draft made for a
+ * client last seen inside the window (the 1-month setting) is retired at once,
+ * which is harmless.
+ */
+export const REBOOK_RECENT_VISIT_DAYS = 28;
+
+/**
+ * "This client has rebooked or been back since the rebook draft was made": a
+ * future pending/confirmed booking, or a confirmed/completed visit inside
+ * REBOOK_RECENT_VISIT_DAYS. The Follow-ups list/count/Send hide a REBOOK draft
+ * when the client has an appointment matching this (`appointments: { none }`),
+ * and the hourly sweep expires it when they do (`appointments: { some }`) —
+ * both built from this one filter so the two are exact complements.
+ */
+export function rebookedAppointmentWhere(now: Date): Prisma.AppointmentWhereInput {
+  const recentVisitSince = new Date(now.getTime() - REBOOK_RECENT_VISIT_DAYS * DAY_MS);
+  return {
+    OR: [
+      { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } },
+      { status: { in: ["CONFIRMED", "COMPLETED"] }, startAt: { gt: recentVisitSince } },
+    ],
+  };
+}
 
 function monthKey(date: Date): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
@@ -101,6 +132,10 @@ export async function findRebookCandidates(args: {
  * One draft per unpaid/partially-paid payment older than the configured window.
  * Payments that already have a payment draft are excluded so the 200-row cap
  * can't be filled forever by the same old, still-unpaid entries.
+ *
+ * The message names no amount: the app has no per-clinic currency yet (its
+ * money formatting is fixed to USD), so a euro clinic's patient would be told
+ * "$50.00". Staff can add the amount when they review the draft.
  */
 export async function findPaymentReminderCandidates(args: {
   businessId: string;
@@ -119,7 +154,7 @@ export async function findPaymentReminderCandidates(args: {
       createdAt: { lt: cutoff },
       followUpDrafts: { none: { kind: "PAYMENT" } },
     },
-    select: { id: true, clientId: true, client: { select: { name: true } }, amountCents: true },
+    select: { id: true, clientId: true, client: { select: { name: true } } },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     take: MAX_CANDIDATES_PER_RUN,
   });
@@ -128,7 +163,7 @@ export async function findPaymentReminderCandidates(args: {
     clientId: payment.clientId,
     kind: "PAYMENT" as const,
     paymentId: payment.id,
-    body: `Hi ${payment.client.name}, a friendly reminder that you have an unpaid payment of ${formatCurrency(payment.amountCents)}.`,
+    body: `Hi ${payment.client.name}, a friendly reminder that you have an unpaid payment with us. Please get in touch if you have any questions.`,
     dedupeKey: `PAYMENT:${payment.id}`,
   }));
 }

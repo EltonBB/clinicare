@@ -118,9 +118,7 @@ describe("findRebookCandidates", () => {
 
 describe("findPaymentReminderCandidates", () => {
   it("finds unpaid/partially-paid payments older than the configured window, one draft per payment", async () => {
-    mocks.clientPayment.findMany.mockResolvedValue([
-      { id: "pay_1", clientId: "c1", client: { name: "Alex" }, amountCents: 5000 },
-    ]);
+    mocks.clientPayment.findMany.mockResolvedValue([{ id: "pay_1", clientId: "c1", client: { name: "Alex" } }]);
 
     const result = await findPaymentReminderCandidates({ businessId: "biz_1", settings: DEFAULT_WORKFLOW_SETTINGS, now: NOW });
 
@@ -129,11 +127,10 @@ describe("findPaymentReminderCandidates", () => {
         clientId: "c1",
         kind: "PAYMENT",
         paymentId: "pay_1",
-        body: expect.stringContaining("Alex"),
+        body: "Hi Alex, a friendly reminder that you have an unpaid payment with us. Please get in touch if you have any questions.",
         dedupeKey: "PAYMENT:pay_1",
       },
     ]);
-    expect(result[0].body).toContain("an unpaid payment of $50.00");
     expect(mocks.clientPayment.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -143,6 +140,19 @@ describe("findPaymentReminderCandidates", () => {
         }),
       })
     );
+  });
+
+  it("never puts a money amount in the patient message (no per-clinic currency yet), so it doesn't even read one", async () => {
+    mocks.clientPayment.findMany.mockResolvedValue([{ id: "pay_1", clientId: "c1", client: { name: "Alex" }, amountCents: 5000 }]);
+
+    const [draft] = await findPaymentReminderCandidates({ businessId: "biz_1", settings: DEFAULT_WORKFLOW_SETTINGS, now: NOW });
+
+    expect(draft.body).not.toMatch(/[$€£]|\d/);
+    expect(mocks.clientPayment.findMany.mock.calls[0][0].select).toEqual({
+      id: true,
+      clientId: true,
+      client: { select: { name: true } },
+    });
   });
 
   it("skips payments that already have a payment draft, and bounds each run", async () => {

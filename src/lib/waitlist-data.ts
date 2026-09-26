@@ -1,8 +1,9 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import type { WaitlistCandidate } from "@/lib/slot-fill-matching";
+import { isSameService, type WaitlistCandidate } from "@/lib/slot-fill-matching";
 import { formatZonedShortDate } from "@/lib/time-zone";
+import { MAX_ACTIVE_WAITLIST_ENTRIES, WAITLIST_FULL_ERROR } from "@/lib/waitlist";
 
 export type WaitlistEntryRow = {
   id: string;
@@ -26,14 +27,23 @@ export type WaitlistEntryRow = {
  * Everyone still on the waiting list — waiting, or holding an offer that
  * hasn't been booked, declined, or expired yet — oldest first.
  */
-export async function listWaitingEntries(businessId: string): Promise<WaitlistEntryRow[]> {
+export async function listWaitingEntries(businessId: string, now: Date = new Date()): Promise<WaitlistEntryRow[]> {
   const rows = await prisma.waitlistEntry.findMany({
     where: { businessId, status: { in: ["WAITING", "OFFERED"] } },
     include: {
       client: { select: { name: true } },
       staffMember: { select: { name: true } },
       followUpDrafts: {
-        where: { kind: "SLOT_OFFER", status: { in: ["PENDING", "SENT"] } },
+        where: {
+          kind: "SLOT_OFFER",
+          status: { in: ["PENDING", "SENT"] },
+          // The same liveness the Follow-ups list applies (liveSlotOfferWhere in
+          // slot-offers.ts, which this module can't import without a cycle): once
+          // the freed slot has passed the offer is over, so the panel shows the
+          // entry as waiting again at once, not only after the hourly sweep
+          // releases it.
+          appointment: { status: "CANCELLED", startAt: { gt: now } },
+        },
         select: { status: true },
         orderBy: { createdAt: "desc" },
         take: 1,
@@ -42,22 +52,27 @@ export async function listWaitingEntries(businessId: string): Promise<WaitlistEn
     orderBy: { createdAt: "asc" },
   });
 
-  return rows.map((row) => ({
-    id: row.id,
-    clientId: row.clientId,
-    clientName: row.client.name,
-    service: row.service,
-    staffMemberId: row.staffMemberId,
-    staffMemberName: row.staffMember?.name ?? null,
-    earliestDateLabel: row.earliestDate ? formatZonedShortDate(row.earliestDate) : null,
-    preferredDays: row.preferredDays,
-    preferredFrom: row.preferredFrom,
-    preferredTo: row.preferredTo,
-    notes: row.notes,
-    offer:
-      row.status === "OFFERED" ? (row.followUpDrafts[0]?.status === "SENT" ? "sent" : "pending") : null,
-    createdAt: row.createdAt,
-  }));
+  return rows.map((row) => {
+    // The offer comes from the live draft alone: an entry the sweep hasn't
+    // released yet (its slot passed) has no live draft and reads as waiting.
+    const draft = row.status === "OFFERED" ? row.followUpDrafts[0] : undefined;
+
+    return {
+      id: row.id,
+      clientId: row.clientId,
+      clientName: row.client.name,
+      service: row.service,
+      staffMemberId: row.staffMemberId,
+      staffMemberName: row.staffMember?.name ?? null,
+      earliestDateLabel: row.earliestDate ? formatZonedShortDate(row.earliestDate) : null,
+      preferredDays: row.preferredDays,
+      preferredFrom: row.preferredFrom,
+      preferredTo: row.preferredTo,
+      notes: row.notes,
+      offer: draft ? (draft.status === "SENT" ? ("sent" as const) : ("pending" as const)) : null,
+      createdAt: row.createdAt,
+    };
+  });
 }
 
 export async function createWaitlistEntry(args: {
@@ -71,6 +86,14 @@ export async function createWaitlistEntry(args: {
   preferredTo: string | null;
   notes: string | null;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
+  const active = await prisma.waitlistEntry.count({
+    where: { businessId: args.businessId, status: { in: ["WAITING", "OFFERED"] } },
+  });
+
+  if (active >= MAX_ACTIVE_WAITLIST_ENTRIES) {
+    return { ok: false, error: WAITLIST_FULL_ERROR };
+  }
+
   await prisma.waitlistEntry.create({ data: { ...args, status: "WAITING" } });
   return { ok: true };
 }
@@ -103,9 +126,15 @@ export type WaitlistMatchCandidate = WaitlistCandidate & { clientName: string };
  *
  * Never offers a slot to the client who just gave it up
  * (`excludeClientId`), to an archived client (Book would silently drop them),
- * or to an entry that was already offered this same slot and let it go
- * (`freedAppointmentId` — any earlier SLOT_OFFER draft for it, whatever its
- * status).
+ * or to a client who already has an offer for this same slot that is open
+ * (PENDING/SENT) or was let go (DISMISSED — skipped or declined). The check is
+ * on the client, not the entry, so a patient with two waiting entries for one
+ * service is asked about a slot once. An EXPIRED offer doesn't count: it was
+ * withdrawn (the appointment was un-cancelled) and must not block offering
+ * the slot again if it is cancelled again.
+ *
+ * The service is compared in memory, ignoring case and stray whitespace (see
+ * isSameService) — a SQL equality can't trim the stored value.
  */
 export async function findMatchingWaitlistCandidates(args: {
   businessId: string;
@@ -119,11 +148,19 @@ export async function findMatchingWaitlistCandidates(args: {
     where: {
       businessId: args.businessId,
       status: "WAITING",
-      service: { equals: args.service, mode: "insensitive" },
       clientId: { not: args.excludeClientId },
-      // Archived means either flag (see formatStatus in lib/clients.ts).
-      client: { isArchived: false, status: { not: "ARCHIVED" } },
-      followUpDrafts: { none: { kind: "SLOT_OFFER", appointmentId: args.freedAppointmentId } },
+      client: {
+        // Archived means either flag (see formatStatus in lib/clients.ts).
+        isArchived: false,
+        status: { not: "ARCHIVED" },
+        followUpDrafts: {
+          none: {
+            kind: "SLOT_OFFER",
+            appointmentId: args.freedAppointmentId,
+            status: { in: ["PENDING", "SENT", "DISMISSED"] },
+          },
+        },
+      },
     },
     select: {
       id: true,
@@ -139,5 +176,7 @@ export async function findMatchingWaitlistCandidates(args: {
     },
   });
 
-  return rows.map(({ client, ...row }) => ({ ...row, clientName: client.name }));
+  return rows
+    .filter((row) => isSameService(row.service, args.service))
+    .map(({ client, ...row }) => ({ ...row, clientName: client.name }));
 }

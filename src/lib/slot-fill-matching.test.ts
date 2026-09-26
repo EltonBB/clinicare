@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rankWaitlistMatches, type FreedSlot, type WaitlistCandidate } from "@/lib/slot-fill-matching";
+import { isSameService, rankWaitlistMatches, type FreedSlot, type WaitlistCandidate } from "@/lib/slot-fill-matching";
 
 const SLOT = {
   service: "Checkup",
@@ -29,10 +29,24 @@ function best(candidates: WaitlistCandidate[], slot: FreedSlot) {
   return rankWaitlistMatches(candidates, slot)[0] ?? null;
 }
 
+describe("isSameService", () => {
+  it("ignores case and leading/trailing whitespace on either side, and nothing else", () => {
+    expect(isSameService("Checkup", "checkup")).toBe(true);
+    expect(isSameService(" Checkup ", "CHECKUP\t")).toBe(true);
+    expect(isSameService("Checkup", "Checkup and cleaning")).toBe(false);
+    expect(isSameService("Deep clean", "Deep  clean")).toBe(false); // inner whitespace is significant
+    expect(isSameService("", "Checkup")).toBe(false);
+  });
+});
+
 describe("rankWaitlistMatches", () => {
   it("matches on service, case/whitespace-insensitively", () => {
     expect(best([candidate({ service: " checkup " })], SLOT)?.id).toBe("wl_1");
     expect(best([candidate({ service: "Cleaning" })], SLOT)).toBeNull();
+  });
+
+  it("trims both sides: a padded freed-slot service matches a clean entry too", () => {
+    expect(best([candidate({ service: "Checkup" })], { ...SLOT, service: "  Checkup \t" })?.id).toBe("wl_1");
   });
 
   it("requires an exact provider match only when the candidate named one", () => {

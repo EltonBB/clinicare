@@ -23,12 +23,17 @@ export type FreedSlot = {
   timeMinutes: number;
 };
 
-function normalizeService(value: string) {
-  return value.trim().toLowerCase();
+/**
+ * The one definition of "the same service": ignoring case and any stray
+ * whitespace on either side. The candidate query can't express that in SQL, so
+ * it fetches the waiting entries and filters with this.
+ */
+export function isSameService(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
 function matches(candidate: WaitlistCandidate, slot: FreedSlot): boolean {
-  if (normalizeService(candidate.service) !== normalizeService(slot.service)) {
+  if (!isSameService(candidate.service, slot.service)) {
     return false;
   }
   if (candidate.staffMemberId && candidate.staffMemberId !== slot.staffMemberId) {

@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const followUpDraft = { findFirst: vi.fn() };
-  const waitlistEntry = { updateMany: vi.fn() };
   const conversation = { upsert: vi.fn() };
   const message = { create: vi.fn() };
   const $transaction = vi.fn();
@@ -11,11 +10,11 @@ const mocks = vi.hoisted(() => {
   const revertFollowUpDraftToPending = vi.fn();
   const dismissFollowUpDraft = vi.fn();
   const passSlotOffer = vi.fn();
+  const bookSlotOffer = vi.fn();
   const sendMessage = vi.fn();
   const revalidatePath = vi.fn();
   return {
     followUpDraft,
-    waitlistEntry,
     conversation,
     message,
     $transaction,
@@ -24,6 +23,7 @@ const mocks = vi.hoisted(() => {
     revertFollowUpDraftToPending,
     dismissFollowUpDraft,
     passSlotOffer,
+    bookSlotOffer,
     sendMessage,
     revalidatePath,
   };
@@ -32,7 +32,6 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     followUpDraft: mocks.followUpDraft,
-    waitlistEntry: mocks.waitlistEntry,
     conversation: mocks.conversation,
     message: mocks.message,
     $transaction: mocks.$transaction,
@@ -48,6 +47,8 @@ vi.mock("@/lib/follow-ups-data", () => ({
   revertFollowUpDraftToPending: mocks.revertFollowUpDraftToPending,
   dismissFollowUpDraft: mocks.dismissFollowUpDraft,
   passSlotOffer: mocks.passSlotOffer,
+  bookSlotOffer: mocks.bookSlotOffer,
+  ALREADY_HANDLED_ERROR: "This follow-up was already handled.",
   SLOT_OFFER_UNAVAILABLE_ERROR: "This slot offer is no longer available.",
 }));
 
@@ -197,6 +198,14 @@ describe("sendFollowUpDraftAction", () => {
     expect(mocks.revertFollowUpDraftToPending).not.toHaveBeenCalled();
   });
 
+  it("rejects a non-string override the same way instead of throwing", async () => {
+    const result = await sendFollowUpDraftAction(DRAFT_ID, { not: "text" } as unknown as string);
+
+    expect(result).toEqual({ ok: false, error: "Write a message before sending." });
+    expect(mocks.markFollowUpDraftSent).not.toHaveBeenCalled();
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+  });
+
   it("rejects a whitespace-only override before touching the draft or sending anything", async () => {
     const result = await sendFollowUpDraftAction(DRAFT_ID, "   ");
 
@@ -342,7 +351,7 @@ describe("bookFollowUpSlotAction", () => {
       // date/time would land on the wrong day.
       appointment: { title: "Follow-up visit", staffMemberId: "staff_1", startAt: new Date("2026-10-04T22:30:00.000Z") },
     });
-    mocks.waitlistEntry.updateMany.mockResolvedValue({ count: 1 });
+    mocks.bookSlotOffer.mockResolvedValue({ ok: true });
 
     const result = await bookFollowUpSlotAction(DRAFT_ID);
 
@@ -363,15 +372,8 @@ describe("bookFollowUpSlotAction", () => {
       }),
       select: { clientId: true, appointment: { select: { title: true, staffMemberId: true, startAt: true } } },
     });
-    expect(mocks.waitlistEntry.updateMany).toHaveBeenCalledWith({
-      where: {
-        businessId: BUSINESS.id,
-        status: "OFFERED",
-        // Pinned to this draft still being SENT (not declined meanwhile).
-        followUpDrafts: { some: { id: DRAFT_ID, status: "SENT" } },
-      },
-      data: { status: "FILLED" },
-    });
+    // The entry flip (draft row locked first, entry second) lives in the data layer.
+    expect(mocks.bookSlotOffer).toHaveBeenCalledWith({ id: DRAFT_ID, businessId: BUSINESS.id });
     expectFollowUpSurfacesRevalidated();
   });
 
@@ -381,7 +383,7 @@ describe("bookFollowUpSlotAction", () => {
       clientId: "client_1",
       appointment: { title: "Checkup", staffMemberId: null, startAt: new Date("2026-10-05T07:00:00.000Z") },
     });
-    mocks.waitlistEntry.updateMany.mockResolvedValue({ count: 1 });
+    mocks.bookSlotOffer.mockResolvedValue({ ok: true });
 
     const result = await bookFollowUpSlotAction(DRAFT_ID);
 
@@ -396,12 +398,23 @@ describe("bookFollowUpSlotAction", () => {
       clientId: "client_1",
       appointment: { title: "Checkup", staffMemberId: null, startAt: new Date("2026-10-05T07:00:00.000Z") },
     });
-    mocks.waitlistEntry.updateMany.mockResolvedValue({ count: 0 });
+    mocks.bookSlotOffer.mockResolvedValue({ ok: false, error: "This slot offer is no longer available." });
 
     expect(await bookFollowUpSlotAction(DRAFT_ID)).toEqual({
       ok: false,
       error: "This slot offer is no longer available.",
     });
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("turns an unexpected failure (a conflict that survived its retry) into a plain retry message, revalidating nothing", async () => {
+    mocks.followUpDraft.findFirst.mockResolvedValue({
+      clientId: "client_1",
+      appointment: { title: "Checkup", staffMemberId: null, startAt: new Date("2026-10-05T07:00:00.000Z") },
+    });
+    mocks.bookSlotOffer.mockRejectedValue(new Error("deadlock detected"));
+
+    expect(await bookFollowUpSlotAction(DRAFT_ID)).toEqual({ ok: false, error: "Something went wrong. Try again." });
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
@@ -411,7 +424,7 @@ describe("bookFollowUpSlotAction", () => {
     const result = await bookFollowUpSlotAction(DRAFT_ID);
 
     expect(result).toEqual({ ok: false, error: "This slot offer is no longer available." });
-    expect(mocks.waitlistEntry.updateMany).not.toHaveBeenCalled();
+    expect(mocks.bookSlotOffer).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
@@ -476,5 +489,36 @@ describe("passSlotOfferAction (Declined)", () => {
       error: "Your session expired. Log in again to manage follow-ups.",
     });
     expect(mocks.passSlotOffer).not.toHaveBeenCalled();
+  });
+});
+
+// Server actions take client-serialized arguments: an object id would reach
+// Prisma's `where` as a filter (e.g. Skip dismissing every pending draft).
+describe("follow-up actions refuse a non-string draft id before touching anything", () => {
+  const CRAFTED_ID = { not: "" } as unknown as string;
+
+  it.each([
+    ["send", () => sendFollowUpDraftAction(CRAFTED_ID), ALREADY_HANDLED_ERROR],
+    ["skip", () => dismissFollowUpDraftAction(CRAFTED_ID), ALREADY_HANDLED_ERROR],
+    ["book", () => bookFollowUpSlotAction(CRAFTED_ID), "This slot offer is no longer available."],
+    ["declined", () => passSlotOfferAction(CRAFTED_ID), "This slot offer is no longer available."],
+  ])("%s", async (_name, run, error) => {
+    expect(await run()).toEqual({ ok: false, error });
+
+    for (const fn of [
+      mocks.followUpDraft.findFirst,
+      mocks.bookSlotOffer,
+      mocks.conversation.upsert,
+      mocks.message.create,
+      mocks.$transaction,
+      mocks.markFollowUpDraftSent,
+      mocks.revertFollowUpDraftToPending,
+      mocks.dismissFollowUpDraft,
+      mocks.passSlotOffer,
+      mocks.sendMessage,
+      mocks.revalidatePath,
+    ]) {
+      expect(fn).not.toHaveBeenCalled();
+    }
   });
 });

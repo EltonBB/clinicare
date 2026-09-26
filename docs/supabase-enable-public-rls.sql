@@ -39,3 +39,11 @@ alter table public."StaffDevice" enable row level security;
 alter table public."StaffThread" enable row level security;
 alter table public."StaffThreadMessage" enable row level security;
 alter table public."StaffNotification" enable row level security;
+
+-- Follow-ups, waiting list and workflow settings (see
+-- prisma/follow-up-draft-migration.sql, waitlist-migration.sql and
+-- workflow-settings-migration.sql, which enable RLS themselves). Drafted
+-- follow-up text carries patient names.
+alter table public."FollowUpDraft" enable row level security;
+alter table public."WaitlistEntry" enable row level security;
+alter table public."WorkflowSettings" enable row level security;

@@ -7,9 +7,15 @@ import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { isProBusinessPlan } from "@/lib/billing";
 import { logger } from "@/lib/logger";
+import { parseRecordId } from "@/lib/record-id";
 import { removeWaitlistEntry } from "@/lib/slot-offers";
 import { createWaitlistEntry } from "@/lib/waitlist-data";
-import { isInvalidPreferredWindow, WAITLIST_PLAN_ERROR, WAITLIST_TIME_RANGE_ERROR } from "@/lib/waitlist";
+import {
+  isInvalidPreferredWindow,
+  WAITLIST_ENTRY_REMOVED_ERROR,
+  WAITLIST_PLAN_ERROR,
+  WAITLIST_TIME_RANGE_ERROR,
+} from "@/lib/waitlist";
 import { parseZonedWallClock } from "@/lib/time-zone";
 
 export type AddWaitlistEntryPayload = {
@@ -152,7 +158,7 @@ export async function addWaitlistEntryAction(
   return { ok: true };
 }
 
-export async function removeWaitlistEntryAction(id: string): Promise<WaitlistActionResult> {
+export async function removeWaitlistEntryAction(rawId: string): Promise<WaitlistActionResult> {
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -163,6 +169,13 @@ export async function removeWaitlistEntryAction(id: string): Promise<WaitlistAct
 
   if (!isProBusinessPlan(business.plan)) {
     return { ok: false, error: WAITLIST_PLAN_ERROR };
+  }
+
+  // A non-string id would remove the whole waiting list.
+  const id = parseRecordId(rawId);
+
+  if (!id) {
+    return { ok: false, error: WAITLIST_ENTRY_REMOVED_ERROR };
   }
 
   let result;
