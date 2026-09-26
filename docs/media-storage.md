@@ -78,3 +78,27 @@ should use short-lived signed URLs.
 When the app needs to show an image or document, it converts stored values like
 `supabase-storage://clinic-media/{user-id}/logos/{file-id}.jpg` into short-lived
 signed URLs. A copied file URL should expire instead of remaining public.
+
+## Historical reference normalization
+
+`npm run media:normalize-storage-refs` is a manual, database-writing maintenance
+command for older logo and gallery values. It converts only URLs from the
+configured `NEXT_PUBLIC_SUPABASE_URL`, in the configured media bucket and upload
+path shape, with the row's clinic owner and matching `logos` or `client-gallery`
+folder. Other HTTPS links remain available for review; do not infer that they
+belong to this clinic's Storage objects from their host or bucket alone.
+New application writes reject unverified URLs from the configured project's
+Storage object and transformed-image routes, including ambiguous encoded paths.
+The maintenance command leaves historical mismatches
+unchanged so they can be reviewed rather than silently rewritten.
+
+Use a reviewed database backup and a staging run before applying it to a live
+database. The command verifies remote PostgreSQL certificates; set
+`DATABASE_SSL_CA` for a private CA. It ignores Prisma-only connection options
+and refuses other URL query options that could redirect or weaken the connection.
+It reports rows changed during the run but
+skips rows whose original value changed concurrently. It also reports and skips
+URLs that would create duplicate gallery references to one object; review these
+manually before rerunning. Quiesce gallery writes during a live run because
+new rows can otherwise appear after the duplicate scan. This command does not
+delete Storage objects.

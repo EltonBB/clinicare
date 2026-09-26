@@ -38,48 +38,111 @@ export function parseStorageReference(value: string): StorageReference | null {
   };
 }
 
-export function parseSupabaseStorageUrl(value: string): StorageReference | null {
+export function parseSupabaseStorageUrl(
+  value: string,
+  expectedOwnerId: string,
+  expectedFolder: WorkspaceMediaFolder
+): StorageReference | null {
   try {
     const url = new URL(value.trim());
-    const parts = url.pathname.split("/").filter(Boolean);
-    const objectIndex = parts.indexOf("object");
-
-    if (objectIndex === -1) {
-      return null;
-    }
-
-    const accessType = parts[objectIndex + 1];
-    const bucket = parts[objectIndex + 2];
-    const pathParts = parts.slice(objectIndex + 3);
-
+    const configuredUrl = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || "");
+    if (!configuredUrl.pathname.endsWith("/")) configuredUrl.pathname += "/";
+    const storagePath = new URL("storage/v1/object/", configuredUrl).pathname;
+    const localHttp =
+      process.env.NODE_ENV !== "production" &&
+      url.protocol === "http:" &&
+      ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
     if (
-      (accessType !== "public" && accessType !== "sign") ||
-      !bucket ||
-      pathParts.length === 0
+      (url.protocol !== "https:" && !localHttp) ||
+      url.origin !== configuredUrl.origin ||
+      url.username ||
+      url.password
     ) {
       return null;
     }
 
-    return {
-      bucket,
-      path: pathParts.map((part) => decodeURIComponent(part)).join("/"),
-    };
+    if (!url.pathname.startsWith(storagePath)) {
+      return null;
+    }
+
+    const parts = url.pathname.slice(storagePath.length).split("/");
+    const accessType = parts[0];
+    const bucket = parts[1];
+    const pathParts = parts.slice(2);
+
+    if (
+      (accessType !== "public" && accessType !== "sign") ||
+      bucket !== mediaBucket ||
+      pathParts.length !== 3 ||
+      pathParts.some((part) => !part)
+    ) {
+      return null;
+    }
+
+    const path = pathParts.map((part) => decodeURIComponent(part)).join("/");
+    const [ownerId, folder] = path.split("/");
+    return isValidUploadShape(bucket, path) &&
+      ownerId === expectedOwnerId &&
+      folder === expectedFolder
+      ? { bucket, path }
+      : null;
   } catch {
     return null;
   }
 }
 
-export function normalizeStorageReference(value: string) {
+function couldResolveToStorageRoute(pathname: string): boolean {
+  let path = pathname;
+  for (let depth = 0; depth < 8; depth += 1) {
+    if (/(?:^|\/)storage\/v1\/(?:object|render\/image)(?:\/|$)/i.test(path)) {
+      return true;
+    }
+    // Decode valid ASCII escapes one at a time so a malformed escape in an
+    // unrelated filename cannot stop detection in another path segment.
+    const decoded = path.replace(/%([0-7][0-9a-f])/gi, (_, hex: string) =>
+      String.fromCharCode(Number.parseInt(hex, 16))
+    );
+    if (decoded === path) return false;
+    path = decoded;
+  }
+  return /%[0-7][0-9a-f]/i.test(path);
+}
+
+export function normalizeStorageReference(
+  value: string,
+  expectedOwnerId: string,
+  expectedFolder: WorkspaceMediaFolder
+): string | null {
   const existingReference = parseStorageReference(value);
 
   if (existingReference) {
-    return createStorageReference(existingReference.bucket, existingReference.path);
+    const [ownerId, folder] = existingReference.path.split("/");
+    return isValidUploadShape(existingReference.bucket, existingReference.path) &&
+      ownerId === expectedOwnerId &&
+      folder === expectedFolder
+      ? createStorageReference(existingReference.bucket, existingReference.path)
+      : null;
   }
 
-  const urlReference = parseSupabaseStorageUrl(value);
+  const urlReference = parseSupabaseStorageUrl(value, expectedOwnerId, expectedFolder);
 
   if (urlReference) {
     return createStorageReference(urlReference.bucket, urlReference.path);
+  }
+
+  // A same-project Storage URL that failed the owner/folder/bucket checks
+  // must not fall through as an ordinary HTTPS link with someone else's
+  // signed token. This includes transformed-image routes and percent-encoded
+  // paths whose decoding at a proxy/router could hide a Storage route.
+  // Historical values remain untouched by the read path.
+  try {
+    const url = new URL(value.trim());
+    const configuredUrl = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || "");
+    if (url.origin === configuredUrl.origin && couldResolveToStorageRoute(url.pathname)) {
+      return null;
+    }
+  } catch {
+    // Generic URL validation remains the caller's responsibility.
   }
 
   return value.trim();
@@ -102,5 +165,6 @@ export function isStorageReference(value: string) {
  * "well-formed" means.
  */
 export function isValidUploadShape(bucket: string, path: string): boolean {
-  return bucket === mediaBucket && path.split("/").length === 3;
+  const segments = path.split("/");
+  return bucket === mediaBucket && segments.length === 3 && segments.every(Boolean);
 }

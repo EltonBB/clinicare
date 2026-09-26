@@ -45,6 +45,7 @@ vi.mock("@/lib/auth", () => ({
 
 import { saveOnboardingStateAction } from "./actions";
 import { createDefaultOnboardingState } from "@/lib/onboarding";
+import { mediaBucket } from "@/lib/media-storage";
 
 const USER = { id: "user_1", email: "owner@clinic.example", user_metadata: {} };
 
@@ -106,5 +107,17 @@ describe("saveOnboardingStateAction — workspace-shell revalidation", () => {
     expect(result.ok).toBe(true);
     expect(mocks.$transaction).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("rejects a logo reference outside the clinic's logo folder before re-bootstrap", async () => {
+    const state = completedState();
+    state.clinic.logoUrl = `supabase-storage://${mediaBucket}/user_1/client-gallery/photo.jpg`;
+
+    const result = await saveOnboardingStateAction(state);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("Upload the clinic logo again before completing onboarding.");
+    expect(mocks.$transaction).not.toHaveBeenCalled();
+    expect(mocks.updateCurrentUserMetadata).not.toHaveBeenCalled();
   });
 });
