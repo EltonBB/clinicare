@@ -2,9 +2,14 @@ import { revalidatePath } from "next/cache";
 
 import { Prisma } from "@prisma/client";
 
+import { isProBusinessPlan } from "@/lib/billing";
+import { timeToMinutes } from "@/lib/calendar";
 import { logger } from "@/lib/logger";
 import { buildStaffPushPayload, sendStaffPush } from "@/lib/mobile/push";
 import { prisma } from "@/lib/prisma";
+import { findBestWaitlistMatch } from "@/lib/slot-fill-matching";
+import { formatZonedTime24, getZonedWeekday } from "@/lib/time-zone";
+import { findMatchingWaitlistCandidates } from "@/lib/waitlist-data";
 
 /**
  * Appointment-mutation side effects shared by the web calendar actions and the
@@ -310,14 +315,80 @@ export async function cancelAppointmentCore(where: {
     }
 
     // The guarded update applied — this call is the one that just cancelled it.
+    // title/startAt are pulled here too (rather than a second read) so the
+    // slot-fill matching below reuses this row instead of re-fetching it.
     const cancelled = await tx.appointment.findFirstOrThrow({
       where: { id: where.id },
-      select: { id: true, clientId: true, staffMemberId: true },
+      select: { id: true, clientId: true, staffMemberId: true, title: true, startAt: true },
     });
 
     // Clear any pending reminder rows so a later re-confirm starts clean.
     await tx.appointmentReminder.deleteMany({ where: { appointmentId: cancelled.id } });
     await refreshClientLastVisitAt(cancelled.clientId, where.businessId, tx);
+
+    // Slot-fill matching (Pro only): a cancellation just freed a slot, so
+    // check the waiting list for someone who wants it and draft an offer.
+    // Looked up from inside the transaction (rather than widening this
+    // function's public `where` signature with a plan flag) so no caller —
+    // web, mobile, or the reply-cancel path — can accidentally skip the gate
+    // by forgetting to pass one.
+    const business = await tx.business.findUniqueOrThrow({
+      where: { id: where.businessId },
+      select: { plan: true },
+    });
+
+    if (isProBusinessPlan(business.plan)) {
+      const candidates = await findMatchingWaitlistCandidates({
+        businessId: where.businessId,
+        service: cancelled.title,
+        tx,
+      });
+
+      // WaitlistEntry.preferredDays/preferredFrom/preferredTo are entered by
+      // staff in clinic-local wall-clock time, so the freed slot's weekday
+      // and time-of-day must be derived in the clinic's zone too — not raw
+      // UTC, which would silently shift every match by the clinic's UTC
+      // offset. Same conversion as isInsideBusinessHours in
+      // calendar/actions.ts and businessHoursForDate in calendar.ts: map the
+      // zoned Sun=0..Sat=6 weekday onto the schedule's Monday=0 convention.
+      const weekday = (getZonedWeekday(cancelled.startAt) + 6) % 7;
+      const timeMinutes = timeToMinutes(formatZonedTime24(cancelled.startAt));
+
+      const match = findBestWaitlistMatch(candidates, {
+        service: cancelled.title,
+        staffMemberId: cancelled.staffMemberId,
+        startAt: cancelled.startAt,
+        weekday,
+        timeMinutes,
+      });
+
+      if (match) {
+        // Guard the status flip with its own CAS so a race where the entry
+        // was already claimed/removed between the read above and this write
+        // can't create an orphaned draft for an entry no longer WAITING.
+        const { count: offered } = await tx.waitlistEntry.updateMany({
+          where: { id: match.id, status: "WAITING" },
+          data: { status: "OFFERED" },
+        });
+
+        if (offered > 0) {
+          // dedupeKey's uniqueness constraint is what makes this idempotent
+          // across retries — no separate duplicate check needed.
+          await tx.followUpDraft.create({
+            data: {
+              businessId: where.businessId,
+              clientId: match.clientId,
+              kind: "SLOT_OFFER",
+              status: "PENDING",
+              appointmentId: cancelled.id,
+              waitlistEntryId: match.id,
+              dedupeKey: `SLOT_OFFER:${cancelled.id}:${match.id}`,
+              body: `A ${cancelled.title} slot just opened up. Would you like it?`,
+            },
+          });
+        }
+      }
+    }
 
     return {
       ok: true,

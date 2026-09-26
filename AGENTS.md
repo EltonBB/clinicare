@@ -139,7 +139,7 @@ If a component does not help the user make a decision, take action, or understan
 - Full Reports analytics is the flagship Pro feature. On Basic, Reports shows a polished upgrade state — never a degraded or broken analytics page.
 - Billing will run on **Paddle**. `/checkout` currently detects plan context (first purchase / current plan / upgrade / downgrade / reactivation) but the payment session, webhooks, and plan activation are **not implemented yet**. Keep the final payment button reserved for the Paddle handoff — never fake a successful purchase or activate a plan without real payment state.
 - Pricing/plan copy lives on the public Pricing page and must stay consistent with the in-app plan card and checkout summary.
-- No-show tracking (recording a no-show, the no-show rate in Reports, and the no-show risk score on upcoming appointments) is Pro. Basic workspaces keep the four existing statuses and no risk markers.
+- No-show tracking (recording a no-show, the no-show rate in Reports, the no-show risk score on upcoming appointments, and the waiting list's automatic slot-offer matching when a booking is cancelled) is Pro. Basic workspaces keep the four existing statuses and no risk markers.
 
 ---
 

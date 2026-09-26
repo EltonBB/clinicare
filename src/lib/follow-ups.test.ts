@@ -7,6 +7,7 @@ function draft(overrides: Partial<Parameters<typeof buildFollowUpsViewFromRecord
     clientId: "client_1",
     client: { id: "client_1", name: "Alex Patient" },
     kind: "REBOOK" as const,
+    status: "PENDING" as const,
     body: "Hi Alex, it's been a while — want to book your next visit?",
     appointment: null,
     createdAt: new Date("2026-07-01T10:00:00Z"),
@@ -38,5 +39,18 @@ describe("buildFollowUpsViewFromRecords", () => {
 
   it("returns an empty view for no drafts", () => {
     expect(buildFollowUpsViewFromRecords({ drafts: [] })).toEqual({ items: [], pendingCount: 0 });
+  });
+
+  it("marks a SENT SLOT_OFFER as bookable but leaves every other kind/status combination not bookable", () => {
+    const bookable = draft({ kind: "SLOT_OFFER", status: "SENT" });
+    const pendingSlotOffer = draft({ kind: "SLOT_OFFER", status: "PENDING" });
+    const sentRebook = draft({ kind: "REBOOK", status: "SENT" });
+
+    const view = buildFollowUpsViewFromRecords({
+      drafts: [bookable, pendingSlotOffer, sentRebook],
+      timeZone: "UTC",
+    });
+
+    expect(view.items.map((item) => item.canBook)).toEqual([true, false, false]);
   });
 });

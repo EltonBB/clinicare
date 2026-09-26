@@ -5,14 +5,32 @@ export async function getPendingFollowUpDraftCount(businessId: string): Promise<
   return prisma.followUpDraft.count({ where: { businessId, status: "PENDING" } });
 }
 
+// Generous upper bound on how many pending drafts could realistically queue up
+// before staff clears them — guards against an unbounded Prisma query once
+// PR 4/5's producers start actually populating this table (naming/comment
+// style follows MAX_RISK_BATCH_SIZE in calendar/actions.ts).
+const MAX_PENDING_FOLLOW_UPS = 200;
+
+// Also surfaces a SENT slot offer while it's still actionable — the client was
+// offered an opening (waitlistEntry.status: OFFERED) and staff can still book
+// it for them from this list (see bookFollowUpSlotAction). A SENT draft of any
+// other kind (e.g. a rebooking nudge that already went out) stays excluded —
+// there's nothing left to do with it here.
 export async function listPendingFollowUpDrafts(businessId: string): Promise<FollowUpDraftRecord[]> {
   return prisma.followUpDraft.findMany({
-    where: { businessId, status: "PENDING" },
+    where: {
+      businessId,
+      OR: [
+        { status: "PENDING" },
+        { status: "SENT", kind: "SLOT_OFFER", waitlistEntry: { status: "OFFERED" } },
+      ],
+    },
     include: {
       client: { select: { name: true } },
       appointment: { select: { startAt: true, title: true } },
     },
     orderBy: { createdAt: "asc" },
+    take: MAX_PENDING_FOLLOW_UPS,
   });
 }
 

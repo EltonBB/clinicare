@@ -11,15 +11,33 @@ import { dismissFollowUpDraft, getPendingFollowUpDraftCount, listPendingFollowUp
 beforeEach(() => vi.clearAllMocks());
 
 describe("follow-ups data layer", () => {
-  it("counts and lists only PENDING drafts scoped to the business", async () => {
+  it("counts only PENDING drafts scoped to the business", async () => {
     mocks.followUpDraft.count.mockResolvedValue(3);
     await getPendingFollowUpDraftCount("biz_1");
     expect(mocks.followUpDraft.count).toHaveBeenCalledWith({ where: { businessId: "biz_1", status: "PENDING" } });
+  });
 
+  it("lists PENDING drafts plus SENT slot offers still awaiting a booking, scoped to the business", async () => {
     mocks.followUpDraft.findMany.mockResolvedValue([]);
     await listPendingFollowUpDrafts("biz_1");
     expect(mocks.followUpDraft.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { businessId: "biz_1", status: "PENDING" } })
+      expect.objectContaining({
+        where: {
+          businessId: "biz_1",
+          OR: [
+            { status: "PENDING" },
+            { status: "SENT", kind: "SLOT_OFFER", waitlistEntry: { status: "OFFERED" } },
+          ],
+        },
+      })
+    );
+  });
+
+  it("caps the pending-drafts query at MAX_PENDING_FOLLOW_UPS (200) instead of querying unbounded", async () => {
+    mocks.followUpDraft.findMany.mockResolvedValue([]);
+    await listPendingFollowUpDrafts("biz_1");
+    expect(mocks.followUpDraft.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 200 })
     );
   });
 

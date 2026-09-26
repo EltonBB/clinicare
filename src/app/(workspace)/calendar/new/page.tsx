@@ -16,7 +16,13 @@ function isValidTimeParam(value?: string): value is string {
 export default async function NewAppointmentPage({
   searchParams,
 }: {
-  searchParams: Promise<{ client?: string; date?: string; time?: string }>;
+  searchParams: Promise<{
+    client?: string;
+    date?: string;
+    time?: string;
+    service?: string;
+    staffMemberId?: string;
+  }>;
 }) {
   const { user, business } = await requireCurrentWorkspace("/calendar/new", {
     missingBusinessRedirect: "/onboarding",
@@ -26,6 +32,8 @@ export default async function NewAppointmentPage({
     client: requestedClientId,
     date: requestedDate,
     time: requestedTime,
+    service: requestedService,
+    staffMemberId: requestedStaffMemberId,
   } = await searchParams;
 
   const [clients, staffMembers, businessHours] = await Promise.all([
@@ -102,6 +110,16 @@ export default async function NewAppointmentPage({
     ? requestedDate
     : format(new Date(), "yyyy-MM-dd");
   const initialStartTime = isValidTimeParam(requestedTime) ? requestedTime : undefined;
+  const initialService =
+    typeof requestedService === "string" && requestedService ? requestedService : undefined;
+  // Same validation shape as the client id above: only a real staff id in this
+  // business is honored, else it's ignored rather than silently preselecting
+  // an id that doesn't belong here.
+  const initialStaffMemberId =
+    typeof requestedStaffMemberId === "string" &&
+    staffMembers.some((member) => member.id === requestedStaffMemberId)
+      ? requestedStaffMemberId
+      : undefined;
 
   return (
     <CreatePageShell title="New booking">
@@ -122,6 +140,8 @@ export default async function NewAppointmentPage({
         initialClientId={initialClientId}
         initialDate={initialDate}
         initialStartTime={initialStartTime}
+        initialService={initialService}
+        initialStaffMemberId={initialStaffMemberId}
       />
     </CreatePageShell>
   );

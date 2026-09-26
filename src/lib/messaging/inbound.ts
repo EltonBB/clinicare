@@ -5,6 +5,7 @@ import {
   revalidateCalendarSurfaces,
 } from "@/lib/appointments-shared";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
+import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
 import { prisma } from "@/lib/prisma";
 import { classifyReplyIntent } from "@/lib/reply-intent";
@@ -12,7 +13,7 @@ import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 
 import type { AppointmentStatus } from "@prisma/client";
 
-import type { MessageDeliveryStatus } from "./types";
+import type { MessageDeliveryStatus, SendMessageResult } from "./types";
 
 export type InboundMessage = {
   businessId: string;
@@ -69,12 +70,23 @@ export async function recordInboundMessage(
     }
   }
 
-  const matchingClient = await prisma.client.findFirst({
+  // `Client.phoneKey` is indexed but NOT unique — two different clients in the
+  // same business can legitimately share one phone (e.g. a family). When more
+  // than one matches, there is no confident single identity to link the
+  // reply-intent workflow to, so `clientId` below is left `null` in that case
+  // — same as the "no client matched at all" case — rather than silently
+  // picking an arbitrary one of them (which could let a "2" reply cancel the
+  // wrong family member's appointment). The message itself is still recorded
+  // and threaded normally either way; only the identity used for reply-intent
+  // matching becomes conservative.
+  const matchingClients = await prisma.client.findMany({
     where: { businessId: event.businessId, phoneKey },
     select: { id: true, name: true },
+    take: 2,
   });
+  const matchingClient = matchingClients.length === 1 ? matchingClients[0] : null;
 
-  const preferredName = event.contactName?.trim() || matchingClient?.name;
+  const preferredName = event.contactName?.trim() || matchingClients[0]?.name;
 
   let conversationId: string;
   try {
@@ -135,6 +147,70 @@ export type ApplyReplyIntentResult =
   | { applied: true; intent: "confirm" | "cancel"; appointmentId: string };
 
 /**
+ * Mirrors an automatic confirm/cancel WhatsApp reply into the patient's Inbox
+ * thread — same shape as reminders.ts's own best-effort inbox mirror and
+ * inbox/actions.ts's sendInboxMessageAction: upsert the Conversation by its
+ * (businessId, phoneKey) key, then create the OUTBOUND Message carrying the
+ * provider id/delivery status, so a later delivery-status webhook
+ * (recordDeliveryStatus, below) has a row to match against instead of
+ * silently dropping the receipt. Best-effort: the confirm/cancel mutation
+ * already succeeded by the time this runs, so a failure here must not fail
+ * the overall reply-intent result — only the Inbox mirror is lost.
+ */
+async function mirrorOutboundReplyToInbox(args: {
+  businessId: string;
+  clientId: string;
+  clientName: string | null;
+  phone: string;
+  result: Extract<SendMessageResult, { ok: true }>;
+}) {
+  const { businessId, clientId, clientName, phone, result } = args;
+  const phoneKey = phoneLookupKey(phone);
+  if (!phoneKey) {
+    return;
+  }
+  const normalizedPhone = normalizePhone(phone);
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const conversation = await tx.conversation.upsert({
+        where: {
+          businessId_phoneKey: { businessId, phoneKey },
+        },
+        update: {
+          contactName: clientName || undefined,
+        },
+        create: {
+          businessId,
+          phoneNumber: normalizedPhone,
+          phoneKey,
+          contactName: clientName || normalizedPhone,
+          unreadCount: 0,
+        },
+        select: { id: true },
+      });
+
+      await tx.message.create({
+        data: {
+          conversationId: conversation.id,
+          clientId,
+          direction: "OUTBOUND",
+          body: result.body,
+          providerMessageSid: result.providerMessageId,
+          deliveryStatus: result.status,
+          deliveryUpdatedAt: new Date(),
+        },
+      });
+    });
+  } catch (error) {
+    logger.error("Recorded a confirm/cancel reply but couldn't mirror it to the inbox.", error, {
+      businessId,
+      clientId,
+    });
+  }
+}
+
+/**
  * Reads an inbound message for a confirm/cancel reply and, only when exactly
  * one upcoming reminded appointment matches, acts on it. Called by the
  * webhook route right after recordInboundMessage succeeds — separate from it
@@ -172,7 +248,7 @@ export async function applyInboundReplyIntent(args: {
       startAt: { gt: now },
       reminders: { some: { status: "SENT" } },
     },
-    select: { id: true, startAt: true, status: true, client: { select: { phone: true } } },
+    select: { id: true, startAt: true, status: true, client: { select: { phone: true, name: true } } },
   });
 
   // Confirming prefers a pending visit: a client with one pending and one
@@ -190,9 +266,10 @@ export async function applyInboundReplyIntent(args: {
   const phone = appointment.client.phone;
 
   if (intent === "confirm") {
-    const sendConfirmedReply = async () => {
+    // Sends the acknowledgement and mirrors it into the client's Inbox thread.
+    const sendConfirmedReply = async (confirmedClientId: string) => {
       if (!phone) return;
-      await sendMessage({
+      const result = await sendMessage({
         channel: "WHATSAPP",
         businessId,
         to: phone,
@@ -201,11 +278,20 @@ export async function applyInboundReplyIntent(args: {
           body: `You're confirmed for ${formatZonedTime(appointment.startAt)} on ${formatZonedFullDate(appointment.startAt)}. See you then!`,
         },
       });
+      if (result.ok) {
+        await mirrorOutboundReplyToInbox({
+          businessId,
+          clientId: confirmedClientId,
+          clientName: appointment.client.name,
+          phone,
+          result,
+        });
+      }
     };
 
     if (appointment.status === "CONFIRMED") {
       // Nothing to change — just answer the reply.
-      await sendConfirmedReply();
+      await sendConfirmedReply(clientId);
       return { applied: false, reason: "already_confirmed" };
     }
 
@@ -213,7 +299,8 @@ export async function applyInboundReplyIntent(args: {
     if (!outcome.ok || !outcome.changed) {
       return { applied: false, reason: "no_match" };
     }
-    await sendConfirmedReply();
+    await sendConfirmedReply(outcome.clientId);
+    revalidateCalendarSurfaces([outcome.clientId], outcome.staffMemberId ? [outcome.staffMemberId] : []);
     return { applied: true, intent: "confirm", appointmentId: appointment.id };
   }
 
@@ -222,7 +309,7 @@ export async function applyInboundReplyIntent(args: {
     return { applied: false, reason: "no_match" };
   }
   if (phone) {
-    await sendMessage({
+    const result = await sendMessage({
       channel: "WHATSAPP",
       businessId,
       to: phone,
@@ -231,6 +318,15 @@ export async function applyInboundReplyIntent(args: {
         body: `Your appointment on ${formatZonedFullDate(appointment.startAt)} at ${formatZonedTime(appointment.startAt)} has been cancelled.`,
       },
     });
+    if (result.ok) {
+      await mirrorOutboundReplyToInbox({
+        businessId,
+        clientId: outcome.clientId,
+        clientName: appointment.client.name,
+        phone,
+        result,
+      });
+    }
   }
   if (outcome.staffMemberId) {
     await notifyStaffOfAppointmentChange(businessId, outcome.staffMemberId, appointment.id, "changed");
