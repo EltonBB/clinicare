@@ -3,8 +3,11 @@
 -- Adds two new enum types and one new table. Fully additive: nothing existing
 -- is altered, and — unlike the NO_SHOW status migration — this is a normal
 -- CREATE-only change, safe inside one transaction. Nothing in the running app
--- reads or writes this table until the Follow-ups page code deploys; the
--- confirm-by-reply workflow does not depend on this table at all.
+-- reads or writes this table until the Follow-ups page code deploys. Once the
+-- waiting-list code deploys, confirm/cancel-by-reply depends on it too: every
+-- classified patient reply checks here (joined to WaitlistEntry) for an open
+-- slot offer. Treat this file and waitlist-migration.sql as one unit — apply
+-- both, this one first.
 CREATE TYPE "FollowUpDraftKind" AS ENUM ('SLOT_OFFER', 'REBOOK', 'PAYMENT', 'THANK_YOU');
 CREATE TYPE "FollowUpDraftStatus" AS ENUM ('PENDING', 'SENT', 'DISMISSED', 'EXPIRED');
 

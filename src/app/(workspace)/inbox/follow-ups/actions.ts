@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
@@ -10,18 +9,19 @@ import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
 import type { SendMessageResult } from "@/lib/messaging/types";
 import {
+  ALREADY_HANDLED_ERROR,
+  bookSlotOffer,
   dismissFollowUpDraft,
   markFollowUpDraftSent,
   passSlotOffer,
   revertFollowUpDraftToPending,
   SLOT_OFFER_UNAVAILABLE_ERROR,
 } from "@/lib/follow-ups-data";
+import { parseRecordId } from "@/lib/record-id";
 import { liveSlotOfferWhere } from "@/lib/slot-offers";
 import { formatZonedDateKey, formatZonedTime24 } from "@/lib/time-zone";
 
 export type FollowUpDraftActionResult = { ok: boolean; error?: string };
-
-const draftIdSchema = z.string().min(1).max(100);
 
 const TRY_AGAIN_ERROR = "Something went wrong. Try again.";
 
@@ -50,7 +50,7 @@ function revalidateFollowUpSurfaces() {
  * operator actually approved, not necessarily the stored draft.body.
  */
 export async function sendFollowUpDraftAction(
-  draftId: string,
+  rawDraftId: string,
   body?: string
 ): Promise<FollowUpDraftActionResult> {
   const context = await getAuthedBusiness();
@@ -61,11 +61,20 @@ export async function sendFollowUpDraftAction(
 
   const business = context.business;
 
+  // A non-string id would make the SENT flip below match every live draft.
+  const draftId = parseRecordId(rawDraftId);
+
+  if (!draftId) {
+    return { ok: false, error: ALREADY_HANDLED_ERROR };
+  }
+
   // An override was explicitly passed (even if it's just whitespace) — this
   // is a real RPC boundary, so validate it ourselves rather than trusting the
   // UI's own client-side guard. Reject before any state change so a blank
   // edit never flips the draft to SENT only to have to revert it.
-  const editedBody = body?.trim();
+  // Client-serialized args aren't type-checked at runtime, so a non-string
+  // override is refused here rather than throwing on `.trim()`.
+  const editedBody = typeof body === "string" ? body.trim() : undefined;
 
   if (body !== undefined && !editedBody) {
     return { ok: false, error: "Write a message before sending." };
@@ -187,9 +196,10 @@ export type BookFollowUpSlotResult = { ok: true; bookingUrl: string } | { ok: fa
  * passed) returns the same plain "no longer available" error, since none of
  * those cases are actionable here.
  *
- * The linked waitlist entry is flipped OFFERED -> FILLED right here, at the
- * point staff commits to booking by clicking "Book" — not when the booking
- * form is actually saved. The calendar's saveAppointmentAction has no cheap
+ * The linked waitlist entry is flipped OFFERED -> FILLED right here (see
+ * bookSlotOffer, which serializes with Skip/Declined/Remove on the draft row),
+ * at the point staff commits to booking by clicking "Book" — not when the
+ * booking form is actually saved. The calendar's saveAppointmentAction has no cheap
  * way today to know a given save originated from a waitlist offer (that would
  * mean threading a hidden waitlist-entry id through the booking form and its
  * save path), so flipping status at save time isn't simple. Flipping here
@@ -199,7 +209,7 @@ export type BookFollowUpSlotResult = { ok: true; bookingUrl: string } | { ok: fa
  * of threading state through an unrelated form. A future PR can tighten this
  * if it proves to matter in practice.
  */
-export async function bookFollowUpSlotAction(draftId: string): Promise<BookFollowUpSlotResult> {
+export async function bookFollowUpSlotAction(rawDraftId: string): Promise<BookFollowUpSlotResult> {
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -207,6 +217,11 @@ export async function bookFollowUpSlotAction(draftId: string): Promise<BookFollo
   }
 
   const business = context.business;
+  const draftId = parseRecordId(rawDraftId);
+
+  if (!draftId) {
+    return { ok: false, error: SLOT_OFFER_UNAVAILABLE_ERROR };
+  }
 
   const draft = await prisma.followUpDraft.findFirst({
     where: { id: draftId, businessId: business.id, status: "SENT", ...liveSlotOfferWhere(new Date()) },
@@ -231,21 +246,18 @@ export async function bookFollowUpSlotAction(draftId: string): Promise<BookFollo
     params.set("staffMemberId", staffMemberId);
   }
 
-  // Pinned to this draft still being SENT: if it was declined and the entry
-  // re-offered another slot between the read above and this write, the
-  // entry's OFFERED now belongs to that other offer — leave it alone.
-  const { count } = await prisma.waitlistEntry.updateMany({
-    where: {
-      businessId: business.id,
-      status: "OFFERED",
-      followUpDrafts: { some: { id: draftId, status: "SENT" } },
-    },
-    data: { status: "FILLED" },
-  });
+  let booked;
+  try {
+    booked = await bookSlotOffer({ id: draftId, businessId: business.id });
+  } catch (error) {
+    // Already retried once on a write conflict (see retryOnWriteConflict).
+    logger.error("Couldn't book a slot offer.", error, { businessId: business.id, draftId });
+    return { ok: false, error: TRY_AGAIN_ERROR };
+  }
 
-  if (count === 0) {
-    // Declined, removed, or booked by someone else since the read above.
-    return { ok: false, error: SLOT_OFFER_UNAVAILABLE_ERROR };
+  if (!booked.ok) {
+    // Declined, skipped, removed, or booked by someone else since the read above.
+    return booked;
   }
 
   revalidateFollowUpSurfaces();
@@ -257,11 +269,18 @@ export async function bookFollowUpSlotAction(draftId: string): Promise<BookFollo
  * Skip. Skipping a slot offer also puts the client back on the waiting list
  * and offers the same slot to the next match (see dismissFollowUpDraft).
  */
-export async function dismissFollowUpDraftAction(draftId: string): Promise<FollowUpDraftActionResult> {
+export async function dismissFollowUpDraftAction(rawDraftId: string): Promise<FollowUpDraftActionResult> {
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
     return { ok: false, error: context.error };
+  }
+
+  // A non-string id would dismiss every pending draft in the workspace.
+  const draftId = parseRecordId(rawDraftId);
+
+  if (!draftId) {
+    return { ok: false, error: ALREADY_HANDLED_ERROR };
   }
 
   let outcome;
@@ -288,7 +307,7 @@ export async function dismissFollowUpDraftAction(draftId: string): Promise<Follo
  * dropped to Basic must still be able to release an outstanding offer. The
  * re-offer half is Pro-gated inside offerFreedSlot, so Basic drafts nothing.
  */
-export async function passSlotOfferAction(draftId: string): Promise<FollowUpDraftActionResult> {
+export async function passSlotOfferAction(rawDraftId: string): Promise<FollowUpDraftActionResult> {
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -296,19 +315,18 @@ export async function passSlotOfferAction(draftId: string): Promise<FollowUpDraf
   }
 
   const business = context.business;
+  const draftId = parseRecordId(rawDraftId);
 
-  const parsedId = draftIdSchema.safeParse(draftId);
-
-  if (!parsedId.success) {
+  if (!draftId) {
     return { ok: false, error: SLOT_OFFER_UNAVAILABLE_ERROR };
   }
 
   let outcome;
   try {
-    outcome = await passSlotOffer({ id: parsedId.data, businessId: business.id });
+    outcome = await passSlotOffer({ id: draftId, businessId: business.id });
   } catch (error) {
     // Already retried once on a write conflict (see retryOnWriteConflict).
-    logger.error("Couldn't record a declined slot offer.", error, { businessId: business.id, draftId: parsedId.data });
+    logger.error("Couldn't record a declined slot offer.", error, { businessId: business.id, draftId });
     return { ok: false, error: TRY_AGAIN_ERROR };
   }
 

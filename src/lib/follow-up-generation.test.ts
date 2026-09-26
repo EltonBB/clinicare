@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   prisma: {
     business: { findMany: vi.fn() },
-    followUpDraft: { create: vi.fn(), updateMany: vi.fn() },
+    followUpDraft: { create: vi.fn(), updateMany: vi.fn(), groupBy: vi.fn() },
   },
   findRebookCandidates: vi.fn(),
   findPaymentReminderCandidates: vi.fn(),
@@ -77,6 +77,7 @@ beforeEach(() => {
   mocks.prisma.business.findMany.mockResolvedValue([]);
   mocks.prisma.followUpDraft.create.mockResolvedValue({});
   mocks.prisma.followUpDraft.updateMany.mockResolvedValue({ count: 0 });
+  mocks.prisma.followUpDraft.groupBy.mockResolvedValue([]); // nothing pending yet
   mocks.findRebookCandidates.mockResolvedValue([]);
   mocks.findPaymentReminderCandidates.mockResolvedValue([]);
   mocks.findThankYouCandidates.mockResolvedValue([]);
@@ -468,7 +469,7 @@ describe("expireStaleFollowUpDrafts", () => {
     });
   });
 
-  it("expires REBOOK drafts once the client booked, went inactive/archived, the workspace is no longer Pro, or the draft is 35 days old", async () => {
+  it("expires REBOOK drafts once the client booked or was back within 28 days, went inactive/archived, the workspace is no longer Pro, or the draft is 35 days old", async () => {
     await expireStaleFollowUpDrafts(NOW);
 
     expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledWith({
@@ -478,7 +479,16 @@ describe("expireStaleFollowUpDrafts", () => {
         OR: [
           {
             client: {
-              appointments: { some: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: NOW } } },
+              appointments: {
+                some: {
+                  OR: [
+                    // A future booking...
+                    { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: NOW } },
+                    // ...or a confirmed/completed visit inside the last 28 days (a walk-in recorded since).
+                    { status: { in: ["CONFIRMED", "COMPLETED"] }, startAt: { gt: new Date(NOW.getTime() - 28 * DAY_MS) } },
+                  ],
+                },
+              },
             },
           },
           { client: { OR: [{ isArchived: true }, { status: { in: ["INACTIVE", "ARCHIVED"] } }] } },
@@ -516,16 +526,127 @@ describe("expireStaleFollowUpDrafts", () => {
     expect(planBranch).toEqual({ business: { plan: { in: ["TRIAL", "BASIC", "ADVANCED"] } } });
   });
 
-  it("expires THANK_YOU drafts older than 3 days", async () => {
+  it("expires THANK_YOU drafts older than 3 days, or whose visit is gone or no longer completed (e.g. since recorded as a no-show)", async () => {
     await expireStaleFollowUpDrafts(NOW);
 
     expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledWith({
       where: {
         kind: "THANK_YOU",
         status: "PENDING",
-        createdAt: { lt: new Date(NOW.getTime() - 3 * DAY_MS) },
+        OR: [
+          { createdAt: { lt: new Date(NOW.getTime() - 3 * DAY_MS) } },
+          { appointmentId: null },
+          { appointment: { status: { not: "COMPLETED" } } },
+        ],
       },
       data: { status: "EXPIRED" },
     });
+  });
+});
+
+describe("generateFollowUpDrafts — per-kind pending cap (50)", () => {
+  function candidates(kind: FollowUpDraftInput["kind"], count: number, prefix: string = kind): FollowUpDraftInput[] {
+    return Array.from({ length: count }, (_, index) => ({
+      clientId: `c_${prefix}_${index}`,
+      kind,
+      body: `${kind} body`,
+      dedupeKey: `${prefix}:${index}`,
+    }));
+  }
+
+  function writtenKeys(kind?: FollowUpDraftInput["kind"], businessId?: string) {
+    return mocks.prisma.followUpDraft.create.mock.calls
+      .map(([arg]) => arg.data)
+      .filter((data) => (!kind || data.kind === kind) && (!businessId || data.businessId === businessId))
+      .map((data) => data.dedupeKey);
+  }
+
+  it("counts PENDING drafts once per business, scoped to that business and the generated kinds", async () => {
+    mocks.prisma.business.findMany.mockResolvedValue([business("biz_1"), business("biz_2")]);
+
+    await generateFollowUpDrafts(NOW);
+
+    expect(mocks.prisma.followUpDraft.groupBy).toHaveBeenCalledTimes(2);
+    for (const businessId of ["biz_1", "biz_2"]) {
+      expect(mocks.prisma.followUpDraft.groupBy).toHaveBeenCalledWith({
+        by: ["kind"],
+        where: { businessId, status: "PENDING", kind: { in: ["REBOOK", "PAYMENT", "THANK_YOU"] } },
+        _count: { _all: true },
+      });
+    }
+  });
+
+  it("writes nothing for a kind already at the cap, and doesn't even query its generator", async () => {
+    mocks.prisma.business.findMany.mockResolvedValue([business("biz_1")]);
+    mocks.prisma.followUpDraft.groupBy.mockResolvedValue([
+      { kind: "REBOOK", _count: { _all: 50 } },
+      { kind: "PAYMENT", _count: { _all: 50 } },
+      { kind: "THANK_YOU", _count: { _all: 50 } },
+    ]);
+    mocks.findRebookCandidates.mockResolvedValue(candidates("REBOOK", 3));
+    mocks.findPaymentReminderCandidates.mockResolvedValue(candidates("PAYMENT", 3));
+    mocks.findThankYouCandidates.mockResolvedValue(candidates("THANK_YOU", 3));
+
+    const result = await generateFollowUpDrafts(NOW);
+
+    expect(mocks.prisma.followUpDraft.create).not.toHaveBeenCalled();
+    expect(mocks.findRebookCandidates).not.toHaveBeenCalled();
+    expect(mocks.findPaymentReminderCandidates).not.toHaveBeenCalled();
+    expect(mocks.findThankYouCandidates).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ draftsCreated: 0, errors: 0 });
+  });
+
+  it("with partial room, writes exactly the remaining slots — the oldest candidates, in order — per kind", async () => {
+    mocks.prisma.business.findMany.mockResolvedValue([business("biz_1")]);
+    mocks.prisma.followUpDraft.groupBy.mockResolvedValue([
+      { kind: "REBOOK", _count: { _all: 47 } }, // room for 3
+      { kind: "PAYMENT", _count: { _all: 49 } }, // room for 1
+      // no THANK_YOU pending: room for 50
+    ]);
+    mocks.findRebookCandidates.mockResolvedValue(candidates("REBOOK", 200));
+    mocks.findPaymentReminderCandidates.mockResolvedValue(candidates("PAYMENT", 5));
+    mocks.findThankYouCandidates.mockResolvedValue(candidates("THANK_YOU", 60));
+
+    const result = await generateFollowUpDrafts(NOW);
+
+    expect(writtenKeys("REBOOK")).toEqual(["REBOOK:0", "REBOOK:1", "REBOOK:2"]);
+    expect(writtenKeys("PAYMENT")).toEqual(["PAYMENT:0"]);
+    expect(writtenKeys("THANK_YOU")).toEqual(candidates("THANK_YOU", 50).map((input) => input.dedupeKey));
+    expect(result.draftsCreated).toBe(54);
+  });
+
+  it("gives each business its own room: one clinic's backlog doesn't use up another's", async () => {
+    mocks.prisma.business.findMany.mockResolvedValue([business("biz_full"), business("biz_empty")]);
+    mocks.prisma.followUpDraft.groupBy.mockImplementation(async ({ where }: { where: { businessId: string } }) =>
+      where.businessId === "biz_full" ? [{ kind: "PAYMENT", _count: { _all: 50 } }] : []
+    );
+    mocks.findPaymentReminderCandidates.mockImplementation(async ({ businessId }: { businessId: string }) =>
+      candidates("PAYMENT", 2, businessId)
+    );
+    mocks.findThankYouCandidates.mockImplementation(async ({ businessId }: { businessId: string }) =>
+      candidates("THANK_YOU", 2, businessId)
+    );
+
+    await generateFollowUpDrafts(NOW);
+
+    expect(writtenKeys("PAYMENT", "biz_full")).toEqual([]);
+    // Payment being full doesn't limit the same clinic's thank-yous.
+    expect(writtenKeys("THANK_YOU", "biz_full")).toEqual(["biz_full:0", "biz_full:1"]);
+    expect(writtenKeys("PAYMENT", "biz_empty")).toEqual(["biz_empty:0", "biz_empty:1"]);
+    expect(writtenKeys("THANK_YOU", "biz_empty")).toEqual(["biz_empty:0", "biz_empty:1"]);
+  });
+
+  it("counts a failed pending-count query against that business and still runs the next one", async () => {
+    mocks.prisma.business.findMany.mockResolvedValue([business("biz_bad"), business("biz_good")]);
+    mocks.prisma.followUpDraft.groupBy.mockImplementation(async ({ where }: { where: { businessId: string } }) => {
+      if (where.businessId === "biz_bad") throw new Error("db hiccup");
+      return [];
+    });
+    mocks.findPaymentReminderCandidates.mockResolvedValue([paymentInput]);
+
+    const result = await generateFollowUpDrafts(NOW);
+
+    expect(result).toMatchObject({ businessesProcessed: 2, draftsCreated: 1, errors: 1 });
+    expect(writtenKeys(undefined, "biz_good")).toEqual(["PAYMENT:pay1"]);
   });
 });

@@ -8,6 +8,15 @@ export const WAITLIST_PLAN_ERROR = "Waiting list is part of the Pro plan.";
 
 export const WAITLIST_TIME_RANGE_ERROR = "Choose a From time earlier than the To time.";
 
+export const WAITLIST_ENTRY_REMOVED_ERROR = "This waiting-list entry was already removed.";
+
+// Every cancellation reads a clinic's whole waiting list, and the Calendar
+// panel renders it, so the list is bounded. Far above what a clinic works
+// through; a soft cap (two adds racing can overshoot it by a few).
+export const MAX_ACTIVE_WAITLIST_ENTRIES = 500;
+
+export const WAITLIST_FULL_ERROR = "The waiting list is full. Remove an entry before adding another.";
+
 /** Both preferred times set, and From not before To — HH:mm strings compare in time order. */
 export function isInvalidPreferredWindow(from?: string | null, to?: string | null) {
   return Boolean(from && to && from >= to);

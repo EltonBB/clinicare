@@ -9,6 +9,7 @@ import {
   findPaymentReminderCandidates,
   findRebookCandidates,
   findThankYouCandidates,
+  rebookedAppointmentWhere,
   type FollowUpDraftInput,
   type WorkflowSettingsValues,
 } from "@/lib/workflow-generators";
@@ -38,6 +39,28 @@ const THANK_YOU_WINDOW_HOURS = 24;
 // only worth sending close to the visit.
 const REBOOK_MAX_AGE_DAYS = 35;
 const THANK_YOU_MAX_AGE_DAYS = 3;
+
+/**
+ * Most PENDING drafts one business holds per generated kind. An owner can
+ * realistically review about 50 nudges; without a cap, turning a workflow on
+ * would dump the whole backlog (every lapsed client, every old unpaid entry)
+ * into the queue at once. The rest simply stay candidates and are drafted as
+ * earlier ones are sent, skipped or expired — the generators exclude rows
+ * that already have a draft, so nothing is drafted twice.
+ */
+const PENDING_CAP_PER_KIND = 50;
+
+type GeneratedKind = FollowUpDraftInput["kind"];
+
+/** This business's PENDING drafts per generated kind — one query. */
+async function countPendingByKind(businessId: string): Promise<Map<GeneratedKind, number>> {
+  const rows = await prisma.followUpDraft.groupBy({
+    by: ["kind"],
+    where: { businessId, status: "PENDING", kind: { in: ["REBOOK", "PAYMENT", "THANK_YOU"] } },
+    _count: { _all: true },
+  });
+  return new Map(rows.map((row) => [row.kind as GeneratedKind, row._count._all]));
+}
 
 type RunTotals = { draftsCreated: number; errors: number; budgetSpent: boolean };
 
@@ -110,38 +133,52 @@ async function generateForBusiness(
   const lookbackWindowStart = new Date(now.getTime() - (settings.thankYouDelayHours + THANK_YOU_WINDOW_HOURS) * HOUR_MS);
 
   // async thunks so even a synchronous throw becomes a rejection for allSettled.
-  const generators: Array<{ name: string; run: () => Promise<FollowUpDraftInput[]> }> = [];
+  const generators: Array<{ name: string; kind: GeneratedKind; run: () => Promise<FollowUpDraftInput[]> }> = [];
   // Rebook is Pro-only, and the plan check (not the stored toggle) is what
   // enforces it: a downgraded workspace may still have rebookEnabled saved.
   if (isProBusinessPlan(business.plan)) {
-    generators.push({ name: "rebook", run: async () => findRebookCandidates({ businessId, settings, now }) });
+    generators.push({ name: "rebook", kind: "REBOOK", run: async () => findRebookCandidates({ businessId, settings, now }) });
   }
-  generators.push({ name: "payment reminder", run: async () => findPaymentReminderCandidates({ businessId, settings, now }) });
+  generators.push({
+    name: "payment reminder",
+    kind: "PAYMENT",
+    run: async () => findPaymentReminderCandidates({ businessId, settings, now }),
+  });
   generators.push({
     name: "thank-you",
+    kind: "THANK_YOU",
     run: async () => findThankYouCandidates({ businessId, settings, now, lookbackWindowStart }),
   });
 
+  // Room left under PENDING_CAP_PER_KIND; a kind already at the cap isn't queried at all.
+  const pendingByKind = await countPendingByKind(businessId);
+  const roomFor = (kind: GeneratedKind) => Math.max(0, PENDING_CAP_PER_KIND - (pendingByKind.get(kind) ?? 0));
+  const withRoom = generators.filter((generator) => roomFor(generator.kind) > 0);
+
   // allSettled: one generator failing must not discard the other two's candidates.
-  const settled = await Promise.allSettled(generators.map((generator) => generator.run()));
+  const settled = await Promise.allSettled(withRoom.map((generator) => generator.run()));
 
   const candidates: FollowUpDraftInput[] = [];
   settled.forEach((outcome, index) => {
+    const generator = withRoom[index];
     if (outcome.status === "fulfilled") {
-      candidates.push(...outcome.value);
+      // Generators return oldest first, so the oldest candidates get the room.
+      candidates.push(...outcome.value.slice(0, roomFor(generator.kind)));
       return;
     }
     totals.errors += 1;
-    logger.error(`Follow-up ${generators[index].name} generation failed for a business.`, outcome.reason, { businessId });
+    logger.error(`Follow-up ${generator.name} generation failed for a business.`, outcome.reason, { businessId });
   });
 
   await writeDrafts(businessId, candidates, totals, deadlineAt);
 }
 
 /**
- * Retires PENDING drafts that no longer make sense to send. Global (every
- * workspace; the pending set is small) and one updateMany per kind. SENT
- * drafts are never touched, and slot offers have their own sweep.
+ * Retires PENDING drafts that no longer make sense to send. The Follow-ups
+ * list and Send already hide/refuse these live (actionablePendingWhere in
+ * follow-ups-data.ts); this makes it permanent, plus the age limits. Global
+ * (every workspace; the pending set is small) and one updateMany per kind.
+ * SENT drafts are never touched, and slot offers have their own sweep.
  */
 export async function expireStaleFollowUpDrafts(now: Date): Promise<number> {
   // "Not Pro" as billing.ts defines it, so a plan added to the enum later is
@@ -156,24 +193,33 @@ export async function expireStaleFollowUpDrafts(now: Date): Promise<number> {
       status: "PENDING",
       OR: [{ paymentId: null }, { payment: { status: { notIn: ["Unpaid", "Partially Paid"] } } }],
     },
-    // Already rebooked, the clinic archived/deactivated them, the workspace is
-    // no longer Pro (rebook is a Pro feature and the generator skips it, but a
-    // downgrade would otherwise leave already-drafted ones sendable) — or it's
-    // simply stale, since the generator drafts again next month.
+    // Already rebooked or back since (a future booking, or a recent confirmed/
+    // completed visit — see rebookedAppointmentWhere), the clinic
+    // archived/deactivated them, the workspace is no longer Pro (rebook is a
+    // Pro feature and the generator skips it, but a downgrade would otherwise
+    // leave already-drafted ones sendable) — or it's simply stale, since the
+    // generator drafts again next month.
     {
       kind: "REBOOK",
       status: "PENDING",
       OR: [
-        { client: { appointments: { some: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } } } } },
+        { client: { appointments: { some: rebookedAppointmentWhere(now) } } },
         { client: { OR: [{ isArchived: true }, { status: { in: ["INACTIVE", "ARCHIVED"] } }] } },
         { business: { plan: { in: nonProPlans } } },
         { createdAt: { lt: new Date(now.getTime() - REBOOK_MAX_AGE_DAYS * DAY_MS) } },
       ],
     },
+    // Too old to be worth sending — or the visit no longer stands as attended:
+    // recorded as a no-show or reverted since (COMPLETED -> NO_SHOW is a
+    // normal correction), or deleted (appointmentId is then null).
     {
       kind: "THANK_YOU",
       status: "PENDING",
-      createdAt: { lt: new Date(now.getTime() - THANK_YOU_MAX_AGE_DAYS * DAY_MS) },
+      OR: [
+        { createdAt: { lt: new Date(now.getTime() - THANK_YOU_MAX_AGE_DAYS * DAY_MS) } },
+        { appointmentId: null },
+        { appointment: { status: { not: "COMPLETED" } } },
+      ],
     },
   ];
 

@@ -5,6 +5,7 @@ import { timeToMinutes } from "@/lib/calendar";
 import { prisma } from "@/lib/prisma";
 import { rankWaitlistMatches } from "@/lib/slot-fill-matching";
 import { formatZonedFullDate, formatZonedTime, formatZonedTime24, getZonedWeekday } from "@/lib/time-zone";
+import { WAITLIST_ENTRY_REMOVED_ERROR } from "@/lib/waitlist";
 import { findMatchingWaitlistCandidates, releaseWaitlistEntry } from "@/lib/waitlist-data";
 
 /**
@@ -115,6 +116,30 @@ export async function offerFreedSlot(
     timeMinutes: timeToMinutes(formatZonedTime24(cancelled.startAt)),
   });
 
+  if (ranked.length === 0) {
+    return null;
+  }
+
+  // The offer's dedupe key names the cancellation cycle: an appointment can be
+  // cancelled, un-cancelled and cancelled again, and each cancellation is a
+  // fresh chance to offer the slot. The appointment's updatedAt is the moment
+  // of its latest write — the cancellation itself when the offer is drafted
+  // (the same value for every attempt in that transaction) and different in
+  // the next cycle. Read here, on the row as this transaction sees it, so it
+  // doesn't matter how the caller built `cancelled`. The key is the last-
+  // resort guard against a concurrent duplicate insert; the candidate filter
+  // is what keeps one patient from being offered one slot twice.
+  const current = await tx.appointment.findFirst({
+    where: { id: cancelled.id, businessId },
+    select: { updatedAt: true },
+  });
+
+  if (!current) {
+    return null; // deleted since it was cancelled — the slot is gone
+  }
+
+  const cycle = current.updatedAt.getTime();
+
   for (const entry of ranked.slice(0, MAX_OFFER_ATTEMPTS)) {
     const { count: flipped } = await tx.waitlistEntry.updateMany({
       where: { id: entry.id, businessId, status: "WAITING" },
@@ -134,7 +159,7 @@ export async function offerFreedSlot(
           status: "PENDING",
           appointmentId: cancelled.id,
           waitlistEntryId: entry.id,
-          dedupeKey: `SLOT_OFFER:${cancelled.id}:${entry.id}`,
+          dedupeKey: `SLOT_OFFER:${cancelled.id}:${cycle}:${entry.id}`,
           body: slotOfferBody(entry.clientName, cancelled.startAt),
         },
       ],
@@ -160,18 +185,23 @@ export async function offerFreedSlot(
  * entry that let it go is excluded: it already has a draft for this slot).
  * Leaves the slot alone when the entry was booked or removed meanwhile, the
  * appointment was deleted, or it is no longer cancelled (reactivated).
+ *
+ * `released` says whether the entry really moved OFFERED -> WAITING. When it
+ * didn't (it was booked or removed meanwhile, so the retired draft belongs to
+ * an entry that has moved on) the caller rolls its transaction back rather
+ * than commit a retired draft beside an entry that is not waiting.
  */
 export async function reofferFreedSlot(
   tx: Prisma.TransactionClient,
   args: { businessId: string; waitlistEntryId: string | null; appointmentId: string | null; now?: Date }
-): Promise<string | null> {
+): Promise<{ released: boolean; offeredEntryId: string | null }> {
   const { businessId, waitlistEntryId, appointmentId, now } = args;
 
   if (!waitlistEntryId || !(await releaseWaitlistEntry({ id: waitlistEntryId, businessId }, tx))) {
-    return null;
+    return { released: false, offeredEntryId: null };
   }
 
-  return offerSlotAgain(tx, { businessId, appointmentId, now });
+  return { released: true, offeredEntryId: await offerSlotAgain(tx, { businessId, appointmentId, now }) };
 }
 
 /**
@@ -328,24 +358,40 @@ export async function expirePastSlotOffers(
   return { expired, released };
 }
 
+// Postgres reports a deadlock as SQLSTATE 40P01 ("deadlock detected").
+const DEADLOCK_PATTERN = /\b40P01\b|deadlock detected/i;
+
+/**
+ * True for a transaction Postgres aborted as a deadlock / write conflict.
+ * Prisma names those P2034, but through the pg driver adapter a real deadlock
+ * arrives as an unclassified PrismaClientUnknownRequestError with no `code`
+ * — the SQLSTATE and text are only in its message (verified against a live
+ * database). Any other unknown error is not a conflict and is never retried.
+ */
+function isWriteConflict(error: unknown): boolean {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    return error.code === "P2034";
+  }
+
+  return error instanceof Prisma.PrismaClientUnknownRequestError && DEADLOCK_PATTERN.test(error.message);
+}
+
 /**
  * Runs a slot-offer transaction, retrying it once if Postgres aborted it as a
- * deadlock / write conflict (Prisma P2034). Two staff acting on the same
- * offer at the same instant can collide; the retry sees the winner's
+ * deadlock / write conflict (see isWriteConflict). Two staff acting on the
+ * same offer at the same instant can collide; the retry sees the winner's
  * committed state and its CAS guards turn into clean no-ops.
  */
 export async function retryOnWriteConflict<T>(run: () => Promise<T>): Promise<T> {
   try {
     return await run();
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+    if (isWriteConflict(error)) {
       return run();
     }
     throw error;
   }
 }
-
-const ALREADY_REMOVED_ERROR = "This waiting-list entry was already removed.";
 
 // Thrown inside removeWaitlistEntry's transaction to roll back the draft
 // dismissals when the entry itself turned out to be gone already.
@@ -436,7 +482,7 @@ export async function removeWaitlistEntry(args: {
     );
   } catch (error) {
     if (error instanceof EntryAlreadyGone) {
-      return { ok: false, error: ALREADY_REMOVED_ERROR };
+      return { ok: false, error: WAITLIST_ENTRY_REMOVED_ERROR };
     }
     throw error;
   }

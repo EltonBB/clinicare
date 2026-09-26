@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  waitlistEntry: { findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
+  waitlistEntry: { findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn(), count: vi.fn() },
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: mocks }));
@@ -57,6 +57,35 @@ describe("waitlist data layer", () => {
     );
   });
 
+  it("only counts an offer while its freed slot is still cancelled and ahead, so a passed slot reads as waiting before the sweep runs", async () => {
+    const now = new Date("2026-09-01T08:00:00.000Z");
+    mocks.waitlistEntry.findMany.mockResolvedValue([]);
+
+    await listWaitingEntries("biz_1", now);
+
+    expect(mocks.waitlistEntry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          followUpDrafts: expect.objectContaining({
+            where: {
+              kind: "SLOT_OFFER",
+              status: { in: ["PENDING", "SENT"] },
+              appointment: { status: "CANCELLED", startAt: { gt: now } },
+            },
+          }),
+        }),
+      })
+    );
+  });
+
+  it("reads an OFFERED entry with no live draft (its slot passed, the sweep hasn't run) as waiting", async () => {
+    mocks.waitlistEntry.findMany.mockResolvedValue([entryRow({ id: "wl_stale", status: "OFFERED", followUpDrafts: [] })]);
+
+    const [row] = await listWaitingEntries("biz_1");
+
+    expect(row.offer).toBeNull();
+  });
+
   it("labels an OFFERED entry's offer as pending or sent, and a WAITING entry as having none", async () => {
     mocks.waitlistEntry.findMany.mockResolvedValue([
       entryRow({ id: "wl_waiting" }),
@@ -85,16 +114,38 @@ describe("waitlist data layer", () => {
     expect(row.earliestDateLabel).toBe("Oct 1");
   });
 
+  const newEntry = {
+    businessId: "biz_1", clientId: "client_1", service: "Checkup",
+    staffMemberId: null, earliestDate: null, preferredDays: [], preferredFrom: null, preferredTo: null, notes: null,
+  };
+
   it("creates an entry scoped to the business", async () => {
+    mocks.waitlistEntry.count.mockResolvedValue(0);
     mocks.waitlistEntry.create.mockResolvedValue({ id: "wl_1" });
-    const result = await createWaitlistEntry({
-      businessId: "biz_1", clientId: "client_1", service: "Checkup",
-      staffMemberId: null, earliestDate: null, preferredDays: [], preferredFrom: null, preferredTo: null, notes: null,
-    });
+    const result = await createWaitlistEntry(newEntry);
     expect(result).toEqual({ ok: true });
     expect(mocks.waitlistEntry.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ businessId: "biz_1", clientId: "client_1", service: "Checkup", status: "WAITING" }) })
     );
+  });
+
+  it("refuses a new entry once the business's active waiting list is full, counting only WAITING and OFFERED", async () => {
+    mocks.waitlistEntry.count.mockResolvedValue(500);
+
+    const result = await createWaitlistEntry(newEntry);
+
+    expect(result).toEqual({ ok: false, error: "The waiting list is full. Remove an entry before adding another." });
+    expect(mocks.waitlistEntry.count).toHaveBeenCalledWith({
+      where: { businessId: "biz_1", status: { in: ["WAITING", "OFFERED"] } },
+    });
+    expect(mocks.waitlistEntry.create).not.toHaveBeenCalled();
+  });
+
+  it("still accepts an entry when one slot is left", async () => {
+    mocks.waitlistEntry.count.mockResolvedValue(499);
+    mocks.waitlistEntry.create.mockResolvedValue({ id: "wl_1" });
+
+    expect(await createWaitlistEntry(newEntry)).toEqual({ ok: true });
   });
 
   it("releases an entry back to WAITING only from OFFERED, scoped to the business, reporting whether it moved", async () => {
@@ -110,7 +161,7 @@ describe("waitlist data layer", () => {
     expect(await releaseWaitlistEntry({ id: "wl_1", businessId: "biz_1" })).toBe(false);
   });
 
-  it("finds WAITING candidates for the service, excluding the cancelling client, archived clients, and entries already offered this slot", async () => {
+  it("finds WAITING candidates for the service, excluding the cancelling client, archived clients, and clients already offered this slot", async () => {
     mocks.waitlistEntry.findMany.mockResolvedValue([
       {
         id: "wl_1",
@@ -138,14 +189,52 @@ describe("waitlist data layer", () => {
         where: {
           businessId: "biz_1",
           status: "WAITING",
-          service: { equals: "Checkup", mode: "insensitive" },
           clientId: { not: "client_1" },
-          client: { isArchived: false, status: { not: "ARCHIVED" } },
-          followUpDrafts: { none: { kind: "SLOT_OFFER", appointmentId: "appt_1" } },
+          client: {
+            isArchived: false,
+            status: { not: "ARCHIVED" },
+            // Per client (a duplicate entry is the same patient); EXPIRED (withdrawn) offers don't block a re-offer.
+            followUpDrafts: {
+              none: { kind: "SLOT_OFFER", appointmentId: "appt_1", status: { in: ["PENDING", "SENT", "DISMISSED"] } },
+            },
+          },
         },
       })
     );
     expect(candidates).toEqual([expect.objectContaining({ id: "wl_1", clientId: "client_2", clientName: "Mira" })]);
     expect(candidates[0]).not.toHaveProperty("client");
+  });
+
+  it("compares the service in memory, ignoring case and stray whitespace on both sides, never in SQL", async () => {
+    const row = (id: string, service: string) => ({
+      id,
+      clientId: `client_${id}`,
+      service,
+      staffMemberId: null,
+      earliestDate: null,
+      preferredDays: [],
+      preferredFrom: null,
+      preferredTo: null,
+      createdAt: new Date("2026-06-01T00:00:00Z"),
+      client: { name: id },
+    });
+    mocks.waitlistEntry.findMany.mockResolvedValue([
+      row("exact", "Checkup"),
+      row("trailing", "Checkup "),
+      row("leading", "  checkup"),
+      row("other", "Cleaning"),
+      row("longer", "Checkup and cleaning"),
+    ]);
+
+    const candidates = await findMatchingWaitlistCandidates({
+      businessId: "biz_1",
+      service: " CHECKUP\t",
+      excludeClientId: "client_1",
+      freedAppointmentId: "appt_1",
+    });
+
+    expect(candidates.map((candidate) => candidate.id)).toEqual(["exact", "trailing", "leading"]);
+    // A SQL equality can't trim the stored value, so the service isn't filtered in the query at all.
+    expect(mocks.waitlistEntry.findMany.mock.calls[0][0].where).not.toHaveProperty("service");
   });
 });

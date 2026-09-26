@@ -16,6 +16,7 @@ import {
 } from "@/lib/inbox";
 import { conversationSelect, fetchInboxConversations, RECENT_MESSAGE_LIMIT } from "@/lib/inbox-server";
 import { sendMessage } from "@/lib/messaging";
+import { parseRecordId } from "@/lib/record-id";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 
 export type SendInboxMessageResult = {
@@ -54,6 +55,8 @@ export type ConvertConversationToClientResult = {
   conversation?: InboxConversation;
   clientId?: string;
 };
+
+const CONVERSATION_NOT_FOUND_ERROR = "Conversation not found in this clinic workspace.";
 
 function getAuthedBusiness() {
   return getAuthedBusinessContext(
@@ -145,7 +148,7 @@ export async function refreshInboxAction(): Promise<RefreshInboxResult> {
  * silently-truncated 1-message history.
  */
 export async function hydrateConversationAction(
-  conversationId: string
+  rawConversationId: string
 ): Promise<HydrateConversationResult> {
   const context = await getAuthedBusiness();
 
@@ -156,6 +159,12 @@ export async function hydrateConversationAction(
     };
   }
 
+  const conversationId = parseRecordId(rawConversationId);
+
+  if (!conversationId) {
+    return { ok: false, error: CONVERSATION_NOT_FOUND_ERROR };
+  }
+
   return {
     ok: true,
     conversation: await hydrateConversation(conversationId, context.business.id),
@@ -163,7 +172,7 @@ export async function hydrateConversationAction(
 }
 
 export async function markConversationReadAction(
-  conversationId: string
+  rawConversationId: string
 ): Promise<MarkConversationReadResult> {
   const context = await getAuthedBusiness();
 
@@ -172,6 +181,12 @@ export async function markConversationReadAction(
       ok: false,
       error: context.error,
     };
+  }
+
+  const conversationId = parseRecordId(rawConversationId);
+
+  if (!conversationId) {
+    return { ok: false, error: CONVERSATION_NOT_FOUND_ERROR };
   }
 
   const conversation = await prisma.conversation.findFirst({
@@ -187,7 +202,7 @@ export async function markConversationReadAction(
   if (!conversation) {
     return {
       ok: false,
-      error: "Conversation not found in this clinic workspace.",
+      error: CONVERSATION_NOT_FOUND_ERROR,
     };
   }
 
@@ -210,7 +225,7 @@ export async function markConversationReadAction(
 }
 
 export async function sendInboxMessageAction(
-  conversationId: string,
+  rawConversationId: string,
   body: string
 ): Promise<SendInboxMessageResult> {
   const context = await getAuthedBusiness();
@@ -220,6 +235,12 @@ export async function sendInboxMessageAction(
       ok: false,
       error: context.error,
     };
+  }
+
+  const conversationId = parseRecordId(rawConversationId);
+
+  if (!conversationId) {
+    return { ok: false, error: CONVERSATION_NOT_FOUND_ERROR };
   }
 
   const cleanedBody = body.trim();
@@ -246,7 +267,7 @@ export async function sendInboxMessageAction(
   if (!conversation) {
     return {
       ok: false,
-      error: "Conversation not found in this clinic workspace.",
+      error: CONVERSATION_NOT_FOUND_ERROR,
     };
   }
 
@@ -360,7 +381,7 @@ export async function sendInboxMessageAction(
 }
 
 export async function deleteConversationAction(
-  conversationId: string
+  rawConversationId: string
 ): Promise<DeleteConversationResult> {
   const context = await getAuthedBusiness();
 
@@ -369,6 +390,13 @@ export async function deleteConversationAction(
       ok: false,
       error: context.error,
     };
+  }
+
+  // A non-string id would delete every conversation in the workspace.
+  const conversationId = parseRecordId(rawConversationId);
+
+  if (!conversationId) {
+    return { ok: false, error: CONVERSATION_NOT_FOUND_ERROR };
   }
 
   const conversation = await prisma.conversation.findFirst({
@@ -385,7 +413,7 @@ export async function deleteConversationAction(
   if (!conversation) {
     return {
       ok: false,
-      error: "Conversation not found in this clinic workspace.",
+      error: CONVERSATION_NOT_FOUND_ERROR,
     };
   }
 
@@ -417,7 +445,7 @@ export async function deleteConversationAction(
   if (count === 0) {
     return {
       ok: false,
-      error: "Conversation not found in this clinic workspace.",
+      error: CONVERSATION_NOT_FOUND_ERROR,
     };
   }
 
@@ -443,7 +471,7 @@ const convertConversationSchema = z.object({
 });
 
 export async function convertConversationToClientAction(
-  conversationId: string,
+  rawConversationId: string,
   payload: {
     name: string;
     email?: string;
@@ -456,6 +484,12 @@ export async function convertConversationToClientAction(
       ok: false,
       error: context.error,
     };
+  }
+
+  const conversationId = parseRecordId(rawConversationId);
+
+  if (!conversationId) {
+    return { ok: false, error: CONVERSATION_NOT_FOUND_ERROR };
   }
 
   const businessId = context.business.id;
@@ -486,7 +520,7 @@ export async function convertConversationToClientAction(
   if (!conversation) {
     return {
       ok: false,
-      error: "Conversation not found in this clinic workspace.",
+      error: CONVERSATION_NOT_FOUND_ERROR,
     };
   }
 

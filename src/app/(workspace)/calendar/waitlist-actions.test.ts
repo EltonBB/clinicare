@@ -47,7 +47,7 @@ import {
   removeWaitlistEntryAction,
   type AddWaitlistEntryPayload,
 } from "./waitlist-actions";
-import { WAITLIST_PLAN_ERROR, WAITLIST_TIME_RANGE_ERROR } from "@/lib/waitlist";
+import { WAITLIST_ENTRY_REMOVED_ERROR, WAITLIST_PLAN_ERROR, WAITLIST_TIME_RANGE_ERROR } from "@/lib/waitlist";
 
 const PRO_BUSINESS = { id: "biz_1", plan: "PRO" as const };
 const BASIC_BUSINESS = { id: "biz_1", plan: "BASIC" as const };
@@ -106,6 +106,20 @@ describe("addWaitlistEntryAction — successful add", () => {
       notes: null,
     });
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/calendar");
+  });
+
+  it("trims stray whitespace off the service before storing it, so matching never depends on it", async () => {
+    const result = await addWaitlistEntryAction({ ...VALID_PAYLOAD, service: "  Deep cleaning \t" });
+
+    expect(result).toEqual({ ok: true });
+    expect(mocks.createWaitlistEntry).toHaveBeenCalledWith(expect.objectContaining({ service: "Deep cleaning" }));
+  });
+
+  it("refuses a service that is only whitespace, writing nothing", async () => {
+    const result = await addWaitlistEntryAction({ ...VALID_PAYLOAD, service: "   " });
+
+    expect(result.ok).toBe(false);
+    expect(mocks.createWaitlistEntry).not.toHaveBeenCalled();
   });
 
   it("passes every optional field through when provided", async () => {
@@ -221,6 +235,18 @@ describe("removeWaitlistEntryAction — successful remove", () => {
       ok: false,
       error: "This waiting-list entry was already removed.",
     });
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+});
+
+describe("removeWaitlistEntryAction — crafted id", () => {
+  it("refuses a non-string id (which would remove the whole waiting list) before touching the data layer", async () => {
+    const result = await removeWaitlistEntryAction({ not: "" } as unknown as string);
+
+    expect(result).toEqual({ ok: false, error: WAITLIST_ENTRY_REMOVED_ERROR });
+    expect(mocks.removeWaitlistEntry).not.toHaveBeenCalled();
+    expect(mocks.client.findFirst).not.toHaveBeenCalled();
+    expect(mocks.staffMember.findFirst).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 });

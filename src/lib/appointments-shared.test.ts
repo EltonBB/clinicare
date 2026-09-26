@@ -307,7 +307,11 @@ describe("cancelAppointmentCore — slot-fill matching", () => {
     }
   });
 
+  // The cancellation cycle offerFreedSlot reads from the appointment row.
+  const CANCELLED_AT = new Date("2026-01-01T00:00:10.000Z");
+
   function mockPro() {
+    mocks.appointment.findFirst.mockResolvedValue({ updatedAt: CANCELLED_AT });
     mocks.business.findUniqueOrThrow.mockResolvedValue({ plan: "PRO" });
     mocks.followUpDraft.findFirst.mockResolvedValue(null); // no live offer for this slot yet
     mocks.waitlistEntry.updateMany.mockResolvedValue({ count: 1 });
@@ -338,10 +342,15 @@ describe("cancelAppointmentCore — slot-fill matching", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           businessId: "biz_1",
-          service: { equals: "Checkup", mode: "insensitive" },
           // Never offered back to the client who just cancelled it.
           clientId: { not: "client_1" },
-          client: { isArchived: false, status: { not: "ARCHIVED" } },
+          client: {
+            isArchived: false,
+            status: { not: "ARCHIVED" },
+            followUpDrafts: {
+              none: { kind: "SLOT_OFFER", appointmentId: "appt_1", status: { in: ["PENDING", "SENT", "DISMISSED"] } },
+            },
+          },
         }),
       })
     );
@@ -356,7 +365,8 @@ describe("cancelAppointmentCore — slot-fill matching", () => {
           clientId: "client_2",
           waitlistEntryId: "wl_1",
           appointmentId: "appt_1",
-          dedupeKey: "SLOT_OFFER:appt_1:wl_1",
+          // Names the cancellation cycle (the row's updatedAt), so a later cancel of the same slot gets a fresh key.
+          dedupeKey: `SLOT_OFFER:appt_1:${CANCELLED_AT.getTime()}:wl_1`,
         }),
       ],
       skipDuplicates: true,

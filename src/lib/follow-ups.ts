@@ -57,9 +57,8 @@ export function visibleFollowUps(items: FollowUpDraftItem[], handledKeys: string
  */
 export function buildFollowUpsViewFromRecords(args: {
   drafts: FollowUpDraftRecord[];
-  now?: Date;
   timeZone?: string;
-}): { items: FollowUpDraftItem[]; pendingCount: number } {
+}): { items: FollowUpDraftItem[] } {
   const { drafts, timeZone = getAppTimeZone() } = args;
 
   const items = drafts.map((draft) => ({
@@ -76,5 +75,5 @@ export function buildFollowUpsViewFromRecords(args: {
     canBook: draft.kind === "SLOT_OFFER" && draft.status === "SENT",
   }));
 
-  return { items, pendingCount: items.length };
+  return { items };
 }

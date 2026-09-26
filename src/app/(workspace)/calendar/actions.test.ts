@@ -109,6 +109,8 @@ vi.mock("@/lib/appointments-shared", async () => {
 });
 
 import {
+  cancelAppointmentAction,
+  deleteAppointmentAction,
   getNoShowRiskAction,
   loadCalendarMonthAction,
   recordAppointmentAttendanceAction,
@@ -122,6 +124,8 @@ import {
   APPOINTMENT_CONFLICT_ERROR,
   APPOINTMENT_NOT_STARTED_ERROR,
   APPOINTMENT_TIME_CONFLICT_ERROR,
+  cancelAppointmentCore,
+  deleteAppointmentCore,
   NO_SHOW_PLAN_ERROR,
 } from "@/lib/appointments-shared";
 
@@ -1119,5 +1123,80 @@ describe("getNoShowRiskAction", () => {
     expect(queriedIds).toHaveLength(200);
     expect(queriedIds).toEqual(ids.slice(0, 200));
     expect(queriedIds).not.toContain("a200");
+  });
+});
+
+// Server actions take client-serialized arguments: an object id like
+// `{ not: "" }` would reach Prisma's `where` as a filter over the whole
+// workspace (a delete or cancel of every appointment, an edit of every row).
+describe("appointment actions refuse a non-string id before touching the database", () => {
+  const CRAFTED_ID = { not: "" } as unknown as string;
+  const NOT_FOUND = { ok: false, error: "Appointment not found in this clinic workspace." };
+
+  function expectNoDatabaseCall() {
+    const models = [
+      mocks.appointment,
+      mocks.client,
+      mocks.staffMember,
+      mocks.businessHours,
+      mocks.appointmentReminder,
+      mocks.scheduleBlock,
+    ];
+    for (const fn of models.flatMap((model) => Object.values(model))) {
+      expect(fn).not.toHaveBeenCalled();
+    }
+    expect(mocks.$transaction).not.toHaveBeenCalled();
+    expect(mocks.revalidateCalendarSurfaces).not.toHaveBeenCalled();
+    expect(mocks.notifyStaffOfAppointmentChange).not.toHaveBeenCalled();
+  }
+
+  it("delete", async () => {
+    expect(await deleteAppointmentAction(CRAFTED_ID)).toEqual(NOT_FOUND);
+    expect(deleteAppointmentCore).not.toHaveBeenCalled();
+    expectNoDatabaseCall();
+  });
+
+  it("cancel", async () => {
+    expect(await cancelAppointmentAction(CRAFTED_ID)).toEqual(NOT_FOUND);
+    expect(cancelAppointmentCore).not.toHaveBeenCalled();
+    expectNoDatabaseCall();
+  });
+
+  it("record attendance", async () => {
+    expect(await recordAppointmentAttendanceAction(CRAFTED_ID, false)).toEqual(NOT_FOUND);
+    expect(mocks.recordAttendance).not.toHaveBeenCalled();
+    expectNoDatabaseCall();
+  });
+
+  it("save, when the edited appointment's id is crafted", async () => {
+    expect(await saveAppointmentAction({ ...PAYLOAD, id: CRAFTED_ID })).toEqual(NOT_FOUND);
+    expectNoDatabaseCall();
+  });
+
+  it("save, when the staff id is crafted", async () => {
+    expect(await saveAppointmentAction({ ...PAYLOAD, staffMemberId: CRAFTED_ID })).toEqual({
+      ok: false,
+      error: "The selected staff member does not belong to this clinic workspace.",
+    });
+    expectNoDatabaseCall();
+  });
+
+  it("save, when the client id is crafted (treated as no client chosen)", async () => {
+    expect(await saveAppointmentAction({ ...PAYLOAD, clientId: CRAFTED_ID })).toEqual({
+      ok: false,
+      error: "Choose a client and valid start/end time before saving.",
+    });
+    expectNoDatabaseCall();
+  });
+
+  it("risk lookup drops non-string ids and skips the query when none are left", async () => {
+    mocks.appointment.findMany.mockResolvedValue([]);
+    mocks.getRiskAssessments.mockResolvedValue(new Map());
+
+    expect(await getNoShowRiskAction([CRAFTED_ID])).toEqual({});
+    expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+
+    await getNoShowRiskAction([CRAFTED_ID, "a1"]);
+    expect(mocks.appointment.findMany.mock.calls[0][0].where.id).toEqual({ in: ["a1"] });
   });
 });

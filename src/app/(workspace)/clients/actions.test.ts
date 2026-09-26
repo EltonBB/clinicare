@@ -82,7 +82,9 @@ import {
   deleteClientTreatmentPlanItemAction,
   deleteClientDocumentAction,
   deleteClientGalleryItemAction,
+  saveClientAction,
 } from "./actions";
+import type { SaveClientPayload } from "@/lib/clients";
 
 const BUSINESS = { id: "biz_1" };
 const CLIENT_ID = "client_1";
@@ -319,5 +321,82 @@ describe.each([
     expect(result).toEqual({ ok: false, error: SUB_RECORD_NOT_FOUND_ERROR });
     expect(mocks[model].deleteMany).not.toHaveBeenCalled();
     expect(mocks.recordPendingStorageCleanup).not.toHaveBeenCalled();
+  });
+});
+
+// Server actions take client-serialized arguments: an object id like
+// `{ not: "" }` would reach the guarded deleteMany as a filter and delete
+// every matching record in the workspace (or, on save, would make the update
+// target every client).
+describe("client actions refuse a non-string id before touching the database", () => {
+  const CRAFTED_ID = { not: "" } as unknown as string;
+
+  function expectNoDatabaseCall() {
+    const models = [
+      mocks.client,
+      mocks.clientMedication,
+      mocks.clientHealthItem,
+      mocks.clientCareNote,
+      mocks.clientTreatmentPlanItem,
+      mocks.clientFollowUpReminder,
+      mocks.clientPayment,
+      mocks.clientDocument,
+      mocks.clientGalleryItem,
+    ];
+    for (const fn of models.flatMap((model) => Object.values(model))) {
+      expect(fn).not.toHaveBeenCalled();
+    }
+    expect(mocks.$transaction).not.toHaveBeenCalled();
+    expect(mocks.recordPendingStorageCleanup).not.toHaveBeenCalled();
+    expect(mocks.after).not.toHaveBeenCalled();
+  }
+
+  it("deleteClientAction", async () => {
+    expect(await deleteClientAction(CRAFTED_ID)).toEqual({
+      ok: false,
+      error: "Client not found in this clinic workspace.",
+    });
+    expectNoDatabaseCall();
+  });
+
+  it("saveClientAction, with a crafted id in the payload", async () => {
+    const payload: SaveClientPayload = {
+      id: CRAFTED_ID,
+      name: "Arta Krasniqi",
+      email: "",
+      phone: "+38344111222",
+      status: "active",
+      notes: "",
+      preferredChannel: "",
+      assignedStaff: "",
+      tags: "",
+    };
+
+    expect(await saveClientAction(payload)).toEqual({
+      ok: false,
+      error: "Client not found in this clinic workspace.",
+    });
+    expectNoDatabaseCall();
+  });
+
+  it.each([
+    ["medication", deleteClientMedicationAction],
+    ["health item", deleteClientHealthItemAction],
+    ["care note", deleteClientCareNoteAction],
+    ["treatment plan item", deleteClientTreatmentPlanItemAction],
+    ["follow-up reminder", deleteClientFollowUpReminderAction],
+    ["payment", deleteClientPaymentAction],
+    ["document", deleteClientDocumentAction],
+    ["gallery item", deleteClientGalleryItemAction],
+  ])("delete %s, with a crafted record id or client id", async (_name, action) => {
+    expect(await action({ id: CRAFTED_ID, clientId: CLIENT_ID })).toEqual({
+      ok: false,
+      error: SUB_RECORD_NOT_FOUND_ERROR,
+    });
+    expect(await action({ id: SUB_RECORD_ID, clientId: CRAFTED_ID })).toEqual({
+      ok: false,
+      error: SUB_RECORD_NOT_FOUND_ERROR,
+    });
+    expectNoDatabaseCall();
   });
 });

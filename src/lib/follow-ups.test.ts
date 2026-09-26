@@ -17,8 +17,8 @@ function draft(overrides: Partial<Parameters<typeof buildFollowUpsViewFromRecord
 
 describe("buildFollowUpsViewFromRecords", () => {
   it("labels each kind and falls back the reason to the kind label with no linked appointment", () => {
-    const view = buildFollowUpsViewFromRecords({ drafts: [draft()], now: new Date("2026-07-02T00:00:00Z"), timeZone: "UTC" });
-    expect(view.pendingCount).toBe(1);
+    const view = buildFollowUpsViewFromRecords({ drafts: [draft()], timeZone: "UTC" });
+    expect(view.items).toHaveLength(1);
     expect(view.items[0]).toMatchObject({
       id: "draft_1",
       clientName: "Alex Patient",
@@ -38,7 +38,7 @@ describe("buildFollowUpsViewFromRecords", () => {
   });
 
   it("returns an empty view for no drafts", () => {
-    expect(buildFollowUpsViewFromRecords({ drafts: [] })).toEqual({ items: [], pendingCount: 0 });
+    expect(buildFollowUpsViewFromRecords({ drafts: [] })).toEqual({ items: [] });
   });
 
   it("marks a SENT SLOT_OFFER as bookable but leaves every other kind/status combination not bookable", () => {

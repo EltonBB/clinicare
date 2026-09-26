@@ -4,14 +4,18 @@ const mocks = vi.hoisted(() => {
   const staffMember = {
     findFirst: vi.fn(),
     deleteMany: vi.fn(),
+    update: vi.fn(),
+    create: vi.fn(),
   };
+  const $transaction = vi.fn();
   const getAuthedBusiness = vi.fn();
-  return { staffMember, getAuthedBusiness };
+  return { staffMember, $transaction, getAuthedBusiness };
 });
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     staffMember: mocks.staffMember,
+    $transaction: mocks.$transaction,
   },
 }));
 
@@ -21,7 +25,15 @@ vi.mock("@/lib/business", () => ({
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
-import { deleteStaffAction, generateMobileAccessCodeAction } from "./actions";
+import type { SaveStaffPayload } from "@/lib/staff";
+
+import {
+  checkInStaffAction,
+  checkOutStaffAction,
+  deleteStaffAction,
+  generateMobileAccessCodeAction,
+  saveStaffAction,
+} from "./actions";
 
 const BUSINESS = { id: "biz_1" };
 const STAFF_ID = "staff_1";
@@ -103,5 +115,48 @@ describe("generateMobileAccessCodeAction", () => {
       ok: false,
       error: "Mobile access can't be issued to an inactive staff member.",
     });
+  });
+});
+
+// Server actions take client-serialized arguments: an object id like
+// `{ not: "" }` would reach Prisma's `where` as a filter over the workspace.
+describe("staff actions refuse a non-string id before touching the database", () => {
+  const CRAFTED_ID = { not: "" } as unknown as string;
+
+  function expectNoStaffQuery() {
+    for (const fn of Object.values(mocks.staffMember)) {
+      expect(fn).not.toHaveBeenCalled();
+    }
+    expect(mocks.$transaction).not.toHaveBeenCalled();
+  }
+
+  it.each([
+    ["delete (would remove every staff member)", deleteStaffAction],
+    ["check in (would open a time entry for every staff member)", checkInStaffAction],
+    ["check out (would close every open time entry)", checkOutStaffAction],
+  ])("%s", async (_name, action) => {
+    expect(await action(CRAFTED_ID)).toEqual({ ok: false, error: "Staff member not found in this workspace." });
+    expectNoStaffQuery();
+  });
+
+  it("save (would update every staff member), with a crafted id in the payload", async () => {
+    const payload: SaveStaffPayload = {
+      id: CRAFTED_ID,
+      name: "Dr. Arben Hoxha",
+      role: "Dentist",
+      email: "",
+      phone: "",
+      profileNote: "",
+      status: "ACTIVE",
+    };
+
+    expect(await saveStaffAction(payload)).toEqual({ ok: false, error: "Staff member not found in this workspace." });
+    expectNoStaffQuery();
+  });
+
+  it("mobile access", async () => {
+    expect(await generateMobileAccessCodeAction(CRAFTED_ID)).toEqual({ ok: false, error: "Staff member not found." });
+    expect(mocks.getAuthedBusiness).not.toHaveBeenCalled();
+    expect(mocks.staffMember.findFirst).not.toHaveBeenCalled();
   });
 });
