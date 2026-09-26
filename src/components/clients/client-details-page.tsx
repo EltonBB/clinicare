@@ -71,6 +71,7 @@ import {
 } from "@/components/workspace/workspace-layout";
 import { appointmentStatusKey } from "@/lib/appointment-status";
 import { safeUploadErrorMessage, uploadWorkspaceDocument } from "@/lib/media-storage-client";
+import { buildPaymentStatementCsv } from "@/lib/payment-statement";
 import { cn, getInitials } from "@/lib/utils";
 import type {
   ClientRecord,
@@ -593,23 +594,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   }
 
   function downloadPaymentStatement() {
-    const rows = [
-      ["Date", "Invoice", "Description", "Amount", "Status", "Payment method", "Receipt"],
-      ...client.payments.map((payment) => [
-        payment.paidAt || payment.createdAt,
-        payment.invoiceNumber || "",
-        payment.description || "Manual ledger entry",
-        payment.amountDisplay,
-        payment.status,
-        payment.paymentMethod || "Manual",
-        payment.receiptNumber || "",
-      ]),
-    ];
-    const csv = rows
-      .map((row) =>
-        row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")
-      )
-      .join("\n");
+    const csv = buildPaymentStatementCsv(client.payments);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
