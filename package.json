@@ -9,6 +9,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:integration:safety": "node --test tests/integration/database-safety.test.mjs",
+    "test:integration": "node scripts/test-integration.mjs",
     "test:watch": "vitest",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
