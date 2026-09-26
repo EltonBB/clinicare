@@ -1,6 +1,7 @@
 import { differenceInMinutes } from "date-fns";
 import type { Appointment, Business, Client } from "@prisma/client";
 import { isProBusinessPlan, planDisplayName, planStatusLabel } from "@/lib/billing";
+import type { NoShowRiskAssessment } from "@/lib/no-show-risk";
 import { formatCurrency } from "@/lib/utils";
 import {
   formatZonedDateKey,
@@ -27,6 +28,7 @@ export type DashboardAppointment = {
   service: string;
   staffName: string;
   status: DashboardAppointmentStatus;
+  risk?: NoShowRiskAssessment;
 };
 
 export type DashboardQuickAction = {
@@ -382,6 +384,7 @@ export function buildDashboardViewFromWorkspace(args: {
   recentClientId?: string;
   now?: Date;
   timeZone?: string;
+  noShowRisk?: Map<string, NoShowRiskAssessment>;
 }): DashboardViewModel {
   const {
     business,
@@ -399,6 +402,7 @@ export function buildDashboardViewFromWorkspace(args: {
     recentClientId,
     now = new Date(),
     timeZone = getAppTimeZone(),
+    noShowRisk,
   } = args;
   // Appointment metrics are aggregated in the DB (see lib/dashboard-data.ts) —
   // the rolling-window completion split, month-to-date completed count, mean
@@ -498,6 +502,7 @@ export function buildDashboardViewFromWorkspace(args: {
         service: nextAppointment.title,
         staffName: nextAppointment.staffMember?.name ?? "Workspace staff",
         status: toDashboardStatus(nextAppointment.status),
+        risk: noShowRisk?.get(nextAppointment.id),
       }
     : null;
 
@@ -514,6 +519,7 @@ export function buildDashboardViewFromWorkspace(args: {
       service: appointment.title,
       staffName: appointment.staffMember?.name ?? "Workspace staff",
       status: toDashboardStatus(appointment.status),
+      risk: noShowRisk?.get(appointment.id),
     })),
     lastClients: lastClients.map((client) => ({
       id: client.id,

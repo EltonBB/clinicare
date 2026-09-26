@@ -6,6 +6,7 @@ import { parseZonedWallClock } from "@/lib/time-zone";
 const mocks = vi.hoisted(() => {
   const appointment = {
     findFirst: vi.fn(),
+    findMany: vi.fn(),
     updateMany: vi.fn(),
     create: vi.fn(),
     findUniqueOrThrow: vi.fn(),
@@ -24,6 +25,7 @@ const mocks = vi.hoisted(() => {
   const notifyStaffOfAppointmentChange = vi.fn();
   const revalidateCalendarSurfaces = vi.fn();
   const recordAttendance = vi.fn();
+  const getRiskAssessments = vi.fn();
   return {
     appointment,
     client,
@@ -40,6 +42,7 @@ const mocks = vi.hoisted(() => {
     notifyStaffOfAppointmentChange,
     revalidateCalendarSurfaces,
     recordAttendance,
+    getRiskAssessments,
   };
 });
 
@@ -62,6 +65,10 @@ vi.mock("@/lib/business", () => ({
 
 vi.mock("@/lib/calendar-data", () => ({
   loadCalendarMonth: mocks.loadCalendarMonth,
+}));
+
+vi.mock("@/lib/no-show-risk-data", () => ({
+  getNoShowRiskAssessments: mocks.getRiskAssessments,
 }));
 
 vi.mock("@/lib/appointments-shared", async () => {
@@ -93,6 +100,7 @@ vi.mock("@/lib/appointments-shared", async () => {
 });
 
 import {
+  getNoShowRiskAction,
   loadCalendarMonthAction,
   recordAppointmentAttendanceAction,
   saveAppointmentAction,
@@ -798,5 +806,31 @@ describe("recordAppointmentAttendanceAction", () => {
       ok: false,
       error: "Appointment not found in this clinic workspace.",
     });
+  });
+});
+
+describe("getNoShowRiskAction", () => {
+  it("returns nothing for a workspace that isn't on Pro, without querying", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1", plan: "BASIC" }, user: {} });
+
+    expect(await getNoShowRiskAction(["a1"])).toEqual({});
+    expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+  });
+
+  it("looks up only PENDING/CONFIRMED rows in this business and returns the assessments as a plain object", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1", plan: "PRO" }, user: {} });
+    mocks.appointment.findMany.mockResolvedValue([
+      { id: "a1", clientId: "c1", startAt: new Date("2026-07-10T09:00:00Z"), createdAt: new Date("2026-07-01T09:00:00Z"), status: "CONFIRMED" },
+    ]);
+    mocks.getRiskAssessments.mockResolvedValue(new Map([["a1", { level: "high", reasons: ["Missed a recent appointment"], insufficientHistory: false }]]));
+
+    const result = await getNoShowRiskAction(["a1"]);
+
+    expect(result).toEqual({ a1: { level: "high", reasons: ["Missed a recent appointment"], insufficientHistory: false } });
+    expect(mocks.appointment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: { in: ["a1"] }, businessId: "biz_1", status: { in: ["PENDING", "CONFIRMED"] } }),
+      })
+    );
   });
 });

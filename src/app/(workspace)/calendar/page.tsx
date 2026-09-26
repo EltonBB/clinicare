@@ -111,6 +111,7 @@ export default async function CalendarPage({
       initialRange={month.range}
       today={todayKey}
       canRecordNoShows={isProBusinessPlan(business.plan)}
+      canViewNoShowRisk={isProBusinessPlan(business.plan)}
     />
   );
 }

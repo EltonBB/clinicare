@@ -3,8 +3,10 @@ import { after } from "next/server";
 import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
 import { prisma } from "@/lib/prisma";
 import { requireCurrentWorkspace } from "@/lib/business";
+import { isProBusinessPlan } from "@/lib/billing";
 import { buildDashboardViewFromWorkspace } from "@/lib/dashboard";
 import { getDashboardAppointmentAggregates } from "@/lib/dashboard-data";
+import { getNoShowRiskAssessments } from "@/lib/no-show-risk-data";
 import { subDays } from "date-fns";
 import {
   getAppTimeZone,
@@ -254,6 +256,22 @@ export default async function DashboardPage() {
 
   const appointments =
     appointmentsResult.status === "fulfilled" ? appointmentsResult.value : [];
+  const upcomingForRisk = appointments.filter(
+    (appointment) => appointment.status === "PENDING" || appointment.status === "CONFIRMED"
+  );
+  const noShowRisk =
+    isProBusinessPlan(business.plan) && upcomingForRisk.length > 0
+      ? await getNoShowRiskAssessments({
+          businessId: business.id,
+          appointments: upcomingForRisk.map((appointment) => ({
+            id: appointment.id,
+            clientId: appointment.clientId,
+            startAt: appointment.startAt,
+            createdAt: appointment.createdAt,
+            status: appointment.status as "PENDING" | "CONFIRMED",
+          })),
+        })
+      : undefined;
   const unreadCount =
     unreadMessagesResult.status === "fulfilled"
       ? unreadMessagesResult.value._sum.unreadCount ?? 0
@@ -385,6 +403,7 @@ export default async function DashboardPage() {
     recentClientId: recentClient?.id,
     now,
     timeZone,
+    noShowRisk,
   });
 
   return <DashboardOverview view={view} />;

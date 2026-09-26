@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowUpRight, CalendarPlus2, UsersRound } from "lucide-react";
 
+import { NoShowRiskBadge } from "@/components/calendar/no-show-risk-badge";
 import { DashboardMessagesCard } from "@/components/dashboard/dashboard-messages-card";
 import { useWorkspaceUnreadCount } from "@/components/layout/workspace-live-context";
 import { KpiValue } from "@/components/workspace/kpi-value";
@@ -295,6 +296,9 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                 <span className="shrink-0 rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold leading-4 text-primary-foreground">
                   {view.nextAppointment.time}
                 </span>
+                {view.nextAppointment.risk?.level === "high" ? (
+                  <NoShowRiskBadge risk={view.nextAppointment.risk} />
+                ) : null}
               </div>
             </Link>
           ) : null}
@@ -345,6 +349,9 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                   >
                     {appointment.status}
                   </span>
+                  {appointment.risk?.level === "high" ? (
+                    <NoShowRiskBadge risk={appointment.risk} />
+                  ) : null}
                 </Link>
               ))}
             </div>

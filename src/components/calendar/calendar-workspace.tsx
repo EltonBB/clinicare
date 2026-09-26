@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 
 import {
+  getNoShowRiskAction,
   loadCalendarMonthAction,
   recordAppointmentAttendanceAction,
 } from "@/app/(workspace)/calendar/actions";
@@ -41,10 +42,12 @@ import {
   WorkspacePage,
 } from "@/components/workspace/workspace-layout";
 import { MonthGrid } from "@/components/workspace/month-grid";
+import { NoShowRiskBadge } from "./no-show-risk-badge";
 import { useDismissOnOutsideOrEscape } from "@/hooks/use-dismiss-on-outside-or-escape";
 import { businessHoursForDate, timeToMinutes } from "@/lib/calendar";
 import { rowsThatFit, visibleEntryCount } from "@/lib/calendar-fit";
 import { monthsToLoad, type CalendarRange } from "@/lib/calendar-range";
+import type { NoShowRiskAssessment } from "@/lib/no-show-risk";
 import { cn } from "@/lib/utils";
 import type {
   CalendarAppointment,
@@ -63,6 +66,8 @@ type CalendarWorkspaceProps = {
   today: string;
   /** Pro workspaces can mark a visit as a no-show (and undo it) from the quick view. */
   canRecordNoShows: boolean;
+  /** Pro workspaces see a no-show risk badge in the quick view and Day view. */
+  canViewNoShowRisk: boolean;
 };
 
 const views: CalendarView[] = ["day", "week", "month"];
@@ -137,6 +142,7 @@ function EventPill({
   onOpen,
   dense = false,
   detailed = false,
+  risk,
 }: {
   appointment: CalendarAppointment;
   onOpen: (event: MouseEvent<HTMLAnchorElement>) => void;
@@ -148,6 +154,8 @@ function EventPill({
   // ~900px of dead space between the two. Same pill, laid out as a schedule row:
   // time first, then who, what and with whom, then the status in words.
   detailed?: boolean;
+  /** Only rendered in the detailed (Day view) row — never fetched for month/week pills. */
+  risk?: NoShowRiskAssessment;
 }) {
   return (
     <Link
@@ -192,6 +200,7 @@ function EventPill({
           <span className="hidden w-20 shrink-0 text-right text-xs font-semibold capitalize opacity-80 sm:block">
             {appointment.status}
           </span>
+          <NoShowRiskBadge risk={risk} />
         </>
       ) : (
         <>
@@ -262,6 +271,7 @@ function DayColumn({
   onOpen,
   onOpenDay,
   detailed = false,
+  risk,
 }: {
   dayKey: string;
   entries: Array<CalendarAppointment | CalendarScheduleBlock>;
@@ -273,6 +283,8 @@ function DayColumn({
   onOpen: (appointment: CalendarAppointment, event: MouseEvent<HTMLAnchorElement>) => void;
   onOpenDay: () => void;
   detailed?: boolean;
+  /** Keyed by appointment id — only read for detailed (Day view) rows. */
+  risk?: Record<string, NoShowRiskAssessment>;
 }) {
   const columnRef = useRef<HTMLDivElement>(null);
   const [slots, setSlots] = useState(DAY_COLUMN_FALLBACK_SLOTS);
@@ -313,6 +325,7 @@ function DayColumn({
             key={entry.id}
             appointment={entry}
             detailed={detailed}
+            risk={risk?.[entry.id]}
             onOpen={(event) => onOpen(entry, event)}
           />
         ) : (
@@ -469,6 +482,7 @@ function AppointmentQuickView({
   onClose,
   attendanceAction,
   onRecordAttendance,
+  risk,
 }: {
   appointment: CalendarAppointment;
   anchorRect: DOMRect;
@@ -477,6 +491,8 @@ function AppointmentQuickView({
   attendanceAction: AttendanceAction | null;
   /** Resolves to an error message, or null when it worked (the parent then closes this). */
   onRecordAttendance: (attended: boolean) => Promise<string | null>;
+  /** Present only for a Pro workspace, once the batched lookup resolves. */
+  risk?: NoShowRiskAssessment;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
@@ -567,6 +583,12 @@ function AppointmentQuickView({
             {appointment.status}
           </span>
         </div>
+        {risk && !risk.insufficientHistory && risk.level !== "low" ? (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">Risk</span>
+            <NoShowRiskBadge risk={risk} />
+          </div>
+        ) : null}
       </div>
       <div className="mt-3 space-y-2">
         {attendanceAction ? (
@@ -600,10 +622,12 @@ export function CalendarWorkspace({
   initialRange,
   today,
   canRecordNoShows,
+  canViewNoShowRisk,
 }: CalendarWorkspaceProps) {
   const [view, setView] = useState<CalendarView>("week");
   const [activeDate, setActiveDate] = useState(() => parseISO(initialView.initialDate));
   const [quickView, setQuickView] = useState<{ appointment: CalendarAppointment; rect: DOMRect } | null>(null);
+  const [risk, setRisk] = useState<Record<string, NoShowRiskAssessment>>({});
   // The page loads the viewed month; every other month is fetched when navigated
   // to (below) and merged in, so history and far-off dates are never silently empty.
   const [appointments, setAppointments] = useState(initialView.appointments);
@@ -758,6 +782,44 @@ export function CalendarWorkspace({
     event.stopPropagation();
     setQuickView({ appointment, rect: event.currentTarget.getBoundingClientRect() });
   }
+
+  // Fires whenever the popover opens on a new appointment, only when Pro.
+  useEffect(() => {
+    if (!canViewNoShowRisk || !quickView) return;
+    const id = quickView.appointment.id;
+    if (risk[id]) return; // already have it — popovers reopen on the same appointment often
+    let cancelled = false;
+    void getNoShowRiskAction([id]).then((result) => {
+      if (!cancelled) setRisk((current) => ({ ...current, ...result }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewNoShowRisk, quickView, risk]);
+
+  // Day view lists every appointment for the active date, so its risk badges are
+  // fetched as one batch for the whole column rather than per-row.
+  useEffect(() => {
+    if (!canViewNoShowRisk || view !== "day") return;
+    const dayKey = format(activeDate, "yyyy-MM-dd");
+    const ids = appointments
+      .filter(
+        (appointment) =>
+          appointment.date === dayKey &&
+          (appointment.status === "pending" || appointment.status === "confirmed") &&
+          !risk[appointment.id]
+      )
+      .map((appointment) => appointment.id);
+    if (ids.length === 0) return;
+    let cancelled = false;
+    void getNoShowRiskAction(ids).then((result) => {
+      if (!cancelled) setRisk((current) => ({ ...current, ...result }));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `risk` is read only to skip ids already fetched; including it would re-run this on every fetch resolution.
+  }, [canViewNoShowRisk, view, activeDate, appointments]);
 
   // Only Pro, only a visit whose day has come, never a cancelled one. `today` is
   // the clinic-zone date, so this compares like with like; a visit later today
@@ -1087,6 +1149,7 @@ export function CalendarWorkspace({
                       isEmpty={isEmpty}
                       isClosed={isClosed}
                       detailed={view === "day"}
+                      risk={risk}
                       onOpen={openQuickView}
                       onOpenDay={() => {
                         setActiveDate(day);
@@ -1109,6 +1172,7 @@ export function CalendarWorkspace({
           onClose={() => setQuickView(null)}
           attendanceAction={attendanceActionFor(quickView.appointment)}
           onRecordAttendance={(attended) => recordAttendance(quickView.appointment, attended)}
+          risk={risk[quickView.appointment.id]}
         />
       ) : null}
     </WorkspacePage>

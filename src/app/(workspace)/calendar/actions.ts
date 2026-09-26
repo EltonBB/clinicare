@@ -24,6 +24,8 @@ import {
   revalidateCalendarSurfaces,
 } from "@/lib/appointments-shared";
 import { isProBusinessPlan } from "@/lib/billing";
+import { getNoShowRiskAssessments } from "@/lib/no-show-risk-data";
+import type { NoShowRiskAssessment } from "@/lib/no-show-risk";
 import {
   formatZonedDateKey,
   formatZonedTime24,
@@ -632,6 +634,54 @@ export async function recordAppointmentAttendanceAction(
   }
 
   return { ok: true, status: attended ? "completed" : "no-show" };
+}
+
+/**
+ * Batched risk lookup for whatever's currently on screen (a quick-view
+ * popover, one Day-view column). Pro only — a Basic workspace gets an empty
+ * object, not an error, so the UI can call this unconditionally and just get
+ * nothing back to render.
+ */
+export async function getNoShowRiskAction(
+  appointmentIds: string[]
+): Promise<Record<string, NoShowRiskAssessment>> {
+  if (appointmentIds.length === 0) {
+    return {};
+  }
+
+  const context = await getAuthedBusiness();
+
+  if ("error" in context) {
+    return {};
+  }
+
+  const business = context.business;
+
+  if (!isProBusinessPlan(business.plan)) {
+    return {};
+  }
+
+  const rows = await prisma.appointment.findMany({
+    where: {
+      id: { in: appointmentIds },
+      businessId: business.id,
+      status: { in: ["PENDING", "CONFIRMED"] },
+    },
+    select: { id: true, clientId: true, startAt: true, createdAt: true, status: true },
+  });
+
+  const assessments = await getNoShowRiskAssessments({
+    businessId: business.id,
+    appointments: rows.map((row) => ({
+      id: row.id,
+      clientId: row.clientId,
+      startAt: row.startAt,
+      createdAt: row.createdAt,
+      status: row.status as "PENDING" | "CONFIRMED",
+    })),
+  });
+
+  return Object.fromEntries(assessments);
 }
 
 export async function deleteAppointmentAction(
