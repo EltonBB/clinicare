@@ -17,6 +17,7 @@ import {
   requestBaileysPairing,
 } from "@/lib/messaging/baileys-control";
 import type { WorkerConnectionStatus } from "@/lib/messaging/baileys-contract";
+import { isSupportedCurrency } from "@/lib/currency";
 import { normalizePhone } from "@/lib/inbox";
 import {
   isValidUploadShape,
@@ -69,6 +70,16 @@ function clampReminderHours(value: number, fallback: number) {
 const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "must be HH:MM");
 const daySchema = z.object({ start: timeSchema, end: timeSchema });
 const saveSettingsSchema = z.object({
+  // Unlike businessType, currency IS validated: every amount is formatted with
+  // it, and a code outside the supported list (or a zero-decimal one) would
+  // show wrong amounts. It stays optional so a page opened before this field
+  // existed can still save; omitted means "leave the stored currency alone".
+  business: z.object({
+    currency: z
+      .string()
+      .refine(isSupportedCurrency, "Choose one of the listed currencies.")
+      .optional(),
+  }),
   workingHours: z.object({
     monday: daySchema,
     tuesday: daySchema,
@@ -211,6 +222,8 @@ export async function saveSettingsAction(
       data: {
         name: payload.business.businessName.trim() || business.name,
         businessType: payload.business.businessType,
+        // undefined = leave as is (Prisma skips it): an older client bundle omits the field.
+        currency: payload.business.currency,
         logoUrl: nextLogoUrl || null,
         brandAccentColor,
         whatsappNumber: normalizedWhatsAppNumber || null,

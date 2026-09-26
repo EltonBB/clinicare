@@ -189,5 +189,5 @@ export default async function ClientDetailsRoute({
     notFound();
   }
 
-  return <ClientDetailsPage initialClient={await buildClientRecord(client)} />;
+  return <ClientDetailsPage initialClient={await buildClientRecord(client, business.currency)} />;
 }

@@ -13,6 +13,9 @@ model Business {
   ownerId                String                  @unique
   name                   String
   businessType           String
+  // ISO 4217 code every amount in this workspace is shown in (see lib/currency.ts
+  // for the supported list). Amounts themselves stay integer cents.
+  currency               String                  @default("EUR")
   logoUrl                String?
   // Orphaned 2026-06: the dashboard customizer was removed; no code reads or
   // writes this. Safe to drop in the next schema migration.

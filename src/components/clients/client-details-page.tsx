@@ -71,7 +71,7 @@ import {
 } from "@/components/workspace/workspace-layout";
 import { appointmentStatusKey } from "@/lib/appointment-status";
 import { safeUploadErrorMessage, uploadWorkspaceDocument } from "@/lib/media-storage-client";
-import { cn, formatCurrency, getInitials } from "@/lib/utils";
+import { cn, getInitials } from "@/lib/utils";
 import type {
   ClientRecord,
   ClientStatus,
@@ -321,9 +321,6 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   );
   const latestPayment = client.payments[0];
   const currentMedications = client.medications.filter((medication) => medication.isActive);
-  const totalBilledDisplay = formatCurrency(
-    client.payments.reduce((sum, payment) => sum + payment.amountCents, 0)
-  );
   const allergies = client.healthItems.filter((item) =>
     item.type.toLowerCase().includes("allerg")
   );
@@ -1181,7 +1178,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           ) : (
             <div className="space-y-3">
               <section className="surface-card grid gap-3 p-3.5 md:grid-cols-4">
-                <PaymentMetric label="Total billed" value={totalBilledDisplay} helper={countLabel(client.payments.length, "ledger entry", "ledger entries")} />
+                <PaymentMetric label="Total billed" value={client.paymentStats.totalBilledDisplay}helper={countLabel(client.payments.length, "ledger entry", "ledger entries")} />
                 <PaymentMetric label="Total paid" value={client.paymentStats.totalPaidDisplay} helper={countLabel(client.payments.filter((payment) => payment.status.toLowerCase() === "paid").length, "paid entry", "paid entries")} tone="good" />
                 <PaymentMetric label="Outstanding" value={client.paymentStats.unpaidBalanceDisplay} helper="Open balance" tone={client.paymentStats.unpaidBalanceCents > 0 ? "danger" : "default"} />
                 <PaymentMetric

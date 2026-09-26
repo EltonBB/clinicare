@@ -7,6 +7,7 @@ import type {
 } from "@prisma/client";
 
 import { businessTypes, type BusinessType } from "@/lib/constants";
+import { normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
 import {
   type WeekdayKey,
   type WorkingHoursState,
@@ -84,6 +85,8 @@ export type SettingsState = {
   business: {
     businessName: string;
     businessType: BusinessType;
+    /** The currency every amount in the workspace is shown in. */
+    currency: SupportedCurrency;
     ownerName: string;
     supportEmail: string;
     logoUrl: string;
@@ -260,6 +263,9 @@ export function buildSettingsStateFromWorkspace({
     business: {
       businessName: business.name,
       businessType,
+      // A stored value we no longer list reads as the default, so the picker
+      // always shows something selectable and resubmitting it is valid.
+      currency: normalizeCurrency(business.currency),
       ownerName,
       supportEmail,
       logoUrl,
@@ -297,6 +303,7 @@ export type SaveSettingsPayload = {
   business: {
     businessName: string;
     businessType: BusinessType;
+    currency: SupportedCurrency;
     ownerName: string;
     logoUrl: string;
   };

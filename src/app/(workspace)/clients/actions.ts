@@ -334,6 +334,8 @@ async function fetchClientRecord(businessId: string, clientId: string) {
       businessId,
     },
     include: {
+      // Every amount on the record is shown in the workspace's currency.
+      business: { select: { currency: true } },
       appointments: {
         select: {
           id: true,
@@ -498,7 +500,7 @@ async function fetchClientRecord(businessId: string, clientId: string) {
     },
   });
 
-  return buildClientRecord(client);
+  return buildClientRecord(client, client.business.currency);
 }
 
 async function requireOwnedClient(clientId: string) {
