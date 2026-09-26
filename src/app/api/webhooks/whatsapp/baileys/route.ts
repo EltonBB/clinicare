@@ -6,6 +6,7 @@ import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { BAILEYS_BRIDGE_HEADER } from "@/lib/messaging/baileys-contract";
 import {
+  applyInboundReplyIntent,
   recordConnectionState,
   recordDeliveryStatus,
   recordInboundMessage,
@@ -100,6 +101,24 @@ export async function POST(request: Request) {
         providerMessageId: event.providerMessageId,
         contactName: event.contactName,
       });
+      if (result.recorded) {
+        // Best-effort: the message is already safely recorded above regardless
+        // of whether a confirm/cancel reply can also be applied, so a failure
+        // here must never turn a successful recordInboundMessage into a 500 —
+        // the worker would retry, and duplicate-detection would then swallow
+        // the retry as "duplicate", permanently losing the reply-intent chance.
+        try {
+          await applyInboundReplyIntent({
+            businessId: event.businessId,
+            clientId: result.clientId,
+            body: event.body,
+          });
+        } catch (error) {
+          logger.error("Failed to apply an inbound reply intent.", error, {
+            businessId: event.businessId,
+          });
+        }
+      }
       return NextResponse.json({ ok: true, recorded: result.recorded });
     }
   } catch (error) {

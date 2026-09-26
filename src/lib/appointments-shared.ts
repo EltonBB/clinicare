@@ -431,6 +431,60 @@ export async function recordAppointmentAttendanceCore(args: {
 }
 
 /**
+ * Confirms a pending appointment via compare-and-set, same discipline as
+ * cancelAppointmentCore/recordAppointmentAttendanceCore: the allowed source
+ * state (PENDING) lives in the update's own WHERE clause. Used by the
+ * confirm-by-reply workflow — see lib/messaging/inbound.ts.
+ */
+export async function confirmAppointmentCore(where: {
+  id: string;
+  businessId: string;
+}): Promise<AppointmentMutationOutcome> {
+  return prisma.$transaction(async (tx) => {
+    const { count } = await tx.appointment.updateMany({
+      where: { ...where, status: "PENDING" },
+      data: { status: "CONFIRMED" },
+    });
+
+    if (count === 0) {
+      const existing = await tx.appointment.findFirst({
+        where,
+        select: { id: true, clientId: true, staffMemberId: true, status: true },
+      });
+
+      if (!existing) {
+        return { ok: false, status: 404, error: APPOINTMENT_NOT_FOUND_ERROR };
+      }
+
+      if (existing.status === "CONFIRMED") {
+        return {
+          ok: true,
+          appointmentId: existing.id,
+          clientId: existing.clientId,
+          staffMemberId: existing.staffMemberId,
+          changed: false,
+        };
+      }
+
+      return { ok: false, status: 409, error: APPOINTMENT_CONFLICT_ERROR };
+    }
+
+    const updated = await tx.appointment.findFirstOrThrow({
+      where: { id: where.id },
+      select: { id: true, clientId: true, staffMemberId: true },
+    });
+
+    return {
+      ok: true,
+      appointmentId: updated.id,
+      clientId: updated.clientId,
+      staffMemberId: updated.staffMemberId,
+      changed: true,
+    };
+  });
+}
+
+/**
  * Delete an appointment via compare-and-set: the existence check is folded
  * into the delete's own WHERE clause (`deleteMany`, not `.delete`), so a
  * concurrent delete of the same row (a double-click, or two admin tabs)

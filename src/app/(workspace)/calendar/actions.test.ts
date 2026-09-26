@@ -939,4 +939,19 @@ describe("getNoShowRiskAction", () => {
       })
     );
   });
+
+  it("caps an oversized id batch to MAX_RISK_BATCH_SIZE (200) instead of querying an unbounded IN clause", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1", plan: "PRO" }, user: {} });
+    mocks.appointment.findMany.mockResolvedValue([]);
+    mocks.getRiskAssessments.mockResolvedValue(new Map());
+
+    const ids = Array.from({ length: 250 }, (_, i) => `a${i}`);
+    await getNoShowRiskAction(ids);
+
+    const call = mocks.appointment.findMany.mock.calls[0][0];
+    const queriedIds: string[] = call.where.id.in;
+    expect(queriedIds).toHaveLength(200);
+    expect(queriedIds).toEqual(ids.slice(0, 200));
+    expect(queriedIds).not.toContain("a200");
+  });
 });

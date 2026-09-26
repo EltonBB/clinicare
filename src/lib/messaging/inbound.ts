@@ -1,5 +1,16 @@
+import {
+  cancelAppointmentCore,
+  confirmAppointmentCore,
+  notifyStaffOfAppointmentChange,
+  revalidateCalendarSurfaces,
+} from "@/lib/appointments-shared";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
+import { sendMessage } from "@/lib/messaging";
 import { prisma } from "@/lib/prisma";
+import { classifyReplyIntent } from "@/lib/reply-intent";
+import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
+
+import type { AppointmentStatus } from "@prisma/client";
 
 import type { MessageDeliveryStatus } from "./types";
 
@@ -14,7 +25,7 @@ export type InboundMessage = {
 };
 
 export type RecordInboundResult =
-  | { recorded: true; conversationId: string }
+  | { recorded: true; conversationId: string; clientId: string | null }
   | { recorded: false; reason: "duplicate" | "invalid_phone" | "empty_body" };
 
 /**
@@ -116,7 +127,100 @@ export async function recordInboundMessage(
     throw error;
   }
 
-  return { recorded: true, conversationId };
+  return { recorded: true, conversationId, clientId: matchingClient?.id ?? null };
+}
+
+export type ApplyReplyIntentResult =
+  | { applied: false; reason: "no_intent" | "no_client" | "no_match" | "ambiguous" }
+  | { applied: true; intent: "confirm" | "cancel"; appointmentId: string };
+
+/**
+ * Reads an inbound message for a confirm/cancel reply and, only when exactly
+ * one upcoming reminded appointment matches, acts on it. Called by the
+ * webhook route right after recordInboundMessage succeeds — separate from it
+ * so the message-recording path (already heavily tested, with its own P2002
+ * race handling) stays unchanged in behavior and risk surface.
+ */
+export async function applyInboundReplyIntent(args: {
+  businessId: string;
+  clientId: string | null;
+  body: string;
+  now?: Date;
+}): Promise<ApplyReplyIntentResult> {
+  const { businessId, clientId, body, now = new Date() } = args;
+
+  const intent = classifyReplyIntent(body);
+  if (!intent) {
+    return { applied: false, reason: "no_intent" };
+  }
+  if (!clientId) {
+    return { applied: false, reason: "no_client" };
+  }
+
+  // Confirming only makes sense from PENDING; cancelling also allows an
+  // already-CONFIRMED appointment (the far more common real case: a patient
+  // was already confirmed but now needs to cancel).
+  const candidateStatuses: AppointmentStatus[] =
+    intent === "confirm" ? ["PENDING"] : ["PENDING", "CONFIRMED"];
+
+  const candidates = await prisma.appointment.findMany({
+    where: {
+      businessId,
+      clientId,
+      status: { in: candidateStatuses },
+      startAt: { gt: now },
+      reminders: { some: { status: "SENT" } },
+    },
+    select: { id: true, startAt: true, client: { select: { phone: true } } },
+  });
+
+  if (candidates.length !== 1) {
+    return { applied: false, reason: candidates.length === 0 ? "no_match" : "ambiguous" };
+  }
+
+  const appointment = candidates[0];
+  const phone = appointment.client.phone;
+
+  if (intent === "confirm") {
+    const outcome = await confirmAppointmentCore({ id: appointment.id, businessId });
+    if (!outcome.ok || !outcome.changed) {
+      return { applied: false, reason: "no_match" };
+    }
+    if (phone) {
+      await sendMessage({
+        channel: "WHATSAPP",
+        businessId,
+        to: phone,
+        message: {
+          kind: "freeform",
+          body: `You're confirmed for ${formatZonedTime(appointment.startAt)} on ${formatZonedFullDate(appointment.startAt)}. See you then!`,
+        },
+      });
+    }
+    return { applied: true, intent: "confirm", appointmentId: appointment.id };
+  }
+
+  const outcome = await cancelAppointmentCore({ id: appointment.id, businessId });
+  if (!outcome.ok || !outcome.changed) {
+    return { applied: false, reason: "no_match" };
+  }
+  if (phone) {
+    await sendMessage({
+      channel: "WHATSAPP",
+      businessId,
+      to: phone,
+      message: {
+        kind: "freeform",
+        body: `Your appointment on ${formatZonedFullDate(appointment.startAt)} at ${formatZonedTime(appointment.startAt)} has been cancelled.`,
+      },
+    });
+  }
+  if (outcome.staffMemberId) {
+    await notifyStaffOfAppointmentChange(businessId, outcome.staffMemberId, appointment.id, "changed");
+  }
+  revalidateCalendarSurfaces([outcome.clientId], outcome.staffMemberId ? [outcome.staffMemberId] : []);
+
+  return { applied: true, intent: "cancel", appointmentId: appointment.id };
 }
 
 /**
