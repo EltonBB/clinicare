@@ -64,7 +64,7 @@ src/
     onboarding/        # post-confirmation multi-step setup + actions.ts
     api/
       cron/{analytics,reminders,storage-cleanup,follow-ups}/   # Vercel cron targets, guarded by a secret
-      webhooks/whatsapp/baileys/    # inbound from the Baileys worker (shared-secret guarded)
+      webhooks/whatsapp/baileys/    # inbound from the Baileys worker (HMAC-signed; shared-secret fallback while rolling out)
       search/                       # authenticated global search
       auth/email-verification-status/
     <marketing>/       # /, product, pricing, about, contact, checkout, terms, privacy, refund
@@ -128,7 +128,7 @@ Everything is scoped to a `Business` (the workspace/tenant). Plan state lives on
 
 - **Tenant isolation is enforced server-side** through Prisma + the workspace-context helpers. Supabase public tables have **Row Level Security enabled with no public policies**, so the browser-exposed anon API cannot read/write app data.
 - `src/proxy.ts` protects all `(workspace)` routes and sets global security headers; unauthenticated hits to `/dashboard`, `/calendar`, `/clients`, `/staff`, `/inbox`, `/reports`, `/settings` redirect to `/login`.
-- Cron routes (`/api/cron/*`) and the WhatsApp worker webhook (`/api/webhooks/whatsapp/baileys`) are guarded (`isAuthorized()` / shared-secret check) — preserve those guards when editing.
+- Cron routes (`/api/cron/*`) and the WhatsApp worker webhook (`/api/webhooks/whatsapp/baileys`) are guarded (`isAuthorized()` for cron; for the webhook, an HMAC over the exact body plus a timestamp keyed with `BAILEYS_WEBHOOK_SECRET`, falling back to the shared `BAILEYS_BRIDGE_SECRET` only while that isn't set) — preserve those guards when editing. The worker names the `businessId` of every event, so a forged event can cancel a real appointment; that is why the webhook has its own secret and a freshness window.
 
 ## External integrations
 

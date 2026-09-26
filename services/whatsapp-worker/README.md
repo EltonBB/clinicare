@@ -41,7 +41,7 @@ All except `/health` require the `x-vela-bridge-secret` header.
 ```bash
 cd services/whatsapp-worker
 npm install
-cp .env.example .env        # fill in BAILEYS_BRIDGE_SECRET, APP_WEBHOOK_URL, DATABASE_URL
+cp .env.example .env        # fill in BAILEYS_BRIDGE_SECRET, APP_WEBHOOK_URL, APP_WEBHOOK_SECRET, DATABASE_URL
 npm run typecheck           # tsc --noEmit
 npm run dev                 # tsx watch src/index.ts
 ```
