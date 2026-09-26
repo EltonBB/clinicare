@@ -64,6 +64,39 @@ function FollowUpDraftRow({
   // it adds information the kind badge doesn't already say.
   const showReason = draft.reasonLabel !== draft.kindLabel;
 
+  /**
+   * Runs one row action: shows its busy state, turns a refused or thrown action
+   * into a plain message (never the raw error) and re-enables the buttons, and
+   * returns the result only when it succeeded (null when the failure was shown).
+   */
+  async function run<T extends { ok: boolean; error?: string }>(
+    kind: Exclude<FollowUpBusyState, null>,
+    call: () => Promise<T>,
+    fallbackError: string
+  ): Promise<T | null> {
+    setBusy(kind);
+    setError("");
+
+    let result: T;
+    try {
+      result = await call();
+    } catch {
+      // A rejected server action (network drop, 5xx, deploy skew) — a plain
+      // message, and the buttons come back instead of staying stuck disabled.
+      setError("Something went wrong. Try again.");
+      setBusy(null);
+      return null;
+    }
+
+    if (!result.ok) {
+      setError(result.error ?? fallbackError);
+      setBusy(null);
+      return null;
+    }
+
+    return result;
+  }
+
   async function handleSend() {
     const trimmed = body.trim();
 
@@ -72,97 +105,39 @@ function FollowUpDraftRow({
       return;
     }
 
-    setBusy("send");
-    setError("");
+    const result = await run(
+      "send",
+      () => sendFollowUpDraftAction(draft.id, trimmed !== draft.body ? trimmed : undefined),
+      "Couldn't send this message. Try again."
+    );
 
-    let result;
-    try {
-      result = await sendFollowUpDraftAction(
-        draft.id,
-        trimmed !== draft.body ? trimmed : undefined
-      );
-    } catch {
-      // A rejected server action (network drop, 5xx, deploy skew) — a plain
-      // message, never the raw error, and re-enable the buttons instead of
-      // leaving them stuck disabled with no feedback.
-      setError("Something went wrong. Try again.");
-      setBusy(null);
-      return;
+    if (result) {
+      onHandled();
     }
-
-    if (!result.ok) {
-      setError(result.error ?? "Couldn't send this message. Try again.");
-      setBusy(null);
-      return;
-    }
-
-    onHandled();
   }
 
   async function handleSkip() {
-    setBusy("skip");
-    setError("");
-
-    let result;
-    try {
-      result = await dismissFollowUpDraftAction(draft.id);
-    } catch {
-      setError("Something went wrong. Try again.");
-      setBusy(null);
-      return;
+    if (await run("skip", () => dismissFollowUpDraftAction(draft.id), "We couldn't skip this follow-up.")) {
+      onHandled();
     }
-
-    if (!result.ok) {
-      setError(result.error ?? "We couldn't skip this follow-up.");
-      setBusy(null);
-      return;
-    }
-
-    onHandled();
   }
 
   async function handleBook() {
-    setBusy("book");
-    setError("");
+    const result = await run(
+      "book",
+      () => bookFollowUpSlotAction(draft.id),
+      "This slot offer is no longer available."
+    );
 
-    let result;
-    try {
-      result = await bookFollowUpSlotAction(draft.id);
-    } catch {
-      setError("Something went wrong. Try again.");
-      setBusy(null);
-      return;
+    if (result?.ok) {
+      router.push(result.bookingUrl);
     }
-
-    if (!result.ok) {
-      setError(result.error ?? "This slot offer is no longer available.");
-      setBusy(null);
-      return;
-    }
-
-    router.push(result.bookingUrl);
   }
 
   async function handlePass() {
-    setBusy("pass");
-    setError("");
-
-    let result;
-    try {
-      result = await passSlotOfferAction(draft.id);
-    } catch {
-      setError("Something went wrong. Try again.");
-      setBusy(null);
-      return;
+    if (await run("pass", () => passSlotOfferAction(draft.id), "This slot offer is no longer available.")) {
+      onHandled();
     }
-
-    if (!result.ok) {
-      setError(result.error ?? "This slot offer is no longer available.");
-      setBusy(null);
-      return;
-    }
-
-    onHandled();
   }
 
   return (
