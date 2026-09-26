@@ -234,8 +234,6 @@ function toDashboardStatus(status: Appointment["status"]): DashboardAppointmentS
   return "confirmed";
 }
 
-const formatDashboardMoney = (cents: number) => formatCurrency(cents, { whole: true });
-
 // The calendar day `offset` days before `now` in the clinic's time zone. The
 // subtraction runs on the date parts in UTC, so it never depends on the
 // server's own zone, and a DST change can't push a 24-hour step onto the wrong
@@ -326,8 +324,11 @@ export function buildVisitsSummary(args: {
 }
 
 export function buildRevenueSummary(
-  paymentGroups: DashboardPaymentStatusGroup[]
+  paymentGroups: DashboardPaymentStatusGroup[],
+  currency: string
 ): DashboardRevenueSummary {
+  // Compact tiles show whole amounts, in the clinic's own currency.
+  const formatDashboardMoney = (cents: number) => formatCurrency(cents, currency, { whole: true });
   let paidCents = 0;
   let paidCountThisMonth = 0;
   let outstandingCents = 0;
@@ -424,7 +425,7 @@ export function buildDashboardViewFromWorkspace(args: {
     now,
     timeZone,
   });
-  const revenueSummary = buildRevenueSummary(paymentGroups);
+  const revenueSummary = buildRevenueSummary(paymentGroups, business.currency);
   const conversationPreviews: DashboardConversationPreview[] = conversations.map(
     (conversation) => {
       const lastMessage = conversation.messages[0];

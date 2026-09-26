@@ -19,22 +19,38 @@ function group(
 
 describe("buildRevenueSummary", () => {
   it("sums paid revenue and outstanding from per-status groups", () => {
-    const summary = buildRevenueSummary([
-      group("Paid", 10000, 2),
-      group("Unpaid", 5000, 1),
-      group("Partially Paid", 3000, 1),
-      group("Refunded", 2000, 1),
-    ]);
+    const summary = buildRevenueSummary(
+      [
+        group("Paid", 10000, 2),
+        group("Unpaid", 5000, 1),
+        group("Partially Paid", 3000, 1),
+        group("Refunded", 2000, 1),
+      ],
+      "USD"
+    );
 
-    expect(summary.monthToDateDisplay).toBe("$100"); // dashboard money is whole-dollar
+    expect(summary.monthToDateDisplay).toBe("$100"); // dashboard money is whole-unit
     expect(summary.paidCountThisMonth).toBe(2);
     expect(summary.outstandingDisplay).toBe("$80"); // 5000 + 3000 cents
     expect(summary.hasOutstanding).toBe(true);
     expect(summary.hasPayments).toBe(true);
   });
 
+  it("shows the totals in the clinic's own currency", () => {
+    const groups = [group("Paid", 10000, 2), group("Unpaid", 5000, 1)];
+
+    expect(buildRevenueSummary(groups, "EUR")).toMatchObject({
+      monthToDateDisplay: "€100",
+      outstandingDisplay: "€50",
+    });
+    expect(buildRevenueSummary(groups, "GBP")).toMatchObject({
+      monthToDateDisplay: "£100",
+      outstandingDisplay: "£50",
+    });
+  });
+
   it("treats no payment groups as an empty month", () => {
-    const summary = buildRevenueSummary([]);
+    const summary = buildRevenueSummary([], "USD");
 
     expect(summary.monthToDateDisplay).toBe("$0");
     expect(summary.paidCountThisMonth).toBe(0);
@@ -44,7 +60,7 @@ describe("buildRevenueSummary", () => {
   });
 
   it("ignores Refunded in both paid and outstanding totals (matches prior behavior)", () => {
-    const summary = buildRevenueSummary([group("Refunded", 9999, 3)]);
+    const summary = buildRevenueSummary([group("Refunded", 9999, 3)], "USD");
 
     expect(summary.monthToDateDisplay).toBe("$0");
     expect(summary.outstandingDisplay).toBe("$0");
@@ -52,7 +68,7 @@ describe("buildRevenueSummary", () => {
   });
 
   it("tolerates a null sum (no rows in a status bucket)", () => {
-    const summary = buildRevenueSummary([group("Paid", null, 0)]);
+    const summary = buildRevenueSummary([group("Paid", null, 0)], "USD");
 
     expect(summary.monthToDateDisplay).toBe("$0");
     expect(summary.hasPayments).toBe(false);
@@ -239,5 +255,20 @@ describe("buildDashboardViewFromWorkspace — no-show risk", () => {
   it("leaves risk undefined when none was provided", () => {
     const view = buildDashboardViewFromWorkspace({ ...BASE_ARGS, appointments: [APPT_FIXTURE] });
     expect(view.appointments[0]?.risk).toBeUndefined();
+  });
+
+  it("shows the revenue tiles in the clinic's own currency", () => {
+    const paymentGroups = [group("Paid", 10000, 1), group("Unpaid", 2500, 1)];
+
+    const euro = buildDashboardViewFromWorkspace({ ...BASE_ARGS, appointments: [], paymentGroups });
+    const pound = buildDashboardViewFromWorkspace({
+      ...BASE_ARGS,
+      business: { ...BASE_BUSINESS, currency: "GBP" },
+      appointments: [],
+      paymentGroups,
+    });
+
+    expect(euro.revenueSummary).toMatchObject({ monthToDateDisplay: "€100", outstandingDisplay: "€25" });
+    expect(pound.revenueSummary).toMatchObject({ monthToDateDisplay: "£100", outstandingDisplay: "£25" });
   });
 });

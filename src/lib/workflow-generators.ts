@@ -155,9 +155,9 @@ export async function findRebookCandidates(args: {
  * Payments that already have a payment draft are excluded so the 200-row cap
  * can't be filled forever by the same old, still-unpaid entries.
  *
- * The message names no amount: the app has no per-clinic currency yet (its
- * money formatting is fixed to USD), so a euro clinic's patient would be told
- * "$50.00". Staff can add the amount when they review the draft.
+ * The message names no amount, by choice: it stays minimum-necessary (name
+ * only) and staff can add the amount when they review the draft. A clinic's
+ * currency now exists (`Business.currency`), so an amount could be added later.
  */
 export async function findPaymentReminderCandidates(args: {
   businessId: string;

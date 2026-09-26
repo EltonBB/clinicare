@@ -161,7 +161,7 @@ export default async function EditClientPage({
     notFound();
   }
 
-  const record = await buildClientRecord(client);
+  const record = await buildClientRecord(client, business.currency);
 
   return (
     <CreatePageShell title={`Edit ${record.name}`}>

@@ -182,6 +182,8 @@ export type ClientRecord = {
     unpaidBalanceCents: number;
     totalPaidDisplay: string;
     unpaidBalanceDisplay: string;
+    /** Sum of the payment entries shown on the record (billed = every status). */
+    totalBilledDisplay: string;
     paymentStatus: string;
   };
   gallery: Array<{
@@ -362,8 +364,6 @@ function buildMessages(client: ClientWithRelations): ClientMessageEntry[] {
   }));
 }
 
-const formatMoney = (cents: number) => formatCurrency(cents);
-
 function formatFileSize(bytes: number | null) {
   if (!bytes || bytes <= 0) {
     return "";
@@ -424,12 +424,12 @@ async function buildDocuments(client: ClientWithRelations): Promise<ClientDocume
   });
 }
 
-function buildPayments(client: ClientWithRelations): ClientPaymentEntry[] {
+function buildPayments(client: ClientWithRelations, currency: string): ClientPaymentEntry[] {
   return client.payments.map((payment) => ({
     id: payment.id,
     appointmentId: payment.appointmentId ?? "",
     amountCents: payment.amountCents,
-    amountDisplay: formatMoney(payment.amountCents),
+    amountDisplay: formatCurrency(payment.amountCents, currency),
     amountInput: (payment.amountCents / 100).toFixed(2),
     status: payment.status,
     description: payment.description ?? "",
@@ -493,7 +493,7 @@ function buildFollowUpReminders(
   }));
 }
 
-function buildTimeline(client: ClientWithRelations): ClientTimelineEntry[] {
+function buildTimeline(client: ClientWithRelations, currency: string): ClientTimelineEntry[] {
   const entries: ClientTimelineEntry[] = [
     ...client.appointments.map((appointment) => ({
       id: `appointment-${appointment.id}`,
@@ -509,7 +509,7 @@ function buildTimeline(client: ClientWithRelations): ClientTimelineEntry[] {
       kind: "payment" as const,
       date: format(payment.paidAt ?? payment.createdAt, "MMM d, yyyy"),
       sortKey: (payment.paidAt ?? payment.createdAt).getTime(),
-      title: `${formatMoney(payment.amountCents)} ${payment.status.toLowerCase()}`,
+      title: `${formatCurrency(payment.amountCents, currency)} ${payment.status.toLowerCase()}`,
       detail: payment.description?.trim() || "Payment record",
       status: payment.status.toLowerCase(),
     })),
@@ -542,7 +542,14 @@ function buildTimeline(client: ClientWithRelations): ClientTimelineEntry[] {
   return entries.sort((a, b) => b.sortKey - a.sortKey).slice(0, 14);
 }
 
-export async function buildClientRecord(client: ClientWithRelations): Promise<ClientRecord> {
+/**
+ * `currency` is the workspace's (`Business.currency`): every amount on the record
+ * is formatted in it. It is a required argument so no caller can forget it.
+ */
+export async function buildClientRecord(
+  client: ClientWithRelations,
+  currency: string
+): Promise<ClientRecord> {
   const now = new Date();
 
   // The appointments/payments arrays on `client` are display lists capped at
@@ -630,11 +637,11 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
       tags: client.tags,
     },
     history: buildHistory(client),
-    timeline: buildTimeline(client),
+    timeline: buildTimeline(client, currency),
     appointments: buildAppointments(client),
     medications: buildMedications(client),
     documents: await buildDocuments(client),
-    payments: buildPayments(client),
+    payments: buildPayments(client, currency),
     messages: buildMessages(client),
     healthItems: buildHealthItems(client),
     careNotes: buildCareNotes(client),
@@ -650,8 +657,12 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
     paymentStats: {
       totalPaidCents,
       unpaidBalanceCents,
-      totalPaidDisplay: formatMoney(totalPaidCents),
-      unpaidBalanceDisplay: formatMoney(unpaidBalanceCents),
+      totalPaidDisplay: formatCurrency(totalPaidCents, currency),
+      unpaidBalanceDisplay: formatCurrency(unpaidBalanceCents, currency),
+      totalBilledDisplay: formatCurrency(
+        client.payments.reduce((sum, payment) => sum + payment.amountCents, 0),
+        currency
+      ),
       paymentStatus,
     },
     gallery: client.galleryItems.map((item) => ({

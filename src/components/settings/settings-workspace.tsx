@@ -33,6 +33,7 @@ import {
   saveWorkflowSettingsAction,
 } from "@/app/(workspace)/settings/actions";
 import { businessTypes } from "@/lib/constants";
+import { currencyLabel, SUPPORTED_CURRENCIES } from "@/lib/currency";
 import { brandAccentPresets, normalizeBrandHexColor } from "@/lib/branding";
 import { cn } from "@/lib/utils";
 import { isStorageReference } from "@/lib/media-storage";
@@ -148,12 +149,15 @@ function NativeSelect({
   onChange,
   className,
   ariaLabel,
+  getLabel,
 }: {
   value: string;
   options: string[];
   onChange: (value: string) => void;
   className?: string;
   ariaLabel?: string;
+  /** Text shown for an option; defaults to the option's own value. */
+  getLabel?: (option: string) => string;
 }) {
   return (
     <select
@@ -167,7 +171,7 @@ function NativeSelect({
     >
       {options.map((option) => (
         <option key={option} value={option}>
-          {option}
+          {getLabel ? getLabel(option) : option}
         </option>
       ))}
     </select>
@@ -474,6 +478,7 @@ export function SettingsWorkspace({
         business: {
           businessName: state.business.businessName,
           businessType: state.business.businessType,
+          currency: state.business.currency,
           ownerName: submittedAccount.fullName,
           logoUrl: state.business.logoUrl,
         },
@@ -1001,7 +1006,7 @@ export function SettingsWorkspace({
                     className="h-10 rounded-(--radius-card) bg-white"
                   />
                 </div>
-                <div className="space-y-1.5 md:col-span-2">
+                <div className="space-y-1.5">
                   <FieldLabel>Business type</FieldLabel>
                   <NativeSelect
                     value={state.business.businessType}
@@ -1012,6 +1017,24 @@ export function SettingsWorkspace({
                         business: {
                           ...current.business,
                           businessType: value as SettingsState["business"]["businessType"],
+                        },
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Currency</FieldLabel>
+                  <NativeSelect
+                    value={state.business.currency}
+                    options={SUPPORTED_CURRENCIES.map((currency) => currency.code)}
+                    getLabel={currencyLabel}
+                    ariaLabel="Currency"
+                    onChange={(value) =>
+                      setState((current) => ({
+                        ...current,
+                        business: {
+                          ...current.business,
+                          currency: value as SettingsState["business"]["currency"],
                         },
                       }))
                     }
