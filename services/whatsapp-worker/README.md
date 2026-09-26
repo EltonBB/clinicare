@@ -55,6 +55,16 @@ its env plus `BAILEYS_WORKER_URL=http://localhost:8081`:
 3. `/status` flips to `connected`; inbound messages now POST to the app webhook
    and `sendMessage("WHATSAPP", …)` routes here.
 
+## Automated verification
+
+Run `npm run typecheck` and `npm test` in this directory. The worker has its own
+Vitest configuration and CI job. Tests replace socket creation, credential storage,
+webhook requests and timers; they require no `.env`, database or WhatsApp account.
+They cover concurrent starts, stale connection callbacks, reconnect cancellation,
+inbound filtering and authenticated webhook retries. Durable delivery, stale
+credential writes and shutdown during startup are tracked separately for remediation;
+this foundation does not certify those behaviors as fixed.
+
 ## Database
 
 The worker reads/writes only its own `WhatsAppSession` and `WhatsAppSessionKey`
