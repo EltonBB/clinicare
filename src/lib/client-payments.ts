@@ -20,7 +20,14 @@ export const paymentSelect = {
   paidAt: true, createdAt: true,
 } satisfies Prisma.ClientPaymentSelect;
 
+export const paymentCsvSelect = {
+  id: true, createdAt: true, paidAt: true, invoiceNumber: true,
+  description: true, amountCents: true, status: true,
+  paymentMethod: true, receiptNumber: true,
+} satisfies Prisma.ClientPaymentSelect;
+
 export type PaymentRow = Prisma.ClientPaymentGetPayload<{ select: typeof paymentSelect }>;
+type PaymentStatementRow = Prisma.ClientPaymentGetPayload<{ select: typeof paymentCsvSelect }>;
 export const paymentOrder = [{ createdAt: "desc" }, { id: "desc" }] satisfies Prisma.ClientPaymentOrderByWithRelationInput[];
 
 export const initialPaymentHistory = {
@@ -73,9 +80,9 @@ export function csvCell(value: string): string {
   return `"${safe.replaceAll('"', '""')}"`;
 }
 
-export function buildPaymentStatement(rows: PaymentRow[]): string {
+export function buildPaymentStatement(rows: PaymentStatementRow[], includeHeader = true): string {
   return [
-    ["Date", "Invoice", "Description", "Amount", "Status", "Payment method", "Receipt"],
+    ...(includeHeader ? [["Date", "Invoice", "Description", "Amount", "Status", "Payment method", "Receipt"]] : []),
     ...rows.map((payment) => [
       format(payment.paidAt ?? payment.createdAt, "MMM d, yyyy"),
       payment.invoiceNumber ?? "",
@@ -85,5 +92,5 @@ export function buildPaymentStatement(rows: PaymentRow[]): string {
       payment.paymentMethod || "Manual",
       payment.receiptNumber ?? "",
     ]),
-  ].map((row) => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
+  ].map((row) => row.map(csvCell).join(",")).join("\r\n") + (includeHeader || rows.length ? "\r\n" : "");
 }

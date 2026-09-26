@@ -65,12 +65,15 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
         return;
       }
 
-      if (nextAfterCreate === "calendar") {
-        router.push(`/calendar/new?client=${result.client.id}`);
+      const destination = nextAfterCreate === "calendar"
+        ? `/calendar/new?client=${result.client.id}`
+        : `/clients/${result.client.id}`;
+      if (result.directoryRefreshRequired) {
+        window.location.assign(`${destination}${nextAfterCreate === "calendar" ? "&" : "?"}directoryRefresh=1`);
         return;
       }
 
-      router.push(`/clients/${result.client.id}`);
+      router.push(destination);
     });
   }
 

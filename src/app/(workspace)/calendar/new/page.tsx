@@ -16,7 +16,7 @@ function isValidTimeParam(value?: string): value is string {
 export default async function NewAppointmentPage({
   searchParams,
 }: {
-  searchParams: Promise<{ client?: string; date?: string; time?: string }>;
+  searchParams: Promise<{ client?: string; date?: string; time?: string; directoryRefresh?: string }>;
 }) {
   const { user, business } = await requireCurrentWorkspace("/calendar/new", {
     missingBusinessRedirect: "/onboarding",
@@ -26,6 +26,7 @@ export default async function NewAppointmentPage({
     client: requestedClientId,
     date: requestedDate,
     time: requestedTime,
+    directoryRefresh,
   } = await searchParams;
 
   const [clients, staffMembers, businessHours] = await Promise.all([
@@ -105,6 +106,11 @@ export default async function NewAppointmentPage({
 
   return (
     <CreatePageShell title="New booking">
+      {directoryRefresh === "1" ? (
+        <p role="status" className="rounded-(--radius-card) bg-primary/8 px-3.5 py-2.5 text-sm text-primary">
+          Patient saved. Other lists may need a refresh to show the latest details.
+        </p>
+      ) : null}
       <NewAppointmentForm
         clients={pickerClients.map((client) => ({
           id: client.id,

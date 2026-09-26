@@ -82,6 +82,7 @@ import type {
 
 type ClientDetailsPageProps = {
   initialClient: ClientRecord;
+  directoryRefreshRequired?: boolean;
 };
 
 // The <TabsTrigger> count below (Overview, Appointments, Medical Info,
@@ -303,11 +304,11 @@ function stripPlaceholder(value: string, ...placeholders: string[]) {
   return placeholders.includes(value) ? "" : value;
 }
 
-export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
-  return <ClientDetailsContent key={initialClient.id} initialClient={initialClient} />;
+export function ClientDetailsPage({ initialClient, directoryRefreshRequired }: ClientDetailsPageProps) {
+  return <ClientDetailsContent key={initialClient.id} initialClient={initialClient} directoryRefreshRequired={directoryRefreshRequired} />;
 }
 
-function ClientDetailsContent({ initialClient }: ClientDetailsPageProps) {
+function ClientDetailsContent({ initialClient, directoryRefreshRequired }: ClientDetailsPageProps) {
   const [recordState, setRecordState] = useState(() => ({ source: initialClient, client: initialClient }));
   const mutationInFlight = useRef(0);
   const [mutationsPending, setMutationsPending] = useState(0);
@@ -325,7 +326,9 @@ function ClientDetailsContent({ initialClient }: ClientDetailsPageProps) {
   useEffect(() => () => exportRequest.current?.abort(), []);
   const [dialog, setDialog] = useState<DialogState>(null);
   const [errorMessage, setErrorMessage] = useState("");
-  const [statusMessage, setStatusMessage] = useState("");
+  const [statusMessage, setStatusMessage] = useState(directoryRefreshRequired
+    ? "Patient saved. Other lists may need a refresh to show the latest details."
+    : "");
   const [refreshNotice, setRefreshNotice] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<{
@@ -655,7 +658,7 @@ function ClientDetailsContent({ initialClient }: ClientDetailsPageProps) {
     setExportError("");
     try {
       const response = await fetch(`/api/clients/${encodeURIComponent(client.id)}/payments?format=csv`, {
-        cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]),
+        cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(180_000)]),
       });
       if (!response.ok) throw new Error("Statement unavailable");
       const blob = await response.blob();

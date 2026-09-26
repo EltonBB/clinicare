@@ -28,6 +28,7 @@ export type SaveClientResult = {
   client?: ClientRecord;
   clientId?: string;
   recordRefreshRequired?: boolean;
+  directoryRefreshRequired?: boolean;
   inboxSyncRequired?: boolean;
 };
 
@@ -787,7 +788,7 @@ export async function saveClientAction(
       ...refreshed,
       clientId: clientId!,
       ...(inboxSyncRequired ? { inboxSyncRequired: true } : {}),
-      ...(directoryRefreshRequired ? { recordRefreshRequired: true } : {}),
+      ...(directoryRefreshRequired ? { directoryRefreshRequired: true } : {}),
     };
   } catch {
     if (committedClientId) {

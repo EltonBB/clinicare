@@ -1,17 +1,73 @@
+import { createReadStream } from "node:fs";
+import { mkdtemp, open, rmdir, unlink, type FileHandle } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Readable } from "node:stream";
+
 import { getCurrentUser } from "@/lib/auth";
 import { getCurrentBusiness } from "@/lib/business";
 import {
   buildPaymentPage, buildPaymentStatement, initialPaymentHistory,
   paymentCursorSchema, paymentHistoryWhere, paymentIdSchema,
-  paymentOrder, paymentSelect, type PaymentCursor,
+  paymentCsvSelect, paymentOrder, type PaymentCursor,
 } from "@/lib/client-payments";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 const privateHeaders = { "Cache-Control": "private, no-store" };
+const exportPageSize = 500;
+
+export const runtime = "nodejs";
 
 function errorResponse(error: string, status: number) {
   return Response.json({ error }, { status, headers: privateHeaders });
+}
+
+async function completeStatementResponse(businessId: string, clientId: string) {
+  const directory = await mkdtemp(join(tmpdir(), "vela-payment-"));
+  const filePath = join(directory, "statement.csv");
+  const cleanup = async () => {
+    await unlink(filePath).catch(() => {});
+    await rmdir(directory).catch(() => {});
+  };
+  let file: FileHandle | undefined;
+  try {
+    // Stage a private, complete CSV before returning success. Paging keeps memory
+    // bounded; one transaction keeps every page in the same database snapshot.
+    file = await open(filePath, "wx", 0o600);
+    await prisma.$transaction(async (tx) => {
+      let cursor: PaymentCursor | undefined;
+      let includeHeader = true;
+      for (;;) {
+        const rows = await tx.clientPayment.findMany({
+          where: paymentHistoryWhere(businessId, clientId, cursor),
+          select: paymentCsvSelect, orderBy: paymentOrder, take: exportPageSize,
+        });
+        await file!.writeFile(buildPaymentStatement(rows, includeHeader), "utf8");
+        includeHeader = false;
+        if (rows.length < exportPageSize) break;
+        const last = rows.at(-1)!;
+        cursor = { id: last.id, createdAt: last.createdAt.toISOString() };
+      }
+    }, { isolationLevel: "RepeatableRead", maxWait: 5_000, timeout: 120_000 });
+    await file.close();
+    file = undefined;
+
+    const stream = createReadStream(filePath);
+    stream.once("close", () => { void cleanup(); });
+    return new Response(Readable.toWeb(stream) as ReadableStream<Uint8Array>, {
+      headers: {
+        ...privateHeaders,
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": 'attachment; filename="payment-statement.csv"',
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  } catch (error) {
+    await file?.close().catch(() => {});
+    await cleanup();
+    throw error;
+  }
 }
 
 export async function GET(request: Request, context: { params: Promise<{ clientId: string }> }) {
@@ -53,20 +109,7 @@ export async function GET(request: Request, context: { params: Promise<{ clientI
     if (!client) return errorResponse("Client not found.", 404);
 
     if (format === "csv") {
-      // One SELECT gives a consistent row snapshot. Build the entire file before
-      // sending success, so a query/encoding failure cannot produce a partial CSV.
-      const rows = await prisma.clientPayment.findMany({
-        where: paymentHistoryWhere(business.id, clientId),
-        select: paymentSelect, orderBy: paymentOrder,
-      });
-      return new Response(buildPaymentStatement(rows), {
-        headers: {
-          ...privateHeaders,
-          "Content-Type": "text/csv; charset=utf-8",
-          "Content-Disposition": 'attachment; filename="payment-statement.csv"',
-          "X-Content-Type-Options": "nosniff",
-        },
-      });
+      return await completeStatementResponse(business.id, clientId);
     }
 
     const rows = await prisma.clientPayment.findMany({

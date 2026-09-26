@@ -35,7 +35,9 @@ profile save similarly returns its committed patient ID when its follow-up read
 fails, so creation cannot be mistaken for a failed write. If post-save inbox
 linking fails, the profile form identifies that separate problem and directs an
 owner to reopen and save the existing profile to retry linking; reloading alone
-does not perform that repair. Payment creation does not yet have an idempotency
+does not perform that repair. Directory invalidation failures are reported
+separately from patient-record read failures; a successfully read record opens
+with a notice that other lists may need refreshing. Payment creation does not yet have an idempotency
 key across separate attempts or devices.
 
 `GET /api/clients/[clientId]/payments?format=csv` authenticates the owner and scopes
@@ -45,12 +47,14 @@ information or user-controlled characters in headers. Responses are private and
 not cached. Formula prefixes, including those behind whitespace/control characters,
 are neutralized before standard CSV quoting.
 
-The CSV is built from one complete SELECT, giving it one database-statement
-snapshot. The response is constructed only after all rows are read and encoded;
-database errors return a failure instead of a successful partial file. Memory and
-response size grow with the client's entire history (rows plus encoded CSV), so an
-exceptionally large history can exceed hosting memory/time/response limits. There
-is no silent row cap. The browser reports a failed download, with a retry action,
-and gives a request up to 60 seconds. A future large-history export service should
-produce a complete file before making it downloadable. Exports use the existing
-rate limiter (three per user per minute); history reads allow sixty per minute.
+The CSV is staged in a private temporary file using bounded payment pages from
+one PostgreSQL Repeatable Read snapshot. The endpoint returns success only after
+the complete file has been written; a failed query or encoding step returns an
+error instead of a successful partial CSV. The file is streamed to the browser
+and removed when the stream closes. There is no application row cap. Exceptionally
+large histories can still hit the host's time or temporary-storage limits; those
+fail before the download begins, and a durable export service is needed for
+histories beyond synchronous capacity. The browser reports a failed download
+with a retry action and gives a request up to 180 seconds. Exports use the
+existing rate limiter (three per user per minute); history reads allow sixty per
+minute.

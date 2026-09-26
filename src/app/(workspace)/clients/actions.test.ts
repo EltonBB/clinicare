@@ -169,6 +169,25 @@ describe("payment save result", () => {
 });
 
 describe("patient profile save result", () => {
+  it("separates a directory refresh failure from a successful record read", async () => {
+    mocks.client.create.mockResolvedValue({ id: CLIENT_ID });
+    const refreshed = { id: CLIENT_ID };
+    mocks.readClientRecordSnapshot.mockResolvedValue(refreshed);
+    mocks.revalidatePath.mockImplementation((path: string) => {
+      if (path === "/clients") throw new Error("directory cache unavailable");
+    });
+
+    const result = await saveClientAction({
+      name: "Synthetic patient", phone: "+38344123456", email: "", gender: "",
+      dateOfBirth: "", address: "", patientType: "New Patient", clinicType: "",
+      notes: "", preferredChannel: "", status: "active", assignedStaff: "", tags: "New Patient",
+    });
+
+    expect(mocks.client.create).toHaveBeenCalledOnce();
+    expect(result).toEqual({ ok: true, clientId: CLIENT_ID, client: refreshed, directoryRefreshRequired: true });
+    expect(mocks.revalidatePath).toHaveBeenCalledWith(`/clients/${CLIENT_ID}`);
+  });
+
   it("returns the created patient ID when its post-write record read fails", async () => {
     mocks.client.create.mockResolvedValue({ id: CLIENT_ID });
     mocks.readClientRecordSnapshot.mockRejectedValue(new Error("read timed out"));

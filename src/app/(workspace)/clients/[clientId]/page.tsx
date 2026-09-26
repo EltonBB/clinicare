@@ -7,8 +7,10 @@ import { initialPaymentHistory } from "@/lib/client-payments";
 
 export default async function ClientDetailsRoute({
   params,
+  searchParams,
 }: {
   params: Promise<{ clientId: string }>;
+  searchParams: Promise<{ directoryRefresh?: string }>;
 }) {
   const { business } = await requireCurrentWorkspace("/clients", {
     missingBusinessRedirect: "/onboarding",
@@ -170,5 +172,5 @@ export default async function ClientDetailsRoute({
     notFound();
   }
 
-  return <ClientDetailsPage initialClient={client} />;
+  return <ClientDetailsPage initialClient={client} directoryRefreshRequired={(await searchParams).directoryRefresh === "1"} />;
 }

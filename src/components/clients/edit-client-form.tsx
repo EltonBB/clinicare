@@ -70,7 +70,12 @@ export function EditClientForm({ client }: EditClientFormProps) {
         return;
       }
 
-      router.push(`/clients/${result.client.id}`);
+      const destination = `/clients/${result.client.id}`;
+      if (result.directoryRefreshRequired) {
+        window.location.assign(`${destination}?directoryRefresh=1`);
+      } else {
+        router.push(destination);
+      }
     });
   }
 
