@@ -100,8 +100,10 @@ export async function syncAppointmentRemindersForBusiness(
   const appointments = await prisma.appointment.findMany({
     where: {
       businessId,
+      // A no-show has already started, so it never reaches a future reminder
+      // window — excluded explicitly so that can't change by accident.
       status: {
-        not: "CANCELLED",
+        notIn: ["CANCELLED", "NO_SHOW"],
       },
       startAt: {
         gt: now,

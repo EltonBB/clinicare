@@ -59,7 +59,7 @@ export type ReportKpi = {
   helper: string;
 };
 
-export type ReportDetailRowKey = "lostSlot" | "repeatVisit" | "followUp";
+export type ReportDetailRowKey = "lostSlot" | "noShow" | "repeatVisit" | "followUp";
 
 export type ReportDetailRow = {
   /** Stable identifier — match on this, never on the display label. */
@@ -235,6 +235,8 @@ type PeriodStats = {
   bookedMinutes: number;
   completionRate: number;
   lostSlotRate: number;
+  noShowCount: number;
+  noShowRate: number;
   utilizationRate: number;
   capacityMinutes: number;
   newClients: number;
@@ -471,6 +473,7 @@ function bandForHour(hour: number): (typeof DEMAND_HEATMAP_BANDS)[number] {
 function statusLabel(status: Appointment["status"]) {
   if (status === "COMPLETED") return "Completed";
   if (status === "CANCELLED") return "Cancelled";
+  if (status === "NO_SHOW") return "No-show";
   if (status === "CONFIRMED") return "Confirmed";
   return "Pending";
 }
@@ -590,11 +593,12 @@ function formatRangeLabel(window: PeriodWindow, period: ReportPeriodKey, timeZon
 }
 
 function isBookedStatus(status: Appointment["status"]) {
+  // No-shows stay booked: the demand and the held slot were real.
   return status !== "CANCELLED";
 }
 
 function isFinalizedStatus(status: Appointment["status"]) {
-  return status === "COMPLETED" || status === "CANCELLED";
+  return status === "COMPLETED" || status === "CANCELLED" || status === "NO_SHOW";
 }
 
 function countDistinct<T>(values: T[]) {
@@ -782,6 +786,9 @@ function buildPeriodStats(args: {
   const cancelledAppointments = scopedAppointments.filter(
     (appointment) => appointment.status === "CANCELLED"
   );
+  const noShowAppointments = scopedAppointments.filter(
+    (appointment) => appointment.status === "NO_SHOW"
+  );
   const bookedMinutes = scopedAppointments
     .filter((appointment) => isBookedStatus(appointment.status))
     .reduce(
@@ -834,6 +841,11 @@ function buildPeriodStats(args: {
       finalizedAppointments.length > 0
         ? (cancelledAppointments.length / finalizedAppointments.length) * 100
         : 0,
+    noShowCount: noShowAppointments.length,
+    noShowRate:
+      finalizedAppointments.length > 0
+        ? (noShowAppointments.length / finalizedAppointments.length) * 100
+        : 0,
     capacityMinutes,
     // A ScheduleBlock can drive a day's capacity to exactly 0 while a real
     // booking still exists under it — saveAppointmentAction validates against
@@ -884,19 +896,21 @@ function buildPeriodDiagnostics(args: {
     isBookedStatus(appointment.status)
   );
   const totalAppointments = Math.max(scopedAppointments.length, 1);
-  const statusMix = (["COMPLETED", "CONFIRMED", "PENDING", "CANCELLED"] as const).map(
-    (status) => {
-      const count = scopedAppointments.filter(
-        (appointment) => appointment.status === status
-      ).length;
+  // No-show only appears once one has been recorded, so a workspace that never
+  // uses it sees the same four-slice donut as before.
+  const statusOrder: Array<Appointment["status"]> = ["COMPLETED", "CONFIRMED", "PENDING", "CANCELLED"];
+  if (scopedAppointments.some((appointment) => appointment.status === "NO_SHOW")) {
+    statusOrder.push("NO_SHOW");
+  }
+  const statusMix = statusOrder.map((status) => {
+    const count = scopedAppointments.filter((appointment) => appointment.status === status).length;
 
-      return {
-        label: statusLabel(status),
-        count,
-        share: formatPercent((count / totalAppointments) * 100),
-      };
-    }
-  );
+    return {
+      label: statusLabel(status),
+      count,
+      share: formatPercent((count / totalAppointments) * 100),
+    };
+  });
   const dayCounts = new Map<string, number>();
   const hourCounts = new Map<number, number>();
   const heatmapCounts = new Map<string, number>();
@@ -1778,6 +1792,10 @@ function buildMetrics(args: {
     current.finalizedCount > 0 && previous.finalizedCount > 0
       ? formatPointChange(current.lostSlotRate, previous.lostSlotRate, { inverse: true })
       : unmeasuredDelta();
+  const noShowDelta =
+    current.finalizedCount > 0 && previous.finalizedCount > 0
+      ? formatPointChange(current.noShowRate, previous.noShowRate, { inverse: true })
+      : unmeasuredDelta();
   // Every other rate metric above already gates its delta on both periods
   // having enough data to compare — utilizationRate was the one exception.
   // Without this, a period with bookings but zero measured capacity (a
@@ -1867,6 +1885,7 @@ function buildMetrics(args: {
       appointments: appointmentDelta,
       completion: completionDelta,
       lostSlot: lostSlotDelta,
+      noShow: noShowDelta,
       utilization: utilizationDelta,
       clients: newClientsDelta,
       repeatVisit: repeatVisitDelta,
@@ -2167,6 +2186,17 @@ function buildOperationalDetail(args: {
       value: formatPercent(current.lostSlotRate),
       delta: deltas.lostSlot.delta,
       trend: deltas.lostSlot.trend,
+      helper: "",
+    });
+  }
+
+  if (current.noShowCount > 0) {
+    rows.push({
+      key: "noShow",
+      label: "No-show rate",
+      value: formatPercent(current.noShowRate),
+      delta: deltas.noShow.delta,
+      trend: deltas.noShow.trend,
       helper: "",
     });
   }

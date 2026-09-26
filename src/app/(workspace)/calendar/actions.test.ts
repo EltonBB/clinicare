@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => {
   const refreshClientLastVisitAt = vi.fn();
   const notifyStaffOfAppointmentChange = vi.fn();
   const revalidateCalendarSurfaces = vi.fn();
+  const recordAttendance = vi.fn();
   return {
     appointment,
     client,
@@ -38,6 +39,7 @@ const mocks = vi.hoisted(() => {
     refreshClientLastVisitAt,
     notifyStaffOfAppointmentChange,
     revalidateCalendarSurfaces,
+    recordAttendance,
   };
 });
 
@@ -77,8 +79,12 @@ vi.mock("@/lib/appointments-shared", async () => {
     // suite's assertions on the exact `where` shape mean anything.
     acquireSchedulingLock: actual.acquireSchedulingLock,
     hasSchedulingConflict: actual.hasSchedulingConflict,
+    APPOINTMENT_CANCELLED_NO_SHOW_ERROR: actual.APPOINTMENT_CANCELLED_NO_SHOW_ERROR,
+    APPOINTMENT_NOT_STARTED_ERROR: actual.APPOINTMENT_NOT_STARTED_ERROR,
+    NO_SHOW_PLAN_ERROR: actual.NO_SHOW_PLAN_ERROR,
     cancelAppointmentCore: vi.fn(),
     deleteAppointmentCore: vi.fn(),
+    recordAppointmentAttendanceCore: mocks.recordAttendance,
     refreshClientLastVisitAt: mocks.refreshClientLastVisitAt,
     notifyStaffOfAppointmentChange: mocks.notifyStaffOfAppointmentChange,
     revalidateCalendarSurfaces: mocks.revalidateCalendarSurfaces,
@@ -87,16 +93,20 @@ vi.mock("@/lib/appointments-shared", async () => {
 
 import {
   loadCalendarMonthAction,
+  recordAppointmentAttendanceAction,
   saveAppointmentAction,
   type SaveAppointmentPayload,
 } from "./actions";
 import {
   APPOINTMENT_ALREADY_COMPLETED_ERROR,
+  APPOINTMENT_CANCELLED_NO_SHOW_ERROR,
   APPOINTMENT_CONFLICT_ERROR,
+  APPOINTMENT_NOT_STARTED_ERROR,
   APPOINTMENT_TIME_CONFLICT_ERROR,
+  NO_SHOW_PLAN_ERROR,
 } from "@/lib/appointments-shared";
 
-const BUSINESS = { id: "biz_1" };
+const BUSINESS = { id: "biz_1", plan: "PRO" as const };
 const EXISTING = {
   id: "appt_1",
   clientId: "client_1",
@@ -604,5 +614,170 @@ describe("loadCalendarMonthAction", () => {
       ownerName: "Owner Name",
     });
     expect(result).toEqual({ ok: true, ...MONTH });
+  });
+});
+
+const NO_SHOW_ROW = {
+  id: "appt_1",
+  clientId: "client_1",
+  client: { id: "client_1", name: "Test Patient" },
+  staffMemberId: null,
+  staffMember: null,
+  title: "Checkup",
+  startAt: new Date("2026-06-01T09:00:00Z"),
+  endAt: new Date("2026-06-01T09:30:00Z"),
+  notes: null,
+  status: "NO_SHOW" as const,
+};
+
+describe("saveAppointmentAction — no-show status", () => {
+  const NO_SHOW_PAYLOAD: SaveAppointmentPayload = { ...PAYLOAD, status: "no-show" };
+
+  beforeEach(() => {
+    mocks.appointment.updateMany.mockResolvedValue({ count: 1 });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue(NO_SHOW_ROW);
+  });
+
+  it("saves a no-show for a started appointment on Pro and reads it back as no-show", async () => {
+    const result = await saveAppointmentAction(NO_SHOW_PAYLOAD);
+
+    expect(result.ok).toBe(true);
+    expect(result.appointment?.status).toBe("no-show");
+    expect(mocks.appointment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "NO_SHOW" }) })
+    );
+    expect(mocks.refreshClientLastVisitAt).toHaveBeenCalled();
+  });
+
+  it("refuses to set a no-show on a workspace that isn't on Pro", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1", plan: "BASIC" }, user: {} });
+
+    expect(await saveAppointmentAction(NO_SHOW_PAYLOAD)).toEqual({ ok: false, error: NO_SHOW_PLAN_ERROR });
+    expect(mocks.appointment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("still lets a Basic workspace save an existing no-show without changing its status", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1", plan: "BASIC" }, user: {} });
+    mocks.appointment.findFirst.mockResolvedValue({ ...EXISTING, status: "NO_SHOW" });
+
+    const result = await saveAppointmentAction({ ...NO_SHOW_PAYLOAD, baselineStatus: "no-show" });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("refuses a no-show for an appointment that has not started", async () => {
+    expect(await saveAppointmentAction({ ...NO_SHOW_PAYLOAD, date: "2099-01-01" })).toEqual({
+      ok: false,
+      error: APPOINTMENT_NOT_STARTED_ERROR,
+    });
+    expect(mocks.appointment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("does not let a forged baselineStatus exempt a NEW booking on a Basic workspace", async () => {
+    // baselineStatus comes from the request body. On an edit the compare-and-set
+    // against the live row makes a forged value harmless, but a new booking has
+    // no row to anchor it — only an existing row may keep a no-show on Basic.
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1", plan: "BASIC" }, user: {} });
+
+    expect(
+      await saveAppointmentAction({ ...NO_SHOW_PAYLOAD, id: undefined, baselineStatus: "no-show" })
+    ).toEqual({ ok: false, error: NO_SHOW_PLAN_ERROR });
+    expect(mocks.appointment.create).not.toHaveBeenCalled();
+  });
+
+  it("creates a new past no-show on Pro", async () => {
+    mocks.appointment.create.mockResolvedValue({ id: "appt_1" });
+
+    const result = await saveAppointmentAction({
+      ...NO_SHOW_PAYLOAD,
+      id: undefined,
+      baselineStatus: "confirmed",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.appointment.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "NO_SHOW" }) })
+    );
+  });
+
+  it("refuses to relabel a cancelled booking as a no-show through the edit form", async () => {
+    // Same rule recordAppointmentAttendanceCore enforces for the quick action.
+    mocks.appointment.findFirst.mockResolvedValue({ ...EXISTING, status: "CANCELLED" });
+
+    expect(await saveAppointmentAction({ ...NO_SHOW_PAYLOAD, baselineStatus: "cancelled" })).toEqual({
+      ok: false,
+      error: APPOINTMENT_CANCELLED_NO_SHOW_ERROR,
+    });
+    expect(mocks.appointment.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("recordAppointmentAttendanceAction", () => {
+  it("refuses a workspace that isn't on Pro without touching the appointment", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1", plan: "BASIC" }, user: {} });
+
+    expect(await recordAppointmentAttendanceAction("appt_1", false)).toEqual({
+      ok: false,
+      error: NO_SHOW_PLAN_ERROR,
+    });
+    expect(mocks.recordAttendance).not.toHaveBeenCalled();
+  });
+
+  it("marks a no-show, refreshes every surface, and reports the new status", async () => {
+    mocks.recordAttendance.mockResolvedValue({
+      ok: true,
+      appointmentId: "appt_1",
+      clientId: "client_1",
+      staffMemberId: "staff_1",
+      changed: true,
+    });
+
+    expect(await recordAppointmentAttendanceAction("appt_1", false)).toEqual({ ok: true, status: "no-show" });
+    expect(mocks.recordAttendance).toHaveBeenCalledWith({
+      id: "appt_1",
+      businessId: "biz_1",
+      attended: false,
+    });
+    expect(mocks.revalidateCalendarSurfaces).toHaveBeenCalledWith(["client_1"], ["staff_1"]);
+  });
+
+  it("undoes a no-show back to completed", async () => {
+    mocks.recordAttendance.mockResolvedValue({
+      ok: true,
+      appointmentId: "appt_1",
+      clientId: "client_1",
+      staffMemberId: null,
+      changed: true,
+    });
+
+    expect(await recordAppointmentAttendanceAction("appt_1", true)).toEqual({ ok: true, status: "completed" });
+  });
+
+  it("skips revalidation when nothing changed", async () => {
+    mocks.recordAttendance.mockResolvedValue({
+      ok: true,
+      appointmentId: "appt_1",
+      clientId: "client_1",
+      staffMemberId: null,
+      changed: false,
+    });
+
+    await recordAppointmentAttendanceAction("appt_1", false);
+
+    expect(mocks.revalidateCalendarSurfaces).not.toHaveBeenCalled();
+  });
+
+  it("passes the core's reason through, and words a missing appointment for this workspace", async () => {
+    mocks.recordAttendance.mockResolvedValueOnce({ ok: false, status: 409, error: APPOINTMENT_NOT_STARTED_ERROR });
+    expect(await recordAppointmentAttendanceAction("appt_1", false)).toEqual({
+      ok: false,
+      error: APPOINTMENT_NOT_STARTED_ERROR,
+    });
+
+    mocks.recordAttendance.mockResolvedValueOnce({ ok: false, status: 404, error: "Appointment not found." });
+    expect(await recordAppointmentAttendanceAction("appt_1", false)).toEqual({
+      ok: false,
+      error: "Appointment not found in this clinic workspace.",
+    });
   });
 });

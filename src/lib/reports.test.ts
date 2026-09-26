@@ -474,3 +474,64 @@ describe("buildKeyMetrics", () => {
     }
   });
 });
+
+describe("buildReportsViewFromWorkspace — no-shows", () => {
+  function reportFor(appointments: ReturnType<typeof appt>[]) {
+    return buildReportsViewFromWorkspace({
+      business: { name: "No-show Clinic" },
+      appointments,
+      clients: [],
+      clientMix: { active: 0, atRisk: 0, inactive: 0, archived: 0 },
+      messages: [],
+      businessHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+        weekday,
+        isOpen: true,
+        startTime: "08:00",
+        endTime: "17:00",
+      })),
+      scheduleBlocks: [],
+      staffMembers: [
+        { id: "s1", name: "Dr. One", role: "Dentist", status: "ACTIVE", isActive: true },
+      ],
+      conversations: [],
+      aiSnapshots: [],
+      now,
+      timeZone: "UTC",
+    });
+  }
+
+  it("treats a no-show as a finalized visit: it lowers completion and gets its own rate", () => {
+    const daily = reportFor([
+      appt(0, 8, "COMPLETED"),
+      appt(0, 9, "COMPLETED"),
+      appt(0, 10, "NO_SHOW"),
+      appt(0, 11, "CANCELLED"),
+    ]).periods.daily;
+
+    expect(daily.metrics.find((metric) => metric.label === "Completion rate")?.value).toBe("50.0%");
+    expect(daily.operationalDetail.find((row) => row.key === "noShow")?.value).toBe("25.0%");
+    // Lost-slot rate stays cancellations only.
+    expect(daily.operationalDetail.find((row) => row.key === "lostSlot")?.value).toBe("25.0%");
+  });
+
+  it("adds a No-show slice to the status mix only when there is one", () => {
+    const withNoShow = reportFor([appt(0, 8, "COMPLETED"), appt(0, 9, "NO_SHOW")]).periods.daily;
+    const without = reportFor([appt(0, 8, "COMPLETED"), appt(0, 9, "CANCELLED")]).periods.daily;
+
+    expect(withNoShow.diagnostics.statusMix.map((item) => item.label)).toEqual([
+      "Completed",
+      "Confirmed",
+      "Pending",
+      "Cancelled",
+      "No-show",
+    ]);
+    expect(withNoShow.diagnostics.statusMix.find((item) => item.label === "No-show")?.count).toBe(1);
+    expect(without.diagnostics.statusMix.map((item) => item.label)).toEqual([
+      "Completed",
+      "Confirmed",
+      "Pending",
+      "Cancelled",
+    ]);
+    expect(without.operationalDetail.some((row) => row.key === "noShow")).toBe(false);
+  });
+});

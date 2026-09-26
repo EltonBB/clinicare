@@ -1,5 +1,6 @@
 import type { Appointment, StaffMember, StaffShift, StaffTimeEntry } from "@prisma/client";
 
+import { appointmentStatusKey } from "@/lib/appointment-status";
 import {
   formatZonedDateKey,
   formatZonedDayName,
@@ -349,9 +350,12 @@ export function findActiveShiftWindow(
   );
 }
 
-function calculateCompletionRate(appointments: Pick<Appointment, "status">[]) {
+export function calculateCompletionRate(appointments: Pick<Appointment, "status">[]) {
   const finalized = appointments.filter(
-    (appointment) => appointment.status === "COMPLETED" || appointment.status === "CANCELLED"
+    (appointment) =>
+      appointment.status === "COMPLETED" ||
+      appointment.status === "CANCELLED" ||
+      appointment.status === "NO_SHOW"
   );
 
   if (finalized.length === 0) {
@@ -431,7 +435,7 @@ export function buildStaffRecord(member: StaffWithRelations): StaffRecord {
         title: appointment.title,
         clientName: appointment.client.name,
         time: formatZonedTime(appointment.startAt),
-        status: appointment.status,
+        status: appointmentStatusKey(appointment.status),
       })),
     recentAppointments: completedAppointments.slice(0, 5).map((appointment) => ({
       id: appointment.id,

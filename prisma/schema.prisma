@@ -536,6 +536,7 @@ enum AppointmentStatus {
   PENDING
   CANCELLED
   COMPLETED
+  NO_SHOW
 }
 
 enum StaffStatus {

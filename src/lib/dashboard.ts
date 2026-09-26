@@ -11,7 +11,12 @@ import {
   getAppTimeZone,
 } from "@/lib/time-zone";
 
-export type DashboardAppointmentStatus = "confirmed" | "pending" | "cancelled" | "completed";
+export type DashboardAppointmentStatus =
+  | "confirmed"
+  | "pending"
+  | "cancelled"
+  | "completed"
+  | "no-show";
 
 export type DashboardAppointment = {
   id: string;
@@ -142,11 +147,13 @@ export type DashboardAppointmentAggregates = {
   recentCompleted: number;
   /** CANCELLED in the rolling 30-day window. */
   recentCancelled: number;
+  /** NO_SHOW in the rolling 30-day window. */
+  recentNoShow: number;
   /** COMPLETED month-to-date. */
   completedThisMonth: number;
   /** Mean completed-visit length (minutes) in the rolling 30-day window. */
   averageDurationMinutes: number;
-  /** Non-cancelled visit counts per app-zone calendar day (YYYY-MM-DD) in the window. */
+  /** Visit counts (excluding cancelled and no-show) per app-zone calendar day (YYYY-MM-DD) in the window. */
   visitCountsByDay: Array<{ key: string; count: number }>;
 };
 
@@ -208,6 +215,10 @@ function formatUpdatedLabel(date: Date, now: Date, timeZone: string) {
 function toDashboardStatus(status: Appointment["status"]): DashboardAppointmentStatus {
   if (status === "CANCELLED") {
     return "cancelled";
+  }
+
+  if (status === "NO_SHOW") {
+    return "no-show";
   }
 
   if (status === "COMPLETED") {
@@ -363,7 +374,7 @@ export function buildDashboardViewFromWorkspace(args: {
   todaysHours: number;
   clientCount: number;
   appointmentCount: number;
-  nonCancelledAppointmentCount: number;
+  allTimeVisitCount: number;
   appointmentAggregates: DashboardAppointmentAggregates;
   paymentGroups?: DashboardPaymentStatusGroup[];
   conversations?: DashboardConversationRow[];
@@ -380,7 +391,7 @@ export function buildDashboardViewFromWorkspace(args: {
     unreadCount,
     clientCount,
     appointmentCount,
-    nonCancelledAppointmentCount,
+    allTimeVisitCount,
     appointmentAggregates,
     paymentGroups = [],
     conversations = [],
@@ -393,7 +404,9 @@ export function buildDashboardViewFromWorkspace(args: {
   // the rolling-window completion split, month-to-date completed count, mean
   // visit length, and per-day visit counts arrive pre-computed.
   const recentFinal =
-    appointmentAggregates.recentCompleted + appointmentAggregates.recentCancelled;
+    appointmentAggregates.recentCompleted +
+    appointmentAggregates.recentCancelled +
+    appointmentAggregates.recentNoShow;
   const completionRate =
     recentFinal > 0
       ? Math.round((appointmentAggregates.recentCompleted / recentFinal) * 100)
@@ -403,7 +416,7 @@ export function buildDashboardViewFromWorkspace(args: {
   const todayKey = formatZonedDateKey(now, timeZone);
   const visitsSummary = buildVisitsSummary({
     visitCountsByDay: appointmentAggregates.visitCountsByDay,
-    allTime: nonCancelledAppointmentCount,
+    allTime: allTimeVisitCount,
     now,
     timeZone,
   });

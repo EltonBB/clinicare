@@ -10,7 +10,12 @@ import {
   zonedCalendarDaysBetween,
 } from "@/lib/time-zone";
 
-export type CalendarAppointmentStatus = "confirmed" | "pending" | "cancelled" | "completed";
+export type CalendarAppointmentStatus =
+  | "confirmed"
+  | "pending"
+  | "cancelled"
+  | "completed"
+  | "no-show";
 export type CalendarAppointmentTone = "primary" | "secondary" | "muted";
 
 export type CalendarAppointment = {
@@ -138,9 +143,13 @@ export function toCalendarAppointment(
   };
 }
 
-function toCalendarStatus(status: Appointment["status"]): CalendarAppointmentStatus {
+export function toCalendarStatus(status: Appointment["status"]): CalendarAppointmentStatus {
   if (status === "CANCELLED") {
     return "cancelled";
+  }
+
+  if (status === "NO_SHOW") {
+    return "no-show";
   }
 
   if (status === "COMPLETED") {
@@ -154,8 +163,12 @@ function toCalendarStatus(status: Appointment["status"]): CalendarAppointmentSta
   return "confirmed";
 }
 
-function toCalendarTone(status: Appointment["status"]): CalendarAppointmentTone {
+export function toCalendarTone(status: Appointment["status"]): CalendarAppointmentTone {
   if (status === "CANCELLED") {
+    return "muted";
+  }
+
+  if (status === "NO_SHOW") {
     return "muted";
   }
 
@@ -173,6 +186,10 @@ function toCalendarTone(status: Appointment["status"]): CalendarAppointmentTone 
 export function toPrismaAppointmentStatus(status: CalendarAppointmentStatus) {
   if (status === "cancelled") {
     return "CANCELLED" as const;
+  }
+
+  if (status === "no-show") {
+    return "NO_SHOW" as const;
   }
 
   if (status === "completed") {

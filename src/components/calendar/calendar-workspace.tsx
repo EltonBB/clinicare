@@ -30,7 +30,10 @@ import {
   X,
 } from "lucide-react";
 
-import { loadCalendarMonthAction } from "@/app/(workspace)/calendar/actions";
+import {
+  loadCalendarMonthAction,
+  recordAppointmentAttendanceAction,
+} from "@/app/(workspace)/calendar/actions";
 import { buttonVariants } from "@/components/ui/button";
 import {
   WorkspaceEmptyState,
@@ -58,12 +61,14 @@ type CalendarWorkspaceProps = {
   initialRange: CalendarRange;
   /** The real current date (`YYYY-MM-DD`), independent of the date being viewed. */
   today: string;
+  /** Pro workspaces can mark a visit as a no-show (and undo it) from the quick view. */
+  canRecordNoShows: boolean;
 };
 
 const views: CalendarView[] = ["day", "week", "month"];
 
 // Source of truth for appointment-status color (AGENTS.md: "the same tone
-// set as everywhere else") — lib/status-tone.ts mirrors these 4 colors as
+// set as everywhere else") — lib/status-tone.ts mirrors these 5 colors as
 // raw values for places (Reports' donut/legend) that need a CSS color
 // rather than a Tailwind class; keep both in sync if these change.
 const statusDotClasses: Record<CalendarAppointmentStatus, string> = {
@@ -71,6 +76,7 @@ const statusDotClasses: Record<CalendarAppointmentStatus, string> = {
   completed: "bg-emerald-500",
   pending: "bg-amber-500",
   cancelled: "bg-destructive",
+  "no-show": "bg-violet-500",
 };
 
 const monthChipClasses: Record<CalendarAppointmentStatus, string> = {
@@ -78,6 +84,7 @@ const monthChipClasses: Record<CalendarAppointmentStatus, string> = {
   pending: "bg-amber-50 text-amber-800",
   completed: "bg-emerald-50 text-emerald-800",
   cancelled: "bg-[#f1f3f6] text-muted-foreground line-through",
+  "no-show": "bg-violet-50 text-violet-800",
 };
 
 // Fills the viewport below the header + toolbar so the grid reads as the whole
@@ -451,6 +458,8 @@ function DatePickerPopover({
   );
 }
 
+type AttendanceAction = { attended: boolean; label: string };
+
 // Anchored to the clicked chip's bounding rect (not a portal) so it renders
 // above the surrounding surface-card's overflow-clip without needing to
 // change that ancestor's overflow behavior.
@@ -458,12 +467,33 @@ function AppointmentQuickView({
   appointment,
   anchorRect,
   onClose,
+  attendanceAction,
+  onRecordAttendance,
 }: {
   appointment: CalendarAppointment;
   anchorRect: DOMRect;
   onClose: () => void;
+  /** Present only for a Pro workspace and a visit whose day has come. */
+  attendanceAction: AttendanceAction | null;
+  /** Resolves to an error message, or null when it worked (the parent then closes this). */
+  onRecordAttendance: (attended: boolean) => Promise<string | null>;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [attendanceError, setAttendanceError] = useState("");
+
+  async function handleAttendance(attended: boolean) {
+    setBusy(true);
+    setAttendanceError("");
+
+    const message = await onRecordAttendance(attended);
+
+    // On success the parent closes this popover, so only a failure needs state.
+    if (message) {
+      setAttendanceError(message);
+      setBusy(false);
+    }
+  }
 
   useDismissOnOutsideOrEscape(containerRef, onClose, { dismissOnScroll: true });
 
@@ -538,17 +568,39 @@ function AppointmentQuickView({
           </span>
         </div>
       </div>
-      <Link
-        href={`/calendar/${appointment.id}/edit`}
-        className="mt-3 flex h-8 items-center justify-center rounded-(--radius-card) border border-border/75 bg-white text-sm font-semibold text-foreground transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]"
-      >
-        View appointment
-      </Link>
+      <div className="mt-3 space-y-2">
+        {attendanceAction ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void handleAttendance(attendanceAction.attended)}
+            className="flex h-8 w-full items-center justify-center rounded-(--radius-card) border border-border/75 bg-white text-sm font-semibold text-foreground transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] disabled:opacity-60"
+          >
+            {attendanceAction.label}
+          </button>
+        ) : null}
+        {attendanceError ? (
+          <p role="alert" className="text-xs text-destructive">
+            {attendanceError}
+          </p>
+        ) : null}
+        <Link
+          href={`/calendar/${appointment.id}/edit`}
+          className="flex h-8 items-center justify-center rounded-(--radius-card) border border-border/75 bg-white text-sm font-semibold text-foreground transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]"
+        >
+          View appointment
+        </Link>
+      </div>
     </div>
   );
 }
 
-export function CalendarWorkspace({ initialView, initialRange, today }: CalendarWorkspaceProps) {
+export function CalendarWorkspace({
+  initialView,
+  initialRange,
+  today,
+  canRecordNoShows,
+}: CalendarWorkspaceProps) {
   const [view, setView] = useState<CalendarView>("week");
   const [activeDate, setActiveDate] = useState(() => parseISO(initialView.initialDate));
   const [quickView, setQuickView] = useState<{ appointment: CalendarAppointment; rect: DOMRect } | null>(null);
@@ -705,6 +757,46 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
   function openQuickView(appointment: CalendarAppointment, event: MouseEvent<HTMLAnchorElement>) {
     event.stopPropagation();
     setQuickView({ appointment, rect: event.currentTarget.getBoundingClientRect() });
+  }
+
+  // Only Pro, only a visit whose day has come, never a cancelled one. `today` is
+  // the clinic-zone date, so this compares like with like; a visit later today
+  // that hasn't started is refused by the server with a plain message.
+  function attendanceActionFor(appointment: CalendarAppointment): AttendanceAction | null {
+    if (!canRecordNoShows || appointment.status === "cancelled" || appointment.date > today) {
+      return null;
+    }
+
+    return appointment.status === "no-show"
+      ? { attended: true, label: "Mark as attended" }
+      : { attended: false, label: "Mark as no-show" };
+  }
+
+  async function recordAttendance(appointment: CalendarAppointment, attended: boolean) {
+    let result;
+
+    try {
+      result = await recordAppointmentAttendanceAction(appointment.id, attended);
+    } catch {
+      // A rejected server action (network drop, 5xx, deploy skew) — a plain
+      // message, never the raw error, so the popover can show it and re-enable.
+      return "We couldn't update this appointment. Try again.";
+    }
+
+    const status = result.status;
+
+    if (!result.ok || !status) {
+      return result.error ?? "We couldn't update this appointment.";
+    }
+
+    setAppointments((current) =>
+      current.map((item) => (item.id === appointment.id ? { ...item, status } : item))
+    );
+    // Only close the popover this request belongs to — the user may have opened
+    // a different appointment's while it was in flight.
+    setQuickView((current) => (current?.appointment.id === appointment.id ? null : current));
+
+    return null;
   }
 
   return (
@@ -1015,6 +1107,8 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
           appointment={quickView.appointment}
           anchorRect={quickView.rect}
           onClose={() => setQuickView(null)}
+          attendanceAction={attendanceActionFor(quickView.appointment)}
+          onRecordAttendance={(attended) => recordAttendance(quickView.appointment, attended)}
         />
       ) : null}
     </WorkspacePage>

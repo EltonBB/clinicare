@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildCalendarViewFromRecords, businessHoursForDate } from "@/lib/calendar";
+import { buildCalendarViewFromRecords, businessHoursForDate, toCalendarStatus, toCalendarTone, toPrismaAppointmentStatus } from "@/lib/calendar";
 import {
   addZonedDays,
   formatZonedDateKey,
@@ -197,5 +197,18 @@ describe("businessHoursForDate", () => {
     // 2026-01-01 is a Thursday; 2028-02-29 a Tuesday.
     expect(businessHoursForDate("2026-01-01", []).weekday).toBe(3);
     expect(businessHoursForDate("2028-02-29", []).weekday).toBe(1);
+  });
+});
+
+describe("appointment status mapping", () => {
+  it("round-trips every Prisma status through the calendar status", () => {
+    for (const status of ["CONFIRMED", "PENDING", "CANCELLED", "COMPLETED", "NO_SHOW"] as const) {
+      expect(toPrismaAppointmentStatus(toCalendarStatus(status))).toBe(status);
+    }
+  });
+
+  it("names the no-show status and gives it the muted tone", () => {
+    expect(toCalendarStatus("NO_SHOW")).toBe("no-show");
+    expect(toCalendarTone("NO_SHOW")).toBe("muted");
   });
 });

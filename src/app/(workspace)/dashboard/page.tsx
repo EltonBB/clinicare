@@ -49,7 +49,7 @@ export default async function DashboardPage() {
     paymentsResult,
     conversationsResult,
     staffMembersResult,
-    nonCancelledAppointmentCountResult,
+    allTimeVisitCountResult,
   ] =
     await Promise.allSettled([
       prisma.appointment.findMany({
@@ -240,11 +240,13 @@ export default async function DashboardPage() {
         },
         take: 6,
       }),
+      // A no-show is not a visit that happened, so it stays out of the all-time
+      // total just like the 7-day/30-day/this-month tiles (see dashboard-data.ts).
       prisma.appointment.count({
         where: {
           businessId: business.id,
           status: {
-            not: "CANCELLED",
+            notIn: ["CANCELLED", "NO_SHOW"],
           },
         },
       }),
@@ -274,6 +276,7 @@ export default async function DashboardPage() {
       : {
           recentCompleted: 0,
           recentCancelled: 0,
+          recentNoShow: 0,
           completedThisMonth: 0,
           averageDurationMinutes: 0,
           visitCountsByDay: [],
@@ -284,9 +287,9 @@ export default async function DashboardPage() {
     conversationsResult.status === "fulfilled" ? conversationsResult.value : [];
   const staffMembers =
     staffMembersResult.status === "fulfilled" ? staffMembersResult.value : [];
-  const nonCancelledAppointmentCount =
-    nonCancelledAppointmentCountResult.status === "fulfilled"
-      ? nonCancelledAppointmentCountResult.value
+  const allTimeVisitCount =
+    allTimeVisitCountResult.status === "fulfilled"
+      ? allTimeVisitCountResult.value
       : 0;
 
   if (appointmentsResult.status === "rejected") {
@@ -349,10 +352,10 @@ export default async function DashboardPage() {
     console.error("Dashboard staff query failed", staffMembersResult.reason);
   }
 
-  if (nonCancelledAppointmentCountResult.status === "rejected") {
+  if (allTimeVisitCountResult.status === "rejected") {
     console.error(
-      "Dashboard non-cancelled appointment count query failed",
-      nonCancelledAppointmentCountResult.reason
+      "Dashboard all-time visit count query failed",
+      allTimeVisitCountResult.reason
     );
   }
 
@@ -374,7 +377,7 @@ export default async function DashboardPage() {
     todaysHours,
     clientCount,
     appointmentCount,
-    nonCancelledAppointmentCount,
+    allTimeVisitCount,
     appointmentAggregates,
     paymentGroups,
     conversations,

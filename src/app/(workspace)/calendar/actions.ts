@@ -9,15 +9,20 @@ import { isValidMonthKey } from "@/lib/calendar-range";
 import {
   acquireSchedulingLock,
   APPOINTMENT_ALREADY_COMPLETED_ERROR,
+  APPOINTMENT_CANCELLED_NO_SHOW_ERROR,
   APPOINTMENT_CONFLICT_ERROR,
+  APPOINTMENT_NOT_STARTED_ERROR,
   APPOINTMENT_TIME_CONFLICT_ERROR,
   cancelAppointmentCore,
   deleteAppointmentCore,
   hasSchedulingConflict,
+  NO_SHOW_PLAN_ERROR,
   notifyStaffOfAppointmentChange,
+  recordAppointmentAttendanceCore,
   refreshClientLastVisitAt,
   revalidateCalendarSurfaces,
 } from "@/lib/appointments-shared";
+import { isProBusinessPlan } from "@/lib/billing";
 import {
   formatZonedDateKey,
   formatZonedTime24,
@@ -26,6 +31,8 @@ import {
 } from "@/lib/time-zone";
 import {
   timeToMinutes,
+  toCalendarStatus,
+  toCalendarTone,
   toPrismaAppointmentStatus,
   type CalendarAppointment,
   type CalendarAppointmentStatus,
@@ -139,14 +146,7 @@ async function hydrateAppointment(appointmentId: string) {
     },
   });
 
-  const status =
-    appointment.status === "CANCELLED"
-      ? "cancelled"
-      : appointment.status === "COMPLETED"
-        ? "completed"
-      : appointment.status === "PENDING"
-        ? "pending"
-        : "confirmed";
+  const status = toCalendarStatus(appointment.status);
 
   return {
     id: appointment.id,
@@ -160,12 +160,7 @@ async function hydrateAppointment(appointmentId: string) {
     endTime: formatZonedTime24(appointment.endAt),
     notes: appointment.notes ?? "",
     status,
-    tone:
-      status === "confirmed" || status === "completed"
-        ? "primary"
-        : status === "pending"
-          ? "secondary"
-          : "muted",
+    tone: toCalendarTone(appointment.status),
   } satisfies CalendarAppointment;
 }
 
@@ -190,6 +185,24 @@ export async function saveAppointmentAction(
       ok: false,
       error: "Choose a client and valid start/end time before saving.",
     };
+  }
+
+  // No-show is a Pro feature. Setting it needs Pro; an existing no-show on a
+  // workspace that has since dropped to Basic can still be edited as long as its
+  // status isn't being changed. Only an EXISTING row can be exempt: baselineStatus
+  // comes from the request body, and on a new booking (no id) nothing anchors it —
+  // on an edit, the compare-and-set against the live status keeps a forged value
+  // harmless. It can only be recorded once the time has come.
+  if (payload.status === "no-show") {
+    const keepingAnExistingNoShow = Boolean(payload.id) && payload.baselineStatus === "no-show";
+
+    if (!keepingAnExistingNoShow && !isProBusinessPlan(business.plan)) {
+      return { ok: false, error: NO_SHOW_PLAN_ERROR };
+    }
+
+    if (startAt.getTime() > Date.now()) {
+      return { ok: false, error: APPOINTMENT_NOT_STARTED_ERROR };
+    }
   }
 
   const insideBusinessHours = await isInsideBusinessHours({
@@ -309,6 +322,16 @@ export async function saveAppointmentAction(
         return {
           ok: false,
           error: APPOINTMENT_ALREADY_COMPLETED_ERROR,
+        };
+      }
+
+      // Same rule recordAppointmentAttendanceCore enforces for the quick
+      // action: a cancelled booking never happened, so relabelling it as a
+      // no-show through the Status dropdown would inflate the no-show count.
+      if (existing.status === "CANCELLED" && newStatus === "NO_SHOW") {
+        return {
+          ok: false,
+          error: APPOINTMENT_CANCELLED_NO_SHOW_ERROR,
         };
       }
 
@@ -546,6 +569,57 @@ export async function cancelAppointmentAction(
     ok: true,
     appointmentId: outcome.appointmentId,
   };
+}
+
+export type RecordAttendanceResult = {
+  ok: boolean;
+  error?: string;
+  /** The appointment's new status, so the calendar can update in place. */
+  status?: CalendarAppointmentStatus;
+};
+
+/**
+ * Quick "did they come?" correction from the calendar popover. Lighter than the
+ * full edit save — no business-hours or conflict re-validation, because only the
+ * status changes. Pro only; the plan is re-checked here, not just in the UI.
+ */
+export async function recordAppointmentAttendanceAction(
+  appointmentId: string,
+  attended: boolean
+): Promise<RecordAttendanceResult> {
+  const context = await getAuthedBusiness();
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  const business = context.business;
+
+  if (!isProBusinessPlan(business.plan)) {
+    return { ok: false, error: NO_SHOW_PLAN_ERROR };
+  }
+
+  const outcome = await recordAppointmentAttendanceCore({
+    id: appointmentId,
+    businessId: business.id,
+    attended,
+  });
+
+  if (!outcome.ok) {
+    return {
+      ok: false,
+      error:
+        outcome.status === 404
+          ? "Appointment not found in this clinic workspace."
+          : outcome.error,
+    };
+  }
+
+  if (outcome.changed) {
+    revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId]);
+  }
+
+  return { ok: true, status: attended ? "completed" : "no-show" };
 }
 
 export async function deleteAppointmentAction(

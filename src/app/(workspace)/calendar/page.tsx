@@ -1,5 +1,6 @@
 import { CalendarWorkspace } from "@/components/calendar/calendar-workspace";
 import { prisma } from "@/lib/prisma";
+import { isProBusinessPlan } from "@/lib/billing";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { buildCalendarViewFromRecords } from "@/lib/calendar";
 import { loadCalendarMonthRecords } from "@/lib/calendar-data";
@@ -109,6 +110,7 @@ export default async function CalendarPage({
       initialView={initialView}
       initialRange={month.range}
       today={todayKey}
+      canRecordNoShows={isProBusinessPlan(business.plan)}
     />
   );
 }

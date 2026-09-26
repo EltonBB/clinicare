@@ -31,10 +31,13 @@ vi.mock("@/lib/mobile/push", () => ({
 
 import {
   APPOINTMENT_ALREADY_COMPLETED_ERROR,
+  APPOINTMENT_CANCELLED_NO_SHOW_ERROR,
   APPOINTMENT_CONFLICT_ERROR,
   APPOINTMENT_NOT_FOUND_ERROR,
+  APPOINTMENT_NOT_STARTED_ERROR,
   cancelAppointmentCore,
   deleteAppointmentCore,
+  recordAppointmentAttendanceCore,
 } from "./appointments-shared";
 
 const WHERE = { id: "appt_1", businessId: "biz_1" };
@@ -261,6 +264,109 @@ describe("deleteAppointmentCore", () => {
 
     expect(mocks.appointment.deleteMany).toHaveBeenCalledWith({
       where: { ...WHERE, staffMemberId: "staff_1" },
+    });
+  });
+});
+
+describe("recordAppointmentAttendanceCore", () => {
+  const NOW = new Date("2026-06-01T12:00:00.000Z");
+  const STARTED = new Date("2026-06-01T09:00:00.000Z");
+  const FUTURE = new Date("2026-06-02T09:00:00.000Z");
+
+  function mockAttendanceMiss(existing: { status: string; startAt: Date } | null) {
+    mocks.appointment.updateMany.mockResolvedValue({ count: 0 });
+    mocks.appointment.findFirst.mockResolvedValue(existing ? { ...RECORD, ...existing } : null);
+  }
+
+  it("marks a started appointment as a no-show and refreshes lastVisitAt", async () => {
+    mockGuardHit();
+
+    const result = await recordAppointmentAttendanceCore({ ...WHERE, attended: false, now: NOW });
+
+    expect(result).toEqual({
+      ok: true,
+      appointmentId: "appt_1",
+      clientId: "client_1",
+      staffMemberId: "staff_1",
+      changed: true,
+    });
+    expect(mocks.appointment.updateMany).toHaveBeenCalledWith({
+      where: {
+        ...WHERE,
+        status: { in: ["PENDING", "CONFIRMED", "COMPLETED"] },
+        startAt: { lte: NOW },
+      },
+      data: { status: "NO_SHOW" },
+    });
+    expect(mocks.client.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "client_1", businessId: "biz_1" } })
+    );
+  });
+
+  it("undoes a no-show back to completed", async () => {
+    mockGuardHit();
+
+    const result = await recordAppointmentAttendanceCore({ ...WHERE, attended: true, now: NOW });
+
+    expect(result).toMatchObject({ ok: true, changed: true });
+    expect(mocks.appointment.updateMany).toHaveBeenCalledWith({
+      where: { ...WHERE, status: "NO_SHOW" },
+      data: { status: "COMPLETED" },
+    });
+  });
+
+  it("is a no-op success when the appointment is already in the requested state", async () => {
+    mockAttendanceMiss({ status: "NO_SHOW", startAt: STARTED });
+    expect(await recordAppointmentAttendanceCore({ ...WHERE, attended: false, now: NOW })).toMatchObject({
+      ok: true,
+      changed: false,
+    });
+
+    mockAttendanceMiss({ status: "COMPLETED", startAt: STARTED });
+    expect(await recordAppointmentAttendanceCore({ ...WHERE, attended: true, now: NOW })).toMatchObject({
+      ok: true,
+      changed: false,
+    });
+    expect(mocks.client.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("refuses a no-show for an appointment that has not started", async () => {
+    mockAttendanceMiss({ status: "CONFIRMED", startAt: FUTURE });
+
+    expect(await recordAppointmentAttendanceCore({ ...WHERE, attended: false, now: NOW })).toEqual({
+      ok: false,
+      status: 409,
+      error: APPOINTMENT_NOT_STARTED_ERROR,
+    });
+  });
+
+  it("refuses to mark a cancelled appointment as a no-show", async () => {
+    mockAttendanceMiss({ status: "CANCELLED", startAt: STARTED });
+
+    expect(await recordAppointmentAttendanceCore({ ...WHERE, attended: false, now: NOW })).toEqual({
+      ok: false,
+      status: 409,
+      error: APPOINTMENT_CANCELLED_NO_SHOW_ERROR,
+    });
+  });
+
+  it("reports a plain conflict when the row changed underneath the guard", async () => {
+    mockAttendanceMiss({ status: "CONFIRMED", startAt: STARTED });
+
+    expect(await recordAppointmentAttendanceCore({ ...WHERE, attended: false, now: NOW })).toEqual({
+      ok: false,
+      status: 409,
+      error: APPOINTMENT_CONFLICT_ERROR,
+    });
+  });
+
+  it("returns 404 when the appointment is not in this workspace", async () => {
+    mockAttendanceMiss(null);
+
+    expect(await recordAppointmentAttendanceCore({ ...WHERE, attended: false, now: NOW })).toEqual({
+      ok: false,
+      status: 404,
+      error: APPOINTMENT_NOT_FOUND_ERROR,
     });
   });
 });

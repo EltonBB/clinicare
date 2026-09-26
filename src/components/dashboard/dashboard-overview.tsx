@@ -22,6 +22,7 @@ const statusDotStyles: Record<DashboardAppointmentStatus, string> = {
   completed: "bg-emerald-500",
   pending: "bg-amber-500",
   cancelled: "bg-destructive",
+  "no-show": "bg-violet-500",
 };
 
 const statusTextStyles: Record<DashboardAppointmentStatus, string> = {
@@ -29,6 +30,7 @@ const statusTextStyles: Record<DashboardAppointmentStatus, string> = {
   completed: "text-emerald-600",
   pending: "text-amber-600",
   cancelled: "text-destructive",
+  "no-show": "text-violet-600",
 };
 
 const solidButtonClasses = cn(

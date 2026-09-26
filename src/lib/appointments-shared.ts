@@ -95,6 +95,17 @@ export const APPOINTMENT_TIME_CONFLICT_ERROR =
 // exists but the requested change isn't allowed).
 export const APPOINTMENT_NOT_FOUND_ERROR = "Appointment not found.";
 
+// Marking a no-show is only meaningful once the appointment time has come.
+export const APPOINTMENT_NOT_STARTED_ERROR =
+  "You can only mark an appointment as a no-show after it has started.";
+
+export const APPOINTMENT_CANCELLED_NO_SHOW_ERROR =
+  "A cancelled appointment can't be marked as a no-show.";
+
+// Shown to a workspace that isn't on Pro. Plain product language, no plan
+// internals — the upgrade path lives in Settings.
+export const NO_SHOW_PLAN_ERROR = "No-show tracking is part of the Pro plan.";
+
 export type AppointmentMutationOutcome =
   | {
       ok: true;
@@ -298,6 +309,96 @@ export async function cancelAppointmentCore(where: {
       appointmentId: cancelled.id,
       clientId: cancelled.clientId,
       staffMemberId: cancelled.staffMemberId,
+      changed: true,
+    };
+  });
+}
+
+/**
+ * Record whether a patient came, via compare-and-set (same discipline as
+ * cancelAppointmentCore): the allowed source states and the "has started"
+ * rule live in the update's own WHERE clause, so a concurrent status change —
+ * most commonly the completePastConfirmedAppointments sweep — can't be
+ * silently overwritten.
+ *
+ * - `attended: false` → NO_SHOW, from PENDING / CONFIRMED / COMPLETED (the
+ *   sweep completes a visit as soon as it ends, so COMPLETED → NO_SHOW is the
+ *   normal correction), and only once the appointment has started.
+ * - `attended: true` → COMPLETED, from NO_SHOW only (the undo).
+ *
+ * The status write and the client's lastVisitAt refresh are one transaction:
+ * a no-show is not a visit, so the last-visit date can move back.
+ */
+export async function recordAppointmentAttendanceCore(args: {
+  id: string;
+  businessId: string;
+  attended: boolean;
+  now?: Date;
+}): Promise<AppointmentMutationOutcome> {
+  const { id, businessId, attended, now = new Date() } = args;
+  const where = { id, businessId };
+
+  return prisma.$transaction(async (tx) => {
+    const { count } = await tx.appointment.updateMany({
+      where: attended
+        ? { ...where, status: "NO_SHOW" }
+        : {
+            ...where,
+            status: { in: ["PENDING", "CONFIRMED", "COMPLETED"] },
+            startAt: { lte: now },
+          },
+      data: { status: attended ? "COMPLETED" : "NO_SHOW" },
+    });
+
+    if (count === 0) {
+      // The guarded update didn't apply — a read-only lookup (no race risk)
+      // tells the caller why.
+      const existing = await tx.appointment.findFirst({
+        where,
+        select: { id: true, clientId: true, staffMemberId: true, status: true, startAt: true },
+      });
+
+      if (!existing) {
+        return { ok: false, status: 404, error: APPOINTMENT_NOT_FOUND_ERROR };
+      }
+
+      const target = attended ? "COMPLETED" : "NO_SHOW";
+
+      if (existing.status === target) {
+        // Already in the requested state: nothing to write, nothing to announce.
+        return {
+          ok: true,
+          appointmentId: existing.id,
+          clientId: existing.clientId,
+          staffMemberId: existing.staffMemberId,
+          changed: false,
+        };
+      }
+
+      if (!attended && existing.status === "CANCELLED") {
+        return { ok: false, status: 409, error: APPOINTMENT_CANCELLED_NO_SHOW_ERROR };
+      }
+
+      if (!attended && existing.startAt.getTime() > now.getTime()) {
+        return { ok: false, status: 409, error: APPOINTMENT_NOT_STARTED_ERROR };
+      }
+
+      // Anything else means the row changed between the guard and this read.
+      return { ok: false, status: 409, error: APPOINTMENT_CONFLICT_ERROR };
+    }
+
+    const updated = await tx.appointment.findFirstOrThrow({
+      where: { id },
+      select: { id: true, clientId: true, staffMemberId: true },
+    });
+
+    await refreshClientLastVisitAt(updated.clientId, businessId, tx);
+
+    return {
+      ok: true,
+      appointmentId: updated.id,
+      clientId: updated.clientId,
+      staffMemberId: updated.staffMemberId,
       changed: true,
     };
   });
