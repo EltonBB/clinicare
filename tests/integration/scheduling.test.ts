@@ -1,7 +1,7 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
-import { Pool } from 'pg';
+import { Client, Pool } from 'pg';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { requireTestDatabaseUrl, requireTestSchema } from './database-safety.mjs';
@@ -108,6 +108,16 @@ describe('real PostgreSQL scheduling concurrency', () => {
       await acquireSchedulingLock(tx, staffMemberId);
       throw new Error('Synthetic rollback');
     })).rejects.toThrow('Synthetic rollback');
+    const verifier = new Client({ connectionString, ssl: false, connectionTimeoutMillis: 5000 });
+    await verifier.connect();
+    try {
+      const result = await verifier.query<{ acquired: boolean }>(
+        'SELECT pg_try_advisory_xact_lock(hashtext($1)) AS acquired', [staffMemberId]
+      );
+      expect(result.rows[0]?.acquired).toBe(true);
+    } finally {
+      await verifier.end();
+    }
     await db.$transaction(async (tx) => {
       await acquireSchedulingLock(tx, staffMemberId);
       expect(await hasSchedulingConflict(tx, { businessId, staffMemberId, startAt, endAt })).toBe(true);
