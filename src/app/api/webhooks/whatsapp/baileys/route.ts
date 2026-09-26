@@ -11,8 +11,24 @@ import {
   recordDeliveryStatus,
   recordInboundMessage,
 } from "@/lib/messaging/inbound";
+import {
+  verifyWebhookSignature,
+  WEBHOOK_SIGNATURE_HEADER,
+  WEBHOOK_TIMESTAMP_HEADER,
+} from "@/lib/messaging/webhook-signature";
 
 export const dynamic = "force-dynamic";
+
+function hasSharedBridgeSecret(request: Request): boolean {
+  const provided = request.headers.get(BAILEYS_BRIDGE_HEADER)?.trim();
+  const expected = process.env.BAILEYS_BRIDGE_SECRET?.trim();
+  if (!expected || !provided) {
+    return false;
+  }
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 // Validate the worker's payload at the boundary. A malformed event is a
 // terminal 400 (don't 500 → the worker would retry-loop forever). Field lengths
@@ -40,31 +56,84 @@ const workerInboundEventSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
-/**
- * Inbound endpoint for the isolated WhatsApp worker. Authenticated by a single
- * shared bridge secret (constant-time compared). The worker is trusted infra
- * inside our boundary, so it names the `businessId` directly — there's no
- * provider number-matching dance like the Twilio webhook needs.
- */
-function isAuthorizedWorker(request: Request): boolean {
-  const provided = request.headers.get(BAILEYS_BRIDGE_HEADER)?.trim();
-  const expected = process.env.BAILEYS_BRIDGE_SECRET?.trim();
-  if (!expected || !provided) {
-    return false;
-  }
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
+// A real worker event is a few hundred bytes (the body field alone is capped at
+// 8000 chars). Anything far beyond that is refused before it is read or hashed.
+const MAX_WEBHOOK_BODY_CHARS = 64 * 1024;
+
+let warnedAboutSharedSecretAuth = false;
+
+function unauthorized(reason: string) {
+  // Reason only — never the headers, the body or a secret.
+  logger.warn("Rejected an inbound WhatsApp webhook.", { reason });
+  return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
 }
 
+function payloadTooLarge() {
+  return NextResponse.json({ error: "Payload too large." }, { status: 413 });
+}
+
+function declaredLength(request: Request): number {
+  return Number(request.headers.get("content-length") ?? 0);
+}
+
+/**
+ * Inbound endpoint for the isolated WhatsApp worker. The worker is trusted infra
+ * inside our boundary, so it names the `businessId` directly — there's no
+ * provider number-matching dance like the Twilio webhook needs. That makes the
+ * authentication what stands between the internet and "a patient replied 2":
+ *
+ * - With BAILEYS_WEBHOOK_SECRET set, every request must carry an HMAC of its
+ *   exact body and a fresh timestamp (see lib/messaging/webhook-signature.ts),
+ *   keyed with a secret that only guards this direction. The shared bridge
+ *   secret is then worth nothing here.
+ * - Without it, the endpoint falls back to the shared bridge secret so an
+ *   existing deployment keeps working until the worker is updated and the new
+ *   secret is set on both sides (a warning says so, once per process).
+ */
 export async function POST(request: Request) {
-  if (!isAuthorizedWorker(request)) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  const webhookSecret = process.env.BAILEYS_WEBHOOK_SECRET?.trim();
+  const timestamp = request.headers.get(WEBHOOK_TIMESTAMP_HEADER);
+  const signature = request.headers.get(WEBHOOK_SIGNATURE_HEADER);
+
+  // Refuse what can be refused from the headers alone, before reading the body.
+  if (webhookSecret) {
+    if (!timestamp || !signature) {
+      return unauthorized("missing");
+    }
+  } else {
+    if (!hasSharedBridgeSecret(request)) {
+      return unauthorized("shared-secret");
+    }
+
+    if (!warnedAboutSharedSecretAuth) {
+      warnedAboutSharedSecretAuth = true;
+      logger.warn(
+        "Inbound WhatsApp events are authenticated with the shared bridge secret only. Set BAILEYS_WEBHOOK_SECRET here and APP_WEBHOOK_SECRET on the worker to require signed requests."
+      );
+    }
+  }
+
+  if (declaredLength(request) > MAX_WEBHOOK_BODY_CHARS) {
+    return payloadTooLarge();
+  }
+
+  const rawBody = await request.text();
+
+  if (rawBody.length > MAX_WEBHOOK_BODY_CHARS) {
+    return payloadTooLarge();
+  }
+
+  if (webhookSecret) {
+    const verification = verifyWebhookSignature({ secret: webhookSecret, timestamp, signature, rawBody });
+
+    if (!verification.ok) {
+      return unauthorized(verification.reason);
+    }
   }
 
   let raw: unknown;
   try {
-    raw = await request.json();
+    raw = JSON.parse(rawBody);
   } catch {
     return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
   }
