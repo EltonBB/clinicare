@@ -1,13 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { scoreNoShowRisk, type NoShowRiskAssessment } from "@/lib/no-show-risk";
-import type { AppointmentStatus } from "@prisma/client";
 
-const FINALIZED_STATUSES: AppointmentStatus[] = ["COMPLETED", "NO_SHOW", "CANCELLED"];
+// scoreNoShowRisk only ever looks at RECENT_VISIT_WINDOW (5) visits per client
+// (src/lib/no-show-risk.ts), so each client's history read never needs more than
+// that — bounded per client, not by a cap shared across the whole batch.
+const RECENT_HISTORY_PER_CLIENT = 5;
 
-// Bounds the shared history read across every client the caller passed in —
-// always a small, already-bounded set (one popover, one day, one dashboard
-// list), never a whole-workspace scan.
-const HISTORY_FETCH_CAP = 500;
+type HistoryRow = { clientId: string; status: string; startAt: Date; updatedAt: Date };
 
 export type RiskableAppointment = {
   id: string;
@@ -39,13 +38,26 @@ export async function getNoShowRiskAssessments(args: {
   const clientIds = [...new Set(upcoming.map((appointment) => appointment.clientId))];
   const appointmentIds = upcoming.map((appointment) => appointment.id);
 
-  const [pastVisits, sentReminders] = await Promise.all([
-    prisma.appointment.findMany({
-      where: { businessId, clientId: { in: clientIds }, status: { in: FINALIZED_STATUSES } },
-      select: { clientId: true, status: true, startAt: true, updatedAt: true },
-      orderBy: { startAt: "desc" },
-      take: HISTORY_FETCH_CAP,
-    }),
+  const [history, sentReminders] = await Promise.all([
+    // One round trip for every client, still index-driven per client: the lateral
+    // subquery takes each client's own most recent finalized visits (via
+    // (clientId, startAt)). A shared LIMIT would let one busy client crowd out
+    // another's rows, and a query per client floods the small connection pool when
+    // a Day view lists a couple of hundred appointments. The status list mirrors
+    // AppointmentStatus's finalized values (NO_SHOW is the newest).
+    prisma.$queryRaw<HistoryRow[]>`
+      SELECT h."clientId", h."status"::text AS "status", h."startAt", h."updatedAt"
+      FROM unnest(${clientIds}::text[]) AS c(id)
+      CROSS JOIN LATERAL (
+        SELECT "clientId", "status", "startAt", "updatedAt"
+        FROM "Appointment"
+        WHERE "businessId" = ${businessId}
+          AND "clientId" = c.id
+          AND "status" IN ('COMPLETED', 'NO_SHOW', 'CANCELLED')
+        ORDER BY "startAt" DESC
+        LIMIT ${RECENT_HISTORY_PER_CLIENT}
+      ) h
+    `,
     prisma.appointmentReminder.findMany({
       where: { appointmentId: { in: appointmentIds }, status: "SENT" },
       select: { appointmentId: true },
@@ -53,8 +65,8 @@ export async function getNoShowRiskAssessments(args: {
   ]);
 
   const remindedIds = new Set(sentReminders.map((reminder) => reminder.appointmentId));
-  const visitsByClient = new Map<string, typeof pastVisits>();
-  for (const visit of pastVisits) {
+  const visitsByClient = new Map<string, HistoryRow[]>();
+  for (const visit of history) {
     const list = visitsByClient.get(visit.clientId);
     if (list) list.push(visit);
     else visitsByClient.set(visit.clientId, [visit]);

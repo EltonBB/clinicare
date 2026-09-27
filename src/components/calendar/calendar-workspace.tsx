@@ -628,6 +628,10 @@ export function CalendarWorkspace({
   const [activeDate, setActiveDate] = useState(() => parseISO(initialView.initialDate));
   const [quickView, setQuickView] = useState<{ appointment: CalendarAppointment; rect: DOMRect } | null>(null);
   const [risk, setRisk] = useState<Record<string, NoShowRiskAssessment>>({});
+  // Ids whose risk was already requested (whether or not an assessment came
+  // back), kept in a ref rather than read from `risk`: an empty answer — a visit
+  // that isn't upcoming — must not look "not fetched yet" and re-trigger the request.
+  const requestedRiskIds = useRef<Set<string>>(new Set());
   // The page loads the viewed month; every other month is fetched when navigated
   // to (below) and merged in, so history and far-off dates are never silently empty.
   const [appointments, setAppointments] = useState(initialView.appointments);
@@ -783,43 +787,42 @@ export function CalendarWorkspace({
     setQuickView({ appointment, rect: event.currentTarget.getBoundingClientRect() });
   }
 
-  // Fires whenever the popover opens on a new appointment, only when Pro.
+  // Requests risk for any of these ids not asked for yet. Results are keyed by
+  // appointment id, so one arriving after the popover/day moved on is still worth
+  // merging (dropping it would leave the id marked as requested with no badge until
+  // a reload); a failed request is forgotten so the next open retries it.
+  const loadRisk = useCallback((ids: string[]) => {
+    const fresh = ids.filter((id) => !requestedRiskIds.current.has(id));
+    if (fresh.length === 0) return;
+    fresh.forEach((id) => requestedRiskIds.current.add(id));
+    getNoShowRiskAction(fresh)
+      .then((result) => setRisk((current) => ({ ...current, ...result })))
+      .catch(() => fresh.forEach((id) => requestedRiskIds.current.delete(id)));
+  }, []);
+
+  // Only a Pro workspace, and only for a visit the score applies to (upcoming ones
+  // are pending or confirmed).
   useEffect(() => {
     if (!canViewNoShowRisk || !quickView) return;
-    const id = quickView.appointment.id;
-    if (risk[id]) return; // already have it — popovers reopen on the same appointment often
-    let cancelled = false;
-    void getNoShowRiskAction([id]).then((result) => {
-      if (!cancelled) setRisk((current) => ({ ...current, ...result }));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [canViewNoShowRisk, quickView, risk]);
+    const { id, status } = quickView.appointment;
+    if (status === "pending" || status === "confirmed") loadRisk([id]);
+  }, [canViewNoShowRisk, quickView, loadRisk]);
 
   // Day view lists every appointment for the active date, so its risk badges are
   // fetched as one batch for the whole column rather than per-row.
   useEffect(() => {
     if (!canViewNoShowRisk || view !== "day") return;
     const dayKey = format(activeDate, "yyyy-MM-dd");
-    const ids = appointments
-      .filter(
-        (appointment) =>
-          appointment.date === dayKey &&
-          (appointment.status === "pending" || appointment.status === "confirmed") &&
-          !risk[appointment.id]
-      )
-      .map((appointment) => appointment.id);
-    if (ids.length === 0) return;
-    let cancelled = false;
-    void getNoShowRiskAction(ids).then((result) => {
-      if (!cancelled) setRisk((current) => ({ ...current, ...result }));
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `risk` is read only to skip ids already fetched; including it would re-run this on every fetch resolution.
-  }, [canViewNoShowRisk, view, activeDate, appointments]);
+    loadRisk(
+      appointments
+        .filter(
+          (appointment) =>
+            appointment.date === dayKey &&
+            (appointment.status === "pending" || appointment.status === "confirmed")
+        )
+        .map((appointment) => appointment.id)
+    );
+  }, [canViewNoShowRisk, view, activeDate, appointments, loadRisk]);
 
   // Only Pro, only a visit whose day has come, never a cancelled one. `today` is
   // the clinic-zone date, so this compares like with like; a visit later today

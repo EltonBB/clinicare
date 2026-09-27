@@ -256,22 +256,38 @@ export default async function DashboardPage() {
 
   const appointments =
     appointmentsResult.status === "fulfilled" ? appointmentsResult.value : [];
-  const upcomingForRisk = appointments.filter(
-    (appointment) => appointment.status === "PENDING" || appointment.status === "CONFIRMED"
-  );
-  const noShowRisk =
-    isProBusinessPlan(business.plan) && upcomingForRisk.length > 0
-      ? await getNoShowRiskAssessments({
-          businessId: business.id,
-          appointments: upcomingForRisk.map((appointment) => ({
-            id: appointment.id,
-            clientId: appointment.clientId,
-            startAt: appointment.startAt,
-            createdAt: appointment.createdAt,
-            status: appointment.status as "PENDING" | "CONFIRMED",
-          })),
-        })
-      : undefined;
+  const nextAppointment =
+    nextAppointmentResult.status === "fulfilled" ? nextAppointmentResult.value : null;
+  const isScorable = (appointment: { status: string }) =>
+    appointment.status === "PENDING" || appointment.status === "CONFIRMED";
+  const upcomingForRisk = appointments.filter(isScorable);
+
+  // "Next up" is often not on today's list (tomorrow, or after today's last
+  // visit), and its risk marker must not depend on which day it falls on.
+  if (nextAppointment && isScorable(nextAppointment) && !upcomingForRisk.some((a) => a.id === nextAppointment.id)) {
+    upcomingForRisk.push(nextAppointment);
+  }
+
+  // The risk badges are an extra on top of the schedule: a failed lookup (say a
+  // database that hasn't had the NO_SHOW migration applied yet) must not take the
+  // whole dashboard down, so it degrades to no badges — like every sibling query here.
+  let noShowRisk: Awaited<ReturnType<typeof getNoShowRiskAssessments>> | undefined;
+  if (isProBusinessPlan(business.plan) && upcomingForRisk.length > 0) {
+    try {
+      noShowRisk = await getNoShowRiskAssessments({
+        businessId: business.id,
+        appointments: upcomingForRisk.map((appointment) => ({
+          id: appointment.id,
+          clientId: appointment.clientId,
+          startAt: appointment.startAt,
+          createdAt: appointment.createdAt,
+          status: appointment.status as "PENDING" | "CONFIRMED",
+        })),
+      });
+    } catch (error) {
+      console.error("Dashboard no-show risk lookup failed", error);
+    }
+  }
   const unreadCount =
     unreadMessagesResult.status === "fulfilled"
       ? unreadMessagesResult.value._sum.unreadCount ?? 0
@@ -286,8 +302,6 @@ export default async function DashboardPage() {
     appointmentCountResult.status === "fulfilled" ? appointmentCountResult.value : 0;
   const lastClients =
     lastClientsResult.status === "fulfilled" ? lastClientsResult.value : [];
-  const nextAppointment =
-    nextAppointmentResult.status === "fulfilled" ? nextAppointmentResult.value : null;
   const appointmentAggregates =
     appointmentAggregatesResult.status === "fulfilled"
       ? appointmentAggregatesResult.value
