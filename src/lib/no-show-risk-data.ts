@@ -44,7 +44,12 @@ export async function getNoShowRiskAssessments(args: {
     // (clientId, startAt)). A shared LIMIT would let one busy client crowd out
     // another's rows, and a query per client floods the small connection pool when
     // a Day view lists a couple of hundred appointments. The status list mirrors
-    // AppointmentStatus's finalized values (NO_SHOW is the newest).
+    // AppointmentStatus's finalized values (NO_SHOW is the newest). COMPLETED and
+    // NO_SHOW can only be set once an appointment's time has passed, but CANCELLED
+    // can happen at any time — including for a booking still in the future — so
+    // this is explicitly scoped to elapsed appointments; otherwise a client with
+    // several cancelled FUTURE bookings could crowd real past visits out of the
+    // 5-row window (or make a first-time client look past the 2-visit minimum).
     prisma.$queryRaw<HistoryRow[]>`
       SELECT h."clientId", h."status"::text AS "status", h."startAt", h."updatedAt"
       FROM unnest(${clientIds}::text[]) AS c(id)
@@ -54,6 +59,7 @@ export async function getNoShowRiskAssessments(args: {
         WHERE "businessId" = ${businessId}
           AND "clientId" = c.id
           AND "status" IN ('COMPLETED', 'NO_SHOW', 'CANCELLED')
+          AND "startAt" <= ${now}
         ORDER BY "startAt" DESC
         LIMIT ${RECENT_HISTORY_PER_CLIENT}
       ) h

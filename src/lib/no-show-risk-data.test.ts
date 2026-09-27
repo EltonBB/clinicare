@@ -60,10 +60,11 @@ describe("getNoShowRiskAssessments", () => {
     expect(result.get("a2")?.level).toBe("low");
     expect(result.get("a3")?.level).toBe("high");
 
-    // One round trip, scoped to the workspace and to each client's five most recent visits.
+    // One round trip, scoped to the workspace, to elapsed appointments only, and
+    // to each client's five most recent visits.
     expect(mocks.$queryRaw).toHaveBeenCalledTimes(1);
     const [, ...values] = mocks.$queryRaw.mock.calls[0];
-    expect(values).toEqual([["c1", "c2"], "biz_1", 5]);
+    expect(values).toEqual([["c1", "c2"], "biz_1", NOW, 5]);
   });
 
   it("scores a client the query returned nothing for as having too little history", async () => {
