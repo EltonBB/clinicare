@@ -319,6 +319,11 @@ export async function saveAppointmentAction(
     // cleared — the appointment isn't cancelled anymore, so its cancellation
     // timestamp shouldn't linger and be read as one on a later, different cancel.
     let wasReactivated = false;
+    // Editing a still-cancelled booking's time/staff/service: an open offer's
+    // text was frozen from the OLD details, but Book reads the row's current
+    // ones — so an accepted offer could book the client into a different time
+    // than the message promised. Re-offer with the saved details instead.
+    let slotDetailsChangedWhileCancelled = false;
 
     if (payload.id) {
       const existing = await prisma.appointment.findFirst({
@@ -391,6 +396,12 @@ export async function saveAppointmentAction(
       // real cancellation/reactivation the write is actually making).
       wasNewlyCancelled = payload.baselineStatus !== "cancelled" && newStatus === "CANCELLED";
       wasReactivated = payload.baselineStatus === "cancelled" && newStatus !== "CANCELLED";
+      slotDetailsChangedWhileCancelled =
+        existing.status === "CANCELLED" &&
+        newStatus === "CANCELLED" &&
+        (existing.staffMemberId !== staffMemberId ||
+          existing.startAt.getTime() !== startAt.getTime() ||
+          existing.title !== payload.service.trim());
       needsConflictCheck =
         existing.staffMemberId !== staffMemberId ||
         existing.startAt.getTime() !== startAt.getTime() ||
@@ -540,6 +551,24 @@ export async function saveAppointmentAction(
         // cancel would revive it beside a new offer for the same slot.
         if (wasReactivated) {
           await withdrawSlotOffers(tx, { businessId: business.id, appointmentId: payload.id });
+        }
+
+        // Still cancelled, but its time/staff/service changed under an open
+        // offer: withdraw the stale one and offer the saved details again, so
+        // the offer text, the Follow-ups row and Book's pre-fill all read the
+        // same (new) time — same ordering as the un-cancel branch above.
+        if (slotDetailsChangedWhileCancelled) {
+          await withdrawSlotOffers(tx, { businessId: business.id, appointmentId: payload.id });
+          await offerFreedSlot(tx, {
+            businessId: business.id,
+            cancelled: {
+              id: payload.id,
+              clientId: payload.clientId,
+              staffMemberId,
+              title: payload.service.trim(),
+              startAt,
+            },
+          });
         }
       } else {
         const created = await tx.appointment.create({
