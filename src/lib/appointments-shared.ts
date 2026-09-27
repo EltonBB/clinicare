@@ -253,7 +253,7 @@ export async function cancelAppointmentCore(where: {
     // so `count` would be 1 and the idempotent branch below could never run.
     const { count } = await tx.appointment.updateMany({
       where: { ...where, status: { notIn: ["COMPLETED", "CANCELLED", "NO_SHOW"] } },
-      data: { status: "CANCELLED" },
+      data: { status: "CANCELLED", cancelledAt: new Date() },
     });
 
     if (count === 0) {

@@ -16,8 +16,15 @@ export type NoShowRiskAssessment = {
 export type NoShowRiskPastVisit = {
   status: "COMPLETED" | "NO_SHOW" | "CANCELLED";
   startAt: Date;
-  /** Proxy for "when this was cancelled" on a CANCELLED row — every cancel path writes the status via a plain field update, so Prisma's auto-managed updatedAt reflects it. Ignored for other statuses. */
-  updatedAt: Date;
+  /**
+   * When a CANCELLED row was actually cancelled — set once, immutable, cleared
+   * on un-cancel (see the `cancelledAt` column and its callers). NOT the same
+   * as `updatedAt`, which moves on every field edit, including editing a
+   * still-cancelled booking's notes/time/staff/service. Null on a row
+   * cancelled before this column existed, or on any non-CANCELLED status
+   * (ignored either way — no late-cancel signal without a real timestamp).
+   */
+  cancelledAt: Date | null;
 };
 
 export type NoShowRiskAppointmentInput = {
@@ -62,8 +69,8 @@ export function scoreNoShowRisk(
   }
 
   const hadLateCancel = recent.some((visit) => {
-    if (visit.status !== "CANCELLED") return false;
-    const hoursBeforeStart = (visit.startAt.getTime() - visit.updatedAt.getTime()) / HOUR_MS;
+    if (visit.status !== "CANCELLED" || !visit.cancelledAt) return false;
+    const hoursBeforeStart = (visit.startAt.getTime() - visit.cancelledAt.getTime()) / HOUR_MS;
     return hoursBeforeStart >= 0 && hoursBeforeStart < LATE_CANCEL_WINDOW_HOURS;
   });
   if (hadLateCancel) {

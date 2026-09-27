@@ -1,0 +1,13 @@
+-- Appointment: an immutable cancellation timestamp
+-- =============================================================================
+-- The no-show risk scorer's late-cancellation signal needs to know exactly when
+-- a visit was cancelled. Prisma's auto-managed `updatedAt` is NOT that: it moves
+-- on every field edit, including editing a still-cancelled booking's notes,
+-- time, staff or service (a supported flow). `cancelledAt` is set exactly once,
+-- on the cancel, and cleared on un-cancel — application code, not the database,
+-- keeps it correct; this migration only adds the nullable column.
+--
+-- Additive and idempotent (IF NOT EXISTS): safe to re-run, nothing existing is
+-- altered, and every historical CANCELLED row simply reads NULL (no late-cancel
+-- signal from it) instead of a wrong one.
+ALTER TABLE "Appointment" ADD COLUMN IF NOT EXISTS "cancelledAt" TIMESTAMP(3);

@@ -3,8 +3,8 @@ import { scoreNoShowRisk, type NoShowRiskPastVisit } from "@/lib/no-show-risk";
 
 const BASE_APPT = { startAt: new Date("2026-07-10T09:00:00Z"), createdAt: new Date("2026-07-05T09:00:00Z"), status: "CONFIRMED" as const, reminderSent: false };
 
-function visit(status: NoShowRiskPastVisit["status"], startAt: string, updatedAt = startAt): NoShowRiskPastVisit {
-  return { status, startAt: new Date(startAt), updatedAt: new Date(updatedAt) };
+function visit(status: NoShowRiskPastVisit["status"], startAt: string, cancelledAt: string | null = startAt): NoShowRiskPastVisit {
+  return { status, startAt: new Date(startAt), cancelledAt: cancelledAt === null ? null : new Date(cancelledAt) };
 }
 
 describe("scoreNoShowRisk", () => {
@@ -49,6 +49,14 @@ describe("scoreNoShowRisk", () => {
       visit("COMPLETED", "2026-05-01T09:00:00Z"),
     ];
     expect(scoreNoShowRisk(early, BASE_APPT)).toMatchObject({ level: "low", reasons: [] });
+  });
+
+  it("gives no late-cancel signal from a null cancelledAt (a row cancelled before the column existed) — never falls back to updatedAt (Codex #129)", () => {
+    const noTimestamp = [
+      visit("CANCELLED", "2026-06-01T09:00:00Z", null),
+      visit("COMPLETED", "2026-05-01T09:00:00Z"),
+    ];
+    expect(scoreNoShowRisk(noTimestamp, BASE_APPT)).toMatchObject({ level: "low", reasons: [] });
   });
 
   it("is medium for an unconfirmed reminder on a still-pending appointment", () => {

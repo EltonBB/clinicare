@@ -286,6 +286,10 @@ export async function saveAppointmentAction(
     // (not just the dedicated Cancel booking action) — the doctor's app
     // needs to hear about that path too, not just cancelAppointmentAction.
     let wasNewlyCancelled = false;
+    // Un-cancelling (CANCELLED -> any other status) clears cancelledAt — the
+    // appointment isn't cancelled anymore, so its cancellation timestamp
+    // shouldn't linger and be read as one on a later, different cancel.
+    let wasReactivated = false;
 
     if (payload.id) {
       const existing = await prisma.appointment.findFirst({
@@ -349,6 +353,7 @@ export async function saveAppointmentAction(
       }
 
       wasNewlyCancelled = existing.status !== "CANCELLED" && newStatus === "CANCELLED";
+      wasReactivated = existing.status === "CANCELLED" && newStatus !== "CANCELLED";
       needsConflictCheck =
         existing.staffMemberId !== staffMemberId ||
         existing.startAt.getTime() !== startAt.getTime() ||
@@ -437,6 +442,12 @@ export async function saveAppointmentAction(
             endAt,
             notes: payload.notes.trim() || null,
             status: newStatus,
+            // Set only on the transition into CANCELLED, cleared only on the
+            // transition out — omitted (undefined) otherwise, so an edit that
+            // doesn't touch cancellation status leaves the real cancel time
+            // alone. See appointments-shared.ts's cancelAppointmentCore for
+            // why this can't just be the auto-managed updatedAt.
+            cancelledAt: wasNewlyCancelled ? new Date() : wasReactivated ? null : undefined,
           },
         });
 

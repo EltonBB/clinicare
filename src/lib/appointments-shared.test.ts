@@ -91,7 +91,7 @@ describe("cancelAppointmentCore", () => {
     });
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith({
       where: { ...WHERE, status: { notIn: ["COMPLETED", "CANCELLED", "NO_SHOW"] } },
-      data: { status: "CANCELLED" },
+      data: { status: "CANCELLED", cancelledAt: expect.any(Date) },
     });
     expect(mocks.appointmentReminder.deleteMany).toHaveBeenCalledWith({
       where: { appointmentId: "appt_1" },
@@ -217,7 +217,7 @@ describe("cancelAppointmentCore", () => {
 
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith({
       where: { ...WHERE, staffMemberId: "staff_1", status: { notIn: ["COMPLETED", "CANCELLED", "NO_SHOW"] } },
-      data: { status: "CANCELLED" },
+      data: { status: "CANCELLED", cancelledAt: expect.any(Date) },
     });
   });
 });

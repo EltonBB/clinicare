@@ -196,6 +196,7 @@ describe("buildDashboardViewFromWorkspace — no-show risk", () => {
     notes: null,
     createdAt: now,
     updatedAt: now,
+    cancelledAt: null,
     client: { name: "Ava Patient" },
     staffMember: { name: "Dr. One" },
   };

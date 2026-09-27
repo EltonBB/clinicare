@@ -333,6 +333,73 @@ describe("saveAppointmentAction — concurrent-edit guard", () => {
   });
 });
 
+describe("saveAppointmentAction — cancelledAt: an immutable timestamp, not the auto-managed updatedAt", () => {
+  beforeEach(() => {
+    mocks.appointment.updateMany.mockResolvedValue({ count: 1 });
+  });
+
+  it("sets cancelledAt on the transition into CANCELLED", async () => {
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      ...EXISTING,
+      status: "CANCELLED",
+      client: { id: "client_1", name: "Mira" },
+      staffMember: null,
+    });
+
+    await saveAppointmentAction({ ...PAYLOAD, status: "cancelled", baselineStatus: "confirmed" });
+
+    expect(mocks.appointment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "CANCELLED", cancelledAt: expect.any(Date) }) })
+    );
+  });
+
+  it("clears cancelledAt on the transition out of CANCELLED (un-cancel)", async () => {
+    mocks.appointment.findFirst.mockResolvedValueOnce({ ...EXISTING, status: "CANCELLED" });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      ...EXISTING,
+      client: { id: "client_1", name: "Mira" },
+      staffMember: null,
+    });
+
+    await saveAppointmentAction({ ...PAYLOAD, status: "confirmed", baselineStatus: "cancelled" });
+
+    expect(mocks.appointment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "CONFIRMED", cancelledAt: null }) })
+    );
+  });
+
+  it("leaves cancelledAt untouched on any other save — including editing a still-cancelled booking (this is the fix: the old code used the auto-managed updatedAt, which every such edit rewrites)", async () => {
+    mocks.appointment.findFirst.mockResolvedValueOnce({ ...EXISTING, status: "CANCELLED" });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      ...EXISTING,
+      status: "CANCELLED",
+      client: { id: "client_1", name: "Mira" },
+      staffMember: null,
+    });
+
+    await saveAppointmentAction({ ...PAYLOAD, status: "cancelled", baselineStatus: "cancelled", notes: "called to reschedule" });
+
+    // `cancelledAt: undefined` (not present, not overwritten with a new value)
+    // — Prisma omits an undefined field from the update, so the real
+    // cancellation time in the database is left exactly as it was.
+    const call = mocks.appointment.updateMany.mock.calls[0][0];
+    expect(call.data.cancelledAt).toBeUndefined();
+  });
+
+  it("leaves cancelledAt untouched on a plain confirmed -> confirmed save", async () => {
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      ...EXISTING,
+      client: { id: "client_1", name: "Mira" },
+      staffMember: null,
+    });
+
+    await saveAppointmentAction(PAYLOAD);
+
+    const call = mocks.appointment.updateMany.mock.calls[0][0];
+    expect(call.data.cancelledAt).toBeUndefined();
+  });
+});
+
 describe("saveAppointmentAction — referenced client/staff deleted mid-save", () => {
   it("gives a specific message instead of the generic save failure on a foreign-key violation (P2003)", async () => {
     // The client/staff ownership checks run before the transaction opens, so
