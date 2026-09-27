@@ -31,15 +31,24 @@ export type WebhookVerification =
   | { ok: true }
   | { ok: false; reason: "missing" | "malformed" | "stale" | "mismatch" };
 
-export function verifyWebhookSignature(args: {
-  secret: string;
+export type WebhookHeaderCheck =
+  | { ok: true; timestampSeconds: number; signatureHex: string }
+  | { ok: false; reason: "missing" | "malformed" | "stale" };
+
+/**
+ * Everything about a signed request that can be judged from its headers alone:
+ * present, well-formed and fresh. The route runs this before it reads the body,
+ * so a request with junk or stale signature metadata never gets its body
+ * buffered; the HMAC itself needs the body, so that part stays in
+ * {@link verifyWebhookSignature}.
+ */
+export function checkSignatureHeaders(args: {
   timestamp: string | null;
   signature: string | null;
-  rawBody: string;
   /** Injectable clock for tests. */
   nowMs?: number;
-}): WebhookVerification {
-  const { secret, timestamp, signature, rawBody } = args;
+}): WebhookHeaderCheck {
+  const { timestamp, signature } = args;
 
   if (!timestamp || !signature) {
     return { ok: false, reason: "missing" };
@@ -63,8 +72,25 @@ export function verifyWebhookSignature(args: {
     return { ok: false, reason: "stale" };
   }
 
-  const expected = Buffer.from(signWebhookBody(secret, timestampSeconds, rawBody).slice(3), "hex");
-  const actual = Buffer.from(provided[1], "hex");
+  return { ok: true, timestampSeconds, signatureHex: provided[1] };
+}
+
+export function verifyWebhookSignature(args: {
+  secret: string;
+  timestamp: string | null;
+  signature: string | null;
+  rawBody: string;
+  /** Injectable clock for tests. */
+  nowMs?: number;
+}): WebhookVerification {
+  const headers = checkSignatureHeaders(args);
+
+  if (!headers.ok) {
+    return headers;
+  }
+
+  const expected = Buffer.from(signWebhookBody(args.secret, headers.timestampSeconds, args.rawBody).slice(3), "hex");
+  const actual = Buffer.from(headers.signatureHex, "hex");
 
   // Both are 32 bytes (the pattern guarantees the provided length), as timingSafeEqual requires.
   return timingSafeEqual(expected, actual) ? { ok: true } : { ok: false, reason: "mismatch" };

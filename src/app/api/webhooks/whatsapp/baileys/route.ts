@@ -12,6 +12,7 @@ import {
   recordInboundMessage,
 } from "@/lib/messaging/inbound";
 import {
+  checkSignatureHeaders,
   verifyWebhookSignature,
   WEBHOOK_SIGNATURE_HEADER,
   WEBHOOK_TIMESTAMP_HEADER,
@@ -57,8 +58,10 @@ const workerInboundEventSchema = z.discriminatedUnion("type", [
 ]);
 
 // A real worker event is a few hundred bytes (the body field alone is capped at
-// 8000 chars). Anything far beyond that is refused before it is read or hashed.
-const MAX_WEBHOOK_BODY_CHARS = 64 * 1024;
+// 8000 chars). Anything far beyond that is refused before it is hashed, and the
+// body is read as a stream that is cancelled the moment it passes this cap, so a
+// caller can't make the endpoint buffer an arbitrarily large request.
+const MAX_WEBHOOK_BODY_BYTES = 64 * 1024;
 
 let warnedAboutSharedSecretAuth = false;
 
@@ -74,6 +77,41 @@ function payloadTooLarge() {
 
 function declaredLength(request: Request): number {
   return Number(request.headers.get("content-length") ?? 0);
+}
+
+/**
+ * The request body as text, or null when it exceeds `maxBytes`. Content-Length
+ * is only a hint a caller controls (it can be absent or false), so the bytes are
+ * counted as they arrive and the stream is cancelled at the cap instead of being
+ * buffered whole first.
+ */
+async function readBodyWithLimit(request: Request, maxBytes: number): Promise<string | null> {
+  if (!request.body) {
+    return "";
+  }
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+
+    if (done) {
+      break;
+    }
+
+    received += value.byteLength;
+
+    if (received > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+
+    chunks.push(value);
+  }
+
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 /**
@@ -95,10 +133,13 @@ export async function POST(request: Request) {
   const timestamp = request.headers.get(WEBHOOK_TIMESTAMP_HEADER);
   const signature = request.headers.get(WEBHOOK_SIGNATURE_HEADER);
 
-  // Refuse what can be refused from the headers alone, before reading the body.
+  // Refuse what can be refused from the headers alone, before reading the body:
+  // missing, malformed or stale signature metadata never gets its body buffered.
   if (webhookSecret) {
-    if (!timestamp || !signature) {
-      return unauthorized("missing");
+    const headerCheck = checkSignatureHeaders({ timestamp, signature });
+
+    if (!headerCheck.ok) {
+      return unauthorized(headerCheck.reason);
     }
   } else {
     if (!hasSharedBridgeSecret(request)) {
@@ -113,13 +154,13 @@ export async function POST(request: Request) {
     }
   }
 
-  if (declaredLength(request) > MAX_WEBHOOK_BODY_CHARS) {
+  if (declaredLength(request) > MAX_WEBHOOK_BODY_BYTES) {
     return payloadTooLarge();
   }
 
-  const rawBody = await request.text();
+  const rawBody = await readBodyWithLimit(request, MAX_WEBHOOK_BODY_BYTES);
 
-  if (rawBody.length > MAX_WEBHOOK_BODY_CHARS) {
+  if (rawBody === null) {
     return payloadTooLarge();
   }
 

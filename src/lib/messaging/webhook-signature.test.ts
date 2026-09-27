@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  checkSignatureHeaders,
   signWebhookBody,
   verifyWebhookSignature,
   WEBHOOK_TOLERANCE_SECONDS,
@@ -125,5 +126,38 @@ describe("webhook signature", () => {
         rawBody: BODY,
       })
     ).toEqual({ ok: true });
+  });
+});
+
+describe("checkSignatureHeaders (the part of verification that needs no body)", () => {
+  const NOW = 1_800_000_000_000;
+  const nowSec = Math.floor(NOW / 1000);
+  const good = `v1=${"a".repeat(64)}`;
+
+  it("passes fresh, well-formed metadata and returns the parsed values", () => {
+    expect(checkSignatureHeaders({ timestamp: String(nowSec), signature: good, nowMs: NOW })).toEqual({
+      ok: true,
+      timestampSeconds: nowSec,
+      signatureHex: "a".repeat(64),
+    });
+  });
+
+  it.each([
+    ["a missing timestamp", { timestamp: null, signature: good }, "missing"],
+    ["a missing signature", { timestamp: String(nowSec), signature: null }, "missing"],
+    ["a non-numeric timestamp", { timestamp: "1e9", signature: good }, "malformed"],
+    ["a short signature", { timestamp: String(nowSec), signature: "v1=abc" }, "malformed"],
+    ["a stale timestamp", { timestamp: String(nowSec - WEBHOOK_TOLERANCE_SECONDS - 1), signature: good }, "stale"],
+    ["a timestamp too far ahead", { timestamp: String(nowSec + WEBHOOK_TOLERANCE_SECONDS + 1), signature: good }, "stale"],
+  ] as const)("refuses %s", (_label, headers, reason) => {
+    expect(checkSignatureHeaders({ ...headers, nowMs: NOW })).toEqual({ ok: false, reason });
+  });
+
+  it("agrees with verifyWebhookSignature on which metadata is refused before any hashing", () => {
+    const rawBody = "{}";
+    const timestamp = String(nowSec - WEBHOOK_TOLERANCE_SECONDS - 1);
+    const verdict = verifyWebhookSignature({ secret: "s", timestamp, signature: good, rawBody, nowMs: NOW });
+
+    expect(verdict).toEqual({ ok: false, reason: "stale" });
   });
 });

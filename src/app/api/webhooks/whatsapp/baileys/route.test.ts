@@ -68,6 +68,28 @@ function legacy(body = BODY, secret: string | null = BRIDGE_SECRET) {
   });
 }
 
+/**
+ * A request whose body arrives as a stream. highWaterMark 0 means the source is
+ * only pulled when something actually reads, so `pulled` shows whether (and how
+ * much of) the body was consumed.
+ */
+function streamed(
+  source: UnderlyingDefaultSource<Uint8Array>,
+  headers: Record<string, string>
+) {
+  return new Request(URL, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...headers },
+    body: new ReadableStream<Uint8Array>(source, { highWaterMark: 0 }),
+    duplex: "half",
+  } as RequestInit & { duplex: "half" });
+}
+
+const signedHeaders = (signedText: string, timestamp = nowSeconds()) => ({
+  [WEBHOOK_TIMESTAMP_HEADER]: String(timestamp),
+  [WEBHOOK_SIGNATURE_HEADER]: signWebhookBody(WEBHOOK_SECRET, timestamp, signedText),
+});
+
 const originalEnv = { ...process.env };
 
 beforeEach(() => {
@@ -243,6 +265,72 @@ describe("inbound WhatsApp webhook — signed requests (BAILEYS_WEBHOOK_SECRET s
 
     expect(response.status).toBe(413);
     expect(mocks.recordInboundMessage).not.toHaveBeenCalled();
+  });
+
+  it("stops reading a streamed body at the cap even with no Content-Length, instead of buffering it", async () => {
+    let pulled = 0;
+    const chunk = new TextEncoder().encode("x".repeat(16 * 1024));
+    // An endless body from a caller with plausible-looking (but unverifiable) signature headers.
+    const request = streamed(
+      {
+        pull(controller) {
+          pulled += 1;
+          controller.enqueue(chunk);
+        },
+      },
+      signedHeaders("irrelevant")
+    );
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(413);
+    // 64 KiB is four 16 KiB chunks; the fifth read trips the cap and cancels the stream.
+    expect(pulled).toBeLessThanOrEqual(6);
+    expect(mocks.recordInboundMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a stale timestamp", () => signedHeaders("x", nowSeconds() - WEBHOOK_TOLERANCE_SECONDS - 60)],
+    ["a non-numeric timestamp", () => ({ [WEBHOOK_TIMESTAMP_HEADER]: "soon", [WEBHOOK_SIGNATURE_HEADER]: `v1=${"a".repeat(64)}` })],
+    ["a malformed signature", () => ({ [WEBHOOK_TIMESTAMP_HEADER]: String(nowSeconds()), [WEBHOOK_SIGNATURE_HEADER]: "v1=short" })],
+  ])("refuses %s without reading any of the body", async (_label, headers) => {
+    let pulled = 0;
+    const request = streamed(
+      {
+        pull(controller) {
+          pulled += 1;
+          controller.enqueue(new TextEncoder().encode(BODY));
+          controller.close();
+        },
+      },
+      headers()
+    );
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(401);
+    expect(pulled).toBe(0);
+  });
+
+  it("reads a valid body that arrives in several chunks, even with a character split across them, and verifies it", async () => {
+    const text = JSON.stringify({ ...MESSAGE, body: "Hi 👋 šđ ok" });
+    const bytes = new TextEncoder().encode(text);
+    const emoji = bytes.indexOf(0xf0); // first byte of the 4-byte emoji
+    const parts = [bytes.slice(0, emoji + 1), bytes.slice(emoji + 1, emoji + 3), bytes.slice(emoji + 3)];
+    const request = streamed(
+      {
+        start(controller) {
+          parts.forEach((part) => controller.enqueue(part));
+          controller.close();
+        },
+      },
+      signedHeaders(text)
+    );
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(mocks.recordInboundMessage).toHaveBeenCalledWith(expect.objectContaining({ body: "Hi 👋 šđ ok" }));
   });
 
   it("still returns 400 for a validly signed but malformed payload (so the worker doesn't retry-loop)", async () => {
