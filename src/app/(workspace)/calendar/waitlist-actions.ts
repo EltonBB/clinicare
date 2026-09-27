@@ -6,12 +6,9 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { isProBusinessPlan } from "@/lib/billing";
+import { WAITLIST_PLAN_ERROR } from "@/lib/waitlist";
 import { createWaitlistEntry, removeWaitlistEntry } from "@/lib/waitlist-data";
 import { parseZonedWallClock } from "@/lib/time-zone";
-
-// Same phrasing convention as NO_SHOW_PLAN_ERROR (lib/appointments-shared.ts):
-// "<feature> is part of the Pro plan."
-export const WAITLIST_PLAN_ERROR = "Waiting list is part of the Pro plan.";
 
 export type AddWaitlistEntryPayload = {
   clientId: string;
