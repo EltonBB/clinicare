@@ -400,6 +400,10 @@ model FollowUpDraft {
 
   @@unique([businessId, dedupeKey])
   @@index([businessId, status, createdAt])
+  // Postgres doesn't index foreign keys on its own: without these, deleting a
+  // Client (cascade) or an Appointment (SET NULL) scans the whole table.
+  @@index([clientId])
+  @@index([appointmentId])
 }
 
 model AppointmentReminder {

@@ -47,7 +47,7 @@ import { useDismissOnOutsideOrEscape } from "@/hooks/use-dismiss-on-outside-or-e
 import { businessHoursForDate, timeToMinutes } from "@/lib/calendar";
 import { rowsThatFit, visibleEntryCount } from "@/lib/calendar-fit";
 import { monthsToLoad, type CalendarRange } from "@/lib/calendar-range";
-import type { NoShowRiskAssessment } from "@/lib/no-show-risk";
+import { MAX_RISK_BATCH_SIZE, type NoShowRiskAssessment } from "@/lib/no-show-risk";
 import { cn } from "@/lib/utils";
 import type {
   CalendarAppointment,
@@ -806,24 +806,29 @@ export function CalendarWorkspace({
     const fresh = ids.filter((id) => !requestedRiskIds.current.has(id));
     if (fresh.length === 0) return;
     fresh.forEach((id) => requestedRiskIds.current.add(id));
-    // Snapshot each id's invalidation generation now, before the request goes
-    // out — if a same-client attendance change bumps it before this resolves,
-    // the response below is stale and must be dropped, not merged.
-    const requestedAt = new Map(fresh.map((id) => [id, riskGeneration.current.get(id) ?? 0]));
-    getNoShowRiskAction(fresh)
-      .then((result) => {
-        setRisk((current) => {
-          let changed = false;
-          const next = { ...current };
-          for (const [id, assessment] of Object.entries(result)) {
-            if ((riskGeneration.current.get(id) ?? 0) !== requestedAt.get(id)) continue;
-            next[id] = assessment;
-            changed = true;
-          }
-          return changed ? next : current;
-        });
-      })
-      .catch(() => fresh.forEach((id) => requestedRiskIds.current.delete(id)));
+    // The action answers at most MAX_RISK_BATCH_SIZE ids, so a busier list goes
+    // in batches. Each batch snapshots its ids' invalidation generation before
+    // the request goes out — if a same-client attendance change bumps it
+    // before this resolves, that id's part of the response is stale and must
+    // be dropped, not merged.
+    for (let start = 0; start < fresh.length; start += MAX_RISK_BATCH_SIZE) {
+      const batch = fresh.slice(start, start + MAX_RISK_BATCH_SIZE);
+      const requestedAt = new Map(batch.map((id) => [id, riskGeneration.current.get(id) ?? 0]));
+      getNoShowRiskAction(batch)
+        .then((result) => {
+          setRisk((current) => {
+            let changed = false;
+            const next = { ...current };
+            for (const [id, assessment] of Object.entries(result)) {
+              if ((riskGeneration.current.get(id) ?? 0) !== requestedAt.get(id)) continue;
+              next[id] = assessment;
+              changed = true;
+            }
+            return changed ? next : current;
+          });
+        })
+        .catch(() => batch.forEach((id) => requestedRiskIds.current.delete(id)));
+    }
   }, []);
 
   // Only a Pro workspace, and only for a visit the score applies to (upcoming ones

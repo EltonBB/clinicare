@@ -64,33 +64,45 @@ function FollowUpDraftRow({
     setBusy("send");
     setError("");
 
-    const result = await sendFollowUpDraftAction(
-      draft.id,
-      trimmed !== draft.body ? trimmed : undefined
-    );
+    // A rejected server action (network failure, thrown error) must not leave the
+    // row disabled with no message, so it resets the same way a returned failure does.
+    try {
+      const result = await sendFollowUpDraftAction(
+        draft.id,
+        trimmed !== draft.body ? trimmed : undefined
+      );
 
-    if (!result.ok) {
-      setError(result.error ?? "Couldn't send this message. Try again.");
+      if (!result.ok) {
+        setError(result.error ?? "Couldn't send this message. Try again.");
+        setBusy(null);
+        return;
+      }
+
+      onHandled();
+    } catch {
+      setError("Couldn't send this message. Try again.");
       setBusy(null);
-      return;
     }
-
-    onHandled();
   }
 
   async function handleSkip() {
     setBusy("skip");
     setError("");
 
-    const result = await dismissFollowUpDraftAction(draft.id);
+    try {
+      const result = await dismissFollowUpDraftAction(draft.id);
 
-    if (!result.ok) {
-      setError(result.error ?? "We couldn't skip this follow-up.");
+      if (!result.ok) {
+        setError(result.error ?? "We couldn't skip this follow-up.");
+        setBusy(null);
+        return;
+      }
+
+      onHandled();
+    } catch {
+      setError("We couldn't skip this follow-up.");
       setBusy(null);
-      return;
     }
-
-    onHandled();
   }
 
   return (

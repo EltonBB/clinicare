@@ -131,7 +131,7 @@ export async function recordInboundMessage(
 }
 
 export type ApplyReplyIntentResult =
-  | { applied: false; reason: "no_intent" | "no_client" | "no_match" | "ambiguous" }
+  | { applied: false; reason: "no_intent" | "no_client" | "no_match" | "ambiguous" | "already_confirmed" }
   | { applied: true; intent: "confirm" | "cancel"; appointmentId: string };
 
 /**
@@ -157,13 +157,14 @@ export async function applyInboundReplyIntent(args: {
     return { applied: false, reason: "no_client" };
   }
 
-  // Confirming only makes sense from PENDING; cancelling also allows an
-  // already-CONFIRMED appointment (the far more common real case: a patient
-  // was already confirmed but now needs to cancel).
-  const candidateStatuses: AppointmentStatus[] =
-    intent === "confirm" ? ["PENDING"] : ["PENDING", "CONFIRMED"];
+  // A reminder goes to pending and confirmed appointments alike and invites
+  // "1 to confirm", so both statuses are candidates for either reply: cancelling
+  // an already-confirmed visit is the far more common real case, and a patient
+  // who replies 1 to an already-confirmed visit deserves the same
+  // acknowledgement rather than silence.
+  const candidateStatuses: AppointmentStatus[] = ["PENDING", "CONFIRMED"];
 
-  const candidates = await prisma.appointment.findMany({
+  const found = await prisma.appointment.findMany({
     where: {
       businessId,
       clientId,
@@ -171,8 +172,15 @@ export async function applyInboundReplyIntent(args: {
       startAt: { gt: now },
       reminders: { some: { status: "SENT" } },
     },
-    select: { id: true, startAt: true, client: { select: { phone: true } } },
+    select: { id: true, startAt: true, status: true, client: { select: { phone: true } } },
   });
+
+  // Confirming prefers a pending visit: a client with one pending and one
+  // confirmed upcoming visit still confirms the pending one.
+  const candidates =
+    intent === "confirm" && found.some((appointment) => appointment.status === "PENDING")
+      ? found.filter((appointment) => appointment.status === "PENDING")
+      : found;
 
   if (candidates.length !== 1) {
     return { applied: false, reason: candidates.length === 0 ? "no_match" : "ambiguous" };
@@ -182,11 +190,8 @@ export async function applyInboundReplyIntent(args: {
   const phone = appointment.client.phone;
 
   if (intent === "confirm") {
-    const outcome = await confirmAppointmentCore({ id: appointment.id, businessId });
-    if (!outcome.ok || !outcome.changed) {
-      return { applied: false, reason: "no_match" };
-    }
-    if (phone) {
+    const sendConfirmedReply = async () => {
+      if (!phone) return;
       await sendMessage({
         channel: "WHATSAPP",
         businessId,
@@ -196,7 +201,19 @@ export async function applyInboundReplyIntent(args: {
           body: `You're confirmed for ${formatZonedTime(appointment.startAt)} on ${formatZonedFullDate(appointment.startAt)}. See you then!`,
         },
       });
+    };
+
+    if (appointment.status === "CONFIRMED") {
+      // Nothing to change — just answer the reply.
+      await sendConfirmedReply();
+      return { applied: false, reason: "already_confirmed" };
     }
+
+    const outcome = await confirmAppointmentCore({ id: appointment.id, businessId });
+    if (!outcome.ok || !outcome.changed) {
+      return { applied: false, reason: "no_match" };
+    }
+    await sendConfirmedReply();
     return { applied: true, intent: "confirm", appointmentId: appointment.id };
   }
 
