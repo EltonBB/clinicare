@@ -38,9 +38,9 @@ vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 import {
   addWaitlistEntryAction,
   removeWaitlistEntryAction,
-  WAITLIST_PLAN_ERROR,
   type AddWaitlistEntryPayload,
 } from "./waitlist-actions";
+import { WAITLIST_PLAN_ERROR } from "@/lib/waitlist";
 
 const PRO_BUSINESS = { id: "biz_1", plan: "PRO" as const };
 const BASIC_BUSINESS = { id: "biz_1", plan: "BASIC" as const };
