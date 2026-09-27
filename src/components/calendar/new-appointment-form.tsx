@@ -122,7 +122,8 @@ export function NewAppointmentForm({
     initialAppointment?.status ?? "confirmed"
   );
   const isEditing = Boolean(initialAppointment);
-  // "Cancelled" isn't offered on a completed visit (the server refuses it), and
+  // "Cancelled" isn't offered on a completed or no-show visit (the server
+  // refuses it — a no-show is undone with "Mark as attended"), and
   // "No-show" is a Pro option that isn't offered on a cancelled visit either
   // (the server refuses cancelled -> no-show) — but a visit that is already a
   // no-show keeps it listed so the dropdown never shows a blank. No useMemo:
@@ -130,7 +131,7 @@ export function NewAppointmentForm({
   // different value anyway.
   const editStatusOptions = statusOptions.filter(
     (option) =>
-      (option !== "cancelled" || baselineStatus !== "completed") &&
+      (option !== "cancelled" || (baselineStatus !== "completed" && baselineStatus !== "no-show")) &&
       (option !== "no-show" || canRecordNoShows || baselineStatus === "no-show") &&
       (option !== "no-show" || baselineStatus !== "cancelled")
   );
@@ -375,7 +376,12 @@ export function NewAppointmentForm({
           <>
             <DestructiveTextButton
               onClick={() => setConfirmingAction("cancel")}
-              disabled={isPending || status === "cancelled" || baselineStatus === "completed"}
+              disabled={
+                isPending ||
+                status === "cancelled" ||
+                baselineStatus === "completed" ||
+                baselineStatus === "no-show"
+              }
             >
               Cancel booking
             </DestructiveTextButton>

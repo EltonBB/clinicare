@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => {
   const appointmentReminder = { deleteMany: vi.fn() };
   const client = { updateMany: vi.fn() };
   const $transaction = vi.fn();
-  return { appointment, appointmentReminder, client, $transaction };
+  const revalidatePath = vi.fn();
+  return { appointment, appointmentReminder, client, $transaction, revalidatePath };
 });
 
 vi.mock("@/lib/prisma", () => ({
@@ -22,7 +23,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 vi.mock("@/lib/mobile/push", () => ({
   buildStaffPushPayload: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock("@/lib/mobile/push", () => ({
 
 import {
   APPOINTMENT_ALREADY_COMPLETED_ERROR,
+  APPOINTMENT_ALREADY_NO_SHOW_ERROR,
   APPOINTMENT_CANCELLED_NO_SHOW_ERROR,
   APPOINTMENT_CONFLICT_ERROR,
   APPOINTMENT_NOT_FOUND_ERROR,
@@ -38,6 +40,7 @@ import {
   cancelAppointmentCore,
   deleteAppointmentCore,
   recordAppointmentAttendanceCore,
+  revalidateCalendarSurfaces,
 } from "./appointments-shared";
 
 const WHERE = { id: "appt_1", businessId: "biz_1" };
@@ -56,7 +59,7 @@ function mockGuardHit() {
 }
 
 /** The guarded update matched nothing — diagnostic lookup returns `status`. */
-function mockGuardMiss(status: "COMPLETED" | "CANCELLED" | "CONFIRMED" | null) {
+function mockGuardMiss(status: "COMPLETED" | "CANCELLED" | "CONFIRMED" | "NO_SHOW" | null) {
   mocks.appointment.updateMany.mockResolvedValue({ count: 0 });
   mocks.appointment.findFirst.mockResolvedValue(status ? { ...RECORD, status } : null);
 }
@@ -87,7 +90,7 @@ describe("cancelAppointmentCore", () => {
       changed: true,
     });
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith({
-      where: { ...WHERE, status: { notIn: ["COMPLETED", "CANCELLED"] } },
+      where: { ...WHERE, status: { notIn: ["COMPLETED", "CANCELLED", "NO_SHOW"] } },
       data: { status: "CANCELLED" },
     });
     expect(mocks.appointmentReminder.deleteMany).toHaveBeenCalledWith({
@@ -107,6 +110,22 @@ describe("cancelAppointmentCore", () => {
       ok: false,
       status: 409,
       error: APPOINTMENT_ALREADY_COMPLETED_ERROR,
+    });
+    expect(mocks.appointmentReminder.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.client.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("refuses to cancel a recorded no-show with 409, without writing anything", async () => {
+    // A no-show turned into CANCELLED would vanish from the no-show count and
+    // rate; the way back is "Mark as attended", not Cancel.
+    mockGuardMiss("NO_SHOW");
+
+    const result = await cancelAppointmentCore(WHERE);
+
+    expect(result).toEqual({
+      ok: false,
+      status: 409,
+      error: APPOINTMENT_ALREADY_NO_SHOW_ERROR,
     });
     expect(mocks.appointmentReminder.deleteMany).not.toHaveBeenCalled();
     expect(mocks.client.updateMany).not.toHaveBeenCalled();
@@ -147,7 +166,7 @@ describe("cancelAppointmentCore", () => {
 
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ status: { notIn: ["COMPLETED", "CANCELLED"] } }),
+        where: expect.objectContaining({ status: { notIn: ["COMPLETED", "CANCELLED", "NO_SHOW"] } }),
       })
     );
     expect(result).toEqual({
@@ -197,7 +216,7 @@ describe("cancelAppointmentCore", () => {
     await cancelAppointmentCore({ ...WHERE, staffMemberId: "staff_1" });
 
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith({
-      where: { ...WHERE, staffMemberId: "staff_1", status: { notIn: ["COMPLETED", "CANCELLED"] } },
+      where: { ...WHERE, staffMemberId: "staff_1", status: { notIn: ["COMPLETED", "CANCELLED", "NO_SHOW"] } },
       data: { status: "CANCELLED" },
     });
   });
@@ -211,6 +230,35 @@ function mockDeleteGuardHit() {
   mocks.appointment.deleteMany.mockResolvedValue({ count: 1 });
   mocks.client.updateMany.mockResolvedValue({ count: 1 });
 }
+
+describe("revalidateCalendarSurfaces", () => {
+  it("refreshes the appointment's edit page along with the other surfaces it feeds", () => {
+    revalidateCalendarSurfaces(["client_1"], ["staff_1"], ["appt_1"]);
+
+    const paths = mocks.revalidatePath.mock.calls.map(([path]) => path);
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        "/calendar",
+        "/dashboard",
+        "/clients",
+        "/reports",
+        "/staff",
+        "/clients/client_1",
+        "/staff/staff_1",
+        "/calendar/appt_1/edit",
+      ])
+    );
+  });
+
+  it("skips empty ids and revalidates each id once", () => {
+    revalidateCalendarSurfaces(["client_1", "client_1", null], [undefined], ["appt_1", "appt_1", undefined]);
+
+    const paths = mocks.revalidatePath.mock.calls.map(([path]) => path);
+    expect(paths.filter((path) => path === "/calendar/appt_1/edit")).toHaveLength(1);
+    expect(paths.filter((path) => path === "/clients/client_1")).toHaveLength(1);
+    expect(paths.some((path) => String(path).includes("undefined") || String(path).includes("null"))).toBe(false);
+  });
+});
 
 describe("deleteAppointmentCore", () => {
   it("deletes an appointment and refreshes lastVisitAt", async () => {

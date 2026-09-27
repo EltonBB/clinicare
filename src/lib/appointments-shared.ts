@@ -74,6 +74,13 @@ export async function refreshClientLastVisitAt(
 export const APPOINTMENT_ALREADY_COMPLETED_ERROR =
   "This visit is already completed and can't be cancelled.";
 
+// A recorded no-show is as final as a completion for the Cancel path: turning
+// it into CANCELLED would make it vanish from the no-show count and rate. The
+// documented undo is "Mark as attended". Shared by cancelAppointmentCore and
+// the edit-save Status dropdown guard for the same one-message reason as above.
+export const APPOINTMENT_ALREADY_NO_SHOW_ERROR =
+  "This visit is recorded as a no-show and can't be cancelled. Mark it as attended first if the client came.";
+
 // Generic "something else changed this row between when we checked and when
 // we wrote" conflict — distinct from the terminal-state-specific message
 // above. Shared so cancelAppointmentCore's own race-disambiguation fallback
@@ -245,7 +252,7 @@ export async function cancelAppointmentCore(where: {
     // still matches (Postgres counts a matched no-op UPDATE as affected),
     // so `count` would be 1 and the idempotent branch below could never run.
     const { count } = await tx.appointment.updateMany({
-      where: { ...where, status: { notIn: ["COMPLETED", "CANCELLED"] } },
+      where: { ...where, status: { notIn: ["COMPLETED", "CANCELLED", "NO_SHOW"] } },
       data: { status: "CANCELLED" },
     });
 
@@ -267,6 +274,14 @@ export async function cancelAppointmentCore(where: {
           ok: false,
           status: 409,
           error: APPOINTMENT_ALREADY_COMPLETED_ERROR,
+        };
+      }
+
+      if (existing.status === "NO_SHOW") {
+        return {
+          ok: false,
+          status: 409,
+          error: APPOINTMENT_ALREADY_NO_SHOW_ERROR,
         };
       }
 
@@ -461,7 +476,8 @@ export async function deleteAppointmentCore(where: {
 // timeline) so the change shows on navigation without a manual refresh.
 export function revalidateCalendarSurfaces(
   clientIds: Array<string | null | undefined> = [],
-  staffMemberIds: Array<string | null | undefined> = []
+  staffMemberIds: Array<string | null | undefined> = [],
+  appointmentIds: Array<string | null | undefined> = []
 ) {
   revalidatePath("/calendar");
   revalidatePath("/dashboard");
@@ -480,6 +496,13 @@ export function revalidateCalendarSurfaces(
   for (const staffMemberId of new Set(staffMemberIds)) {
     if (staffMemberId) {
       revalidatePath(`/staff/${staffMemberId}`);
+    }
+  }
+  // The edit page renders the status/time these mutations change, so a later
+  // navigation must not be served its cached payload.
+  for (const appointmentId of new Set(appointmentIds)) {
+    if (appointmentId) {
+      revalidatePath(`/calendar/${appointmentId}/edit`);
     }
   }
 }

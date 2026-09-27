@@ -71,6 +71,7 @@ vi.mock("@/lib/appointments-shared", async () => {
     await vi.importActual<typeof import("@/lib/appointments-shared")>("@/lib/appointments-shared");
   return {
     APPOINTMENT_ALREADY_COMPLETED_ERROR: actual.APPOINTMENT_ALREADY_COMPLETED_ERROR,
+    APPOINTMENT_ALREADY_NO_SHOW_ERROR: actual.APPOINTMENT_ALREADY_NO_SHOW_ERROR,
     APPOINTMENT_CONFLICT_ERROR: actual.APPOINTMENT_CONFLICT_ERROR,
     APPOINTMENT_TIME_CONFLICT_ERROR: actual.APPOINTMENT_TIME_CONFLICT_ERROR,
     // Real implementations, not mocks — both take the (mocked) tx client as
@@ -99,6 +100,7 @@ import {
 } from "./actions";
 import {
   APPOINTMENT_ALREADY_COMPLETED_ERROR,
+  APPOINTMENT_ALREADY_NO_SHOW_ERROR,
   APPOINTMENT_CANCELLED_NO_SHOW_ERROR,
   APPOINTMENT_CONFLICT_ERROR,
   APPOINTMENT_NOT_STARTED_ERROR,
@@ -202,7 +204,12 @@ describe("saveAppointmentAction — concurrent-edit guard", () => {
         where: { id: "appt_1", businessId: "biz_1", status: "CONFIRMED" },
       })
     );
-    expect(mocks.revalidateCalendarSurfaces).toHaveBeenCalled();
+    // The edit page renders the status this save changes, so it is refreshed too.
+    expect(mocks.revalidateCalendarSurfaces).toHaveBeenCalledWith(
+      ["client_1", "client_1"],
+      [null, null],
+      ["appt_1"]
+    );
   });
 
   it("guards on the client's baseline status, not a status re-read at submit time", async () => {
@@ -700,6 +707,18 @@ describe("saveAppointmentAction — no-show status", () => {
     );
   });
 
+  it("refuses to cancel a recorded no-show through the edit form's Status dropdown", async () => {
+    // Otherwise a finalized no-show could be overwritten and drop out of the
+    // no-show count and rate; the way back is "Mark as attended".
+    mocks.appointment.findFirst.mockResolvedValue({ ...EXISTING, status: "NO_SHOW" });
+
+    expect(
+      await saveAppointmentAction({ ...PAYLOAD, status: "cancelled", baselineStatus: "no-show" })
+    ).toEqual({ ok: false, error: APPOINTMENT_ALREADY_NO_SHOW_ERROR });
+    expect(mocks.appointment.updateMany).not.toHaveBeenCalled();
+    expect(mocks.revalidateCalendarSurfaces).not.toHaveBeenCalled();
+  });
+
   it("refuses to relabel a cancelled booking as a no-show through the edit form", async () => {
     // Same rule recordAppointmentAttendanceCore enforces for the quick action.
     mocks.appointment.findFirst.mockResolvedValue({ ...EXISTING, status: "CANCELLED" });
@@ -738,7 +757,7 @@ describe("recordAppointmentAttendanceAction", () => {
       businessId: "biz_1",
       attended: false,
     });
-    expect(mocks.revalidateCalendarSurfaces).toHaveBeenCalledWith(["client_1"], ["staff_1"]);
+    expect(mocks.revalidateCalendarSurfaces).toHaveBeenCalledWith(["client_1"], ["staff_1"], ["appt_1"]);
   });
 
   it("undoes a no-show back to completed", async () => {

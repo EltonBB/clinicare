@@ -9,6 +9,7 @@ import { isValidMonthKey } from "@/lib/calendar-range";
 import {
   acquireSchedulingLock,
   APPOINTMENT_ALREADY_COMPLETED_ERROR,
+  APPOINTMENT_ALREADY_NO_SHOW_ERROR,
   APPOINTMENT_CANCELLED_NO_SHOW_ERROR,
   APPOINTMENT_CONFLICT_ERROR,
   APPOINTMENT_NOT_STARTED_ERROR,
@@ -325,6 +326,16 @@ export async function saveAppointmentAction(
         };
       }
 
+      // A recorded no-show is just as final for the Cancel path: relabelling
+      // it CANCELLED would drop it from the no-show count and rate. Undoing a
+      // no-show is "Mark as attended" (or picking another non-cancelled status).
+      if (existing.status === "NO_SHOW" && newStatus === "CANCELLED") {
+        return {
+          ok: false,
+          error: APPOINTMENT_ALREADY_NO_SHOW_ERROR,
+        };
+      }
+
       // Same rule recordAppointmentAttendanceCore enforces for the quick
       // action: a cancelled booking never happened, so relabelling it as a
       // no-show through the Status dropdown would inflate the no-show count.
@@ -479,7 +490,8 @@ export async function saveAppointmentAction(
 
     revalidateCalendarSurfaces(
       [payload.clientId, previousClientId],
-      [staffMemberId, previousStaffMemberId]
+      [staffMemberId, previousStaffMemberId],
+      [appointmentId]
     );
 
     if (wasNewlyCancelled) {
@@ -559,7 +571,7 @@ export async function cancelAppointmentAction(
     };
   }
 
-  revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId]);
+  revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId], [outcome.appointmentId]);
 
   if (outcome.changed) {
     await notifyStaffOfAppointmentChange(business.id, outcome.staffMemberId, outcome.appointmentId);
@@ -616,7 +628,7 @@ export async function recordAppointmentAttendanceAction(
   }
 
   if (outcome.changed) {
-    revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId]);
+    revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId], [outcome.appointmentId]);
   }
 
   return { ok: true, status: attended ? "completed" : "no-show" };
@@ -647,7 +659,7 @@ export async function deleteAppointmentAction(
     };
   }
 
-  revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId]);
+  revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId], [outcome.appointmentId]);
 
   // No deep link — the row is gone, unlike a cancel which keeps it (status only).
   await notifyStaffOfAppointmentChange(business.id, outcome.staffMemberId, null);

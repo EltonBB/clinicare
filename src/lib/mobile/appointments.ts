@@ -136,7 +136,7 @@ export async function cancelOwnAppointment(
     return { ok: true };
   }
 
-  revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId]);
+  revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId], [outcome.appointmentId]);
 
   // Surface the cancellation to the admin in the staff↔admin thread so they can
   // reschedule/reassign — minimum-necessary scheduling info (name + time, no

@@ -51,7 +51,7 @@ Risk scores are **not stored**. They are computed from appointment history when 
 - Downgrade edge case: `NO_SHOW` rows stay readable on a Basic workspace (shown as "No-show"), but Basic cannot set the status.
 
 ### 2. No-show risk score (Pro)
-- Pure function `scoreNoShowRisk(history, appointment)` → `{ level: "low" | "medium" | "high", reasons: string[] }`. Signals from the patient's own history: no-shows and late cancellations in recent visits, unconfirmed reminder, first-ever visit, long booking lead time. Transparent weights, unit-tested, no OpenAI.
+- Pure function `scoreNoShowRisk(history, appointment)` → `{ level: "low" | "medium" | "high", reasons: string[] }`. Signals from the patient's own history: no-shows and late cancellations in recent visits, unconfirmed reminder, long booking lead time. (A first-ever visit has no history to score, so it falls under the minimum-data rule below rather than being a signal of its own.) Transparent weights, unit-tested, no OpenAI.
 - Shown as a small Low/Medium/High marker with the top reason on the appointment quick-view and Day view; High is highlighted on the Dashboard schedule. Minimum data rule: with fewer than 2 past visits the score says "not enough history" rather than guessing.
 - Risk does **not** auto-cancel or double-book anything; it only informs staff.
 
@@ -83,7 +83,7 @@ Risk scores are **not stored**. They are computed from appointment history when 
 ## Risks and edge cases
 
 - **Wrong-patient messages:** every send resolves the client by id from the draft, never by re-matching a phone.
-- **Duplicate drafts / double sends:** unique `dedupeKey`; sending flips status atomically (`PENDING → SENT` conditional update) so two staff tapping Send cannot send twice.
+- **Duplicate drafts / double sends:** a unique `dedupeKey` makes draft *generation* idempotent; sending flips status atomically (`PENDING → SENT` conditional update) so two staff tapping Send at once cannot send twice. That does not make the send itself exactly-once: if the provider call times out after the worker accepted the message, the person sees a failure and the draft returns to Pending. Nothing retries a send on its own — a person always decides whether to send again — and no provider idempotency key is claimed.
 - **Time zones:** all "N hours/days" windows use the clinic zone helpers in `lib/time-zone.ts`, not server-local dates (a recurring bug class in this repo).
 - **Patient data:** drafts hold patient names and appointment times only; they stay inside Postgres; nothing new goes to a third party. Logs carry record ids, not names.
 - **Consent/WhatsApp:** messages go only to existing clients with a phone the clinic already messages; a disconnected WhatsApp connection keeps drafts pending with a clear "connect WhatsApp" state.
