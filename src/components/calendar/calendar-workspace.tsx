@@ -858,9 +858,33 @@ export function CalendarWorkspace({
       return result.error ?? "We couldn't update this appointment.";
     }
 
-    setAppointments((current) =>
-      current.map((item) => (item.id === appointment.id ? { ...item, status } : item))
-    );
+    // Every upcoming appointment for this client was scored from history that
+    // just changed (this one just became a real visit or a real no-show), so
+    // their cached risk is stale too — not just this appointment's own (which
+    // the render-time status gate already hides). Drop them from both the
+    // cache and the requested-ids tracking so the next popover/Day-view open
+    // refetches instead of reusing a now-outdated assessment (Codex).
+    let sameClientIds: string[] = [];
+    setAppointments((current) => {
+      sameClientIds = current
+        .filter((item) => item.clientId === appointment.clientId)
+        .map((item) => item.id);
+      return current.map((item) => (item.id === appointment.id ? { ...item, status } : item));
+    });
+    if (sameClientIds.length > 0) {
+      for (const id of sameClientIds) requestedRiskIds.current.delete(id);
+      setRisk((current) => {
+        let changed = false;
+        const next = { ...current };
+        for (const id of sameClientIds) {
+          if (id in next) {
+            delete next[id];
+            changed = true;
+          }
+        }
+        return changed ? next : current;
+      });
+    }
     // Only close the popover this request belongs to — the user may have opened
     // a different appointment's while it was in flight.
     setQuickView((current) => (current?.appointment.id === appointment.id ? null : current));

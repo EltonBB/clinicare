@@ -349,11 +349,19 @@ describe("saveAppointmentAction — cancelledAt: an immutable timestamp, not the
     await saveAppointmentAction({ ...PAYLOAD, status: "cancelled", baselineStatus: "confirmed" });
 
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: "CANCELLED", cancelledAt: expect.any(Date) }) })
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "CANCELLED",
+          cancelledAt: expect.any(Date),
+          // The schedule as of THIS cancel — this save's own startAt, since a
+          // save can cancel and reschedule in one write.
+          cancelledScheduledStartAt: parseZonedWallClock("2026-06-01", "09:00"),
+        }),
+      })
     );
   });
 
-  it("clears cancelledAt on the transition out of CANCELLED (un-cancel)", async () => {
+  it("clears cancelledAt and cancelledScheduledStartAt on the transition out of CANCELLED (un-cancel)", async () => {
     mocks.appointment.findFirst.mockResolvedValueOnce({ ...EXISTING, status: "CANCELLED" });
     mocks.appointment.findUniqueOrThrow.mockResolvedValue({
       ...EXISTING,
@@ -364,7 +372,36 @@ describe("saveAppointmentAction — cancelledAt: an immutable timestamp, not the
     await saveAppointmentAction({ ...PAYLOAD, status: "confirmed", baselineStatus: "cancelled" });
 
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: "CONFIRMED", cancelledAt: null }) })
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "CONFIRMED", cancelledAt: null, cancelledScheduledStartAt: null }),
+      })
+    );
+  });
+
+  it("derives the cancel transition from payload.baselineStatus — what the compare-and-set guard actually matches — not a fresh re-read of the row (CodeRabbit)", async () => {
+    // The fresh pre-transaction read (existing.status) sees CANCELLED — as if
+    // someone else's write landed between it and this one — but the client's
+    // own form, and so the CAS guard, is keyed on baselineStatus "confirmed".
+    // The guard succeeding (count: 1, mocked below via updateMany's default)
+    // proves the row's real state at write time WAS confirmed regardless of
+    // what the earlier read saw, so this genuinely is a fresh cancellation.
+    // The old logic (deriving the flag from existing.status) would have
+    // missed it and skipped cancelledAt entirely.
+    mocks.appointment.findFirst.mockResolvedValueOnce({ ...EXISTING, status: "CANCELLED" });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      ...EXISTING,
+      status: "CANCELLED",
+      client: { id: "client_1", name: "Mira" },
+      staffMember: null,
+    });
+
+    await saveAppointmentAction({ ...PAYLOAD, status: "cancelled", baselineStatus: "confirmed" });
+
+    expect(mocks.appointment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: "CONFIRMED" }), // guard keyed on baselineStatus, not the stale read
+        data: expect.objectContaining({ cancelledAt: expect.any(Date) }),
+      })
     );
   });
 
@@ -384,6 +421,7 @@ describe("saveAppointmentAction — cancelledAt: an immutable timestamp, not the
     // cancellation time in the database is left exactly as it was.
     const call = mocks.appointment.updateMany.mock.calls[0][0];
     expect(call.data.cancelledAt).toBeUndefined();
+    expect(call.data.cancelledScheduledStartAt).toBeUndefined();
   });
 
   it("leaves cancelledAt untouched on a plain confirmed -> confirmed save", async () => {
@@ -397,6 +435,7 @@ describe("saveAppointmentAction — cancelledAt: an immutable timestamp, not the
 
     const call = mocks.appointment.updateMany.mock.calls[0][0];
     expect(call.data.cancelledAt).toBeUndefined();
+    expect(call.data.cancelledScheduledStartAt).toBeUndefined();
   });
 });
 

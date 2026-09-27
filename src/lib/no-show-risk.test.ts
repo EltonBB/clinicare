@@ -3,8 +3,18 @@ import { scoreNoShowRisk, type NoShowRiskPastVisit } from "@/lib/no-show-risk";
 
 const BASE_APPT = { startAt: new Date("2026-07-10T09:00:00Z"), createdAt: new Date("2026-07-05T09:00:00Z"), status: "CONFIRMED" as const, reminderSent: false };
 
-function visit(status: NoShowRiskPastVisit["status"], startAt: string, cancelledAt: string | null = startAt): NoShowRiskPastVisit {
-  return { status, startAt: new Date(startAt), cancelledAt: cancelledAt === null ? null : new Date(cancelledAt) };
+function visit(
+  status: NoShowRiskPastVisit["status"],
+  startAt: string,
+  cancelledAt: string | null = startAt,
+  cancelledScheduledStartAt: string | null = startAt
+): NoShowRiskPastVisit {
+  return {
+    status,
+    startAt: new Date(startAt),
+    cancelledAt: cancelledAt === null ? null : new Date(cancelledAt),
+    cancelledScheduledStartAt: cancelledScheduledStartAt === null ? null : new Date(cancelledScheduledStartAt),
+  };
 }
 
 describe("scoreNoShowRisk", () => {
@@ -57,6 +67,29 @@ describe("scoreNoShowRisk", () => {
       visit("COMPLETED", "2026-05-01T09:00:00Z"),
     ];
     expect(scoreNoShowRisk(noTimestamp, BASE_APPT)).toMatchObject({ level: "low", reasons: [] });
+  });
+
+  it("judges lateness against the schedule frozen at cancellation, not startAt — which can move afterward (editing a still-cancelled booking's time is supported) (Codex #129)", () => {
+    // Cancelled 12 days ahead of its original 2026-06-01 time (not late) —
+    // if the still-cancelled booking is later rescheduled to 2026-06-20,
+    // recomputing lateness from the NEW startAt would wrongly read this as
+    // "cancelled 12 days before 2026-06-20", nowhere near the real gap.
+    const movedAfterEarlyCancel = [
+      visit("CANCELLED", "2026-06-20T09:00:00Z", "2026-05-20T09:00:00Z", "2026-06-01T09:00:00Z"),
+      visit("COMPLETED", "2026-05-01T09:00:00Z"),
+    ];
+    expect(scoreNoShowRisk(movedAfterEarlyCancel, BASE_APPT)).toMatchObject({ level: "low", reasons: [] });
+
+    // Cancelled 3h before its original time (genuinely late) — moving the
+    // still-cancelled booking's startAt further out must not erase that.
+    const movedAfterLateCancel = [
+      visit("CANCELLED", "2026-06-20T09:00:00Z", "2026-06-01T06:00:00Z", "2026-06-01T09:00:00Z"),
+      visit("COMPLETED", "2026-05-01T09:00:00Z"),
+    ];
+    expect(scoreNoShowRisk(movedAfterLateCancel, BASE_APPT)).toMatchObject({
+      level: "medium",
+      reasons: ["Cancelled last-minute recently"],
+    });
   });
 
   it("is medium for an unconfirmed reminder on a still-pending appointment", () => {

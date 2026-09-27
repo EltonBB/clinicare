@@ -6,7 +6,13 @@ import { scoreNoShowRisk, type NoShowRiskAssessment } from "@/lib/no-show-risk";
 // that — bounded per client, not by a cap shared across the whole batch.
 const RECENT_HISTORY_PER_CLIENT = 5;
 
-type HistoryRow = { clientId: string; status: string; startAt: Date; cancelledAt: Date | null };
+type HistoryRow = {
+  clientId: string;
+  status: string;
+  startAt: Date;
+  cancelledAt: Date | null;
+  cancelledScheduledStartAt: Date | null;
+};
 
 export type RiskableAppointment = {
   id: string;
@@ -51,10 +57,10 @@ export async function getNoShowRiskAssessments(args: {
     // several cancelled FUTURE bookings could crowd real past visits out of the
     // 5-row window (or make a first-time client look past the 2-visit minimum).
     prisma.$queryRaw<HistoryRow[]>`
-      SELECT h."clientId", h."status"::text AS "status", h."startAt", h."cancelledAt"
+      SELECT h."clientId", h."status"::text AS "status", h."startAt", h."cancelledAt", h."cancelledScheduledStartAt"
       FROM unnest(${clientIds}::text[]) AS c(id)
       CROSS JOIN LATERAL (
-        SELECT "clientId", "status", "startAt", "cancelledAt"
+        SELECT "clientId", "status", "startAt", "cancelledAt", "cancelledScheduledStartAt"
         FROM "Appointment"
         WHERE "businessId" = ${businessId}
           AND "clientId" = c.id
@@ -88,6 +94,7 @@ export async function getNoShowRiskAssessments(args: {
           status: visit.status as "COMPLETED" | "NO_SHOW" | "CANCELLED",
           startAt: visit.startAt,
           cancelledAt: visit.cancelledAt,
+          cancelledScheduledStartAt: visit.cancelledScheduledStartAt,
         })),
         {
           startAt: appointment.startAt,

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const appointment = {
     updateMany: vi.fn(),
+    update: vi.fn(),
     deleteMany: vi.fn(),
     findFirst: vi.fn(),
     findFirstOrThrow: vi.fn(),
@@ -44,7 +45,7 @@ import {
 } from "./appointments-shared";
 
 const WHERE = { id: "appt_1", businessId: "biz_1" };
-const RECORD = { id: "appt_1", clientId: "client_1", staffMemberId: "staff_1" };
+const RECORD = { id: "appt_1", clientId: "client_1", staffMemberId: "staff_1", startAt: new Date("2026-06-01T09:00:00Z") };
 // deleteAppointmentCore's pre-read select drops `id` (it returns `where.id`
 // instead) — a narrower fixture so a future regression reintroducing a read
 // of `existing.id` can't hide behind an over-permissive mock.
@@ -92,6 +93,13 @@ describe("cancelAppointmentCore", () => {
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith({
       where: { ...WHERE, status: { notIn: ["COMPLETED", "CANCELLED", "NO_SHOW"] } },
       data: { status: "CANCELLED", cancelledAt: expect.any(Date) },
+    });
+    // Freezes the schedule as of this cancellation — RECORD.startAt, not
+    // whatever startAt might read as later if this booking is edited while
+    // still cancelled.
+    expect(mocks.appointment.update).toHaveBeenCalledWith({
+      where: { id: "appt_1" },
+      data: { cancelledScheduledStartAt: RECORD.startAt },
     });
     expect(mocks.appointmentReminder.deleteMany).toHaveBeenCalledWith({
       where: { appointmentId: "appt_1" },

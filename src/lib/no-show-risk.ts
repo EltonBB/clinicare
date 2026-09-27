@@ -25,6 +25,14 @@ export type NoShowRiskPastVisit = {
    * (ignored either way — no late-cancel signal without a real timestamp).
    */
   cancelledAt: Date | null;
+  /**
+   * The row's `startAt` as of that same cancellation — NOT the same as this
+   * type's own `startAt`, which can drift afterward (editing a still-cancelled
+   * booking's time is a supported flow). The late-cancel gap must be measured
+   * against the schedule that was true at the cancel, not whatever `startAt`
+   * reads back as later. Null under the same conditions as `cancelledAt`.
+   */
+  cancelledScheduledStartAt: Date | null;
 };
 
 export type NoShowRiskAppointmentInput = {
@@ -69,8 +77,11 @@ export function scoreNoShowRisk(
   }
 
   const hadLateCancel = recent.some((visit) => {
-    if (visit.status !== "CANCELLED" || !visit.cancelledAt) return false;
-    const hoursBeforeStart = (visit.startAt.getTime() - visit.cancelledAt.getTime()) / HOUR_MS;
+    if (visit.status !== "CANCELLED" || !visit.cancelledAt || !visit.cancelledScheduledStartAt) return false;
+    // The frozen schedule at cancellation, not the (possibly since-edited)
+    // current startAt — see cancelledScheduledStartAt's own doc comment.
+    const hoursBeforeStart =
+      (visit.cancelledScheduledStartAt.getTime() - visit.cancelledAt.getTime()) / HOUR_MS;
     return hoursBeforeStart >= 0 && hoursBeforeStart < LATE_CANCEL_WINDOW_HOURS;
   });
   if (hadLateCancel) {

@@ -361,6 +361,12 @@ model Appointment {
   // Nullable so pre-migration historical rows simply carry no late-cancel
   // signal instead of a wrong one.
   cancelledAt        DateTime?
+  // The row's `startAt` as of that same cancellation — frozen alongside
+  // cancelledAt for the same reason: `startAt` itself can change afterward
+  // (editing a still-cancelled booking's time is a supported flow), and the
+  // late-cancellation signal must compare against the schedule that was
+  // actually true at the cancel, not whatever startAt reads back as later.
+  cancelledScheduledStartAt DateTime?
   reminders          AppointmentReminder[]
   payments           ClientPayment[]
   treatmentPlanItems ClientTreatmentPlanItem[]

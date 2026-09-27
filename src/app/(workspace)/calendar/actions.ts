@@ -352,8 +352,16 @@ export async function saveAppointmentAction(
         };
       }
 
-      wasNewlyCancelled = existing.status !== "CANCELLED" && newStatus === "CANCELLED";
-      wasReactivated = existing.status === "CANCELLED" && newStatus !== "CANCELLED";
+      // Derived from payload.baselineStatus, the same source of truth the
+      // compare-and-set guard below actually matches against — not a fresh
+      // re-read of existing.status. If the guard doesn't match reality, the
+      // write below never applies (count === 0, early conflict return), so
+      // these flags — used after the write succeeds — never fire on a stale
+      // basis (CodeRabbit: existing.status alone could reflect a change that
+      // landed between this read and the guarded write, misclassifying a
+      // real cancellation/reactivation the write is actually making).
+      wasNewlyCancelled = payload.baselineStatus !== "cancelled" && newStatus === "CANCELLED";
+      wasReactivated = payload.baselineStatus === "cancelled" && newStatus !== "CANCELLED";
       needsConflictCheck =
         existing.staffMemberId !== staffMemberId ||
         existing.startAt.getTime() !== startAt.getTime() ||
@@ -448,6 +456,12 @@ export async function saveAppointmentAction(
             // alone. See appointments-shared.ts's cancelAppointmentCore for
             // why this can't just be the auto-managed updatedAt.
             cancelledAt: wasNewlyCancelled ? new Date() : wasReactivated ? null : undefined,
+            // Same immutable-snapshot rule as cancelledAt: this save's own
+            // startAt is what the row's schedule actually is as of this
+            // cancellation (this save may cancel and reschedule in the same
+            // write), and it must not be re-derived from startAt later, once
+            // a further edit while still cancelled has changed it.
+            cancelledScheduledStartAt: wasNewlyCancelled ? startAt : wasReactivated ? null : undefined,
           },
         });
 

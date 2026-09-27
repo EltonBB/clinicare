@@ -312,7 +312,18 @@ export async function cancelAppointmentCore(where: {
     // The guarded update applied — this call is the one that just cancelled it.
     const cancelled = await tx.appointment.findFirstOrThrow({
       where: { id: where.id },
-      select: { id: true, clientId: true, staffMemberId: true },
+      select: { id: true, clientId: true, staffMemberId: true, startAt: true },
+    });
+
+    // Freezes the scheduled time as of this cancellation, for the same reason
+    // cancelledAt itself is frozen: a still-cancelled row's startAt can later
+    // change (editing a cancelled booking's time is a supported flow), and the
+    // no-show risk scorer's late-cancellation signal needs to compare against
+    // the time that was actually true when the cancel happened, not whatever
+    // startAt happens to hold when it's read back later (Codex).
+    await tx.appointment.update({
+      where: { id: cancelled.id },
+      data: { cancelledScheduledStartAt: cancelled.startAt },
     });
 
     // Clear any pending reminder rows so a later re-confirm starts clean.
