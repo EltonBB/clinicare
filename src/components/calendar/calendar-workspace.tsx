@@ -325,7 +325,11 @@ function DayColumn({
             key={entry.id}
             appointment={entry}
             detailed={detailed}
-            risk={risk?.[entry.id]}
+            // Risk only ever applies to an upcoming pending/confirmed visit; a
+            // stale cached assessment (or one from a request that was still
+            // in-flight when the appointment got finalized) must not show a
+            // badge on a row that's now completed/no-show/cancelled.
+            risk={entry.status === "pending" || entry.status === "confirmed" ? risk?.[entry.id] : undefined}
             onOpen={(event) => onOpen(entry, event)}
           />
         ) : (
@@ -1175,7 +1179,13 @@ export function CalendarWorkspace({
           onClose={() => setQuickView(null)}
           attendanceAction={attendanceActionFor(quickView.appointment)}
           onRecordAttendance={(attended) => recordAttendance(quickView.appointment, attended)}
-          risk={risk[quickView.appointment.id]}
+          // Same guard as the Day-view row: hide a stale or late-arriving
+          // assessment once the appointment is no longer pending/confirmed.
+          risk={
+            quickView.appointment.status === "pending" || quickView.appointment.status === "confirmed"
+              ? risk[quickView.appointment.id]
+              : undefined
+          }
         />
       ) : null}
     </WorkspacePage>
