@@ -25,7 +25,7 @@ import {
 } from "@/lib/appointments-shared";
 import { isProBusinessPlan } from "@/lib/billing";
 import { getNoShowRiskAssessments } from "@/lib/no-show-risk-data";
-import type { NoShowRiskAssessment } from "@/lib/no-show-risk";
+import { MAX_RISK_BATCH_SIZE, type NoShowRiskAssessment } from "@/lib/no-show-risk";
 import {
   formatZonedDateKey,
   formatZonedTime24,
@@ -635,11 +635,6 @@ export async function recordAppointmentAttendanceAction(
 
   return { ok: true, status: attended ? "completed" : "no-show" };
 }
-
-// Generous upper bound on any real call site (one popover = 1 id; one Day view
-// = at most a very busy day's appointments) — guards against an unbounded
-// Prisma `IN` clause from a runaway caller.
-const MAX_RISK_BATCH_SIZE = 200;
 
 /**
  * Batched risk lookup for whatever's currently on screen (a quick-view

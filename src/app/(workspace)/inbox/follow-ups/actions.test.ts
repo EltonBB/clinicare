@@ -40,6 +40,7 @@ vi.mock("@/lib/messaging", () => ({
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
+vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 
 import { dismissFollowUpDraftAction, sendFollowUpDraftAction } from "./actions";
 
@@ -168,6 +169,36 @@ describe("sendFollowUpDraftAction", () => {
       id: DRAFT_ID,
       businessId: BUSINESS.id,
     });
+  });
+
+  it("reverts to pending when the draft lookup throws after the flip, instead of stranding it as sent", async () => {
+    mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true });
+    mocks.followUpDraft.findFirst.mockRejectedValue(new Error("connection reset"));
+
+    const result = await sendFollowUpDraftAction(DRAFT_ID);
+
+    expect(result).toEqual({ ok: false, error: "Couldn't send this message. Try again." });
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+    expect(mocks.revertFollowUpDraftToPending).toHaveBeenCalledWith({
+      id: DRAFT_ID,
+      businessId: BUSINESS.id,
+    });
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("reverts to pending when sendMessage itself throws", async () => {
+    mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true });
+    mocks.followUpDraft.findFirst.mockResolvedValue({
+      id: DRAFT_ID,
+      body: "Hi Alex, quick note about your next visit.",
+      client: { phone: "+15550100" },
+    });
+    mocks.sendMessage.mockRejectedValue(new Error("boom"));
+
+    const result = await sendFollowUpDraftAction(DRAFT_ID);
+
+    expect(result).toEqual({ ok: false, error: "Couldn't send this message. Try again." });
+    expect(mocks.revertFollowUpDraftToPending).toHaveBeenCalledTimes(1);
   });
 
   it("returns the session-expired error and never touches the draft when unauthenticated", async () => {

@@ -31,3 +31,14 @@ CREATE INDEX "FollowUpDraft_businessId_status_createdAt_idx" ON "FollowUpDraft"(
 ALTER TABLE "FollowUpDraft" ADD CONSTRAINT "FollowUpDraft_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "FollowUpDraft" ADD CONSTRAINT "FollowUpDraft_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "FollowUpDraft" ADD CONSTRAINT "FollowUpDraft_appointmentId_fkey" FOREIGN KEY ("appointmentId") REFERENCES "Appointment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- Row-level security. The drafted message text carries patient names. Like every
+-- other app table, RLS is enabled with NO public policies, so the browser-exposed
+-- anon/authenticated Supabase roles cannot read or write it. The app connects as
+-- the table owner, which bypasses RLS, so normal server-side access is
+-- unaffected. Idempotent; safe to re-run.
+ALTER TABLE "FollowUpDraft" ENABLE ROW LEVEL SECURITY;
+
+-- The two foreign-key indexes are in follow-up-draft-indexes-migration.sql (a
+-- separate, idempotent file, because this one is already applied to the shared
+-- database). Apply that one too on any database this file created.

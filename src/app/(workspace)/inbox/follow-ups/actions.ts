@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
+import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
 import {
   dismissFollowUpDraft,
@@ -20,9 +21,9 @@ function getAuthedBusiness() {
 /**
  * Flips a pending draft to SENT (atomic compare-and-set — see
  * markFollowUpDraftSent), then sends it through the messaging seam. Any
- * failure past the flip (no phone on file, the provider send itself failing)
- * reverts the draft back to PENDING so it can be retried, rather than leaving
- * it stuck as SENT with nothing actually delivered.
+ * failure past the flip (no phone on file, the provider send failing, or a
+ * lookup/send that throws) reverts the draft back to PENDING so it can be
+ * retried, rather than leaving it stuck as SENT with nothing actually delivered.
  *
  * `body` is an optional edited-text override — the row list lets staff edit
  * the draft before sending, so the flip and the send must use the text the
@@ -56,28 +57,40 @@ export async function sendFollowUpDraftAction(
     return { ok: false, error: flip.error };
   }
 
-  const draft = await prisma.followUpDraft.findFirst({
-    where: { id: draftId, businessId: business.id },
-    select: { id: true, body: true, client: { select: { phone: true } } },
-  });
+  let outcome: FollowUpDraftActionResult;
 
-  if (!draft?.client.phone) {
-    await revertFollowUpDraftToPending({ id: draftId, businessId: business.id });
-    return { ok: false, error: "This client has no phone number on file." };
+  try {
+    const draft = await prisma.followUpDraft.findFirst({
+      where: { id: draftId, businessId: business.id },
+      select: { id: true, body: true, client: { select: { phone: true } } },
+    });
+
+    if (!draft?.client.phone) {
+      outcome = { ok: false, error: "This client has no phone number on file." };
+    } else {
+      const result = await sendMessage({
+        channel: "WHATSAPP",
+        businessId: business.id,
+        to: draft.client.phone,
+        message: { kind: "freeform", body: editedBody && editedBody.length > 0 ? editedBody : draft.body },
+      });
+
+      outcome = result.ok ? { ok: true } : { ok: false, error: "Couldn't send this message. Try again." };
+    }
+  } catch (error) {
+    // The flip already happened. A lookup that throws (say a database error)
+    // means nothing was sent, so put the draft back rather than strand it as
+    // SENT — every retry would otherwise answer "already handled".
+    logger.error("A follow-up send failed after the draft was marked sent.", error, {
+      businessId: business.id,
+      draftId,
+    });
+    outcome = { ok: false, error: "Couldn't send this message. Try again." };
   }
 
-  const messageBody = editedBody && editedBody.length > 0 ? editedBody : draft.body;
-
-  const result = await sendMessage({
-    channel: "WHATSAPP",
-    businessId: business.id,
-    to: draft.client.phone,
-    message: { kind: "freeform", body: messageBody },
-  });
-
-  if (!result.ok) {
+  if (!outcome.ok) {
     await revertFollowUpDraftToPending({ id: draftId, businessId: business.id });
-    return { ok: false, error: "Couldn't send this message. Try again." };
+    return outcome;
   }
 
   revalidatePath("/inbox/follow-ups");

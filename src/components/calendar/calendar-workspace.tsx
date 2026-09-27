@@ -47,7 +47,7 @@ import { useDismissOnOutsideOrEscape } from "@/hooks/use-dismiss-on-outside-or-e
 import { businessHoursForDate, timeToMinutes } from "@/lib/calendar";
 import { rowsThatFit, visibleEntryCount } from "@/lib/calendar-fit";
 import { monthsToLoad, type CalendarRange } from "@/lib/calendar-range";
-import type { NoShowRiskAssessment } from "@/lib/no-show-risk";
+import { MAX_RISK_BATCH_SIZE, type NoShowRiskAssessment } from "@/lib/no-show-risk";
 import { cn } from "@/lib/utils";
 import type {
   CalendarAppointment,
@@ -795,9 +795,13 @@ export function CalendarWorkspace({
     const fresh = ids.filter((id) => !requestedRiskIds.current.has(id));
     if (fresh.length === 0) return;
     fresh.forEach((id) => requestedRiskIds.current.add(id));
-    getNoShowRiskAction(fresh)
-      .then((result) => setRisk((current) => ({ ...current, ...result })))
-      .catch(() => fresh.forEach((id) => requestedRiskIds.current.delete(id)));
+    // The action answers at most MAX_RISK_BATCH_SIZE ids, so a busier list goes in batches.
+    for (let start = 0; start < fresh.length; start += MAX_RISK_BATCH_SIZE) {
+      const batch = fresh.slice(start, start + MAX_RISK_BATCH_SIZE);
+      getNoShowRiskAction(batch)
+        .then((result) => setRisk((current) => ({ ...current, ...result })))
+        .catch(() => batch.forEach((id) => requestedRiskIds.current.delete(id)));
+    }
   }, []);
 
   // Only a Pro workspace, and only for a visit the score applies to (upcoming ones

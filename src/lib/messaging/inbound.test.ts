@@ -133,6 +133,7 @@ describe("applyInboundReplyIntent", () => {
     id: "appt_1",
     startAt: new Date("2026-07-02T09:00:00Z"),
     staffMemberId: "staff_1",
+    status: "PENDING" as const,
     client: { phone: "+38344123456" },
   };
 
@@ -170,6 +171,49 @@ describe("applyInboundReplyIntent", () => {
     expect(result).toEqual({ applied: true, intent: "confirm", appointmentId: "appt_1" });
     expect(mocks.confirmAppointmentCore).toHaveBeenCalledWith({ id: "appt_1", businessId: "biz_1" });
     expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ channel: "WHATSAPP", to: "+38344123456" }));
+  });
+
+  it("acknowledges a 1 on an already-confirmed appointment without touching it", async () => {
+    mocks.appointment.findMany.mockResolvedValueOnce([{ ...REMINDED_UPCOMING, status: "CONFIRMED" }]);
+
+    const result = await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "1", now: NOW });
+
+    expect(result).toEqual({ applied: false, reason: "already_confirmed" });
+    expect(mocks.confirmAppointmentCore).not.toHaveBeenCalled();
+    expect(mocks.revalidateCalendarSurfaces).not.toHaveBeenCalled();
+    expect(mocks.sendMessage).toHaveBeenCalledTimes(1);
+    expect(mocks.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "+38344123456",
+        message: expect.objectContaining({ body: expect.stringContaining("You're confirmed for") }),
+      })
+    );
+  });
+
+  it("with one pending and one confirmed visit, a 1 confirms the pending one", async () => {
+    mocks.appointment.findMany.mockResolvedValueOnce([
+      { ...REMINDED_UPCOMING, id: "appt_confirmed", status: "CONFIRMED" },
+      REMINDED_UPCOMING,
+    ]);
+    mocks.confirmAppointmentCore.mockResolvedValueOnce({ ok: true, appointmentId: "appt_1", clientId: "client_1", staffMemberId: "staff_1", changed: true });
+
+    const result = await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "1", now: NOW });
+
+    expect(result).toEqual({ applied: true, intent: "confirm", appointmentId: "appt_1" });
+    expect(mocks.confirmAppointmentCore).toHaveBeenCalledWith({ id: "appt_1", businessId: "biz_1" });
+  });
+
+  it("stays silent on a 1 when several visits are already confirmed (no way to tell which)", async () => {
+    mocks.appointment.findMany.mockResolvedValueOnce([
+      { ...REMINDED_UPCOMING, id: "appt_a", status: "CONFIRMED" },
+      { ...REMINDED_UPCOMING, id: "appt_b", status: "CONFIRMED" },
+    ]);
+
+    expect(await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "1", now: NOW })).toEqual({
+      applied: false,
+      reason: "ambiguous",
+    });
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
   });
 
   it("cancels the one unambiguous match, sends a confirmation, and notifies staff", async () => {
