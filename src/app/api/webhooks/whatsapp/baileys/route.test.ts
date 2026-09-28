@@ -96,7 +96,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.BAILEYS_BRIDGE_SECRET = BRIDGE_SECRET;
   delete process.env.BAILEYS_WEBHOOK_SECRET;
-  mocks.recordInboundMessage.mockResolvedValue({ recorded: true, conversationId: "conv_1", clientId: "client_1" });
+  mocks.recordInboundMessage.mockResolvedValue({ recorded: true, conversationId: "conv_1", clientId: "client_1", messageId: "msg_1" });
   mocks.applyInboundReplyIntent.mockResolvedValue(undefined);
   mocks.recordDeliveryStatus.mockResolvedValue(undefined);
   mocks.recordConnectionState.mockResolvedValue(undefined);

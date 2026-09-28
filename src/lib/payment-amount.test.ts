@@ -1,31 +1,63 @@
 import { describe, expect, it } from "vitest";
 
-import { parseAmountToCents } from "@/lib/payment-amount";
+import { MAX_PAYMENT_AMOUNT_MAJOR_UNITS, parseAmountToCents } from "@/lib/payment-amount";
 
 describe("parseAmountToCents", () => {
-  it("parses a plain amount into integer cents", () => {
-    expect(parseAmountToCents("42.50")).toBe(4250);
-    expect(parseAmountToCents("0")).toBe(0);
+  it.each([
+    ["42.50", 4250],
+    ["0", 0],
+    ["0.00", 0],
+    ["19.99", 1999],
+    ["85", 8500],
+    ["85.", 8500],
+    [".5", 50],
+    ["  85.00  ", 8500],
+    // thousands grouped the way the app displays money
+    ["1,200", 120000],
+    ["1,200.50", 120050],
+    ["12,345,678.90", 1234567890],
+    // currency symbols, codes and locale spaces around the number are ignored
+    ["€85", 8500],
+    ["$1,000", 100000],
+    ["85 €", 8500],
+    ["85 EUR", 8500],
+    ["EUR 85.50", 8550],
+    ["1 200,50", 120050],
+    ["1 200,50", 120050],
+    // a decimal comma, as typed in much of the Balkans/Europe
+    ["12,50", 1250],
+    ["0,5", 50],
+    ["85,00", 8500],
+  ])("reads %j as %i cents", (input, cents) => {
+    expect(parseAmountToCents(input)).toBe(cents);
   });
 
-  it("strips currency symbols and thousands separators before parsing", () => {
-    expect(parseAmountToCents("€1,200.00".replace(/,/g, ""))).toBe(120000);
+  // CodeRabbit #131: these used to be scrubbed into a different, valid amount.
+  it.each([
+    ["−05", "a pasted Unicode minus"],
+    ["-5", "an ASCII minus"],
+    ["+5", "an explicit plus"],
+    ["1.200,50", "European dot-grouping with a decimal comma"],
+    ["1,200,50", "a comma both grouping and separating cents"],
+    ["1.2.3", "two decimal points"],
+    ["1e5", "an exponent"],
+    ["12abc", "trailing letters that are not a currency code"],
+    ["0.001", "finer than a cent"],
+    ["1.005", "finer than a cent"],
+    ["abc", "no digits at all"],
+    ["", "an empty field"],
+    ["   ", "only spaces"],
+    ["€", "only a currency symbol"],
+    ["-", "only a minus"],
+    [".", "only a point"],
+    [",", "only a comma"],
+  ])("rejects %j (%s)", (input) => {
+    expect(parseAmountToCents(input)).toBeNull();
   });
 
-  it("rejects negative amounts", () => {
-    expect(parseAmountToCents("-5")).toBeNull();
-  });
-
-  it("rejects unparseable numeric-looking input", () => {
-    expect(parseAmountToCents("1.2.3")).toBeNull();
-  });
-
-  it("rejects input with no digits rather than reading it as zero", () => {
-    expect(parseAmountToCents("abc")).toBeNull();
-    expect(parseAmountToCents("")).toBeNull();
-    expect(parseAmountToCents("€")).toBeNull();
-    expect(parseAmountToCents("-")).toBeNull();
-    expect(parseAmountToCents(".")).toBeNull();
+  it("never reads a decimal-comma amount as a hundred times larger", () => {
+    expect(parseAmountToCents("12,50")).not.toBe(125000);
+    expect(parseAmountToCents("12,50")).toBe(1250);
   });
 
   // Codex #131: the old fixed "> 1,000,000" ceiling was USD/EUR-shaped and
@@ -33,14 +65,17 @@ describe("parseAmountToCents", () => {
   // like HUF (e.g. a HUF 1,200,000 visit, well under the storage bound).
   it("accepts a legitimate large amount in a lower-value currency (e.g. HUF)", () => {
     expect(parseAmountToCents("1200000")).toBe(120000000);
+    expect(parseAmountToCents("1,200,000")).toBe(120000000);
   });
 
   it("still rejects an absurd fat-finger amount, regardless of currency", () => {
     expect(parseAmountToCents("999999999")).toBeNull();
+    expect(parseAmountToCents(String(MAX_PAYMENT_AMOUNT_MAJOR_UNITS + 1))).toBeNull();
   });
 
   it("stays under the Int32 column bound at its own ceiling", () => {
-    const cents = parseAmountToCents("20000000");
+    const cents = parseAmountToCents(String(MAX_PAYMENT_AMOUNT_MAJOR_UNITS));
+
     expect(cents).not.toBeNull();
     expect(cents!).toBeLessThan(2_147_483_647);
   });
