@@ -1,8 +1,11 @@
 // A cell that starts with one of these is read as a formula by Excel, Numbers and
 // Sheets (OWASP "CSV injection"): =HYPERLINK(...) or =cmd|... in a description
-// would run when someone opens a statement. Tab and carriage return are on the
-// list because some spreadsheets skip them before deciding.
-const FORMULA_START = /^[=+\-@\t\r]/;
+// would run when someone opens a statement. Tab, carriage return and line feed
+// are on the list because some spreadsheets skip them before deciding — a
+// quoted cell keeps an embedded LF as real data, but that doesn't stop an
+// import path from treating a *leading* one as ignorable whitespace ahead of
+// the "=" (CodeRabbit/Codex).
+const FORMULA_START = /^[=+\-@\t\r\n]/;
 
 /**
  * One quoted CSV cell. Text entered by a person (descriptions, invoice and

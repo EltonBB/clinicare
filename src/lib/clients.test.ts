@@ -124,4 +124,23 @@ describe("buildClientRecord — money in the clinic's currency", () => {
 
     expect(record.paymentStats.totalPaidDisplay).toBe("€125.00");
   });
+
+  // CodeRabbit #131: `client.payments` is the capped take:60 display list, so a
+  // client with more history than that must not have billed computed from it —
+  // billed has to come from the same unbounded groupBy as paid/unpaid, or
+  // billed can read lower than paid + unpaid on the very same stats row.
+  it("computes billed from the full payment history, not the capped display list", async () => {
+    mocks.prisma.clientPayment.groupBy.mockResolvedValue([
+      { status: "Paid", _sum: { amountCents: 500_000 } },
+      { status: "Unpaid", _sum: { amountCents: 50_000 } },
+    ]);
+
+    const record = await buildClientRecord(clientFixture(), "EUR");
+
+    // The display list (clientFixture's two payments) only totals €165.50 —
+    // far less than the full-history sums above.
+    expect(record.paymentStats.totalBilledDisplay).toBe("€5,500.00");
+    expect(record.paymentStats.totalPaidDisplay).toBe("€5,000.00");
+    expect(record.paymentStats.unpaidBalanceDisplay).toBe("€500.00");
+  });
 });

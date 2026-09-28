@@ -561,6 +561,11 @@ export async function buildClientRecord(
     paymentSumsByStatus.find((row) => row.status === status)?._sum.amountCents ?? 0;
   const totalPaidCents = paymentSum("Paid");
   const unpaidBalanceCents = paymentSum("Unpaid") + paymentSum("Partially Paid");
+  // Billed must come from the same unbounded source as paid/unpaid above — a
+  // client with more than 60 payments would otherwise show billed < paid +
+  // unpaid, since `client.payments` is the capped take:60 display list
+  // (CodeRabbit).
+  const totalBilledCents = paymentSumsByStatus.reduce((sum, row) => sum + (row._sum.amountCents ?? 0), 0);
 
   return {
     id: client.id,
@@ -610,10 +615,7 @@ export async function buildClientRecord(
       unpaidBalanceCents,
       totalPaidDisplay: formatCurrency(totalPaidCents, currency),
       unpaidBalanceDisplay: formatCurrency(unpaidBalanceCents, currency),
-      totalBilledDisplay: formatCurrency(
-        client.payments.reduce((sum, payment) => sum + payment.amountCents, 0),
-        currency
-      ),
+      totalBilledDisplay: formatCurrency(totalBilledCents, currency),
     },
     gallery: client.galleryItems.map((item) => ({
       id: item.id,

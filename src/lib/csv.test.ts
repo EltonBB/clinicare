@@ -26,6 +26,7 @@ describe("csvCell", () => {
     ["@SUM(A1)", `"'@SUM(A1)"`],
     ["\t=1+1", `"'\t=1+1"`],
     ["\r=1+1", `"'\r=1+1"`],
+    ["\n=1+1", `"'\n=1+1"`],
   ])("makes a formula-looking cell inert: %j", (value, expected) => {
     expect(csvCell(value)).toBe(expected);
   });
