@@ -7,11 +7,13 @@ import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { isProBusinessPlan } from "@/lib/billing";
 import { logger } from "@/lib/logger";
+import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { parseRecordId } from "@/lib/record-id";
 import { removeWaitlistEntry } from "@/lib/slot-offers";
 import { createWaitlistEntry } from "@/lib/waitlist-data";
 import {
   isInvalidPreferredWindow,
+  WAITLIST_CLIENT_ERROR,
   WAITLIST_ENTRY_REMOVED_ERROR,
   WAITLIST_PLAN_ERROR,
   WAITLIST_TIME_RANGE_ERROR,
@@ -97,18 +99,18 @@ export async function addWaitlistEntryAction(
   // clientId/staffMemberId belong to this business — it just writes whatever
   // id it's given. Without this check a caller could reference another
   // business's client/staff row; listWaitingEntries would then join and
-  // display that other business's client name inside this workspace. Same
-  // ownership checks and message text as saveAppointmentAction.
+  // display that other business's client name inside this workspace. The same
+  // check also refuses an archived or inactive client (the client typeahead
+  // still returns inactive ones): the matcher never offers them a slot, so the
+  // entry would sit on the list and count against its cap without ever being
+  // matched (Codex #130).
   const client = await prisma.client.findFirst({
-    where: { id: data.clientId, businessId: business.id },
+    where: { id: data.clientId, businessId: business.id, ...ELIGIBLE_CLIENT_WHERE },
     select: { id: true },
   });
 
   if (!client) {
-    return {
-      ok: false,
-      error: "The selected client does not belong to this clinic workspace.",
-    };
+    return { ok: false, error: WAITLIST_CLIENT_ERROR };
   }
 
   let staffMemberId: string | null = null;

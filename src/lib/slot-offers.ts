@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 
 import { isProBusinessPlan } from "@/lib/billing";
 import { timeToMinutes } from "@/lib/calendar";
+import { ELIGIBLE_CLIENT_WHERE, INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { prisma } from "@/lib/prisma";
 import { rankWaitlistMatches } from "@/lib/slot-fill-matching";
 import { formatZonedFullDate, formatZonedTime, formatZonedTime24, getZonedWeekday } from "@/lib/time-zone";
@@ -243,7 +244,7 @@ export function liveSlotOfferWhere(now: Date): Prisma.FollowUpDraftWhereInput {
     kind: "SLOT_OFFER",
     waitlistEntry: { status: "OFFERED" },
     appointment: { status: "CANCELLED", startAt: { gt: now } },
-    client: { isArchived: false, status: { notIn: ["INACTIVE", "ARCHIVED"] } },
+    client: ELIGIBLE_CLIENT_WHERE,
   };
 }
 
@@ -258,7 +259,7 @@ function staleSlotWhere(now: Date): Prisma.FollowUpDraftWhereInput {
       // as stale as one whose slot already passed — retire it and release the
       // entry so the slot can be re-offered to the next real candidate
       // (Codex #130).
-      { client: { OR: [{ isArchived: true }, { status: { in: ["INACTIVE", "ARCHIVED"] } }] } },
+      { client: INELIGIBLE_CLIENT_WHERE },
     ],
   };
 }

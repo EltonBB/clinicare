@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 
+import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { prisma } from "@/lib/prisma";
 import { getZonedDateParts, getZonedMonthStart } from "@/lib/time-zone";
 
@@ -119,8 +120,7 @@ export async function findRebookCandidates(args: {
   const clients = await prisma.client.findMany({
     where: {
       businessId,
-      isArchived: false,
-      status: { notIn: ["INACTIVE", "ARCHIVED"] },
+      ...ELIGIBLE_CLIENT_WHERE,
       lastVisitAt: { not: null, lt: cutoff },
       appointments: { none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } } },
       followUpDrafts: { none: { kind: "REBOOK", OR: [{ status: "PENDING" }, { createdAt: { gte: monthStart } }] } },

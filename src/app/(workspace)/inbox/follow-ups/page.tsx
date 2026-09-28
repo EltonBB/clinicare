@@ -1,3 +1,4 @@
+import { isProBusinessPlan } from "@/lib/billing";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { buildFollowUpsViewFromRecords } from "@/lib/follow-ups";
 import { listPendingFollowUpDrafts } from "@/lib/follow-ups-data";
@@ -10,7 +11,9 @@ export default async function FollowUpsPage() {
   });
 
   const drafts = await listPendingFollowUpDrafts(business.id);
-  const view = buildFollowUpsViewFromRecords({ drafts });
+  // A downgraded workspace still lists its pending slot offers so staff can
+  // skip them, but cannot send one (see markFollowUpDraftSent).
+  const view = buildFollowUpsViewFromRecords({ drafts, canSendSlotOffers: isProBusinessPlan(business.plan) });
 
   return (
     <WorkspacePage size="wide">

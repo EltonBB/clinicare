@@ -33,6 +33,7 @@ vi.mock("@/lib/workflow-generators", async (importOriginal) => {
   };
 });
 
+import { INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { expireStaleFollowUpDrafts, generateFollowUpDrafts } from "@/lib/follow-up-generation";
 import { DEFAULT_WORKFLOW_SETTINGS, type FollowUpDraftInput } from "@/lib/workflow-generators";
 
@@ -550,7 +551,7 @@ describe("expireStaleFollowUpDrafts", () => {
               },
             },
           },
-          { client: { OR: [{ isArchived: true }, { status: { in: ["INACTIVE", "ARCHIVED"] } }] } },
+          { client: INELIGIBLE_CLIENT_WHERE },
           { business: { plan: { in: ["TRIAL", "BASIC"] } } },
           { createdAt: { lt: new Date(NOW.getTime() - 35 * DAY_MS) } },
         ],

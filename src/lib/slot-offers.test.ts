@@ -23,6 +23,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }));
 
 import { Prisma } from "@prisma/client";
 
+import { INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import {
   expirePastSlotOffers,
   offerFreedSlot,
@@ -410,7 +411,7 @@ describe("expirePastSlotOffers", () => {
             { appointmentId: null },
             { appointment: { startAt: { lte: NOW } } },
             { appointment: { status: { not: "CANCELLED" } } },
-            { client: { OR: [{ isArchived: true }, { status: { in: ["INACTIVE", "ARCHIVED"] } }] } },
+            { client: INELIGIBLE_CLIENT_WHERE },
           ],
         },
         { OR: [{ status: "PENDING" }, { status: "SENT", waitlistEntry: { status: "OFFERED" } }] },

@@ -10,6 +10,9 @@ export const WAITLIST_TIME_RANGE_ERROR = "Choose a From time earlier than the To
 
 export const WAITLIST_ENTRY_REMOVED_ERROR = "This waiting-list entry was already removed.";
 
+// Also what a client id from another workspace gets — the check is one query.
+export const WAITLIST_CLIENT_ERROR = "Choose an active client. Archived and inactive clients can't join the waiting list.";
+
 // Every cancellation reads a clinic's whole waiting list, and the Calendar
 // panel renders it, so the list is bounded. Far above what a clinic works
 // through; a soft cap (two adds racing can overshoot it by a few).

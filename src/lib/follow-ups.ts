@@ -16,6 +16,10 @@ export type FollowUpDraftItem = {
   // listPendingFollowUpDrafts) can be booked directly from this row — the
   // client was already told about the opening, so send/skip no longer apply.
   canBook: boolean;
+  // False for a still-pending slot offer in a workspace that is no longer on
+  // Pro: the list keeps showing it so staff can Skip it, but Send would only
+  // fail (markFollowUpDraftSent refuses it), so the row leaves Send out.
+  canSend: boolean;
 };
 
 const KIND_LABELS: Record<FollowUpDraftKind, string> = {
@@ -58,8 +62,10 @@ export function visibleFollowUps(items: FollowUpDraftItem[], handledKeys: string
 export function buildFollowUpsViewFromRecords(args: {
   drafts: FollowUpDraftRecord[];
   timeZone?: string;
+  // Sending a slot offer is Pro; the other kinds send on every plan.
+  canSendSlotOffers?: boolean;
 }): { items: FollowUpDraftItem[] } {
-  const { drafts, timeZone = getAppTimeZone() } = args;
+  const { drafts, timeZone = getAppTimeZone(), canSendSlotOffers = true } = args;
 
   const items = drafts.map((draft) => ({
     id: draft.id,
@@ -73,6 +79,7 @@ export function buildFollowUpsViewFromRecords(args: {
       : KIND_LABELS[draft.kind],
     createdLabel: formatZonedShortDate(draft.createdAt, timeZone),
     canBook: draft.kind === "SLOT_OFFER" && draft.status === "SENT",
+    canSend: draft.kind !== "SLOT_OFFER" || canSendSlotOffers,
   }));
 
   return { items };

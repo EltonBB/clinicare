@@ -15,6 +15,7 @@ import {
 } from "@/app/(workspace)/inbox/follow-ups/actions";
 import { cn } from "@/lib/utils";
 import { followUpRowKey, visibleFollowUps, type FollowUpDraftItem } from "@/lib/follow-ups";
+import { WAITLIST_PLAN_ERROR } from "@/lib/waitlist";
 
 type FollowUpBusyState = "send" | "skip" | "book" | "pass" | null;
 
@@ -177,8 +178,9 @@ function FollowUpDraftRow({
         <p className="mt-0.5 text-xs text-muted-foreground">{draft.reasonLabel}</p>
       ) : null}
 
-      {draft.canBook ? (
-        // Already sent — read-only, since there's nothing left to edit-and-send.
+      {draft.canBook || !draft.canSend ? (
+        // Already sent, or can't be sent from this plan — read-only, since
+        // there's nothing left to edit-and-send.
         <p className="mt-2.5 text-sm text-foreground">{draft.body}</p>
       ) : (
         <Textarea
@@ -189,6 +191,10 @@ function FollowUpDraftRow({
           className={cn(fieldTextareaClass, "mt-2.5")}
         />
       )}
+
+      {!draft.canBook && !draft.canSend ? (
+        <p className="mt-2 text-xs text-muted-foreground">{WAITLIST_PLAN_ERROR}</p>
+      ) : null}
 
       {error ? (
         <p role="alert" className="mt-2 text-xs text-destructive">
@@ -220,15 +226,17 @@ function FollowUpDraftRow({
           </>
         ) : (
           <>
-            <Button
-              type="button"
-              size="sm"
-              className="h-9 rounded-(--radius-card)"
-              onClick={() => void handleSend()}
-              disabled={isBusy}
-            >
-              {busy === "send" ? "Sending..." : "Send"}
-            </Button>
+            {draft.canSend ? (
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 rounded-(--radius-card)"
+                onClick={() => void handleSend()}
+                disabled={isBusy}
+              >
+                {busy === "send" ? "Sending..." : "Send"}
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="outline"

@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 
+import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { prisma } from "@/lib/prisma";
 import { isSameService, type WaitlistCandidate } from "@/lib/slot-fill-matching";
 import { formatZonedShortDate } from "@/lib/time-zone";
@@ -150,13 +151,11 @@ export async function findMatchingWaitlistCandidates(args: {
       status: "WAITING",
       clientId: { not: args.excludeClientId },
       client: {
-        // Archived means either flag (see formatStatus in lib/clients.ts). An
-        // inactive client is left out too, matching liveSlotOfferWhere: an offer
-        // to one is stale the moment it is drafted, so matching them would burn
-        // the slot on a draft nobody can see and the sweep would then re-offer it
-        // to the same entry in a loop (Codex #130).
-        isArchived: false,
-        status: { notIn: ["INACTIVE", "ARCHIVED"] },
+        // Archived or inactive clients are left out, matching liveSlotOfferWhere:
+        // an offer to one is stale the moment it is drafted, so matching them
+        // would burn the slot on a draft nobody can see and the sweep would then
+        // re-offer it to the same entry in a loop (Codex #130).
+        ...ELIGIBLE_CLIENT_WHERE,
         followUpDrafts: {
           none: {
             kind: "SLOT_OFFER",

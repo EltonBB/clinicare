@@ -47,7 +47,13 @@ import {
   removeWaitlistEntryAction,
   type AddWaitlistEntryPayload,
 } from "./waitlist-actions";
-import { WAITLIST_ENTRY_REMOVED_ERROR, WAITLIST_PLAN_ERROR, WAITLIST_TIME_RANGE_ERROR } from "@/lib/waitlist";
+import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
+import {
+  WAITLIST_CLIENT_ERROR,
+  WAITLIST_ENTRY_REMOVED_ERROR,
+  WAITLIST_PLAN_ERROR,
+  WAITLIST_TIME_RANGE_ERROR,
+} from "@/lib/waitlist";
 
 const PRO_BUSINESS = { id: "biz_1", plan: "PRO" as const };
 const BASIC_BUSINESS = { id: "biz_1", plan: "BASIC" as const };
@@ -173,16 +179,28 @@ describe("addWaitlistEntryAction — successful add", () => {
     expect(mocks.createWaitlistEntry).not.toHaveBeenCalled();
   });
 
-  it("refuses a client that doesn't belong to this business", async () => {
+  it("refuses a client who isn't in this business, or who is archived or inactive", async () => {
     mocks.client.findFirst.mockResolvedValue(null);
 
     const result = await addWaitlistEntryAction(VALID_PAYLOAD);
 
-    expect(result).toEqual({
-      ok: false,
-      error: "The selected client does not belong to this clinic workspace.",
-    });
+    expect(result).toEqual({ ok: false, error: WAITLIST_CLIENT_ERROR });
     expect(mocks.createWaitlistEntry).not.toHaveBeenCalled();
+  });
+
+  it("looks the client up with the same eligibility the matcher applies, scoped to the business", async () => {
+    await addWaitlistEntryAction(VALID_PAYLOAD);
+
+    // The inactive/archived exclusion is exactly ELIGIBLE_CLIENT_WHERE — a
+    // client the matcher would never offer a slot to must not be put on the list.
+    expect(mocks.client.findFirst).toHaveBeenCalledWith({
+      where: { id: "client_1", businessId: "biz_1", ...ELIGIBLE_CLIENT_WHERE },
+      select: { id: true },
+    });
+    expect(ELIGIBLE_CLIENT_WHERE).toEqual({
+      isArchived: false,
+      status: { notIn: ["INACTIVE", "ARCHIVED"] },
+    });
   });
 
   it("refuses a staff member that doesn't belong to this business", async () => {

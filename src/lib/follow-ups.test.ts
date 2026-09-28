@@ -53,6 +53,26 @@ describe("buildFollowUpsViewFromRecords", () => {
 
     expect(view.items.map((item) => item.canBook)).toEqual([true, false, false]);
   });
+
+  it("offers Send on every row of a Pro workspace", () => {
+    const view = buildFollowUpsViewFromRecords({
+      drafts: [draft({ kind: "SLOT_OFFER" }), draft({ kind: "REBOOK" }), draft({ kind: "PAYMENT" }), draft({ kind: "THANK_YOU" })],
+      timeZone: "UTC",
+      canSendSlotOffers: true,
+    });
+
+    expect(view.items.map((item) => item.canSend)).toEqual([true, true, true, true]);
+  });
+
+  it("leaves Send off a slot offer once the workspace is off Pro, but not the kinds that send on every plan", () => {
+    const view = buildFollowUpsViewFromRecords({
+      drafts: [draft({ kind: "SLOT_OFFER" }), draft({ kind: "PAYMENT" }), draft({ kind: "THANK_YOU" })],
+      timeZone: "UTC",
+      canSendSlotOffers: false,
+    });
+
+    expect(view.items.map((item) => item.canSend)).toEqual([false, true, true]);
+  });
 });
 
 describe("visibleFollowUps", () => {

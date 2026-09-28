@@ -1,6 +1,7 @@
 import { BusinessPlan, type Prisma } from "@prisma/client";
 
 import { isProBusinessPlan } from "@/lib/billing";
+import { INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { getFollowUpCursor, setFollowUpCursor } from "@/lib/follow-up-cursor";
 import { lastAttemptedId, rotateForFairness } from "@/lib/reminder-fairness";
 import { logger } from "@/lib/logger";
@@ -206,7 +207,7 @@ export async function expireStaleFollowUpDrafts(now: Date): Promise<number> {
       status: "PENDING",
       OR: [
         { client: { appointments: { some: rebookedAppointmentWhere(now) } } },
-        { client: { OR: [{ isArchived: true }, { status: { in: ["INACTIVE", "ARCHIVED"] } }] } },
+        { client: INELIGIBLE_CLIENT_WHERE },
         { business: { plan: { in: nonProPlans } } },
         { createdAt: { lt: new Date(now.getTime() - REBOOK_MAX_AGE_DAYS * DAY_MS) } },
       ],

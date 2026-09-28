@@ -1,6 +1,7 @@
 import { BusinessPlan, Prisma } from "@prisma/client";
 
 import { isProBusinessPlan } from "@/lib/billing";
+import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { prisma } from "@/lib/prisma";
 import type { FollowUpDraftRecord } from "@/lib/follow-ups";
 import { liveSlotOfferWhere, reofferFreedSlot, retryOnWriteConflict } from "@/lib/slot-offers";
@@ -42,8 +43,7 @@ function actionablePendingWhere(now: Date): Prisma.FollowUpDraftWhereInput {
         kind: "REBOOK",
         business: { plan: { in: proPlans() } },
         client: {
-          isArchived: false,
-          status: { notIn: ["INACTIVE", "ARCHIVED"] },
+          ...ELIGIBLE_CLIENT_WHERE,
           appointments: { none: rebookedAppointmentWhere(now) },
         },
       },
