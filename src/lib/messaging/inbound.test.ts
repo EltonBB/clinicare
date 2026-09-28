@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
-  const message = { findFirst: vi.fn(), create: vi.fn() };
+  const message = { findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn() };
   const client = { findMany: vi.fn() };
   const conversation = { upsert: vi.fn() };
   const appointment = { findMany: vi.fn() };
@@ -57,6 +57,9 @@ beforeEach(() => {
   // No open slot offer by default — the reply-intent tests below run the
   // normal confirm/cancel path unless a test opens one.
   mocks.followUpDraft.findFirst.mockResolvedValue(null);
+  // Claiming a message for its reply-intent check succeeds (and releasing one does
+  // too), unless a test says another delivery got there first.
+  mocks.message.updateMany.mockResolvedValue({ count: 1 });
   mocks.$transaction.mockImplementation(
     async (cb: (tx: unknown) => unknown) =>
       cb({ conversation: mocks.conversation, message: mocks.message })
@@ -95,7 +98,7 @@ describe("recordInboundMessage", () => {
       body: "hello",
       providerMessageId: "M1",
     });
-    expect(result).toEqual({ recorded: false, reason: "duplicate", clientId: "client_9" });
+    expect(result).toEqual({ recorded: false, reason: "duplicate", clientId: "client_9", messageId: "existing" });
     expect(mocks.$transaction).not.toHaveBeenCalled();
   });
 
@@ -108,7 +111,7 @@ describe("recordInboundMessage", () => {
       body: "hello",
       providerMessageId: "M1",
     });
-    expect(result).toEqual({ recorded: false, reason: "duplicate", clientId: null });
+    expect(result).toEqual({ recorded: false, reason: "duplicate", clientId: null, messageId: "existing" });
   });
 
   it("threads onto the phoneKey conversation and links the matching client", async () => {
@@ -124,7 +127,7 @@ describe("recordInboundMessage", () => {
       providerMessageId: "M2",
     });
 
-    expect(result).toEqual({ recorded: true, conversationId: "conv_1", clientId: "client_9" });
+    expect(result).toEqual({ recorded: true, conversationId: "conv_1", clientId: "client_9", messageId: "msg_1" });
 
     expect(mocks.conversation.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -166,12 +169,45 @@ describe("recordInboundMessage", () => {
 
     // The message is still recorded and threaded normally — only the client
     // identity is left ambiguous (null), same as the no-match case.
-    expect(result).toEqual({ recorded: true, conversationId: "conv_shared", clientId: null });
+    expect(result).toEqual({ recorded: true, conversationId: "conv_shared", clientId: null, messageId: "msg_shared" });
     expect(mocks.message.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ conversationId: "conv_shared", clientId: null }),
       })
     );
+  });
+  describe("a delivery that loses the race on the unique providerMessageSid (P2002)", () => {
+    const raceError = Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+
+    it("reports a duplicate carrying the winner's messageId, so the reply-intent retry can check its marker", async () => {
+      mocks.message.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: "winner" });
+      mocks.client.findMany.mockResolvedValue([{ id: "client_9", name: "Mira" }]);
+      mocks.$transaction.mockRejectedValueOnce(raceError);
+
+      const result = await recordInboundMessage({
+        businessId: "biz_1",
+        fromPhone: "+38344123456",
+        body: "1",
+        providerMessageId: "M9",
+      });
+
+      expect(result).toEqual({ recorded: false, reason: "duplicate", clientId: "client_9", messageId: "winner" });
+    });
+
+    it("falls back to a null messageId (rather than throwing) if the winning row is gone by the second look", async () => {
+      mocks.message.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+      mocks.client.findMany.mockResolvedValue([]);
+      mocks.$transaction.mockRejectedValueOnce(raceError);
+
+      const result = await recordInboundMessage({
+        businessId: "biz_1",
+        fromPhone: "+38344123456",
+        body: "1",
+        providerMessageId: "M9",
+      });
+
+      expect(result).toEqual({ recorded: false, reason: "duplicate", clientId: null, messageId: null });
+    });
   });
 });
 
@@ -419,6 +455,98 @@ describe("applyInboundReplyIntent", () => {
     expect(await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "1", now: NOW })).toEqual({
       applied: false,
       reason: "no_match",
+    });
+  });
+
+  // CodeRabbit #130: the worker retries a delivery when the app's 200 is lost in
+  // transit, or gives up after 10s while the first request is still running.
+  // Without a per-message claim the retry re-runs the check against the
+  // appointment the first attempt already confirmed and sends the patient the
+  // "you're confirmed" message again.
+  describe("per-message claim (a worker retry must not re-send a reply)", () => {
+    const CLAIM = { where: { id: "msg_1", replyIntentHandledAt: null }, data: { replyIntentHandledAt: NOW } };
+    const RELEASE = { where: { id: "msg_1" }, data: { replyIntentHandledAt: null } };
+    const args = { businessId: "biz_1", clientId: "client_1", body: "1", messageId: "msg_1", now: NOW };
+
+    it("skips everything, including the reply, when another delivery already claimed this message", async () => {
+      mocks.message.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      const result = await applyInboundReplyIntent(args);
+
+      expect(result).toEqual({ applied: false, reason: "already_handled" });
+      expect(mocks.message.updateMany).toHaveBeenCalledTimes(1);
+      expect(mocks.message.updateMany).toHaveBeenCalledWith(CLAIM);
+      expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+      expect(mocks.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it("claims the message before doing anything else, then runs the check and keeps the claim", async () => {
+      const order: string[] = [];
+      mocks.message.updateMany.mockImplementationOnce(async () => {
+        order.push("claim");
+        return { count: 1 };
+      });
+      mocks.appointment.findMany.mockImplementationOnce(async () => {
+        order.push("lookup");
+        return [REMINDED_UPCOMING];
+      });
+      mocks.confirmAppointmentCore.mockResolvedValueOnce({ ok: true, appointmentId: "appt_1", clientId: "client_1", staffMemberId: "staff_1", changed: true });
+      mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });
+
+      const result = await applyInboundReplyIntent({ ...args, body: "yes" });
+
+      expect(result).toEqual({ applied: true, intent: "confirm", appointmentId: "appt_1" });
+      expect(order).toEqual(["claim", "lookup"]);
+      // one claim, no release: the message stays handled
+      expect(mocks.message.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the claim whatever the non-throwing outcome, so an already-confirmed acknowledgement is only ever sent once", async () => {
+      mocks.appointment.findMany.mockResolvedValueOnce([{ ...REMINDED_UPCOMING, status: "CONFIRMED" }]);
+      mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });
+
+      const result = await applyInboundReplyIntent(args);
+
+      expect(result).toEqual({ applied: false, reason: "already_confirmed" });
+      expect(mocks.message.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it("releases the claim and rethrows when the check throws, so the retry can do the work", async () => {
+      mocks.appointment.findMany.mockRejectedValueOnce(new Error("transient database failure"));
+
+      await expect(applyInboundReplyIntent(args)).rejects.toThrow("transient database failure");
+
+      expect(mocks.message.updateMany).toHaveBeenCalledTimes(2);
+      expect(mocks.message.updateMany).toHaveBeenNthCalledWith(1, CLAIM);
+      expect(mocks.message.updateMany).toHaveBeenNthCalledWith(2, RELEASE);
+    });
+
+    it("still surfaces the original error when releasing the claim fails too", async () => {
+      mocks.appointment.findMany.mockRejectedValueOnce(new Error("transient database failure"));
+      mocks.message.updateMany.mockResolvedValueOnce({ count: 1 }).mockRejectedValueOnce(new Error("release failed"));
+
+      await expect(applyInboundReplyIntent(args)).rejects.toThrow("transient database failure");
+    });
+
+    it("does not write to the message for ordinary chat text or an unmatched client (nothing to act on)", async () => {
+      mocks.appointment.findMany.mockResolvedValue([]);
+
+      expect(await applyInboundReplyIntent({ ...args, body: "hello, are you open on Saturday?" })).toEqual({
+        applied: false,
+        reason: "no_intent",
+      });
+      expect(await applyInboundReplyIntent({ ...args, clientId: null })).toEqual({ applied: false, reason: "no_client" });
+
+      expect(mocks.message.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("does not touch the message at all when no messageId is given (direct callers unchanged)", async () => {
+      mocks.appointment.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+      await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "1", now: NOW });
+      await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "1", messageId: null, now: NOW });
+
+      expect(mocks.message.updateMany).not.toHaveBeenCalled();
     });
   });
 });

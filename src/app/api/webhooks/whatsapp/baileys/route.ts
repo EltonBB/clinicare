@@ -102,23 +102,26 @@ export async function POST(request: Request) {
         contactName: event.contactName,
       });
       // Attempted whenever a client resolved — on a first-time recording AND
-      // on a worker-retried duplicate. The message write itself already
-      // committed durably either way; applyInboundReplyIntent is separately
-      // idempotent (its own compare-and-set writes are safe to attempt more
-      // than once), so retrying it here is what actually recovers a reply
-      // that was recorded but never applied because of a transient failure
-      // on an earlier delivery — previously that failure was swallowed to
-      // ok:true, and duplicate-detection meant no later retry ever got a
-      // second chance (Codex #130). Left unwrapped (not caught here): a
-      // genuine failure now falls through to the outer catch below and
-      // returns a 5xx, so the worker actually retries the delivery instead
-      // of the reply intent being silently lost.
+      // on a worker-retried duplicate — because a transient failure on an
+      // earlier delivery can leave the message recorded but the reply intent
+      // never applied; previously that failure was swallowed to ok:true, and
+      // duplicate-detection meant no later retry ever got a second chance
+      // (Codex #130). Left unwrapped (not caught here): a genuine failure now
+      // falls through to the outer catch below and returns a 5xx, so the
+      // worker actually retries the delivery instead of the reply intent
+      // being silently lost. messageId is what keeps that retry itself safe:
+      // applyInboundReplyIntent claims the message before acting, so a redelivery
+      // of one it already handled (the worker also retries a lost-in-transit 200,
+      // or one that took over 10s, not only a real failure) skips it instead of
+      // sending the patient a second "you're confirmed".
       const clientId = result.recorded ? result.clientId : result.reason === "duplicate" ? result.clientId : null;
+      const messageId = result.recorded ? result.messageId : result.reason === "duplicate" ? result.messageId : null;
       if (result.recorded || clientId) {
         await applyInboundReplyIntent({
           businessId: event.businessId,
           clientId,
           body: event.body,
+          messageId,
         });
       }
       return NextResponse.json({ ok: true, recorded: result.recorded });

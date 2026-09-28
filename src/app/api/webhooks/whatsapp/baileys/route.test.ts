@@ -43,7 +43,7 @@ beforeEach(() => {
 
 describe("POST /api/webhooks/whatsapp/baileys — message events", () => {
   it("attempts the reply intent on a first-time recording", async () => {
-    mocks.recordInboundMessage.mockResolvedValue({ recorded: true, conversationId: "conv_1", clientId: "client_1" });
+    mocks.recordInboundMessage.mockResolvedValue({ recorded: true, conversationId: "conv_1", clientId: "client_1", messageId: "msg_1" });
     mocks.applyInboundReplyIntent.mockResolvedValue({ applied: true, intent: "confirm", appointmentId: "appt_1" });
 
     const response = await POST(request(MESSAGE_EVENT));
@@ -53,6 +53,7 @@ describe("POST /api/webhooks/whatsapp/baileys — message events", () => {
       businessId: "biz_1",
       clientId: "client_1",
       body: "1",
+      messageId: "msg_1",
     });
   });
 
@@ -62,7 +63,7 @@ describe("POST /api/webhooks/whatsapp/baileys — message events", () => {
   // retried delivery is detected as a duplicate and the old code only ever
   // attempted the reply intent on a first-time recording.
   it("returns a 5xx (not ok:true) when the reply intent throws, so the worker retries the delivery", async () => {
-    mocks.recordInboundMessage.mockResolvedValue({ recorded: true, conversationId: "conv_1", clientId: "client_1" });
+    mocks.recordInboundMessage.mockResolvedValue({ recorded: true, conversationId: "conv_1", clientId: "client_1", messageId: "msg_1" });
     mocks.applyInboundReplyIntent.mockRejectedValue(new Error("transient database failure"));
 
     const response = await POST(request(MESSAGE_EVENT));
@@ -77,7 +78,7 @@ describe("POST /api/webhooks/whatsapp/baileys — message events", () => {
   });
 
   it("retries the reply intent on a worker-retried duplicate, using the client resolved on the duplicate path", async () => {
-    mocks.recordInboundMessage.mockResolvedValue({ recorded: false, reason: "duplicate", clientId: "client_1" });
+    mocks.recordInboundMessage.mockResolvedValue({ recorded: false, reason: "duplicate", clientId: "client_1", messageId: "msg_1" });
     mocks.applyInboundReplyIntent.mockResolvedValue({ applied: true, intent: "confirm", appointmentId: "appt_1" });
 
     const response = await POST(request(MESSAGE_EVENT));
@@ -88,11 +89,27 @@ describe("POST /api/webhooks/whatsapp/baileys — message events", () => {
       businessId: "biz_1",
       clientId: "client_1",
       body: "1",
+      messageId: "msg_1",
+    });
+  });
+
+  it("passes a null messageId through when a raced duplicate's winning row couldn't be found again", async () => {
+    mocks.recordInboundMessage.mockResolvedValue({ recorded: false, reason: "duplicate", clientId: "client_1", messageId: null });
+    mocks.applyInboundReplyIntent.mockResolvedValue({ applied: false, reason: "no_match" });
+
+    const response = await POST(request(MESSAGE_EVENT));
+
+    expect(response.status).toBe(200);
+    expect(mocks.applyInboundReplyIntent).toHaveBeenCalledWith({
+      businessId: "biz_1",
+      clientId: "client_1",
+      body: "1",
+      messageId: null,
     });
   });
 
   it("does not attempt a reply intent for a duplicate with no resolvable client — nothing to retry", async () => {
-    mocks.recordInboundMessage.mockResolvedValue({ recorded: false, reason: "duplicate", clientId: null });
+    mocks.recordInboundMessage.mockResolvedValue({ recorded: false, reason: "duplicate", clientId: null, messageId: "msg_1" });
 
     const response = await POST(request(MESSAGE_EVENT));
 

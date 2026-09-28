@@ -503,6 +503,16 @@ model Message {
   deliveryErrorCode  String?
   deliveryUpdatedAt  DateTime?
   sentAt             DateTime               @default(now())
+  // Claimed (compare-and-set from null) by applyInboundReplyIntent before it
+  // acts on this inbound message, and cleared again if that check throws. A
+  // worker redelivery of the same providerMessageSid finds it claimed and skips
+  // the check, so a retry can neither re-send a reply the first attempt already
+  // sent (the app replied but its 200 was lost in transit) nor overlap a first
+  // attempt that is still running (the worker aborts after 10s; the request
+  // does not) - up to MAX_ATTEMPTS duplicate "you're confirmed" messages to the
+  // patient otherwise (CodeRabbit #130). Null on an outbound row, or an inbound
+  // one nobody has acted on yet.
+  replyIntentHandledAt DateTime?
 
   @@index([conversationId, sentAt])
   @@index([clientId])

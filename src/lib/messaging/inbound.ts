@@ -27,13 +27,16 @@ export type InboundMessage = {
 };
 
 export type RecordInboundResult =
-  | { recorded: true; conversationId: string; clientId: string | null }
+  | { recorded: true; conversationId: string; clientId: string | null; messageId: string }
   // "duplicate" still carries a resolved clientId (when the phone matches
-  // exactly one client) — a worker retry means the message is already
-  // stored, but its reply-intent step is separately idempotent and worth
-  // retrying too, on the chance a transient failure applied the message
+  // exactly one client) and the existing row's messageId — a worker retry
+  // means the message is already stored, but its reply-intent step is worth
+  // re-attempting too, on the chance a transient failure applied the message
   // recording but not the reply intent the first time (Codex #130).
-  | { recorded: false; reason: "duplicate"; clientId: string | null }
+  // applyInboundReplyIntent claims the message (keyed off messageId) before
+  // acting, which is what keeps that re-attempt from re-sending a reply the
+  // first attempt already sent.
+  | { recorded: false; reason: "duplicate"; clientId: string | null; messageId: string | null }
   | { recorded: false; reason: "invalid_phone" | "empty_body" };
 
 /**
@@ -91,15 +94,16 @@ export async function recordInboundMessage(
       select: { id: true },
     });
     if (existing) {
-      return { recorded: false, reason: "duplicate", clientId: matchingClient?.id ?? null };
+      return { recorded: false, reason: "duplicate", clientId: matchingClient?.id ?? null, messageId: existing.id };
     }
   }
 
   const preferredName = event.contactName?.trim() || matchingClients[0]?.name;
 
   let conversationId: string;
+  let messageId: string;
   try {
-    conversationId = await prisma.$transaction(async (tx) => {
+    ({ conversationId, messageId } = await prisma.$transaction(async (tx) => {
       const conversation = await tx.conversation.upsert({
         where: {
           businessId_phoneKey: { businessId: event.businessId, phoneKey },
@@ -119,7 +123,7 @@ export async function recordInboundMessage(
         select: { id: true },
       });
 
-      await tx.message.create({
+      const message = await tx.message.create({
         data: {
           conversationId: conversation.id,
           clientId: matchingClient?.id ?? null,
@@ -127,15 +131,17 @@ export async function recordInboundMessage(
           body,
           providerMessageSid: event.providerMessageId || null,
         },
+        select: { id: true },
       });
 
-      return conversation.id;
-    });
+      return { conversationId: conversation.id, messageId: message.id };
+    }));
   } catch (error) {
     // A worker retry can race the dedup check above and then collide on the
     // unique `providerMessageSid` here — treat that as an idempotent no-op so
     // the webhook returns ok and the worker stops retrying (instead of a 500
-    // loop). The transaction rolls back, so no unread bump leaks.
+    // loop). The transaction rolls back, so no unread bump leaks. Re-look up
+    // the row the other request won, so the caller still gets its messageId.
     if (
       event.providerMessageId &&
       typeof error === "object" &&
@@ -143,16 +149,27 @@ export async function recordInboundMessage(
       "code" in error &&
       (error as { code?: unknown }).code === "P2002"
     ) {
-      return { recorded: false, reason: "duplicate", clientId: matchingClient?.id ?? null };
+      const winner = await prisma.message.findFirst({
+        where: { providerMessageSid: event.providerMessageId },
+        select: { id: true },
+      });
+      // winner should always exist (that's what the P2002 collided on); null
+      // only if it's somehow gone by the time we look again. applyInboundReplyIntent
+      // treats a null/undefined messageId as "no claim to take", same as not
+      // passing one at all — a safe fallback, not a silent bug.
+      return { recorded: false, reason: "duplicate", clientId: matchingClient?.id ?? null, messageId: winner?.id ?? null };
     }
     throw error;
   }
 
-  return { recorded: true, conversationId, clientId: matchingClient?.id ?? null };
+  return { recorded: true, conversationId, clientId: matchingClient?.id ?? null, messageId };
 }
 
 export type ApplyReplyIntentResult =
-  | { applied: false; reason: "no_intent" | "no_client" | "no_match" | "ambiguous" | "already_confirmed" | "open_offer" }
+  | {
+      applied: false;
+      reason: "no_intent" | "no_client" | "no_match" | "ambiguous" | "already_confirmed" | "open_offer" | "already_handled";
+    }
   | { applied: true; intent: "confirm" | "cancel"; appointmentId: string };
 
 /**
@@ -225,14 +242,66 @@ async function mirrorOutboundReplyToInbox(args: {
  * webhook route right after recordInboundMessage succeeds — separate from it
  * so the message-recording path (already heavily tested, with its own P2002
  * race handling) stays unchanged in behavior and risk surface.
+ *
+ * `messageId` is optional so every existing direct call/test keeps working
+ * unchanged; the webhook route (its only real caller) always passes it. When
+ * given, this is a thin wrapper that lets each inbound message be acted on
+ * once: it claims the message with a compare-and-set on replyIntentHandledAt
+ * before doing anything, and a delivery that finds it already claimed returns
+ * without touching the appointment or sending a reply. That covers both
+ * shapes of a worker retry — one that arrives after the first attempt fully
+ * succeeded (its 200 was lost in transit), and one that arrives while the
+ * first is still running (the worker gives up after 10s, but the request
+ * keeps going server-side); a plain check-then-act would let the second
+ * overlap the first and reply twice. A check that throws releases its claim,
+ * so the retry the resulting 5xx triggers still gets to do the work.
  */
 export async function applyInboundReplyIntent(args: {
   businessId: string;
   clientId: string | null;
   body: string;
+  messageId?: string | null;
   now?: Date;
 }): Promise<ApplyReplyIntentResult> {
-  const { businessId, clientId, body, now = new Date() } = args;
+  const { messageId, now = new Date() } = args;
+
+  // Nothing to claim when there is no message row, or when nothing could be
+  // acted on anyway (ordinary chat text, or a phone that matched no single
+  // client): those would only add a write to every inbound message.
+  if (!messageId || !args.clientId || !classifyReplyIntent(args.body)) {
+    return applyInboundReplyIntentCore(args, now);
+  }
+
+  const claim = await prisma.message.updateMany({
+    where: { id: messageId, replyIntentHandledAt: null },
+    data: { replyIntentHandledAt: now },
+  });
+  if (claim.count === 0) {
+    return { applied: false, reason: "already_handled" };
+  }
+
+  try {
+    return await applyInboundReplyIntentCore(args, now);
+  } catch (error) {
+    // Best-effort release. If it fails the retry finds the message claimed and
+    // skips it: the patient's message is still in the Inbox for staff, which
+    // is the same outcome the original swallowed-error behavior had.
+    await prisma.message
+      .updateMany({ where: { id: messageId }, data: { replyIntentHandledAt: null } })
+      .catch((releaseError) => {
+        logger.error("A reply-intent check failed and its claim couldn't be released.", releaseError, {
+          businessId: args.businessId,
+        });
+      });
+    throw error;
+  }
+}
+
+async function applyInboundReplyIntentCore(
+  args: { businessId: string; clientId: string | null; body: string },
+  now: Date
+): Promise<ApplyReplyIntentResult> {
+  const { businessId, clientId, body } = args;
 
   const intent = classifyReplyIntent(body);
   if (!intent) {
