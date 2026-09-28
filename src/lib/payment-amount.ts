@@ -16,14 +16,24 @@ const SYMBOL_CURRENCY: Record<string, string> = { "€": "EUR", "£": "GBP", $: 
 
 const MARKER = `\\p{Sc}|${SUPPORTED_CURRENCIES.map((currency) => currency.code).join("|")}`;
 // At most one currency marker (a symbol or a supported code), and only at
-// either end of the number, optionally spaced from it: "€85", "85 EUR".
-const WRAPPED = new RegExp(`^(?:(${MARKER})\\s*)?(.*?)(?:\\s*(${MARKER}))?$`, "iu");
+// either end of the number, optionally spaced from it: "€85", "85 EUR". The
+// "s" (dotAll) flag makes `.*?` match a literal newline too — without it, a
+// pasted "1\n200" leaves WRAPPED unable to match anything at all, and
+// `.exec()!` on the result throws instead of the parser returning `null`
+// (CodeRabbit #131).
+const WRAPPED = new RegExp(`^(?:(${MARKER})\\s*)?(.*?)(?:\\s*(${MARKER}))?$`, "ius");
+
+// Only the space characters a thousands grouping actually uses — a bare `\s`
+// also matches a tab, newline or vertical tab, which would otherwise let
+// "1\t200" collapse into 1200 the same way "12 50" used to (CodeRabbit #131).
+const SPACE_CHAR = " |\\u00a0|\\u202f";
+const SPACE_CHARS = new RegExp(SPACE_CHAR, "g");
 
 // Thousands grouping the way the app itself displays money: "1,200" / "1,200.50".
 const COMMA_GROUPED = /^\d{1,3}(,\d{3})+(\.\d*)?$/;
 // The same grouped with spaces (regular or no-break), as in much of Europe:
 // "1 200" / "1 200,50". Each group is exactly three digits — "12 50" is not one.
-const SPACE_GROUPED = /^\d{1,3}(\s\d{3})+([.,]\d*)?$/;
+const SPACE_GROUPED = new RegExp(`^\\d{1,3}((${SPACE_CHAR})\\d{3})+([.,]\\d*)?$`);
 // A decimal comma, as typed in much of the Balkans/Europe: "12,50". A thousands
 // group is always exactly three digits, so one or two digits after a comma can
 // only be cents.
@@ -39,7 +49,7 @@ function normalizeSeparators(text: string): string {
   }
 
   if (SPACE_GROUPED.test(text)) {
-    return text.replace(/\s/g, "").replace(",", ".");
+    return text.replace(SPACE_CHARS, "").replace(",", ".");
   }
 
   return DECIMAL_COMMA.test(text) ? text.replace(",", ".") : text;

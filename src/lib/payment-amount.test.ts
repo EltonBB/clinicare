@@ -59,6 +59,11 @@ describe("parseAmountToCents", () => {
     ["EUR 85 USD", "two conflicting currency markers"],
     ["85 EUR USD", "a currency code repeated at the same end"],
     ["¥85", "a currency symbol for a currency this app doesn't support"],
+    // CodeRabbit #131 round 4: a tab is whitespace but not a grouping space,
+    // and an embedded newline used to make the wrapper pattern fail to match
+    // at all, throwing instead of returning null.
+    ["1\t200", "a tab standing in for a thousands-group space"],
+    ["1\n200", "an embedded newline"],
   ])("rejects %j (%s)", (input) => {
     expect(parseAmountToCents(input)).toBeNull();
   });
