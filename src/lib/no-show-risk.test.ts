@@ -47,6 +47,21 @@ describe("scoreNoShowRisk", () => {
     expect(scoreNoShowRisk([old, ...recentClean], BASE_APPT).level).toBe("low");
   });
 
+  it("ranks recency by the frozen cancelledScheduledStartAt for a CANCELLED visit, not its mutable startAt (CodeRabbit #129)", () => {
+    // A still-cancelled booking whose startAt was later dragged far into the
+    // future (its real, original schedule — frozen in cancelledScheduledStartAt
+    // — was actually the oldest visit here). Sorting by raw startAt would rank
+    // it #1 and push the real no-show below it out of the 5-visit window,
+    // hiding "Missed a recent appointment" entirely; sorting by the frozen
+    // schedule correctly ranks it last instead.
+    const movedFarOut = visit("CANCELLED", "2030-01-01T09:00:00Z", "2023-12-31T08:00:00Z", "2024-01-01T09:00:00Z");
+    const realNoShow = visit("NO_SHOW", "2026-06-01T09:00:00Z");
+    const fourNewerClean = Array.from({ length: 4 }, (_, i) => visit("COMPLETED", `2026-${String(i + 7).padStart(2, "0")}-01T09:00:00Z`));
+    const result = scoreNoShowRisk([movedFarOut, realNoShow, ...fourNewerClean], BASE_APPT);
+    expect(result.level).toBe("high");
+    expect(result.reasons).toContain("Missed a recent appointment");
+  });
+
   it("is medium for a same-day (late) cancellation, but not for an early one", () => {
     const late = [
       visit("CANCELLED", "2026-06-01T09:00:00Z", "2026-06-01T02:00:00Z"), // cancelled 7h before start

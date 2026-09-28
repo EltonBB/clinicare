@@ -636,6 +636,13 @@ export function CalendarWorkspace({
   // back), kept in a ref rather than read from `risk`: an empty answer — a visit
   // that isn't upcoming — must not look "not fetched yet" and re-trigger the request.
   const requestedRiskIds = useRef<Set<string>>(new Set());
+  // Bumped per id whenever its cached risk is invalidated out-of-band (a
+  // same-client attendance change, below) — a loadRisk response only applies
+  // to an id if the generation it captured at request time is still current,
+  // so a request already in flight when the invalidation happens can't
+  // resurrect a risk assessment scored from history that just changed
+  // (Codex/CodeRabbit #129).
+  const riskGeneration = useRef<Map<string, number>>(new Map());
   // The page loads the viewed month; every other month is fetched when navigated
   // to (below) and merged in, so history and far-off dates are never silently empty.
   const [appointments, setAppointments] = useState(initialView.appointments);
@@ -799,8 +806,23 @@ export function CalendarWorkspace({
     const fresh = ids.filter((id) => !requestedRiskIds.current.has(id));
     if (fresh.length === 0) return;
     fresh.forEach((id) => requestedRiskIds.current.add(id));
+    // Snapshot each id's invalidation generation now, before the request goes
+    // out — if a same-client attendance change bumps it before this resolves,
+    // the response below is stale and must be dropped, not merged.
+    const requestedAt = new Map(fresh.map((id) => [id, riskGeneration.current.get(id) ?? 0]));
     getNoShowRiskAction(fresh)
-      .then((result) => setRisk((current) => ({ ...current, ...result })))
+      .then((result) => {
+        setRisk((current) => {
+          let changed = false;
+          const next = { ...current };
+          for (const [id, assessment] of Object.entries(result)) {
+            if ((riskGeneration.current.get(id) ?? 0) !== requestedAt.get(id)) continue;
+            next[id] = assessment;
+            changed = true;
+          }
+          return changed ? next : current;
+        });
+      })
       .catch(() => fresh.forEach((id) => requestedRiskIds.current.delete(id)));
   }, []);
 
@@ -863,16 +885,23 @@ export function CalendarWorkspace({
     // their cached risk is stale too — not just this appointment's own (which
     // the render-time status gate already hides). Drop them from both the
     // cache and the requested-ids tracking so the next popover/Day-view open
-    // refetches instead of reusing a now-outdated assessment (Codex).
-    let sameClientIds: string[] = [];
-    setAppointments((current) => {
-      sameClientIds = current
-        .filter((item) => item.clientId === appointment.clientId)
-        .map((item) => item.id);
-      return current.map((item) => (item.id === appointment.id ? { ...item, status } : item));
-    });
+    // refetches instead of reusing a now-outdated assessment (Codex). Derived
+    // from the current `appointments` snapshot, not read back out of the
+    // setAppointments updater below — that updater runs during React's own
+    // render pass, not synchronously with this call, so a variable assigned
+    // inside it and read immediately after can still see its stale initial
+    // value (CodeRabbit #129).
+    const sameClientIds = appointments
+      .filter((item) => item.clientId === appointment.clientId)
+      .map((item) => item.id);
+    setAppointments((current) =>
+      current.map((item) => (item.id === appointment.id ? { ...item, status } : item))
+    );
     if (sameClientIds.length > 0) {
-      for (const id of sameClientIds) requestedRiskIds.current.delete(id);
+      for (const id of sameClientIds) {
+        requestedRiskIds.current.delete(id);
+        riskGeneration.current.set(id, (riskGeneration.current.get(id) ?? 0) + 1);
+      }
       setRisk((current) => {
         let changed = false;
         const next = { ...current };

@@ -65,8 +65,14 @@ export async function getNoShowRiskAssessments(args: {
         WHERE "businessId" = ${businessId}
           AND "clientId" = c.id
           AND "status" IN ('COMPLETED', 'NO_SHOW', 'CANCELLED')
-          AND "startAt" <= ${now}
-        ORDER BY "startAt" DESC
+          -- The frozen schedule for a CANCELLED row (falls back to startAt when
+          -- it's null: a non-CANCELLED row, or one cancelled before this column
+          -- existed). Using startAt directly would let editing a still-cancelled
+          -- booking's time push it back into "the future" and silently drop an
+          -- already-elapsed cancellation from history, or shuffle which five
+          -- visits this LIMIT keeps (CodeRabbit #129).
+          AND COALESCE("cancelledScheduledStartAt", "startAt") <= ${now}
+        ORDER BY COALESCE("cancelledScheduledStartAt", "startAt") DESC
         LIMIT ${RECENT_HISTORY_PER_CLIENT}
       ) h
     `,

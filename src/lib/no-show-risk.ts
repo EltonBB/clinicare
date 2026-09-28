@@ -58,6 +58,21 @@ const WEIGHTS = {
 const HIGH_THRESHOLD = 40;
 const MEDIUM_THRESHOLD = 15;
 
+// The schedule to rank recency by: the frozen cancelledScheduledStartAt for a
+// CANCELLED visit (falls back to startAt when null — a non-CANCELLED visit, or
+// one cancelled before that column existed), never the visit's own mutable
+// startAt. Editing a still-cancelled booking's time is a supported flow, and
+// recency must not be reshuffled by it — the same reasoning as the frozen
+// late-cancel gap above, applied to which visits count as "recent" at all
+// (CodeRabbit #129: the data layer's query already orders by this; the scorer
+// re-sorts independently and must agree, including when called directly with
+// more than RECENT_VISIT_WINDOW visits, as the unit tests do).
+function effectiveVisitTime(visit: NoShowRiskPastVisit): Date {
+  return visit.status === "CANCELLED" && visit.cancelledScheduledStartAt
+    ? visit.cancelledScheduledStartAt
+    : visit.startAt;
+}
+
 export function scoreNoShowRisk(
   pastVisits: NoShowRiskPastVisit[],
   appointment: NoShowRiskAppointmentInput
@@ -67,7 +82,7 @@ export function scoreNoShowRisk(
   }
 
   const recent = [...pastVisits]
-    .sort((a, b) => b.startAt.getTime() - a.startAt.getTime())
+    .sort((a, b) => effectiveVisitTime(b).getTime() - effectiveVisitTime(a).getTime())
     .slice(0, RECENT_VISIT_WINDOW);
 
   const signals: Array<{ weight: number; text: string }> = [];
