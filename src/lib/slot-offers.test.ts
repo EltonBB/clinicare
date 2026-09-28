@@ -142,7 +142,7 @@ describe("offerFreedSlot", () => {
           clientId: { not: "client_cancelling" },
           client: {
             isArchived: false,
-            status: { not: "ARCHIVED" },
+            status: { notIn: ["INACTIVE", "ARCHIVED"] },
             // Per client, so a duplicate entry can't be offered the same slot; an EXPIRED (withdrawn) offer doesn't block.
             followUpDrafts: {
               none: { kind: "SLOT_OFFER", appointmentId: "appt_1", status: { in: ["PENDING", "SENT", "DISMISSED"] } },
@@ -446,6 +446,50 @@ describe("expirePastSlotOffers", () => {
       where: { id: "wl_2", businessId: "biz_1", status: "OFFERED" },
       data: { status: "WAITING" },
     });
+  });
+
+  // Codex #130: an offer retired only because its waiting client was archived or
+  // deactivated leaves the appointment cancelled and ahead, and nothing else ever
+  // revisits it — so the sweep itself must offer the slot to the next match.
+  it("re-offers a still-cancelled slot to the next match in the same transaction when it retires an offer", async () => {
+    mocks.prisma.followUpDraft.findMany.mockResolvedValue([
+      { id: "d_archived", businessId: "biz_1", waitlistEntryId: "wl_archived", appointmentId: "appt_1" },
+    ]);
+    mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.appointment.findFirst.mockResolvedValue(CANCELLED);
+    mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_next", "2026-02-01")]);
+
+    expect(await expirePastSlotOffers("biz_1", NOW)).toEqual({ expired: 1, released: 1 });
+
+    expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(mocks.tx.appointment.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "appt_1", businessId: "biz_1", status: "CANCELLED" } })
+    );
+    expect(mocks.tx.followUpDraft.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: [expect.objectContaining({ waitlistEntryId: "wl_next", appointmentId: "appt_1" })] })
+    );
+  });
+
+  it("re-offers nothing when the appointment is no longer cancelled (slot taken, deleted or passed)", async () => {
+    mocks.prisma.followUpDraft.findMany.mockResolvedValue([
+      { id: "d_1", businessId: "biz_1", waitlistEntryId: "wl_1", appointmentId: "appt_1" },
+    ]);
+    mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.appointment.findFirst.mockResolvedValue(null);
+
+    expect(await expirePastSlotOffers("biz_1", NOW)).toEqual({ expired: 1, released: 1 });
+    expect(mocks.tx.followUpDraft.createMany).not.toHaveBeenCalled();
+  });
+
+  it("does not look for a re-offer when the guarded retire changed nothing", async () => {
+    mocks.prisma.followUpDraft.findMany.mockResolvedValue([
+      { id: "d_1", businessId: "biz_1", waitlistEntryId: "wl_1", appointmentId: "appt_1" },
+    ]);
+    mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 0 });
+
+    await expirePastSlotOffers("biz_1", NOW);
+
+    expect(mocks.tx.appointment.findFirst).not.toHaveBeenCalled();
   });
 
   it("is idempotent: a draft handled since the read is neither expired nor released", async () => {

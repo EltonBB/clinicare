@@ -150,9 +150,13 @@ export async function findMatchingWaitlistCandidates(args: {
       status: "WAITING",
       clientId: { not: args.excludeClientId },
       client: {
-        // Archived means either flag (see formatStatus in lib/clients.ts).
+        // Archived means either flag (see formatStatus in lib/clients.ts). An
+        // inactive client is left out too, matching liveSlotOfferWhere: an offer
+        // to one is stale the moment it is drafted, so matching them would burn
+        // the slot on a draft nobody can see and the sweep would then re-offer it
+        // to the same entry in a loop (Codex #130).
         isArchived: false,
-        status: { not: "ARCHIVED" },
+        status: { notIn: ["INACTIVE", "ARCHIVED"] },
         followUpDrafts: {
           none: {
             kind: "SLOT_OFFER",

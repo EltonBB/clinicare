@@ -271,7 +271,7 @@ const OPEN_SLOT_OFFER_WHERE: Prisma.FollowUpDraftWhereInput = {
 // Bounds one sweep; a backlog beyond it is picked up by the next run.
 const MAX_EXPIRE_BATCH = 200;
 
-type OpenSlotOfferDraft = { id: string; businessId: string; waitlistEntryId: string | null };
+type OpenSlotOfferDraft = { id: string; businessId: string; waitlistEntryId: string | null; appointmentId?: string | null };
 
 /**
  * Retires one open offer draft: -> EXPIRED, guarded by `guard` (re-checked in
@@ -336,9 +336,11 @@ export async function withdrawSlotOffers(
 
 /**
  * Retires slot offers whose slot has passed (or whose appointment was deleted
- * or reactivated): the open draft -> EXPIRED and its entry OFFERED -> WAITING,
- * one small transaction per draft so the release only happens for a draft
- * this sweep actually retired. Idempotent and bounded; pass a businessId to
+ * or reactivated, or whose waiting client was archived or deactivated): the
+ * open draft -> EXPIRED and its entry OFFERED -> WAITING, one small
+ * transaction per draft so the release only happens for a draft this sweep
+ * actually retired. When the slot is still cancelled and ahead (the client
+ * cause), the same transaction offers it to the next match. Idempotent and bounded; pass a businessId to
  * sweep one workspace (the follow-ups cron), omit it to sweep all.
  */
 export async function expirePastSlotOffers(
@@ -352,7 +354,7 @@ export async function expirePastSlotOffers(
 
   const drafts = await prisma.followUpDraft.findMany({
     where: { ...(businessId ? { businessId } : {}), ...openStale },
-    select: { id: true, businessId: true, waitlistEntryId: true },
+    select: { id: true, businessId: true, waitlistEntryId: true, appointmentId: true },
     orderBy: { createdAt: "asc" },
     take: MAX_EXPIRE_BATCH,
   });
@@ -361,7 +363,22 @@ export async function expirePastSlotOffers(
   let released = 0;
 
   for (const draft of drafts) {
-    const outcome = await prisma.$transaction((tx) => retireOpenSlotOffer(tx, draft, openStale));
+    const outcome = await retryOnWriteConflict(() => prisma.$transaction(async (tx) => {
+      const retired = await retireOpenSlotOffer(tx, draft, openStale);
+
+      // The slot may still be free: an offer retired only because its waiting
+      // client was archived or deactivated leaves the appointment cancelled and
+      // ahead, and nothing else would ever revisit it, so the next eligible
+      // waiting client would never hear about it (Codex #130). offerSlotAgain
+      // re-checks the slot itself, so it does nothing for the other causes (the
+      // slot passed, the appointment was deleted or is back on) and leaves out
+      // the client whose entry was just released.
+      if (retired.released) {
+        await offerSlotAgain(tx, { businessId: draft.businessId, appointmentId: draft.appointmentId ?? null, now });
+      }
+
+      return retired;
+    }));
 
     expired += outcome.expired ? 1 : 0;
     released += outcome.released ? 1 : 0;

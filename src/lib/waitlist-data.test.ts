@@ -192,7 +192,7 @@ describe("waitlist data layer", () => {
           clientId: { not: "client_1" },
           client: {
             isArchived: false,
-            status: { not: "ARCHIVED" },
+            status: { notIn: ["INACTIVE", "ARCHIVED"] },
             // Per client (a duplicate entry is the same patient); EXPIRED (withdrawn) offers don't block a re-offer.
             followUpDrafts: {
               none: { kind: "SLOT_OFFER", appointmentId: "appt_1", status: { in: ["PENDING", "SENT", "DISMISSED"] } },

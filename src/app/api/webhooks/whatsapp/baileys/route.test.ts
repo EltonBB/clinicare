@@ -93,19 +93,13 @@ describe("POST /api/webhooks/whatsapp/baileys — message events", () => {
     });
   });
 
-  it("passes a null messageId through when a raced duplicate's winning row couldn't be found again", async () => {
+  it("does not run the reply intent when a raced duplicate's winning row could not be found again (nothing to claim)", async () => {
     mocks.recordInboundMessage.mockResolvedValue({ recorded: false, reason: "duplicate", clientId: "client_1", messageId: null });
-    mocks.applyInboundReplyIntent.mockResolvedValue({ applied: false, reason: "no_match" });
 
     const response = await POST(request(MESSAGE_EVENT));
 
     expect(response.status).toBe(200);
-    expect(mocks.applyInboundReplyIntent).toHaveBeenCalledWith({
-      businessId: "biz_1",
-      clientId: "client_1",
-      body: "1",
-      messageId: null,
-    });
+    expect(mocks.applyInboundReplyIntent).not.toHaveBeenCalled();
   });
 
   it("does not attempt a reply intent for a duplicate with no resolvable client — nothing to retry", async () => {

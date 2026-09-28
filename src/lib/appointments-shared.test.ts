@@ -346,7 +346,7 @@ describe("cancelAppointmentCore — slot-fill matching", () => {
           clientId: { not: "client_1" },
           client: {
             isArchived: false,
-            status: { not: "ARCHIVED" },
+            status: { notIn: ["INACTIVE", "ARCHIVED"] },
             followUpDrafts: {
               none: { kind: "SLOT_OFFER", appointmentId: "appt_1", status: { in: ["PENDING", "SENT", "DISMISSED"] } },
             },

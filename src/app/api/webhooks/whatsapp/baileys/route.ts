@@ -116,7 +116,10 @@ export async function POST(request: Request) {
       // sending the patient a second "you're confirmed".
       const clientId = result.recorded ? result.clientId : result.reason === "duplicate" ? result.clientId : null;
       const messageId = result.recorded ? result.messageId : result.reason === "duplicate" ? result.messageId : null;
-      if (result.recorded || clientId) {
+      // No messageId means there is no row to claim (a raced duplicate whose winner
+      // could not be found again), and running without a claim is exactly how a
+      // reply gets sent twice - so skip; the message is recorded and in the Inbox.
+      if (messageId && (result.recorded || clientId)) {
         await applyInboundReplyIntent({
           businessId: event.businessId,
           clientId,
