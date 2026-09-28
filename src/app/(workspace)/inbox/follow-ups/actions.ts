@@ -24,6 +24,8 @@ import { formatZonedDateKey, formatZonedTime24 } from "@/lib/time-zone";
 export type FollowUpDraftActionResult = { ok: boolean; error?: string };
 
 const TRY_AGAIN_ERROR = "Something went wrong. Try again.";
+const OFFER_STAFF_UNAVAILABLE_ERROR =
+  "The staff member for this slot is no longer available. Book it manually from Calendar instead.";
 
 function getAuthedBusiness() {
   return getAuthedBusinessContext("Your session expired. Log in again to manage follow-ups.");
@@ -245,6 +247,26 @@ export async function bookFollowUpSlotAction(rawDraftId: string): Promise<BookFo
   }
 
   const { title, staffMemberId, startAt, endAt } = draft.appointment;
+
+  // A staff member on the freed appointment can have since gone inactive.
+  // The booking form falls back to its own first-in-list staff member
+  // whenever no id is preselected — indistinguishable from a genuinely
+  // unassigned offer — so silently dropping an invalidated id here would
+  // have the form quietly assign the slot to whichever clinician happens to
+  // be first, not the one the offer was actually about. Refuse instead: the
+  // draft and entry are untouched, so staff can retry once the staffing is
+  // sorted out (Codex #130).
+  if (staffMemberId) {
+    const staffStillAvailable = await prisma.staffMember.findFirst({
+      where: { id: staffMemberId, businessId: business.id, isActive: true, status: { not: "INACTIVE" } },
+      select: { id: true },
+    });
+
+    if (!staffStillAvailable) {
+      return { ok: false, error: OFFER_STAFF_UNAVAILABLE_ERROR };
+    }
+  }
+
   const params = new URLSearchParams({
     client: draft.clientId,
     service: title,

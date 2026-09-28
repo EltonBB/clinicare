@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const followUpDraft = { findFirst: vi.fn() };
+  const staffMember = { findFirst: vi.fn() };
   const conversation = { upsert: vi.fn() };
   const message = { create: vi.fn() };
   const $transaction = vi.fn();
@@ -15,6 +16,7 @@ const mocks = vi.hoisted(() => {
   const revalidatePath = vi.fn();
   return {
     followUpDraft,
+    staffMember,
     conversation,
     message,
     $transaction,
@@ -32,6 +34,7 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     followUpDraft: mocks.followUpDraft,
+    staffMember: mocks.staffMember,
     conversation: mocks.conversation,
     message: mocks.message,
     $transaction: mocks.$transaction,
@@ -91,6 +94,7 @@ const ALREADY_HANDLED_ERROR = "This follow-up was already handled.";
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.getAuthedBusiness.mockResolvedValue({ business: BUSINESS, user: {} });
+  mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_1" });
   mocks.$transaction.mockImplementation(
     async (cb: (tx: unknown) => unknown) =>
       cb({ conversation: mocks.conversation, message: mocks.message })
@@ -384,10 +388,16 @@ describe("bookFollowUpSlotAction", () => {
     });
     // The entry flip (draft row locked first, entry second) lives in the data layer.
     expect(mocks.bookSlotOffer).toHaveBeenCalledWith({ id: DRAFT_ID, businessId: BUSINESS.id });
+    // The offer's staff member is re-checked before ever building the booking
+    // URL or touching the entry (Codex #130).
+    expect(mocks.staffMember.findFirst).toHaveBeenCalledWith({
+      where: { id: "staff_1", businessId: BUSINESS.id, isActive: true, status: { not: "INACTIVE" } },
+      select: { id: true },
+    });
     expectFollowUpSurfacesRevalidated();
   });
 
-  it("omits staffMemberId when the freed slot had nobody assigned", async () => {
+  it("omits staffMemberId when the freed slot had nobody assigned, without checking any staff member", async () => {
     process.env.APP_TIME_ZONE = "Europe/Budapest";
     mocks.followUpDraft.findFirst.mockResolvedValue({
       clientId: "client_1",
@@ -406,6 +416,31 @@ describe("bookFollowUpSlotAction", () => {
       ok: true,
       bookingUrl: "/calendar/new?client=client_1&service=Checkup&date=2026-10-05&time=09%3A00&duration=30",
     });
+    expect(mocks.staffMember.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("refuses to book, without touching the entry, when the offer's staff member has since gone inactive or was removed (Codex #130)", async () => {
+    mocks.followUpDraft.findFirst.mockResolvedValue({
+      clientId: "client_1",
+      appointment: {
+        title: "Checkup",
+        staffMemberId: "staff_gone",
+        startAt: new Date("2026-10-05T07:00:00.000Z"),
+        endAt: new Date("2026-10-05T07:30:00.000Z"),
+      },
+    });
+    mocks.staffMember.findFirst.mockResolvedValue(null);
+
+    const result = await bookFollowUpSlotAction(DRAFT_ID);
+
+    expect(result).toEqual({
+      ok: false,
+      error: "The staff member for this slot is no longer available. Book it manually from Calendar instead.",
+    });
+    // Never flips the entry, never revalidates — the offer is left exactly as
+    // it was so staff can retry once the staffing is sorted out.
+    expect(mocks.bookSlotOffer).not.toHaveBeenCalled();
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
   it("refuses when the entry was declined, removed, or booked since the read", async () => {

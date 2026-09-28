@@ -55,12 +55,16 @@ function entryRow(overrides: Record<string, unknown> = {}) {
 }
 
 describe("waitlist data layer", () => {
-  it("lists WAITING and OFFERED entries for the business, oldest first", async () => {
+  it("lists WAITING and OFFERED entries for the business, oldest first, excluding an ineligible client (Codex #130)", async () => {
     mocks.waitlistEntry.findMany.mockResolvedValue([]);
     await listWaitingEntries("biz_1");
     expect(mocks.waitlistEntry.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { businessId: "biz_1", status: { in: ["WAITING", "OFFERED"] } },
+        where: {
+          businessId: "biz_1",
+          status: { in: ["WAITING", "OFFERED"] },
+          client: { isArchived: false, status: { notIn: ["INACTIVE", "ARCHIVED"] } },
+        },
         orderBy: { createdAt: "asc" },
       })
     );
@@ -138,14 +142,20 @@ describe("waitlist data layer", () => {
     );
   });
 
-  it("refuses a new entry once the business's active waiting list is full, counting only WAITING and OFFERED", async () => {
+  it("refuses a new entry once the business's active waiting list is full, counting only eligible WAITING/OFFERED entries (Codex #130)", async () => {
     mocks.tx.waitlistEntry.count.mockResolvedValue(500);
 
     const result = await createWaitlistEntry(newEntry);
 
     expect(result).toEqual({ ok: false, error: "The waiting list is full. Remove an entry before adding another." });
+    // Same eligibility rule as the panel listing — an entry whose client has
+    // since gone Inactive/Archived doesn't hold a real slot against the cap.
     expect(mocks.tx.waitlistEntry.count).toHaveBeenCalledWith({
-      where: { businessId: "biz_1", status: { in: ["WAITING", "OFFERED"] } },
+      where: {
+        businessId: "biz_1",
+        status: { in: ["WAITING", "OFFERED"] },
+        client: { isArchived: false, status: { notIn: ["INACTIVE", "ARCHIVED"] } },
+      },
     });
     expect(mocks.tx.waitlistEntry.create).not.toHaveBeenCalled();
   });

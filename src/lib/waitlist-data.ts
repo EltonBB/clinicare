@@ -25,13 +25,23 @@ export type WaitlistEntryRow = {
   createdAt: Date;
 };
 
+// An entry counts toward the 500-entry cap and appears on the panel only
+// while its client is still eligible — matching liveSlotOfferWhere and the
+// matcher. A client marked Inactive/Archived after joining the list used to
+// keep charging their (permanently unmatchable, per findMatchingWaitlistCandidates)
+// entry against the cap and cluttering the panel forever, since nothing else
+// ever changes a WAITING entry's status (Codex #130).
+function activeWaitlistEntryWhere(businessId: string): Prisma.WaitlistEntryWhereInput {
+  return { businessId, status: { in: ["WAITING", "OFFERED"] }, client: ELIGIBLE_CLIENT_WHERE };
+}
+
 /**
  * Everyone still on the waiting list — waiting, or holding an offer that
  * hasn't been booked, declined, or expired yet — oldest first.
  */
 export async function listWaitingEntries(businessId: string, now: Date = new Date()): Promise<WaitlistEntryRow[]> {
   const rows = await prisma.waitlistEntry.findMany({
-    where: { businessId, status: { in: ["WAITING", "OFFERED"] } },
+    where: activeWaitlistEntryWhere(businessId),
     include: {
       client: { select: { name: true } },
       staffMember: { select: { name: true } },
@@ -102,7 +112,7 @@ export async function createWaitlistEntry(args: {
     prisma.$transaction(
       async (tx) => {
         const active = await tx.waitlistEntry.count({
-          where: { businessId: args.businessId, status: { in: ["WAITING", "OFFERED"] } },
+          where: activeWaitlistEntryWhere(args.businessId),
         });
 
         if (active >= MAX_ACTIVE_WAITLIST_ENTRIES) {
