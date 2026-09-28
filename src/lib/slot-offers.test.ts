@@ -277,14 +277,40 @@ describe("offerFreedSlot", () => {
     );
   });
 
-  it("gives up after five claimed matches instead of walking the whole list", async () => {
+  it("keeps walking past five concurrently claimed matches instead of giving up on a five-attempt cap (Codex #130)", async () => {
+    // Six candidates lose the race (a concurrent request claimed each one
+    // between the read and the flip); the seventh is still free. A fixed
+    // five-attempt cap used to give up before ever trying it, leaving the
+    // slot unoffered even though a real waiting candidate remained.
     mocks.tx.waitlistEntry.findMany.mockResolvedValue(
       Array.from({ length: 7 }, (_, index) => candidateRow(`wl_${index}`, `2026-01-0${index + 1}`))
+    );
+    mocks.tx.waitlistEntry.updateMany
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 1 });
+
+    const offered = await offerFreedSlot(tx, { businessId: "biz_1", cancelled: CANCELLED, now: NOW });
+
+    expect(offered).toBe("wl_6");
+    expect(mocks.tx.waitlistEntry.updateMany).toHaveBeenCalledTimes(7);
+    expect(mocks.tx.followUpDraft.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: [expect.objectContaining({ waitlistEntryId: "wl_6" })] })
+    );
+  });
+
+  it("gives up only once every ranked match has been tried, however many there are", async () => {
+    mocks.tx.waitlistEntry.findMany.mockResolvedValue(
+      Array.from({ length: 12 }, (_, index) => candidateRow(`wl_${index}`, `2026-01-${String(index + 1).padStart(2, "0")}`))
     );
     mocks.tx.waitlistEntry.updateMany.mockResolvedValue({ count: 0 });
 
     expect(await offerFreedSlot(tx, { businessId: "biz_1", cancelled: CANCELLED, now: NOW })).toBeNull();
-    expect(mocks.tx.waitlistEntry.updateMany).toHaveBeenCalledTimes(5);
+    expect(mocks.tx.waitlistEntry.updateMany).toHaveBeenCalledTimes(12);
     expect(mocks.tx.followUpDraft.createMany).not.toHaveBeenCalled();
   });
 

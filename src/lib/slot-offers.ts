@@ -36,10 +36,6 @@ export type FreedAppointment = {
   startAt: Date;
 };
 
-// How many ranked matches one offer tries before giving up — each miss is an
-// entry a concurrent request claimed between the read and the flip.
-const MAX_OFFER_ATTEMPTS = 5;
-
 // Open offers one appointment or one entry can hold — one, by the invariant;
 // the cap only bounds the query.
 const MAX_OPEN_DRAFTS = 20;
@@ -56,10 +52,18 @@ export function slotOfferBody(clientName: string, startAt: Date) {
  * Offers a freed slot to the best-matching waiting entry, inside the caller's
  * transaction. Does nothing unless the workspace is on Pro (re-checked here,
  * inside the transaction, so no caller can skip the gate) and the slot is
- * still ahead. Walks the ranked matches and stops at the first entry whose
- * WAITING -> OFFERED flip succeeds. The draft insert skips duplicates rather
- * than throwing — a unique violation would abort the whole transaction,
- * cancellation included. Returns the offered entry's id, or null.
+ * still ahead. Walks every ranked match and stops at the first entry whose
+ * WAITING -> OFFERED flip succeeds — a miss just means a concurrent request
+ * claimed that entry between the read and the flip, so it moves on to the
+ * next; six or more matches racing at once used to be handed a cap
+ * (MAX_OFFER_ATTEMPTS = 5) and the slot would then go unoffered even with
+ * real waiting candidates still on the list. `ranked` is already bounded by
+ * `findMatchingWaitlistCandidates` (at most one row per active waiting entry,
+ * itself capped at MAX_ACTIVE_WAITLIST_ENTRIES), so walking all of it inside
+ * this transaction stays cheap (Codex #130). The draft insert skips
+ * duplicates rather than throwing — a unique violation would abort the whole
+ * transaction, cancellation included. Returns the offered entry's id, or
+ * null.
  */
 export async function offerFreedSlot(
   tx: Prisma.TransactionClient,
@@ -141,7 +145,7 @@ export async function offerFreedSlot(
 
   const cycle = current.updatedAt.getTime();
 
-  for (const entry of ranked.slice(0, MAX_OFFER_ATTEMPTS)) {
+  for (const entry of ranked) {
     const { count: flipped } = await tx.waitlistEntry.updateMany({
       where: { id: entry.id, businessId, status: "WAITING" },
       data: { status: "OFFERED" },
