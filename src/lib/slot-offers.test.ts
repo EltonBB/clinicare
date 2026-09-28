@@ -242,6 +242,7 @@ describe("offerFreedSlot", () => {
         kind: "SLOT_OFFER",
         waitlistEntry: { status: "OFFERED" },
         appointment: { status: "CANCELLED", startAt: { gt: NOW } },
+        client: { isArchived: false, status: { notIn: ["INACTIVE", "ARCHIVED"] } },
       },
       select: { id: true },
     });
@@ -409,6 +410,7 @@ describe("expirePastSlotOffers", () => {
             { appointmentId: null },
             { appointment: { startAt: { lte: NOW } } },
             { appointment: { status: { not: "CANCELLED" } } },
+            { client: { OR: [{ isArchived: true }, { status: { in: ["INACTIVE", "ARCHIVED"] } }] } },
           ],
         },
         { OR: [{ status: "PENDING" }, { status: "SENT", waitlistEntry: { status: "OFFERED" } }] },

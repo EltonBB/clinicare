@@ -80,7 +80,11 @@ export async function sendFollowUpDraftAction(
     return { ok: false, error: "Write a message before sending." };
   }
 
-  const flip = await markFollowUpDraftSent({ id: draftId, businessId: business.id });
+  const flip = await markFollowUpDraftSent({
+    id: draftId,
+    businessId: business.id,
+    editedBody: editedBody && editedBody.length > 0 ? editedBody : undefined,
+  });
 
   if (!flip.ok) {
     return { ok: false, error: flip.error };
@@ -182,6 +186,11 @@ export async function sendFollowUpDraftAction(
   }
 
   revalidateFollowUpSurfaces();
+  // The mirrored OUTBOUND message also lands on the client's activity
+  // timeline and the Dashboard's Messages preview, same surfaces
+  // sendInboxMessageAction revalidates for the same kind of write.
+  revalidatePath("/dashboard");
+  revalidatePath(`/clients/${sent.clientId}`);
   return { ok: true };
 }
 
@@ -227,7 +236,7 @@ export async function bookFollowUpSlotAction(rawDraftId: string): Promise<BookFo
     where: { id: draftId, businessId: business.id, status: "SENT", ...liveSlotOfferWhere(new Date()) },
     select: {
       clientId: true,
-      appointment: { select: { title: true, staffMemberId: true, startAt: true } },
+      appointment: { select: { title: true, staffMemberId: true, startAt: true, endAt: true } },
     },
   });
 
@@ -235,7 +244,7 @@ export async function bookFollowUpSlotAction(rawDraftId: string): Promise<BookFo
     return { ok: false, error: SLOT_OFFER_UNAVAILABLE_ERROR };
   }
 
-  const { title, staffMemberId, startAt } = draft.appointment;
+  const { title, staffMemberId, startAt, endAt } = draft.appointment;
   const params = new URLSearchParams({
     client: draft.clientId,
     service: title,
@@ -244,6 +253,13 @@ export async function bookFollowUpSlotAction(rawDraftId: string): Promise<BookFo
   });
   if (staffMemberId) {
     params.set("staffMemberId", staffMemberId);
+  }
+  // Preserve the freed slot's own length — a 30-minute opening rebooked at the
+  // form's 60-minute default could conflict with the next appointment, and a
+  // longer one would be silently shortened (Codex).
+  const durationMinutes = Math.round((endAt.getTime() - startAt.getTime()) / 60_000);
+  if (durationMinutes > 0) {
+    params.set("duration", String(durationMinutes));
   }
 
   let booked;

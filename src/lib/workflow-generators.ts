@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { getZonedDateParts, getZonedMonthStart } from "@/lib/time-zone";
 
 export type WorkflowSettingsValues = {
   rebookEnabled: boolean;
@@ -69,8 +70,15 @@ export function rebookedAppointmentWhere(now: Date): Prisma.AppointmentWhereInpu
   };
 }
 
+// Clinic-local, not UTC: a UTC month boundary drifts from the clinic's own
+// calendar month by the zone's offset (e.g. Europe/Budapest is UTC+1/+2), so
+// an hourly run in the first local hours of a new month could still see the
+// previous UTC month here — and if staff send that nudge before UTC
+// midnight, the very next run computes a NEW key and drafts a second one for
+// the same client in the same clinic-local month (Codex #130).
 function monthKey(date: Date): string {
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+  const parts = getZonedDateParts(date);
+  return `${parts.year}-${String(parts.month).padStart(2, "0")}`;
 }
 
 /**
@@ -104,7 +112,9 @@ export async function findRebookCandidates(args: {
   if (!settings.rebookEnabled) return [];
 
   const cutoff = subtractMonthsUtc(now, settings.rebookAfterMonths);
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  // Clinic-local month start — see monthKey's own comment on why this can't
+  // be a UTC boundary.
+  const monthStart = getZonedMonthStart(now);
 
   const clients = await prisma.client.findMany({
     where: {

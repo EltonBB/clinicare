@@ -28,7 +28,13 @@ export type InboundMessage = {
 
 export type RecordInboundResult =
   | { recorded: true; conversationId: string; clientId: string | null }
-  | { recorded: false; reason: "duplicate" | "invalid_phone" | "empty_body" };
+  // "duplicate" still carries a resolved clientId (when the phone matches
+  // exactly one client) — a worker retry means the message is already
+  // stored, but its reply-intent step is separately idempotent and worth
+  // retrying too, on the chance a transient failure applied the message
+  // recording but not the reply intent the first time (Codex #130).
+  | { recorded: false; reason: "duplicate"; clientId: string | null }
+  | { recorded: false; reason: "invalid_phone" | "empty_body" };
 
 /**
  * Provider-agnostic inbound handler.
@@ -60,17 +66,6 @@ export async function recordInboundMessage(
     return { recorded: false, reason: "invalid_phone" };
   }
 
-  // Idempotency: a worker retry must not duplicate a message or re-bump unread.
-  if (event.providerMessageId) {
-    const existing = await prisma.message.findFirst({
-      where: { providerMessageSid: event.providerMessageId },
-      select: { id: true },
-    });
-    if (existing) {
-      return { recorded: false, reason: "duplicate" };
-    }
-  }
-
   // `Client.phoneKey` is indexed but NOT unique — two different clients in the
   // same business can legitimately share one phone (e.g. a family). When more
   // than one matches, there is no confident single identity to link the
@@ -79,13 +74,26 @@ export async function recordInboundMessage(
   // picking an arbitrary one of them (which could let a "2" reply cancel the
   // wrong family member's appointment). The message itself is still recorded
   // and threaded normally either way; only the identity used for reply-intent
-  // matching becomes conservative.
+  // matching becomes conservative. Resolved before the dedup check below (and
+  // returned on the "duplicate" branch too) since it's a cheap read the
+  // webhook route needs either way to retry the reply-intent step.
   const matchingClients = await prisma.client.findMany({
     where: { businessId: event.businessId, phoneKey },
     select: { id: true, name: true },
     take: 2,
   });
   const matchingClient = matchingClients.length === 1 ? matchingClients[0] : null;
+
+  // Idempotency: a worker retry must not duplicate a message or re-bump unread.
+  if (event.providerMessageId) {
+    const existing = await prisma.message.findFirst({
+      where: { providerMessageSid: event.providerMessageId },
+      select: { id: true },
+    });
+    if (existing) {
+      return { recorded: false, reason: "duplicate", clientId: matchingClient?.id ?? null };
+    }
+  }
 
   const preferredName = event.contactName?.trim() || matchingClients[0]?.name;
 
@@ -135,7 +143,7 @@ export async function recordInboundMessage(
       "code" in error &&
       (error as { code?: unknown }).code === "P2002"
     ) {
-      return { recorded: false, reason: "duplicate" };
+      return { recorded: false, reason: "duplicate", clientId: matchingClient?.id ?? null };
     }
     throw error;
   }
@@ -211,9 +219,6 @@ async function mirrorOutboundReplyToInbox(args: {
   }
 }
 
-// How long after a slot offer goes out a reply is read as answering it.
-const OPEN_OFFER_WINDOW_MS = 48 * 60 * 60 * 1000;
-
 /**
  * Reads an inbound message for a confirm/cancel reply and, only when exactly
  * one upcoming reminded appointment matches, acts on it. Called by the
@@ -242,13 +247,17 @@ export async function applyInboundReplyIntent(args: {
   // "no" cancel) some other appointment. Stand down; the message is already
   // in the Inbox for staff to act on. Only while the offer is still live
   // (entry still holds it, slot still cancelled and ahead) — once its slot
-  // passes or the appointment is back on, replies go back to normal.
+  // passes or the appointment is back on, replies go back to normal. A sent
+  // offer stays live for its whole lifetime, however long that is — there was
+  // previously also a 48-hour cutoff on top of this liveness check, which cut
+  // in well before a genuinely still-open offer could ever go stale, letting
+  // a late "2" fall through and cancel an unrelated appointment instead
+  // (Codex).
   const openOffer = await prisma.followUpDraft.findFirst({
     where: {
       businessId,
       clientId,
       status: "SENT",
-      sentAt: { gte: new Date(now.getTime() - OPEN_OFFER_WINDOW_MS) },
       ...liveSlotOfferWhere(now),
     },
     select: { id: true },

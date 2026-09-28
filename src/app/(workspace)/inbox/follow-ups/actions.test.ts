@@ -348,8 +348,15 @@ describe("bookFollowUpSlotAction", () => {
     mocks.followUpDraft.findFirst.mockResolvedValue({
       clientId: "client_1",
       // 22:30 UTC on Oct 4 is 00:30 on Oct 5 in Budapest (CEST) — a raw-UTC
-      // date/time would land on the wrong day.
-      appointment: { title: "Follow-up visit", staffMemberId: "staff_1", startAt: new Date("2026-10-04T22:30:00.000Z") },
+      // date/time would land on the wrong day. A 45-minute slot (not the
+      // form's 60-minute default) so the preserved-duration assertion below
+      // actually distinguishes the fix from the old behavior.
+      appointment: {
+        title: "Follow-up visit",
+        staffMemberId: "staff_1",
+        startAt: new Date("2026-10-04T22:30:00.000Z"),
+        endAt: new Date("2026-10-04T23:15:00.000Z"),
+      },
     });
     mocks.bookSlotOffer.mockResolvedValue({ ok: true });
 
@@ -358,7 +365,7 @@ describe("bookFollowUpSlotAction", () => {
     expect(result).toEqual({
       ok: true,
       bookingUrl:
-        "/calendar/new?client=client_1&service=Follow-up+visit&date=2026-10-05&time=00%3A30&staffMemberId=staff_1",
+        "/calendar/new?client=client_1&service=Follow-up+visit&date=2026-10-05&time=00%3A30&staffMemberId=staff_1&duration=45",
     });
     // Only a live sent offer: entry still OFFERED, slot still cancelled and ahead.
     expect(mocks.followUpDraft.findFirst).toHaveBeenCalledWith({
@@ -370,7 +377,10 @@ describe("bookFollowUpSlotAction", () => {
         waitlistEntry: { status: "OFFERED" },
         appointment: { status: "CANCELLED", startAt: { gt: expect.any(Date) } },
       }),
-      select: { clientId: true, appointment: { select: { title: true, staffMemberId: true, startAt: true } } },
+      select: {
+        clientId: true,
+        appointment: { select: { title: true, staffMemberId: true, startAt: true, endAt: true } },
+      },
     });
     // The entry flip (draft row locked first, entry second) lives in the data layer.
     expect(mocks.bookSlotOffer).toHaveBeenCalledWith({ id: DRAFT_ID, businessId: BUSINESS.id });
@@ -381,7 +391,12 @@ describe("bookFollowUpSlotAction", () => {
     process.env.APP_TIME_ZONE = "Europe/Budapest";
     mocks.followUpDraft.findFirst.mockResolvedValue({
       clientId: "client_1",
-      appointment: { title: "Checkup", staffMemberId: null, startAt: new Date("2026-10-05T07:00:00.000Z") },
+      appointment: {
+        title: "Checkup",
+        staffMemberId: null,
+        startAt: new Date("2026-10-05T07:00:00.000Z"),
+        endAt: new Date("2026-10-05T07:30:00.000Z"),
+      },
     });
     mocks.bookSlotOffer.mockResolvedValue({ ok: true });
 
@@ -389,14 +404,14 @@ describe("bookFollowUpSlotAction", () => {
 
     expect(result).toEqual({
       ok: true,
-      bookingUrl: "/calendar/new?client=client_1&service=Checkup&date=2026-10-05&time=09%3A00",
+      bookingUrl: "/calendar/new?client=client_1&service=Checkup&date=2026-10-05&time=09%3A00&duration=30",
     });
   });
 
   it("refuses when the entry was declined, removed, or booked since the read", async () => {
     mocks.followUpDraft.findFirst.mockResolvedValue({
       clientId: "client_1",
-      appointment: { title: "Checkup", staffMemberId: null, startAt: new Date("2026-10-05T07:00:00.000Z") },
+      appointment: { title: "Checkup", staffMemberId: null, startAt: new Date("2026-10-05T07:00:00.000Z"), endAt: new Date("2026-10-05T07:30:00.000Z") },
     });
     mocks.bookSlotOffer.mockResolvedValue({ ok: false, error: "This slot offer is no longer available." });
 
@@ -410,7 +425,7 @@ describe("bookFollowUpSlotAction", () => {
   it("turns an unexpected failure (a conflict that survived its retry) into a plain retry message, revalidating nothing", async () => {
     mocks.followUpDraft.findFirst.mockResolvedValue({
       clientId: "client_1",
-      appointment: { title: "Checkup", staffMemberId: null, startAt: new Date("2026-10-05T07:00:00.000Z") },
+      appointment: { title: "Checkup", staffMemberId: null, startAt: new Date("2026-10-05T07:00:00.000Z"), endAt: new Date("2026-10-05T07:30:00.000Z") },
     });
     mocks.bookSlotOffer.mockRejectedValue(new Error("deadlock detected"));
 

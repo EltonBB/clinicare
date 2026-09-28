@@ -102,6 +102,10 @@ function matchesWhere(row: Row, where: Row): boolean {
   return Object.entries(where).every(([key, filter]) => {
     if (key === "OR") return (filter as Row[]).some((branch) => matchesWhere(row, branch));
     if (key === "AND") return [filter].flat().every((branch) => matchesWhere(row, branch as Row));
+    // Prisma's NOT negates a single where-input, or (given an array) negates
+    // each one individually, ANDed together — same shape as AND above, just
+    // inverted.
+    if (key === "NOT") return [filter].flat().every((branch) => !matchesWhere(row, branch as Row));
     const value = row[key];
     if (isScalarFilter(filter)) return matchesScalar(value, filter);
     if (Array.isArray(value)) {
@@ -300,6 +304,32 @@ const LIVENESS_CASES: Array<{ name: string; live: boolean; row: Row }> = [
       appointment: { status: "CANCELLED", startAt: FUTURE },
     }),
   },
+  // Codex #130: the waiting client can be archived/deactivated after already
+  // receiving a slot-offer draft — an archived client can't be booked at all
+  // (the booking form's picker refuses them), so an offer to one must stop
+  // being sendable at once, not linger until Book fails confusingly.
+  {
+    name: "slot offer, waiting client archived",
+    live: false,
+    row: draftRow({
+      kind: "SLOT_OFFER",
+      waitlistEntry: { status: "OFFERED" },
+      appointmentId: "appt_2",
+      appointment: { status: "CANCELLED", startAt: FUTURE },
+      client: client({ isArchived: true }),
+    }),
+  },
+  {
+    name: "slot offer, waiting client deactivated",
+    live: false,
+    row: draftRow({
+      kind: "SLOT_OFFER",
+      waitlistEntry: { status: "OFFERED" },
+      appointmentId: "appt_2",
+      appointment: { status: "CANCELLED", startAt: FUTURE },
+      client: client({ status: "INACTIVE" }),
+    }),
+  },
 ];
 
 describe("follow-ups data layer — which drafts are actionable", () => {
@@ -434,11 +464,11 @@ describe("follow-ups data layer — list order and cap", () => {
     expect(migration).toMatch(/CREATE TYPE "FollowUpDraftKind" AS ENUM \('SLOT_OFFER',/);
   });
 
-  it("caps the pending-drafts query at MAX_PENDING_FOLLOW_UPS (200) instead of querying unbounded", async () => {
+  it("caps the pending-drafts query at MAX_PENDING_FOLLOW_UPS (650 — the real structural ceiling: 150 for the three generated kinds' own 50-each cap, plus 500 for the waiting list's own cap on live slot offers) instead of querying unbounded", async () => {
     mocks.prisma.followUpDraft.findMany.mockResolvedValue([]);
     await listPendingFollowUpDrafts("biz_1");
     expect(mocks.prisma.followUpDraft.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ take: 200 })
+      expect.objectContaining({ take: 650 })
     );
   });
 });

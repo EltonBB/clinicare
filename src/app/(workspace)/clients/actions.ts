@@ -21,6 +21,7 @@ import {
 import { normalizeStorageReference } from "@/lib/media-storage";
 import { attemptStorageCleanup, recordPendingStorageCleanup } from "@/lib/media-storage-server";
 import { parseRecordId, recordIdSchema } from "@/lib/record-id";
+import { removeWaitlistEntry } from "@/lib/slot-offers";
 
 export type SaveClientResult = {
   ok: boolean;
@@ -300,6 +301,13 @@ function revalidateClientDirectory() {
   revalidatePath("/dashboard");
   // Reports' "New clients" KPI counts directory membership.
   revalidatePath("/reports");
+  // A client going Inactive/Archived (or back) changes whether their pending
+  // REBOOK draft is actionable (follow-ups-data.ts's actionablePendingWhere
+  // checks isArchived/status) — without this, a cached Follow-ups page or
+  // Inbox badge can keep showing a draft that's already unsendable until the
+  // cache evicts or a hard refresh (Codex #130).
+  revalidatePath("/inbox");
+  revalidatePath("/inbox/follow-ups");
 }
 
 function revalidateClientDetail(clientId: string) {
@@ -311,6 +319,14 @@ function revalidatePaymentSurfaces() {
   // the client's own ledger is refreshed by respondWithClientRecord.
   revalidatePath("/dashboard");
   revalidatePath("/reports");
+  // A payment moving to/from Paid changes whether its PAYMENT follow-up draft
+  // is actionable (follow-ups-data.ts's actionablePendingWhere checks
+  // payment.status) — without this, a cached Follow-ups page or Inbox badge
+  // can keep showing a reminder for a bill that's already settled until the
+  // cache evicts or a hard refresh, and Send then just returns "already
+  // handled" (Codex #130).
+  revalidatePath("/inbox");
+  revalidatePath("/inbox/follow-ups");
 }
 
 // Every sub-record mutation returns the refreshed client AND must revalidate the
@@ -1177,6 +1193,26 @@ export async function deleteClientAction(rawClientId: string): Promise<DeleteCli
   }
 
   const business = context.business;
+
+  // If this client is currently OFFERED a waiting-list slot, deleting them
+  // below cascades their WaitlistEntry away — and with it, via that entry's
+  // own cascade, the live SLOT_OFFER draft — without ever releasing the
+  // freed appointment for re-offer. The next candidate on the list would
+  // never be contacted, and the hourly expiry sweep can't recover it either
+  // (there's no draft left for it to find). Settling each held offer first —
+  // same as Skip/Declined/Remove already do — dismisses its draft and offers
+  // the slot to the next match before the client (and its now-REMOVED entry)
+  // are gone (Codex). A tiny window exists between this and the delete below
+  // (not one atomic transaction — removeWaitlistEntry runs its own), but
+  // that's the same trade-off every other multi-step mutation in this file
+  // already accepts, and it only shortens an unbounded gap to a narrow one.
+  const offeredEntries = await prisma.waitlistEntry.findMany({
+    where: { businessId: business.id, clientId, status: "OFFERED" },
+    select: { id: true },
+  });
+  for (const entry of offeredEntries) {
+    await removeWaitlistEntry({ id: entry.id, businessId: business.id });
+  }
 
   // Compare-and-set: scope the delete by the same id+businessId used to find
   // the row read below. If a concurrent request already deleted it, `count`

@@ -13,6 +13,14 @@ function isValidTimeParam(value?: string): value is string {
   return typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 }
 
+// A positive whole number of minutes only — anything else falls back to the
+// form's own 60-minute default rather than trusting an arbitrary query value.
+function parseDurationParam(value?: string): number | undefined {
+  if (typeof value !== "string") return undefined;
+  const minutes = Number(value);
+  return Number.isInteger(minutes) && minutes > 0 ? minutes : undefined;
+}
+
 export default async function NewAppointmentPage({
   searchParams,
 }: {
@@ -22,6 +30,7 @@ export default async function NewAppointmentPage({
     time?: string;
     service?: string;
     staffMemberId?: string;
+    duration?: string;
   }>;
 }) {
   const { user, business } = await requireCurrentWorkspace("/calendar/new", {
@@ -34,6 +43,7 @@ export default async function NewAppointmentPage({
     time: requestedTime,
     service: requestedService,
     staffMemberId: requestedStaffMemberId,
+    duration: requestedDuration,
   } = await searchParams;
 
   const [clients, staffMembers, businessHours] = await Promise.all([
@@ -120,6 +130,7 @@ export default async function NewAppointmentPage({
     staffMembers.some((member) => member.id === requestedStaffMemberId)
       ? requestedStaffMemberId
       : undefined;
+  const initialDuration = parseDurationParam(requestedDuration);
 
   return (
     <CreatePageShell title="New booking">
@@ -142,6 +153,7 @@ export default async function NewAppointmentPage({
         initialStartTime={initialStartTime}
         initialService={initialService}
         initialStaffMemberId={initialStaffMemberId}
+        initialDuration={initialDuration}
       />
     </CreatePageShell>
   );

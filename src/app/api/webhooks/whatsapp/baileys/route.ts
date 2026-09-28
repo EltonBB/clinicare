@@ -101,23 +101,25 @@ export async function POST(request: Request) {
         providerMessageId: event.providerMessageId,
         contactName: event.contactName,
       });
-      if (result.recorded) {
-        // Best-effort: the message is already safely recorded above regardless
-        // of whether a confirm/cancel reply can also be applied, so a failure
-        // here must never turn a successful recordInboundMessage into a 500 —
-        // the worker would retry, and duplicate-detection would then swallow
-        // the retry as "duplicate", permanently losing the reply-intent chance.
-        try {
-          await applyInboundReplyIntent({
-            businessId: event.businessId,
-            clientId: result.clientId,
-            body: event.body,
-          });
-        } catch (error) {
-          logger.error("Failed to apply an inbound reply intent.", error, {
-            businessId: event.businessId,
-          });
-        }
+      // Attempted whenever a client resolved — on a first-time recording AND
+      // on a worker-retried duplicate. The message write itself already
+      // committed durably either way; applyInboundReplyIntent is separately
+      // idempotent (its own compare-and-set writes are safe to attempt more
+      // than once), so retrying it here is what actually recovers a reply
+      // that was recorded but never applied because of a transient failure
+      // on an earlier delivery — previously that failure was swallowed to
+      // ok:true, and duplicate-detection meant no later retry ever got a
+      // second chance (Codex #130). Left unwrapped (not caught here): a
+      // genuine failure now falls through to the outer catch below and
+      // returns a 5xx, so the worker actually retries the delivery instead
+      // of the reply intent being silently lost.
+      const clientId = result.recorded ? result.clientId : result.reason === "duplicate" ? result.clientId : null;
+      if (result.recorded || clientId) {
+        await applyInboundReplyIntent({
+          businessId: event.businessId,
+          clientId,
+          body: event.body,
+        });
       }
       return NextResponse.json({ ok: true, recorded: result.recorded });
     }

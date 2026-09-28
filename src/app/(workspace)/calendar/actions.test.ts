@@ -167,6 +167,9 @@ beforeEach(() => {
   // No overlap by default — tests for the conflict-detection path itself
   // override these to a truthy row.
   mocks.scheduleBlock.findFirst.mockResolvedValue(null);
+  // No overlapping cancelled-with-a-live-offer appointment by default — the
+  // slot-offer-withdrawal tests below override this to a real row.
+  mocks.appointment.findMany.mockResolvedValue([]);
   mocks.$executeRaw.mockResolvedValue(undefined);
   mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) =>
     cb({
@@ -859,6 +862,63 @@ describe("saveAppointmentAction — time conflicts", () => {
 
     expect(result.ok).toBe(true);
     expect(mocks.appointment.create).toHaveBeenCalled();
+  });
+
+  // Codex #130: hasSchedulingConflict deliberately excludes CANCELLED rows
+  // (booking over a freed slot is allowed), but a CANCELLED appointment at
+  // that same staff+time can still be holding a live waiting-list offer —
+  // this new booking just filled the slot a different way, so that offer
+  // must be withdrawn the same way un-cancelling the SAME appointment
+  // already does, or staff/patients could still act on an offer for a slot
+  // that's no longer actually free.
+  it("withdraws a live slot offer on a different, still-cancelled appointment when a new booking takes its staff+time", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_1" });
+    mocks.appointment.findFirst.mockResolvedValue(null); // no active conflict
+    mocks.appointment.findMany.mockResolvedValue([{ id: "cancelled_appt_1" }]);
+    mocks.appointment.create.mockResolvedValue({ id: "new_appt" });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      id: "new_appt",
+      clientId: "client_1",
+      staffMemberId: "staff_1",
+      startAt: new Date("2026-06-01T10:00:00Z"),
+      endAt: new Date("2026-06-01T10:30:00Z"),
+      notes: null,
+      status: "CONFIRMED",
+      client: { id: "client_1", name: "Mira" },
+      staffMember: { id: "staff_1", name: "Dr. Lee" },
+    });
+
+    const result = await saveAppointmentAction(NEW_BOOKING);
+
+    expect(result.ok).toBe(true);
+    expect(mocks.appointment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          businessId: "biz_1",
+          staffMemberId: "staff_1",
+          status: "CANCELLED",
+          startAt: { lt: parseZonedWallClock("2026-06-01", "10:30") },
+          endAt: { gt: parseZonedWallClock("2026-06-01", "10:00") },
+        }),
+      })
+    );
+    expect(mocks.withdrawSlotOffers).toHaveBeenCalledWith(
+      expect.anything(),
+      { businessId: "biz_1", appointmentId: "cancelled_appt_1" }
+    );
+  });
+
+  it("does not look for an overlapping cancelled appointment when the save itself cancels", async () => {
+    mocks.appointment.updateMany.mockResolvedValue({ count: 1 });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      ...EXISTING,
+      client: { id: "client_1", name: "Mira" },
+      staffMember: null,
+    });
+
+    await saveAppointmentAction({ ...PAYLOAD, status: "cancelled", baselineStatus: "confirmed" });
+
+    expect(mocks.appointment.findMany).not.toHaveBeenCalled();
   });
 });
 

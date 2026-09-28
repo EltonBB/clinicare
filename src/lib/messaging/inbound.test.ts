@@ -86,17 +86,29 @@ describe("recordInboundMessage", () => {
     expect(mocks.message.findFirst).not.toHaveBeenCalled();
   });
 
-  it("skips a duplicate provider message id idempotently", async () => {
+  it("skips a duplicate provider message id idempotently, but still resolves and returns a matching client (Codex #130: a worker retry needs it to retry the reply-intent step)", async () => {
     mocks.message.findFirst.mockResolvedValue({ id: "existing" });
+    mocks.client.findMany.mockResolvedValue([{ id: "client_9", name: "Mira" }]);
     const result = await recordInboundMessage({
       businessId: "biz_1",
       fromPhone: "+38344123456",
       body: "hello",
       providerMessageId: "M1",
     });
-    expect(result).toEqual({ recorded: false, reason: "duplicate" });
-    expect(mocks.client.findMany).not.toHaveBeenCalled();
+    expect(result).toEqual({ recorded: false, reason: "duplicate", clientId: "client_9" });
     expect(mocks.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("skips a duplicate with no resolvable client (none matched, or more than one shares the phone)", async () => {
+    mocks.message.findFirst.mockResolvedValue({ id: "existing" });
+    mocks.client.findMany.mockResolvedValue([]);
+    const result = await recordInboundMessage({
+      businessId: "biz_1",
+      fromPhone: "+38344123456",
+      body: "hello",
+      providerMessageId: "M1",
+    });
+    expect(result).toEqual({ recorded: false, reason: "duplicate", clientId: null });
   });
 
   it("threads onto the phoneKey conversation and links the matching client", async () => {
@@ -350,18 +362,21 @@ describe("applyInboundReplyIntent", () => {
     const result = await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body, now: NOW });
 
     expect(result).toEqual({ applied: false, reason: "open_offer" });
-    // Scoped to this client in this business: a SENT offer from the last 48
-    // hours that is still live — its entry still holds it and the offered
-    // slot is still cancelled and ahead.
+    // Scoped to this client in this business: a SENT offer that is still
+    // live — its entry still holds it and the offered slot is still
+    // cancelled and ahead — for however long that lasts, with no separate
+    // time cutoff of its own (Codex #130: a prior 48-hour cutoff on top of
+    // this liveness check could let a still-live offer's late reply fall
+    // through and act on an unrelated appointment instead).
     expect(mocks.followUpDraft.findFirst).toHaveBeenCalledWith({
       where: {
         businessId: "biz_1",
         clientId: "client_1",
         kind: "SLOT_OFFER",
         status: "SENT",
-        sentAt: { gte: new Date("2026-06-29T12:00:00Z") },
         waitlistEntry: { status: "OFFERED" },
         appointment: { status: "CANCELLED", startAt: { gt: NOW } },
+        client: { isArchived: false, status: { notIn: ["INACTIVE", "ARCHIVED"] } },
       },
       select: { id: true },
     });
@@ -373,8 +388,8 @@ describe("applyInboundReplyIntent", () => {
 
   it("ends the stand-down once the offer is no longer live (its slot passed, or the appointment is back on)", async () => {
     // The live-offer filter finds nothing for an offer whose slot has passed
-    // (appointment.startAt <= now) or whose appointment was un-cancelled, even
-    // inside the 48-hour window — so the reply acts on the reminder as usual.
+    // (appointment.startAt <= now) or whose appointment was un-cancelled — so
+    // the reply acts on the reminder as usual.
     mocks.followUpDraft.findFirst.mockResolvedValueOnce(null);
     mocks.appointment.findMany.mockResolvedValueOnce([REMINDED_UPCOMING]);
     mocks.cancelAppointmentCore.mockResolvedValueOnce({ ok: true, appointmentId: "appt_1", clientId: "client_1", staffMemberId: "staff_1", changed: true });

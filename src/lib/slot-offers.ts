@@ -228,16 +228,22 @@ async function offerSlotAgain(
 }
 
 /**
- * A slot offer is live while its entry still holds the offer and the freed
- * slot is still cancelled and ahead. Anything else is stale: hidden from the
+ * A slot offer is live while its entry still holds the offer, the freed slot
+ * is still cancelled and ahead, and the waiting client hasn't since been
+ * archived or deactivated. Anything else is stale: hidden from the
  * Follow-ups list and count, refused by Send/Book, and retired by
- * expirePastSlotOffers.
+ * expirePastSlotOffers. The client check matters here specifically because
+ * an archived client can't be booked at all (the booking form's picker
+ * refuses them), so a still-"live" offer to one would send a message inviting
+ * a reply, or let Book silently default the form to some other client
+ * instead of failing cleanly (Codex #130).
  */
 export function liveSlotOfferWhere(now: Date): Prisma.FollowUpDraftWhereInput {
   return {
     kind: "SLOT_OFFER",
     waitlistEntry: { status: "OFFERED" },
     appointment: { status: "CANCELLED", startAt: { gt: now } },
+    client: { isArchived: false, status: { notIn: ["INACTIVE", "ARCHIVED"] } },
   };
 }
 
@@ -247,6 +253,12 @@ function staleSlotWhere(now: Date): Prisma.FollowUpDraftWhereInput {
       { appointmentId: null },
       { appointment: { startAt: { lte: now } } },
       { appointment: { status: { not: "CANCELLED" } } },
+      // Mirrors liveSlotOfferWhere's own client check: an archived/deactivated
+      // waiting client can't be booked at all, so their open offer is exactly
+      // as stale as one whose slot already passed — retire it and release the
+      // entry so the slot can be re-offered to the next real candidate
+      // (Codex #130).
+      { client: { OR: [{ isArchived: true }, { status: { in: ["INACTIVE", "ARCHIVED"] } }] } },
     ],
   };
 }

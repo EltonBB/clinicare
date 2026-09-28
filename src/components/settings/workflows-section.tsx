@@ -81,7 +81,7 @@ export function WorkflowsSection({
   onChange: (patch: Partial<WorkflowSettingsValues>) => void;
 }) {
   return (
-    <div className="divide-y divide-border/65">
+    <div>
       {isPro ? (
         <WorkflowRow
           label="Rebooking nudge"

@@ -13,10 +13,12 @@ const mocks = vi.hoisted(() => {
   const clientPayment = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientDocument = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientGalleryItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
+  const waitlistEntry = { findMany: vi.fn() };
   const $transaction = vi.fn();
   const getAuthedBusiness = vi.fn();
   const attemptStorageCleanup = vi.fn();
   const recordPendingStorageCleanup = vi.fn();
+  const removeWaitlistEntry = vi.fn();
   const after = vi.fn();
   return {
     client,
@@ -28,10 +30,12 @@ const mocks = vi.hoisted(() => {
     clientPayment,
     clientDocument,
     clientGalleryItem,
+    waitlistEntry,
     $transaction,
     getAuthedBusiness,
     attemptStorageCleanup,
     recordPendingStorageCleanup,
+    removeWaitlistEntry,
     after,
   };
 });
@@ -47,12 +51,17 @@ vi.mock("@/lib/prisma", () => ({
     clientPayment: mocks.clientPayment,
     clientDocument: mocks.clientDocument,
     clientGalleryItem: mocks.clientGalleryItem,
+    waitlistEntry: mocks.waitlistEntry,
     $transaction: mocks.$transaction,
   },
 }));
 
 vi.mock("@/lib/business", () => ({
   getAuthedBusiness: mocks.getAuthedBusiness,
+}));
+
+vi.mock("@/lib/slot-offers", () => ({
+  removeWaitlistEntry: mocks.removeWaitlistEntry,
 }));
 
 vi.mock("@/lib/media-storage-server", () => ({
@@ -99,6 +108,9 @@ const EXISTING = {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.getAuthedBusiness.mockResolvedValue({ business: BUSINESS, user: {} });
+  // No held waiting-list offer by default — the offer-settling test below
+  // overrides this to a real row.
+  mocks.waitlistEntry.findMany.mockResolvedValue([]);
   mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) =>
     cb({
       client: mocks.client,
@@ -173,6 +185,46 @@ describe("deleteClientAction", () => {
     expect(mocks.recordPendingStorageCleanup).not.toHaveBeenCalled();
     expect(mocks.after).not.toHaveBeenCalled();
     expect(mocks.attemptStorageCleanup).not.toHaveBeenCalled();
+  });
+
+  // Codex #130: deleting a client cascades their WaitlistEntry away — and
+  // with it, via that entry's own cascade, its live SLOT_OFFER draft —
+  // without ever releasing the freed appointment for re-offer. The next
+  // candidate would never be contacted, and the hourly expiry sweep can't
+  // recover it either (there's no draft left for it to find).
+  it("settles each waiting-list offer this client holds before the delete cascades it away", async () => {
+    mocks.client.findFirst.mockResolvedValue(EXISTING);
+    mocks.client.deleteMany.mockResolvedValue({ count: 1 });
+    mocks.recordPendingStorageCleanup.mockResolvedValue({ id: "pending_1", attempts: 0, values: [] });
+    mocks.waitlistEntry.findMany.mockResolvedValue([{ id: "wl_1" }, { id: "wl_2" }]);
+    mocks.removeWaitlistEntry.mockResolvedValue({ ok: true });
+
+    const result = await deleteClientAction(CLIENT_ID);
+
+    expect(result).toEqual({ ok: true, clientId: CLIENT_ID });
+    expect(mocks.waitlistEntry.findMany).toHaveBeenCalledWith({
+      where: { businessId: "biz_1", clientId: CLIENT_ID, status: "OFFERED" },
+      select: { id: true },
+    });
+    // One settlement per held offer, run BEFORE the delete transaction opens
+    // — removeWaitlistEntry runs its own transaction and can't be nested
+    // inside the delete's.
+    expect(mocks.removeWaitlistEntry).toHaveBeenCalledTimes(2);
+    expect(mocks.removeWaitlistEntry).toHaveBeenCalledWith({ id: "wl_1", businessId: "biz_1" });
+    expect(mocks.removeWaitlistEntry).toHaveBeenCalledWith({ id: "wl_2", businessId: "biz_1" });
+    expect(mocks.removeWaitlistEntry.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.client.deleteMany.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("does not look for a held offer to settle when the client holds none", async () => {
+    mocks.client.findFirst.mockResolvedValue(EXISTING);
+    mocks.client.deleteMany.mockResolvedValue({ count: 1 });
+    mocks.recordPendingStorageCleanup.mockResolvedValue({ id: "pending_1", attempts: 0, values: [] });
+
+    await deleteClientAction(CLIENT_ID);
+
+    expect(mocks.removeWaitlistEntry).not.toHaveBeenCalled();
   });
 });
 

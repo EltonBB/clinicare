@@ -588,6 +588,32 @@ export async function saveAppointmentAction(
         await refreshClientLastVisitAt(payload.clientId, business.id, tx);
       }
 
+      // This save just occupied a real slot (a new booking, or an edit that
+      // moved into one — the same conflict-check condition above covers
+      // both) at a staff+time that can still coincide with an appointment
+      // that's CANCELLED and holding an open waiting-list offer:
+      // hasSchedulingConflict deliberately excludes CANCELLED rows so
+      // booking over a freed slot is allowed, but that means the offer isn't
+      // automatically withdrawn the way un-cancelling that SAME appointment
+      // does. Left alone, staff could still send (or a patient still Book)
+      // an offer for a slot someone else has already taken (Codex #130).
+      if (newStatus !== "CANCELLED" && staffMemberId && (!payload.id || needsConflictCheck)) {
+        const overlapping = await tx.appointment.findMany({
+          where: {
+            businessId: business.id,
+            staffMemberId,
+            status: "CANCELLED",
+            id: appointmentId ? { not: appointmentId } : undefined,
+            startAt: { lt: endAt },
+            endAt: { gt: startAt },
+          },
+          select: { id: true },
+        });
+        for (const overlap of overlapping) {
+          await withdrawSlotOffers(tx, { businessId: business.id, appointmentId: overlap.id });
+        }
+      }
+
       return { conflict: false };
     });
 

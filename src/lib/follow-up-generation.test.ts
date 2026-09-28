@@ -11,12 +11,18 @@ const mocks = vi.hoisted(() => ({
   expirePastSlotOffers: vi.fn(),
   isProBusinessPlan: vi.fn(),
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+  getFollowUpCursor: vi.fn(),
+  setFollowUpCursor: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }));
 vi.mock("@/lib/billing", () => ({ isProBusinessPlan: mocks.isProBusinessPlan }));
 vi.mock("@/lib/logger", () => ({ logger: mocks.logger }));
 vi.mock("@/lib/slot-offers", () => ({ expirePastSlotOffers: mocks.expirePastSlotOffers }));
+vi.mock("@/lib/follow-up-cursor", () => ({
+  getFollowUpCursor: mocks.getFollowUpCursor,
+  setFollowUpCursor: mocks.setFollowUpCursor,
+}));
 vi.mock("@/lib/workflow-generators", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/workflow-generators")>();
   return {
@@ -84,6 +90,8 @@ beforeEach(() => {
   mocks.expirePastSlotOffers.mockResolvedValue({ expired: 0, released: 0 });
   // Mirrors billing.ts: PRO and ADVANCED are Pro; TRIAL and BASIC are not.
   mocks.isProBusinessPlan.mockImplementation((plan: string) => plan === "PRO" || plan === "ADVANCED");
+  mocks.getFollowUpCursor.mockResolvedValue(null);
+  mocks.setFollowUpCursor.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -415,6 +423,57 @@ describe("generateFollowUpDrafts — stale-draft sweep and totals", () => {
     expect(result.draftsCreated).toBe(1);
     expect(mocks.logger.warn).toHaveBeenCalledTimes(1);
     expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(3);
+  });
+
+  // Codex #130: a fixed `orderBy: { id: "asc" }` list combined with a budget
+  // cutoff meant whichever businesses sorted last never got a turn on ANY
+  // run — the stop-early warning above says "the next run continues," but
+  // without rotation the next run hits the exact same cutoff at the exact
+  // same businesses. Mirrors the reminders cron's own fairness fix
+  // (reminder-fairness.ts / reminder-cursor.ts), reusing the same
+  // rotate/advance helpers rather than a second implementation.
+  describe("fairness rotation across runs", () => {
+    it("resumes strictly after the persisted cursor instead of always starting at the front of the list", async () => {
+      mocks.getFollowUpCursor.mockResolvedValue("biz_1");
+      mocks.prisma.business.findMany.mockResolvedValue([business("biz_1"), business("biz_2"), business("biz_3")]);
+
+      await generateFollowUpDrafts(NOW);
+
+      // biz_2 (the smallest id greater than the cursor) is generated for
+      // FIRST, not biz_1 — proving the run rotated rather than restarting
+      // from the front every time.
+      expect(mocks.findPaymentReminderCandidates.mock.calls.map((call) => call[0].businessId)).toEqual([
+        "biz_2",
+        "biz_3",
+        "biz_1",
+      ]);
+    });
+
+    it("advances the cursor to the last business actually attempted when the budget cuts a run short", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      mocks.getFollowUpCursor.mockResolvedValue(null);
+      mocks.prisma.business.findMany.mockResolvedValue([business("biz_1"), business("biz_2"), business("biz_3")]);
+      // biz_1 alone spends the whole budget — biz_2 and biz_3 never start.
+      mocks.findPaymentReminderCandidates.mockImplementationOnce(async () => {
+        vi.setSystemTime(Date.now() + 91_000);
+        return [];
+      });
+
+      await generateFollowUpDrafts(NOW);
+
+      // Not "biz_1" again (that would starve biz_2/biz_3 forever) and not
+      // "biz_3" (that would skip past businesses this run never touched).
+      expect(mocks.setFollowUpCursor).toHaveBeenCalledWith("biz_1");
+    });
+
+    it("leaves the persisted cursor untouched when nothing was attempted (e.g. an empty business list)", async () => {
+      mocks.prisma.business.findMany.mockResolvedValue([]);
+
+      await generateFollowUpDrafts(NOW);
+
+      expect(mocks.setFollowUpCursor).not.toHaveBeenCalled();
+    });
   });
 
   it("does not stop early when the run stays inside the budget", async () => {

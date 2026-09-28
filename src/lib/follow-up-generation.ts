@@ -1,6 +1,8 @@
 import { BusinessPlan, type Prisma } from "@prisma/client";
 
 import { isProBusinessPlan } from "@/lib/billing";
+import { getFollowUpCursor, setFollowUpCursor } from "@/lib/follow-up-cursor";
+import { lastAttemptedId, rotateForFairness } from "@/lib/reminder-fairness";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { expirePastSlotOffers } from "@/lib/slot-offers";
@@ -268,13 +270,22 @@ export async function generateFollowUpDrafts(now: Date = new Date()): Promise<Fo
         },
       },
     },
+    // Stable base order; the rotation below is only meaningful if the
+    // underlying order doesn't shuffle between runs.
     orderBy: { id: "asc" },
   });
+
+  // Resume from wherever the LAST run left off, not always from the front of
+  // the same ascending-id list — otherwise whichever businesses sort last
+  // would lose the budget race on every single run, never actually getting
+  // the "next run" the stop-early warning below promises them (Codex #130).
+  const startAfterId = await getFollowUpCursor();
+  const orderedBusinesses = rotateForFairness(businesses, startAfterId);
 
   const totals: RunTotals = { draftsCreated: 0, errors: 0, budgetSpent: false };
   let businessesProcessed = 0;
 
-  for (const business of businesses) {
+  for (const business of orderedBusinesses) {
     if (Date.now() > deadlineAt) {
       totals.budgetSpent = true;
     }
@@ -291,6 +302,16 @@ export async function generateFollowUpDrafts(now: Date = new Date()): Promise<Fo
       totals.errors += 1;
       logger.error("Follow-up draft generation failed for a business.", error, { businessId: business.id });
     }
+  }
+
+  // Advance to the id of the LAST business given a turn this run (attempted,
+  // whether it succeeded or threw — only a deadline-skip never got a turn) —
+  // not by a fixed count over a mutable list. lastAttemptedId returns null
+  // when nothing was attempted, in which case the persisted cursor is
+  // deliberately left untouched so the next run resumes from the same place.
+  const nextCursor = lastAttemptedId(orderedBusinesses, businessesProcessed);
+  if (nextCursor !== null) {
+    await setFollowUpCursor(nextCursor);
   }
 
   if (totals.budgetSpent) {

@@ -6,20 +6,32 @@ import type { FollowUpDraftRecord } from "@/lib/follow-ups";
 import { liveSlotOfferWhere, reofferFreedSlot, retryOnWriteConflict } from "@/lib/slot-offers";
 import { rebookedAppointmentWhere } from "@/lib/workflow-generators";
 
+// "Pro"/"not Pro" as billing.ts defines it — the same derivation as the
+// sweep's non-Pro rule (follow-up-generation.ts), so no plan list is kept
+// twice.
+function proPlans(): BusinessPlan[] {
+  return Object.values(BusinessPlan).filter((plan) => isProBusinessPlan(plan));
+}
+
+function nonProPlans(): BusinessPlan[] {
+  return Object.values(BusinessPlan).filter((plan) => !isProBusinessPlan(plan));
+}
+
 // A draft is actionable while it's PENDING and what it's about still holds.
 // The list, the Inbox count and Send's compare-and-set all use this one
 // filter, so a draft that went stale since it was drafted is hidden and
 // refused at once — not only once the hourly sweeps (expirePastSlotOffers,
 // expireStaleFollowUpDrafts) retire it.
 function actionablePendingWhere(now: Date): Prisma.FollowUpDraftWhereInput {
-  // "Pro" as billing.ts defines it — the same derivation as the sweep's
-  // non-Pro rule (follow-up-generation.ts), so no plan list is kept here.
-  const proPlans = Object.values(BusinessPlan).filter((plan) => isProBusinessPlan(plan));
-
   return {
     status: "PENDING",
     OR: [
-      // Entry still holds the offer, slot still cancelled and ahead.
+      // Entry still holds the offer, slot still cancelled and ahead. No plan
+      // check here — this same predicate feeds listableWhere below, and a
+      // downgraded workspace's staff must still be able to see and Skip a
+      // pending offer, matching Skip/Declined/Book's own "no plan check"
+      // (see passSlotOfferAction). Sending one is blocked separately, in
+      // markFollowUpDraftSent itself (Codex).
       liveSlotOfferWhere(now),
       // Not rebooked or back since (a future booking, or a recent confirmed/
       // completed visit — a walk-in recorded after the draft was made), still a
@@ -28,7 +40,7 @@ function actionablePendingWhere(now: Date): Prisma.FollowUpDraftWhereInput {
       // not only after the hourly sweep).
       {
         kind: "REBOOK",
-        business: { plan: { in: proPlans } },
+        business: { plan: { in: proPlans() } },
         client: {
           isArchived: false,
           status: { notIn: ["INACTIVE", "ARCHIVED"] },
@@ -60,11 +72,16 @@ export async function getPendingFollowUpDraftCount(businessId: string, now: Date
   return prisma.followUpDraft.count({ where: { businessId, ...listableWhere(now) } });
 }
 
-// Upper bound on one page load — guards against an unbounded Prisma query.
-// The generated kinds hold at most PENDING_CAP_PER_KIND (50) pending drafts
-// each (follow-up-generation.ts), so the queue normally stays well inside it;
-// slot offers sort first, so they can never be pushed past it.
-const MAX_PENDING_FOLLOW_UPS = 200;
+// Upper bound on one page load — guards against an unbounded Prisma query,
+// set to the system's actual structural ceiling rather than an arbitrary
+// smaller number: the three generated kinds hold at most PENDING_CAP_PER_KIND
+// (50) pending drafts each (follow-up-generation.ts) = 150, and a slot offer
+// exists only for an entry that's WAITING or OFFERED — i.e. still counted
+// against MAX_ACTIVE_WAITLIST_ENTRIES (500) — so every live draft this list
+// can ever hold fits inside 650. A smaller cap here would silently hide the
+// oldest live slot offers once a clinic had more than it open at once, with
+// no way for staff to reach or send them (Codex).
+const MAX_PENDING_FOLLOW_UPS = 650;
 
 // Order: slot offers first — they're time-critical, and one buried under a
 // backlog of nudges would sit unseen until its slot passed. Postgres sorts an
@@ -96,16 +113,35 @@ export const SLOT_OFFER_UNAVAILABLE_ERROR = "This slot offer is no longer availa
  * succeed, and a draft that went stale since the page loaded (payment since
  * paid, client since rebooked, visit since recorded as a no-show, slot offer
  * gone) can't be sent — liveness is re-checked in this very write.
+ *
+ * `editedBody` persists the message staff actually approved (the row lets
+ * them edit a draft before sending) into the stored draft — a live slot-offer
+ * draft stays visible after it's sent, rendered from this same field, so
+ * without this it would show the original template instead of what the
+ * patient actually received (Codex).
  */
 export async function markFollowUpDraftSent(args: {
   id: string;
   businessId: string;
   now?: Date;
+  editedBody?: string;
 }): Promise<DraftMutationResult> {
-  const { id, businessId, now = new Date() } = args;
+  const { id, businessId, now = new Date(), editedBody } = args;
   const { count } = await prisma.followUpDraft.updateMany({
-    where: { id, businessId, ...actionablePendingWhere(now) },
-    data: { status: "SENT", sentAt: now },
+    where: {
+      id,
+      businessId,
+      ...actionablePendingWhere(now),
+      // A slot offer additionally needs the workspace still on Pro to be
+      // sent — a downgrade stops staff from sending a new one at once, not
+      // only once the hourly sweep catches up (matching the REBOOK branch's
+      // own plan re-check above). Skip, Declined and Book stay reachable
+      // regardless (see passSlotOfferAction's own "no plan check" comment),
+      // so a downgraded workspace can still release an outstanding offer —
+      // only Send is blocked here (Codex).
+      NOT: { kind: "SLOT_OFFER", business: { plan: { in: nonProPlans() } } },
+    },
+    data: { status: "SENT", sentAt: now, ...(editedBody ? { body: editedBody } : {}) },
   });
   return count === 0 ? { ok: false, error: ALREADY_HANDLED_ERROR } : { ok: true };
 }

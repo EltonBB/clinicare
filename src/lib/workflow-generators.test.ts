@@ -62,7 +62,39 @@ describe("findRebookCandidates", () => {
           followUpDrafts: {
             none: {
               kind: "REBOOK",
-              OR: [{ status: "PENDING" }, { createdAt: { gte: new Date("2026-07-01T00:00:00Z") } }],
+              // Clinic-local (Europe/Budapest, UTC+2 in July) month start, not
+              // a UTC boundary — 2026-07-01T00:00 local is 22:00 UTC the day
+              // before (Codex #130).
+              OR: [{ status: "PENDING" }, { createdAt: { gte: new Date("2026-06-30T22:00:00Z") } }],
+            },
+          },
+        }),
+      })
+    );
+  });
+
+  // Codex #130: an hourly run in the first local hours of a new month used to
+  // compute this month's start (and the dedupe key) from the UTC calendar
+  // instead of the clinic's own — for Europe/Budapest (UTC+2 in July),
+  // 00:30 local on July 1st is still June 30th in UTC, so the old code drafted
+  // under "2026-06" while the real local month was already July. A staff
+  // member sending that draft before UTC midnight then let the very next
+  // hourly run see a genuinely new (UTC) month key and draft a second nudge
+  // for the same client in the same clinic-local month.
+  it("keys the month by the clinic's local calendar, not UTC — an hour where the two disagree", async () => {
+    mocks.client.findMany.mockResolvedValue([{ id: "c1", name: "Alex", lastVisitAt: new Date("2026-01-01T00:00:00Z") }]);
+    const earlyLocalJuly = new Date("2026-06-30T22:30:00Z"); // 2026-07-01T00:30 CEST
+
+    const result = await findRebookCandidates({ businessId: "biz_1", settings: REBOOK_ON, now: earlyLocalJuly });
+
+    expect(result[0]?.dedupeKey).toBe("REBOOK:c1:2026-07");
+    expect(mocks.client.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          followUpDrafts: {
+            none: {
+              kind: "REBOOK",
+              OR: [{ status: "PENDING" }, { createdAt: { gte: new Date("2026-06-30T22:00:00Z") } }],
             },
           },
         }),
