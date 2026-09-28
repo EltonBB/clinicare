@@ -610,6 +610,106 @@ describe("saveAppointmentAction — un-cancelling withdraws the slot's offer", (
     expect(mocks.withdrawSlotOffers).not.toHaveBeenCalled();
     expect(mocks.offerFreedSlot).not.toHaveBeenCalled();
   });
+
+  // Codex #130: reassigning a still-cancelled booking to the very client who
+  // currently holds its open offer left that offer live for the client who,
+  // per the row's new data, is now the one who "cancelled" it.
+  it("reassigning a still-cancelled booking's client (staff/time/title unchanged) withdraws and re-offers", async () => {
+    const txClient = {
+      appointment: mocks.appointment,
+      appointmentReminder: mocks.appointmentReminder,
+      scheduleBlock: mocks.scheduleBlock,
+      $executeRaw: mocks.$executeRaw,
+    };
+    mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(txClient));
+    mocks.appointment.findFirst.mockResolvedValueOnce(CANCELLED_EXISTING);
+
+    const result = await saveAppointmentAction({
+      ...PAYLOAD,
+      clientId: "client_2",
+      status: "cancelled",
+      baselineStatus: "cancelled",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.withdrawSlotOffers).toHaveBeenCalledWith(txClient, { businessId: "biz_1", appointmentId: "appt_1" });
+    expect(mocks.offerFreedSlot).toHaveBeenCalledWith(txClient, {
+      businessId: "biz_1",
+      cancelled: {
+        id: "appt_1",
+        clientId: "client_2",
+        staffMemberId: null,
+        title: "Checkup",
+        startAt: parseZonedWallClock("2026-06-01", "09:00"),
+      },
+    });
+  });
+
+  // Codex #130: the conflict check is correctly skipped for the appointment
+  // itself (it stays cancelled, so it occupies nothing) — but re-offering the
+  // edited staff/time to a waiting client is a separate promise, and nothing
+  // had verified that slot was actually free.
+  it("does not re-offer an edited still-cancelled slot that collides with another real appointment", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_1" });
+    const txClient = {
+      appointment: mocks.appointment,
+      appointmentReminder: mocks.appointmentReminder,
+      scheduleBlock: mocks.scheduleBlock,
+      $executeRaw: mocks.$executeRaw,
+    };
+    mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(txClient));
+    mocks.appointment.findFirst
+      .mockResolvedValueOnce({ ...CANCELLED_EXISTING, staffMemberId: "staff_1" }) // the outer "existing" read
+      .mockResolvedValueOnce({ id: "appt_other" }); // hasSchedulingConflict's own overlap query
+
+    const result = await saveAppointmentAction({
+      ...PAYLOAD,
+      staffMemberId: "staff_1",
+      status: "cancelled",
+      baselineStatus: "cancelled",
+      startTime: "14:00",
+      endTime: "14:30",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.withdrawSlotOffers).toHaveBeenCalledWith(txClient, { businessId: "biz_1", appointmentId: "appt_1" });
+    expect(mocks.offerFreedSlot).not.toHaveBeenCalled();
+  });
+
+  it("still re-offers an edited still-cancelled slot once nothing else occupies it", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_1" });
+    const txClient = {
+      appointment: mocks.appointment,
+      appointmentReminder: mocks.appointmentReminder,
+      scheduleBlock: mocks.scheduleBlock,
+      $executeRaw: mocks.$executeRaw,
+    };
+    mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(txClient));
+    mocks.appointment.findFirst
+      .mockResolvedValueOnce({ ...CANCELLED_EXISTING, staffMemberId: "staff_1" })
+      .mockResolvedValueOnce(null); // no overlapping appointment for staff_1 at the new time
+
+    const result = await saveAppointmentAction({
+      ...PAYLOAD,
+      staffMemberId: "staff_1",
+      status: "cancelled",
+      baselineStatus: "cancelled",
+      startTime: "14:00",
+      endTime: "14:30",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.offerFreedSlot).toHaveBeenCalledWith(txClient, {
+      businessId: "biz_1",
+      cancelled: {
+        id: "appt_1",
+        clientId: "client_1",
+        staffMemberId: "staff_1",
+        title: "Checkup",
+        startAt: parseZonedWallClock("2026-06-01", "14:00"),
+      },
+    });
+  });
 });
 
 describe("saveAppointmentAction — referenced client/staff deleted mid-save", () => {

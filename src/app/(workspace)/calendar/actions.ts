@@ -319,10 +319,17 @@ export async function saveAppointmentAction(
     // cleared — the appointment isn't cancelled anymore, so its cancellation
     // timestamp shouldn't linger and be read as one on a later, different cancel.
     let wasReactivated = false;
-    // Editing a still-cancelled booking's time/staff/service: an open offer's
-    // text was frozen from the OLD details, but Book reads the row's current
-    // ones — so an accepted offer could book the client into a different time
-    // than the message promised. Re-offer with the saved details instead.
+    // Editing a still-cancelled booking's client/time/staff/service: an open
+    // offer's text was frozen from the OLD details, but Book reads the row's
+    // current ones — so an accepted offer could book the client into a
+    // different time than the message promised. A client change matters too:
+    // reassigning the cancelled appointment to the very client who currently
+    // holds its open offer would leave that offer live for the client who,
+    // per the row's new data, is now the one who "cancelled" it —
+    // findMatchingWaitlistCandidates never offers a slot to the client who
+    // gave it up, and a stale offer left over from before the reassignment
+    // violates that the moment the edit lands (Codex #130). Re-offer with the
+    // saved details instead in every one of these cases.
     let slotDetailsChangedWhileCancelled = false;
 
     if (payload.id) {
@@ -399,7 +406,8 @@ export async function saveAppointmentAction(
       slotDetailsChangedWhileCancelled =
         existing.status === "CANCELLED" &&
         newStatus === "CANCELLED" &&
-        (existing.staffMemberId !== staffMemberId ||
+        (existing.clientId !== payload.clientId ||
+          existing.staffMemberId !== staffMemberId ||
           existing.startAt.getTime() !== startAt.getTime() ||
           existing.title !== payload.service.trim());
       needsConflictCheck =
@@ -553,22 +561,44 @@ export async function saveAppointmentAction(
           await withdrawSlotOffers(tx, { businessId: business.id, appointmentId: payload.id });
         }
 
-        // Still cancelled, but its time/staff/service changed under an open
-        // offer: withdraw the stale one and offer the saved details again, so
-        // the offer text, the Follow-ups row and Book's pre-fill all read the
-        // same (new) time — same ordering as the un-cancel branch above.
+        // Still cancelled, but its client/time/staff/service changed under an
+        // open offer: withdraw the stale one and offer the saved details
+        // again, so the offer text, the Follow-ups row and Book's pre-fill
+        // all read the same (new) details — same ordering as the un-cancel
+        // branch above.
         if (slotDetailsChangedWhileCancelled) {
           await withdrawSlotOffers(tx, { businessId: business.id, appointmentId: payload.id });
-          await offerFreedSlot(tx, {
+
+          // The conflict check above is skipped for the whole CANCELLED-
+          // destination branch, correctly — this appointment stays cancelled,
+          // so it never occupies the edited staff/time itself. But re-offering
+          // that edited slot to a waiting client is a separate promise this
+          // save is about to make, and nothing has verified the NEW staff/
+          // time is actually free: if a different real appointment already
+          // holds it, the patient would be offered (and staff could Book) a
+          // slot that's already taken. Check it here, right before making
+          // that promise, instead of skipping straight to offerFreedSlot
+          // (Codex #130).
+          const editedSlotIsFree = !(await hasSchedulingConflict(tx, {
             businessId: business.id,
-            cancelled: {
-              id: payload.id,
-              clientId: payload.clientId,
-              staffMemberId,
-              title: payload.service.trim(),
-              startAt,
-            },
-          });
+            staffMemberId,
+            startAt,
+            endAt,
+            excludeAppointmentId: payload.id,
+          }));
+
+          if (editedSlotIsFree) {
+            await offerFreedSlot(tx, {
+              businessId: business.id,
+              cancelled: {
+                id: payload.id,
+                clientId: payload.clientId,
+                staffMemberId,
+                title: payload.service.trim(),
+                startAt,
+              },
+            });
+          }
         }
       } else {
         const created = await tx.appointment.create({
