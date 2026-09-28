@@ -668,8 +668,8 @@ describe("passSlotOffer (Declined)", () => {
 });
 
 describe("bookSlotOffer (Book)", () => {
-  it("locks the draft row first (a value-preserving guarded write), then flips the entry pinned to that draft still being SENT — in one transaction", async () => {
-    expect(await bookSlotOffer({ id: "d1", businessId: "biz_1" })).toEqual({ ok: true });
+  it("locks the draft row first (a value-preserving guarded write), then flips the entry pinned to that draft still being SENT and still live — in one transaction", async () => {
+    expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({ ok: true });
 
     expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(1);
     // The guard is scalar, so it is re-checked against the row's latest version after the lock wait.
@@ -677,8 +677,26 @@ describe("bookSlotOffer (Book)", () => {
       where: { id: "d1", businessId: "biz_1", kind: "SLOT_OFFER", status: "SENT" },
       data: { status: "SENT" },
     });
+    // The entry flip re-checks liveSlotOfferWhere (kind, its own OFFERED
+    // status, the appointment still cancelled and ahead, the client still
+    // eligible) at the same moment it commits — not just that the draft is
+    // still SENT — so a slot reactivated or filled elsewhere since the
+    // caller's read now fails this write instead of silently marking the
+    // entry FILLED with nothing booked (Codex #130).
     expect(mocks.tx.waitlistEntry.updateMany).toHaveBeenCalledWith({
-      where: { businessId: "biz_1", status: "OFFERED", followUpDrafts: { some: { id: "d1", status: "SENT" } } },
+      where: {
+        businessId: "biz_1",
+        status: "OFFERED",
+        followUpDrafts: {
+          some: {
+            id: "d1",
+            kind: "SLOT_OFFER",
+            waitlistEntry: { status: "OFFERED" },
+            appointment: { status: "CANCELLED", startAt: { gt: NOW } },
+            client: { isArchived: false, status: { notIn: ["INACTIVE", "ARCHIVED"] } },
+          },
+        },
+      },
       data: { status: "FILLED" },
     });
     // Draft first, entry second — the lock order every other offer path uses.
@@ -697,7 +715,7 @@ describe("bookSlotOffer (Book)", () => {
     expect(mocks.tx.waitlistEntry.updateMany).not.toHaveBeenCalled();
   });
 
-  it("refuses when the entry is no longer OFFERED (removed, or booked by someone else)", async () => {
+  it("refuses when the entry is no longer OFFERED, or the offer stopped being live (removed, booked by someone else, reactivated, or the client since archived/deactivated)", async () => {
     mocks.tx.waitlistEntry.updateMany.mockResolvedValue({ count: 0 });
 
     expect(await bookSlotOffer({ id: "d1", businessId: "biz_1" })).toEqual({

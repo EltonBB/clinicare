@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 
 import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { prisma } from "@/lib/prisma";
+import { retryOnWriteConflict } from "@/lib/prisma-retry";
 import { isSameService, type WaitlistCandidate } from "@/lib/slot-fill-matching";
 import { formatZonedShortDate } from "@/lib/time-zone";
 import { MAX_ACTIVE_WAITLIST_ENTRIES, WAITLIST_FULL_ERROR } from "@/lib/waitlist";
@@ -76,6 +77,16 @@ export async function listWaitingEntries(businessId: string, now: Date = new Dat
   });
 }
 
+/**
+ * The count and the insert run inside one SERIALIZABLE transaction: two staff
+ * adding an entry at once, both reading the count just under the cap, would
+ * otherwise both pass the check and both insert, overshooting
+ * MAX_ACTIVE_WAITLIST_ENTRIES — a cap the follow-up list's own 650-row bound
+ * (follow-ups-data.ts) assumes holds. SERIALIZABLE makes Postgres abort one
+ * of the two as a write conflict instead of letting both see the stale count;
+ * retryOnWriteConflict re-runs it once, and the retry's count already
+ * includes the winner's row (Codex #130).
+ */
 export async function createWaitlistEntry(args: {
   businessId: string;
   clientId: string;
@@ -87,16 +98,23 @@ export async function createWaitlistEntry(args: {
   preferredTo: string | null;
   notes: string | null;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  const active = await prisma.waitlistEntry.count({
-    where: { businessId: args.businessId, status: { in: ["WAITING", "OFFERED"] } },
-  });
+  return retryOnWriteConflict(() =>
+    prisma.$transaction(
+      async (tx) => {
+        const active = await tx.waitlistEntry.count({
+          where: { businessId: args.businessId, status: { in: ["WAITING", "OFFERED"] } },
+        });
 
-  if (active >= MAX_ACTIVE_WAITLIST_ENTRIES) {
-    return { ok: false, error: WAITLIST_FULL_ERROR };
-  }
+        if (active >= MAX_ACTIVE_WAITLIST_ENTRIES) {
+          return { ok: false, error: WAITLIST_FULL_ERROR };
+        }
 
-  await prisma.waitlistEntry.create({ data: { ...args, status: "WAITING" } });
-  return { ok: true };
+        await tx.waitlistEntry.create({ data: { ...args, status: "WAITING" } });
+        return { ok: true };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    )
+  );
 }
 
 // Removing an entry lives in lib/slot-offers.ts (removeWaitlistEntry): an

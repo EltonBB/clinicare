@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Prisma } from "@prisma/client";
 
+// createWaitlistEntry's count+create run inside a transaction (see its own
+// comment); everything else in this module still runs against the top-level
+// client, so both need their own waitlistEntry mock.
 const mocks = vi.hoisted(() => ({
   waitlistEntry: { findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn(), count: vi.fn() },
+  $transaction: vi.fn(),
+  tx: { waitlistEntry: { count: vi.fn(), create: vi.fn() } },
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: mocks }));
@@ -15,7 +21,10 @@ import {
 
 const originalTimeZone = process.env.APP_TIME_ZONE;
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.$transaction.mockImplementation(async (cb: (client: unknown) => unknown) => cb(mocks.tx));
+});
 
 afterEach(() => {
   if (originalTimeZone === undefined) {
@@ -120,32 +129,53 @@ describe("waitlist data layer", () => {
   };
 
   it("creates an entry scoped to the business", async () => {
-    mocks.waitlistEntry.count.mockResolvedValue(0);
-    mocks.waitlistEntry.create.mockResolvedValue({ id: "wl_1" });
+    mocks.tx.waitlistEntry.count.mockResolvedValue(0);
+    mocks.tx.waitlistEntry.create.mockResolvedValue({ id: "wl_1" });
     const result = await createWaitlistEntry(newEntry);
     expect(result).toEqual({ ok: true });
-    expect(mocks.waitlistEntry.create).toHaveBeenCalledWith(
+    expect(mocks.tx.waitlistEntry.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ businessId: "biz_1", clientId: "client_1", service: "Checkup", status: "WAITING" }) })
     );
   });
 
   it("refuses a new entry once the business's active waiting list is full, counting only WAITING and OFFERED", async () => {
-    mocks.waitlistEntry.count.mockResolvedValue(500);
+    mocks.tx.waitlistEntry.count.mockResolvedValue(500);
 
     const result = await createWaitlistEntry(newEntry);
 
     expect(result).toEqual({ ok: false, error: "The waiting list is full. Remove an entry before adding another." });
-    expect(mocks.waitlistEntry.count).toHaveBeenCalledWith({
+    expect(mocks.tx.waitlistEntry.count).toHaveBeenCalledWith({
       where: { businessId: "biz_1", status: { in: ["WAITING", "OFFERED"] } },
     });
-    expect(mocks.waitlistEntry.create).not.toHaveBeenCalled();
+    expect(mocks.tx.waitlistEntry.create).not.toHaveBeenCalled();
   });
 
   it("still accepts an entry when one slot is left", async () => {
-    mocks.waitlistEntry.count.mockResolvedValue(499);
-    mocks.waitlistEntry.create.mockResolvedValue({ id: "wl_1" });
+    mocks.tx.waitlistEntry.count.mockResolvedValue(499);
+    mocks.tx.waitlistEntry.create.mockResolvedValue({ id: "wl_1" });
 
     expect(await createWaitlistEntry(newEntry)).toEqual({ ok: true });
+  });
+
+  it("serializes the count and insert in one SERIALIZABLE transaction, retrying once on a write conflict (Codex #130)", async () => {
+    mocks.tx.waitlistEntry.count.mockResolvedValue(0);
+    mocks.tx.waitlistEntry.create.mockResolvedValue({ id: "wl_1" });
+
+    await createWaitlistEntry(newEntry);
+
+    expect(mocks.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    // Two staff racing the cap: the first transaction Postgres aborts as a
+    // write conflict is retried once, and the retry's count already reflects
+    // whichever entry committed first.
+    const conflict = new Prisma.PrismaClientKnownRequestError("conflict", { code: "P2034", clientVersion: "test" });
+    mocks.$transaction
+      .mockRejectedValueOnce(conflict)
+      .mockImplementationOnce(async (cb: (client: unknown) => unknown) => cb(mocks.tx));
+
+    expect(await createWaitlistEntry(newEntry)).toEqual({ ok: true });
+    expect(mocks.$transaction).toHaveBeenCalledTimes(3);
   });
 
   it("releases an entry back to WAITING only from OFFERED, scoped to the business, reporting whether it moved", async () => {

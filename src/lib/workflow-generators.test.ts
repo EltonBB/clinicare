@@ -43,7 +43,12 @@ describe("findRebookCandidates", () => {
         where: expect.objectContaining({
           businessId: "biz_1",
           isArchived: false,
-          lastVisitAt: { not: null, lt: new Date("2026-01-01T12:00:00Z") }, // 6 months before NOW
+          // 6 months before NOW, in the clinic's own calendar (Codex #130): NOW
+          // is 14:00 CEST (UTC+2); January is CET (UTC+1), so the same clinic-
+          // local wall-clock time six months earlier is 13:00Z, not 12:00Z — a
+          // pure UTC subtraction would have kept 12:00Z and drifted an hour off
+          // the clinic's own "N months ago".
+          lastVisitAt: { not: null, lt: new Date("2026-01-01T13:00:00Z") },
           appointments: { none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: NOW } } },
         }),
       })
@@ -97,6 +102,13 @@ describe("findRebookCandidates", () => {
               OR: [{ status: "PENDING" }, { createdAt: { gte: new Date("2026-06-30T22:00:00Z") } }],
             },
           },
+          // The rebooking cutoff itself has the same bug: a run computed
+          // straight from UTC calendar fields would still see June 30 and
+          // subtract 6 months from THAT, landing the cutoff a full day early
+          // (Dec 31 00:30 local instead of Jan 1 00:30 local) — 6 clinic-local
+          // months before July 1 00:30, not 6 UTC-calendar months before
+          // June 30 22:30 (Codex #130).
+          lastVisitAt: { not: null, lt: new Date("2025-12-31T23:30:00Z") },
         }),
       })
     );
@@ -132,7 +144,10 @@ describe("findRebookCandidates", () => {
 
     expect(mocks.client.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ lastVisitAt: { not: null, lt: new Date("2026-02-28T12:00:00Z") } }),
+        // Same DST crossing as the 6-month test above: August is CEST (UTC+2),
+        // February is CET (UTC+1), so 14:00 local both ends is 12:00Z in August
+        // and 13:00Z in February.
+        where: expect.objectContaining({ lastVisitAt: { not: null, lt: new Date("2026-02-28T13:00:00Z") } }),
       })
     );
   });

@@ -275,10 +275,19 @@ export async function passSlotOffer(args: {
  * it and lets them queue behind this; the guard is scalar (id, kind, status),
  * so it is re-checked against the row's latest version once the lock is won,
  * and a draft skipped, declined or expired in the meantime refuses the Book.
- * Only then is the entry flipped, pinned to that draft still being SENT.
+ * Only then is the entry flipped, pinned to that draft still being SENT and,
+ * via `liveSlotOfferWhere`, to the same offer still being live — the
+ * appointment still cancelled and ahead, the waiting client still eligible.
+ * The caller's own read of `liveSlotOfferWhere` happens outside this
+ * transaction (building the booking-form URL needs the appointment's
+ * details), so it's stale by the time this runs; re-checking it here, inside
+ * the same atomic write that flips OFFERED -> FILLED, is what actually closes
+ * that window — a slot reactivated or filled through another path since the
+ * read now fails the flip instead of silently marking the entry FILLED with
+ * nothing booked and no way back onto the list (Codex).
  */
-export async function bookSlotOffer(args: { id: string; businessId: string }): Promise<DraftMutationResult> {
-  const { id, businessId } = args;
+export async function bookSlotOffer(args: { id: string; businessId: string; now?: Date }): Promise<DraftMutationResult> {
+  const { id, businessId, now = new Date() } = args;
 
   return settleOffer(async (tx) => {
     const { count: locked } = await tx.followUpDraft.updateMany({
@@ -294,12 +303,13 @@ export async function bookSlotOffer(args: { id: string; businessId: string }): P
       where: {
         businessId,
         status: "OFFERED",
-        followUpDrafts: { some: { id, status: "SENT" } },
+        followUpDrafts: { some: { id, ...liveSlotOfferWhere(now) } },
       },
       data: { status: "FILLED" },
     });
 
-    // Removed, or booked by someone else, since the offer was read.
+    // Removed, booked by someone else, or the offer stopped being live
+    // (reactivated, or the client since archived/deactivated) since it was read.
     return count === 0 ? { ok: false, error: SLOT_OFFER_UNAVAILABLE_ERROR } : { ok: true };
   }, SLOT_OFFER_UNAVAILABLE_ERROR);
 }

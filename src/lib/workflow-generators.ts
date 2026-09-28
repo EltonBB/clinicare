@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 
 import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { prisma } from "@/lib/prisma";
-import { getZonedDateParts, getZonedMonthStart } from "@/lib/time-zone";
+import { getZonedDateParts, getZonedMonthStart, zonedDateTimeToUtc } from "@/lib/time-zone";
 
 export type WorkflowSettingsValues = {
   rebookEnabled: boolean;
@@ -83,17 +83,29 @@ function monthKey(date: Date): string {
 }
 
 /**
- * `date` minus `months` calendar months, clamping the day-of-month so a short
- * target month doesn't roll forward (Aug 31 minus 6 months is Feb 28/29, not Mar 3).
+ * `date` minus `months` calendar months, in the clinic's own calendar (not
+ * UTC) — clamping the day-of-month so a short target month doesn't roll
+ * forward (Aug 31 minus 6 months is Feb 28/29, not Mar 3). A UTC-based
+ * subtraction drifts from the clinic's calendar by the zone's offset: in the
+ * first local hours of a day, UTC can still be on the previous date, so "N
+ * months ago" could land up to a day off the clinic's own boundary — delaying
+ * or advancing which clients are eligible for a rebooking draft (Codex #130).
  */
-function subtractMonthsUtc(date: Date, months: number): Date {
-  const result = new Date(date);
-  const day = result.getUTCDate();
-  result.setUTCDate(1);
-  result.setUTCMonth(result.getUTCMonth() - months);
-  const daysInTargetMonth = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate();
-  result.setUTCDate(Math.min(day, daysInTargetMonth));
-  return result;
+export function subtractMonths(date: Date, months: number): Date {
+  const parts = getZonedDateParts(date);
+  const targetMonthIndex = parts.month - 1 - months;
+  const year = parts.year + Math.floor(targetMonthIndex / 12);
+  const month = ((targetMonthIndex % 12) + 12) % 12 + 1;
+  const daysInTargetMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+
+  return zonedDateTimeToUtc({
+    year,
+    month,
+    day: Math.min(parts.day, daysInTargetMonth),
+    hour: parts.hour,
+    minute: parts.minute,
+    second: parts.second,
+  });
 }
 
 /**
@@ -112,7 +124,7 @@ export async function findRebookCandidates(args: {
   const { businessId, settings, now } = args;
   if (!settings.rebookEnabled) return [];
 
-  const cutoff = subtractMonthsUtc(now, settings.rebookAfterMonths);
+  const cutoff = subtractMonths(now, settings.rebookAfterMonths);
   // Clinic-local month start — see monthKey's own comment on why this can't
   // be a UTC boundary.
   const monthStart = getZonedMonthStart(now);

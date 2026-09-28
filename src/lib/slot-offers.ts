@@ -4,6 +4,7 @@ import { isProBusinessPlan } from "@/lib/billing";
 import { timeToMinutes } from "@/lib/calendar";
 import { ELIGIBLE_CLIENT_WHERE, INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { prisma } from "@/lib/prisma";
+import { retryOnWriteConflict } from "@/lib/prisma-retry";
 import { rankWaitlistMatches } from "@/lib/slot-fill-matching";
 import { formatZonedFullDate, formatZonedTime, formatZonedTime24, getZonedWeekday } from "@/lib/time-zone";
 import { WAITLIST_ENTRY_REMOVED_ERROR } from "@/lib/waitlist";
@@ -392,40 +393,7 @@ export async function expirePastSlotOffers(
   return { expired, released };
 }
 
-// Postgres reports a deadlock as SQLSTATE 40P01 ("deadlock detected").
-const DEADLOCK_PATTERN = /\b40P01\b|deadlock detected/i;
-
-/**
- * True for a transaction Postgres aborted as a deadlock / write conflict.
- * Prisma names those P2034, but through the pg driver adapter a real deadlock
- * arrives as an unclassified PrismaClientUnknownRequestError with no `code`
- * — the SQLSTATE and text are only in its message (verified against a live
- * database). Any other unknown error is not a conflict and is never retried.
- */
-function isWriteConflict(error: unknown): boolean {
-  if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    return error.code === "P2034";
-  }
-
-  return error instanceof Prisma.PrismaClientUnknownRequestError && DEADLOCK_PATTERN.test(error.message);
-}
-
-/**
- * Runs a slot-offer transaction, retrying it once if Postgres aborted it as a
- * deadlock / write conflict (see isWriteConflict). Two staff acting on the
- * same offer at the same instant can collide; the retry sees the winner's
- * committed state and its CAS guards turn into clean no-ops.
- */
-export async function retryOnWriteConflict<T>(run: () => Promise<T>): Promise<T> {
-  try {
-    return await run();
-  } catch (error) {
-    if (isWriteConflict(error)) {
-      return run();
-    }
-    throw error;
-  }
-}
+export { retryOnWriteConflict };
 
 // Thrown inside removeWaitlistEntry's transaction to roll back the draft
 // dismissals when the entry itself turned out to be gone already.
