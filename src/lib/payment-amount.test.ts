@@ -20,10 +20,12 @@ describe("parseAmountToCents", () => {
     expect(parseAmountToCents("1.2.3")).toBeNull();
   });
 
-  it("reads input with no digits as zero, not an error", () => {
-    // Everything non-numeric is stripped first, so "abc" reduces to "" -> 0 —
-    // existing behavior, not a new decision made by this fix.
-    expect(parseAmountToCents("abc")).toBe(0);
+  it("rejects input with no digits rather than reading it as zero", () => {
+    expect(parseAmountToCents("abc")).toBeNull();
+    expect(parseAmountToCents("")).toBeNull();
+    expect(parseAmountToCents("€")).toBeNull();
+    expect(parseAmountToCents("-")).toBeNull();
+    expect(parseAmountToCents(".")).toBeNull();
   });
 
   // Codex #131: the old fixed "> 1,000,000" ceiling was USD/EUR-shaped and

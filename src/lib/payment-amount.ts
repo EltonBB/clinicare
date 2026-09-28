@@ -9,7 +9,16 @@ export const MAX_PAYMENT_AMOUNT_MAJOR_UNITS = 20_000_000;
 
 /** Parses a free-typed amount field into integer cents, or `null` if invalid. */
 export function parseAmountToCents(value: string): number | null {
-  const normalized = Number(value.replace(/[^0-9.-]/g, ""));
+  const stripped = value.replace(/[^0-9.-]/g, "");
+
+  // Nothing numeric was typed ("abc", "", "€"): that is not an amount, and
+  // must not be stored as a 0.00 payment (CodeRabbit #131). A literal "0" is
+  // still a valid amount.
+  if (!/\d/.test(stripped)) {
+    return null;
+  }
+
+  const normalized = Number(stripped);
 
   if (!Number.isFinite(normalized) || normalized < 0 || normalized > MAX_PAYMENT_AMOUNT_MAJOR_UNITS) {
     return null;

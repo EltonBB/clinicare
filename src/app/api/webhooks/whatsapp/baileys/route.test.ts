@@ -161,7 +161,7 @@ describe("POST /api/webhooks/whatsapp/baileys — message events: reply-intent r
   it("does not run the reply intent when a raced duplicate's winning row could not be found again (nothing to claim)", async () => {
     mocks.recordInboundMessage.mockResolvedValue({ recorded: false, reason: "duplicate", clientId: "client_1", messageId: null });
 
-    const response = await POST(request(MESSAGE_EVENT));
+    const response = await POST(legacy());
 
     expect(response.status).toBe(200);
     expect(mocks.applyInboundReplyIntent).not.toHaveBeenCalled();
@@ -378,13 +378,19 @@ describe("inbound WhatsApp webhook — shared-secret fallback (no BAILEYS_WEBHOO
   });
 
   it("warns once per process that the signed mode isn't configured", async () => {
-    await POST(legacy());
-    await POST(legacy());
+    // The warning's "already told them" flag lives in the route module, so earlier
+    // tests in this file have usually spent it already — a fresh module instance
+    // is what lets this test require exactly one (and fail on none or on repeats).
+    vi.resetModules();
+    const { POST: freshPOST } = await import("./route");
+
+    await freshPOST(legacy());
+    await freshPOST(legacy());
 
     const warnings = mocks.logger.warn.mock.calls.filter(([message]) =>
       String(message).includes("BAILEYS_WEBHOOK_SECRET")
     );
-    expect(warnings.length).toBeLessThanOrEqual(1);
+    expect(warnings).toHaveLength(1);
   });
 
   it("rejects a wrong shared secret", async () => {

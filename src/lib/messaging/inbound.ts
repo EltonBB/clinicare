@@ -5,6 +5,7 @@ import {
   revalidateCalendarSurfaces,
 } from "@/lib/appointments-shared";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
+import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
 import { mirrorOutboundToInbox } from "@/lib/messaging/inbox-mirror";
 import { prisma } from "@/lib/prisma";
