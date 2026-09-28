@@ -18,6 +18,7 @@ import {
   type ClientRecord,
   type SaveClientPayload,
 } from "@/lib/clients";
+import { normalizeCurrency } from "@/lib/currency";
 import { normalizeStorageReference } from "@/lib/media-storage";
 import { attemptStorageCleanup, recordPendingStorageCleanup } from "@/lib/media-storage-server";
 import { parseAmountToCents } from "@/lib/payment-amount";
@@ -955,7 +956,7 @@ export async function addClientPaymentAction(
     };
   }
 
-  const amountCents = parseAmountToCents(payload.amount);
+  const amountCents = parseAmountToCents(payload.amount, normalizeCurrency(context.business.currency));
 
   if (amountCents === null) {
     return {
@@ -1323,7 +1324,10 @@ const deleteClientSubRecordSchema = z.object({ id: idField, clientId: idField })
 
 type OwnedSubRecordContext =
   | { error: string }
-  | { business: { id: string } };
+  // currency is only read by the payment actions (to validate a typed amount
+  // against the workspace's own currency) — every other sub-record action
+  // uses just the id, same as before.
+  | { business: { id: string; currency: string } };
 
 async function requireOwnedSubRecord(
   payload: DeleteClientSubRecordPayload,
@@ -1760,7 +1764,7 @@ export async function updateClientPaymentAction(
     return { ok: false, error: context.error };
   }
 
-  const amountCents = parseAmountToCents(payload.amount);
+  const amountCents = parseAmountToCents(payload.amount, normalizeCurrency(context.business.currency));
 
   if (amountCents === null) {
     return { ok: false, error: "Enter a valid payment amount." };

@@ -51,8 +51,34 @@ describe("parseAmountToCents", () => {
     ["-", "only a minus"],
     [".", "only a point"],
     [",", "only a comma"],
+    // CodeRabbit #131 round 3: an internal separator only counts once it forms
+    // a real group or decimal comma — not anywhere a digit meets whitespace or
+    // a currency marker.
+    ["12 50", "a space that isn't a thousands group"],
+    ["12€50", "a currency symbol in the middle, not at an end"],
+    ["EUR 85 USD", "two conflicting currency markers"],
+    ["85 EUR USD", "a currency code repeated at the same end"],
+    ["¥85", "a currency symbol for a currency this app doesn't support"],
   ])("rejects %j (%s)", (input) => {
     expect(parseAmountToCents(input)).toBeNull();
+  });
+
+  describe("expectedCurrency", () => {
+    it("accepts a marker that matches the workspace currency", () => {
+      expect(parseAmountToCents("85 EUR", "EUR")).toBe(8500);
+      expect(parseAmountToCents("€85", "EUR")).toBe(8500);
+    });
+
+    it("rejects a marker for a different currency, even though the amount alone is valid", () => {
+      // Codex-adjacent: "85 USD" typed into a euro workspace must not silently
+      // become 85 euros.
+      expect(parseAmountToCents("85 USD", "EUR")).toBeNull();
+      expect(parseAmountToCents("$85", "EUR")).toBeNull();
+    });
+
+    it("still accepts a bare number with no marker at all", () => {
+      expect(parseAmountToCents("85", "EUR")).toBe(8500);
+    });
   });
 
   it("never reads a decimal-comma amount as a hundred times larger", () => {
