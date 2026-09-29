@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
     prisma: {
       $transaction: vi.fn(),
       business: { findUniqueOrThrow: vi.fn() },
+      clientPayment: { count: vi.fn() },
     },
     getCurrentUser: vi.fn(),
     updateCurrentUserMetadata: vi.fn(),
@@ -88,9 +89,17 @@ function payload(currency?: string): SaveSettingsPayload {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.getCurrentUser.mockResolvedValue({ id: "user_1", user_metadata: {} });
-  mocks.requireCurrentBusiness.mockResolvedValue({ id: "biz_1", name: "Vela Dent", logoUrl: null, plan: "PRO" });
+  mocks.requireCurrentBusiness.mockResolvedValue({
+    id: "biz_1",
+    name: "Vela Dent",
+    logoUrl: null,
+    plan: "PRO",
+    currency: "EUR",
+  });
   mocks.prisma.$transaction.mockImplementation(async (run: (tx: typeof mocks.tx) => unknown) => run(mocks.tx));
   mocks.prisma.business.findUniqueOrThrow.mockResolvedValue({ id: "biz_1" });
+  // No payments on record by default — the guard test below overrides this.
+  mocks.prisma.clientPayment.count.mockResolvedValue(0);
   mocks.updateCurrentUserMetadata.mockResolvedValue({ error: null });
   mocks.loadSettingsState.mockResolvedValue({ loaded: true });
 });
@@ -140,5 +149,36 @@ describe("saveSettingsAction — currency", () => {
 
     expect(result.ok).toBe(false);
     expect(mocks.tx.business.update).not.toHaveBeenCalled();
+  });
+
+  // Codex #131: Business.currency only relabels how amounts render — stored
+  // ClientPayment rows have no currency of their own, so changing it once
+  // payments exist would silently reinterpret a recorded USD 100.00 as
+  // EUR 100.00, misstating the whole ledger and its statements.
+  it("blocks the change once the workspace has a payment on record", async () => {
+    mocks.prisma.clientPayment.count.mockResolvedValue(1);
+
+    const result = await saveSettingsAction(payload("USD"));
+
+    expect(mocks.prisma.clientPayment.count).toHaveBeenCalledWith({ where: { businessId: "biz_1" } });
+    expect(result).toEqual({
+      ok: false,
+      error: "Currency can't be changed once payments are on record — it would misstate past amounts.",
+    });
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("allows the change through once payments are checked and none exist", async () => {
+    const result = await saveSettingsAction(payload("USD"));
+
+    expect(mocks.prisma.clientPayment.count).toHaveBeenCalledWith({ where: { businessId: "biz_1" } });
+    expect(result.ok).toBe(true);
+  });
+
+  it("never checks for payments when the save keeps the currency unchanged", async () => {
+    const result = await saveSettingsAction(payload("EUR"));
+
+    expect(mocks.prisma.clientPayment.count).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
   });
 });
