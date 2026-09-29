@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => {
   const business = { findUniqueOrThrow: vi.fn() };
   const waitlistEntry = { findMany: vi.fn(), updateMany: vi.fn() };
   const followUpDraft = { createMany: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() };
+  const scheduleBlock = { findFirst: vi.fn() };
+  const $executeRaw = vi.fn();
   const outer = {
     business: { findUniqueOrThrow: vi.fn() },
     waitlistEntry: { findMany: vi.fn(), updateMany: vi.fn() },
@@ -31,6 +33,8 @@ const mocks = vi.hoisted(() => {
     business,
     waitlistEntry,
     followUpDraft,
+    scheduleBlock,
+    $executeRaw,
     outer,
     $transaction,
     revalidatePath,
@@ -77,6 +81,7 @@ const RECORD = {
   staffMemberId: "staff_1",
   title: "Checkup",
   startAt: new Date("2026-06-10T09:00:00.000Z"),
+  endAt: new Date("2026-06-10T09:30:00.000Z"),
 };
 // deleteAppointmentCore's pre-read select drops `id` (it returns `where.id`
 // instead) — a narrower fixture so a future regression reintroducing a read
@@ -101,10 +106,30 @@ function mockGuardMiss(status: "COMPLETED" | "CANCELLED" | "CONFIRMED" | "NO_SHO
   mocks.appointment.findFirst.mockResolvedValue(status ? { ...RECORD, status } : null);
 }
 
+// tx.appointment.findFirst serves multiple real queries here:
+// refreshClientLastVisitAt's latest-visit lookup (status: {in:[...]}), the
+// dedupe-key cycle read inside offerFreedSlot (no status filter), and — since
+// the centralized availability check landed inside offerFreedSlot too (Codex
+// #130) — hasSchedulingConflict's own overlap query (status: {not:
+// "CANCELLED"}). Distinguishable by that shape, so one mock serves all of
+// them instead of the tests needing to track call order.
+function serveAppointmentReads(options: { read?: Record<string, unknown> | null; conflict?: unknown } = {}) {
+  const { read = null, conflict = null } = options;
+  mocks.appointment.findFirst.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+    const status = where.status as { not?: string } | { in?: string[] } | undefined;
+    if (status && typeof status === "object" && "not" in status && status.not === "CANCELLED") {
+      return conflict;
+    }
+    return read;
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   // No open slot offers unless a test adds one (deleteAppointmentCore's withdraw).
   mocks.followUpDraft.findMany.mockResolvedValue([]);
+  mocks.scheduleBlock.findFirst.mockResolvedValue(null); // no business-wide block by default
+  mocks.$executeRaw.mockResolvedValue(undefined);
   mocks.$transaction.mockImplementation(
     async (cb: (tx: unknown) => unknown) =>
       cb({
@@ -114,6 +139,8 @@ beforeEach(() => {
         business: mocks.business,
         waitlistEntry: mocks.waitlistEntry,
         followUpDraft: mocks.followUpDraft,
+        scheduleBlock: mocks.scheduleBlock,
+        $executeRaw: mocks.$executeRaw,
       })
   );
 });
@@ -311,7 +338,7 @@ describe("cancelAppointmentCore — slot-fill matching", () => {
   const CANCELLED_AT = new Date("2026-01-01T00:00:10.000Z");
 
   function mockPro() {
-    mocks.appointment.findFirst.mockResolvedValue({ updatedAt: CANCELLED_AT });
+    serveAppointmentReads({ read: { updatedAt: CANCELLED_AT } });
     mocks.business.findUniqueOrThrow.mockResolvedValue({ plan: "PRO" });
     mocks.followUpDraft.findFirst.mockResolvedValue(null); // no live offer for this slot yet
     mocks.waitlistEntry.updateMany.mockResolvedValue({ count: 1 });

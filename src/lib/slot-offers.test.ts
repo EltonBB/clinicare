@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
     waitlistEntry: { findMany: vi.fn(), updateMany: vi.fn() },
     business: { findUniqueOrThrow: vi.fn() },
     appointment: { findFirst: vi.fn() },
+    scheduleBlock: { findFirst: vi.fn() },
+    $executeRaw: vi.fn(),
   },
 }));
 
@@ -43,6 +45,7 @@ const CANCELLED = {
   title: "Checkup",
   // Monday Oct 5 2026, 09:00 in Budapest (CEST, UTC+2).
   startAt: new Date("2026-10-05T07:00:00.000Z"),
+  endAt: new Date("2026-10-05T07:30:00.000Z"),
   // When it was cancelled — the offer's dedupe key names this cancellation cycle.
   updatedAt: new Date("2026-09-01T07:30:00.000Z"),
 };
@@ -66,6 +69,26 @@ function candidateRow(id: string, createdAt: string, overrides: Record<string, u
 
 const originalTimeZone = process.env.APP_TIME_ZONE;
 
+// tx.appointment.findFirst serves THREE different real queries in offerFreedSlot
+// and its callers: offerSlotAgain's/removeWaitlistEntry's "read the still-
+// cancelled row" (where.status === "CANCELLED"), the dedupe-key cycle read (no
+// status filter), and — since the centralized availability check landed here
+// too (Codex #130) — hasSchedulingConflict's own overlap query (where.status
+// is the object { not: "CANCELLED" }). The three are distinguishable by that
+// shape, so one mock can serve all of them correctly instead of the tests
+// having to track call order. `read` answers the first two; `conflict`
+// answers the third (null by default — no conflict).
+function serveAppointmentReads(options: { read?: Record<string, unknown> | null; conflict?: unknown } = {}) {
+  const { read = CANCELLED, conflict = null } = options;
+  mocks.tx.appointment.findFirst.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+    const status = where.status as { not?: string } | string | undefined;
+    if (status && typeof status === "object" && status.not === "CANCELLED") {
+      return conflict;
+    }
+    return read;
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.APP_TIME_ZONE = "Europe/Budapest";
@@ -74,7 +97,9 @@ beforeEach(() => {
   mocks.tx.followUpDraft.createMany.mockResolvedValue({ count: 1 });
   mocks.tx.followUpDraft.findFirst.mockResolvedValue(null); // no live offer for the slot yet
   mocks.tx.followUpDraft.findMany.mockResolvedValue([]);
-  mocks.tx.appointment.findFirst.mockResolvedValue(CANCELLED);
+  serveAppointmentReads();
+  mocks.tx.scheduleBlock.findFirst.mockResolvedValue(null); // no business-wide block by default
+  mocks.tx.$executeRaw.mockResolvedValue(undefined);
   mocks.prisma.$transaction.mockImplementation(async (cb: (client: unknown) => unknown) => cb(mocks.tx));
 });
 
@@ -175,7 +200,7 @@ describe("offerFreedSlot", () => {
 
     await offerFreedSlot(tx, { businessId: "biz_1", cancelled: CANCELLED, now: NOW });
 
-    mocks.tx.appointment.findFirst.mockResolvedValue({ updatedAt: new Date("2026-09-03T10:00:00.000Z") });
+    serveAppointmentReads({ read: { updatedAt: new Date("2026-09-03T10:00:00.000Z") } });
     await offerFreedSlot(tx, { businessId: "biz_1", cancelled: CANCELLED, now: NOW });
 
     const keys = mocks.tx.followUpDraft.createMany.mock.calls.map(([call]) => call.data[0].dedupeKey);
@@ -210,11 +235,18 @@ describe("offerFreedSlot", () => {
     expect(mocks.tx.followUpDraft.createMany).not.toHaveBeenCalled();
   });
 
-  it("doesn't read the appointment at all when nobody matches", async () => {
+  it("doesn't read the dedupe-key cycle when nobody matches — only the conflict check runs", async () => {
     mocks.tx.waitlistEntry.findMany.mockResolvedValue([]);
 
     expect(await offerFreedSlot(tx, { businessId: "biz_1", cancelled: CANCELLED, now: NOW })).toBeNull();
-    expect(mocks.tx.appointment.findFirst).not.toHaveBeenCalled();
+    // The availability check (Codex #130) always runs, even with no
+    // candidates — it's a precondition, not conditioned on a match. Only the
+    // separate dedupe-key cycle read is skipped, since ranking already came
+    // back empty by the time that would run.
+    expect(mocks.tx.appointment.findFirst).toHaveBeenCalledTimes(1);
+    expect(mocks.tx.appointment.findFirst).not.toHaveBeenCalledWith(
+      expect.objectContaining({ select: { updatedAt: true } })
+    );
   });
 
   it("does nothing for a slot that has already started — no plan read, no match, no draft", async () => {
@@ -230,6 +262,38 @@ describe("offerFreedSlot", () => {
     expect(mocks.tx.followUpDraft.createMany).not.toHaveBeenCalled();
   });
 
+  // Codex #130: hasSchedulingConflict deliberately excludes CANCELLED rows,
+  // so a real appointment can be booked directly into a freed slot without
+  // ever touching cancelled.id — every offerFreedSlot call (not just the one
+  // call site that happened to be audited first) must re-verify the slot is
+  // still actually free before promising it, and take the same advisory lock
+  // the ordinary booking path does before checking.
+  it("offers nothing when another real appointment already occupies the freed slot", async () => {
+    serveAppointmentReads({ conflict: { id: "appt_other" } });
+    mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_1", "2026-01-01")]);
+
+    expect(await offerFreedSlot(tx, { businessId: "biz_1", cancelled: CANCELLED, now: NOW })).toBeNull();
+    expect(mocks.tx.$executeRaw).toHaveBeenCalled();
+    expect(mocks.tx.followUpDraft.findFirst).not.toHaveBeenCalled();
+    expect(mocks.tx.waitlistEntry.findMany).not.toHaveBeenCalled();
+    expect(mocks.tx.followUpDraft.createMany).not.toHaveBeenCalled();
+  });
+
+  it("offers nothing when a business-wide schedule block covers the freed slot", async () => {
+    mocks.tx.scheduleBlock.findFirst.mockResolvedValue({ id: "block_1" });
+    mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_1", "2026-01-01")]);
+
+    expect(await offerFreedSlot(tx, { businessId: "biz_1", cancelled: CANCELLED, now: NOW })).toBeNull();
+    expect(mocks.tx.followUpDraft.createMany).not.toHaveBeenCalled();
+  });
+
+  it("still offers the slot when nothing occupies it — the conflict check passes through", async () => {
+    mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_1", "2026-01-01")]);
+
+    expect(await offerFreedSlot(tx, { businessId: "biz_1", cancelled: CANCELLED, now: NOW })).toBe("wl_1");
+    expect(mocks.tx.$executeRaw).toHaveBeenCalled();
+  });
+
   it("offers nothing when the slot already has a live offer — one offer per freed slot", async () => {
     mocks.tx.followUpDraft.findFirst.mockResolvedValue({ id: "d_live" });
     mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_1", "2026-01-01")]);
@@ -242,7 +306,11 @@ describe("offerFreedSlot", () => {
         status: { in: ["PENDING", "SENT"] },
         kind: "SLOT_OFFER",
         waitlistEntry: { status: "OFFERED" },
-        appointment: { status: "CANCELLED", startAt: { gt: NOW } },
+        appointment: {
+          status: "CANCELLED",
+          startAt: { gt: NOW },
+          OR: [{ staffMemberId: null }, { staffMember: { isActive: true, status: { not: "INACTIVE" } } }],
+        },
         client: { isArchived: false, status: { notIn: ["INACTIVE", "ARCHIVED"] } },
       },
       select: { id: true },
@@ -347,7 +415,6 @@ describe("offerFreedSlot", () => {
 
 describe("reofferFreedSlot", () => {
   it("releases the entry, then offers the same slot to the next match", async () => {
-    mocks.tx.appointment.findFirst.mockResolvedValue(CANCELLED);
     mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_next", "2026-02-01")]);
 
     const outcome = await reofferFreedSlot(tx, {
@@ -438,6 +505,12 @@ describe("expirePastSlotOffers", () => {
             { appointment: { startAt: { lte: NOW } } },
             { appointment: { status: { not: "CANCELLED" } } },
             { client: INELIGIBLE_CLIENT_WHERE },
+            {
+              appointment: {
+                staffMemberId: { not: null },
+                NOT: { staffMember: { isActive: true, status: { not: "INACTIVE" } } },
+              },
+            },
           ],
         },
         { OR: [{ status: "PENDING" }, { status: "SENT", waitlistEntry: { status: "OFFERED" } }] },
@@ -483,7 +556,6 @@ describe("expirePastSlotOffers", () => {
       { id: "d_archived", businessId: "biz_1", waitlistEntryId: "wl_archived", appointmentId: "appt_1" },
     ]);
     mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
-    mocks.tx.appointment.findFirst.mockResolvedValue(CANCELLED);
     mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_next", "2026-02-01")]);
 
     expect(await expirePastSlotOffers("biz_1", NOW)).toEqual({ expired: 1, released: 1 });
@@ -586,7 +658,6 @@ describe("removeWaitlistEntry", () => {
       .mockResolvedValueOnce([{ id: "d_offer", appointmentId: "appt_1" }]) // before the entry write
       .mockResolvedValueOnce([]); // catch-up pass after it
     mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
-    mocks.tx.appointment.findFirst.mockResolvedValue(CANCELLED);
     mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_next", "2026-02-01")]);
 
     expect(await removeWaitlistEntry({ id: "wl_removed", businessId: "biz_1", now: NOW })).toEqual({ ok: true });
@@ -628,7 +699,6 @@ describe("removeWaitlistEntry", () => {
       .mockResolvedValueOnce([]) // nothing open when the remove started
       .mockResolvedValueOnce([{ id: "d_new", appointmentId: "appt_1" }]); // committed during the lock wait
     mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
-    mocks.tx.appointment.findFirst.mockResolvedValue(CANCELLED);
     mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_next", "2026-02-01")]);
 
     expect(await removeWaitlistEntry({ id: "wl_removed", businessId: "biz_1", now: NOW })).toEqual({ ok: true });

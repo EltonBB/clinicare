@@ -411,7 +411,11 @@ describe("applyInboundReplyIntent", () => {
         kind: "SLOT_OFFER",
         status: "SENT",
         waitlistEntry: { status: "OFFERED" },
-        appointment: { status: "CANCELLED", startAt: { gt: NOW } },
+        appointment: {
+          status: "CANCELLED",
+          startAt: { gt: NOW },
+          OR: [{ staffMemberId: null }, { staffMember: { isActive: true, status: { not: "INACTIVE" } } }],
+        },
         client: { isArchived: false, status: { notIn: ["INACTIVE", "ARCHIVED"] } },
       },
       select: { id: true },
@@ -434,7 +438,11 @@ describe("applyInboundReplyIntent", () => {
     const result = await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "2", now: NOW });
 
     const [{ where }] = mocks.followUpDraft.findFirst.mock.calls[0];
-    expect(where.appointment).toEqual({ status: "CANCELLED", startAt: { gt: NOW } });
+    expect(where.appointment).toEqual({
+      status: "CANCELLED",
+      startAt: { gt: NOW },
+      OR: [{ staffMemberId: null }, { staffMember: { isActive: true, status: { not: "INACTIVE" } } }],
+    });
     expect(result).toEqual({ applied: true, intent: "cancel", appointmentId: "appt_1" });
   });
 

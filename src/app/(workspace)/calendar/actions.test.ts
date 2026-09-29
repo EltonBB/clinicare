@@ -90,12 +90,6 @@ vi.mock("@/lib/appointments-shared", async () => {
     APPOINTMENT_ALREADY_NO_SHOW_ERROR: actual.APPOINTMENT_ALREADY_NO_SHOW_ERROR,
     APPOINTMENT_CONFLICT_ERROR: actual.APPOINTMENT_CONFLICT_ERROR,
     APPOINTMENT_TIME_CONFLICT_ERROR: actual.APPOINTMENT_TIME_CONFLICT_ERROR,
-    // Real implementations, not mocks — both take the (mocked) tx client as
-    // a plain argument rather than reaching for the top-level prisma import,
-    // so running the real query-construction logic here is what makes this
-    // suite's assertions on the exact `where` shape mean anything.
-    acquireSchedulingLock: actual.acquireSchedulingLock,
-    hasSchedulingConflict: actual.hasSchedulingConflict,
     APPOINTMENT_CANCELLED_NO_SHOW_ERROR: actual.APPOINTMENT_CANCELLED_NO_SHOW_ERROR,
     APPOINTMENT_NOT_STARTED_ERROR: actual.APPOINTMENT_NOT_STARTED_ERROR,
     NO_SHOW_PLAN_ERROR: actual.NO_SHOW_PLAN_ERROR,
@@ -107,6 +101,12 @@ vi.mock("@/lib/appointments-shared", async () => {
     revalidateCalendarSurfaces: mocks.revalidateCalendarSurfaces,
   };
 });
+
+// acquireSchedulingLock/hasSchedulingConflict now live in their own
+// dependency-free module (@/lib/scheduling-conflicts) — not mocked at all,
+// so the suite's assertions on the exact `where` shape run against the real
+// query-construction logic, same as before it moved out of
+// appointments-shared.ts (Codex #130).
 
 import {
   cancelAppointmentAction,
@@ -489,6 +489,7 @@ describe("saveAppointmentAction — cancelling from the Status dropdown offers t
         staffMemberId: null,
         title: "Checkup",
         startAt: parseZonedWallClock("2026-06-01", "09:00"),
+        endAt: parseZonedWallClock("2026-06-01", "09:30"),
       },
     });
   });
@@ -595,6 +596,7 @@ describe("saveAppointmentAction — un-cancelling withdraws the slot's offer", (
         staffMemberId: null,
         title: "Checkup",
         startAt: parseZonedWallClock("2026-06-01", "14:00"),
+        endAt: parseZonedWallClock("2026-06-01", "14:30"),
       },
     });
     const withdrawOrder = mocks.withdrawSlotOffers.mock.invocationCallOrder[0];
@@ -635,6 +637,7 @@ describe("saveAppointmentAction — un-cancelling withdraws the slot's offer", (
         staffMemberId: null,
         title: "Checkup",
         startAt: parseZonedWallClock("2026-06-01", "09:00"),
+        endAt: parseZonedWallClock("2026-06-01", "10:00"),
       },
     });
   });
@@ -678,15 +681,18 @@ describe("saveAppointmentAction — un-cancelling withdraws the slot's offer", (
         staffMemberId: null,
         title: "Checkup",
         startAt: parseZonedWallClock("2026-06-01", "09:00"),
+        endAt: parseZonedWallClock("2026-06-01", "09:30"),
       },
     });
   });
 
-  // Codex #130: the conflict check is correctly skipped for the appointment
-  // itself (it stays cancelled, so it occupies nothing) — but re-offering the
-  // edited staff/time to a waiting client is a separate promise, and nothing
-  // had verified that slot was actually free.
-  it("does not re-offer an edited still-cancelled slot that collides with another real appointment", async () => {
+  // Codex #130 (round 8): the availability check for the edited slot (lock +
+  // overlap query) now lives INSIDE offerFreedSlot itself, shared by every
+  // re-offer path — calendar/actions.ts no longer does its own check before
+  // calling it, so this test only confirms the call happens with the right
+  // (endAt-inclusive) window; offerFreedSlot's own conflict handling is
+  // covered directly in slot-offers.test.ts.
+  it("re-offers the edited still-cancelled slot's saved window", async () => {
     mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_1" });
     const txClient = {
       appointment: mocks.appointment,
@@ -695,9 +701,7 @@ describe("saveAppointmentAction — un-cancelling withdraws the slot's offer", (
       $executeRaw: mocks.$executeRaw,
     };
     mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(txClient));
-    mocks.appointment.findFirst
-      .mockResolvedValueOnce({ ...CANCELLED_EXISTING, staffMemberId: "staff_1" }) // the outer "existing" read
-      .mockResolvedValueOnce({ id: "appt_other" }); // hasSchedulingConflict's own overlap query
+    mocks.appointment.findFirst.mockResolvedValueOnce({ ...CANCELLED_EXISTING, staffMemberId: "staff_1" });
 
     const result = await saveAppointmentAction({
       ...PAYLOAD,
@@ -710,36 +714,6 @@ describe("saveAppointmentAction — un-cancelling withdraws the slot's offer", (
 
     expect(result.ok).toBe(true);
     expect(mocks.withdrawSlotOffers).toHaveBeenCalledWith(txClient, { businessId: "biz_1", appointmentId: "appt_1" });
-    expect(mocks.offerFreedSlot).not.toHaveBeenCalled();
-  });
-
-  it("still re-offers an edited still-cancelled slot once nothing else occupies it", async () => {
-    mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_1" });
-    const txClient = {
-      appointment: mocks.appointment,
-      appointmentReminder: mocks.appointmentReminder,
-      scheduleBlock: mocks.scheduleBlock,
-      $executeRaw: mocks.$executeRaw,
-    };
-    mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(txClient));
-    mocks.appointment.findFirst
-      .mockResolvedValueOnce({ ...CANCELLED_EXISTING, staffMemberId: "staff_1" })
-      .mockResolvedValueOnce(null); // no overlapping appointment for staff_1 at the new time
-
-    const result = await saveAppointmentAction({
-      ...PAYLOAD,
-      staffMemberId: "staff_1",
-      status: "cancelled",
-      baselineStatus: "cancelled",
-      startTime: "14:00",
-      endTime: "14:30",
-    });
-
-    expect(result.ok).toBe(true);
-    // Codex #130 (round 8): the re-offer's own conflict check takes the same
-    // advisory lock the ordinary booking path does, closing the window for a
-    // concurrent booking to slip in unseen.
-    expect(mocks.$executeRaw).toHaveBeenCalled();
     expect(mocks.offerFreedSlot).toHaveBeenCalledWith(txClient, {
       businessId: "biz_1",
       cancelled: {
@@ -748,6 +722,7 @@ describe("saveAppointmentAction — un-cancelling withdraws the slot's offer", (
         staffMemberId: "staff_1",
         title: "Checkup",
         startAt: parseZonedWallClock("2026-06-01", "14:00"),
+        endAt: parseZonedWallClock("2026-06-01", "14:30"),
       },
     });
   });

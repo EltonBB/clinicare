@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
     waitlistEntry: { findMany: vi.fn(), updateMany: vi.fn() },
     appointment: { findFirst: vi.fn() },
     business: { findUniqueOrThrow: vi.fn() },
+    scheduleBlock: { findFirst: vi.fn() },
+    $executeRaw: vi.fn(),
   },
 }));
 
@@ -38,6 +40,7 @@ const FREED_APPOINTMENT = {
   staffMemberId: null,
   title: "Checkup",
   startAt: new Date("2026-10-05T07:00:00.000Z"),
+  endAt: new Date("2026-10-05T07:30:00.000Z"),
   updatedAt: new Date("2026-09-01T07:30:00.000Z"), // when it was cancelled
 };
 
@@ -49,6 +52,8 @@ beforeEach(() => {
   mocks.tx.followUpDraft.createMany.mockResolvedValue({ count: 1 });
   mocks.tx.business.findUniqueOrThrow.mockResolvedValue({ plan: "PRO" });
   mocks.tx.followUpDraft.findFirst.mockResolvedValue(null); // no other live offer for the slot
+  mocks.tx.scheduleBlock.findFirst.mockResolvedValue(null); // no business-wide block by default
+  mocks.tx.$executeRaw.mockResolvedValue(undefined);
 });
 
 // A minimal in-memory reading of the Prisma where-inputs the data layer
@@ -286,7 +291,7 @@ const LIVENESS_CASES: Array<{ name: string; live: boolean; row: Row }> = [
   {
     name: "thank-you, visit cancelled",
     live: false,
-    row: draftRow({ kind: "THANK_YOU", appointmentId: "appt_1", appointment: { status: "CANCELLED", startAt: PAST } }),
+    row: draftRow({ kind: "THANK_YOU", appointmentId: "appt_1", appointment: { status: "CANCELLED", startAt: PAST, staffMemberId: null } }),
   },
   { name: "thank-you, visit deleted", live: false, row: draftRow({ kind: "THANK_YOU", appointmentId: null, appointment: null }) },
 
@@ -297,7 +302,7 @@ const LIVENESS_CASES: Array<{ name: string; live: boolean; row: Row }> = [
       kind: "SLOT_OFFER",
       waitlistEntry: { status: "OFFERED" },
       appointmentId: "appt_2",
-      appointment: { status: "CANCELLED", startAt: FUTURE },
+      appointment: { status: "CANCELLED", startAt: FUTURE, staffMemberId: null },
     }),
   },
   {
@@ -307,7 +312,7 @@ const LIVENESS_CASES: Array<{ name: string; live: boolean; row: Row }> = [
       kind: "SLOT_OFFER",
       waitlistEntry: { status: "OFFERED" },
       appointmentId: "appt_2",
-      appointment: { status: "CANCELLED", startAt: PAST },
+      appointment: { status: "CANCELLED", startAt: PAST, staffMemberId: null },
     }),
   },
   {
@@ -317,7 +322,7 @@ const LIVENESS_CASES: Array<{ name: string; live: boolean; row: Row }> = [
       kind: "SLOT_OFFER",
       waitlistEntry: { status: "OFFERED" },
       appointmentId: "appt_2",
-      appointment: { status: "CONFIRMED", startAt: FUTURE },
+      appointment: { status: "CONFIRMED", startAt: FUTURE, staffMemberId: null },
     }),
   },
   {
@@ -327,7 +332,7 @@ const LIVENESS_CASES: Array<{ name: string; live: boolean; row: Row }> = [
       kind: "SLOT_OFFER",
       waitlistEntry: { status: "WAITING" },
       appointmentId: "appt_2",
-      appointment: { status: "CANCELLED", startAt: FUTURE },
+      appointment: { status: "CANCELLED", startAt: FUTURE, staffMemberId: null },
     }),
   },
   // Codex #130: the waiting client can be archived/deactivated after already
@@ -341,7 +346,7 @@ const LIVENESS_CASES: Array<{ name: string; live: boolean; row: Row }> = [
       kind: "SLOT_OFFER",
       waitlistEntry: { status: "OFFERED" },
       appointmentId: "appt_2",
-      appointment: { status: "CANCELLED", startAt: FUTURE },
+      appointment: { status: "CANCELLED", startAt: FUTURE, staffMemberId: null },
       client: client({ isArchived: true }),
     }),
   },
@@ -352,8 +357,57 @@ const LIVENESS_CASES: Array<{ name: string; live: boolean; row: Row }> = [
       kind: "SLOT_OFFER",
       waitlistEntry: { status: "OFFERED" },
       appointmentId: "appt_2",
-      appointment: { status: "CANCELLED", startAt: FUTURE },
+      appointment: { status: "CANCELLED", startAt: FUTURE, staffMemberId: null },
       client: client({ status: "INACTIVE" }),
+    }),
+  },
+  // Codex #130 (round 8): the freed appointment's own assigned staff can go
+  // inactive after the offer is already out — Book already refuses that
+  // staff member, so an offer for it must stop being sendable at once too,
+  // not linger until staff discover it failing at Book time.
+  {
+    name: "slot offer, assigned staff still active",
+    live: true,
+    row: draftRow({
+      kind: "SLOT_OFFER",
+      waitlistEntry: { status: "OFFERED" },
+      appointmentId: "appt_2",
+      appointment: {
+        status: "CANCELLED",
+        startAt: FUTURE,
+        staffMemberId: "staff_1",
+        staffMember: { isActive: true, status: "ACTIVE" },
+      },
+    }),
+  },
+  {
+    name: "slot offer, assigned staff deactivated (isActive false)",
+    live: false,
+    row: draftRow({
+      kind: "SLOT_OFFER",
+      waitlistEntry: { status: "OFFERED" },
+      appointmentId: "appt_2",
+      appointment: {
+        status: "CANCELLED",
+        startAt: FUTURE,
+        staffMemberId: "staff_1",
+        staffMember: { isActive: false, status: "ACTIVE" },
+      },
+    }),
+  },
+  {
+    name: "slot offer, assigned staff status INACTIVE",
+    live: false,
+    row: draftRow({
+      kind: "SLOT_OFFER",
+      waitlistEntry: { status: "OFFERED" },
+      appointmentId: "appt_2",
+      appointment: {
+        status: "CANCELLED",
+        startAt: FUTURE,
+        staffMemberId: "staff_1",
+        staffMember: { isActive: true, status: "INACTIVE" },
+      },
     }),
   },
 ];
@@ -402,7 +456,7 @@ describe("follow-ups data layer — which drafts are actionable", () => {
         kind: "SLOT_OFFER",
         status: "SENT",
         waitlistEntry: { status: "OFFERED" },
-        appointment: { status: "CANCELLED", startAt: FUTURE },
+        appointment: { status: "CANCELLED", startAt: FUTURE, staffMemberId: null },
       }),
     ]);
 
@@ -420,7 +474,7 @@ describe("follow-ups data layer — which drafts are actionable", () => {
         kind: "SLOT_OFFER",
         status: "SENT",
         waitlistEntry: { status: "OFFERED" },
-        appointment: { status: "CANCELLED", startAt: FUTURE },
+        appointment: { status: "CANCELLED", startAt: FUTURE, staffMemberId: null },
       }),
     ]);
 
@@ -433,7 +487,7 @@ describe("follow-ups data layer — which drafts are actionable", () => {
         kind: "SLOT_OFFER",
         status: "SENT",
         waitlistEntry: { status: "OFFERED" },
-        appointment: { status: "CANCELLED", startAt: PAST },
+        appointment: { status: "CANCELLED", startAt: PAST, staffMemberId: null },
       }),
     ]);
 
@@ -726,7 +780,11 @@ describe("bookSlotOffer (Book)", () => {
             id: "d1",
             kind: "SLOT_OFFER",
             waitlistEntry: { status: "OFFERED" },
-            appointment: { status: "CANCELLED", startAt: { gt: NOW } },
+            appointment: {
+              status: "CANCELLED",
+              startAt: { gt: NOW },
+              OR: [{ staffMemberId: null }, { staffMember: { isActive: true, status: { not: "INACTIVE" } } }],
+            },
             client: { isArchived: false, status: { notIn: ["INACTIVE", "ARCHIVED"] } },
           },
         },

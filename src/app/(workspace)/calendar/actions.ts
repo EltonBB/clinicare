@@ -7,7 +7,6 @@ import { getAuthedBusiness as getAuthedBusinessContext, toBusinessIdentity } fro
 import { loadCalendarMonth, type CalendarMonthData } from "@/lib/calendar-data";
 import { isValidMonthKey } from "@/lib/calendar-range";
 import {
-  acquireSchedulingLock,
   APPOINTMENT_ALREADY_COMPLETED_ERROR,
   APPOINTMENT_ALREADY_NO_SHOW_ERROR,
   APPOINTMENT_CANCELLED_NO_SHOW_ERROR,
@@ -16,7 +15,6 @@ import {
   APPOINTMENT_TIME_CONFLICT_ERROR,
   cancelAppointmentCore,
   deleteAppointmentCore,
-  hasSchedulingConflict,
   NO_SHOW_PLAN_ERROR,
   notifyStaffOfAppointmentChange,
   recordAppointmentAttendanceCore,
@@ -27,6 +25,7 @@ import { isProBusinessPlan } from "@/lib/billing";
 import { getNoShowRiskAssessments } from "@/lib/no-show-risk-data";
 import { MAX_RISK_BATCH_SIZE, type NoShowRiskAssessment } from "@/lib/no-show-risk";
 import { parseRecordId } from "@/lib/record-id";
+import { acquireSchedulingLock, hasSchedulingConflict } from "@/lib/scheduling-conflicts";
 import { offerFreedSlot, withdrawSlotOffers } from "@/lib/slot-offers";
 import {
   formatZonedDateKey,
@@ -545,9 +544,10 @@ export async function saveAppointmentAction(
 
         // Cancelling from the Status dropdown frees the slot exactly like the
         // dedicated Cancel action does, so it offers it to the waiting list
-        // the same way (Pro only — checked inside offerFreedSlot). Uses the
-        // row as just saved, so the offer, the Follow-ups row and Book's
-        // pre-fill all read the same time.
+        // the same way (Pro only, and the destination staff/time is actually
+        // free — both checked inside offerFreedSlot). Uses the row as just
+        // saved, so the offer, the Follow-ups row and Book's pre-fill all
+        // read the same time.
         if (wasNewlyCancelled) {
           await offerFreedSlot(tx, {
             businessId: business.id,
@@ -557,6 +557,7 @@ export async function saveAppointmentAction(
               staffMemberId,
               title: payload.service.trim(),
               startAt,
+              endAt,
             },
           });
         }
@@ -572,46 +573,23 @@ export async function saveAppointmentAction(
         // open offer: withdraw the stale one and offer the saved details
         // again, so the offer text, the Follow-ups row and Book's pre-fill
         // all read the same (new) details — same ordering as the un-cancel
-        // branch above.
+        // branch above. offerFreedSlot itself verifies the edited staff/time
+        // is actually free before promising it (Codex #130) — the conflict
+        // check above is still correctly skipped for the CANCELLED
+        // destination itself, which never occupies a slot.
         if (slotDetailsChangedWhileCancelled) {
           await withdrawSlotOffers(tx, { businessId: business.id, appointmentId: payload.id });
-
-          // The conflict check above is skipped for the whole CANCELLED-
-          // destination branch, correctly — this appointment stays cancelled,
-          // so it never occupies the edited staff/time itself. But re-offering
-          // that edited slot to a waiting client is a separate promise this
-          // save is about to make, and nothing has verified the NEW staff/
-          // time is actually free: if a different real appointment already
-          // holds it, the patient would be offered (and staff could Book) a
-          // slot that's already taken. Check it here, right before making
-          // that promise, instead of skipping straight to offerFreedSlot
-          // (Codex #130). Acquire the same advisory lock the ordinary
-          // conflict check above takes before its own read — without it, a
-          // concurrent booking for this staff member can commit between this
-          // unlocked read and offerFreedSlot below, and this transaction
-          // would never see it (Codex).
-          await acquireSchedulingLock(tx, staffMemberId);
-
-          const editedSlotIsFree = !(await hasSchedulingConflict(tx, {
+          await offerFreedSlot(tx, {
             businessId: business.id,
-            staffMemberId,
-            startAt,
-            endAt,
-            excludeAppointmentId: payload.id,
-          }));
-
-          if (editedSlotIsFree) {
-            await offerFreedSlot(tx, {
-              businessId: business.id,
-              cancelled: {
-                id: payload.id,
-                clientId: payload.clientId,
-                staffMemberId,
-                title: payload.service.trim(),
-                startAt,
-              },
-            });
-          }
+            cancelled: {
+              id: payload.id,
+              clientId: payload.clientId,
+              staffMemberId,
+              title: payload.service.trim(),
+              startAt,
+              endAt,
+            },
+          });
         }
       } else {
         const created = await tx.appointment.create({

@@ -5,6 +5,7 @@ import { timeToMinutes } from "@/lib/calendar";
 import { ELIGIBLE_CLIENT_WHERE, INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { prisma } from "@/lib/prisma";
 import { retryOnWriteConflict } from "@/lib/prisma-retry";
+import { acquireSchedulingLock, hasSchedulingConflict } from "@/lib/scheduling-conflicts";
 import { rankWaitlistMatches } from "@/lib/slot-fill-matching";
 import { formatZonedFullDate, formatZonedTime, formatZonedTime24, getZonedWeekday } from "@/lib/time-zone";
 import { WAITLIST_ENTRY_REMOVED_ERROR } from "@/lib/waitlist";
@@ -35,6 +36,7 @@ export type FreedAppointment = {
   staffMemberId: string | null;
   title: string;
   startAt: Date;
+  endAt: Date;
 };
 
 // Open offers one appointment or one entry can hold — one, by the invariant;
@@ -82,6 +84,29 @@ export async function offerFreedSlot(
   });
 
   if (!isProBusinessPlan(business.plan)) {
+    return null;
+  }
+
+  // hasSchedulingConflict deliberately excludes CANCELLED rows, so a real
+  // appointment can be booked directly into a freed slot without ever
+  // touching cancelled.id — every path that reaches here (the original
+  // cancellation, Skip, Declined, Remove, the hourly expiry sweep, an edited
+  // still-cancelled save, or a still-active booking edited straight to
+  // Cancelled) must re-verify the slot is still actually free before
+  // promising it to a waiting client, not just the one call site that
+  // happened to be audited first (Codex #130). Centralized here so every
+  // caller gets it, instead of re-adding the same lock+check at each one.
+  await acquireSchedulingLock(tx, cancelled.staffMemberId);
+
+  const occupied = await hasSchedulingConflict(tx, {
+    businessId,
+    staffMemberId: cancelled.staffMemberId,
+    startAt: cancelled.startAt,
+    endAt: cancelled.endAt,
+    excludeAppointmentId: cancelled.id,
+  });
+
+  if (occupied) {
     return null;
   }
 
@@ -227,7 +252,7 @@ async function offerSlotAgain(
 
   const cancelled = await tx.appointment.findFirst({
     where: { id: appointmentId, businessId, status: "CANCELLED" },
-    select: { id: true, clientId: true, staffMemberId: true, title: true, startAt: true },
+    select: { id: true, clientId: true, staffMemberId: true, title: true, startAt: true, endAt: true },
   });
 
   return cancelled ? offerFreedSlot(tx, { businessId, cancelled, now }) : null;
@@ -235,20 +260,29 @@ async function offerSlotAgain(
 
 /**
  * A slot offer is live while its entry still holds the offer, the freed slot
- * is still cancelled and ahead, and the waiting client hasn't since been
- * archived or deactivated. Anything else is stale: hidden from the
- * Follow-ups list and count, refused by Send/Book, and retired by
+ * is still cancelled and ahead, the waiting client hasn't since been archived
+ * or deactivated, and — when the freed appointment had an assigned staff
+ * member — that staff member is still active. Anything else is stale: hidden
+ * from the Follow-ups list and count, refused by Send/Book, and retired by
  * expirePastSlotOffers. The client check matters here specifically because
  * an archived client can't be booked at all (the booking form's picker
  * refuses them), so a still-"live" offer to one would send a message inviting
  * a reply, or let Book silently default the form to some other client
- * instead of failing cleanly (Codex #130).
+ * instead of failing cleanly (Codex #130). The staff check matters the same
+ * way: Book already refuses a slot whose staff has since gone inactive
+ * (bookFollowUpSlotAction), so an offer that can't be honored must stop
+ * being sendable at once too, not only once staff discover it while trying
+ * to Book (Codex #130).
  */
 export function liveSlotOfferWhere(now: Date): Prisma.FollowUpDraftWhereInput {
   return {
     kind: "SLOT_OFFER",
     waitlistEntry: { status: "OFFERED" },
-    appointment: { status: "CANCELLED", startAt: { gt: now } },
+    appointment: {
+      status: "CANCELLED",
+      startAt: { gt: now },
+      OR: [{ staffMemberId: null }, { staffMember: { isActive: true, status: { not: "INACTIVE" } } }],
+    },
     client: ELIGIBLE_CLIENT_WHERE,
   };
 }
@@ -265,6 +299,16 @@ function staleSlotWhere(now: Date): Prisma.FollowUpDraftWhereInput {
       // entry so the slot can be re-offered to the next real candidate
       // (Codex #130).
       { client: INELIGIBLE_CLIENT_WHERE },
+      // Mirrors liveSlotOfferWhere's own staff check: the freed appointment
+      // had an assigned staff member who has since gone inactive, so Book
+      // would refuse this offer anyway — retire it now and release the
+      // entry, the same as the client check above (Codex #130).
+      {
+        appointment: {
+          staffMemberId: { not: null },
+          NOT: { staffMember: { isActive: true, status: { not: "INACTIVE" } } },
+        },
+      },
     ],
   };
 }

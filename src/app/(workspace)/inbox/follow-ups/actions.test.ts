@@ -371,7 +371,11 @@ describe("bookFollowUpSlotAction", () => {
         kind: "SLOT_OFFER",
         status: "SENT",
         waitlistEntry: { status: "OFFERED" },
-        appointment: { status: "CANCELLED", startAt: { gt: expect.any(Date) } },
+        appointment: {
+          status: "CANCELLED",
+          startAt: { gt: expect.any(Date) },
+          OR: [{ staffMemberId: null }, { staffMember: { isActive: true, status: { not: "INACTIVE" } } }],
+        },
       }),
       select: {
         clientId: true,
