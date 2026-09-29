@@ -777,6 +777,27 @@ export async function saveClientAction(
         };
       }
 
+      // ELIGIBLE_CLIENT_WHERE hides this client's waitlist entries from the
+      // active list/cap the moment they go inactive/archived, but leaves
+      // their status untouched — so reactivating them later would silently
+      // let those entries re-enter the panel and count again, with no
+      // capacity check at that point (Codex #130). Retire them BEFORE the
+      // status change commits, the same way deleteClientAction settles a
+      // held offer before its own delete — removeWaitlistEntry opens its own
+      // transaction and can't be nested inside this update, so ordering is
+      // what keeps a mid-loop failure safe: if it throws, the client's
+      // status hasn't changed yet, instead of leaving an ineligible client
+      // with active entries the way running this after update would (Codex).
+      if (data.status === "INACTIVE" || data.status === "ARCHIVED") {
+        const staleEntries = await prisma.waitlistEntry.findMany({
+          where: { businessId: business.id, clientId: payload.id, status: { in: ["WAITING", "OFFERED"] } },
+          select: { id: true },
+        });
+        for (const entry of staleEntries) {
+          await removeWaitlistEntry({ id: entry.id, businessId: business.id });
+        }
+      }
+
       await prisma.client.update({
         where: {
           id: payload.id,
@@ -786,22 +807,6 @@ export async function saveClientAction(
 
       if (normalizePhone(existing.phone) !== cleanedPhone) {
         await normalizeConversationsForBusiness(business.id);
-      }
-
-      // ELIGIBLE_CLIENT_WHERE hides this client's waitlist entries from the
-      // active list/cap the moment they go inactive/archived, but leaves
-      // their status untouched — so reactivating them later would silently
-      // let those entries re-enter the panel and count again, with no
-      // capacity check at that point (Codex #130). Retire them here instead,
-      // the same way deleteClientAction already retires a held offer.
-      if (data.status === "INACTIVE" || data.status === "ARCHIVED") {
-        const staleEntries = await prisma.waitlistEntry.findMany({
-          where: { businessId: business.id, clientId: payload.id, status: { in: ["WAITING", "OFFERED"] } },
-          select: { id: true },
-        });
-        for (const entry of staleEntries) {
-          await removeWaitlistEntry({ id: entry.id, businessId: business.id });
-        }
       }
     } else {
       const created = await prisma.client.create({

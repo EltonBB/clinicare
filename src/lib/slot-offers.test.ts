@@ -28,9 +28,11 @@ import { Prisma } from "@prisma/client";
 import { INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import {
   expirePastSlotOffers,
+  findStaffAssignedOpenOfferAppointments,
   offerFreedSlot,
   removeWaitlistEntry,
   reofferFreedSlot,
+  retireSlotOffersForAppointments,
   retryOnWriteConflict,
   slotOfferBody,
   withdrawSlotOffers,
@@ -642,6 +644,107 @@ describe("withdrawSlotOffers (appointment un-cancelled)", () => {
       released: 0,
     });
     expect(mocks.tx.waitlistEntry.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+// Codex #130: the appointment FK's SET NULL clears staffMemberId the instant
+// a staff row is deleted, so a stale offer for one of their freed slots must
+// be found BEFORE the delete — this exact filter would match nothing after.
+describe("findStaffAssignedOpenOfferAppointments", () => {
+  it("finds the distinct appointments behind this staff member's open slot offers", async () => {
+    mocks.tx.followUpDraft.findMany.mockResolvedValue([
+      { appointmentId: "appt_1" },
+      { appointmentId: "appt_2" },
+    ]);
+
+    const result = await findStaffAssignedOpenOfferAppointments(tx, {
+      businessId: "biz_1",
+      staffMemberId: "staff_dying",
+    });
+
+    expect(result).toEqual(["appt_1", "appt_2"]);
+    expect(mocks.tx.followUpDraft.findMany).toHaveBeenCalledWith({
+      where: {
+        businessId: "biz_1",
+        kind: "SLOT_OFFER",
+        OR: [{ status: "PENDING" }, { status: "SENT", waitlistEntry: { status: "OFFERED" } }],
+        appointment: { staffMemberId: "staff_dying", status: "CANCELLED" },
+      },
+      select: { appointmentId: true },
+      distinct: ["appointmentId"],
+      take: 20,
+    });
+  });
+
+  it("drops a null appointmentId instead of handing it to the retirement loop", async () => {
+    mocks.tx.followUpDraft.findMany.mockResolvedValue([{ appointmentId: null }, { appointmentId: "appt_1" }]);
+
+    const result = await findStaffAssignedOpenOfferAppointments(tx, {
+      businessId: "biz_1",
+      staffMemberId: "staff_dying",
+    });
+
+    expect(result).toEqual(["appt_1"]);
+  });
+
+  it("returns nothing when this staff member holds no open slot offers", async () => {
+    mocks.tx.followUpDraft.findMany.mockResolvedValue([]);
+
+    const result = await findStaffAssignedOpenOfferAppointments(tx, {
+      businessId: "biz_1",
+      staffMemberId: "staff_clean",
+    });
+
+    expect(result).toEqual([]);
+  });
+});
+
+describe("retireSlotOffersForAppointments", () => {
+  it("withdraws each appointment's stale offer, then re-offers the freed slot to the next match", async () => {
+    mocks.tx.followUpDraft.findMany
+      .mockResolvedValueOnce([{ id: "d_offer", businessId: "biz_1", waitlistEntryId: "wl_1" }]) // withdrawSlotOffers' read
+      .mockResolvedValueOnce([]); // no live offer for the slot yet (offerFreedSlot's own dedupe check)
+    mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_next", "2026-02-01")]);
+    // offerSlotAgain re-reads the appointment fresh — by now (after the
+    // staff delete this always runs after) it genuinely has no staff.
+    serveAppointmentReads({ read: { ...CANCELLED, staffMemberId: null } });
+
+    await retireSlotOffersForAppointments(tx, { businessId: "biz_1", appointmentIds: ["appt_1"], now: NOW });
+
+    expect(mocks.tx.followUpDraft.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: "d_offer", appointmentId: "appt_1" }),
+      data: { status: "EXPIRED" },
+    });
+    expect(mocks.tx.waitlistEntry.updateMany.mock.calls.map(([call]) => [call.where.id ?? call.where, call.data.status])).toContainEqual([
+      "wl_1",
+      "WAITING",
+    ]);
+    expect(mocks.tx.followUpDraft.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: [expect.objectContaining({ waitlistEntryId: "wl_next", appointmentId: "appt_1" })] })
+    );
+  });
+
+  it("processes every listed appointment, not just the first", async () => {
+    mocks.tx.followUpDraft.findMany.mockResolvedValue([]); // nothing open for either — no dismissal work
+    serveAppointmentReads({ read: null }); // neither appointment is still cancelled
+
+    await retireSlotOffersForAppointments(tx, {
+      businessId: "biz_1",
+      appointmentIds: ["appt_1", "appt_2"],
+      now: NOW,
+    });
+
+    const appointmentReads = mocks.tx.appointment.findFirst.mock.calls.map(([call]) => call.where.id);
+    expect(appointmentReads).toContain("appt_1");
+    expect(appointmentReads).toContain("appt_2");
+  });
+
+  it("does nothing for an empty list", async () => {
+    await retireSlotOffersForAppointments(tx, { businessId: "biz_1", appointmentIds: [], now: NOW });
+
+    expect(mocks.tx.followUpDraft.findMany).not.toHaveBeenCalled();
+    expect(mocks.tx.appointment.findFirst).not.toHaveBeenCalled();
   });
 });
 

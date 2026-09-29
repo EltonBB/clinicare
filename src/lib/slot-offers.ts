@@ -385,6 +385,52 @@ export async function withdrawSlotOffers(
 }
 
 /**
+ * The freed appointments a staff member's deletion is about to make stale:
+ * open SLOT_OFFER drafts for one of their still-cancelled appointments. Read
+ * this BEFORE the delete — the appointment's staffMemberId goes to NULL via
+ * SET NULL the moment the staff row is gone, so this exact filter would match
+ * nothing afterward (Codex #130).
+ */
+export async function findStaffAssignedOpenOfferAppointments(
+  tx: Prisma.TransactionClient,
+  args: { businessId: string; staffMemberId: string }
+): Promise<string[]> {
+  const drafts = await tx.followUpDraft.findMany({
+    where: {
+      businessId: args.businessId,
+      kind: "SLOT_OFFER",
+      ...OPEN_SLOT_OFFER_WHERE,
+      appointment: { staffMemberId: args.staffMemberId, status: "CANCELLED" },
+    },
+    select: { appointmentId: true },
+    distinct: ["appointmentId"],
+    take: MAX_OPEN_DRAFTS,
+  });
+
+  return drafts.flatMap((d) => (d.appointmentId ? [d.appointmentId] : []));
+}
+
+/**
+ * Withdraws each listed appointment's stale offer and immediately re-offers
+ * the freed slot to the next real candidate — call AFTER the staff delete
+ * that made these offers stale (`liveSlotOfferWhere`'s unassigned branch
+ * would otherwise read a staff-specific offer as a fresh open slot the
+ * instant SET NULL clears the appointment's staffMemberId), inside the same
+ * transaction so the delete and the retirement commit together. The re-read
+ * appointment now genuinely has no staff, matching however offerFreedSlot
+ * treats any other unassigned freed slot.
+ */
+export async function retireSlotOffersForAppointments(
+  tx: Prisma.TransactionClient,
+  args: { businessId: string; appointmentIds: string[]; now?: Date }
+): Promise<void> {
+  for (const appointmentId of args.appointmentIds) {
+    await withdrawSlotOffers(tx, { businessId: args.businessId, appointmentId });
+    await offerSlotAgain(tx, { businessId: args.businessId, appointmentId, now: args.now });
+  }
+}
+
+/**
  * Retires slot offers whose slot has passed (or whose appointment was deleted
  * or reactivated, or whose waiting client was archived or deactivated): the
  * open draft -> EXPIRED and its entry OFFERED -> WAITING, one small

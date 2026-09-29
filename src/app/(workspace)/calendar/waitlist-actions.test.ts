@@ -143,6 +143,14 @@ describe("addWaitlistEntryAction — successful add", () => {
     });
 
     expect(result).toEqual({ ok: true });
+    // Codex #130: a staff member who has gone inactive since the add dialog
+    // loaded must fail this ownership check, the same as liveSlotOfferWhere
+    // treats them — an entry pinned to one would sit on the list and count
+    // against the cap while never producing a usable offer.
+    expect(mocks.staffMember.findFirst).toHaveBeenCalledWith({
+      where: { id: "staff_1", businessId: "biz_1", isActive: true, status: { not: "INACTIVE" } },
+      select: { id: true },
+    });
     expect(mocks.createWaitlistEntry).toHaveBeenCalledWith(
       expect.objectContaining({
         staffMemberId: "staff_1",

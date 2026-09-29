@@ -115,8 +115,18 @@ export async function addWaitlistEntryAction(
 
   let staffMemberId: string | null = null;
   if (data.staffMemberId) {
+    // Same staff-liveness rule liveSlotOfferWhere applies to an offer: an
+    // entry pinned to an inactive/deactivated staff member would sit on the
+    // list and count against the cap, but any slot offered for them is
+    // rejected as stale the moment it's drafted (Codex #130) — so it can
+    // never actually be matched.
     const staff = await prisma.staffMember.findFirst({
-      where: { id: data.staffMemberId, businessId: business.id },
+      where: {
+        id: data.staffMemberId,
+        businessId: business.id,
+        isActive: true,
+        status: { not: "INACTIVE" },
+      },
       select: { id: true },
     });
 

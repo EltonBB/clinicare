@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const client = {
     findFirst: vi.fn(),
+    findFirstOrThrow: vi.fn(),
     deleteMany: vi.fn(),
     update: vi.fn(),
   };
@@ -11,14 +12,16 @@ const mocks = vi.hoisted(() => {
   const clientCareNote = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientTreatmentPlanItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientFollowUpReminder = { findFirst: vi.fn(), deleteMany: vi.fn() };
-  const clientPayment = { findFirst: vi.fn(), deleteMany: vi.fn() };
+  const clientPayment = { findFirst: vi.fn(), deleteMany: vi.fn(), groupBy: vi.fn() };
   const clientDocument = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientGalleryItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
+  const appointment = { groupBy: vi.fn(), count: vi.fn() };
   const waitlistEntry = { findMany: vi.fn() };
   const $transaction = vi.fn();
   const getAuthedBusiness = vi.fn();
   const attemptStorageCleanup = vi.fn();
   const recordPendingStorageCleanup = vi.fn();
+  const resolveMediaDisplayUrls = vi.fn();
   const removeWaitlistEntry = vi.fn();
   const after = vi.fn();
   return {
@@ -31,11 +34,13 @@ const mocks = vi.hoisted(() => {
     clientPayment,
     clientDocument,
     clientGalleryItem,
+    appointment,
     waitlistEntry,
     $transaction,
     getAuthedBusiness,
     attemptStorageCleanup,
     recordPendingStorageCleanup,
+    resolveMediaDisplayUrls,
     removeWaitlistEntry,
     after,
   };
@@ -52,6 +57,7 @@ vi.mock("@/lib/prisma", () => ({
     clientPayment: mocks.clientPayment,
     clientDocument: mocks.clientDocument,
     clientGalleryItem: mocks.clientGalleryItem,
+    appointment: mocks.appointment,
     waitlistEntry: mocks.waitlistEntry,
     $transaction: mocks.$transaction,
   },
@@ -76,6 +82,7 @@ vi.mock("@/lib/inbox-server", () => ({
 vi.mock("@/lib/media-storage-server", () => ({
   attemptStorageCleanup: mocks.attemptStorageCleanup,
   recordPendingStorageCleanup: mocks.recordPendingStorageCleanup,
+  resolveMediaDisplayUrls: mocks.resolveMediaDisplayUrls,
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -482,21 +489,67 @@ describe("saveClientAction retires stale waiting-list entries when a client beco
     tags: "",
   };
 
+  // What fetchClientRecord reads back after a successful save — every
+  // relation the query selects, empty, plus the scalar Client fields
+  // buildClientRecord needs. CodeRabbit #130: without this, a test could
+  // pass on `{ ok: false }` and never notice (client.findFirstOrThrow was
+  // unmocked, so the save always failed silently).
+  const SAVED_CLIENT_RECORD = {
+    id: CLIENT_ID,
+    businessId: "biz_1",
+    name: "Arta Krasniqi",
+    email: null,
+    phone: "+38344111222",
+    phoneKey: "38344111222",
+    gender: null,
+    dateOfBirth: null,
+    address: null,
+    patientType: "New Patient",
+    clinicType: null,
+    notes: null,
+    medicalHistory: null,
+    allergies: null,
+    importantHealthNotes: null,
+    previousTreatments: null,
+    treatmentPlan: null,
+    status: "ACTIVE",
+    preferredChannel: null,
+    assignedStaffName: null,
+    tags: [],
+    isArchived: false,
+    lastVisitAt: null,
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    updatedAt: new Date("2026-01-01T00:00:00Z"),
+    appointments: [],
+    messages: [],
+    galleryItems: [],
+    medications: [],
+    documents: [],
+    payments: [],
+    healthItems: [],
+    careNotes: [],
+    treatmentPlanItems: [],
+    followUpReminders: [],
+    _count: { appointments: 0 },
+  };
+
   beforeEach(() => {
     mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID, phone: "+38344111222" });
     mocks.client.update.mockResolvedValue({});
+    mocks.client.findFirstOrThrow.mockResolvedValue(SAVED_CLIENT_RECORD);
+    mocks.appointment.groupBy.mockResolvedValue([]);
+    mocks.appointment.count.mockResolvedValue(0);
+    mocks.clientPayment.groupBy.mockResolvedValue([]);
+    mocks.resolveMediaDisplayUrls.mockResolvedValue(new Map());
   });
 
   it("retires WAITING and OFFERED entries when the save marks the client inactive", async () => {
     mocks.waitlistEntry.findMany.mockResolvedValue([{ id: "wl_1" }, { id: "wl_2" }]);
     mocks.removeWaitlistEntry.mockResolvedValue({ ok: true });
 
-    // The action's own post-update steps (inbox sync, fetching the saved
-    // record to return) aren't relevant to this fix and aren't fully mocked
-    // here — only that this new retirement step ran, and ran with the right
-    // scope, is asserted.
-    await saveClientAction({ ...BASE_PAYLOAD, status: "inactive" });
+    const result = await saveClientAction({ ...BASE_PAYLOAD, status: "inactive" });
 
+    expect(result.ok).toBe(true);
     expect(mocks.client.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ status: "INACTIVE", isArchived: false }),
@@ -509,14 +562,21 @@ describe("saveClientAction retires stale waiting-list entries when a client beco
     expect(mocks.removeWaitlistEntry).toHaveBeenCalledTimes(2);
     expect(mocks.removeWaitlistEntry).toHaveBeenCalledWith({ id: "wl_1", businessId: "biz_1" });
     expect(mocks.removeWaitlistEntry).toHaveBeenCalledWith({ id: "wl_2", businessId: "biz_1" });
+    // Retirement runs before the status change commits (Codex #130): a
+    // mid-loop removeWaitlistEntry failure must never leave the client
+    // already marked inactive with entries still active.
+    expect(mocks.removeWaitlistEntry.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.client.update.mock.invocationCallOrder[0]
+    );
   });
 
   it("retires entries when the save archives the client too", async () => {
     mocks.waitlistEntry.findMany.mockResolvedValue([{ id: "wl_3" }]);
     mocks.removeWaitlistEntry.mockResolvedValue({ ok: true });
 
-    await saveClientAction({ ...BASE_PAYLOAD, status: "archived" });
+    const result = await saveClientAction({ ...BASE_PAYLOAD, status: "archived" });
 
+    expect(result.ok).toBe(true);
     expect(mocks.waitlistEntry.findMany).toHaveBeenCalledWith({
       where: { businessId: "biz_1", clientId: CLIENT_ID, status: { in: ["WAITING", "OFFERED"] } },
       select: { id: true },
@@ -525,8 +585,9 @@ describe("saveClientAction retires stale waiting-list entries when a client beco
   });
 
   it("never looks for stale entries when the save keeps the client eligible", async () => {
-    await saveClientAction({ ...BASE_PAYLOAD, status: "active" });
+    const result = await saveClientAction({ ...BASE_PAYLOAD, status: "active" });
 
+    expect(result.ok).toBe(true);
     expect(mocks.waitlistEntry.findMany).not.toHaveBeenCalled();
     expect(mocks.removeWaitlistEntry).not.toHaveBeenCalled();
   });

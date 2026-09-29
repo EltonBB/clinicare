@@ -9,7 +9,15 @@ const mocks = vi.hoisted(() => {
   };
   const $transaction = vi.fn();
   const getAuthedBusiness = vi.fn();
-  return { staffMember, $transaction, getAuthedBusiness };
+  const findStaffAssignedOpenOfferAppointments = vi.fn();
+  const retireSlotOffersForAppointments = vi.fn();
+  return {
+    staffMember,
+    $transaction,
+    getAuthedBusiness,
+    findStaffAssignedOpenOfferAppointments,
+    retireSlotOffersForAppointments,
+  };
 });
 
 vi.mock("@/lib/prisma", () => ({
@@ -21,6 +29,11 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("@/lib/business", () => ({
   getAuthedBusiness: mocks.getAuthedBusiness,
+}));
+
+vi.mock("@/lib/slot-offers", () => ({
+  findStaffAssignedOpenOfferAppointments: mocks.findStaffAssignedOpenOfferAppointments,
+  retireSlotOffersForAppointments: mocks.retireSlotOffersForAppointments,
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -41,6 +54,12 @@ const STAFF_ID = "staff_1";
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.getAuthedBusiness.mockResolvedValue({ business: BUSINESS, user: {} });
+  mocks.$transaction.mockImplementation(
+    async (run: (tx: { staffMember: typeof mocks.staffMember }) => unknown) =>
+      run({ staffMember: mocks.staffMember })
+  );
+  mocks.findStaffAssignedOpenOfferAppointments.mockResolvedValue([]);
+  mocks.retireSlotOffersForAppointments.mockResolvedValue(undefined);
 });
 
 describe("deleteStaffAction", () => {
@@ -78,6 +97,58 @@ describe("deleteStaffAction", () => {
 
     expect(result).toEqual({ ok: false, error: "Staff member not found in this workspace." });
     expect(mocks.staffMember.deleteMany).not.toHaveBeenCalled();
+  });
+
+  // Codex #130: the appointment FK's SET NULL clears staffMemberId the
+  // instant this staff row is gone, so a stale offer for one of their freed
+  // slots would otherwise start reading as a fresh, genuinely unassigned one.
+  it("retires stale slot offers for this staff member's freed appointments, inside the same transaction as the delete", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: STAFF_ID });
+    mocks.staffMember.deleteMany.mockResolvedValue({ count: 1 });
+    mocks.findStaffAssignedOpenOfferAppointments.mockResolvedValue(["appt_1", "appt_2"]);
+
+    const result = await deleteStaffAction(STAFF_ID);
+
+    expect(result).toEqual({ ok: true, staffId: STAFF_ID });
+    // Read before the delete, while staffMemberId still points at this staff.
+    expect(mocks.findStaffAssignedOpenOfferAppointments).toHaveBeenCalledWith(
+      expect.anything(),
+      { businessId: "biz_1", staffMemberId: STAFF_ID }
+    );
+    expect(mocks.findStaffAssignedOpenOfferAppointments.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.staffMember.deleteMany.mock.invocationCallOrder[0]
+    );
+    // Retired after the delete, so the re-read appointment sees staffMemberId
+    // already cleared and offers the slot as genuinely unassigned.
+    expect(mocks.retireSlotOffersForAppointments).toHaveBeenCalledWith(
+      expect.anything(),
+      { businessId: "biz_1", appointmentIds: ["appt_1", "appt_2"] }
+    );
+    expect(mocks.retireSlotOffersForAppointments.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mocks.staffMember.deleteMany.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("skips retirement work when the staff member holds no open slot offers", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: STAFF_ID });
+    mocks.staffMember.deleteMany.mockResolvedValue({ count: 1 });
+    mocks.findStaffAssignedOpenOfferAppointments.mockResolvedValue([]);
+
+    await deleteStaffAction(STAFF_ID);
+
+    expect(mocks.retireSlotOffersForAppointments).toHaveBeenCalledWith(
+      expect.anything(),
+      { businessId: "biz_1", appointmentIds: [] }
+    );
+  });
+
+  it("never retires offers when the delete loses the concurrent race", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: STAFF_ID });
+    mocks.staffMember.deleteMany.mockResolvedValue({ count: 0 });
+
+    await deleteStaffAction(STAFF_ID);
+
+    expect(mocks.retireSlotOffersForAppointments).not.toHaveBeenCalled();
   });
 });
 

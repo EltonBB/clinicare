@@ -32,6 +32,10 @@ import {
   hashAccessCode,
   isStaffMemberActive,
 } from "@/lib/staff-auth";
+import {
+  findStaffAssignedOpenOfferAppointments,
+  retireSlotOffersForAppointments,
+} from "@/lib/slot-offers";
 
 export type SaveStaffResult = {
   ok: boolean;
@@ -393,16 +397,43 @@ export async function deleteStaffAction(rawStaffId: string): Promise<DeleteStaff
     };
   }
 
-  // Compare-and-set: scope the delete by the same id+businessId used to find
-  // the row above. If a concurrent request already deleted it, `count` is 0
-  // and this call becomes a typed not-found instead of `.delete` throwing
-  // Prisma's P2025 for a row that's already gone — mirrors
-  // deleteAppointmentCore's fix (src/lib/appointments-shared.ts).
-  const { count } = await prisma.staffMember.deleteMany({
-    where: {
-      id: staffId,
+  const count = await prisma.$transaction(async (tx) => {
+    // Read BEFORE the delete: the FK's SET NULL clears staffMemberId on
+    // every one of this staff member's appointments the instant the row is
+    // gone, so this exact filter would match nothing afterward.
+    const staleAppointmentIds = await findStaffAssignedOpenOfferAppointments(tx, {
       businessId: business.id,
-    },
+      staffMemberId: staffId,
+    });
+
+    // Compare-and-set: scope the delete by the same id+businessId used to
+    // find the row above. If a concurrent request already deleted it,
+    // `count` is 0 and this call becomes a typed not-found instead of
+    // `.delete` throwing Prisma's P2025 for a row that's already gone —
+    // mirrors deleteAppointmentCore's fix (src/lib/appointments-shared.ts).
+    const { count: deleted } = await tx.staffMember.deleteMany({
+      where: {
+        id: staffId,
+        businessId: business.id,
+      },
+    });
+
+    if (deleted === 0) {
+      return 0;
+    }
+
+    // Their cancelled appointments now read as genuinely unassigned
+    // (staffMemberId cleared above) — the same as any other freed slot with
+    // no staff, so liveSlotOfferWhere's unassigned branch would otherwise
+    // read the now-stale staff-specific offer as a fresh open one (Codex
+    // #130). Withdraw each and re-offer the freed slot to the next real
+    // candidate before this transaction commits.
+    await retireSlotOffersForAppointments(tx, {
+      businessId: business.id,
+      appointmentIds: staleAppointmentIds,
+    });
+
+    return deleted;
   });
 
   if (count === 0) {
