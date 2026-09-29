@@ -787,6 +787,22 @@ export async function saveClientAction(
       if (normalizePhone(existing.phone) !== cleanedPhone) {
         await normalizeConversationsForBusiness(business.id);
       }
+
+      // ELIGIBLE_CLIENT_WHERE hides this client's waitlist entries from the
+      // active list/cap the moment they go inactive/archived, but leaves
+      // their status untouched — so reactivating them later would silently
+      // let those entries re-enter the panel and count again, with no
+      // capacity check at that point (Codex #130). Retire them here instead,
+      // the same way deleteClientAction already retires a held offer.
+      if (data.status === "INACTIVE" || data.status === "ARCHIVED") {
+        const staleEntries = await prisma.waitlistEntry.findMany({
+          where: { businessId: business.id, clientId: payload.id, status: { in: ["WAITING", "OFFERED"] } },
+          select: { id: true },
+        });
+        for (const entry of staleEntries) {
+          await removeWaitlistEntry({ id: entry.id, businessId: business.id });
+        }
+      }
     } else {
       const created = await prisma.client.create({
         data: {

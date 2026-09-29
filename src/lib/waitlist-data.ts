@@ -51,10 +51,15 @@ export async function listWaitingEntries(businessId: string, now: Date = new Dat
           status: { in: ["PENDING", "SENT"] },
           // The same liveness the Follow-ups list applies (liveSlotOfferWhere in
           // slot-offers.ts, which this module can't import without a cycle): once
-          // the freed slot has passed the offer is over, so the panel shows the
-          // entry as waiting again at once, not only after the hourly sweep
-          // releases it.
-          appointment: { status: "CANCELLED", startAt: { gt: now } },
+          // the freed slot has passed, or its assigned staff has gone inactive,
+          // the offer is over, so the panel shows the entry as waiting again at
+          // once instead of continuing to show "Offer pending"/"Offer sent"
+          // until the hourly sweep releases it (Codex #130).
+          appointment: {
+            status: "CANCELLED",
+            startAt: { gt: now },
+            OR: [{ staffMemberId: null }, { staffMember: { isActive: true, status: { not: "INACTIVE" } } }],
+          },
         },
         select: { status: true },
         orderBy: { createdAt: "desc" },

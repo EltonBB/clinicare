@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => {
   const client = {
     findFirst: vi.fn(),
     deleteMany: vi.fn(),
+    update: vi.fn(),
   };
   const clientMedication = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientHealthItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
@@ -62,6 +63,14 @@ vi.mock("@/lib/business", () => ({
 
 vi.mock("@/lib/slot-offers", () => ({
   removeWaitlistEntry: mocks.removeWaitlistEntry,
+}));
+
+// Unrelated to this file's subject (inbox thread syncing on save) — stubbed
+// so saveClientAction's unconditional post-update sync doesn't need the
+// conversation/message models mocked too.
+vi.mock("@/lib/inbox-server", () => ({
+  normalizeConversationsForBusiness: vi.fn(),
+  ensureConversationForClient: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("@/lib/media-storage-server", () => ({
@@ -450,5 +459,75 @@ describe("client actions refuse a non-string id before touching the database", (
       error: SUB_RECORD_NOT_FOUND_ERROR,
     });
     expectNoDatabaseCall();
+  });
+});
+
+// Codex #130: ELIGIBLE_CLIENT_WHERE hides this client's waitlist entries from
+// the active list/cap the moment they go inactive/archived, but their status
+// never changes — so reactivating the client later would silently let those
+// entries re-enter the panel and count again with no capacity check at that
+// point. saveClientAction must retire them the moment the save makes the
+// client ineligible, the same way deleteClientAction already retires a held
+// offer before the delete cascades it away.
+describe("saveClientAction retires stale waiting-list entries when a client becomes ineligible", () => {
+  const BASE_PAYLOAD: SaveClientPayload = {
+    id: CLIENT_ID,
+    name: "Arta Krasniqi",
+    email: "",
+    phone: "+38344111222",
+    status: "active",
+    notes: "",
+    preferredChannel: "",
+    assignedStaff: "",
+    tags: "",
+  };
+
+  beforeEach(() => {
+    mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID, phone: "+38344111222" });
+    mocks.client.update.mockResolvedValue({});
+  });
+
+  it("retires WAITING and OFFERED entries when the save marks the client inactive", async () => {
+    mocks.waitlistEntry.findMany.mockResolvedValue([{ id: "wl_1" }, { id: "wl_2" }]);
+    mocks.removeWaitlistEntry.mockResolvedValue({ ok: true });
+
+    // The action's own post-update steps (inbox sync, fetching the saved
+    // record to return) aren't relevant to this fix and aren't fully mocked
+    // here — only that this new retirement step ran, and ran with the right
+    // scope, is asserted.
+    await saveClientAction({ ...BASE_PAYLOAD, status: "inactive" });
+
+    expect(mocks.client.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "INACTIVE", isArchived: false }),
+      })
+    );
+    expect(mocks.waitlistEntry.findMany).toHaveBeenCalledWith({
+      where: { businessId: "biz_1", clientId: CLIENT_ID, status: { in: ["WAITING", "OFFERED"] } },
+      select: { id: true },
+    });
+    expect(mocks.removeWaitlistEntry).toHaveBeenCalledTimes(2);
+    expect(mocks.removeWaitlistEntry).toHaveBeenCalledWith({ id: "wl_1", businessId: "biz_1" });
+    expect(mocks.removeWaitlistEntry).toHaveBeenCalledWith({ id: "wl_2", businessId: "biz_1" });
+  });
+
+  it("retires entries when the save archives the client too", async () => {
+    mocks.waitlistEntry.findMany.mockResolvedValue([{ id: "wl_3" }]);
+    mocks.removeWaitlistEntry.mockResolvedValue({ ok: true });
+
+    await saveClientAction({ ...BASE_PAYLOAD, status: "archived" });
+
+    expect(mocks.waitlistEntry.findMany).toHaveBeenCalledWith({
+      where: { businessId: "biz_1", clientId: CLIENT_ID, status: { in: ["WAITING", "OFFERED"] } },
+      select: { id: true },
+    });
+    expect(mocks.removeWaitlistEntry).toHaveBeenCalledWith({ id: "wl_3", businessId: "biz_1" });
+  });
+
+  it("never looks for stale entries when the save keeps the client eligible", async () => {
+    await saveClientAction({ ...BASE_PAYLOAD, status: "active" });
+
+    expect(mocks.waitlistEntry.findMany).not.toHaveBeenCalled();
+    expect(mocks.removeWaitlistEntry).not.toHaveBeenCalled();
   });
 });

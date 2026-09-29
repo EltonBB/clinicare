@@ -70,7 +70,7 @@ describe("waitlist data layer", () => {
     );
   });
 
-  it("only counts an offer while its freed slot is still cancelled and ahead, so a passed slot reads as waiting before the sweep runs", async () => {
+  it("only counts an offer while its freed slot is still cancelled, ahead, and its staff (if any) still active, mirroring liveSlotOfferWhere (Codex #130)", async () => {
     const now = new Date("2026-09-01T08:00:00.000Z");
     mocks.waitlistEntry.findMany.mockResolvedValue([]);
 
@@ -83,7 +83,14 @@ describe("waitlist data layer", () => {
             where: {
               kind: "SLOT_OFFER",
               status: { in: ["PENDING", "SENT"] },
-              appointment: { status: "CANCELLED", startAt: { gt: now } },
+              appointment: {
+                status: "CANCELLED",
+                startAt: { gt: now },
+                OR: [
+                  { staffMemberId: null },
+                  { staffMember: { isActive: true, status: { not: "INACTIVE" } } },
+                ],
+              },
             },
           }),
         }),
