@@ -184,6 +184,26 @@ export async function saveSettingsAction(
     };
   }
 
+  // Changing currency only relabels Business.currency — stored ClientPayment
+  // amounts have no currency of their own, so an existing USD 100.00 payment
+  // would silently render and export as EUR 100.00. Block the change once any
+  // payment is on record rather than reinterpret historical amounts.
+  if (
+    payload.business.currency !== undefined &&
+    payload.business.currency !== business.currency
+  ) {
+    const existingPaymentCount = await prisma.clientPayment.count({
+      where: { businessId: business.id },
+    });
+    if (existingPaymentCount > 0) {
+      return {
+        ok: false,
+        error:
+          "Currency can't be changed once payments are on record — it would misstate past amounts.",
+      };
+    }
+  }
+
   // Only a Supabase storage reference or a safe HTTPS URL may be stored — the
   // logo is later interpolated into a CSS url() in the app shell.
   if (hasUnsafePublicUrl(candidateLogoUrl)) {

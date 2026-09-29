@@ -2,19 +2,43 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const workflowSettings = { upsert: vi.fn() };
+  const clientPayment = { count: vi.fn() };
+  const business = { update: vi.fn(), findUniqueOrThrow: vi.fn() };
+  const businessHours = { upsert: vi.fn() };
+  const reminderSettings = { upsert: vi.fn() };
+  const transaction = vi.fn();
   const getCurrentUser = vi.fn();
   const requireCurrentBusiness = vi.fn();
   const revalidatePath = vi.fn();
-  return { workflowSettings, getCurrentUser, requireCurrentBusiness, revalidatePath };
+  const updateCurrentUserMetadata = vi.fn();
+  return {
+    workflowSettings,
+    clientPayment,
+    business,
+    businessHours,
+    reminderSettings,
+    transaction,
+    getCurrentUser,
+    requireCurrentBusiness,
+    revalidatePath,
+    updateCurrentUserMetadata,
+  };
 });
 
 vi.mock("@/lib/prisma", () => ({
-  prisma: { workflowSettings: mocks.workflowSettings },
+  prisma: {
+    workflowSettings: mocks.workflowSettings,
+    clientPayment: mocks.clientPayment,
+    business: mocks.business,
+    businessHours: mocks.businessHours,
+    reminderSettings: mocks.reminderSettings,
+    $transaction: mocks.transaction,
+  },
 }));
 
 vi.mock("@/lib/auth", () => ({
   getCurrentUser: mocks.getCurrentUser,
-  updateCurrentUserMetadata: vi.fn(),
+  updateCurrentUserMetadata: mocks.updateCurrentUserMetadata,
 }));
 
 vi.mock("@/lib/business", () => ({
@@ -50,10 +74,11 @@ vi.mock("@/lib/media-storage-server", () => ({
 vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn(), error: vi.fn() } }));
 
 import { buildWorkflowSavePayload, REBOOK_PLAN_ERROR } from "@/lib/settings";
-import { WORKFLOW_SETTINGS_SELECT } from "@/lib/settings-server";
+import type { SaveSettingsPayload } from "@/lib/settings";
+import { WORKFLOW_SETTINGS_SELECT, loadSettingsState } from "@/lib/settings-server";
 import type { WorkflowSettingsValues } from "@/lib/workflow-generators";
 
-import { saveWorkflowSettingsAction } from "./actions";
+import { saveSettingsAction, saveWorkflowSettingsAction } from "./actions";
 
 const PRO_BUSINESS = { id: "biz_1", plan: "PRO" as const };
 const BASIC_BUSINESS = { id: "biz_1", plan: "BASIC" as const };
@@ -223,5 +248,114 @@ describe("saveWorkflowSettingsAction — validation", () => {
     expect(result.error).toBeTruthy();
     expect(mocks.workflowSettings.upsert).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+});
+
+const SETTINGS_BUSINESS = {
+  id: "biz_1",
+  name: "Vela Test Clinic",
+  businessType: "Clinic",
+  currency: "EUR",
+  logoUrl: "",
+  brandAccentColor: "default",
+  whatsappNumber: "",
+};
+
+const DAY: { enabled: boolean; start: string; end: string } = {
+  enabled: true,
+  start: "09:00",
+  end: "17:00",
+};
+
+const VALID_SETTINGS_PAYLOAD: SaveSettingsPayload = {
+  business: {
+    businessName: "Vela Test Clinic",
+    businessType: "Clinic",
+    currency: "EUR",
+    ownerName: "Owner",
+    logoUrl: "",
+  },
+  appearance: {
+    accentColor: "vela",
+    accentHex: "",
+  },
+  workingHours: {
+    monday: DAY,
+    tuesday: DAY,
+    wednesday: DAY,
+    thursday: DAY,
+    friday: DAY,
+    saturday: DAY,
+    sunday: DAY,
+  },
+  whatsapp: {
+    phoneNumber: "",
+    sendReminders: false,
+    reminderWindow: "24h",
+  },
+  reminders: {
+    twentyFourHour: true,
+    twoHour: false,
+    firstReminderHours: 24,
+    secondReminderHours: 2,
+    template: "Reminder for {{name}}",
+  },
+};
+
+describe("saveSettingsAction — currency change vs. recorded payments", () => {
+  beforeEach(() => {
+    mocks.getCurrentUser.mockResolvedValue({ id: "user_1", user_metadata: {} });
+    mocks.requireCurrentBusiness.mockResolvedValue(SETTINGS_BUSINESS);
+    mocks.updateCurrentUserMetadata.mockResolvedValue({ error: null });
+    mocks.business.findUniqueOrThrow.mockResolvedValue(SETTINGS_BUSINESS);
+    mocks.transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+      fn({
+        business: { update: mocks.business.update },
+        businessHours: { upsert: mocks.businessHours.upsert },
+        reminderSettings: { upsert: mocks.reminderSettings.upsert },
+      })
+    );
+    vi.mocked(loadSettingsState).mockResolvedValue({} as never);
+  });
+
+  it("blocks the change when the workspace already has payment records", async () => {
+    mocks.clientPayment.count.mockResolvedValue(1);
+
+    const result = await saveSettingsAction({
+      ...VALID_SETTINGS_PAYLOAD,
+      business: { ...VALID_SETTINGS_PAYLOAD.business, currency: "USD" },
+    });
+
+    expect(mocks.clientPayment.count).toHaveBeenCalledWith({
+      where: { businessId: "biz_1" },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/currency/i);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(mocks.business.update).not.toHaveBeenCalled();
+  });
+
+  it("allows the change when no payments are on record yet", async () => {
+    mocks.clientPayment.count.mockResolvedValue(0);
+
+    const result = await saveSettingsAction({
+      ...VALID_SETTINGS_PAYLOAD,
+      business: { ...VALID_SETTINGS_PAYLOAD.business, currency: "USD" },
+    });
+
+    expect(mocks.clientPayment.count).toHaveBeenCalledWith({
+      where: { businessId: "biz_1" },
+    });
+    expect(result.ok).toBe(true);
+    expect(mocks.business.update).toHaveBeenCalledTimes(1);
+    expect(mocks.business.update.mock.calls[0][0].data.currency).toBe("USD");
+  });
+
+  it("never queries payments when currency is left unchanged", async () => {
+    const result = await saveSettingsAction(VALID_SETTINGS_PAYLOAD);
+
+    expect(mocks.clientPayment.count).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    expect(mocks.business.update).toHaveBeenCalledTimes(1);
   });
 });
