@@ -1,4 +1,4 @@
-import { Toggle } from "@/components/settings/settings-toggle";
+import { ToggleRow } from "@/components/settings/settings-toggle";
 import {
   PAYMENT_REMINDER_DAY_OPTIONS,
   REBOOK_MONTH_OPTIONS,
@@ -40,32 +40,6 @@ function TimingSelect({
   );
 }
 
-function WorkflowRow({
-  label,
-  enabled,
-  onEnabledChange,
-  children,
-}: {
-  label: string;
-  enabled: boolean;
-  onEnabledChange: (enabled: boolean) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-      <div className="flex min-w-0 items-center gap-3">
-        <Toggle checked={enabled} onPressedChange={onEnabledChange} ariaLabel={label} />
-        <p className="text-sm font-medium text-foreground">{label}</p>
-      </div>
-      {enabled ? (
-        <div className="pl-[52px] sm:pl-0">{children}</div>
-      ) : (
-        <span className="pl-[52px] text-xs text-muted-foreground sm:pl-0">Off</span>
-      )}
-    </div>
-  );
-}
-
 /**
  * The rows of Settings → Workflows. The section card (title, description) is
  * rendered by settings-workspace.tsx like every other section, and edits flow
@@ -83,7 +57,7 @@ export function WorkflowsSection({
   return (
     <div>
       {isPro ? (
-        <WorkflowRow
+        <ToggleRow
           label="Rebooking nudge"
           enabled={workflows.rebookEnabled}
           onEnabledChange={(rebookEnabled) => onChange({ rebookEnabled })}
@@ -95,10 +69,10 @@ export function WorkflowsSection({
             onChange={(rebookAfterMonths) => onChange({ rebookAfterMonths })}
             ariaLabel="Rebooking nudge timing"
           />
-        </WorkflowRow>
+        </ToggleRow>
       ) : null}
 
-      <WorkflowRow
+      <ToggleRow
         label="Unpaid payment reminder"
         enabled={workflows.paymentReminderEnabled}
         onEnabledChange={(paymentReminderEnabled) => onChange({ paymentReminderEnabled })}
@@ -110,9 +84,9 @@ export function WorkflowsSection({
           onChange={(paymentReminderAfterDays) => onChange({ paymentReminderAfterDays })}
           ariaLabel="Unpaid payment reminder timing"
         />
-      </WorkflowRow>
+      </ToggleRow>
 
-      <WorkflowRow
+      <ToggleRow
         label="Thank-you message"
         enabled={workflows.thankYouEnabled}
         onEnabledChange={(thankYouEnabled) => onChange({ thankYouEnabled })}
@@ -124,7 +98,7 @@ export function WorkflowsSection({
           onChange={(thankYouDelayHours) => onChange({ thankYouDelayHours })}
           ariaLabel="Thank-you message timing"
         />
-      </WorkflowRow>
+      </ToggleRow>
     </div>
   );
 }

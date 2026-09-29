@@ -89,9 +89,13 @@ describe("recordInboundMessage", () => {
     expect(mocks.message.findFirst).not.toHaveBeenCalled();
   });
 
-  it("skips a duplicate provider message id idempotently, but still resolves and returns a matching client (Codex #130: a worker retry needs it to retry the reply-intent step)", async () => {
-    mocks.message.findFirst.mockResolvedValue({ id: "existing" });
-    mocks.client.findMany.mockResolvedValue([{ id: "client_9", name: "Mira" }]);
+  it("skips a duplicate provider message id idempotently, returning the client it was actually stored under (Codex #130: a worker retry needs a clientId to retry the reply-intent step)", async () => {
+    mocks.message.findFirst.mockResolvedValue({ id: "existing", clientId: "client_9" });
+    // A different client now matches this phone than the one the message was
+    // originally stored under — proves the stored value wins over a fresh
+    // re-resolve, which could hand a retried "2" reply to the wrong client's
+    // appointment if the phone was reassigned in between (Codex #131).
+    mocks.client.findMany.mockResolvedValue([{ id: "client_other", name: "Someone Else" }]);
     const result = await recordInboundMessage({
       businessId: "biz_1",
       fromPhone: "+38344123456",
@@ -102,8 +106,12 @@ describe("recordInboundMessage", () => {
     expect(mocks.$transaction).not.toHaveBeenCalled();
   });
 
-  it("skips a duplicate with no resolvable client (none matched, or more than one shares the phone)", async () => {
-    mocks.message.findFirst.mockResolvedValue({ id: "existing" });
+  it("skips a duplicate whose stored message has no resolved client (none matched, or more than one shared the phone, when it was first recorded)", async () => {
+    mocks.message.findFirst.mockResolvedValue({ id: "existing", clientId: null });
+    // recordInboundMessage still runs the phoneKey lookup unconditionally
+    // before the dedup check (it's needed for the non-duplicate path), so
+    // this must be mocked even though this test's assertion doesn't depend
+    // on its result — an unmocked call returns undefined, not [].
     mocks.client.findMany.mockResolvedValue([]);
     const result = await recordInboundMessage({
       businessId: "biz_1",
@@ -179,9 +187,12 @@ describe("recordInboundMessage", () => {
   describe("a delivery that loses the race on the unique providerMessageSid (P2002)", () => {
     const raceError = Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
 
-    it("reports a duplicate carrying the winner's messageId, so the reply-intent retry can check its marker", async () => {
-      mocks.message.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: "winner" });
-      mocks.client.findMany.mockResolvedValue([{ id: "client_9", name: "Mira" }]);
+    it("reports a duplicate carrying the winner's messageId and its own stored client, not a fresh phone re-resolve", async () => {
+      mocks.message.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: "winner", clientId: "client_9" });
+      // A different client now matches this phone than the winning row was
+      // actually stored under — same regression this round closed on the
+      // plain duplicate branch above, proven here too (Codex #131).
+      mocks.client.findMany.mockResolvedValue([{ id: "client_other", name: "Someone Else" }]);
       mocks.$transaction.mockRejectedValueOnce(raceError);
 
       const result = await recordInboundMessage({

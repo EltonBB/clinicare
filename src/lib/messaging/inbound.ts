@@ -7,6 +7,7 @@ import {
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
+import { mirrorOutboundToInbox } from "@/lib/messaging/inbox-mirror";
 import { prisma } from "@/lib/prisma";
 import { classifyReplyIntent } from "@/lib/reply-intent";
 import { liveSlotOfferWhere } from "@/lib/slot-offers";
@@ -14,7 +15,7 @@ import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 
 import type { AppointmentStatus } from "@prisma/client";
 
-import type { MessageDeliveryStatus, SendMessageResult } from "./types";
+import type { MessageDeliveryStatus } from "./types";
 
 export type InboundMessage = {
   businessId: string;
@@ -77,9 +78,10 @@ export async function recordInboundMessage(
   // picking an arbitrary one of them (which could let a "2" reply cancel the
   // wrong family member's appointment). The message itself is still recorded
   // and threaded normally either way; only the identity used for reply-intent
-  // matching becomes conservative. Resolved before the dedup check below (and
-  // returned on the "duplicate" branch too) since it's a cheap read the
-  // webhook route needs either way to retry the reply-intent step.
+  // matching becomes conservative. Computed unconditionally before the dedup
+  // check below — a duplicate simply doesn't use it (it returns the message's
+  // own stored clientId instead, see below) — because that's cheaper than
+  // restructuring around whether this turns out to be new.
   const matchingClients = await prisma.client.findMany({
     where: { businessId: event.businessId, phoneKey },
     select: { id: true, name: true },
@@ -91,10 +93,17 @@ export async function recordInboundMessage(
   if (event.providerMessageId) {
     const existing = await prisma.message.findFirst({
       where: { providerMessageSid: event.providerMessageId },
-      select: { id: true },
+      select: { id: true, clientId: true },
     });
     if (existing) {
-      return { recorded: false, reason: "duplicate", clientId: matchingClient?.id ?? null, messageId: existing.id };
+      // Return the identity this message was actually stored under, not a
+      // fresh re-resolve of `matchingClient` — if the phone was reassigned,
+      // or a previously-ambiguous match resolved differently (a duplicate
+      // client record removed), between the original delivery and this
+      // retry, re-resolving could hand a "2" reply to a different client
+      // than the one the message was originally recorded against, cancelling
+      // the wrong person's appointment (Codex #131).
+      return { recorded: false, reason: "duplicate", clientId: existing.clientId, messageId: existing.id };
     }
   }
 
@@ -151,13 +160,21 @@ export async function recordInboundMessage(
     ) {
       const winner = await prisma.message.findFirst({
         where: { providerMessageSid: event.providerMessageId },
-        select: { id: true },
+        select: { id: true, clientId: true },
       });
       // winner should always exist (that's what the P2002 collided on); null
       // only if it's somehow gone by the time we look again. applyInboundReplyIntent
       // treats a null/undefined messageId as "no claim to take", same as not
       // passing one at all — a safe fallback, not a silent bug.
-      return { recorded: false, reason: "duplicate", clientId: matchingClient?.id ?? null, messageId: winner?.id ?? null };
+      // Same reasoning as the dedup branch above: return the identity the
+      // winning row was actually stored under, not a fresh re-resolve of
+      // `matchingClient` (Codex #131).
+      return {
+        recorded: false,
+        reason: "duplicate",
+        clientId: winner?.clientId ?? null,
+        messageId: winner?.id ?? null,
+      };
     }
     throw error;
   }
@@ -171,70 +188,6 @@ export type ApplyReplyIntentResult =
       reason: "no_intent" | "no_client" | "no_match" | "ambiguous" | "already_confirmed" | "open_offer" | "already_handled";
     }
   | { applied: true; intent: "confirm" | "cancel"; appointmentId: string };
-
-/**
- * Mirrors an automatic confirm/cancel WhatsApp reply into the patient's Inbox
- * thread — same shape as reminders.ts's own best-effort inbox mirror and
- * inbox/actions.ts's sendInboxMessageAction: upsert the Conversation by its
- * (businessId, phoneKey) key, then create the OUTBOUND Message carrying the
- * provider id/delivery status, so a later delivery-status webhook
- * (recordDeliveryStatus, below) has a row to match against instead of
- * silently dropping the receipt. Best-effort: the confirm/cancel mutation
- * already succeeded by the time this runs, so a failure here must not fail
- * the overall reply-intent result — only the Inbox mirror is lost.
- */
-async function mirrorOutboundReplyToInbox(args: {
-  businessId: string;
-  clientId: string;
-  clientName: string | null;
-  phone: string;
-  result: Extract<SendMessageResult, { ok: true }>;
-}) {
-  const { businessId, clientId, clientName, phone, result } = args;
-  const phoneKey = phoneLookupKey(phone);
-  if (!phoneKey) {
-    return;
-  }
-  const normalizedPhone = normalizePhone(phone);
-
-  try {
-    await prisma.$transaction(async (tx) => {
-      const conversation = await tx.conversation.upsert({
-        where: {
-          businessId_phoneKey: { businessId, phoneKey },
-        },
-        update: {
-          contactName: clientName || undefined,
-        },
-        create: {
-          businessId,
-          phoneNumber: normalizedPhone,
-          phoneKey,
-          contactName: clientName || normalizedPhone,
-          unreadCount: 0,
-        },
-        select: { id: true },
-      });
-
-      await tx.message.create({
-        data: {
-          conversationId: conversation.id,
-          clientId,
-          direction: "OUTBOUND",
-          body: result.body,
-          providerMessageSid: result.providerMessageId,
-          deliveryStatus: result.status,
-          deliveryUpdatedAt: new Date(),
-        },
-      });
-    });
-  } catch (error) {
-    logger.error("Recorded a confirm/cancel reply but couldn't mirror it to the inbox.", error, {
-      businessId,
-      clientId,
-    });
-  }
-}
 
 /**
  * Reads an inbound message for a confirm/cancel reply and, only when exactly
@@ -367,75 +320,56 @@ async function applyInboundReplyIntentCore(
   const appointment = candidates[0];
   const phone = appointment.client.phone;
 
-  if (intent === "confirm") {
-    // Sends the acknowledgement and mirrors it into the client's Inbox thread.
-    const sendConfirmedReply = async (confirmedClientId: string) => {
-      if (!phone) return;
-      const result = await sendMessage({
-        channel: "WHATSAPP",
-        businessId,
-        to: phone,
-        message: {
-          kind: "freeform",
-          body: `You're confirmed for ${formatZonedTime(appointment.startAt)} on ${formatZonedFullDate(appointment.startAt)}. See you then!`,
-        },
-      });
-      if (result.ok) {
-        await mirrorOutboundReplyToInbox({
-          businessId,
-          clientId: confirmedClientId,
-          clientName: appointment.client.name,
-          phone,
-          result,
-        });
-      }
-    };
-
-    if (appointment.status === "CONFIRMED") {
-      // Nothing to change — just answer the reply.
-      await sendConfirmedReply(clientId);
-      return { applied: false, reason: "already_confirmed" };
-    }
-
-    const outcome = await confirmAppointmentCore({ id: appointment.id, businessId });
-    if (!outcome.ok || !outcome.changed) {
-      return { applied: false, reason: "no_match" };
-    }
-    await sendConfirmedReply(outcome.clientId);
-    revalidateCalendarSurfaces([outcome.clientId], outcome.staffMemberId ? [outcome.staffMemberId] : []);
-    return { applied: true, intent: "confirm", appointmentId: appointment.id };
-  }
-
-  const outcome = await cancelAppointmentCore({ id: appointment.id, businessId });
-  if (!outcome.ok || !outcome.changed) {
-    return { applied: false, reason: "no_match" };
-  }
-  if (phone) {
+  // Answers the patient and mirrors the answer into the client's Inbox thread.
+  const reply = async (repliedClientId: string) => {
+    if (!phone) return;
+    const time = formatZonedTime(appointment.startAt);
+    const date = formatZonedFullDate(appointment.startAt);
     const result = await sendMessage({
       channel: "WHATSAPP",
       businessId,
       to: phone,
       message: {
         kind: "freeform",
-        body: `Your appointment on ${formatZonedFullDate(appointment.startAt)} at ${formatZonedTime(appointment.startAt)} has been cancelled.`,
+        body:
+          intent === "confirm"
+            ? `You're confirmed for ${time} on ${date}. See you then!`
+            : `Your appointment on ${date} at ${time} has been cancelled.`,
       },
     });
     if (result.ok) {
-      await mirrorOutboundReplyToInbox({
+      await mirrorOutboundToInbox({
         businessId,
-        clientId: outcome.clientId,
+        clientId: repliedClientId,
         clientName: appointment.client.name,
         phone,
         result,
+        failureMessage: "Recorded a confirm/cancel reply but couldn't mirror it to the inbox.",
+        logContext: { businessId, clientId: repliedClientId },
       });
     }
+  };
+
+  if (intent === "confirm" && appointment.status === "CONFIRMED") {
+    // Nothing to change — just answer the reply.
+    await reply(clientId);
+    return { applied: false, reason: "already_confirmed" };
   }
-  if (outcome.staffMemberId) {
+
+  const core = intent === "confirm" ? confirmAppointmentCore : cancelAppointmentCore;
+  const outcome = await core({ id: appointment.id, businessId });
+  if (!outcome.ok || !outcome.changed) {
+    return { applied: false, reason: "no_match" };
+  }
+
+  await reply(outcome.clientId);
+
+  if (intent === "cancel" && outcome.staffMemberId) {
     await notifyStaffOfAppointmentChange(businessId, outcome.staffMemberId, appointment.id, "changed");
   }
   revalidateCalendarSurfaces([outcome.clientId], outcome.staffMemberId ? [outcome.staffMemberId] : []);
 
-  return { applied: true, intent: "cancel", appointmentId: appointment.id };
+  return { applied: true, intent, appointmentId: appointment.id };
 }
 
 /**

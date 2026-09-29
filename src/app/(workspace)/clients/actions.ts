@@ -18,10 +18,19 @@ import {
   type ClientRecord,
   type SaveClientPayload,
 } from "@/lib/clients";
+import { normalizeCurrency } from "@/lib/currency";
 import { normalizeStorageReference } from "@/lib/media-storage";
 import { attemptStorageCleanup, recordPendingStorageCleanup } from "@/lib/media-storage-server";
+import { parseAmountToCents } from "@/lib/payment-amount";
 import { parseRecordId, recordIdSchema } from "@/lib/record-id";
 import { removeWaitlistEntry } from "@/lib/slot-offers";
+import { acquireBusinessFinancialLock } from "@/lib/business-financial-lock";
+
+// Aborts addClientPaymentAction's transaction from inside its callback when
+// the amount fails to parse against the currency re-read under the
+// financial lock — thrown instead of returned so the transaction rolls back
+// nothing-committed, then caught right outside to produce the typed result.
+class InvalidPaymentAmountError extends Error {}
 
 export type SaveClientResult = {
   ok: boolean;
@@ -355,6 +364,8 @@ async function fetchClientRecord(businessId: string, clientId: string) {
       businessId,
     },
     include: {
+      // Every amount on the record is shown in the workspace's currency.
+      business: { select: { currency: true } },
       appointments: {
         select: {
           id: true,
@@ -519,7 +530,7 @@ async function fetchClientRecord(businessId: string, clientId: string) {
     },
   });
 
-  return buildClientRecord(client);
+  return buildClientRecord(client, client.business.currency);
 }
 
 async function requireOwnedClient(clientId: string) {
@@ -563,18 +574,6 @@ function parseOptionalDate(value: string | undefined) {
   const parsed = new Date(`${value}T00:00:00.000Z`);
 
   return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function parseAmountToCents(value: string) {
-  const normalized = Number(value.replace(/[^0-9.-]/g, ""));
-
-  // Reject negatives and absurd fat-finger amounts (> $1,000,000) so a typo
-  // can't write a huge value into the ledger and corrupt revenue reporting.
-  if (!Number.isFinite(normalized) || normalized < 0 || normalized > 1_000_000) {
-    return null;
-  }
-
-  return Math.round(normalized * 100);
 }
 
 export async function addClientGalleryItemAction(
@@ -964,15 +963,6 @@ export async function addClientPaymentAction(
     };
   }
 
-  const amountCents = parseAmountToCents(payload.amount);
-
-  if (amountCents === null) {
-    return {
-      ok: false,
-      error: "Enter a valid payment amount.",
-    };
-  }
-
   if (hasUnsafePublicUrl(payload.receiptUrl)) {
     return {
       ok: false,
@@ -980,21 +970,51 @@ export async function addClientPaymentAction(
     };
   }
 
-  await prisma.clientPayment.create({
-    data: {
-      businessId: context.business.id,
-      clientId: payload.clientId,
-      amountCents,
-      status: payload.status.trim() || "Unpaid",
-      description: payload.description.trim() || null,
-      invoiceNumber: payload.invoiceNumber?.trim() || null,
-      receiptNumber: payload.receiptNumber?.trim() || null,
-      paymentMethod: payload.paymentMethod?.trim() || null,
-      billingNote: payload.billingNote?.trim() || null,
-      receiptUrl: normalizeOptionalPublicUrl(payload.receiptUrl) || null,
-      paidAt: parseOptionalDate(payload.paidAt),
-    },
-  });
+  // Held for the rest of this transaction: closes the gap between this
+  // create and a concurrent currency change, which acquires the same lock
+  // before its own on-record check (Codex #131) — without it, a currency
+  // change reading "no payments yet" and this create could both proceed,
+  // and the new payment would be immediately mislabeled by the new currency.
+  // The amount is parsed AGAINST THE CURRENCY read fresh under this same
+  // lock, not the value read before it — otherwise a currency change that
+  // commits between that earlier read and the lock would still leave "€85"
+  // parsed as euros and immediately displayed as dollars (Codex #131).
+  try {
+    await prisma.$transaction(async (tx) => {
+      await acquireBusinessFinancialLock(tx, context.business.id);
+
+      const currentBusiness = await tx.business.findUniqueOrThrow({
+        where: { id: context.business.id },
+        select: { currency: true },
+      });
+      const amountCents = parseAmountToCents(payload.amount, normalizeCurrency(currentBusiness.currency));
+
+      if (amountCents === null) {
+        throw new InvalidPaymentAmountError();
+      }
+
+      await tx.clientPayment.create({
+        data: {
+          businessId: context.business.id,
+          clientId: payload.clientId,
+          amountCents,
+          status: payload.status.trim() || "Unpaid",
+          description: payload.description.trim() || null,
+          invoiceNumber: payload.invoiceNumber?.trim() || null,
+          receiptNumber: payload.receiptNumber?.trim() || null,
+          paymentMethod: payload.paymentMethod?.trim() || null,
+          billingNote: payload.billingNote?.trim() || null,
+          receiptUrl: normalizeOptionalPublicUrl(payload.receiptUrl) || null,
+          paidAt: parseOptionalDate(payload.paidAt),
+        },
+      });
+    });
+  } catch (error) {
+    if (error instanceof InvalidPaymentAmountError) {
+      return { ok: false, error: "Enter a valid payment amount." };
+    }
+    throw error;
+  }
 
   revalidatePaymentSurfaces();
 
@@ -1332,7 +1352,10 @@ const deleteClientSubRecordSchema = z.object({ id: idField, clientId: idField })
 
 type OwnedSubRecordContext =
   | { error: string }
-  | { business: { id: string } };
+  // currency is only read by the payment actions (to validate a typed amount
+  // against the workspace's own currency) — every other sub-record action
+  // uses just the id, same as before.
+  | { business: { id: string; currency: string } };
 
 async function requireOwnedSubRecord(
   payload: DeleteClientSubRecordPayload,
@@ -1769,7 +1792,7 @@ export async function updateClientPaymentAction(
     return { ok: false, error: context.error };
   }
 
-  const amountCents = parseAmountToCents(payload.amount);
+  const amountCents = parseAmountToCents(payload.amount, normalizeCurrency(context.business.currency));
 
   if (amountCents === null) {
     return { ok: false, error: "Enter a valid payment amount." };

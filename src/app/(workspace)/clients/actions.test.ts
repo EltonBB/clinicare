@@ -12,12 +12,14 @@ const mocks = vi.hoisted(() => {
   const clientCareNote = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientTreatmentPlanItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientFollowUpReminder = { findFirst: vi.fn(), deleteMany: vi.fn() };
-  const clientPayment = { findFirst: vi.fn(), deleteMany: vi.fn(), groupBy: vi.fn() };
+  const clientPayment = { findFirst: vi.fn(), deleteMany: vi.fn(), groupBy: vi.fn(), create: vi.fn() };
   const clientDocument = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientGalleryItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
+  const business = { findUniqueOrThrow: vi.fn() };
   const appointment = { groupBy: vi.fn(), count: vi.fn() };
   const waitlistEntry = { findMany: vi.fn() };
   const $transaction = vi.fn();
+  const $executeRaw = vi.fn();
   const getAuthedBusiness = vi.fn();
   const attemptStorageCleanup = vi.fn();
   const recordPendingStorageCleanup = vi.fn();
@@ -34,9 +36,11 @@ const mocks = vi.hoisted(() => {
     clientPayment,
     clientDocument,
     clientGalleryItem,
+    business,
     appointment,
     waitlistEntry,
     $transaction,
+    $executeRaw,
     getAuthedBusiness,
     attemptStorageCleanup,
     recordPendingStorageCleanup,
@@ -98,6 +102,7 @@ async function flushAfter() {
 }
 
 import {
+  addClientPaymentAction,
   deleteClientAction,
   deleteClientCareNoteAction,
   deleteClientHealthItemAction,
@@ -109,6 +114,7 @@ import {
   deleteClientGalleryItemAction,
   saveClientAction,
 } from "./actions";
+import type { AddClientPaymentPayload } from "./actions";
 import type { SaveClientPayload } from "@/lib/clients";
 
 const BUSINESS = { id: "biz_1" };
@@ -119,6 +125,51 @@ const SUB_RECORD_NOT_FOUND_ERROR = "This record was not found in the patient fil
 const EXISTING = {
   galleryItems: [{ imageUrl: "gallery_1.png" }],
   documents: [{ storageUrl: "doc_1.pdf", fileUrl: null }],
+};
+
+// What fetchClientRecord reads back after a successful mutation — every
+// relation the query selects, empty, plus the scalar Client fields
+// buildClientRecord needs. CodeRabbit #130: without this, a test could pass
+// on `{ ok: false }` and never notice (client.findFirstOrThrow was
+// unmocked, so the action always failed silently).
+const SAVED_CLIENT_RECORD = {
+  id: CLIENT_ID,
+  businessId: "biz_1",
+  business: { currency: "EUR" },
+  name: "Arta Krasniqi",
+  email: null,
+  phone: "+38344111222",
+  phoneKey: "38344111222",
+  gender: null,
+  dateOfBirth: null,
+  address: null,
+  patientType: "New Patient",
+  clinicType: null,
+  notes: null,
+  medicalHistory: null,
+  allergies: null,
+  importantHealthNotes: null,
+  previousTreatments: null,
+  treatmentPlan: null,
+  status: "ACTIVE",
+  preferredChannel: null,
+  assignedStaffName: null,
+  tags: [],
+  isArchived: false,
+  lastVisitAt: null,
+  createdAt: new Date("2026-01-01T00:00:00Z"),
+  updatedAt: new Date("2026-01-01T00:00:00Z"),
+  appointments: [],
+  messages: [],
+  galleryItems: [],
+  medications: [],
+  documents: [],
+  payments: [],
+  healthItems: [],
+  careNotes: [],
+  treatmentPlanItems: [],
+  followUpReminders: [],
+  _count: { appointments: 0 },
 };
 
 beforeEach(() => {
@@ -132,6 +183,9 @@ beforeEach(() => {
       client: mocks.client,
       clientDocument: mocks.clientDocument,
       clientGalleryItem: mocks.clientGalleryItem,
+      clientPayment: mocks.clientPayment,
+      business: mocks.business,
+      $executeRaw: mocks.$executeRaw,
     })
   );
 });
@@ -489,50 +543,6 @@ describe("saveClientAction retires stale waiting-list entries when a client beco
     tags: "",
   };
 
-  // What fetchClientRecord reads back after a successful save — every
-  // relation the query selects, empty, plus the scalar Client fields
-  // buildClientRecord needs. CodeRabbit #130: without this, a test could
-  // pass on `{ ok: false }` and never notice (client.findFirstOrThrow was
-  // unmocked, so the save always failed silently).
-  const SAVED_CLIENT_RECORD = {
-    id: CLIENT_ID,
-    businessId: "biz_1",
-    name: "Arta Krasniqi",
-    email: null,
-    phone: "+38344111222",
-    phoneKey: "38344111222",
-    gender: null,
-    dateOfBirth: null,
-    address: null,
-    patientType: "New Patient",
-    clinicType: null,
-    notes: null,
-    medicalHistory: null,
-    allergies: null,
-    importantHealthNotes: null,
-    previousTreatments: null,
-    treatmentPlan: null,
-    status: "ACTIVE",
-    preferredChannel: null,
-    assignedStaffName: null,
-    tags: [],
-    isArchived: false,
-    lastVisitAt: null,
-    createdAt: new Date("2026-01-01T00:00:00Z"),
-    updatedAt: new Date("2026-01-01T00:00:00Z"),
-    appointments: [],
-    messages: [],
-    galleryItems: [],
-    medications: [],
-    documents: [],
-    payments: [],
-    healthItems: [],
-    careNotes: [],
-    treatmentPlanItems: [],
-    followUpReminders: [],
-    _count: { appointments: 0 },
-  };
-
   beforeEach(() => {
     mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID, phone: "+38344111222" });
     mocks.client.update.mockResolvedValue({});
@@ -590,5 +600,74 @@ describe("saveClientAction retires stale waiting-list entries when a client beco
     expect(result.ok).toBe(true);
     expect(mocks.waitlistEntry.findMany).not.toHaveBeenCalled();
     expect(mocks.removeWaitlistEntry).not.toHaveBeenCalled();
+  });
+});
+
+// Codex #131: a concurrent settings save could read "no payments yet" and
+// change the currency in the gap between this create's own read and write —
+// the new payment would then be immediately mislabeled by the new currency.
+describe("addClientPaymentAction acquires the financial lock before recording a payment", () => {
+  const VALID_PAYLOAD: AddClientPaymentPayload = {
+    clientId: CLIENT_ID,
+    amount: "45.00",
+    status: "Paid",
+    description: "Cleaning",
+    receiptUrl: "",
+    paidAt: "2026-06-01",
+  };
+
+  beforeEach(() => {
+    mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID });
+    mocks.client.findFirstOrThrow.mockResolvedValue(SAVED_CLIENT_RECORD);
+    mocks.clientPayment.create.mockResolvedValue({});
+    mocks.business.findUniqueOrThrow.mockResolvedValue({ currency: "EUR" });
+  });
+
+  it("acquires the lock, then creates the payment, inside one transaction", async () => {
+    const result = await addClientPaymentAction(VALID_PAYLOAD);
+
+    expect(result.ok).toBe(true);
+    expect(mocks.$transaction).toHaveBeenCalledTimes(1);
+    expect(mocks.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(mocks.clientPayment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ businessId: "biz_1", clientId: CLIENT_ID, amountCents: 4500 }),
+      })
+    );
+    expect(mocks.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.clientPayment.create.mock.invocationCallOrder[0]
+    );
+    // The amount is parsed against the currency read AFTER the lock, not
+    // before it.
+    expect(mocks.business.findUniqueOrThrow.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mocks.$executeRaw.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("never creates the payment for an amount invalid against the freshly-read currency", async () => {
+    const result = await addClientPaymentAction({ ...VALID_PAYLOAD, amount: "not a number" });
+
+    expect(result.ok).toBe(false);
+    expect(mocks.clientPayment.create).not.toHaveBeenCalled();
+  });
+
+  // Codex #131: a concurrent settings save could change the currency between
+  // requireOwnedClient's own read (a stale snapshot the instant this request
+  // started) and this action acquiring the lock. "€85" must be parsed
+  // against whatever the currency actually is once the lock is held, not
+  // the value read before it.
+  it("parses the amount against the currency read fresh under the lock, not the stale value read before it", async () => {
+    // requireOwnedClient's own read (via getAuthedBusiness) saw EUR — a
+    // stale snapshot from before the lock. The fresh read under the lock
+    // says the workspace is now USD.
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1", currency: "EUR" }, user: {} });
+    mocks.business.findUniqueOrThrow.mockResolvedValue({ currency: "USD" });
+
+    const result = await addClientPaymentAction({ ...VALID_PAYLOAD, amount: "€45.00" });
+
+    // A euro marker is rejected once the fresh, in-lock read says USD — the
+    // old (stale-EUR-based) behavior would have accepted this.
+    expect(result.ok).toBe(false);
+    expect(mocks.clientPayment.create).not.toHaveBeenCalled();
   });
 });

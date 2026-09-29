@@ -117,6 +117,48 @@ describe("buildSettingsStateFromWorkspace — workflows", () => {
   });
 });
 
+describe("buildSettingsStateFromWorkspace — currency", () => {
+  function stateWithCurrency(currency: string) {
+    return buildSettingsStateFromWorkspace({
+      business: {
+        id: "biz_1",
+        name: "Clinic",
+        businessType: "Clinic",
+        currency,
+        brandAccentColor: "cobalt",
+        logoUrl: null,
+        whatsappNumber: null,
+        whatsappEnabled: false,
+        plan: "PRO",
+        planStatus: "ACTIVE",
+      } as Business,
+      supportEmail: "owner@example.com",
+      ownerName: "Owner",
+      businessHours: [],
+      reminderSettings: null,
+      workflows: {
+        rebookEnabled: false,
+        rebookAfterMonths: 6,
+        paymentReminderEnabled: true,
+        paymentReminderAfterDays: 3,
+        thankYouEnabled: true,
+        thankYouDelayHours: 2,
+      },
+      whatsappConnection: null,
+    });
+  }
+
+  it("carries the clinic's stored currency into the editable state", () => {
+    expect(stateWithCurrency("GBP").business.currency).toBe("GBP");
+    expect(stateWithCurrency("EUR").business.currency).toBe("EUR");
+  });
+
+  it("shows a stored value that isn't supported as the default, so it can be resubmitted and saved", () => {
+    expect(stateWithCurrency("XXX").business.currency).toBe("EUR");
+    expect(stateWithCurrency("").business.currency).toBe("EUR");
+  });
+});
+
 describe("buildWorkflowSavePayload", () => {
   const stored: WorkflowSettingsValues = {
     rebookEnabled: true,

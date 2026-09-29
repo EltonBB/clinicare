@@ -3,20 +3,40 @@ import { describe, expect, it } from "vitest";
 import { formatCurrency, getInitials, sumMergedIntervals } from "@/lib/utils";
 
 describe("formatCurrency", () => {
-  it("formats cents as USD with two decimals by default", () => {
-    expect(formatCurrency(123456)).toBe("$1,234.56");
-    expect(formatCurrency(0)).toBe("$0.00");
-    expect(formatCurrency(99)).toBe("$0.99");
+  it("formats cents with two decimals by default", () => {
+    expect(formatCurrency(123456, "USD")).toBe("$1,234.56");
+    expect(formatCurrency(0, "USD")).toBe("$0.00");
+    expect(formatCurrency(99, "USD")).toBe("$0.99");
   });
 
-  it("rounds to whole dollars when { whole: true }", () => {
-    expect(formatCurrency(123456, { whole: true })).toBe("$1,235");
-    expect(formatCurrency(9949, { whole: true })).toBe("$99");
-    expect(formatCurrency(9950, { whole: true })).toBe("$100");
+  it("uses the clinic's currency symbol, not dollars", () => {
+    expect(formatCurrency(123456, "EUR")).toBe("€1,234.56");
+    expect(formatCurrency(123456, "GBP")).toBe("£1,234.56");
+    expect(formatCurrency(5000, "EUR")).not.toContain("$");
+  });
+
+  it("names the currency when it has no short symbol", () => {
+    expect(formatCurrency(123456, "ALL")).toContain("ALL");
+    expect(formatCurrency(123456, "CHF")).toContain("CHF");
+  });
+
+  it("rounds to whole units when { whole: true }", () => {
+    expect(formatCurrency(123456, "USD", { whole: true })).toBe("$1,235");
+    expect(formatCurrency(9949, "USD", { whole: true })).toBe("$99");
+    expect(formatCurrency(9950, "USD", { whole: true })).toBe("$100");
+    expect(formatCurrency(123456, "EUR", { whole: true })).toBe("€1,235");
   });
 
   it("handles negative amounts (refunds/adjustments)", () => {
-    expect(formatCurrency(-500)).toBe("-$5.00");
+    expect(formatCurrency(-500, "USD")).toBe("-$5.00");
+    expect(formatCurrency(-500, "EUR")).toBe("-€5.00");
+  });
+
+  it("reads a missing or unsupported stored currency as the default (euro) instead of throwing", () => {
+    expect(formatCurrency(5000, undefined)).toBe("€50.00");
+    expect(formatCurrency(5000, null)).toBe("€50.00");
+    expect(formatCurrency(5000, "")).toBe("€50.00");
+    expect(formatCurrency(5000, "not-a-currency")).toBe("€50.00");
   });
 });
 
