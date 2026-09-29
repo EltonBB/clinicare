@@ -194,8 +194,7 @@ export async function saveSettingsAction(
     };
   }
 
-  const currencyChanging =
-    payload.business.currency !== undefined && payload.business.currency !== business.currency;
+  const currencySubmitted = payload.business.currency !== undefined;
 
   // Only a Supabase storage reference or a safe HTTPS URL may be stored — the
   // logo is later interpolated into a CSS url() in the app shell.
@@ -230,18 +229,30 @@ export async function saveSettingsAction(
   let pendingLogoCleanup;
   try {
     pendingLogoCleanup = await prisma.$transaction(async (tx) => {
-      if (currencyChanging) {
+      if (currencySubmitted) {
         // Held for the rest of this transaction: closes the gap between the
         // check below and the update against a concurrent addClientPaymentAction,
         // which acquires the same lock before its own create (Codex #131) —
         // a plain check-then-update only narrows that race, it doesn't close it.
         await acquireBusinessFinancialLock(tx, business.id);
 
-        const existingPaymentCount = await tx.clientPayment.count({
-          where: { businessId: business.id },
+        // Re-read under the lock instead of trusting the pre-transaction
+        // `business.currency` snapshot taken above: a submitted value that
+        // matches that snapshot can still be a real change if a concurrent
+        // request committed a different currency (and a payment in it) in
+        // between — the snapshot alone can't tell the two apart (Codex #131).
+        const freshBusiness = await tx.business.findUniqueOrThrow({
+          where: { id: business.id },
+          select: { currency: true },
         });
-        if (existingPaymentCount > 0) {
-          throw new CurrencyLockedError();
+
+        if (freshBusiness.currency !== payload.business.currency) {
+          const existingPaymentCount = await tx.clientPayment.count({
+            where: { businessId: business.id },
+          });
+          if (existingPaymentCount > 0) {
+            throw new CurrencyLockedError();
+          }
         }
       }
 

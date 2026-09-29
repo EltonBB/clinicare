@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const tx = {
-    business: { update: vi.fn() },
+    business: { update: vi.fn(), findUniqueOrThrow: vi.fn() },
     businessHours: { upsert: vi.fn() },
     reminderSettings: { upsert: vi.fn() },
     clientPayment: { count: vi.fn() },
@@ -99,6 +99,10 @@ beforeEach(() => {
   });
   mocks.prisma.$transaction.mockImplementation(async (run: (tx: typeof mocks.tx) => unknown) => run(mocks.tx));
   mocks.prisma.business.findUniqueOrThrow.mockResolvedValue({ id: "biz_1" });
+  // The fresh in-transaction currency read defaults to matching the
+  // pre-transaction snapshot (EUR) — tests that exercise a genuine
+  // concurrent-change race override this.
+  mocks.tx.business.findUniqueOrThrow.mockResolvedValue({ currency: "EUR" });
   // No payments on record by default — the guard test below overrides this.
   mocks.tx.clientPayment.count.mockResolvedValue(0);
   mocks.tx.$executeRaw.mockResolvedValue(undefined);
@@ -194,11 +198,46 @@ describe("saveSettingsAction — currency", () => {
     );
   });
 
-  it("never acquires the lock or checks for payments when the save keeps the currency unchanged", async () => {
+  it("acquires the lock but skips the payment check once the fresh in-transaction read confirms nothing changed", async () => {
     const result = await saveSettingsAction(payload("EUR"));
 
-    expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
+    expect(mocks.tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(mocks.tx.business.findUniqueOrThrow).toHaveBeenCalledWith({
+      where: { id: "biz_1" },
+      select: { currency: true },
+    });
     expect(mocks.tx.clientPayment.count).not.toHaveBeenCalled();
     expect(result.ok).toBe(true);
+  });
+
+  it("never acquires the lock or reads the fresh currency when no currency is submitted at all", async () => {
+    const result = await saveSettingsAction(payload(undefined));
+
+    expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
+    expect(mocks.tx.business.findUniqueOrThrow).not.toHaveBeenCalled();
+    expect(mocks.tx.clientPayment.count).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+  });
+
+  // Codex #131 round 8: a submitted value matching the pre-transaction
+  // `business.currency` snapshot isn't proof nothing is changing — a
+  // concurrent request can commit a different currency (and a payment in
+  // it) before this transaction acquires the lock. Deciding from the stale
+  // snapshot would let this "no-op" save silently overwrite that currency
+  // back and mislabel the concurrent payment; the fresh in-transaction read
+  // is what must decide, not the snapshot.
+  it("blocks a same-as-snapshot save when a concurrent request already changed the currency and recorded a payment", async () => {
+    mocks.tx.business.findUniqueOrThrow.mockResolvedValue({ currency: "USD" });
+    mocks.tx.clientPayment.count.mockResolvedValue(1);
+
+    // This request read EUR before the transaction and submits EUR — from
+    // its own (stale) view, currency isn't changing at all.
+    const result = await saveSettingsAction(payload("EUR"));
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Currency can't be changed once payments are on record — it would misstate past amounts.",
+    });
+    expect(mocks.tx.business.update).not.toHaveBeenCalled();
   });
 });
