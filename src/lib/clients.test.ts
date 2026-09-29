@@ -84,8 +84,8 @@ function clientFixture(): Parameters<typeof buildClientRecord>[0] {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.prisma.clientPayment.groupBy.mockResolvedValue([
-    { status: "Paid", _sum: { amountCents: 12500 } },
-    { status: "Unpaid", _sum: { amountCents: 4050 } },
+    { status: "Paid", _sum: { amountCents: 12500 }, _count: 1 },
+    { status: "Unpaid", _sum: { amountCents: 4050 }, _count: 1 },
   ]);
   mocks.resolveMediaDisplayUrls.mockResolvedValue(new Map());
 });
@@ -131,8 +131,8 @@ describe("buildClientRecord — money in the clinic's currency", () => {
   // billed can read lower than paid + unpaid on the very same stats row.
   it("computes billed from the full payment history, not the capped display list", async () => {
     mocks.prisma.clientPayment.groupBy.mockResolvedValue([
-      { status: "Paid", _sum: { amountCents: 500_000 } },
-      { status: "Unpaid", _sum: { amountCents: 50_000 } },
+      { status: "Paid", _sum: { amountCents: 500_000 }, _count: 40 },
+      { status: "Unpaid", _sum: { amountCents: 50_000 }, _count: 25 },
     ]);
 
     const record = await buildClientRecord(clientFixture(), "EUR");
@@ -142,5 +142,22 @@ describe("buildClientRecord — money in the clinic's currency", () => {
     expect(record.paymentStats.totalBilledDisplay).toBe("€5,500.00");
     expect(record.paymentStats.totalPaidDisplay).toBe("€5,000.00");
     expect(record.paymentStats.unpaidBalanceDisplay).toBe("€500.00");
+  });
+
+  // Codex #131: the same gap CodeRabbit found for the billed amount also
+  // applied to the count label shown beside it — deriving it from
+  // client.payments.length undercounted past the display list's take:60 cap.
+  it("counts the full payment history, not the capped display list", async () => {
+    mocks.prisma.clientPayment.groupBy.mockResolvedValue([
+      { status: "Paid", _sum: { amountCents: 500_000 }, _count: 40 },
+      { status: "Unpaid", _sum: { amountCents: 50_000 }, _count: 25 },
+    ]);
+
+    const record = await buildClientRecord(clientFixture(), "EUR");
+
+    // clientFixture's display list only has 2 payments — far fewer than the
+    // full-history counts above.
+    expect(record.paymentStats.totalCount).toBe(65);
+    expect(record.paymentStats.totalPaidCount).toBe(40);
   });
 });

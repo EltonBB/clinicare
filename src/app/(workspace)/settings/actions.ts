@@ -43,6 +43,16 @@ import { loadSettingsState, WORKFLOW_SETTINGS_SELECT } from "@/lib/settings-serv
 import type { WorkflowSettingsValues } from "@/lib/workflow-generators";
 import { isProBusinessPlan } from "@/lib/billing";
 import { weekdayOrder } from "@/lib/onboarding";
+import { acquireBusinessFinancialLock } from "@/lib/business-financial-lock";
+
+const CURRENCY_LOCKED_ERROR =
+  "Currency can't be changed once payments are on record — it would misstate past amounts.";
+
+// Aborts the settings transaction from inside its callback when the currency
+// guard fails a check made under the financial lock — thrown instead of
+// returned so the transaction actually rolls back nothing-committed, then
+// caught right outside to produce the typed result.
+class CurrencyLockedError extends Error {}
 
 function clampReminderHours(value: number, fallback: number) {
   if (!Number.isFinite(value)) {
@@ -184,25 +194,8 @@ export async function saveSettingsAction(
     };
   }
 
-  // Changing currency only relabels Business.currency — stored ClientPayment
-  // amounts have no currency of their own, so an existing USD 100.00 payment
-  // would silently render and export as EUR 100.00. Block the change once any
-  // payment is on record rather than reinterpret historical amounts.
-  if (
-    payload.business.currency !== undefined &&
-    payload.business.currency !== business.currency
-  ) {
-    const existingPaymentCount = await prisma.clientPayment.count({
-      where: { businessId: business.id },
-    });
-    if (existingPaymentCount > 0) {
-      return {
-        ok: false,
-        error:
-          "Currency can't be changed once payments are on record — it would misstate past amounts.",
-      };
-    }
-  }
+  const currencyChanging =
+    payload.business.currency !== undefined && payload.business.currency !== business.currency;
 
   // Only a Supabase storage reference or a safe HTTPS URL may be stored — the
   // logo is later interpolated into a CSS url() in the app shell.
@@ -234,82 +227,105 @@ export async function saveSettingsAction(
   // without a separate check here.
   const logoChanged = previousLogoUrl !== nextLogoUrl;
 
-  const pendingLogoCleanup = await prisma.$transaction(async (tx) => {
-    await tx.business.update({
-      where: {
-        id: business.id,
-      },
-      data: {
-        name: payload.business.businessName.trim() || business.name,
-        businessType: payload.business.businessType,
-        // undefined = leave as is (Prisma skips it): an older client bundle omits the field.
-        currency: payload.business.currency,
-        logoUrl: nextLogoUrl || null,
-        brandAccentColor,
-        whatsappNumber: normalizedWhatsAppNumber || null,
-      },
-    });
+  let pendingLogoCleanup;
+  try {
+    pendingLogoCleanup = await prisma.$transaction(async (tx) => {
+      if (currencyChanging) {
+        // Held for the rest of this transaction: closes the gap between the
+        // check below and the update against a concurrent addClientPaymentAction,
+        // which acquires the same lock before its own create (Codex #131) —
+        // a plain check-then-update only narrows that race, it doesn't close it.
+        await acquireBusinessFinancialLock(tx, business.id);
 
-    // `whatsappEnabled` is connection-derived state owned by the pairing flow —
-    // it is NOT written here. There's no UI control for `whatsapp.sendReminders`,
-    // so writing it on save would silently disable a paired clinic's reminders
-    // on any unrelated settings change. The connection (provider, pairing
-    // status) is likewise owned by pairing + the inbound webhook.
-    for (const [index, day] of weekdayOrder.entries()) {
-      const schedule = payload.workingHours[day];
+        const existingPaymentCount = await tx.clientPayment.count({
+          where: { businessId: business.id },
+        });
+        if (existingPaymentCount > 0) {
+          throw new CurrencyLockedError();
+        }
+      }
 
-      await tx.businessHours.upsert({
+      await tx.business.update({
         where: {
-          businessId_weekday: {
+          id: business.id,
+        },
+        data: {
+          name: payload.business.businessName.trim() || business.name,
+          businessType: payload.business.businessType,
+          // undefined = leave as is (Prisma skips it): an older client bundle omits the field.
+          currency: payload.business.currency,
+          logoUrl: nextLogoUrl || null,
+          brandAccentColor,
+          whatsappNumber: normalizedWhatsAppNumber || null,
+        },
+      });
+
+      // `whatsappEnabled` is connection-derived state owned by the pairing flow —
+      // it is NOT written here. There's no UI control for `whatsapp.sendReminders`,
+      // so writing it on save would silently disable a paired clinic's reminders
+      // on any unrelated settings change. The connection (provider, pairing
+      // status) is likewise owned by pairing + the inbound webhook.
+      for (const [index, day] of weekdayOrder.entries()) {
+        const schedule = payload.workingHours[day];
+
+        await tx.businessHours.upsert({
+          where: {
+            businessId_weekday: {
+              businessId: business.id,
+              weekday: index,
+            },
+          },
+          update: {
+            isOpen: schedule.enabled,
+            startTime: schedule.start,
+            endTime: schedule.end,
+          },
+          create: {
             businessId: business.id,
             weekday: index,
+            isOpen: schedule.enabled,
+            startTime: schedule.start,
+            endTime: schedule.end,
           },
+        });
+      }
+
+      await tx.reminderSettings.upsert({
+        where: {
+          businessId: business.id,
         },
         update: {
-          isOpen: schedule.enabled,
-          startTime: schedule.start,
-          endTime: schedule.end,
+          send24HourReminder: payload.reminders.twentyFourHour,
+          send2HourReminder: payload.reminders.twoHour,
+          reminderWindow: payload.whatsapp.reminderWindow,
+          firstReminderHours,
+          secondReminderHours,
+          template: payload.reminders.template.trim(),
         },
         create: {
           businessId: business.id,
-          weekday: index,
-          isOpen: schedule.enabled,
-          startTime: schedule.start,
-          endTime: schedule.end,
+          send24HourReminder: payload.reminders.twentyFourHour,
+          send2HourReminder: payload.reminders.twoHour,
+          reminderWindow: payload.whatsapp.reminderWindow,
+          firstReminderHours,
+          secondReminderHours,
+          template: payload.reminders.template.trim(),
         },
       });
-    }
 
-    await tx.reminderSettings.upsert({
-      where: {
-        businessId: business.id,
-      },
-      update: {
-        send24HourReminder: payload.reminders.twentyFourHour,
-        send2HourReminder: payload.reminders.twoHour,
-        reminderWindow: payload.whatsapp.reminderWindow,
-        firstReminderHours,
-        secondReminderHours,
-        template: payload.reminders.template.trim(),
-      },
-      create: {
-        businessId: business.id,
-        send24HourReminder: payload.reminders.twentyFourHour,
-        send2HourReminder: payload.reminders.twoHour,
-        reminderWindow: payload.whatsapp.reminderWindow,
-        firstReminderHours,
-        secondReminderHours,
-        template: payload.reminders.template.trim(),
-      },
+      // Recorded in the same transaction as the save above, so the outbox row
+      // exists if and only if this save actually committed with a changed
+      // logo — see lib/media-storage-server.ts.
+      return logoChanged
+        ? recordPendingStorageCleanup(tx, business.id, [previousLogoUrl])
+        : null;
     });
-
-    // Recorded in the same transaction as the save above, so the outbox row
-    // exists if and only if this save actually committed with a changed
-    // logo — see lib/media-storage-server.ts.
-    return logoChanged
-      ? recordPendingStorageCleanup(tx, business.id, [previousLogoUrl])
-      : null;
-  });
+  } catch (error) {
+    if (error instanceof CurrencyLockedError) {
+      return { ok: false, error: CURRENCY_LOCKED_ERROR };
+    }
+    throw error;
+  }
 
   // The transaction above already committed — business name, logo, brand
   // accent, working hours, and reminders all render in the app shell on every

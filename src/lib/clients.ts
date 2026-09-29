@@ -174,8 +174,12 @@ export type ClientRecord = {
     unpaidBalanceCents: number;
     totalPaidDisplay: string;
     unpaidBalanceDisplay: string;
-    /** Sum of the payment entries shown on the record (billed = every status). */
+    /** Sum over the full payment ledger (billed = every status), not just the capped display list. */
     totalBilledDisplay: string;
+    /** Row count over that same full ledger — payments.length is capped and undercounts past the display list's take limit. */
+    totalCount: number;
+    /** Same, scoped to Paid entries only. */
+    totalPaidCount: number;
   };
   gallery: Array<{
     id: string;
@@ -550,6 +554,7 @@ export async function buildClientRecord(
       by: ["status"],
       where: { businessId: client.businessId, clientId: client.id },
       _sum: { amountCents: true },
+      _count: true,
     }),
     // Batch-sign gallery images once (one request per bucket) instead of a
     // round-trip per item; independent of the sums above, so it runs alongside
@@ -559,13 +564,20 @@ export async function buildClientRecord(
 
   const paymentSum = (status: string) =>
     paymentSumsByStatus.find((row) => row.status === status)?._sum.amountCents ?? 0;
+  const paymentCount = (status: string) =>
+    paymentSumsByStatus.find((row) => row.status === status)?._count ?? 0;
   const totalPaidCents = paymentSum("Paid");
+  const totalPaidCount = paymentCount("Paid");
   const unpaidBalanceCents = paymentSum("Unpaid") + paymentSum("Partially Paid");
   // Billed must come from the same unbounded source as paid/unpaid above — a
   // client with more than 60 payments would otherwise show billed < paid +
   // unpaid, since `client.payments` is the capped take:60 display list
   // (CodeRabbit).
   const totalBilledCents = paymentSumsByStatus.reduce((sum, row) => sum + (row._sum.amountCents ?? 0), 0);
+  // Same reasoning applies to the ledger-entry count shown beside it — a
+  // client with more than 60 payments would otherwise show a "60 ledger
+  // entries" caption next to a full-history total (Codex #131).
+  const totalPaymentCount = paymentSumsByStatus.reduce((sum, row) => sum + row._count, 0);
 
   return {
     id: client.id,
@@ -616,6 +628,8 @@ export async function buildClientRecord(
       totalPaidDisplay: formatCurrency(totalPaidCents, currency),
       unpaidBalanceDisplay: formatCurrency(unpaidBalanceCents, currency),
       totalBilledDisplay: formatCurrency(totalBilledCents, currency),
+      totalCount: totalPaymentCount,
+      totalPaidCount,
     },
     gallery: client.galleryItems.map((item) => ({
       id: item.id,

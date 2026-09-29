@@ -24,6 +24,7 @@ import { attemptStorageCleanup, recordPendingStorageCleanup } from "@/lib/media-
 import { parseAmountToCents } from "@/lib/payment-amount";
 import { parseRecordId, recordIdSchema } from "@/lib/record-id";
 import { removeWaitlistEntry } from "@/lib/slot-offers";
+import { acquireBusinessFinancialLock } from "@/lib/business-financial-lock";
 
 export type SaveClientResult = {
   ok: boolean;
@@ -972,20 +973,29 @@ export async function addClientPaymentAction(
     };
   }
 
-  await prisma.clientPayment.create({
-    data: {
-      businessId: context.business.id,
-      clientId: payload.clientId,
-      amountCents,
-      status: payload.status.trim() || "Unpaid",
-      description: payload.description.trim() || null,
-      invoiceNumber: payload.invoiceNumber?.trim() || null,
-      receiptNumber: payload.receiptNumber?.trim() || null,
-      paymentMethod: payload.paymentMethod?.trim() || null,
-      billingNote: payload.billingNote?.trim() || null,
-      receiptUrl: normalizeOptionalPublicUrl(payload.receiptUrl) || null,
-      paidAt: parseOptionalDate(payload.paidAt),
-    },
+  // Held for the rest of this transaction: closes the gap between this
+  // create and a concurrent currency change, which acquires the same lock
+  // before its own on-record check (Codex #131) — without it, a currency
+  // change reading "no payments yet" and this create could both proceed,
+  // and the new payment would be immediately mislabeled by the new currency.
+  await prisma.$transaction(async (tx) => {
+    await acquireBusinessFinancialLock(tx, context.business.id);
+
+    await tx.clientPayment.create({
+      data: {
+        businessId: context.business.id,
+        clientId: payload.clientId,
+        amountCents,
+        status: payload.status.trim() || "Unpaid",
+        description: payload.description.trim() || null,
+        invoiceNumber: payload.invoiceNumber?.trim() || null,
+        receiptNumber: payload.receiptNumber?.trim() || null,
+        paymentMethod: payload.paymentMethod?.trim() || null,
+        billingNote: payload.billingNote?.trim() || null,
+        receiptUrl: normalizeOptionalPublicUrl(payload.receiptUrl) || null,
+        paidAt: parseOptionalDate(payload.paidAt),
+      },
+    });
   });
 
   revalidatePaymentSurfaces();

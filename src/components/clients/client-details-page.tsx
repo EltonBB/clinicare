@@ -1163,8 +1163,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           ) : (
             <div className="space-y-3">
               <section className="surface-card grid gap-3 p-3.5 md:grid-cols-4">
-                <PaymentMetric label="Total billed" value={client.paymentStats.totalBilledDisplay}helper={countLabel(client.payments.length, "ledger entry", "ledger entries")} />
-                <PaymentMetric label="Total paid" value={client.paymentStats.totalPaidDisplay} helper={countLabel(client.payments.filter((payment) => payment.status.toLowerCase() === "paid").length, "paid entry", "paid entries")} tone="good" />
+                <PaymentMetric label="Total billed" value={client.paymentStats.totalBilledDisplay} helper={countLabel(client.paymentStats.totalCount, "ledger entry", "ledger entries")} />
+                <PaymentMetric label="Total paid" value={client.paymentStats.totalPaidDisplay} helper={countLabel(client.paymentStats.totalPaidCount, "paid entry", "paid entries")} tone="good" />
                 <PaymentMetric label="Outstanding" value={client.paymentStats.unpaidBalanceDisplay} helper="Open balance" tone={client.paymentStats.unpaidBalanceCents > 0 ? "danger" : "default"} />
                 <PaymentMetric
                   label="Last payment"

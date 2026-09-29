@@ -5,13 +5,14 @@ const mocks = vi.hoisted(() => {
     business: { update: vi.fn() },
     businessHours: { upsert: vi.fn() },
     reminderSettings: { upsert: vi.fn() },
+    clientPayment: { count: vi.fn() },
+    $executeRaw: vi.fn(),
   };
   return {
     tx,
     prisma: {
       $transaction: vi.fn(),
       business: { findUniqueOrThrow: vi.fn() },
-      clientPayment: { count: vi.fn() },
     },
     getCurrentUser: vi.fn(),
     updateCurrentUserMetadata: vi.fn(),
@@ -99,7 +100,8 @@ beforeEach(() => {
   mocks.prisma.$transaction.mockImplementation(async (run: (tx: typeof mocks.tx) => unknown) => run(mocks.tx));
   mocks.prisma.business.findUniqueOrThrow.mockResolvedValue({ id: "biz_1" });
   // No payments on record by default — the guard test below overrides this.
-  mocks.prisma.clientPayment.count.mockResolvedValue(0);
+  mocks.tx.clientPayment.count.mockResolvedValue(0);
+  mocks.tx.$executeRaw.mockResolvedValue(undefined);
   mocks.updateCurrentUserMetadata.mockResolvedValue({ error: null });
   mocks.loadSettingsState.mockResolvedValue({ loaded: true });
 });
@@ -156,29 +158,47 @@ describe("saveSettingsAction — currency", () => {
   // payments exist would silently reinterpret a recorded USD 100.00 as
   // EUR 100.00, misstating the whole ledger and its statements.
   it("blocks the change once the workspace has a payment on record", async () => {
-    mocks.prisma.clientPayment.count.mockResolvedValue(1);
+    mocks.tx.clientPayment.count.mockResolvedValue(1);
 
     const result = await saveSettingsAction(payload("USD"));
 
-    expect(mocks.prisma.clientPayment.count).toHaveBeenCalledWith({ where: { businessId: "biz_1" } });
+    expect(mocks.tx.clientPayment.count).toHaveBeenCalledWith({ where: { businessId: "biz_1" } });
     expect(result).toEqual({
       ok: false,
       error: "Currency can't be changed once payments are on record — it would misstate past amounts.",
     });
-    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+    // The check runs inside the transaction (under the financial lock), not
+    // before it — so the transaction itself IS entered, but nothing commits:
+    // the throw aborts it before business.update is ever reached.
+    expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(mocks.tx.business.update).not.toHaveBeenCalled();
   });
 
   it("allows the change through once payments are checked and none exist", async () => {
     const result = await saveSettingsAction(payload("USD"));
 
-    expect(mocks.prisma.clientPayment.count).toHaveBeenCalledWith({ where: { businessId: "biz_1" } });
+    expect(mocks.tx.clientPayment.count).toHaveBeenCalledWith({ where: { businessId: "biz_1" } });
     expect(result.ok).toBe(true);
   });
 
-  it("never checks for payments when the save keeps the currency unchanged", async () => {
+  // Codex #131: a plain check-then-update only narrows the gap against a
+  // concurrent addClientPaymentAction, it doesn't close it — the same
+  // pg_advisory_xact_lock acquired here must be held before the count read,
+  // for the rest of this transaction, so the two can't interleave.
+  it("acquires the financial lock before checking for existing payments", async () => {
+    await saveSettingsAction(payload("USD"));
+
+    expect(mocks.tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(mocks.tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.tx.clientPayment.count.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("never acquires the lock or checks for payments when the save keeps the currency unchanged", async () => {
     const result = await saveSettingsAction(payload("EUR"));
 
-    expect(mocks.prisma.clientPayment.count).not.toHaveBeenCalled();
+    expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
+    expect(mocks.tx.clientPayment.count).not.toHaveBeenCalled();
     expect(result.ok).toBe(true);
   });
 });
