@@ -78,9 +78,10 @@ export async function recordInboundMessage(
   // picking an arbitrary one of them (which could let a "2" reply cancel the
   // wrong family member's appointment). The message itself is still recorded
   // and threaded normally either way; only the identity used for reply-intent
-  // matching becomes conservative. Resolved before the dedup check below (and
-  // returned on the "duplicate" branch too) since it's a cheap read the
-  // webhook route needs either way to retry the reply-intent step.
+  // matching becomes conservative. Computed unconditionally before the dedup
+  // check below — a duplicate simply doesn't use it (it returns the message's
+  // own stored clientId instead, see below) — because that's cheaper than
+  // restructuring around whether this turns out to be new.
   const matchingClients = await prisma.client.findMany({
     where: { businessId: event.businessId, phoneKey },
     select: { id: true, name: true },
@@ -92,10 +93,17 @@ export async function recordInboundMessage(
   if (event.providerMessageId) {
     const existing = await prisma.message.findFirst({
       where: { providerMessageSid: event.providerMessageId },
-      select: { id: true },
+      select: { id: true, clientId: true },
     });
     if (existing) {
-      return { recorded: false, reason: "duplicate", clientId: matchingClient?.id ?? null, messageId: existing.id };
+      // Return the identity this message was actually stored under, not a
+      // fresh re-resolve of `matchingClient` — if the phone was reassigned,
+      // or a previously-ambiguous match resolved differently (a duplicate
+      // client record removed), between the original delivery and this
+      // retry, re-resolving could hand a "2" reply to a different client
+      // than the one the message was originally recorded against, cancelling
+      // the wrong person's appointment (Codex #131).
+      return { recorded: false, reason: "duplicate", clientId: existing.clientId, messageId: existing.id };
     }
   }
 
@@ -152,13 +160,21 @@ export async function recordInboundMessage(
     ) {
       const winner = await prisma.message.findFirst({
         where: { providerMessageSid: event.providerMessageId },
-        select: { id: true },
+        select: { id: true, clientId: true },
       });
       // winner should always exist (that's what the P2002 collided on); null
       // only if it's somehow gone by the time we look again. applyInboundReplyIntent
       // treats a null/undefined messageId as "no claim to take", same as not
       // passing one at all — a safe fallback, not a silent bug.
-      return { recorded: false, reason: "duplicate", clientId: matchingClient?.id ?? null, messageId: winner?.id ?? null };
+      // Same reasoning as the dedup branch above: return the identity the
+      // winning row was actually stored under, not a fresh re-resolve of
+      // `matchingClient` (Codex #131).
+      return {
+        recorded: false,
+        reason: "duplicate",
+        clientId: winner?.clientId ?? null,
+        messageId: winner?.id ?? null,
+      };
     }
     throw error;
   }
