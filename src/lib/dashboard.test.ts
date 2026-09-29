@@ -163,6 +163,7 @@ describe("buildDashboardViewFromWorkspace — no-show risk", () => {
     ownerId: "owner_1",
     name: "Snapshot Clinic",
     businessType: "clinic",
+    currency: "EUR",
     logoUrl: null,
     dashboardFocus: "appointments",
     brandAccentColor: null,

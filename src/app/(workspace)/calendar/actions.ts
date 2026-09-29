@@ -409,6 +409,13 @@ export async function saveAppointmentAction(
         (existing.clientId !== payload.clientId ||
           existing.staffMemberId !== staffMemberId ||
           existing.startAt.getTime() !== startAt.getTime() ||
+          // A duration-only edit (endAt moves, startAt doesn't) still changes
+          // the window the offer promises: Book derives its own duration from
+          // the saved end time, so a stale offer for the old, shorter window
+          // could let Book mark the entry FILLED before the booking form's
+          // own overlap check catches the now-longer slot conflicting with
+          // whatever follows it (Codex).
+          existing.endAt.getTime() !== endAt.getTime() ||
           existing.title !== payload.service.trim());
       needsConflictCheck =
         existing.staffMemberId !== staffMemberId ||
@@ -578,7 +585,13 @@ export async function saveAppointmentAction(
           // holds it, the patient would be offered (and staff could Book) a
           // slot that's already taken. Check it here, right before making
           // that promise, instead of skipping straight to offerFreedSlot
-          // (Codex #130).
+          // (Codex #130). Acquire the same advisory lock the ordinary
+          // conflict check above takes before its own read — without it, a
+          // concurrent booking for this staff member can commit between this
+          // unlocked read and offerFreedSlot below, and this transaction
+          // would never see it (Codex).
+          await acquireSchedulingLock(tx, staffMemberId);
+
           const editedSlotIsFree = !(await hasSchedulingConflict(tx, {
             businessId: business.id,
             staffMemberId,

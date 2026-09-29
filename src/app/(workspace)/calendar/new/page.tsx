@@ -122,14 +122,21 @@ export default async function NewAppointmentPage({
   const initialStartTime = isValidTimeParam(requestedTime) ? requestedTime : undefined;
   const initialService =
     typeof requestedService === "string" && requestedService ? requestedService : undefined;
-  // Same validation shape as the client id above: only a real staff id in this
-  // business is honored, else it's ignored rather than silently preselecting
-  // an id that doesn't belong here.
+  // Same validation shape as the client id above: only a real staff id in
+  // this business is honored, else it's ignored rather than silently
+  // preselecting an id that doesn't belong here. An explicit empty string
+  // (the Follow-ups Book link's way of saying "this freed slot was genuinely
+  // unassigned") is passed through as-is instead of falling into the same
+  // "ignored" bucket as an absent param — the form's own default for that
+  // bucket is its first staff member, which would silently override an
+  // explicit unassigned choice (Codex #130).
   const initialStaffMemberId =
-    typeof requestedStaffMemberId === "string" &&
-    staffMembers.some((member) => member.id === requestedStaffMemberId)
-      ? requestedStaffMemberId
-      : undefined;
+    requestedStaffMemberId === ""
+      ? ""
+      : typeof requestedStaffMemberId === "string" &&
+          staffMembers.some((member) => member.id === requestedStaffMemberId)
+        ? requestedStaffMemberId
+        : undefined;
   const initialDuration = parseDurationParam(requestedDuration);
 
   return (

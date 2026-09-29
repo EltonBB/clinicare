@@ -105,6 +105,16 @@ export async function listPendingFollowUpDrafts(
 
 type DraftMutationResult = { ok: true } | { ok: false; error: string };
 
+export type SentFollowUpDraft = {
+  id: string;
+  body: string;
+  clientId: string;
+  clientName: string | null;
+  phone: string | null;
+};
+
+type MarkDraftSentResult = { ok: true; draft: SentFollowUpDraft } | { ok: false; error: string };
+
 export const ALREADY_HANDLED_ERROR = "This follow-up was already handled.";
 export const SLOT_OFFER_UNAVAILABLE_ERROR = "This slot offer is no longer available.";
 
@@ -119,31 +129,62 @@ export const SLOT_OFFER_UNAVAILABLE_ERROR = "This slot offer is no longer availa
  * draft stays visible after it's sent, rendered from this same field, so
  * without this it would show the original template instead of what the
  * patient actually received (Codex).
+ *
+ * The client/phone lookup the caller needs to actually send the message is
+ * read in the SAME transaction as the flip, not as a separate query after
+ * it: a plain flip-then-read leaves a gap where another action (the slot
+ * being filled/reactivated by someone else, the hourly sweep) could
+ * invalidate the offer between the two calls — the flip already committed,
+ * so the unguarded read would still return the row and the caller would
+ * still send the now-stale offer (Codex).
  */
 export async function markFollowUpDraftSent(args: {
   id: string;
   businessId: string;
   now?: Date;
   editedBody?: string;
-}): Promise<DraftMutationResult> {
+}): Promise<MarkDraftSentResult> {
   const { id, businessId, now = new Date(), editedBody } = args;
-  const { count } = await prisma.followUpDraft.updateMany({
-    where: {
-      id,
-      businessId,
-      ...actionablePendingWhere(now),
-      // A slot offer additionally needs the workspace still on Pro to be
-      // sent — a downgrade stops staff from sending a new one at once, not
-      // only once the hourly sweep catches up (matching the REBOOK branch's
-      // own plan re-check above). Skip, Declined and Book stay reachable
-      // regardless (see passSlotOfferAction's own "no plan check" comment),
-      // so a downgraded workspace can still release an outstanding offer —
-      // only Send is blocked here (Codex).
-      NOT: { kind: "SLOT_OFFER", business: { plan: { in: nonProPlans() } } },
-    },
-    data: { status: "SENT", sentAt: now, ...(editedBody ? { body: editedBody } : {}) },
-  });
-  return count === 0 ? { ok: false, error: ALREADY_HANDLED_ERROR } : { ok: true };
+  return retryOnWriteConflict(() =>
+    prisma.$transaction(async (tx) => {
+      const { count } = await tx.followUpDraft.updateMany({
+        where: {
+          id,
+          businessId,
+          ...actionablePendingWhere(now),
+          // A slot offer additionally needs the workspace still on Pro to be
+          // sent — a downgrade stops staff from sending a new one at once, not
+          // only once the hourly sweep catches up (matching the REBOOK branch's
+          // own plan re-check above). Skip, Declined and Book stay reachable
+          // regardless (see passSlotOfferAction's own "no plan check" comment),
+          // so a downgraded workspace can still release an outstanding offer —
+          // only Send is blocked here (Codex).
+          NOT: { kind: "SLOT_OFFER", business: { plan: { in: nonProPlans() } } },
+        },
+        data: { status: "SENT", sentAt: now, ...(editedBody ? { body: editedBody } : {}) },
+      });
+
+      if (count === 0) {
+        return { ok: false, error: ALREADY_HANDLED_ERROR };
+      }
+
+      const draft = await tx.followUpDraft.findFirstOrThrow({
+        where: { id, businessId },
+        select: { id: true, body: true, clientId: true, client: { select: { phone: true, name: true } } },
+      });
+
+      return {
+        ok: true,
+        draft: {
+          id: draft.id,
+          body: draft.body,
+          clientId: draft.clientId,
+          clientName: draft.client.name,
+          phone: draft.client.phone,
+        },
+      };
+    })
+  );
 }
 
 /** Reverts a SENT draft back to PENDING — used when the send itself fails, so it can be retried. */

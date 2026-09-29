@@ -308,6 +308,11 @@ function revalidateClientDirectory() {
   // cache evicts or a hard refresh (Codex #130).
   revalidatePath("/inbox");
   revalidatePath("/inbox/follow-ups");
+  // The same eligibility change also feeds listWaitingEntries (client:
+  // ELIGIBLE_CLIENT_WHERE), which the Calendar waiting-list panel reads —
+  // without this, that panel can keep showing an entry for a client who just
+  // went Inactive/Archived until the cache evicts (Codex).
+  revalidatePath("/calendar");
 }
 
 function revalidateClientDetail(clientId: string) {

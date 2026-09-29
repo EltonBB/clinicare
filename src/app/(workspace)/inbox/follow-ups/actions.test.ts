@@ -103,12 +103,15 @@ beforeEach(() => {
 
 describe("sendFollowUpDraftAction", () => {
   it("sends successfully and mirrors the send into the client's inbox thread", async () => {
-    mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true });
-    mocks.followUpDraft.findFirst.mockResolvedValue({
-      id: DRAFT_ID,
-      body: "Hi Alex, quick note about your next visit.",
-      clientId: "client_1",
-      client: { phone: "+15550100", name: "Alex" },
+    mocks.markFollowUpDraftSent.mockResolvedValue({
+      ok: true,
+      draft: {
+        id: DRAFT_ID,
+        body: "Hi Alex, quick note about your next visit.",
+        clientId: "client_1",
+        clientName: "Alex",
+        phone: "+15550100",
+      },
     });
     mocks.sendMessage.mockResolvedValue({
       ok: true,
@@ -152,12 +155,9 @@ describe("sendFollowUpDraftAction", () => {
   });
 
   it("sends the edited body when an override is provided, instead of the stored draft body", async () => {
-    mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true });
-    mocks.followUpDraft.findFirst.mockResolvedValue({
-      id: DRAFT_ID,
-      body: "Original draft body",
-      clientId: "client_1",
-      client: { phone: "+15550100", name: "Alex" },
+    mocks.markFollowUpDraftSent.mockResolvedValue({
+      ok: true,
+      draft: { id: DRAFT_ID, body: "Original draft body", clientId: "client_1", clientName: "Alex", phone: "+15550100" },
     });
     mocks.sendMessage.mockResolvedValue({
       ok: true,
@@ -178,12 +178,15 @@ describe("sendFollowUpDraftAction", () => {
   });
 
   it("does not fail the send when the inbox mirror write throws", async () => {
-    mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true });
-    mocks.followUpDraft.findFirst.mockResolvedValue({
-      id: DRAFT_ID,
-      body: "Hi Alex, quick note about your next visit.",
-      clientId: "client_1",
-      client: { phone: "+15550100", name: "Alex" },
+    mocks.markFollowUpDraftSent.mockResolvedValue({
+      ok: true,
+      draft: {
+        id: DRAFT_ID,
+        body: "Hi Alex, quick note about your next visit.",
+        clientId: "client_1",
+        clientName: "Alex",
+        phone: "+15550100",
+      },
     });
     mocks.sendMessage.mockResolvedValue({
       ok: true,
@@ -215,7 +218,6 @@ describe("sendFollowUpDraftAction", () => {
 
     expect(result).toEqual({ ok: false, error: "Write a message before sending." });
     expect(mocks.markFollowUpDraftSent).not.toHaveBeenCalled();
-    expect(mocks.followUpDraft.findFirst).not.toHaveBeenCalled();
     expect(mocks.sendMessage).not.toHaveBeenCalled();
     expect(mocks.revertFollowUpDraftToPending).not.toHaveBeenCalled();
   });
@@ -226,17 +228,20 @@ describe("sendFollowUpDraftAction", () => {
     const result = await sendFollowUpDraftAction(DRAFT_ID);
 
     expect(result).toEqual({ ok: false, error: ALREADY_HANDLED_ERROR });
-    expect(mocks.followUpDraft.findFirst).not.toHaveBeenCalled();
     expect(mocks.sendMessage).not.toHaveBeenCalled();
     expect(mocks.revertFollowUpDraftToPending).not.toHaveBeenCalled();
   });
 
   it("reverts to pending and returns a plain error when the client has no phone on file", async () => {
-    mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true });
-    mocks.followUpDraft.findFirst.mockResolvedValue({
-      id: DRAFT_ID,
-      body: "Hi Alex, quick note about your next visit.",
-      client: { phone: null },
+    mocks.markFollowUpDraftSent.mockResolvedValue({
+      ok: true,
+      draft: {
+        id: DRAFT_ID,
+        body: "Hi Alex, quick note about your next visit.",
+        clientId: "client_1",
+        clientName: null,
+        phone: null,
+      },
     });
 
     const result = await sendFollowUpDraftAction(DRAFT_ID);
@@ -250,11 +255,9 @@ describe("sendFollowUpDraftAction", () => {
   });
 
   it("reverts to pending and hides the raw provider error when sendMessage fails", async () => {
-    mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true });
-    mocks.followUpDraft.findFirst.mockResolvedValue({
-      id: DRAFT_ID,
-      body: "Hi Alex, quick note about your next visit.",
-      client: { phone: "+15550100" },
+    mocks.markFollowUpDraftSent.mockResolvedValue({
+      ok: true,
+      draft: { id: DRAFT_ID, body: "Hi Alex, quick note about your next visit.", clientId: "client_1", clientName: null, phone: "+15550100" },
     });
     mocks.sendMessage.mockResolvedValue({
       ok: false,
@@ -271,27 +274,16 @@ describe("sendFollowUpDraftAction", () => {
     });
   });
 
-  it("reverts to pending when the draft lookup throws after the flip, instead of stranding it as sent", async () => {
-    mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true });
-    mocks.followUpDraft.findFirst.mockRejectedValue(new Error("connection reset"));
-
-    const result = await sendFollowUpDraftAction(DRAFT_ID);
-
-    expect(result).toEqual({ ok: false, error: "Couldn't send this message. Try again." });
-    expect(mocks.sendMessage).not.toHaveBeenCalled();
-    expect(mocks.revertFollowUpDraftToPending).toHaveBeenCalledWith({
-      id: DRAFT_ID,
-      businessId: BUSINESS.id,
-    });
-    expect(mocks.revalidatePath).not.toHaveBeenCalled();
-  });
+  // The old version of this test covered a separate post-flip lookup that
+  // could throw independently of the flip — markFollowUpDraftSent no longer
+  // has one: the client/body read now happens in the SAME transaction as the
+  // flip (Codex #130), so that race is gone by construction. sendMessage
+  // throwing after a successful flip is still covered below.
 
   it("reverts to pending when sendMessage itself throws", async () => {
-    mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true });
-    mocks.followUpDraft.findFirst.mockResolvedValue({
-      id: DRAFT_ID,
-      body: "Hi Alex, quick note about your next visit.",
-      client: { phone: "+15550100" },
+    mocks.markFollowUpDraftSent.mockResolvedValue({
+      ok: true,
+      draft: { id: DRAFT_ID, body: "Hi Alex, quick note about your next visit.", clientId: "client_1", clientName: null, phone: "+15550100" },
     });
     mocks.sendMessage.mockRejectedValue(new Error("boom"));
 
@@ -397,7 +389,7 @@ describe("bookFollowUpSlotAction", () => {
     expectFollowUpSurfacesRevalidated();
   });
 
-  it("omits staffMemberId when the freed slot had nobody assigned, without checking any staff member", async () => {
+  it("passes an explicit empty staffMemberId when the freed slot had nobody assigned, without checking any staff member", async () => {
     process.env.APP_TIME_ZONE = "Europe/Budapest";
     mocks.followUpDraft.findFirst.mockResolvedValue({
       clientId: "client_1",
@@ -412,9 +404,12 @@ describe("bookFollowUpSlotAction", () => {
 
     const result = await bookFollowUpSlotAction(DRAFT_ID);
 
+    // An empty staffMemberId (not an absent one) so the booking form's own
+    // "nothing preselected" default (its first staff member) can never
+    // silently override a genuinely unassigned offer (Codex #130).
     expect(result).toEqual({
       ok: true,
-      bookingUrl: "/calendar/new?client=client_1&service=Checkup&date=2026-10-05&time=09%3A00&duration=30",
+      bookingUrl: "/calendar/new?client=client_1&service=Checkup&date=2026-10-05&time=09%3A00&staffMemberId=&duration=30",
     });
     expect(mocks.staffMember.findFirst).not.toHaveBeenCalled();
   });

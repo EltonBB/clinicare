@@ -132,19 +132,28 @@ function draftRow(overrides: Row = {}): Row {
     kind: "REBOOK",
     status: "PENDING",
     createdAt: new Date("2026-08-31T08:00:00.000Z"),
+    body: "Draft message",
+    clientId: "client_1",
     appointmentId: null,
     appointment: null,
     paymentId: null,
     payment: null,
     waitlistEntryId: null,
     waitlistEntry: null,
-    client: { isArchived: false, status: "ACTIVE", appointments: [] },
+    client: { isArchived: false, status: "ACTIVE", appointments: [], phone: "+38344000000", name: "Test Client" },
     business: { plan: "PRO" },
     ...overrides,
   };
 }
 
-const client = (overrides: Row = {}) => ({ isArchived: false, status: "ACTIVE", appointments: [], ...overrides });
+const client = (overrides: Row = {}) => ({
+  isArchived: false,
+  status: "ACTIVE",
+  appointments: [],
+  phone: "+38344000000",
+  name: "Test Client",
+  ...overrides,
+});
 
 // Serves `rows` through the mocked Prisma calls the data layer makes, filtered by the real where-inputs.
 function serveDrafts(rows: Row[]) {
@@ -154,6 +163,23 @@ function serveDrafts(rows: Row[]) {
   mocks.prisma.followUpDraft.updateMany.mockImplementation(async ({ where }: { where: Row }) => ({
     count: pick(where).length,
   }));
+  // markFollowUpDraftSent runs its flip and the client/body read inside one
+  // prisma.$transaction (mocked above to call back with mocks.tx), so the
+  // same in-memory rows are served through tx.followUpDraft too.
+  mocks.tx.followUpDraft.updateMany.mockImplementation(async ({ where }: { where: Row }) => ({
+    count: pick(where).length,
+  }));
+  mocks.tx.followUpDraft.findFirstOrThrow.mockImplementation(async ({ where }: { where: Row }) => {
+    const [row] = pick(where);
+    if (!row) throw new Error("no row matched (findFirstOrThrow)");
+    const rowClient = (row.client as Row | null) ?? {};
+    return {
+      id: row.id,
+      body: row.body,
+      clientId: row.clientId,
+      client: { phone: rowClient.phone ?? null, name: rowClient.name ?? null },
+    };
+  });
 }
 
 async function listedIds(businessId = "biz_1") {
@@ -339,7 +365,12 @@ describe("follow-ups data layer — which drafts are actionable", () => {
     expect(await listedIds()).toEqual(live ? ["d_1"] : []);
     expect(await getPendingFollowUpDraftCount("biz_1", NOW)).toBe(live ? 1 : 0);
     expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toEqual(
-      live ? { ok: true } : { ok: false, error: "This follow-up was already handled." }
+      live
+        ? {
+            ok: true,
+            draft: { id: "d_1", body: "Draft message", clientId: "client_1", clientName: "Test Client", phone: "+38344000000" },
+          }
+        : { ok: false, error: "This follow-up was already handled." }
     );
   });
 
@@ -426,8 +457,11 @@ describe("follow-ups data layer — which drafts are actionable", () => {
     const row = draftRow();
     serveDrafts([row]);
 
-    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toEqual({ ok: true });
-    expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledWith(
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toEqual({
+      ok: true,
+      draft: { id: "d_1", body: "Draft message", clientId: "client_1", clientName: "Test Client", phone: "+38344000000" },
+    });
+    expect(mocks.tx.followUpDraft.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: "SENT", sentAt: NOW } })
     );
 

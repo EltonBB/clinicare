@@ -602,6 +602,43 @@ describe("saveAppointmentAction — un-cancelling withdraws the slot's offer", (
     expect(withdrawOrder).toBeLessThan(offerOrder);
   });
 
+  // Codex #130 (round 8): a duration-only edit (endAt moves, startAt
+  // doesn't) still changes the window the offer promises — Book derives its
+  // own duration from the saved end time, so a stale offer for the old,
+  // shorter window could let Book mark the entry FILLED before the booking
+  // form's own overlap check catches the now-longer slot conflicting with
+  // whatever follows it.
+  it("editing only a still-cancelled booking's duration withdraws the old offer and re-offers the new window", async () => {
+    const txClient = {
+      appointment: mocks.appointment,
+      appointmentReminder: mocks.appointmentReminder,
+      scheduleBlock: mocks.scheduleBlock,
+      $executeRaw: mocks.$executeRaw,
+    };
+    mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(txClient));
+    mocks.appointment.findFirst.mockResolvedValueOnce(CANCELLED_EXISTING);
+
+    const result = await saveAppointmentAction({
+      ...PAYLOAD,
+      status: "cancelled",
+      baselineStatus: "cancelled",
+      endTime: "10:00", // was 09:30 — same start time, longer duration
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.withdrawSlotOffers).toHaveBeenCalledWith(txClient, { businessId: "biz_1", appointmentId: "appt_1" });
+    expect(mocks.offerFreedSlot).toHaveBeenCalledWith(txClient, {
+      businessId: "biz_1",
+      cancelled: {
+        id: "appt_1",
+        clientId: "client_1",
+        staffMemberId: null,
+        title: "Checkup",
+        startAt: parseZonedWallClock("2026-06-01", "09:00"),
+      },
+    });
+  });
+
   it("saving a still-cancelled booking unchanged withdraws and offers nothing", async () => {
     mocks.appointment.findFirst.mockResolvedValueOnce(CANCELLED_EXISTING);
 
@@ -699,6 +736,10 @@ describe("saveAppointmentAction — un-cancelling withdraws the slot's offer", (
     });
 
     expect(result.ok).toBe(true);
+    // Codex #130 (round 8): the re-offer's own conflict check takes the same
+    // advisory lock the ordinary booking path does, closing the window for a
+    // concurrent booking to slip in unseen.
+    expect(mocks.$executeRaw).toHaveBeenCalled();
     expect(mocks.offerFreedSlot).toHaveBeenCalledWith(txClient, {
       businessId: "biz_1",
       cancelled: {

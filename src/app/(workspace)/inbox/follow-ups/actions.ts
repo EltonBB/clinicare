@@ -92,6 +92,12 @@ export async function sendFollowUpDraftAction(
     return { ok: false, error: flip.error };
   }
 
+  // Read from the flip's own result, not a fresh query — the flip already
+  // fetched this inside the same transaction as the SENT write, so there's
+  // no gap after it for another action to invalidate the offer before this
+  // send goes out (Codex).
+  const draft = flip.draft;
+
   let failure: string | null = null;
   let sent: {
     clientId: string;
@@ -101,23 +107,18 @@ export async function sendFollowUpDraftAction(
   } | null = null;
 
   try {
-    const draft = await prisma.followUpDraft.findFirst({
-      where: { id: draftId, businessId: business.id },
-      select: { id: true, body: true, clientId: true, client: { select: { phone: true, name: true } } },
-    });
-
-    if (!draft?.client.phone) {
+    if (!draft.phone) {
       failure = "This client has no phone number on file.";
     } else {
       const result = await sendMessage({
         channel: "WHATSAPP",
         businessId: business.id,
-        to: draft.client.phone,
+        to: draft.phone,
         message: { kind: "freeform", body: editedBody && editedBody.length > 0 ? editedBody : draft.body },
       });
 
       if (result.ok) {
-        sent = { clientId: draft.clientId, clientName: draft.client.name, phone: draft.client.phone, result };
+        sent = { clientId: draft.clientId, clientName: draft.clientName, phone: draft.phone, result };
       } else {
         failure = "Couldn't send this message. Try again.";
       }
@@ -273,9 +274,15 @@ export async function bookFollowUpSlotAction(rawDraftId: string): Promise<BookFo
     date: formatZonedDateKey(startAt),
     time: formatZonedTime24(startAt),
   });
-  if (staffMemberId) {
-    params.set("staffMemberId", staffMemberId);
-  }
+  // Always set the param, even when the freed appointment was genuinely
+  // unassigned (empty string): the booking form's own "no id preselected"
+  // default is staffMembers[0], which is indistinguishable from a real
+  // clinician choice — an absent param and an explicit unassigned choice
+  // must not collapse into the same state, or Book silently assigns the
+  // slot to whichever clinician happens to be first (Codex #130). The page
+  // treats an empty value as "unassigned" and any other value as a staff id
+  // to validate, same as before.
+  params.set("staffMemberId", staffMemberId ?? "");
   // Preserve the freed slot's own length — a 30-minute opening rebooked at the
   // form's 60-minute default could conflict with the next appointment, and a
   // longer one would be silently shortened (Codex).
