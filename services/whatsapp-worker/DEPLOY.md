@@ -86,6 +86,12 @@ Switching an existing deployment over, in this order, so no event is dropped
    header on this endpoint.
 3. Check the worker log shows no "App webhook rejected event" lines and send
    yourself a WhatsApp message to confirm it still arrives in the Inbox.
+4. Optional: once step 3 is confirmed, set `DISABLE_LEGACY_BRIDGE_HEADER=true`
+   on the worker and redeploy it. The worker keeps sending the shared header
+   by default even after it starts signing — `bridgeSecret` also guards this
+   worker's own `/pair`, `/status` and `/send` control endpoints, and this
+   flag stops sending it on every outbound webhook POST once you've verified
+   the app no longer needs it.
 
 Until `BAILEYS_WEBHOOK_SECRET` is set the app falls back to the shared bridge
 secret and logs a warning saying so.

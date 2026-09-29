@@ -44,14 +44,16 @@ const POST_TIMEOUT_MS = 10_000;
 /**
  * Request headers for one attempt. With APP_WEBHOOK_SECRET set the request is
  * signed over its exact body with a fresh timestamp (each retry is re-signed, so
- * backoff can't push it past the app's freshness window) — the app ignores the
- * shared bridge header once its own webhook secret is set, so it's omitted here
- * too: bridgeSecret also guards this worker's own /pair, /status and /send
- * control endpoints, and sending it on every outbound webhook POST needlessly
- * exposes a credential from one trust direction to whatever can see this one
- * (a proxy or request log on the inbound path) once signing has taken over.
- * Still sent without a webhook secret configured, so an app that hasn't been
- * updated yet keeps accepting events during rollout (Codex #131).
+ * backoff can't push it past the app's freshness window). The shared bridge
+ * header rides along too, UNLESS disableLegacyBridgeHeader is explicitly set —
+ * appWebhookSecret being configured only means this worker has been rolled out
+ * with its own signing secret; the documented rollout order deploys the worker
+ * first, so the app can easily still be old and only checking the shared
+ * secret. bridgeSecret also guards this worker's own /pair, /status and /send
+ * control endpoints, so once an operator has confirmed the app is updated too
+ * (BAILEYS_WEBHOOK_SECRET set there) and turns disableLegacyBridgeHeader on,
+ * this stops exposing that credential on every outbound webhook POST for no
+ * further benefit (Codex #131).
  */
 function webhookHeaders(body: string): Record<string, string> {
   const headers: Record<string, string> = {
@@ -62,7 +64,9 @@ function webhookHeaders(body: string): Record<string, string> {
     const timestamp = Math.floor(Date.now() / 1000);
     headers[WEBHOOK_TIMESTAMP_HEADER] = String(timestamp);
     headers[WEBHOOK_SIGNATURE_HEADER] = signWebhookBody(config.appWebhookSecret, timestamp, body);
-  } else {
+  }
+
+  if (!config.appWebhookSecret || !config.disableLegacyBridgeHeader) {
     headers[BRIDGE_HEADER] = config.bridgeSecret;
   }
 

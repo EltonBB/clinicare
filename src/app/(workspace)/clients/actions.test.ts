@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
   const clientPayment = { findFirst: vi.fn(), deleteMany: vi.fn(), groupBy: vi.fn(), create: vi.fn() };
   const clientDocument = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientGalleryItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
+  const business = { findUniqueOrThrow: vi.fn() };
   const appointment = { groupBy: vi.fn(), count: vi.fn() };
   const waitlistEntry = { findMany: vi.fn() };
   const $transaction = vi.fn();
@@ -35,6 +36,7 @@ const mocks = vi.hoisted(() => {
     clientPayment,
     clientDocument,
     clientGalleryItem,
+    business,
     appointment,
     waitlistEntry,
     $transaction,
@@ -182,6 +184,7 @@ beforeEach(() => {
       clientDocument: mocks.clientDocument,
       clientGalleryItem: mocks.clientGalleryItem,
       clientPayment: mocks.clientPayment,
+      business: mocks.business,
       $executeRaw: mocks.$executeRaw,
     })
   );
@@ -617,6 +620,7 @@ describe("addClientPaymentAction acquires the financial lock before recording a 
     mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID });
     mocks.client.findFirstOrThrow.mockResolvedValue(SAVED_CLIENT_RECORD);
     mocks.clientPayment.create.mockResolvedValue({});
+    mocks.business.findUniqueOrThrow.mockResolvedValue({ currency: "EUR" });
   });
 
   it("acquires the lock, then creates the payment, inside one transaction", async () => {
@@ -633,13 +637,37 @@ describe("addClientPaymentAction acquires the financial lock before recording a 
     expect(mocks.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.clientPayment.create.mock.invocationCallOrder[0]
     );
+    // The amount is parsed against the currency read AFTER the lock, not
+    // before it.
+    expect(mocks.business.findUniqueOrThrow.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mocks.$executeRaw.mock.invocationCallOrder[0]
+    );
   });
 
-  it("never touches the database for an invalid amount", async () => {
+  it("never creates the payment for an amount invalid against the freshly-read currency", async () => {
     const result = await addClientPaymentAction({ ...VALID_PAYLOAD, amount: "not a number" });
 
     expect(result.ok).toBe(false);
-    expect(mocks.$transaction).not.toHaveBeenCalled();
+    expect(mocks.clientPayment.create).not.toHaveBeenCalled();
+  });
+
+  // Codex #131: a concurrent settings save could change the currency between
+  // requireOwnedClient's own read (a stale snapshot the instant this request
+  // started) and this action acquiring the lock. "€85" must be parsed
+  // against whatever the currency actually is once the lock is held, not
+  // the value read before it.
+  it("parses the amount against the currency read fresh under the lock, not the stale value read before it", async () => {
+    // requireOwnedClient's own read (via getAuthedBusiness) saw EUR — a
+    // stale snapshot from before the lock. The fresh read under the lock
+    // says the workspace is now USD.
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1", currency: "EUR" }, user: {} });
+    mocks.business.findUniqueOrThrow.mockResolvedValue({ currency: "USD" });
+
+    const result = await addClientPaymentAction({ ...VALID_PAYLOAD, amount: "€45.00" });
+
+    // A euro marker is rejected once the fresh, in-lock read says USD — the
+    // old (stale-EUR-based) behavior would have accepted this.
+    expect(result.ok).toBe(false);
     expect(mocks.clientPayment.create).not.toHaveBeenCalled();
   });
 });

@@ -26,6 +26,12 @@ import { parseRecordId, recordIdSchema } from "@/lib/record-id";
 import { removeWaitlistEntry } from "@/lib/slot-offers";
 import { acquireBusinessFinancialLock } from "@/lib/business-financial-lock";
 
+// Aborts addClientPaymentAction's transaction from inside its callback when
+// the amount fails to parse against the currency re-read under the
+// financial lock — thrown instead of returned so the transaction rolls back
+// nothing-committed, then caught right outside to produce the typed result.
+class InvalidPaymentAmountError extends Error {}
+
 export type SaveClientResult = {
   ok: boolean;
   error?: string;
@@ -957,15 +963,6 @@ export async function addClientPaymentAction(
     };
   }
 
-  const amountCents = parseAmountToCents(payload.amount, normalizeCurrency(context.business.currency));
-
-  if (amountCents === null) {
-    return {
-      ok: false,
-      error: "Enter a valid payment amount.",
-    };
-  }
-
   if (hasUnsafePublicUrl(payload.receiptUrl)) {
     return {
       ok: false,
@@ -978,25 +975,46 @@ export async function addClientPaymentAction(
   // before its own on-record check (Codex #131) — without it, a currency
   // change reading "no payments yet" and this create could both proceed,
   // and the new payment would be immediately mislabeled by the new currency.
-  await prisma.$transaction(async (tx) => {
-    await acquireBusinessFinancialLock(tx, context.business.id);
+  // The amount is parsed AGAINST THE CURRENCY read fresh under this same
+  // lock, not the value read before it — otherwise a currency change that
+  // commits between that earlier read and the lock would still leave "€85"
+  // parsed as euros and immediately displayed as dollars (Codex #131).
+  try {
+    await prisma.$transaction(async (tx) => {
+      await acquireBusinessFinancialLock(tx, context.business.id);
 
-    await tx.clientPayment.create({
-      data: {
-        businessId: context.business.id,
-        clientId: payload.clientId,
-        amountCents,
-        status: payload.status.trim() || "Unpaid",
-        description: payload.description.trim() || null,
-        invoiceNumber: payload.invoiceNumber?.trim() || null,
-        receiptNumber: payload.receiptNumber?.trim() || null,
-        paymentMethod: payload.paymentMethod?.trim() || null,
-        billingNote: payload.billingNote?.trim() || null,
-        receiptUrl: normalizeOptionalPublicUrl(payload.receiptUrl) || null,
-        paidAt: parseOptionalDate(payload.paidAt),
-      },
+      const currentBusiness = await tx.business.findUniqueOrThrow({
+        where: { id: context.business.id },
+        select: { currency: true },
+      });
+      const amountCents = parseAmountToCents(payload.amount, normalizeCurrency(currentBusiness.currency));
+
+      if (amountCents === null) {
+        throw new InvalidPaymentAmountError();
+      }
+
+      await tx.clientPayment.create({
+        data: {
+          businessId: context.business.id,
+          clientId: payload.clientId,
+          amountCents,
+          status: payload.status.trim() || "Unpaid",
+          description: payload.description.trim() || null,
+          invoiceNumber: payload.invoiceNumber?.trim() || null,
+          receiptNumber: payload.receiptNumber?.trim() || null,
+          paymentMethod: payload.paymentMethod?.trim() || null,
+          billingNote: payload.billingNote?.trim() || null,
+          receiptUrl: normalizeOptionalPublicUrl(payload.receiptUrl) || null,
+          paidAt: parseOptionalDate(payload.paidAt),
+        },
+      });
     });
-  });
+  } catch (error) {
+    if (error instanceof InvalidPaymentAmountError) {
+      return { ok: false, error: "Enter a valid payment amount." };
+    }
+    throw error;
+  }
 
   revalidatePaymentSurfaces();
 
