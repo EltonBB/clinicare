@@ -86,6 +86,18 @@ function getAuthedBusiness() {
   );
 }
 
+// Client-serialized server-action arguments aren't type-checked at runtime,
+// so a crafted object like `{ not: "" }` in place of a plain id string would
+// otherwise reach Prisma as part of a `where` clause — turning a single-row
+// mutation into one that matches (and cancels/deletes/updates) every
+// eligible appointment in the workspace. Every action below that takes a raw
+// appointment id runs it through this first (Codex).
+function parseAppointmentId(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+const APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR = "Appointment not found in this clinic workspace.";
+
 // Interpret the operator's wall-clock entry in the clinic's time zone and store
 // the true UTC instant (shared helper — see lib/time-zone.ts).
 function parseDateTime(date: string, time: string) {
@@ -170,6 +182,15 @@ async function hydrateAppointment(appointmentId: string) {
 export async function saveAppointmentAction(
   payload: SaveAppointmentPayload
 ): Promise<SaveAppointmentResult> {
+  // A crafted, non-string `id` (client-serialized arguments aren't
+  // type-checked at runtime) would otherwise reach Prisma as part of a
+  // `where` clause below — every other usage of `payload.id` in this
+  // function runs after this early return, so this one check protects all
+  // of them (Codex).
+  if (payload.id !== undefined && parseAppointmentId(payload.id) === null) {
+    return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
+  }
+
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -574,8 +595,14 @@ export async function saveAppointmentAction(
 }
 
 export async function cancelAppointmentAction(
-  appointmentId: string
+  rawAppointmentId: string
 ): Promise<CancelAppointmentResult> {
+  const appointmentId = parseAppointmentId(rawAppointmentId);
+
+  if (!appointmentId) {
+    return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
+  }
+
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -631,9 +658,15 @@ export type RecordAttendanceResult = {
  * status changes. Pro only; the plan is re-checked here, not just in the UI.
  */
 export async function recordAppointmentAttendanceAction(
-  appointmentId: string,
+  rawAppointmentId: string,
   attended: boolean
 ): Promise<RecordAttendanceResult> {
+  const appointmentId = parseAppointmentId(rawAppointmentId);
+
+  if (!appointmentId) {
+    return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
+  }
+
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -682,7 +715,7 @@ export async function getNoShowRiskAction(
   // like `{ not: "" }` would otherwise become part of the Prisma `in:`
   // filter below instead of being silently dropped (Codex).
   const ids = Array.isArray(appointmentIds)
-    ? appointmentIds.filter((id): id is string => typeof id === "string" && id.length > 0)
+    ? appointmentIds.flatMap((id) => parseAppointmentId(id) ?? [])
     : [];
 
   if (ids.length === 0) {
@@ -725,8 +758,14 @@ export async function getNoShowRiskAction(
 }
 
 export async function deleteAppointmentAction(
-  appointmentId: string
+  rawAppointmentId: string
 ): Promise<DeleteAppointmentResult> {
+  const appointmentId = parseAppointmentId(rawAppointmentId);
+
+  if (!appointmentId) {
+    return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
+  }
+
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
