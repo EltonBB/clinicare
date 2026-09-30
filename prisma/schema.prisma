@@ -353,6 +353,20 @@ model Appointment {
   notes              String?
   createdAt          DateTime                  @default(now())
   updatedAt          DateTime                  @updatedAt
+  // Set exactly once, the moment a row is cancelled, and cleared on
+  // un-cancel — never touched by any other edit. Auto-managed `updatedAt`
+  // is NOT a substitute: it moves on every field edit (including editing a
+  // still-cancelled booking's notes/time/staff/service), so the no-show risk
+  // scorer's late-cancellation signal needs its own, immutable timestamp.
+  // Nullable so pre-migration historical rows simply carry no late-cancel
+  // signal instead of a wrong one.
+  cancelledAt        DateTime?
+  // The row's `startAt` as of that same cancellation — frozen alongside
+  // cancelledAt for the same reason: `startAt` itself can change afterward
+  // (editing a still-cancelled booking's time is a supported flow), and the
+  // late-cancellation signal must compare against the schedule that was
+  // actually true at the cancel, not whatever startAt reads back as later.
+  cancelledScheduledStartAt DateTime?
   reminders          AppointmentReminder[]
   payments           ClientPayment[]
   treatmentPlanItems ClientTreatmentPlanItem[]
@@ -536,6 +550,7 @@ enum AppointmentStatus {
   PENDING
   CANCELLED
   COMPLETED
+  NO_SHOW
 }
 
 enum StaffStatus {

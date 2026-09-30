@@ -74,6 +74,13 @@ export async function refreshClientLastVisitAt(
 export const APPOINTMENT_ALREADY_COMPLETED_ERROR =
   "This visit is already completed and can't be cancelled.";
 
+// A recorded no-show is as final as a completion for the Cancel path: turning
+// it into CANCELLED would make it vanish from the no-show count and rate. The
+// documented undo is "Mark as attended". Shared by cancelAppointmentCore and
+// the edit-save Status dropdown guard for the same one-message reason as above.
+export const APPOINTMENT_ALREADY_NO_SHOW_ERROR =
+  "This visit is recorded as a no-show and can't be cancelled. Mark it as attended first if the client came.";
+
 // Generic "something else changed this row between when we checked and when
 // we wrote" conflict — distinct from the terminal-state-specific message
 // above. Shared so cancelAppointmentCore's own race-disambiguation fallback
@@ -94,6 +101,17 @@ export const APPOINTMENT_TIME_CONFLICT_ERROR =
 // opposed to the terminal-state/conflict messages above, which mean the row
 // exists but the requested change isn't allowed).
 export const APPOINTMENT_NOT_FOUND_ERROR = "Appointment not found.";
+
+// Marking a no-show is only meaningful once the appointment time has come.
+export const APPOINTMENT_NOT_STARTED_ERROR =
+  "You can only mark an appointment as a no-show after it has started.";
+
+export const APPOINTMENT_CANCELLED_NO_SHOW_ERROR =
+  "A cancelled appointment can't be marked as a no-show.";
+
+// Shown to a workspace that isn't on Pro. Plain product language, no plan
+// internals — the upgrade path lives in Settings.
+export const NO_SHOW_PLAN_ERROR = "No-show tracking is part of the Pro plan.";
 
 export type AppointmentMutationOutcome =
   | {
@@ -234,8 +252,8 @@ export async function cancelAppointmentCore(where: {
     // still matches (Postgres counts a matched no-op UPDATE as affected),
     // so `count` would be 1 and the idempotent branch below could never run.
     const { count } = await tx.appointment.updateMany({
-      where: { ...where, status: { notIn: ["COMPLETED", "CANCELLED"] } },
-      data: { status: "CANCELLED" },
+      where: { ...where, status: { notIn: ["COMPLETED", "CANCELLED", "NO_SHOW"] } },
+      data: { status: "CANCELLED", cancelledAt: new Date() },
     });
 
     if (count === 0) {
@@ -256,6 +274,14 @@ export async function cancelAppointmentCore(where: {
           ok: false,
           status: 409,
           error: APPOINTMENT_ALREADY_COMPLETED_ERROR,
+        };
+      }
+
+      if (existing.status === "NO_SHOW") {
+        return {
+          ok: false,
+          status: 409,
+          error: APPOINTMENT_ALREADY_NO_SHOW_ERROR,
         };
       }
 
@@ -286,7 +312,18 @@ export async function cancelAppointmentCore(where: {
     // The guarded update applied — this call is the one that just cancelled it.
     const cancelled = await tx.appointment.findFirstOrThrow({
       where: { id: where.id },
-      select: { id: true, clientId: true, staffMemberId: true },
+      select: { id: true, clientId: true, staffMemberId: true, startAt: true },
+    });
+
+    // Freezes the scheduled time as of this cancellation, for the same reason
+    // cancelledAt itself is frozen: a still-cancelled row's startAt can later
+    // change (editing a cancelled booking's time is a supported flow), and the
+    // no-show risk scorer's late-cancellation signal needs to compare against
+    // the time that was actually true when the cancel happened, not whatever
+    // startAt happens to hold when it's read back later (Codex).
+    await tx.appointment.update({
+      where: { id: cancelled.id },
+      data: { cancelledScheduledStartAt: cancelled.startAt },
     });
 
     // Clear any pending reminder rows so a later re-confirm starts clean.
@@ -298,6 +335,96 @@ export async function cancelAppointmentCore(where: {
       appointmentId: cancelled.id,
       clientId: cancelled.clientId,
       staffMemberId: cancelled.staffMemberId,
+      changed: true,
+    };
+  });
+}
+
+/**
+ * Record whether a patient came, via compare-and-set (same discipline as
+ * cancelAppointmentCore): the allowed source states and the "has started"
+ * rule live in the update's own WHERE clause, so a concurrent status change —
+ * most commonly the completePastConfirmedAppointments sweep — can't be
+ * silently overwritten.
+ *
+ * - `attended: false` → NO_SHOW, from PENDING / CONFIRMED / COMPLETED (the
+ *   sweep completes a visit as soon as it ends, so COMPLETED → NO_SHOW is the
+ *   normal correction), and only once the appointment has started.
+ * - `attended: true` → COMPLETED, from NO_SHOW only (the undo).
+ *
+ * The status write and the client's lastVisitAt refresh are one transaction:
+ * a no-show is not a visit, so the last-visit date can move back.
+ */
+export async function recordAppointmentAttendanceCore(args: {
+  id: string;
+  businessId: string;
+  attended: boolean;
+  now?: Date;
+}): Promise<AppointmentMutationOutcome> {
+  const { id, businessId, attended, now = new Date() } = args;
+  const where = { id, businessId };
+
+  return prisma.$transaction(async (tx) => {
+    const { count } = await tx.appointment.updateMany({
+      where: attended
+        ? { ...where, status: "NO_SHOW" }
+        : {
+            ...where,
+            status: { in: ["PENDING", "CONFIRMED", "COMPLETED"] },
+            startAt: { lte: now },
+          },
+      data: { status: attended ? "COMPLETED" : "NO_SHOW" },
+    });
+
+    if (count === 0) {
+      // The guarded update didn't apply — a read-only lookup (no race risk)
+      // tells the caller why.
+      const existing = await tx.appointment.findFirst({
+        where,
+        select: { id: true, clientId: true, staffMemberId: true, status: true, startAt: true },
+      });
+
+      if (!existing) {
+        return { ok: false, status: 404, error: APPOINTMENT_NOT_FOUND_ERROR };
+      }
+
+      const target = attended ? "COMPLETED" : "NO_SHOW";
+
+      if (existing.status === target) {
+        // Already in the requested state: nothing to write, nothing to announce.
+        return {
+          ok: true,
+          appointmentId: existing.id,
+          clientId: existing.clientId,
+          staffMemberId: existing.staffMemberId,
+          changed: false,
+        };
+      }
+
+      if (!attended && existing.status === "CANCELLED") {
+        return { ok: false, status: 409, error: APPOINTMENT_CANCELLED_NO_SHOW_ERROR };
+      }
+
+      if (!attended && existing.startAt.getTime() > now.getTime()) {
+        return { ok: false, status: 409, error: APPOINTMENT_NOT_STARTED_ERROR };
+      }
+
+      // Anything else means the row changed between the guard and this read.
+      return { ok: false, status: 409, error: APPOINTMENT_CONFLICT_ERROR };
+    }
+
+    const updated = await tx.appointment.findFirstOrThrow({
+      where: { id },
+      select: { id: true, clientId: true, staffMemberId: true },
+    });
+
+    await refreshClientLastVisitAt(updated.clientId, businessId, tx);
+
+    return {
+      ok: true,
+      appointmentId: updated.id,
+      clientId: updated.clientId,
+      staffMemberId: updated.staffMemberId,
       changed: true,
     };
   });
@@ -360,7 +487,8 @@ export async function deleteAppointmentCore(where: {
 // timeline) so the change shows on navigation without a manual refresh.
 export function revalidateCalendarSurfaces(
   clientIds: Array<string | null | undefined> = [],
-  staffMemberIds: Array<string | null | undefined> = []
+  staffMemberIds: Array<string | null | undefined> = [],
+  appointmentIds: Array<string | null | undefined> = []
 ) {
   revalidatePath("/calendar");
   revalidatePath("/dashboard");
@@ -379,6 +507,13 @@ export function revalidateCalendarSurfaces(
   for (const staffMemberId of new Set(staffMemberIds)) {
     if (staffMemberId) {
       revalidatePath(`/staff/${staffMemberId}`);
+    }
+  }
+  // The edit page renders the status/time these mutations change, so a later
+  // navigation must not be served its cached payload.
+  for (const appointmentId of new Set(appointmentIds)) {
+    if (appointmentId) {
+      revalidatePath(`/calendar/${appointmentId}/edit`);
     }
   }
 }

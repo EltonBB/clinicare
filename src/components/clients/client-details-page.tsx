@@ -69,6 +69,7 @@ import {
   WorkspaceEmptyState,
   WorkspacePage,
 } from "@/components/workspace/workspace-layout";
+import { appointmentStatusKey } from "@/lib/appointment-status";
 import { safeUploadErrorMessage, uploadWorkspaceDocument } from "@/lib/media-storage-client";
 import { cn, formatCurrency, getInitials } from "@/lib/utils";
 import type {
@@ -913,7 +914,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                         <td className="px-3 py-2.5 font-medium text-foreground">{appointment.date}</td>
                         <td className="px-3 py-2.5 text-foreground">{appointment.title}</td>
                         <td className="px-3 py-2.5">
-                          <StatusBadge status={appointment.status.toLowerCase()} />
+                          <StatusBadge status={appointmentStatusKey(appointment.status)} />
                         </td>
                         <td className="max-w-[260px] truncate px-3 py-2.5 text-muted-foreground">{appointment.notes}</td>
                       </tr>
@@ -1341,7 +1342,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const normalized = status.toLowerCase();
+  const normalized = status.toLowerCase().replace("_", "-");
   return (
     <span
       className={cn(
@@ -1352,6 +1353,7 @@ function StatusBadge({ status }: { status: string }) {
           "bg-destructive/10 text-destructive",
         (normalized === "pending" || normalized === "partial" || normalized === "partially paid" || normalized === "unpaid") &&
           "bg-amber-100 text-amber-700",
+        normalized === "no-show" && "bg-violet-100 text-violet-700",
         normalized === "scheduled" && "bg-secondary text-muted-foreground"
       )}
     >

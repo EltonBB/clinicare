@@ -14,6 +14,7 @@ import type {
 } from "@prisma/client";
 import { format } from "date-fns";
 
+import { appointmentStatusKey } from "@/lib/appointment-status";
 import { resolveMediaDisplayUrls } from "@/lib/media-storage-server";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
@@ -338,7 +339,7 @@ function buildHistory(client: ClientWithRelations): ClientHistoryEntry[] {
       id: appointment.id,
       date: format(appointment.startAt, "MMM d, yyyy"),
       title: appointment.title,
-      detail: `Appointment ${appointment.status.toLowerCase()} in the clinic workspace.`,
+      detail: `Appointment ${appointmentStatusKey(appointment.status)} in the clinic workspace.`,
     }));
   }
 
@@ -501,7 +502,7 @@ function buildTimeline(client: ClientWithRelations): ClientTimelineEntry[] {
       sortKey: appointment.startAt.getTime(),
       title: appointment.title,
       detail: appointment.notes?.trim() || "Appointment",
-      status: appointment.status.toLowerCase(),
+      status: appointmentStatusKey(appointment.status),
     })),
     ...client.payments.map((payment) => ({
       id: `payment-${payment.id}`,
@@ -644,7 +645,7 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
       cancelled,
       pending,
       upcoming,
-      noShows: 0,
+      noShows: appointmentCount("NO_SHOW"),
     },
     paymentStats: {
       totalPaidCents,

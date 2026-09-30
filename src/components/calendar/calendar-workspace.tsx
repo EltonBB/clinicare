@@ -30,7 +30,11 @@ import {
   X,
 } from "lucide-react";
 
-import { loadCalendarMonthAction } from "@/app/(workspace)/calendar/actions";
+import {
+  getNoShowRiskAction,
+  loadCalendarMonthAction,
+  recordAppointmentAttendanceAction,
+} from "@/app/(workspace)/calendar/actions";
 import { buttonVariants } from "@/components/ui/button";
 import {
   WorkspaceEmptyState,
@@ -38,10 +42,12 @@ import {
   WorkspacePage,
 } from "@/components/workspace/workspace-layout";
 import { MonthGrid } from "@/components/workspace/month-grid";
+import { NoShowRiskBadge, useShowNoShowRisk } from "./no-show-risk-badge";
 import { useDismissOnOutsideOrEscape } from "@/hooks/use-dismiss-on-outside-or-escape";
-import { businessHoursForDate, timeToMinutes } from "@/lib/calendar";
+import { appointmentStartIso, businessHoursForDate, timeToMinutes } from "@/lib/calendar";
 import { rowsThatFit, visibleEntryCount } from "@/lib/calendar-fit";
 import { monthsToLoad, type CalendarRange } from "@/lib/calendar-range";
+import type { NoShowRiskAssessment } from "@/lib/no-show-risk";
 import { cn } from "@/lib/utils";
 import type {
   CalendarAppointment,
@@ -58,12 +64,16 @@ type CalendarWorkspaceProps = {
   initialRange: CalendarRange;
   /** The real current date (`YYYY-MM-DD`), independent of the date being viewed. */
   today: string;
+  /** Pro workspaces can mark a visit as a no-show (and undo it) from the quick view. */
+  canRecordNoShows: boolean;
+  /** Pro workspaces see a no-show risk badge in the quick view and Day view. */
+  canViewNoShowRisk: boolean;
 };
 
 const views: CalendarView[] = ["day", "week", "month"];
 
 // Source of truth for appointment-status color (AGENTS.md: "the same tone
-// set as everywhere else") — lib/status-tone.ts mirrors these 4 colors as
+// set as everywhere else") — lib/status-tone.ts mirrors these 5 colors as
 // raw values for places (Reports' donut/legend) that need a CSS color
 // rather than a Tailwind class; keep both in sync if these change.
 const statusDotClasses: Record<CalendarAppointmentStatus, string> = {
@@ -71,6 +81,7 @@ const statusDotClasses: Record<CalendarAppointmentStatus, string> = {
   completed: "bg-emerald-500",
   pending: "bg-amber-500",
   cancelled: "bg-destructive",
+  "no-show": "bg-violet-500",
 };
 
 const monthChipClasses: Record<CalendarAppointmentStatus, string> = {
@@ -78,6 +89,7 @@ const monthChipClasses: Record<CalendarAppointmentStatus, string> = {
   pending: "bg-amber-50 text-amber-800",
   completed: "bg-emerald-50 text-emerald-800",
   cancelled: "bg-[#f1f3f6] text-muted-foreground line-through",
+  "no-show": "bg-violet-50 text-violet-800",
 };
 
 // Fills the viewport below the header + toolbar so the grid reads as the whole
@@ -130,6 +142,7 @@ function EventPill({
   onOpen,
   dense = false,
   detailed = false,
+  risk,
 }: {
   appointment: CalendarAppointment;
   onOpen: (event: MouseEvent<HTMLAnchorElement>) => void;
@@ -141,6 +154,8 @@ function EventPill({
   // ~900px of dead space between the two. Same pill, laid out as a schedule row:
   // time first, then who, what and with whom, then the status in words.
   detailed?: boolean;
+  /** Only rendered in the detailed (Day view) row — never fetched for month/week pills. */
+  risk?: NoShowRiskAssessment;
 }) {
   return (
     <Link
@@ -185,6 +200,7 @@ function EventPill({
           <span className="hidden w-20 shrink-0 text-right text-xs font-semibold capitalize opacity-80 sm:block">
             {appointment.status}
           </span>
+          <NoShowRiskBadge risk={risk} expiresAtIso={appointmentStartIso(appointment)} />
         </>
       ) : (
         <>
@@ -255,6 +271,7 @@ function DayColumn({
   onOpen,
   onOpenDay,
   detailed = false,
+  risk,
 }: {
   dayKey: string;
   entries: Array<CalendarAppointment | CalendarScheduleBlock>;
@@ -266,6 +283,8 @@ function DayColumn({
   onOpen: (appointment: CalendarAppointment, event: MouseEvent<HTMLAnchorElement>) => void;
   onOpenDay: () => void;
   detailed?: boolean;
+  /** Keyed by appointment id — only read for detailed (Day view) rows. */
+  risk?: Record<string, NoShowRiskAssessment>;
 }) {
   const columnRef = useRef<HTMLDivElement>(null);
   const [slots, setSlots] = useState(DAY_COLUMN_FALLBACK_SLOTS);
@@ -306,6 +325,16 @@ function DayColumn({
             key={entry.id}
             appointment={entry}
             detailed={detailed}
+            // Risk only ever applies to an upcoming pending/confirmed visit; a
+            // stale cached assessment (or one from a request that was still
+            // in-flight when the appointment got finalized) must not show a
+            // badge on a row that's now completed/no-show/cancelled. The
+            // "has this visit's start time passed" check lives inside
+            // NoShowRiskBadge itself (expiresAtIso) so it self-expires live
+            // if the page is left open, rather than only on next re-render.
+            risk={
+              entry.status === "pending" || entry.status === "confirmed" ? risk?.[entry.id] : undefined
+            }
             onOpen={(event) => onOpen(entry, event)}
           />
         ) : (
@@ -451,6 +480,8 @@ function DatePickerPopover({
   );
 }
 
+type AttendanceAction = { attended: boolean; label: string };
+
 // Anchored to the clicked chip's bounding rect (not a portal) so it renders
 // above the surrounding surface-card's overflow-clip without needing to
 // change that ancestor's overflow behavior.
@@ -458,12 +489,40 @@ function AppointmentQuickView({
   appointment,
   anchorRect,
   onClose,
+  attendanceAction,
+  onRecordAttendance,
+  risk,
 }: {
   appointment: CalendarAppointment;
   anchorRect: DOMRect;
   onClose: () => void;
+  /** Present only for a Pro workspace and a visit whose day has come. */
+  attendanceAction: AttendanceAction | null;
+  /** Resolves to an error message, or null when it worked (the parent then closes this). */
+  onRecordAttendance: (attended: boolean) => Promise<string | null>;
+  /** Present only for a Pro workspace, once the batched lookup resolves. */
+  risk?: NoShowRiskAssessment;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [attendanceError, setAttendanceError] = useState("");
+  const riskExpiresAtIso = appointmentStartIso(appointment);
+  // Same value NoShowRiskBadge derives internally, reused here so the "Risk"
+  // label row doesn't outlive the pill it labels (Codex #129).
+  const qualifyingRisk = useShowNoShowRisk(risk, riskExpiresAtIso);
+
+  async function handleAttendance(attended: boolean) {
+    setBusy(true);
+    setAttendanceError("");
+
+    const message = await onRecordAttendance(attended);
+
+    // On success the parent closes this popover, so only a failure needs state.
+    if (message) {
+      setAttendanceError(message);
+      setBusy(false);
+    }
+  }
 
   useDismissOnOutsideOrEscape(containerRef, onClose, { dismissOnScroll: true });
 
@@ -537,21 +596,62 @@ function AppointmentQuickView({
             {appointment.status}
           </span>
         </div>
+        {qualifyingRisk ? (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">Risk</span>
+            <NoShowRiskBadge risk={risk} expiresAtIso={riskExpiresAtIso} />
+          </div>
+        ) : null}
       </div>
-      <Link
-        href={`/calendar/${appointment.id}/edit`}
-        className="mt-3 flex h-8 items-center justify-center rounded-(--radius-card) border border-border/75 bg-white text-sm font-semibold text-foreground transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]"
-      >
-        View appointment
-      </Link>
+      <div className="mt-3 space-y-2">
+        {attendanceAction ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void handleAttendance(attendanceAction.attended)}
+            className="flex h-8 w-full items-center justify-center rounded-(--radius-card) border border-border/75 bg-white text-sm font-semibold text-foreground transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] disabled:opacity-60"
+          >
+            {attendanceAction.label}
+          </button>
+        ) : null}
+        {attendanceError ? (
+          <p role="alert" className="text-xs text-destructive">
+            {attendanceError}
+          </p>
+        ) : null}
+        <Link
+          href={`/calendar/${appointment.id}/edit`}
+          className="flex h-8 items-center justify-center rounded-(--radius-card) border border-border/75 bg-white text-sm font-semibold text-foreground transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]"
+        >
+          View appointment
+        </Link>
+      </div>
     </div>
   );
 }
 
-export function CalendarWorkspace({ initialView, initialRange, today }: CalendarWorkspaceProps) {
+export function CalendarWorkspace({
+  initialView,
+  initialRange,
+  today,
+  canRecordNoShows,
+  canViewNoShowRisk,
+}: CalendarWorkspaceProps) {
   const [view, setView] = useState<CalendarView>("week");
   const [activeDate, setActiveDate] = useState(() => parseISO(initialView.initialDate));
   const [quickView, setQuickView] = useState<{ appointment: CalendarAppointment; rect: DOMRect } | null>(null);
+  const [risk, setRisk] = useState<Record<string, NoShowRiskAssessment>>({});
+  // Ids whose risk was already requested (whether or not an assessment came
+  // back), kept in a ref rather than read from `risk`: an empty answer — a visit
+  // that isn't upcoming — must not look "not fetched yet" and re-trigger the request.
+  const requestedRiskIds = useRef<Set<string>>(new Set());
+  // Bumped per id whenever its cached risk is invalidated out-of-band (a
+  // same-client attendance change, below) — a loadRisk response only applies
+  // to an id if the generation it captured at request time is still current,
+  // so a request already in flight when the invalidation happens can't
+  // resurrect a risk assessment scored from history that just changed
+  // (Codex/CodeRabbit #129).
+  const riskGeneration = useRef<Map<string, number>>(new Map());
   // The page loads the viewed month; every other month is fetched when navigated
   // to (below) and merged in, so history and far-off dates are never silently empty.
   const [appointments, setAppointments] = useState(initialView.appointments);
@@ -705,6 +805,134 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
   function openQuickView(appointment: CalendarAppointment, event: MouseEvent<HTMLAnchorElement>) {
     event.stopPropagation();
     setQuickView({ appointment, rect: event.currentTarget.getBoundingClientRect() });
+  }
+
+  // Requests risk for any of these ids not asked for yet. Results are keyed by
+  // appointment id, so one arriving after the popover/day moved on is still worth
+  // merging (dropping it would leave the id marked as requested with no badge until
+  // a reload); a failed request is forgotten so the next open retries it.
+  const loadRisk = useCallback((ids: string[]) => {
+    const fresh = ids.filter((id) => !requestedRiskIds.current.has(id));
+    if (fresh.length === 0) return;
+    fresh.forEach((id) => requestedRiskIds.current.add(id));
+    // Snapshot each id's invalidation generation now, before the request goes
+    // out — if a same-client attendance change bumps it before this resolves,
+    // the response below is stale and must be dropped, not merged.
+    const requestedAt = new Map(fresh.map((id) => [id, riskGeneration.current.get(id) ?? 0]));
+    getNoShowRiskAction(fresh)
+      .then((result) => {
+        setRisk((current) => {
+          let changed = false;
+          const next = { ...current };
+          for (const [id, assessment] of Object.entries(result)) {
+            if ((riskGeneration.current.get(id) ?? 0) !== requestedAt.get(id)) continue;
+            next[id] = assessment;
+            changed = true;
+          }
+          return changed ? next : current;
+        });
+      })
+      .catch(() => fresh.forEach((id) => requestedRiskIds.current.delete(id)));
+  }, []);
+
+  // Only a Pro workspace, and only for a visit the score applies to (upcoming ones
+  // are pending or confirmed).
+  useEffect(() => {
+    if (!canViewNoShowRisk || !quickView) return;
+    const { id, status } = quickView.appointment;
+    if (status === "pending" || status === "confirmed") loadRisk([id]);
+  }, [canViewNoShowRisk, quickView, loadRisk]);
+
+  // Day view lists every appointment for the active date, so its risk badges are
+  // fetched as one batch for the whole column rather than per-row.
+  useEffect(() => {
+    if (!canViewNoShowRisk || view !== "day") return;
+    const dayKey = format(activeDate, "yyyy-MM-dd");
+    loadRisk(
+      appointments
+        .filter(
+          (appointment) =>
+            appointment.date === dayKey &&
+            (appointment.status === "pending" || appointment.status === "confirmed")
+        )
+        .map((appointment) => appointment.id)
+    );
+  }, [canViewNoShowRisk, view, activeDate, appointments, loadRisk]);
+
+  // Only Pro, only a visit whose day has come, never a cancelled one. `today` is
+  // the clinic-zone date, so this compares like with like; a visit later today
+  // that hasn't started is refused by the server with a plain message.
+  function attendanceActionFor(appointment: CalendarAppointment): AttendanceAction | null {
+    if (!canRecordNoShows || appointment.status === "cancelled" || appointment.date > today) {
+      return null;
+    }
+
+    return appointment.status === "no-show"
+      ? { attended: true, label: "Mark as attended" }
+      : { attended: false, label: "Mark as no-show" };
+  }
+
+  async function recordAttendance(appointment: CalendarAppointment, attended: boolean) {
+    let result;
+
+    try {
+      result = await recordAppointmentAttendanceAction(appointment.id, attended);
+    } catch {
+      // A rejected server action (network drop, 5xx, deploy skew) — a plain
+      // message, never the raw error, so the popover can show it and re-enable.
+      return "We couldn't update this appointment. Try again.";
+    }
+
+    const status = result.status;
+
+    if (!result.ok || !status) {
+      return result.error ?? "We couldn't update this appointment.";
+    }
+
+    // Every upcoming appointment for this client was scored from history that
+    // just changed (this one just became a real visit or a real no-show), so
+    // their cached risk is stale too — not just this appointment's own (which
+    // the render-time status gate already hides). Drop them from both the
+    // cache and the requested-ids tracking so the next popover/Day-view open
+    // refetches instead of reusing a now-outdated assessment (Codex). Derived
+    // from the current `appointments` snapshot, not read back out of the
+    // setAppointments updater below — that updater runs during React's own
+    // render pass, not synchronously with this call, so a variable assigned
+    // inside it and read immediately after can still see its stale initial
+    // value (CodeRabbit #129). Filtered by the server-confirmed clientId, not
+    // this component's possibly-stale copy of `appointment.clientId` — another
+    // tab can reassign the appointment to a different client between this
+    // one loading and this mutation running, and it's that live client's
+    // history the server just recomputed (Codex #129 round 2).
+    const affectedClientId = result.clientId ?? appointment.clientId;
+    const sameClientIds = appointments
+      .filter((item) => item.clientId === affectedClientId)
+      .map((item) => item.id);
+    setAppointments((current) =>
+      current.map((item) => (item.id === appointment.id ? { ...item, status } : item))
+    );
+    if (sameClientIds.length > 0) {
+      for (const id of sameClientIds) {
+        requestedRiskIds.current.delete(id);
+        riskGeneration.current.set(id, (riskGeneration.current.get(id) ?? 0) + 1);
+      }
+      setRisk((current) => {
+        let changed = false;
+        const next = { ...current };
+        for (const id of sameClientIds) {
+          if (id in next) {
+            delete next[id];
+            changed = true;
+          }
+        }
+        return changed ? next : current;
+      });
+    }
+    // Only close the popover this request belongs to — the user may have opened
+    // a different appointment's while it was in flight.
+    setQuickView((current) => (current?.appointment.id === appointment.id ? null : current));
+
+    return null;
   }
 
   return (
@@ -995,6 +1223,7 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
                       isEmpty={isEmpty}
                       isClosed={isClosed}
                       detailed={view === "day"}
+                      risk={risk}
                       onOpen={openQuickView}
                       onOpenDay={() => {
                         setActiveDate(day);
@@ -1015,6 +1244,17 @@ export function CalendarWorkspace({ initialView, initialRange, today }: Calendar
           appointment={quickView.appointment}
           anchorRect={quickView.rect}
           onClose={() => setQuickView(null)}
+          attendanceAction={attendanceActionFor(quickView.appointment)}
+          onRecordAttendance={(attended) => recordAttendance(quickView.appointment, attended)}
+          // Same guard as the Day-view row: hide a stale or late-arriving
+          // assessment once the appointment is no longer pending/confirmed.
+          // The "has this visit started" half lives inside AppointmentQuickView
+          // itself (useShowNoShowRisk) so it self-expires live (Codex #129).
+          risk={
+            quickView.appointment.status === "pending" || quickView.appointment.status === "confirmed"
+              ? risk[quickView.appointment.id]
+              : undefined
+          }
         />
       ) : null}
     </WorkspacePage>

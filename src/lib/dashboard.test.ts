@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
+import type { Business } from "@prisma/client";
 
 import {
+  buildDashboardViewFromWorkspace,
   buildRevenueSummary,
   buildVisitsSummary,
+  type DashboardAppointmentAggregates,
   type DashboardPaymentStatusGroup,
 } from "@/lib/dashboard";
 
@@ -149,5 +152,92 @@ describe("buildVisitsSummary", () => {
     expect(summary.previousSevenDays).toBe(0);
     expect(summary.deltaLabel).toBeNull();
     expect(summary.deltaTone).toBe("neutral");
+  });
+});
+
+describe("buildDashboardViewFromWorkspace — no-show risk", () => {
+  const now = new Date("2026-06-23T12:00:00.000Z");
+
+  const BASE_BUSINESS: Business = {
+    id: "biz_1",
+    ownerId: "owner_1",
+    name: "Snapshot Clinic",
+    businessType: "clinic",
+    logoUrl: null,
+    dashboardFocus: "appointments",
+    brandAccentColor: null,
+    plan: "PRO",
+    planStatus: "ACTIVE",
+    whatsappNumber: null,
+    whatsappEnabled: false,
+    trialEndsAt: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const EMPTY_AGGREGATES: DashboardAppointmentAggregates = {
+    recentCompleted: 0,
+    recentCancelled: 0,
+    recentNoShow: 0,
+    completedThisMonth: 0,
+    averageDurationMinutes: 0,
+    visitCountsByDay: [],
+  };
+
+  const APPT_FIXTURE = {
+    id: "appt_1",
+    businessId: "biz_1",
+    clientId: "client_1",
+    staffMemberId: "staff_1",
+    title: "Cleaning",
+    startAt: new Date("2026-06-23T14:00:00.000Z"),
+    endAt: new Date("2026-06-23T14:30:00.000Z"),
+    status: "PENDING" as const,
+    notes: null,
+    createdAt: now,
+    updatedAt: now,
+    cancelledAt: null,
+    cancelledScheduledStartAt: null,
+    client: { name: "Ava Patient" },
+    staffMember: { name: "Dr. One" },
+  };
+
+  const BASE_ARGS = {
+    business: BASE_BUSINESS,
+    lastClients: [],
+    nextAppointment: null,
+    unreadCount: 0,
+    todaysHours: 8,
+    clientCount: 1,
+    appointmentCount: 1,
+    allTimeVisitCount: 0,
+    appointmentAggregates: EMPTY_AGGREGATES,
+    now,
+    timeZone: "UTC",
+  };
+
+  it("attaches a risk assessment to a schedule appointment when one is provided", () => {
+    const risk = new Map([
+      [
+        "appt_1",
+        { level: "high" as const, reasons: ["Missed a recent appointment"], insufficientHistory: false },
+      ],
+    ]);
+    const view = buildDashboardViewFromWorkspace({
+      ...BASE_ARGS,
+      appointments: [APPT_FIXTURE],
+      noShowRisk: risk,
+    });
+
+    expect(view.appointments[0]?.risk).toEqual({
+      level: "high",
+      reasons: ["Missed a recent appointment"],
+      insufficientHistory: false,
+    });
+  });
+
+  it("leaves risk undefined when none was provided", () => {
+    const view = buildDashboardViewFromWorkspace({ ...BASE_ARGS, appointments: [APPT_FIXTURE] });
+    expect(view.appointments[0]?.risk).toBeUndefined();
   });
 });

@@ -430,7 +430,7 @@ function OverviewLine({ label, value }: { label: string; value: string }) {
 }
 
 function AppointmentStatusBadge({ status }: { status: string }) {
-  const normalized = status.toLowerCase();
+  const normalized = status.toLowerCase().replace("_", "-");
 
   return (
     <span
@@ -440,6 +440,7 @@ function AppointmentStatusBadge({ status }: { status: string }) {
         normalized === "confirmed" && "bg-primary/10 text-primary",
         normalized === "cancelled" && "bg-destructive/10 text-destructive",
         normalized === "pending" && "bg-amber-100 text-amber-700",
+        normalized === "no-show" && "bg-violet-100 text-violet-700",
         normalized === "scheduled" && "bg-secondary text-muted-foreground"
       )}
     >

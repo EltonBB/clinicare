@@ -44,6 +44,7 @@ type NewAppointmentFormProps = {
   initialDate: string;
   initialStartTime?: string;
   initialAppointment?: CalendarAppointment;
+  canRecordNoShows?: boolean;
 };
 
 const statusOptions: CalendarAppointmentStatus[] = [
@@ -51,6 +52,7 @@ const statusOptions: CalendarAppointmentStatus[] = [
   "pending",
   "cancelled",
   "completed",
+  "no-show",
 ];
 
 function minutesToTime(minutes: number) {
@@ -85,6 +87,7 @@ export function NewAppointmentForm({
   initialDate,
   initialStartTime,
   initialAppointment,
+  canRecordNoShows = false,
 }: NewAppointmentFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -119,15 +122,19 @@ export function NewAppointmentForm({
     initialAppointment?.status ?? "confirmed"
   );
   const isEditing = Boolean(initialAppointment);
-  // A completed visit already happened — offering "Cancelled" here would let
-  // someone pick an option the server refuses outright (see
-  // saveAppointmentAction's matching guard). Other corrections away from
-  // completed stay available. No useMemo: baselineStatus is frozen at mount
-  // (no setter), so this can never recompute to a different value anyway.
-  const editStatusOptions =
-    baselineStatus === "completed"
-      ? statusOptions.filter((option) => option !== "cancelled")
-      : statusOptions;
+  // "Cancelled" isn't offered on a completed or no-show visit (the server
+  // refuses it — a no-show is undone with "Mark as attended"), and
+  // "No-show" is a Pro option that isn't offered on a cancelled visit either
+  // (the server refuses cancelled -> no-show) — but a visit that is already a
+  // no-show keeps it listed so the dropdown never shows a blank. No useMemo:
+  // baselineStatus is frozen at mount, so this can never recompute to a
+  // different value anyway.
+  const editStatusOptions = statusOptions.filter(
+    (option) =>
+      (option !== "cancelled" || (baselineStatus !== "completed" && baselineStatus !== "no-show")) &&
+      (option !== "no-show" || canRecordNoShows || baselineStatus === "no-show") &&
+      (option !== "no-show" || baselineStatus !== "cancelled")
+  );
   const selectedHours = useMemo(
     () => businessHoursForDate(date, businessHours),
     [businessHours, date]
@@ -369,7 +376,12 @@ export function NewAppointmentForm({
           <>
             <DestructiveTextButton
               onClick={() => setConfirmingAction("cancel")}
-              disabled={isPending || status === "cancelled" || baselineStatus === "completed"}
+              disabled={
+                isPending ||
+                status === "cancelled" ||
+                baselineStatus === "completed" ||
+                baselineStatus === "no-show"
+              }
             >
               Cancel booking
             </DestructiveTextButton>

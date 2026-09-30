@@ -1,6 +1,7 @@
 import { differenceInMinutes } from "date-fns";
 import type { Appointment, Business, Client } from "@prisma/client";
 import { isProBusinessPlan, planDisplayName, planStatusLabel } from "@/lib/billing";
+import type { NoShowRiskAssessment } from "@/lib/no-show-risk";
 import { formatCurrency } from "@/lib/utils";
 import {
   formatZonedDateKey,
@@ -11,7 +12,12 @@ import {
   getAppTimeZone,
 } from "@/lib/time-zone";
 
-export type DashboardAppointmentStatus = "confirmed" | "pending" | "cancelled" | "completed";
+export type DashboardAppointmentStatus =
+  | "confirmed"
+  | "pending"
+  | "cancelled"
+  | "completed"
+  | "no-show";
 
 export type DashboardAppointment = {
   id: string;
@@ -22,6 +28,7 @@ export type DashboardAppointment = {
   service: string;
   staffName: string;
   status: DashboardAppointmentStatus;
+  risk?: NoShowRiskAssessment;
 };
 
 export type DashboardQuickAction = {
@@ -142,11 +149,13 @@ export type DashboardAppointmentAggregates = {
   recentCompleted: number;
   /** CANCELLED in the rolling 30-day window. */
   recentCancelled: number;
+  /** NO_SHOW in the rolling 30-day window. */
+  recentNoShow: number;
   /** COMPLETED month-to-date. */
   completedThisMonth: number;
   /** Mean completed-visit length (minutes) in the rolling 30-day window. */
   averageDurationMinutes: number;
-  /** Non-cancelled visit counts per app-zone calendar day (YYYY-MM-DD) in the window. */
+  /** Visit counts (excluding cancelled and no-show) per app-zone calendar day (YYYY-MM-DD) in the window. */
   visitCountsByDay: Array<{ key: string; count: number }>;
 };
 
@@ -208,6 +217,10 @@ function formatUpdatedLabel(date: Date, now: Date, timeZone: string) {
 function toDashboardStatus(status: Appointment["status"]): DashboardAppointmentStatus {
   if (status === "CANCELLED") {
     return "cancelled";
+  }
+
+  if (status === "NO_SHOW") {
+    return "no-show";
   }
 
   if (status === "COMPLETED") {
@@ -363,7 +376,7 @@ export function buildDashboardViewFromWorkspace(args: {
   todaysHours: number;
   clientCount: number;
   appointmentCount: number;
-  nonCancelledAppointmentCount: number;
+  allTimeVisitCount: number;
   appointmentAggregates: DashboardAppointmentAggregates;
   paymentGroups?: DashboardPaymentStatusGroup[];
   conversations?: DashboardConversationRow[];
@@ -371,6 +384,7 @@ export function buildDashboardViewFromWorkspace(args: {
   recentClientId?: string;
   now?: Date;
   timeZone?: string;
+  noShowRisk?: Map<string, NoShowRiskAssessment>;
 }): DashboardViewModel {
   const {
     business,
@@ -380,7 +394,7 @@ export function buildDashboardViewFromWorkspace(args: {
     unreadCount,
     clientCount,
     appointmentCount,
-    nonCancelledAppointmentCount,
+    allTimeVisitCount,
     appointmentAggregates,
     paymentGroups = [],
     conversations = [],
@@ -388,12 +402,15 @@ export function buildDashboardViewFromWorkspace(args: {
     recentClientId,
     now = new Date(),
     timeZone = getAppTimeZone(),
+    noShowRisk,
   } = args;
   // Appointment metrics are aggregated in the DB (see lib/dashboard-data.ts) —
   // the rolling-window completion split, month-to-date completed count, mean
   // visit length, and per-day visit counts arrive pre-computed.
   const recentFinal =
-    appointmentAggregates.recentCompleted + appointmentAggregates.recentCancelled;
+    appointmentAggregates.recentCompleted +
+    appointmentAggregates.recentCancelled +
+    appointmentAggregates.recentNoShow;
   const completionRate =
     recentFinal > 0
       ? Math.round((appointmentAggregates.recentCompleted / recentFinal) * 100)
@@ -403,7 +420,7 @@ export function buildDashboardViewFromWorkspace(args: {
   const todayKey = formatZonedDateKey(now, timeZone);
   const visitsSummary = buildVisitsSummary({
     visitCountsByDay: appointmentAggregates.visitCountsByDay,
-    allTime: nonCancelledAppointmentCount,
+    allTime: allTimeVisitCount,
     now,
     timeZone,
   });
@@ -485,6 +502,7 @@ export function buildDashboardViewFromWorkspace(args: {
         service: nextAppointment.title,
         staffName: nextAppointment.staffMember?.name ?? "Workspace staff",
         status: toDashboardStatus(nextAppointment.status),
+        risk: noShowRisk?.get(nextAppointment.id),
       }
     : null;
 
@@ -501,6 +519,7 @@ export function buildDashboardViewFromWorkspace(args: {
       service: appointment.title,
       staffName: appointment.staffMember?.name ?? "Workspace staff",
       status: toDashboardStatus(appointment.status),
+      risk: noShowRisk?.get(appointment.id),
     })),
     lastClients: lastClients.map((client) => ({
       id: client.id,

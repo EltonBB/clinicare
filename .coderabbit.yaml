@@ -16,6 +16,14 @@ reviews:
   path_filters:
     # Auto-generated dependency lockfiles — pure diff noise, no review value.
     - "!**/package-lock.json"
+    # Point-in-time brainstorming/planning artifacts written before a feature was
+    # built and never updated afterward — they describe an early design, not the
+    # shipped code. Reviewing them as if they were current specs repeatedly
+    # produces findings against text nothing depends on (e.g. an earlier query
+    # shape or field the real implementation replaced). The shipped code under
+    # src/ and prisma/ stays fully in review scope.
+    - "!docs/superpowers/plans/**"
+    - "!docs/superpowers/specs/**"
   path_instructions:
     - path: "src/app/**/actions.ts"
       instructions: >

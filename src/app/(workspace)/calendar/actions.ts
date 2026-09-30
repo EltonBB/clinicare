@@ -9,15 +9,23 @@ import { isValidMonthKey } from "@/lib/calendar-range";
 import {
   acquireSchedulingLock,
   APPOINTMENT_ALREADY_COMPLETED_ERROR,
+  APPOINTMENT_ALREADY_NO_SHOW_ERROR,
+  APPOINTMENT_CANCELLED_NO_SHOW_ERROR,
   APPOINTMENT_CONFLICT_ERROR,
+  APPOINTMENT_NOT_STARTED_ERROR,
   APPOINTMENT_TIME_CONFLICT_ERROR,
   cancelAppointmentCore,
   deleteAppointmentCore,
   hasSchedulingConflict,
+  NO_SHOW_PLAN_ERROR,
   notifyStaffOfAppointmentChange,
+  recordAppointmentAttendanceCore,
   refreshClientLastVisitAt,
   revalidateCalendarSurfaces,
 } from "@/lib/appointments-shared";
+import { isProBusinessPlan } from "@/lib/billing";
+import { getNoShowRiskAssessments } from "@/lib/no-show-risk-data";
+import type { NoShowRiskAssessment } from "@/lib/no-show-risk";
 import {
   formatZonedDateKey,
   formatZonedTime24,
@@ -26,6 +34,8 @@ import {
 } from "@/lib/time-zone";
 import {
   timeToMinutes,
+  toCalendarStatus,
+  toCalendarTone,
   toPrismaAppointmentStatus,
   type CalendarAppointment,
   type CalendarAppointmentStatus,
@@ -75,6 +85,18 @@ function getAuthedBusiness() {
     "Your session expired. Log in again to manage appointments."
   );
 }
+
+// Client-serialized server-action arguments aren't type-checked at runtime,
+// so a crafted object like `{ not: "" }` in place of a plain id string would
+// otherwise reach Prisma as part of a `where` clause — turning a single-row
+// mutation into one that matches (and cancels/deletes/updates) every
+// eligible appointment in the workspace. Every action below that takes a raw
+// appointment id runs it through this first (Codex).
+function parseAppointmentId(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+const APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR = "Appointment not found in this clinic workspace.";
 
 // Interpret the operator's wall-clock entry in the clinic's time zone and store
 // the true UTC instant (shared helper — see lib/time-zone.ts).
@@ -139,14 +161,7 @@ async function hydrateAppointment(appointmentId: string) {
     },
   });
 
-  const status =
-    appointment.status === "CANCELLED"
-      ? "cancelled"
-      : appointment.status === "COMPLETED"
-        ? "completed"
-      : appointment.status === "PENDING"
-        ? "pending"
-        : "confirmed";
+  const status = toCalendarStatus(appointment.status);
 
   return {
     id: appointment.id,
@@ -160,18 +175,22 @@ async function hydrateAppointment(appointmentId: string) {
     endTime: formatZonedTime24(appointment.endAt),
     notes: appointment.notes ?? "",
     status,
-    tone:
-      status === "confirmed" || status === "completed"
-        ? "primary"
-        : status === "pending"
-          ? "secondary"
-          : "muted",
+    tone: toCalendarTone(appointment.status),
   } satisfies CalendarAppointment;
 }
 
 export async function saveAppointmentAction(
   payload: SaveAppointmentPayload
 ): Promise<SaveAppointmentResult> {
+  // A crafted, non-string `id` (client-serialized arguments aren't
+  // type-checked at runtime) would otherwise reach Prisma as part of a
+  // `where` clause below — every other usage of `payload.id` in this
+  // function runs after this early return, so this one check protects all
+  // of them (Codex).
+  if (payload.id !== undefined && parseAppointmentId(payload.id) === null) {
+    return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
+  }
+
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -190,6 +209,24 @@ export async function saveAppointmentAction(
       ok: false,
       error: "Choose a client and valid start/end time before saving.",
     };
+  }
+
+  // No-show is a Pro feature. Setting it needs Pro; an existing no-show on a
+  // workspace that has since dropped to Basic can still be edited as long as its
+  // status isn't being changed. Only an EXISTING row can be exempt: baselineStatus
+  // comes from the request body, and on a new booking (no id) nothing anchors it —
+  // on an edit, the compare-and-set against the live status keeps a forged value
+  // harmless. It can only be recorded once the time has come.
+  if (payload.status === "no-show") {
+    const keepingAnExistingNoShow = Boolean(payload.id) && payload.baselineStatus === "no-show";
+
+    if (!keepingAnExistingNoShow && !isProBusinessPlan(business.plan)) {
+      return { ok: false, error: NO_SHOW_PLAN_ERROR };
+    }
+
+    if (startAt.getTime() > Date.now()) {
+      return { ok: false, error: APPOINTMENT_NOT_STARTED_ERROR };
+    }
   }
 
   const insideBusinessHours = await isInsideBusinessHours({
@@ -270,6 +307,10 @@ export async function saveAppointmentAction(
     // (not just the dedicated Cancel booking action) — the doctor's app
     // needs to hear about that path too, not just cancelAppointmentAction.
     let wasNewlyCancelled = false;
+    // Un-cancelling (CANCELLED -> any other status) clears cancelledAt — the
+    // appointment isn't cancelled anymore, so its cancellation timestamp
+    // shouldn't linger and be read as one on a later, different cancel.
+    let wasReactivated = false;
 
     if (payload.id) {
       const existing = await prisma.appointment.findFirst({
@@ -312,7 +353,36 @@ export async function saveAppointmentAction(
         };
       }
 
-      wasNewlyCancelled = existing.status !== "CANCELLED" && newStatus === "CANCELLED";
+      // A recorded no-show is just as final for the Cancel path: relabelling
+      // it CANCELLED would drop it from the no-show count and rate. Undoing a
+      // no-show is "Mark as attended" (or picking another non-cancelled status).
+      if (existing.status === "NO_SHOW" && newStatus === "CANCELLED") {
+        return {
+          ok: false,
+          error: APPOINTMENT_ALREADY_NO_SHOW_ERROR,
+        };
+      }
+
+      // Same rule recordAppointmentAttendanceCore enforces for the quick
+      // action: a cancelled booking never happened, so relabelling it as a
+      // no-show through the Status dropdown would inflate the no-show count.
+      if (existing.status === "CANCELLED" && newStatus === "NO_SHOW") {
+        return {
+          ok: false,
+          error: APPOINTMENT_CANCELLED_NO_SHOW_ERROR,
+        };
+      }
+
+      // Derived from payload.baselineStatus, the same source of truth the
+      // compare-and-set guard below actually matches against — not a fresh
+      // re-read of existing.status. If the guard doesn't match reality, the
+      // write below never applies (count === 0, early conflict return), so
+      // these flags — used after the write succeeds — never fire on a stale
+      // basis (CodeRabbit: existing.status alone could reflect a change that
+      // landed between this read and the guarded write, misclassifying a
+      // real cancellation/reactivation the write is actually making).
+      wasNewlyCancelled = payload.baselineStatus !== "cancelled" && newStatus === "CANCELLED";
+      wasReactivated = payload.baselineStatus === "cancelled" && newStatus !== "CANCELLED";
       needsConflictCheck =
         existing.staffMemberId !== staffMemberId ||
         existing.startAt.getTime() !== startAt.getTime() ||
@@ -401,6 +471,18 @@ export async function saveAppointmentAction(
             endAt,
             notes: payload.notes.trim() || null,
             status: newStatus,
+            // Set only on the transition into CANCELLED, cleared only on the
+            // transition out — omitted (undefined) otherwise, so an edit that
+            // doesn't touch cancellation status leaves the real cancel time
+            // alone. See appointments-shared.ts's cancelAppointmentCore for
+            // why this can't just be the auto-managed updatedAt.
+            cancelledAt: wasNewlyCancelled ? new Date() : wasReactivated ? null : undefined,
+            // Same immutable-snapshot rule as cancelledAt: this save's own
+            // startAt is what the row's schedule actually is as of this
+            // cancellation (this save may cancel and reschedule in the same
+            // write), and it must not be re-derived from startAt later, once
+            // a further edit while still cancelled has changed it.
+            cancelledScheduledStartAt: wasNewlyCancelled ? startAt : wasReactivated ? null : undefined,
           },
         });
 
@@ -456,7 +538,8 @@ export async function saveAppointmentAction(
 
     revalidateCalendarSurfaces(
       [payload.clientId, previousClientId],
-      [staffMemberId, previousStaffMemberId]
+      [staffMemberId, previousStaffMemberId],
+      [appointmentId]
     );
 
     if (wasNewlyCancelled) {
@@ -512,8 +595,14 @@ export async function saveAppointmentAction(
 }
 
 export async function cancelAppointmentAction(
-  appointmentId: string
+  rawAppointmentId: string
 ): Promise<CancelAppointmentResult> {
+  const appointmentId = parseAppointmentId(rawAppointmentId);
+
+  if (!appointmentId) {
+    return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
+  }
+
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -536,7 +625,7 @@ export async function cancelAppointmentAction(
     };
   }
 
-  revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId]);
+  revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId], [outcome.appointmentId]);
 
   if (outcome.changed) {
     await notifyStaffOfAppointmentChange(business.id, outcome.staffMemberId, outcome.appointmentId);
@@ -548,9 +637,135 @@ export async function cancelAppointmentAction(
   };
 }
 
+export type RecordAttendanceResult = {
+  ok: boolean;
+  error?: string;
+  /** The appointment's new status, so the calendar can update in place. */
+  status?: CalendarAppointmentStatus;
+  /**
+   * The client this appointment actually belongs to server-side — not
+   * necessarily the caller's locally-cached copy, which can be stale if
+   * another tab reassigned the appointment to a different client after this
+   * one loaded it. The caller invalidates that client's other cached risk
+   * scores with this, not its own stale value (Codex).
+   */
+  clientId?: string;
+};
+
+/**
+ * Quick "did they come?" correction from the calendar popover. Lighter than the
+ * full edit save — no business-hours or conflict re-validation, because only the
+ * status changes. Pro only; the plan is re-checked here, not just in the UI.
+ */
+export async function recordAppointmentAttendanceAction(
+  rawAppointmentId: string,
+  attended: boolean
+): Promise<RecordAttendanceResult> {
+  const appointmentId = parseAppointmentId(rawAppointmentId);
+
+  if (!appointmentId) {
+    return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
+  }
+
+  const context = await getAuthedBusiness();
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  const business = context.business;
+
+  if (!isProBusinessPlan(business.plan)) {
+    return { ok: false, error: NO_SHOW_PLAN_ERROR };
+  }
+
+  const outcome = await recordAppointmentAttendanceCore({
+    id: appointmentId,
+    businessId: business.id,
+    attended,
+  });
+
+  if (!outcome.ok) {
+    return {
+      ok: false,
+      error:
+        outcome.status === 404
+          ? "Appointment not found in this clinic workspace."
+          : outcome.error,
+    };
+  }
+
+  if (outcome.changed) {
+    revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId], [outcome.appointmentId]);
+  }
+
+  return { ok: true, status: attended ? "completed" : "no-show", clientId: outcome.clientId };
+}
+
+/**
+ * Batched risk lookup for whatever's currently on screen (a quick-view
+ * popover, one Day-view column). Pro only — a Basic workspace gets an empty
+ * object, not an error, so the UI can call this unconditionally and just get
+ * nothing back to render.
+ */
+export async function getNoShowRiskAction(
+  appointmentIds: string[]
+): Promise<Record<string, NoShowRiskAssessment>> {
+  // Client-supplied, so keep only plain non-empty id strings — an object
+  // like `{ not: "" }` would otherwise become part of the Prisma `in:`
+  // filter below instead of being silently dropped (Codex).
+  const ids = Array.isArray(appointmentIds)
+    ? appointmentIds.flatMap((id) => parseAppointmentId(id) ?? [])
+    : [];
+
+  if (ids.length === 0) {
+    return {};
+  }
+
+  const context = await getAuthedBusiness();
+
+  if ("error" in context) {
+    return {};
+  }
+
+  const business = context.business;
+
+  if (!isProBusinessPlan(business.plan)) {
+    return {};
+  }
+
+  const rows = await prisma.appointment.findMany({
+    where: {
+      id: { in: ids },
+      businessId: business.id,
+      status: { in: ["PENDING", "CONFIRMED"] },
+    },
+    select: { id: true, clientId: true, startAt: true, createdAt: true, status: true },
+  });
+
+  const assessments = await getNoShowRiskAssessments({
+    businessId: business.id,
+    appointments: rows.map((row) => ({
+      id: row.id,
+      clientId: row.clientId,
+      startAt: row.startAt,
+      createdAt: row.createdAt,
+      status: row.status as "PENDING" | "CONFIRMED",
+    })),
+  });
+
+  return Object.fromEntries(assessments);
+}
+
 export async function deleteAppointmentAction(
-  appointmentId: string
+  rawAppointmentId: string
 ): Promise<DeleteAppointmentResult> {
+  const appointmentId = parseAppointmentId(rawAppointmentId);
+
+  if (!appointmentId) {
+    return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
+  }
+
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -573,7 +788,7 @@ export async function deleteAppointmentAction(
     };
   }
 
-  revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId]);
+  revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId], [outcome.appointmentId]);
 
   // No deep link — the row is gone, unlike a cancel which keeps it (status only).
   await notifyStaffOfAppointmentChange(business.id, outcome.staffMemberId, null);
