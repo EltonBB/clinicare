@@ -14,6 +14,9 @@ const LEVEL_LABELS = {
 
 type QualifyingRisk = NoShowRiskAssessment & { level: "medium" | "high" };
 
+/** setTimeout's delay is a signed 32-bit int — its largest representable value. */
+const MAX_TIMEOUT_MS = 2_147_483_647;
+
 /**
  * The qualifying (Medium/High, sufficient-history) risk assessment to show
  * right now, or null — already both filtered and narrowed, so a caller never
@@ -23,7 +26,8 @@ type QualifyingRisk = NoShowRiskAssessment & { level: "medium" | "high" };
  * decisions drifting apart is exactly the stale-badge bug class this hook
  * exists to close (Codex #129).
  *
- * `expiresAtIso`, once past, hides the result via a one-shot timer so it
+ * `expiresAtIso`, once past, hides the result via a scheduled timer (chained
+ * across setTimeout's ~24.8-day max delay for a far-out appointment) so it
  * doesn't outlive the visit if the page is left open without a reload.
  * Starts visible-only-once-confirmed (not "visible until proven expired"):
  * reading the clock during render would make the server render and the
@@ -42,19 +46,29 @@ export function useShowNoShowRisk(
     if (!expiresAtIso) return;
 
     const expiresAtMs = new Date(expiresAtIso).getTime();
-    // Named so the sync happens inside a callback (the immediate call below,
-    // then again from the timeout below) rather than as a bare setState in
-    // the effect body — matches the compute()/setInterval shape
-    // dashboard-overview.tsx's NextUpCountdown already uses (react-hooks/set-state-in-effect).
-    const sync = () => setVisible(expiresAtMs > Date.now());
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    // setTimeout's delay is a signed 32-bit int (~24.8 days max) — a booking
+    // can sit further out than that (the risk model's own 30-day lead-time
+    // signal expects it), and a longer delay overflows and fires early, with
+    // nothing left to re-check afterward. sync() re-derives `visible` fresh
+    // each call (so an early/overflowed fire is harmless) and, while there's
+    // still time left, re-arms itself for the remainder, capped — chaining
+    // capped waits until the real expiry is reached (Codex/CodeRabbit #129).
+    // Named rather than a bare setState in the effect body, matching the
+    // compute()/setInterval shape dashboard-overview.tsx's NextUpCountdown
+    // already uses (react-hooks/set-state-in-effect).
+    const sync = () => {
+      const msRemaining = expiresAtMs - Date.now();
+      setVisible(msRemaining > 0);
+      if (msRemaining > 0) {
+        timeout = setTimeout(sync, Math.min(msRemaining, MAX_TIMEOUT_MS));
+      }
+    };
 
     sync();
 
-    const msRemaining = expiresAtMs - Date.now();
-    if (msRemaining <= 0) return;
-
-    const timeout = window.setTimeout(sync, msRemaining);
-    return () => window.clearTimeout(timeout);
+    return () => clearTimeout(timeout);
   }, [expiresAtIso]);
 
   if (!risk || risk.insufficientHistory || risk.level === "low" || !visible) {
