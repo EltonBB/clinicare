@@ -7,6 +7,7 @@ import {
   formatZonedTime24,
   getAppTimeZone,
   getZonedDateParts,
+  parseZonedWallClock,
   zonedCalendarDaysBetween,
 } from "@/lib/time-zone";
 
@@ -352,22 +353,11 @@ export function timeToMinutes(time: string) {
 }
 
 /**
- * Whether a CalendarAppointment's scheduled start has already passed, in the
- * app's time zone. `status` doesn't auto-flip at start time (staff finalizes
- * a visit manually), so this is the check for "upcoming"-only UI — a no-show
- * risk badge, for instance — that must stop applying once the visit is
- * underway, regardless of status (Codex #129).
+ * A CalendarAppointment's scheduled start as an ISO instant, in the app's
+ * time zone — for a live expiry timer (NoShowRiskBadge's `expiresAtIso`),
+ * never for display. Null only on malformed date/time, which real
+ * server-built data never produces.
  */
-export function hasAppointmentStarted(
-  appointment: Pick<CalendarAppointment, "date" | "startTime">,
-  now = new Date()
-) {
-  const nowKey = formatZonedDateKey(now);
-
-  if (appointment.date !== nowKey) {
-    return appointment.date < nowKey;
-  }
-
-  const nowParts = getZonedDateParts(now);
-  return timeToMinutes(appointment.startTime) <= nowParts.hour * 60 + nowParts.minute;
+export function appointmentStartIso(appointment: Pick<CalendarAppointment, "date" | "startTime">) {
+  return parseZonedWallClock(appointment.date, appointment.startTime)?.toISOString() ?? null;
 }

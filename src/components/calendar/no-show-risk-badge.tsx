@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { NoShowRiskAssessment } from "@/lib/no-show-risk";
 
@@ -11,13 +12,75 @@ const LEVEL_LABELS = {
   high: "High risk",
 } as const;
 
+type QualifyingRisk = NoShowRiskAssessment & { level: "medium" | "high" };
+
+/**
+ * The qualifying (Medium/High, sufficient-history) risk assessment to show
+ * right now, or null — already both filtered and narrowed, so a caller never
+ * re-derives the same checks. Exported so a caller that wraps the badge in
+ * its own label (the calendar quick-view popover's "Risk" row) can gate that
+ * wrapper off the same value instead of re-deriving it — two independent
+ * decisions drifting apart is exactly the stale-badge bug class this hook
+ * exists to close (Codex #129).
+ *
+ * `expiresAtIso`, once past, hides the result via a one-shot timer so it
+ * doesn't outlive the visit if the page is left open without a reload.
+ * Starts visible-only-once-confirmed (not "visible until proven expired"):
+ * reading the clock during render would make the server render and the
+ * client's first paint disagree whenever an appointment's start falls in the
+ * gap between the two, and a post-mount effect corrects it once — the same
+ * pattern already used for the Next-up countdown in dashboard-overview.tsx.
+ * Omit `expiresAtIso` for a caller with no live-staleness concern.
+ */
+export function useShowNoShowRisk(
+  risk: NoShowRiskAssessment | null | undefined,
+  expiresAtIso?: string | null
+): QualifyingRisk | null {
+  const [visible, setVisible] = useState(!expiresAtIso);
+
+  useEffect(() => {
+    if (!expiresAtIso) return;
+
+    const expiresAtMs = new Date(expiresAtIso).getTime();
+    // Named so the sync happens inside a callback (the immediate call below,
+    // then again from the timeout below) rather than as a bare setState in
+    // the effect body — matches the compute()/setInterval shape
+    // dashboard-overview.tsx's NextUpCountdown already uses (react-hooks/set-state-in-effect).
+    const sync = () => setVisible(expiresAtMs > Date.now());
+
+    sync();
+
+    const msRemaining = expiresAtMs - Date.now();
+    if (msRemaining <= 0) return;
+
+    const timeout = window.setTimeout(sync, msRemaining);
+    return () => window.clearTimeout(timeout);
+  }, [expiresAtIso]);
+
+  if (!risk || risk.insufficientHistory || risk.level === "low" || !visible) {
+    return null;
+  }
+
+  // The checks above already exclude "low" — TS doesn't narrow a property
+  // through a compound `||` guard, so this restates that as a type-level fact.
+  return risk as QualifyingRisk;
+}
+
 /**
  * Only Medium/High render — a "Low risk" pill on most appointments would be
  * pure noise (AGENTS.md's anti-clutter rules). The top reason is the title
  * (hover), never printed inline, to keep the pill compact everywhere it's used.
  */
-export function NoShowRiskBadge({ risk }: { risk: NoShowRiskAssessment | null | undefined }) {
-  if (!risk || risk.insufficientHistory || risk.level === "low") {
+export function NoShowRiskBadge({
+  risk,
+  expiresAtIso,
+}: {
+  risk: NoShowRiskAssessment | null | undefined;
+  expiresAtIso?: string | null;
+}) {
+  const qualifyingRisk = useShowNoShowRisk(risk, expiresAtIso);
+
+  if (!qualifyingRisk) {
     return null;
   }
 
@@ -25,11 +88,11 @@ export function NoShowRiskBadge({ risk }: { risk: NoShowRiskAssessment | null | 
     <span
       className={cn(
         "inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[11px] font-medium",
-        LEVEL_STYLES[risk.level]
+        LEVEL_STYLES[qualifyingRisk.level]
       )}
-      title={risk.reasons[0] ?? undefined}
+      title={qualifyingRisk.reasons[0] ?? undefined}
     >
-      {LEVEL_LABELS[risk.level]}
+      {LEVEL_LABELS[qualifyingRisk.level]}
     </span>
   );
 }

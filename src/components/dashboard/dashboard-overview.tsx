@@ -297,7 +297,10 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                   {view.nextAppointment.time}
                 </span>
                 {view.nextAppointment.risk?.level === "high" ? (
-                  <NoShowRiskBadge risk={view.nextAppointment.risk} />
+                  <NoShowRiskBadge
+                    risk={view.nextAppointment.risk}
+                    expiresAtIso={view.nextAppointment.startAtIso}
+                  />
                 ) : null}
               </div>
             </Link>
@@ -350,7 +353,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                     {appointment.status}
                   </span>
                   {appointment.risk?.level === "high" ? (
-                    <NoShowRiskBadge risk={appointment.risk} />
+                    <NoShowRiskBadge risk={appointment.risk} expiresAtIso={appointment.startAtIso} />
                   ) : null}
                 </Link>
               ))}

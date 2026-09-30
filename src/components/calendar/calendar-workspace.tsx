@@ -42,9 +42,9 @@ import {
   WorkspacePage,
 } from "@/components/workspace/workspace-layout";
 import { MonthGrid } from "@/components/workspace/month-grid";
-import { NoShowRiskBadge } from "./no-show-risk-badge";
+import { NoShowRiskBadge, useShowNoShowRisk } from "./no-show-risk-badge";
 import { useDismissOnOutsideOrEscape } from "@/hooks/use-dismiss-on-outside-or-escape";
-import { businessHoursForDate, hasAppointmentStarted, timeToMinutes } from "@/lib/calendar";
+import { appointmentStartIso, businessHoursForDate, timeToMinutes } from "@/lib/calendar";
 import { rowsThatFit, visibleEntryCount } from "@/lib/calendar-fit";
 import { monthsToLoad, type CalendarRange } from "@/lib/calendar-range";
 import type { NoShowRiskAssessment } from "@/lib/no-show-risk";
@@ -200,7 +200,7 @@ function EventPill({
           <span className="hidden w-20 shrink-0 text-right text-xs font-semibold capitalize opacity-80 sm:block">
             {appointment.status}
           </span>
-          <NoShowRiskBadge risk={risk} />
+          <NoShowRiskBadge risk={risk} expiresAtIso={appointmentStartIso(appointment)} />
         </>
       ) : (
         <>
@@ -328,13 +328,12 @@ function DayColumn({
             // Risk only ever applies to an upcoming pending/confirmed visit; a
             // stale cached assessment (or one from a request that was still
             // in-flight when the appointment got finalized) must not show a
-            // badge on a row that's now completed/no-show/cancelled — nor once
-            // the visit's start time has passed, since status doesn't
-            // auto-flip at start (Codex #129).
+            // badge on a row that's now completed/no-show/cancelled. The
+            // "has this visit's start time passed" check lives inside
+            // NoShowRiskBadge itself (expiresAtIso) so it self-expires live
+            // if the page is left open, rather than only on next re-render.
             risk={
-              (entry.status === "pending" || entry.status === "confirmed") && !hasAppointmentStarted(entry)
-                ? risk?.[entry.id]
-                : undefined
+              entry.status === "pending" || entry.status === "confirmed" ? risk?.[entry.id] : undefined
             }
             onOpen={(event) => onOpen(entry, event)}
           />
@@ -507,6 +506,10 @@ function AppointmentQuickView({
   const containerRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [attendanceError, setAttendanceError] = useState("");
+  const riskExpiresAtIso = appointmentStartIso(appointment);
+  // Same value NoShowRiskBadge derives internally, reused here so the "Risk"
+  // label row doesn't outlive the pill it labels (Codex #129).
+  const qualifyingRisk = useShowNoShowRisk(risk, riskExpiresAtIso);
 
   async function handleAttendance(attended: boolean) {
     setBusy(true);
@@ -593,10 +596,10 @@ function AppointmentQuickView({
             {appointment.status}
           </span>
         </div>
-        {risk && !risk.insufficientHistory && risk.level !== "low" ? (
+        {qualifyingRisk ? (
           <div className="flex items-center justify-between gap-3">
             <span className="text-muted-foreground">Risk</span>
-            <NoShowRiskBadge risk={risk} />
+            <NoShowRiskBadge risk={risk} expiresAtIso={riskExpiresAtIso} />
           </div>
         ) : null}
       </div>
@@ -1244,11 +1247,11 @@ export function CalendarWorkspace({
           attendanceAction={attendanceActionFor(quickView.appointment)}
           onRecordAttendance={(attended) => recordAttendance(quickView.appointment, attended)}
           // Same guard as the Day-view row: hide a stale or late-arriving
-          // assessment once the appointment is no longer pending/confirmed,
-          // or once its start time has passed (Codex #129).
+          // assessment once the appointment is no longer pending/confirmed.
+          // The "has this visit started" half lives inside AppointmentQuickView
+          // itself (useShowNoShowRisk) so it self-expires live (Codex #129).
           risk={
-            (quickView.appointment.status === "pending" || quickView.appointment.status === "confirmed") &&
-            !hasAppointmentStarted(quickView.appointment)
+            quickView.appointment.status === "pending" || quickView.appointment.status === "confirmed"
               ? risk[quickView.appointment.id]
               : undefined
           }
