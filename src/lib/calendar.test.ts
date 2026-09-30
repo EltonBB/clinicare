@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildCalendarViewFromRecords, businessHoursForDate, toCalendarStatus, toCalendarTone, toPrismaAppointmentStatus } from "@/lib/calendar";
+import { buildCalendarViewFromRecords, businessHoursForDate, hasAppointmentStarted, toCalendarStatus, toCalendarTone, toPrismaAppointmentStatus } from "@/lib/calendar";
 import {
   addZonedDays,
   formatZonedDateKey,
@@ -197,6 +197,31 @@ describe("businessHoursForDate", () => {
     // 2026-01-01 is a Thursday; 2028-02-29 a Tuesday.
     expect(businessHoursForDate("2026-01-01", []).weekday).toBe(3);
     expect(businessHoursForDate("2028-02-29", []).weekday).toBe(1);
+  });
+});
+
+describe("hasAppointmentStarted", () => {
+  // now = 2026-09-21 14:30 in the app's zone (Codex #129).
+  const now = zonedDateTimeToUtc({ year: 2026, month: 9, day: 21, hour: 14, minute: 30 });
+  const today = formatZonedDateKey(now);
+  const yesterday = formatZonedDateKey(zonedDateTimeToUtc({ year: 2026, month: 9, day: 20, hour: 12 }));
+  const tomorrow = formatZonedDateKey(zonedDateTimeToUtc({ year: 2026, month: 9, day: 22, hour: 12 }));
+
+  it("is true for a date in the past, regardless of time", () => {
+    expect(hasAppointmentStarted({ date: yesterday, startTime: "09:00" }, now)).toBe(true);
+  });
+
+  it("is false for a date in the future, regardless of time", () => {
+    expect(hasAppointmentStarted({ date: tomorrow, startTime: "00:00" }, now)).toBe(false);
+  });
+
+  it("compares start time against now on the same day", () => {
+    expect(hasAppointmentStarted({ date: today, startTime: "09:00" }, now)).toBe(true);
+    expect(hasAppointmentStarted({ date: today, startTime: "18:00" }, now)).toBe(false);
+  });
+
+  it("treats the exact current minute as started", () => {
+    expect(hasAppointmentStarted({ date: today, startTime: formatZonedTime24(now) }, now)).toBe(true);
   });
 });
 

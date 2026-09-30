@@ -44,7 +44,7 @@ import {
 import { MonthGrid } from "@/components/workspace/month-grid";
 import { NoShowRiskBadge } from "./no-show-risk-badge";
 import { useDismissOnOutsideOrEscape } from "@/hooks/use-dismiss-on-outside-or-escape";
-import { businessHoursForDate, timeToMinutes } from "@/lib/calendar";
+import { businessHoursForDate, hasAppointmentStarted, timeToMinutes } from "@/lib/calendar";
 import { rowsThatFit, visibleEntryCount } from "@/lib/calendar-fit";
 import { monthsToLoad, type CalendarRange } from "@/lib/calendar-range";
 import type { NoShowRiskAssessment } from "@/lib/no-show-risk";
@@ -328,8 +328,14 @@ function DayColumn({
             // Risk only ever applies to an upcoming pending/confirmed visit; a
             // stale cached assessment (or one from a request that was still
             // in-flight when the appointment got finalized) must not show a
-            // badge on a row that's now completed/no-show/cancelled.
-            risk={entry.status === "pending" || entry.status === "confirmed" ? risk?.[entry.id] : undefined}
+            // badge on a row that's now completed/no-show/cancelled — nor once
+            // the visit's start time has passed, since status doesn't
+            // auto-flip at start (Codex #129).
+            risk={
+              (entry.status === "pending" || entry.status === "confirmed") && !hasAppointmentStarted(entry)
+                ? risk?.[entry.id]
+                : undefined
+            }
             onOpen={(event) => onOpen(entry, event)}
           />
         ) : (
@@ -1238,9 +1244,11 @@ export function CalendarWorkspace({
           attendanceAction={attendanceActionFor(quickView.appointment)}
           onRecordAttendance={(attended) => recordAttendance(quickView.appointment, attended)}
           // Same guard as the Day-view row: hide a stale or late-arriving
-          // assessment once the appointment is no longer pending/confirmed.
+          // assessment once the appointment is no longer pending/confirmed,
+          // or once its start time has passed (Codex #129).
           risk={
-            quickView.appointment.status === "pending" || quickView.appointment.status === "confirmed"
+            (quickView.appointment.status === "pending" || quickView.appointment.status === "confirmed") &&
+            !hasAppointmentStarted(quickView.appointment)
               ? risk[quickView.appointment.id]
               : undefined
           }

@@ -350,3 +350,24 @@ export function timeToMinutes(time: string) {
   const [hours, minutes] = time.split(":").map(Number);
   return (hours || 0) * 60 + (minutes || 0);
 }
+
+/**
+ * Whether a CalendarAppointment's scheduled start has already passed, in the
+ * app's time zone. `status` doesn't auto-flip at start time (staff finalizes
+ * a visit manually), so this is the check for "upcoming"-only UI — a no-show
+ * risk badge, for instance — that must stop applying once the visit is
+ * underway, regardless of status (Codex #129).
+ */
+export function hasAppointmentStarted(
+  appointment: Pick<CalendarAppointment, "date" | "startTime">,
+  now = new Date()
+) {
+  const nowKey = formatZonedDateKey(now);
+
+  if (appointment.date !== nowKey) {
+    return appointment.date < nowKey;
+  }
+
+  const nowParts = getZonedDateParts(now);
+  return timeToMinutes(appointment.startTime) <= nowParts.hour * 60 + nowParts.minute;
+}
