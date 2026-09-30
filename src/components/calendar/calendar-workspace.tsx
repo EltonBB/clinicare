@@ -890,9 +890,14 @@ export function CalendarWorkspace({
     // setAppointments updater below — that updater runs during React's own
     // render pass, not synchronously with this call, so a variable assigned
     // inside it and read immediately after can still see its stale initial
-    // value (CodeRabbit #129).
+    // value (CodeRabbit #129). Filtered by the server-confirmed clientId, not
+    // this component's possibly-stale copy of `appointment.clientId` — another
+    // tab can reassign the appointment to a different client between this
+    // one loading and this mutation running, and it's that live client's
+    // history the server just recomputed (Codex #129 round 2).
+    const affectedClientId = result.clientId ?? appointment.clientId;
     const sameClientIds = appointments
-      .filter((item) => item.clientId === appointment.clientId)
+      .filter((item) => item.clientId === affectedClientId)
       .map((item) => item.id);
     setAppointments((current) =>
       current.map((item) => (item.id === appointment.id ? { ...item, status } : item))

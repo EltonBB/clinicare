@@ -615,6 +615,14 @@ export type RecordAttendanceResult = {
   error?: string;
   /** The appointment's new status, so the calendar can update in place. */
   status?: CalendarAppointmentStatus;
+  /**
+   * The client this appointment actually belongs to server-side — not
+   * necessarily the caller's locally-cached copy, which can be stale if
+   * another tab reassigned the appointment to a different client after this
+   * one loaded it. The caller invalidates that client's other cached risk
+   * scores with this, not its own stale value (Codex).
+   */
+  clientId?: string;
 };
 
 /**
@@ -658,7 +666,7 @@ export async function recordAppointmentAttendanceAction(
     revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId], [outcome.appointmentId]);
   }
 
-  return { ok: true, status: attended ? "completed" : "no-show" };
+  return { ok: true, status: attended ? "completed" : "no-show", clientId: outcome.clientId };
 }
 
 /**
@@ -670,7 +678,14 @@ export async function recordAppointmentAttendanceAction(
 export async function getNoShowRiskAction(
   appointmentIds: string[]
 ): Promise<Record<string, NoShowRiskAssessment>> {
-  if (appointmentIds.length === 0) {
+  // Client-supplied, so keep only plain non-empty id strings — an object
+  // like `{ not: "" }` would otherwise become part of the Prisma `in:`
+  // filter below instead of being silently dropped (Codex).
+  const ids = Array.isArray(appointmentIds)
+    ? appointmentIds.filter((id): id is string => typeof id === "string" && id.length > 0)
+    : [];
+
+  if (ids.length === 0) {
     return {};
   }
 
@@ -688,7 +703,7 @@ export async function getNoShowRiskAction(
 
   const rows = await prisma.appointment.findMany({
     where: {
-      id: { in: appointmentIds },
+      id: { in: ids },
       businessId: business.id,
       status: { in: ["PENDING", "CONFIRMED"] },
     },

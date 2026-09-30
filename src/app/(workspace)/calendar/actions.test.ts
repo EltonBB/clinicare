@@ -865,7 +865,11 @@ describe("recordAppointmentAttendanceAction", () => {
       changed: true,
     });
 
-    expect(await recordAppointmentAttendanceAction("appt_1", false)).toEqual({ ok: true, status: "no-show" });
+    expect(await recordAppointmentAttendanceAction("appt_1", false)).toEqual({
+      ok: true,
+      status: "no-show",
+      clientId: "client_1",
+    });
     expect(mocks.recordAttendance).toHaveBeenCalledWith({
       id: "appt_1",
       businessId: "biz_1",
@@ -883,10 +887,14 @@ describe("recordAppointmentAttendanceAction", () => {
       changed: true,
     });
 
-    expect(await recordAppointmentAttendanceAction("appt_1", true)).toEqual({ ok: true, status: "completed" });
+    expect(await recordAppointmentAttendanceAction("appt_1", true)).toEqual({
+      ok: true,
+      status: "completed",
+      clientId: "client_1",
+    });
   });
 
-  it("skips revalidation when nothing changed", async () => {
+  it("skips revalidation when nothing changed, but still reports the live clientId (Codex)", async () => {
     mocks.recordAttendance.mockResolvedValue({
       ok: true,
       appointmentId: "appt_1",
@@ -895,9 +903,34 @@ describe("recordAppointmentAttendanceAction", () => {
       changed: false,
     });
 
-    await recordAppointmentAttendanceAction("appt_1", false);
-
+    expect(await recordAppointmentAttendanceAction("appt_1", false)).toEqual({
+      ok: true,
+      status: "no-show",
+      clientId: "client_1",
+    });
     expect(mocks.revalidateCalendarSurfaces).not.toHaveBeenCalled();
+  });
+
+  it("reports the server-confirmed clientId even when it differs from what the caller's cache might expect (Codex #129 round 2)", async () => {
+    // Another tab reassigned this appointment to a different client before
+    // this mutation ran — recordAttendanceCore reads the row fresh, so it
+    // returns the live owner, not whatever the caller had cached.
+    mocks.recordAttendance.mockResolvedValue({
+      ok: true,
+      appointmentId: "appt_1",
+      clientId: "client_reassigned",
+      staffMemberId: "staff_1",
+      changed: true,
+    });
+
+    const result = await recordAppointmentAttendanceAction("appt_1", false);
+
+    expect(result).toEqual({ ok: true, status: "no-show", clientId: "client_reassigned" });
+    expect(mocks.revalidateCalendarSurfaces).toHaveBeenCalledWith(
+      ["client_reassigned"],
+      ["staff_1"],
+      ["appt_1"]
+    );
   });
 
   it("passes the core's reason through, and words a missing appointment for this workspace", async () => {
@@ -938,5 +971,30 @@ describe("getNoShowRiskAction", () => {
         where: expect.objectContaining({ id: { in: ["a1"] }, businessId: "biz_1", status: { in: ["PENDING", "CONFIRMED"] } }),
       })
     );
+  });
+
+  // Client-serialized args aren't type-checked at runtime, so a crafted
+  // `{ not: "" }` would otherwise become part of the Prisma `in:` filter
+  // instead of matching only real ids (Codex).
+  it("drops a crafted non-string id before it reaches the database", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1", plan: "PRO" }, user: {} });
+    mocks.appointment.findMany.mockResolvedValue([
+      { id: "a1", clientId: "c1", startAt: new Date("2026-07-10T09:00:00Z"), createdAt: new Date("2026-07-01T09:00:00Z"), status: "CONFIRMED" },
+    ]);
+    mocks.getRiskAssessments.mockResolvedValue(new Map([["a1", { level: "high", reasons: [], insufficientHistory: false }]]));
+
+    const result = await getNoShowRiskAction(["a1", { not: "" } as unknown as string]);
+
+    expect(Object.keys(result)).toEqual(["a1"]);
+    expect(mocks.appointment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: { in: ["a1"] } }) })
+    );
+  });
+
+  it("returns nothing without querying when every id is invalid", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1", plan: "PRO" }, user: {} });
+
+    expect(await getNoShowRiskAction([{ not: "" } as unknown as string, "" as unknown as string])).toEqual({});
+    expect(mocks.appointment.findMany).not.toHaveBeenCalled();
   });
 });
