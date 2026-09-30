@@ -76,6 +76,20 @@ describe("scoreNoShowRisk", () => {
     expect(scoreNoShowRisk(early, BASE_APPT)).toMatchObject({ level: "low", reasons: [] });
   });
 
+  // cancelAppointmentCore has no startAt guard, so a CONFIRMED/PENDING visit
+  // can be cancelled after its own scheduled start — that's at least as late
+  // as a last-minute-before-start cancel and must still count (Codex #129).
+  it("counts a cancellation made after the visit's scheduled start as late, not as 'early' from the negative gap", () => {
+    const cancelledAfterStart = [
+      visit("CANCELLED", "2026-06-01T09:00:00Z", "2026-06-01T10:00:00Z"), // cancelled 1h AFTER its own start
+      visit("COMPLETED", "2026-05-01T09:00:00Z"),
+    ];
+    expect(scoreNoShowRisk(cancelledAfterStart, BASE_APPT)).toMatchObject({
+      level: "medium",
+      reasons: ["Cancelled last-minute recently"],
+    });
+  });
+
   it("gives no late-cancel signal from a null cancelledAt (a row cancelled before the column existed) — never falls back to updatedAt (Codex #129)", () => {
     const noTimestamp = [
       visit("CANCELLED", "2026-06-01T09:00:00Z", null),
