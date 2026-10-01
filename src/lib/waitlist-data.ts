@@ -4,6 +4,7 @@ import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { prisma } from "@/lib/prisma";
 import { retryOnWriteConflict } from "@/lib/prisma-retry";
 import { isSameService, type WaitlistCandidate } from "@/lib/slot-fill-matching";
+import { APPOINTMENT_STAFF_AVAILABLE_WHERE } from "@/lib/staff-eligibility";
 import { formatZonedShortDate } from "@/lib/time-zone";
 import { MAX_ACTIVE_WAITLIST_ENTRIES, WAITLIST_FULL_ERROR } from "@/lib/waitlist";
 
@@ -58,7 +59,7 @@ export async function listWaitingEntries(businessId: string, now: Date = new Dat
           appointment: {
             status: "CANCELLED",
             startAt: { gt: now },
-            OR: [{ staffMemberId: null }, { staffMember: { isActive: true, status: { not: "INACTIVE" } } }],
+            ...APPOINTMENT_STAFF_AVAILABLE_WHERE,
           },
         },
         select: { status: true },

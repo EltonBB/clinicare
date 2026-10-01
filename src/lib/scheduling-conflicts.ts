@@ -19,6 +19,18 @@ import { Prisma } from "@prisma/client";
  * pre-write snapshot before either commits. A DB-level exclusion constraint
  * would close it at the schema level instead; this closes it at the
  * application level without a migration.
+ *
+ * Lock order. The transactions that reach this lock do not all take their
+ * other locks in the same order: a booking or an edit takes this advisory
+ * lock first and the appointment / client / offer rows after, while cancelling
+ * and the Skip / Declined / Remove paths hold row locks already when they get
+ * here (offerFreedSlot calls it). The staff member this lock is keyed on is
+ * only known after a read, so one global order can't be imposed cheaply;
+ * instead every transaction that can reach this lock is wrapped in
+ * retryOnWriteConflict (lib/prisma-retry.ts), which re-runs it once when
+ * Postgres aborts it as a deadlock. A new transaction that calls
+ * acquireSchedulingLock, offerFreedSlot or withdrawSlotOffers must be wrapped
+ * the same way.
  */
 export async function acquireSchedulingLock(
   tx: Prisma.TransactionClient,

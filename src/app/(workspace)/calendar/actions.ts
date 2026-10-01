@@ -3,6 +3,7 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { retryOnWriteConflict } from "@/lib/prisma-retry";
 import { getAuthedBusiness as getAuthedBusinessContext, toBusinessIdentity } from "@/lib/business";
 import { loadCalendarMonth, type CalendarMonthData } from "@/lib/calendar-data";
 import { isValidMonthKey } from "@/lib/calendar-range";
@@ -435,7 +436,15 @@ export async function saveAppointmentAction(
     // The appointment write, reminder reset, and last-visit refresh commit
     // together. Payment is intentionally NOT collected here — it's recorded
     // separately on the client's Payments tab, after the visit.
-    const txResult = await prisma.$transaction<
+    //
+    // Retried once if Postgres aborts it as a deadlock: this takes the staff
+    // member's scheduling advisory lock first and the appointment, client and
+    // offer rows after, while cancelAppointmentCore and the Skip / Declined
+    // paths take row locks first and the advisory lock inside offerFreedSlot
+    // — two of them racing on one staff member can form a lock cycle
+    // (Codex #130). A rolled-back attempt leaves nothing behind, and the
+    // closure re-derives `appointmentId` on every run.
+    const txResult = await retryOnWriteConflict(() => prisma.$transaction<
       { conflict: true; error: string } | { conflict: false }
     >(async (tx) => {
       // Only re-validate the slot when this save could newly occupy one.
@@ -638,7 +647,7 @@ export async function saveAppointmentAction(
       }
 
       return { conflict: false };
-    });
+    }));
 
     if (txResult.conflict) {
       return {

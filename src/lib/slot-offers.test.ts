@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
     business: { findUniqueOrThrow: vi.fn() },
     appointment: { findFirst: vi.fn() },
     scheduleBlock: { findFirst: vi.fn() },
+    staffMember: { findFirst: vi.fn() },
     $executeRaw: vi.fn(),
   },
 }));
@@ -101,6 +102,7 @@ beforeEach(() => {
   mocks.tx.followUpDraft.findMany.mockResolvedValue([]);
   serveAppointmentReads();
   mocks.tx.scheduleBlock.findFirst.mockResolvedValue(null); // no business-wide block by default
+  mocks.tx.staffMember.findFirst.mockResolvedValue({ id: "staff_1" }); // the freed slot's staff is available by default
   mocks.tx.$executeRaw.mockResolvedValue(undefined);
   mocks.prisma.$transaction.mockImplementation(async (cb: (client: unknown) => unknown) => cb(mocks.tx));
 });
@@ -157,6 +159,48 @@ describe("offerFreedSlot", () => {
       skipDuplicates: true,
     });
     expectOuterClientUntouched();
+  });
+
+  it("checks the freed slot's assigned staff member is still available, by the shared rule", async () => {
+    mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_1", "2026-01-01")]);
+
+    await offerFreedSlot(tx, { businessId: "biz_1", cancelled: CANCELLED, now: NOW });
+
+    expect(mocks.tx.staffMember.findFirst).toHaveBeenCalledWith({
+      where: { id: "staff_1", businessId: "biz_1", isActive: true, status: { not: "INACTIVE" } },
+      select: { id: true },
+    });
+  });
+
+  // Codex #130: Book refuses a slot whose staff went inactive and the liveness
+  // check hides its offer, so offering it anyway makes a draft nobody can send —
+  // and the hourly sweep then retires it and offers the slot to the next client,
+  // again and again.
+  it("offers nothing when the freed slot's assigned staff member is no longer available", async () => {
+    mocks.tx.staffMember.findFirst.mockResolvedValue(null);
+    mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_1", "2026-01-01")]);
+
+    const offered = await offerFreedSlot(tx, { businessId: "biz_1", cancelled: CANCELLED, now: NOW });
+
+    expect(offered).toBeNull();
+    // Refused up front: no scheduling lock, no match read, no flip, no draft.
+    expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
+    expect(mocks.tx.waitlistEntry.findMany).not.toHaveBeenCalled();
+    expect(mocks.tx.waitlistEntry.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.followUpDraft.createMany).not.toHaveBeenCalled();
+  });
+
+  it("doesn't look up staff for a genuinely unassigned slot", async () => {
+    mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_1", "2026-01-01")]);
+
+    const offered = await offerFreedSlot(tx, {
+      businessId: "biz_1",
+      cancelled: { ...CANCELLED, staffMemberId: null },
+      now: NOW,
+    });
+
+    expect(offered).toBe("wl_1");
+    expect(mocks.tx.staffMember.findFirst).not.toHaveBeenCalled();
   });
 
   it("never offers the slot back to the client who cancelled it, to an archived client, or to a client with an open or let-go offer for it", async () => {
@@ -571,6 +615,27 @@ describe("expirePastSlotOffers", () => {
     );
   });
 
+  // Codex #130: before the staff check lived inside offerFreedSlot, the sweep
+  // retired an offer whose staff had gone inactive, re-offered the slot to the
+  // next client, and found that new draft stale at once on the next run.
+  it("retires and releases an offer whose assigned staff went inactive, without drafting the slot again", async () => {
+    mocks.prisma.followUpDraft.findMany.mockResolvedValue([
+      { id: "d_staff", businessId: "biz_1", waitlistEntryId: "wl_1", appointmentId: "appt_1" },
+    ]);
+    mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.staffMember.findFirst.mockResolvedValue(null);
+    mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_next", "2026-02-01")]);
+
+    expect(await expirePastSlotOffers("biz_1", NOW)).toEqual({ expired: 1, released: 1 });
+
+    expect(mocks.tx.waitlistEntry.updateMany).toHaveBeenCalledWith({
+      where: { id: "wl_1", businessId: "biz_1", status: "OFFERED" },
+      data: { status: "WAITING" },
+    });
+    expect(mocks.tx.followUpDraft.createMany).not.toHaveBeenCalled();
+    expect(mocks.tx.waitlistEntry.findMany).not.toHaveBeenCalled();
+  });
+
   it("re-offers nothing when the appointment is no longer cancelled (slot taken, deleted or passed)", async () => {
     mocks.prisma.followUpDraft.findMany.mockResolvedValue([
       { id: "d_1", businessId: "biz_1", waitlistEntryId: "wl_1", appointmentId: "appt_1" },
@@ -672,8 +737,23 @@ describe("findStaffAssignedOpenOfferAppointments", () => {
       },
       select: { appointmentId: true },
       distinct: ["appointmentId"],
-      take: 20,
     });
+  });
+
+  // Codex #130: a staff-wide read capped at 20 left every appointment past the
+  // 20th un-retired — their staff link goes NULL on delete, so those offers
+  // would then read as live unassigned slots.
+  it("is not capped: a staff member with more than 20 open offers has every one of them retired", async () => {
+    const rows = Array.from({ length: 35 }, (_, i) => ({ appointmentId: `appt_${i}` }));
+    mocks.tx.followUpDraft.findMany.mockResolvedValue(rows);
+
+    const result = await findStaffAssignedOpenOfferAppointments(tx, {
+      businessId: "biz_1",
+      staffMemberId: "staff_busy",
+    });
+
+    expect(result).toHaveLength(35);
+    expect(mocks.tx.followUpDraft.findMany.mock.calls[0][0]).not.toHaveProperty("take");
   });
 
   it("drops a null appointmentId instead of handing it to the retirement loop", async () => {

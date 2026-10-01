@@ -7,6 +7,11 @@ import { prisma } from "@/lib/prisma";
 import { retryOnWriteConflict } from "@/lib/prisma-retry";
 import { acquireSchedulingLock, hasSchedulingConflict } from "@/lib/scheduling-conflicts";
 import { rankWaitlistMatches } from "@/lib/slot-fill-matching";
+import {
+  APPOINTMENT_STAFF_AVAILABLE_WHERE,
+  APPOINTMENT_STAFF_UNAVAILABLE_WHERE,
+  AVAILABLE_STAFF_WHERE,
+} from "@/lib/staff-eligibility";
 import { formatZonedFullDate, formatZonedTime, formatZonedTime24, getZonedWeekday } from "@/lib/time-zone";
 import { WAITLIST_ENTRY_REMOVED_ERROR } from "@/lib/waitlist";
 import { findMatchingWaitlistCandidates, releaseWaitlistEntry } from "@/lib/waitlist-data";
@@ -85,6 +90,22 @@ export async function offerFreedSlot(
 
   if (!isProBusinessPlan(business.plan)) {
     return null;
+  }
+
+  // A slot whose assigned staff member has since been deactivated can't be
+  // honored: Book refuses it and liveSlotOfferWhere hides it. It must not be
+  // offered at all — otherwise the hourly sweep retires the stale offer,
+  // re-offers the slot here, and churns through the waiting list on every run
+  // with a draft nobody can review or send (Codex #130).
+  if (cancelled.staffMemberId) {
+    const staffAvailable = await tx.staffMember.findFirst({
+      where: { id: cancelled.staffMemberId, businessId, ...AVAILABLE_STAFF_WHERE },
+      select: { id: true },
+    });
+
+    if (!staffAvailable) {
+      return null;
+    }
   }
 
   // hasSchedulingConflict deliberately excludes CANCELLED rows, so a real
@@ -281,7 +302,7 @@ export function liveSlotOfferWhere(now: Date): Prisma.FollowUpDraftWhereInput {
     appointment: {
       status: "CANCELLED",
       startAt: { gt: now },
-      OR: [{ staffMemberId: null }, { staffMember: { isActive: true, status: { not: "INACTIVE" } } }],
+      ...APPOINTMENT_STAFF_AVAILABLE_WHERE,
     },
     client: ELIGIBLE_CLIENT_WHERE,
   };
@@ -303,12 +324,7 @@ function staleSlotWhere(now: Date): Prisma.FollowUpDraftWhereInput {
       // had an assigned staff member who has since gone inactive, so Book
       // would refuse this offer anyway — retire it now and release the
       // entry, the same as the client check above (Codex #130).
-      {
-        appointment: {
-          staffMemberId: { not: null },
-          NOT: { staffMember: { isActive: true, status: { not: "INACTIVE" } } },
-        },
-      },
+      { appointment: APPOINTMENT_STAFF_UNAVAILABLE_WHERE },
     ],
   };
 }
@@ -390,6 +406,13 @@ export async function withdrawSlotOffers(
  * this BEFORE the delete — the appointment's staffMemberId goes to NULL via
  * SET NULL the moment the staff row is gone, so this exact filter would match
  * nothing afterward (Codex #130).
+ *
+ * Deliberately not capped: unlike the per-appointment and per-entry reads
+ * above (one open offer each, by the invariant), this one spans every freed
+ * appointment the staff member ever held, and a cap would leave the rest
+ * un-retired, reading as live unassigned slots the moment SET NULL clears
+ * their staff. It is bounded by the system's own ceiling instead — open
+ * offers never exceed the waiting list's 500 entries (Codex #130).
  */
 export async function findStaffAssignedOpenOfferAppointments(
   tx: Prisma.TransactionClient,
@@ -404,7 +427,6 @@ export async function findStaffAssignedOpenOfferAppointments(
     },
     select: { appointmentId: true },
     distinct: ["appointmentId"],
-    take: MAX_OPEN_DRAFTS,
   });
 
   return drafts.flatMap((d) => (d.appointmentId ? [d.appointmentId] : []));

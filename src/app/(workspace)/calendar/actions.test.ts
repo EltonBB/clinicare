@@ -256,6 +256,43 @@ describe("saveAppointmentAction — concurrent-edit guard", () => {
     );
   });
 
+  it("re-runs the save once when Postgres aborts its transaction as a deadlock", async () => {
+    mocks.appointment.updateMany.mockResolvedValue({ count: 1 });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      id: "appt_1",
+      clientId: "client_1",
+      staffMemberId: null,
+      startAt: EXISTING.startAt,
+      endAt: EXISTING.endAt,
+      notes: null,
+      status: "CONFIRMED",
+      client: { id: "client_1", name: "Mira" },
+      staffMember: null,
+    });
+    // The first attempt is the transaction Postgres picked as the deadlock
+    // victim (the save takes the scheduling advisory lock before the rows
+    // cancel and Skip lock first). Nothing in it survives; the retry runs the
+    // whole save again against a clean slate.
+    mocks.$transaction.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("deadlock detected", { code: "P2034", clientVersion: "test" })
+    );
+
+    const result = await saveAppointmentAction(PAYLOAD);
+
+    expect(result.ok).toBe(true);
+    expect(mocks.$transaction).toHaveBeenCalledTimes(2);
+    expect(mocks.appointment.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a failure that isn't a deadlock", async () => {
+    mocks.$transaction.mockRejectedValueOnce(new Error("connection reset"));
+
+    const result = await saveAppointmentAction(PAYLOAD);
+
+    expect(result.ok).toBe(false);
+    expect(mocks.$transaction).toHaveBeenCalledTimes(1);
+  });
+
   it("guards on the client's baseline status, not a status re-read at submit time", async () => {
     // This is the regression this suite exists to catch: a naive guard that
     // re-reads the row's status inside this same call (instead of trusting

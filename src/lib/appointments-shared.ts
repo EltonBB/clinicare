@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import { buildStaffPushPayload, sendStaffPush } from "@/lib/mobile/push";
 import { prisma } from "@/lib/prisma";
+import { retryOnWriteConflict } from "@/lib/prisma-retry";
 import { offerFreedSlot, withdrawSlotOffers } from "@/lib/slot-offers";
 
 /**
@@ -168,7 +169,14 @@ export async function cancelAppointmentCore(where: {
   businessId: string;
   staffMemberId?: string;
 }): Promise<AppointmentMutationOutcome> {
-  return prisma.$transaction(async (tx) => {
+  // Retried once if Postgres aborts it as a deadlock: this transaction takes
+  // row locks (the appointment, then the client's last-visit refresh) before
+  // offerFreedSlot takes the staff member's scheduling advisory lock, while a
+  // booking or edit takes that advisory lock first and the same rows after —
+  // two of them racing on one staff member can form a lock cycle, and
+  // Postgres resolves it by aborting one side (Codex #130). Everything in the
+  // closure is rolled back with it and is safe to run again.
+  return retryOnWriteConflict(() => prisma.$transaction(async (tx) => {
     // Compare-and-set: the terminal-state guard is folded into the update's
     // WHERE clause so Postgres evaluates it against the row's current
     // committed state, not a possibly-stale earlier read. Without this, a
@@ -259,7 +267,7 @@ export async function cancelAppointmentCore(where: {
     await offerFreedSlot(tx, { businessId: where.businessId, cancelled });
 
     return mutationDone(cancelled, true);
-  });
+  }));
 }
 
 /**
@@ -412,7 +420,10 @@ export async function deleteAppointmentCore(where: {
   }
 
   try {
-    return await prisma.$transaction(async (tx) => {
+    // Same deadlock retry as cancelAppointmentCore: withdrawing the offers
+    // takes draft and entry row locks, which a concurrent booking or Skip can
+    // hold in the opposite order.
+    return await retryOnWriteConflict(() => prisma.$transaction(async (tx) => {
       // A deleted cancelled appointment's slot can no longer be booked, so
       // withdraw any waiting-list offer for it now (draft expired, entry
       // back to WAITING). Must run before the delete: the FK's SET NULL
@@ -439,7 +450,7 @@ export async function deleteAppointmentCore(where: {
         staffMemberId: existing.staffMemberId,
         changed: true,
       };
-    });
+    }));
   } catch (error) {
     if (error instanceof NothingDeleted) {
       return { ok: false, status: 404, error: APPOINTMENT_NOT_FOUND_ERROR };

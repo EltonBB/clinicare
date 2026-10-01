@@ -10,6 +10,7 @@ import { logger } from "@/lib/logger";
 import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { parseRecordId } from "@/lib/record-id";
 import { removeWaitlistEntry } from "@/lib/slot-offers";
+import { AVAILABLE_STAFF_WHERE } from "@/lib/staff-eligibility";
 import { createWaitlistEntry } from "@/lib/waitlist-data";
 import {
   isInvalidPreferredWindow,
@@ -121,12 +122,7 @@ export async function addWaitlistEntryAction(
     // rejected as stale the moment it's drafted (Codex #130) — so it can
     // never actually be matched.
     const staff = await prisma.staffMember.findFirst({
-      where: {
-        id: data.staffMemberId,
-        businessId: business.id,
-        isActive: true,
-        status: { not: "INACTIVE" },
-      },
+      where: { id: data.staffMemberId, businessId: business.id, ...AVAILABLE_STAFF_WHERE },
       select: { id: true },
     });
 

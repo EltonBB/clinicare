@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => {
   const waitlistEntry = { findMany: vi.fn(), updateMany: vi.fn() };
   const followUpDraft = { createMany: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() };
   const scheduleBlock = { findFirst: vi.fn() };
+  const staffMember = { findFirst: vi.fn() };
   const $executeRaw = vi.fn();
   const outer = {
     business: { findUniqueOrThrow: vi.fn() },
@@ -34,6 +36,7 @@ const mocks = vi.hoisted(() => {
     waitlistEntry,
     followUpDraft,
     scheduleBlock,
+    staffMember,
     $executeRaw,
     outer,
     $transaction,
@@ -129,6 +132,7 @@ beforeEach(() => {
   // No open slot offers unless a test adds one (deleteAppointmentCore's withdraw).
   mocks.followUpDraft.findMany.mockResolvedValue([]);
   mocks.scheduleBlock.findFirst.mockResolvedValue(null); // no business-wide block by default
+  mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_1" }); // the freed slot's staff is available by default
   mocks.$executeRaw.mockResolvedValue(undefined);
   mocks.$transaction.mockImplementation(
     async (cb: (tx: unknown) => unknown) =>
@@ -140,6 +144,7 @@ beforeEach(() => {
         waitlistEntry: mocks.waitlistEntry,
         followUpDraft: mocks.followUpDraft,
         scheduleBlock: mocks.scheduleBlock,
+        staffMember: mocks.staffMember,
         $executeRaw: mocks.$executeRaw,
       })
   );
@@ -175,6 +180,31 @@ describe("cancelAppointmentCore", () => {
     expect(mocks.client.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "client_1", businessId: "biz_1" } })
     );
+  });
+
+  it("re-runs the whole transaction once when Postgres aborts it as a deadlock, then succeeds", async () => {
+    mockGuardHit();
+    // Cancel takes row locks (the appointment, the client's last-visit refresh)
+    // before offerFreedSlot takes the staff member's advisory lock, while a
+    // booking takes that advisory lock first: Postgres breaks the cycle by
+    // aborting one side.
+    mocks.$transaction.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("deadlock detected", { code: "P2034", clientVersion: "test" })
+    );
+
+    const result = await cancelAppointmentCore(WHERE);
+
+    expect(result).toMatchObject({ ok: true, changed: true });
+    expect(mocks.$transaction).toHaveBeenCalledTimes(2);
+    // The aborted attempt never ran; the cancel itself was written exactly once.
+    expect(mocks.appointment.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a failure that isn't a deadlock", async () => {
+    mocks.$transaction.mockRejectedValueOnce(new Error("connection reset"));
+
+    await expect(cancelAppointmentCore(WHERE)).rejects.toThrow("connection reset");
+    expect(mocks.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it("refuses to cancel a COMPLETED visit with 409, without writing anything", async () => {
@@ -459,6 +489,24 @@ describe("cancelAppointmentCore — slot-fill matching", () => {
     expect(mocks.followUpDraft.createMany).not.toHaveBeenCalled();
   });
 
+  // Codex #130: cancelling a booking whose staff member has since been
+  // deactivated is allowed, but the freed slot can't be honored — Book refuses
+  // it — so nothing is offered for it.
+  it("completes the cancel but offers nothing when the booking's staff member is no longer available", async () => {
+    mockGuardHit();
+    mockPro();
+    mocks.staffMember.findFirst.mockResolvedValue(null);
+    mocks.waitlistEntry.findMany.mockResolvedValue([
+      { id: "wl_1", clientId: "client_wl", service: "Checkup", staffMemberId: null, earliestDate: null, preferredDays: [], preferredFrom: null, preferredTo: null, createdAt: new Date("2026-01-01T00:00:00Z"), client: { name: "Mira" } },
+    ]);
+
+    const result = await cancelAppointmentCore(WHERE);
+
+    expect(result).toMatchObject({ ok: true, changed: true });
+    expect(mocks.waitlistEntry.updateMany).not.toHaveBeenCalled();
+    expect(mocks.followUpDraft.createMany).not.toHaveBeenCalled();
+  });
+
   it("does not create an orphaned draft when the matched entry was already claimed between the read and the flip", async () => {
     // The status-flip updateMany is its own CAS — a concurrent offer/removal
     // could win the race between the candidate read and this write, so
@@ -593,6 +641,19 @@ describe("deleteAppointmentCore", () => {
     expect(mocks.client.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "client_1", businessId: "biz_1" } })
     );
+  });
+
+  it("re-runs the transaction once when Postgres aborts it as a deadlock, then deletes", async () => {
+    mockDeleteGuardHit();
+    mocks.$transaction.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("deadlock detected", { code: "P2034", clientVersion: "test" })
+    );
+
+    const result = await deleteAppointmentCore(WHERE);
+
+    expect(result).toMatchObject({ ok: true, changed: true });
+    expect(mocks.$transaction).toHaveBeenCalledTimes(2);
+    expect(mocks.appointment.deleteMany).toHaveBeenCalledTimes(1);
   });
 
   it("closes the race: a concurrent delete that already won makes this one a typed 404, not an unhandled Prisma throw", async () => {

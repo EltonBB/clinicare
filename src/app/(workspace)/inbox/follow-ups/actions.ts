@@ -19,6 +19,7 @@ import {
 } from "@/lib/follow-ups-data";
 import { parseRecordId } from "@/lib/record-id";
 import { liveSlotOfferWhere } from "@/lib/slot-offers";
+import { AVAILABLE_STAFF_WHERE } from "@/lib/staff-eligibility";
 import { formatZonedDateKey, formatZonedTime24 } from "@/lib/time-zone";
 
 export type FollowUpDraftActionResult = { ok: boolean; error?: string };
@@ -222,7 +223,7 @@ export async function bookFollowUpSlotAction(rawDraftId: string): Promise<BookFo
   // sorted out (Codex #130).
   if (staffMemberId) {
     const staffStillAvailable = await prisma.staffMember.findFirst({
-      where: { id: staffMemberId, businessId: business.id, isActive: true, status: { not: "INACTIVE" } },
+      where: { id: staffMemberId, businessId: business.id, ...AVAILABLE_STAFF_WHERE },
       select: { id: true },
     });
 
