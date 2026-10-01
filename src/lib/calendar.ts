@@ -7,6 +7,7 @@ import {
   formatZonedTime24,
   getAppTimeZone,
   getZonedDateParts,
+  parseZonedWallClock,
   zonedCalendarDaysBetween,
 } from "@/lib/time-zone";
 
@@ -349,4 +350,14 @@ export function appointmentDurationMinutes(appointment: Pick<Appointment, "start
 export function timeToMinutes(time: string) {
   const [hours, minutes] = time.split(":").map(Number);
   return (hours || 0) * 60 + (minutes || 0);
+}
+
+/**
+ * A CalendarAppointment's scheduled start as an ISO instant, in the app's
+ * time zone — for a live expiry timer (NoShowRiskBadge's `expiresAtIso`),
+ * never for display. Null only on malformed date/time, which real
+ * server-built data never produces.
+ */
+export function appointmentStartIso(appointment: Pick<CalendarAppointment, "date" | "startTime">) {
+  return parseZonedWallClock(appointment.date, appointment.startTime)?.toISOString() ?? null;
 }

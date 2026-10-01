@@ -106,7 +106,12 @@ export function scoreNoShowRisk(
     // current startAt — see cancelledScheduledStartAt's own doc comment.
     const hoursBeforeStart =
       (visit.cancelledScheduledStartAt.getTime() - visit.cancelledAt.getTime()) / HOUR_MS;
-    return hoursBeforeStart >= 0 && hoursBeforeStart < LATE_CANCEL_WINDOW_HOURS;
+    // cancelAppointmentCore has no startAt guard, so a cancellation can land
+    // after the visit's scheduled start — hoursBeforeStart goes negative.
+    // That's at least as late as any last-minute-before-start cancel (it
+    // never counted as early: only a large POSITIVE gap does), so only the
+    // upper bound excludes genuinely early cancellations (Codex).
+    return hoursBeforeStart < LATE_CANCEL_WINDOW_HOURS;
   });
   if (hadLateCancel) {
     signals.push({ weight: WEIGHTS.recentLateCancel, text: "Cancelled last-minute recently" });

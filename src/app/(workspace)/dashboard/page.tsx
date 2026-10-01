@@ -255,8 +255,12 @@ export default async function DashboardPage() {
     appointmentsResult.status === "fulfilled" ? appointmentsResult.value : [];
   const nextAppointment =
     nextAppointmentResult.status === "fulfilled" ? nextAppointmentResult.value : null;
-  const isScorable = (appointment: { status: string }) =>
-    appointment.status === "PENDING" || appointment.status === "CONFIRMED";
+  // Status alone isn't enough — it doesn't auto-flip once a visit's start
+  // time passes, so an earlier-today pending/confirmed appointment must not
+  // still read as an upcoming no-show risk (same class as Codex #129's
+  // calendar-badge finding).
+  const isScorable = (appointment: { status: string; startAt: Date }) =>
+    (appointment.status === "PENDING" || appointment.status === "CONFIRMED") && appointment.startAt > now;
   const upcomingForRisk = appointments.filter(isScorable);
 
   // "Next up" is often not on today's list (tomorrow, or after today's last

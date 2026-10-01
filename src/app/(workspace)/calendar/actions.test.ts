@@ -28,6 +28,8 @@ const mocks = vi.hoisted(() => {
   const getRiskAssessments = vi.fn();
   const offerFreedSlot = vi.fn();
   const withdrawSlotOffers = vi.fn();
+  const cancelAppointmentCore = vi.fn();
+  const deleteAppointmentCore = vi.fn();
   return {
     offerFreedSlot,
     withdrawSlotOffers,
@@ -47,6 +49,8 @@ const mocks = vi.hoisted(() => {
     revalidateCalendarSurfaces,
     recordAttendance,
     getRiskAssessments,
+    cancelAppointmentCore,
+    deleteAppointmentCore,
   };
 });
 
@@ -93,8 +97,8 @@ vi.mock("@/lib/appointments-shared", async () => {
     APPOINTMENT_CANCELLED_NO_SHOW_ERROR: actual.APPOINTMENT_CANCELLED_NO_SHOW_ERROR,
     APPOINTMENT_NOT_STARTED_ERROR: actual.APPOINTMENT_NOT_STARTED_ERROR,
     NO_SHOW_PLAN_ERROR: actual.NO_SHOW_PLAN_ERROR,
-    cancelAppointmentCore: vi.fn(),
-    deleteAppointmentCore: vi.fn(),
+    cancelAppointmentCore: mocks.cancelAppointmentCore,
+    deleteAppointmentCore: mocks.deleteAppointmentCore,
     recordAppointmentAttendanceCore: mocks.recordAttendance,
     refreshClientLastVisitAt: mocks.refreshClientLastVisitAt,
     notifyStaffOfAppointmentChange: mocks.notifyStaffOfAppointmentChange,
@@ -179,6 +183,22 @@ beforeEach(() => {
       $executeRaw: mocks.$executeRaw,
     })
   );
+});
+
+describe("saveAppointmentAction — crafted id", () => {
+  // Client-serialized args aren't type-checked at runtime, so a crafted
+  // `{ not: "" }` for `payload.id` would otherwise reach a Prisma `where`
+  // clause below as an edit-existing-row filter (Codex).
+  it("rejects a non-string id before checking auth or touching the database", async () => {
+    const result = await saveAppointmentAction({
+      ...PAYLOAD,
+      id: { not: "" } as unknown as string,
+    });
+
+    expect(result).toEqual({ ok: false, error: "Appointment not found in this clinic workspace." });
+    expect(mocks.getAuthedBusiness).not.toHaveBeenCalled();
+    expect(mocks.appointment.findFirst).not.toHaveBeenCalled();
+  });
 });
 
 describe("saveAppointmentAction — concurrent-edit guard", () => {
@@ -1192,6 +1212,18 @@ describe("saveAppointmentAction — no-show status", () => {
 });
 
 describe("recordAppointmentAttendanceAction", () => {
+  // Client-serialized args aren't type-checked at runtime, so a crafted
+  // `{ not: "" }` would otherwise reach recordAppointmentAttendanceCore's
+  // updateMany as part of its `where` clause — flipping every eligible
+  // appointment in the workspace to NO_SHOW/COMPLETED instead of one (Codex).
+  it("rejects a non-string appointment id before checking the plan or touching the database", async () => {
+    const result = await recordAppointmentAttendanceAction({ not: "" } as unknown as string, false);
+
+    expect(result).toEqual({ ok: false, error: "Appointment not found in this clinic workspace." });
+    expect(mocks.getAuthedBusiness).not.toHaveBeenCalled();
+    expect(mocks.recordAttendance).not.toHaveBeenCalled();
+  });
+
   it("refuses a workspace that isn't on Pro without touching the appointment", async () => {
     mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1", plan: "BASIC" }, user: {} });
 
@@ -1211,7 +1243,11 @@ describe("recordAppointmentAttendanceAction", () => {
       changed: true,
     });
 
-    expect(await recordAppointmentAttendanceAction("appt_1", false)).toEqual({ ok: true, status: "no-show" });
+    expect(await recordAppointmentAttendanceAction("appt_1", false)).toEqual({
+      ok: true,
+      status: "no-show",
+      clientId: "client_1",
+    });
     expect(mocks.recordAttendance).toHaveBeenCalledWith({
       id: "appt_1",
       businessId: "biz_1",
@@ -1229,10 +1265,14 @@ describe("recordAppointmentAttendanceAction", () => {
       changed: true,
     });
 
-    expect(await recordAppointmentAttendanceAction("appt_1", true)).toEqual({ ok: true, status: "completed" });
+    expect(await recordAppointmentAttendanceAction("appt_1", true)).toEqual({
+      ok: true,
+      status: "completed",
+      clientId: "client_1",
+    });
   });
 
-  it("skips revalidation when nothing changed", async () => {
+  it("skips revalidation when nothing changed, but still reports the live clientId (Codex)", async () => {
     mocks.recordAttendance.mockResolvedValue({
       ok: true,
       appointmentId: "appt_1",
@@ -1241,9 +1281,34 @@ describe("recordAppointmentAttendanceAction", () => {
       changed: false,
     });
 
-    await recordAppointmentAttendanceAction("appt_1", false);
-
+    expect(await recordAppointmentAttendanceAction("appt_1", false)).toEqual({
+      ok: true,
+      status: "no-show",
+      clientId: "client_1",
+    });
     expect(mocks.revalidateCalendarSurfaces).not.toHaveBeenCalled();
+  });
+
+  it("reports the server-confirmed clientId even when it differs from what the caller's cache might expect (Codex #129 round 2)", async () => {
+    // Another tab reassigned this appointment to a different client before
+    // this mutation ran — recordAttendanceCore reads the row fresh, so it
+    // returns the live owner, not whatever the caller had cached.
+    mocks.recordAttendance.mockResolvedValue({
+      ok: true,
+      appointmentId: "appt_1",
+      clientId: "client_reassigned",
+      staffMemberId: "staff_1",
+      changed: true,
+    });
+
+    const result = await recordAppointmentAttendanceAction("appt_1", false);
+
+    expect(result).toEqual({ ok: true, status: "no-show", clientId: "client_reassigned" });
+    expect(mocks.revalidateCalendarSurfaces).toHaveBeenCalledWith(
+      ["client_reassigned"],
+      ["staff_1"],
+      ["appt_1"]
+    );
   });
 
   it("passes the core's reason through, and words a missing appointment for this workspace", async () => {
@@ -1258,6 +1323,67 @@ describe("recordAppointmentAttendanceAction", () => {
       ok: false,
       error: "Appointment not found in this clinic workspace.",
     });
+  });
+});
+
+describe("cancelAppointmentAction", () => {
+  // Same class of bug as recordAppointmentAttendanceAction above: a crafted
+  // `{ not: "" }` would otherwise reach cancelAppointmentCore's updateMany
+  // as part of its `where` clause, cancelling every non-terminal appointment
+  // in the workspace instead of one (Codex).
+  it("rejects a non-string appointment id before checking auth or touching the database", async () => {
+    const result = await cancelAppointmentAction({ not: "" } as unknown as string);
+
+    expect(result).toEqual({ ok: false, error: "Appointment not found in this clinic workspace." });
+    expect(mocks.getAuthedBusiness).not.toHaveBeenCalled();
+    expect(mocks.cancelAppointmentCore).not.toHaveBeenCalled();
+  });
+
+  it("cancels a real appointment and revalidates", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1" }, user: {} });
+    mocks.cancelAppointmentCore.mockResolvedValue({
+      ok: true,
+      appointmentId: "appt_1",
+      clientId: "client_1",
+      staffMemberId: "staff_1",
+      changed: true,
+    });
+
+    const result = await cancelAppointmentAction("appt_1");
+
+    expect(result).toEqual({ ok: true, appointmentId: "appt_1" });
+    expect(mocks.cancelAppointmentCore).toHaveBeenCalledWith({ id: "appt_1", businessId: "biz_1" });
+    expect(mocks.revalidateCalendarSurfaces).toHaveBeenCalledWith(["client_1"], ["staff_1"], ["appt_1"]);
+  });
+});
+
+describe("deleteAppointmentAction", () => {
+  // Same class of bug: a crafted `{ not: "" }` would otherwise reach
+  // deleteAppointmentCore's deleteMany as part of its `where` clause,
+  // deleting every appointment in the workspace instead of one (Codex).
+  it("rejects a non-string appointment id before checking auth or touching the database", async () => {
+    const result = await deleteAppointmentAction({ not: "" } as unknown as string);
+
+    expect(result).toEqual({ ok: false, error: "Appointment not found in this clinic workspace." });
+    expect(mocks.getAuthedBusiness).not.toHaveBeenCalled();
+    expect(mocks.deleteAppointmentCore).not.toHaveBeenCalled();
+  });
+
+  it("deletes a real appointment and revalidates", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1" }, user: {} });
+    mocks.deleteAppointmentCore.mockResolvedValue({
+      ok: true,
+      appointmentId: "appt_1",
+      clientId: "client_1",
+      staffMemberId: "staff_1",
+      changed: true,
+    });
+
+    const result = await deleteAppointmentAction("appt_1");
+
+    expect(result).toEqual({ ok: true, appointmentId: "appt_1" });
+    expect(mocks.deleteAppointmentCore).toHaveBeenCalledWith({ id: "appt_1", businessId: "biz_1" });
+    expect(mocks.revalidateCalendarSurfaces).toHaveBeenCalledWith(["client_1"], ["staff_1"], ["appt_1"]);
   });
 });
 
@@ -1299,6 +1425,31 @@ describe("getNoShowRiskAction", () => {
     expect(queriedIds).toHaveLength(200);
     expect(queriedIds).toEqual(ids.slice(0, 200));
     expect(queriedIds).not.toContain("a200");
+  });
+
+  // Client-serialized args aren't type-checked at runtime, so a crafted
+  // `{ not: "" }` would otherwise become part of the Prisma `in:` filter
+  // instead of matching only real ids (Codex).
+  it("drops a crafted non-string id before it reaches the database", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1", plan: "PRO" }, user: {} });
+    mocks.appointment.findMany.mockResolvedValue([
+      { id: "a1", clientId: "c1", startAt: new Date("2026-07-10T09:00:00Z"), createdAt: new Date("2026-07-01T09:00:00Z"), status: "CONFIRMED" },
+    ]);
+    mocks.getRiskAssessments.mockResolvedValue(new Map([["a1", { level: "high", reasons: [], insufficientHistory: false }]]));
+
+    const result = await getNoShowRiskAction(["a1", { not: "" } as unknown as string]);
+
+    expect(Object.keys(result)).toEqual(["a1"]);
+    expect(mocks.appointment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: { in: ["a1"] } }) })
+    );
+  });
+
+  it("returns nothing without querying when every id is invalid", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1", plan: "PRO" }, user: {} });
+
+    expect(await getNoShowRiskAction([{ not: "" } as unknown as string, "" as unknown as string])).toEqual({});
+    expect(mocks.appointment.findMany).not.toHaveBeenCalled();
   });
 });
 
