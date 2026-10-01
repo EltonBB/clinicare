@@ -611,9 +611,12 @@ export async function addClientGalleryItemAction(
     };
   }
 
-  const normalizedImageUrl = normalizeOptionalPublicUrl(
-    normalizeStorageReference(payload.imageUrl)
+  const imageCandidate = normalizeStorageReference(
+    payload.imageUrl, business.ownerId, "client-gallery"
   );
+  const normalizedImageUrl = imageCandidate
+    ? normalizeOptionalPublicUrl(imageCandidate)
+    : "";
 
   if (!normalizedImageUrl) {
     return {
@@ -864,12 +867,19 @@ export async function addClientDocumentAction(
     };
   }
 
-  const normalizedFileUrl =
-    normalizeOptionalPublicUrl(normalizeStorageReference(payload.fileUrl.trim())) ||
-    null;
-  const normalizedStorageUrl = payload.storageUrl
-    ? normalizeOptionalPublicUrl(normalizeStorageReference(payload.storageUrl.trim()))
-    : normalizedFileUrl;
+  const fileCandidate = normalizeStorageReference(
+    payload.fileUrl.trim(), context.business.ownerId, "client-documents"
+  );
+  const storageCandidate = payload.storageUrl
+    ? normalizeStorageReference(
+        payload.storageUrl.trim(), context.business.ownerId, "client-documents"
+      )
+    : fileCandidate;
+  if (fileCandidate === null || storageCandidate === null) {
+    return { ok: false, error: "Use a file from this clinic or upload it again." };
+  }
+  const normalizedFileUrl = normalizeOptionalPublicUrl(fileCandidate) || null;
+  const normalizedStorageUrl = normalizeOptionalPublicUrl(storageCandidate);
 
   await prisma.clientDocument.create({
     data: {

@@ -28,12 +28,9 @@ function isDevelopmentLocalhost(url: URL) {
  * revalidate at delete time — so only a value that's at least structurally
  * plausible as a real upload gets treated as safe. Deliberately NOT an
  * ownership check (whether the first path segment matches the current
- * caller's own id): that's a different concern, and the sweep already
- * re-verifies it at the one point it actually matters (before deleting) —
- * building it in here too would mean solving the same problem at two layers
- * and threading caller identity through every one of this file's callers
- * for a check that wouldn't add any real protection over what the sweep
- * already does.
+ * caller's own id): this generic URL helper has no caller identity. Storage
+ * write actions check owner and folder before persisting a reference, and
+ * the cleanup sweep checks ownership again before deleting an object.
  */
 function isValidStorageReference(value: string) {
   if (!value.startsWith(storageReferencePrefix)) {

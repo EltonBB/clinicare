@@ -32,12 +32,35 @@ function loadEnvFile(path) {
   }
 }
 
-function normalizeConnectionString(value) {
-  const url = new URL(value);
-  url.searchParams.delete("sslmode");
-  url.searchParams.delete("sslcert");
-  url.searchParams.delete("sslrootcert");
-  return url.toString();
+function createDatabaseClientConfig(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("Storage normalization requires a valid PostgreSQL URL.");
+  }
+  if (!["postgres:", "postgresql:"].includes(url.protocol) || !url.hostname) {
+    throw new Error("Storage normalization requires a PostgreSQL URL with an explicit host.");
+  }
+
+  // pg gives query parameters precedence over URL fields and Client options.
+  // Prisma-only parameters are irrelevant here; strip them before pg parses the URL.
+  const ignoredParameters = new Set(["sslmode", "schema", "pgbouncer", "connection_limit", "pool_timeout"]);
+  for (const parameter of url.searchParams.keys()) {
+    if (!ignoredParameters.has(parameter)) {
+      throw new Error(`Unsupported database URL parameter for storage normalization: ${parameter}`);
+    }
+  }
+  url.search = "";
+  const isLoopback = ["localhost", "127.0.0.1", "[::1]", "::1"].includes(url.hostname);
+  const databaseCa = process.env.DATABASE_SSL_CA?.replace(/\\n/g, "\n");
+
+  return {
+    connectionString: url.toString(),
+    ssl: isLoopback
+      ? false
+      : { rejectUnauthorized: true, ...(databaseCa ? { ca: databaseCa } : {}) },
+  };
 }
 
 function createStorageReference(bucket, path) {
@@ -61,42 +84,60 @@ function parseStorageReference(value) {
   };
 }
 
-function parseSupabaseStorageUrl(value) {
+function parseSupabaseStorageUrl(value, storageObjectUrl, mediaBucket, expectedOwnerId, expectedFolder) {
   try {
     const url = new URL(value.trim());
-    const parts = url.pathname.split("/").filter(Boolean);
-    const objectIndex = parts.indexOf("object");
-
-    if (objectIndex === -1) return null;
-
-    const accessType = parts[objectIndex + 1];
-    const bucket = parts[objectIndex + 2];
-    const pathParts = parts.slice(objectIndex + 3);
-
     if (
-      (accessType !== "public" && accessType !== "sign") ||
-      !bucket ||
-      pathParts.length === 0
+      url.origin !== storageObjectUrl.origin ||
+      !url.pathname.startsWith(storageObjectUrl.pathname) ||
+      url.username ||
+      url.password
     ) {
       return null;
     }
 
-    return {
-      bucket,
-      path: pathParts.map((part) => decodeURIComponent(part)).join("/"),
-    };
+    const parts = url.pathname.slice(storageObjectUrl.pathname.length).split("/");
+    const accessType = parts[0];
+    const bucket = parts[1];
+    const pathParts = parts.slice(2);
+
+    if (
+      (accessType !== "public" && accessType !== "sign") ||
+      bucket !== mediaBucket ||
+      pathParts.length !== 3 ||
+      pathParts.some((part) => !part)
+    ) {
+      return null;
+    }
+
+    const path = pathParts.map((part) => decodeURIComponent(part)).join("/");
+    const [ownerId, folder] = path.split("/");
+    return path.split("/").length === 3 &&
+      ownerId === expectedOwnerId &&
+      folder === expectedFolder
+      ? { bucket, path }
+      : null;
   } catch {
     return null;
   }
 }
 
-function normalizeStorageReference(value) {
+function normalizeStorageReference(value, storageObjectUrl, mediaBucket, expectedOwnerId, expectedFolder) {
   const existingReference = parseStorageReference(value);
   if (existingReference) {
-    return createStorageReference(existingReference.bucket, existingReference.path);
+    const [ownerId, folder, fileName, ...extra] = existingReference.path.split("/");
+    return existingReference.bucket === mediaBucket &&
+      ownerId === expectedOwnerId &&
+      folder === expectedFolder &&
+      Boolean(fileName) &&
+      extra.length === 0
+      ? createStorageReference(existingReference.bucket, existingReference.path)
+      : value;
   }
 
-  const urlReference = parseSupabaseStorageUrl(value);
+  const urlReference = parseSupabaseStorageUrl(
+    value, storageObjectUrl, mediaBucket, expectedOwnerId, expectedFolder
+  );
   if (urlReference) {
     return createStorageReference(urlReference.bucket, urlReference.path);
   }
@@ -104,25 +145,42 @@ function normalizeStorageReference(value) {
   return value.trim();
 }
 
-async function normalizeRows(client, table, idColumn, valueColumn) {
-  const result = await client.query(
-    `select "${idColumn}" as id, "${valueColumn}" as value from "${table}" where "${valueColumn}" is not null and "${valueColumn}" <> ''`
-  );
+async function normalizeRows(
+  client, selectSql, updateSql, updateParameters, storageObjectUrl, mediaBucket, expectedFolder
+) {
+  const result = await client.query(selectSql);
+  const candidates = result.rows.map((row) => ({
+    row,
+    normalized: normalizeStorageReference(
+      row.value, storageObjectUrl, mediaBucket, row.ownerId, expectedFolder
+    ),
+  }));
+  const referenceCounts = new Map();
+  for (const { normalized } of candidates) {
+    if (parseStorageReference(normalized)) {
+      referenceCounts.set(normalized, (referenceCounts.get(normalized) || 0) + 1);
+    }
+  }
   let updated = 0;
+  let changedDuringRun = 0;
+  let duplicateTargets = 0;
 
-  for (const row of result.rows) {
-    const normalized = normalizeStorageReference(row.value);
-
+  for (const { row, normalized } of candidates) {
     if (normalized !== row.value) {
-      await client.query(
-        `update "${table}" set "${valueColumn}" = $1 where "${idColumn}" = $2`,
-        [normalized, row.id]
+      if ((referenceCounts.get(normalized) || 0) > 1) {
+        duplicateTargets += 1;
+        continue;
+      }
+      const result = await client.query(
+        updateSql,
+        updateParameters(row, normalized)
       );
-      updated += 1;
+      updated += result.rowCount;
+      if (result.rowCount === 0) changedDuringRun += 1;
     }
   }
 
-  return updated;
+  return { updated, changedDuringRun, duplicateTargets };
 }
 
 loadEnvFile(".env.local");
@@ -134,18 +192,45 @@ if (!databaseUrl) {
   throw new Error("DATABASE_URL or DIRECT_URL is not configured.");
 }
 
-const client = new Client({
-  connectionString: normalizeConnectionString(databaseUrl),
-  ssl: { rejectUnauthorized: false },
-});
+const configuredStorageUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+if (!configuredStorageUrl) {
+  throw new Error("NEXT_PUBLIC_SUPABASE_URL is required to verify storage URL provenance.");
+}
+const storageUrl = new URL(configuredStorageUrl);
+const isLoopbackStorage =
+  process.env.NODE_ENV !== "production" &&
+  storageUrl.protocol === "http:" &&
+  ["localhost", "127.0.0.1", "[::1]"].includes(storageUrl.hostname);
+if (storageUrl.protocol !== "https:" && !isLoopbackStorage) {
+  throw new Error("Storage URL must use HTTPS outside local development.");
+}
+const mediaBucket = process.env.NEXT_PUBLIC_SUPABASE_MEDIA_BUCKET?.trim() || "clinic-media";
+if (!storageUrl.pathname.endsWith("/")) storageUrl.pathname += "/";
+const storageObjectUrl = new URL("storage/v1/object/", storageUrl);
+
+const client = new Client(createDatabaseClientConfig(databaseUrl));
 
 await client.connect();
 
 try {
-  const [businessLogos, galleryItems] = await Promise.all([
-    normalizeRows(client, "Business", "id", "logoUrl"),
-    normalizeRows(client, "ClientGalleryItem", "id", "imageUrl"),
-  ]);
+  const businessLogos = await normalizeRows(
+    client,
+    'select id, "logoUrl" as value, "ownerId" as "ownerId", "ownerId" as binding from "Business" where "logoUrl" is not null and "logoUrl" <> \'\'',
+    'update "Business" set "logoUrl" = $1 where id = $2 and "logoUrl" = $3 and "ownerId" = $4',
+    (row, normalized) => [normalized, row.id, row.value, row.ownerId],
+    storageObjectUrl,
+    mediaBucket,
+    "logos"
+  );
+  const galleryItems = await normalizeRows(
+    client,
+    'select g.id, g."imageUrl" as value, b."ownerId" as "ownerId", g."businessId" as binding from "ClientGalleryItem" g join "Business" b on b.id = g."businessId" where g."imageUrl" is not null and g."imageUrl" <> \'\'',
+    'update "ClientGalleryItem" g set "imageUrl" = $1 where g.id = $2 and g."imageUrl" = $3 and g."businessId" = $4 and exists (select 1 from "Business" b where b.id = g."businessId" and b."ownerId" = $5)',
+    (row, normalized) => [normalized, row.id, row.value, row.binding, row.ownerId],
+    storageObjectUrl,
+    mediaBucket,
+    "client-gallery"
+  );
 
   console.log(
     JSON.stringify(
