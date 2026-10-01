@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => {
   const clientCareNote = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientTreatmentPlanItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientFollowUpReminder = { findFirst: vi.fn(), deleteMany: vi.fn() };
-  const clientPayment = { findFirst: vi.fn(), deleteMany: vi.fn(), groupBy: vi.fn(), create: vi.fn() };
+  const clientPayment = { findFirst: vi.fn(), deleteMany: vi.fn(), groupBy: vi.fn(), create: vi.fn(), update: vi.fn() };
   const clientDocument = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientGalleryItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const business = { findUniqueOrThrow: vi.fn() };
@@ -110,6 +110,7 @@ async function flushAfter() {
 
 import {
   addClientPaymentAction,
+  updateClientPaymentAction,
   deleteClientAction,
   deleteClientCareNoteAction,
   deleteClientHealthItemAction,
@@ -121,7 +122,7 @@ import {
   deleteClientGalleryItemAction,
   saveClientAction,
 } from "./actions";
-import type { AddClientPaymentPayload } from "./actions";
+import type { AddClientPaymentPayload, UpdateClientPaymentPayload } from "./actions";
 import type { SaveClientPayload } from "@/lib/clients";
 
 const BUSINESS = { id: "biz_1" };
@@ -270,40 +271,84 @@ describe("deleteClientAction", () => {
   // with it, via that entry's own cascade, its live SLOT_OFFER draft —
   // without ever releasing the freed appointment for re-offer. The next
   // candidate would never be contacted, and the hourly expiry sweep can't
-  // recover it either (there's no draft left for it to find).
-  it("settles each waiting-list offer this client holds before the delete cascades it away", async () => {
-    mocks.client.findFirst.mockResolvedValue(EXISTING);
-    mocks.client.deleteMany.mockResolvedValue({ count: 1 });
-    mocks.recordPendingStorageCleanup.mockResolvedValue({ id: "pending_1", attempts: 0, values: [] });
-    mocks.waitlistEntry.findMany.mockResolvedValue([{ id: "wl_1" }, { id: "wl_2" }]);
-    mocks.removeWaitlistEntry.mockResolvedValue({ ok: true });
-
-    const result = await deleteClientAction(CLIENT_ID);
-
-    expect(result).toEqual({ ok: true, clientId: CLIENT_ID });
-    expect(mocks.waitlistEntry.findMany).toHaveBeenCalledWith({
-      where: { businessId: "biz_1", clientId: CLIENT_ID, status: "OFFERED" },
-      select: { id: true },
+  // recover it either (there's no draft left for it to find). The client's
+  // entries are therefore retired in the SAME transaction as the delete: done
+  // beforehand, a cancellation could hand a WAITING entry a new offer in the
+  // gap and the delete would then cascade it away.
+  describe("the client's waiting-list entries", () => {
+    beforeEach(() => {
+      mocks.client.findFirst.mockResolvedValue(EXISTING);
+      mocks.client.deleteMany.mockResolvedValue({ count: 1 });
+      mocks.recordPendingStorageCleanup.mockResolvedValue({ id: "pending_1", attempts: 0, values: [] });
     });
-    // One settlement per held offer, run BEFORE the delete transaction opens
-    // — removeWaitlistEntry runs its own transaction and can't be nested
-    // inside the delete's.
-    expect(mocks.removeWaitlistEntry).toHaveBeenCalledTimes(2);
-    expect(mocks.removeWaitlistEntry).toHaveBeenCalledWith({ id: "wl_1", businessId: "biz_1" });
-    expect(mocks.removeWaitlistEntry).toHaveBeenCalledWith({ id: "wl_2", businessId: "biz_1" });
-    expect(mocks.removeWaitlistEntry.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.client.deleteMany.mock.invocationCallOrder[0]
-    );
-  });
 
-  it("does not look for a held offer to settle when the client holds none", async () => {
-    mocks.client.findFirst.mockResolvedValue(EXISTING);
-    mocks.client.deleteMany.mockResolvedValue({ count: 1 });
-    mocks.recordPendingStorageCleanup.mockResolvedValue({ id: "pending_1", attempts: 0, values: [] });
+    it("are retired inside the delete transaction, the freed slots offered on only after the client is gone", async () => {
+      mocks.retireWaitlistEntries.mockResolvedValue(["appt_1", null]);
 
-    await deleteClientAction(CLIENT_ID);
+      const result = await deleteClientAction(CLIENT_ID);
 
-    expect(mocks.removeWaitlistEntry).not.toHaveBeenCalled();
+      expect(result).toEqual({ ok: true, clientId: CLIENT_ID });
+      expect(mocks.$transaction).toHaveBeenCalledTimes(1);
+      expect(mocks.retireWaitlistEntries).toHaveBeenCalledWith(expect.anything(), {
+        businessId: "biz_1",
+        clientId: CLIENT_ID,
+      });
+      expect(mocks.reofferFreedSlots).toHaveBeenCalledWith(expect.anything(), {
+        businessId: "biz_1",
+        appointmentIds: ["appt_1", null],
+      });
+      const [retire, remove, reoffer] = [
+        mocks.retireWaitlistEntries,
+        mocks.client.deleteMany,
+        mocks.reofferFreedSlots,
+      ].map((fn) => fn.mock.invocationCallOrder[0]);
+      expect(retire).toBeLessThan(remove);
+      expect(remove).toBeLessThan(reoffer);
+    });
+
+    it("are not touched, nor anything offered on, when the client doesn't exist", async () => {
+      mocks.client.findFirst.mockResolvedValue(null);
+
+      const result = await deleteClientAction(CLIENT_ID);
+
+      expect(result.ok).toBe(false);
+      expect(mocks.retireWaitlistEntries).not.toHaveBeenCalled();
+      expect(mocks.reofferFreedSlots).not.toHaveBeenCalled();
+    });
+
+    it("offer nothing on when the delete lost the race to another request", async () => {
+      mocks.retireWaitlistEntries.mockResolvedValue(["appt_1"]);
+      mocks.client.deleteMany.mockResolvedValue({ count: 0 });
+
+      const result = await deleteClientAction(CLIENT_ID);
+
+      expect(result.ok).toBe(false);
+      expect(mocks.reofferFreedSlots).not.toHaveBeenCalled();
+      expect(mocks.recordPendingStorageCleanup).not.toHaveBeenCalled();
+    });
+
+    it("roll the whole deletion back when retiring them fails: the client stays, no cleanup is recorded", async () => {
+      mocks.retireWaitlistEntries.mockRejectedValue(new Error("db down"));
+
+      await expect(deleteClientAction(CLIENT_ID)).rejects.toThrow("db down");
+
+      expect(mocks.client.deleteMany).not.toHaveBeenCalled();
+      expect(mocks.recordPendingStorageCleanup).not.toHaveBeenCalled();
+      expect(mocks.after).not.toHaveBeenCalled();
+    });
+
+    it("re-run the whole deletion once when Postgres aborts it as a deadlock", async () => {
+      mocks.$transaction.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError("deadlock detected", { code: "P2034", clientVersion: "test" })
+      );
+
+      const result = await deleteClientAction(CLIENT_ID);
+
+      expect(result).toEqual({ ok: true, clientId: CLIENT_ID });
+      expect(mocks.$transaction).toHaveBeenCalledTimes(2);
+      expect(mocks.client.deleteMany).toHaveBeenCalledTimes(1);
+      expect(mocks.after).toHaveBeenCalledTimes(1);
+    });
   });
 });
 
@@ -711,5 +756,91 @@ describe("addClientPaymentAction acquires the financial lock before recording a 
     // old (stale-EUR-based) behavior would have accepted this.
     expect(result.ok).toBe(false);
     expect(mocks.clientPayment.create).not.toHaveBeenCalled();
+  });
+});
+
+// Codex #130: an edit re-enters a payment's amount under the currency now in
+// force, exactly like recording one. It therefore takes the same financial lock
+// a currency change takes, and parses against the currency read under it — a
+// correction that commits in between would otherwise leave "45.00" typed under
+// one currency and stored under another. (The row write also bumps `updatedAt`,
+// which is what makes an edited legacy payment count toward the currency lock;
+// that rule is tested with saveSettingsAction.)
+describe("updateClientPaymentAction takes the financial lock before editing a payment", () => {
+  const PAYMENT_ID = "payment_1";
+  const VALID_EDIT: UpdateClientPaymentPayload = {
+    id: PAYMENT_ID,
+    clientId: CLIENT_ID,
+    amount: "45.00",
+    status: "Paid",
+    description: "Cleaning",
+    receiptUrl: "",
+    paidAt: "2026-06-01",
+  };
+
+  beforeEach(() => {
+    mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID });
+    mocks.clientPayment.findFirst.mockResolvedValue({ id: PAYMENT_ID });
+    mocks.client.findFirstOrThrow.mockResolvedValue(SAVED_CLIENT_RECORD);
+    mocks.clientPayment.update.mockResolvedValue({});
+    mocks.business.findUniqueOrThrow.mockResolvedValue({ currency: "EUR" });
+  });
+
+  it("acquires the lock, reads the currency under it, then updates the payment, inside one transaction", async () => {
+    const result = await updateClientPaymentAction(VALID_EDIT);
+
+    expect(result.ok).toBe(true);
+    expect(mocks.$transaction).toHaveBeenCalledTimes(1);
+    expect(mocks.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(mocks.clientPayment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: PAYMENT_ID },
+        data: expect.objectContaining({ amountCents: 4500, status: "Paid" }),
+      })
+    );
+    const [lock, currencyRead, write] = [
+      mocks.$executeRaw,
+      mocks.business.findUniqueOrThrow,
+      mocks.clientPayment.update,
+    ].map((fn) => fn.mock.invocationCallOrder[0]);
+    expect(lock).toBeLessThan(currencyRead);
+    expect(currencyRead).toBeLessThan(write);
+  });
+
+  it("never updates the payment for an amount that isn't valid", async () => {
+    const result = await updateClientPaymentAction({ ...VALID_EDIT, amount: "not a number" });
+
+    expect(result).toEqual({ ok: false, error: "Enter a valid payment amount." });
+    expect(mocks.clientPayment.update).not.toHaveBeenCalled();
+  });
+
+  it("parses the amount against the currency read fresh under the lock, not the stale value read before it", async () => {
+    // The request started when the workspace read EUR; by the time the lock is
+    // held, a currency correction has made it USD.
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1", currency: "EUR" }, user: {} });
+    mocks.business.findUniqueOrThrow.mockResolvedValue({ currency: "USD" });
+
+    const result = await updateClientPaymentAction({ ...VALID_EDIT, amount: "€45.00" });
+
+    expect(result.ok).toBe(false);
+    expect(mocks.clientPayment.update).not.toHaveBeenCalled();
+  });
+
+  it("refuses an unsafe receipt link before opening a transaction", async () => {
+    const result = await updateClientPaymentAction({ ...VALID_EDIT, receiptUrl: "javascript:alert(1)" });
+
+    expect(result).toEqual({ ok: false, error: "Use a safe HTTPS receipt link." });
+    expect(mocks.$transaction).not.toHaveBeenCalled();
+    expect(mocks.clientPayment.update).not.toHaveBeenCalled();
+  });
+
+  it("takes no lock and writes nothing for a payment that isn't this client's", async () => {
+    mocks.clientPayment.findFirst.mockResolvedValue(null);
+
+    const result = await updateClientPaymentAction(VALID_EDIT);
+
+    expect(result.ok).toBe(false);
+    expect(mocks.$transaction).not.toHaveBeenCalled();
+    expect(mocks.clientPayment.update).not.toHaveBeenCalled();
   });
 });

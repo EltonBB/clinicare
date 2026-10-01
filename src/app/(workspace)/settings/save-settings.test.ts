@@ -168,7 +168,7 @@ describe("saveSettingsAction — currency", () => {
     const result = await saveSettingsAction(payload("USD"));
 
     expect(mocks.tx.clientPayment.count).toHaveBeenCalledWith({
-      where: { businessId: "biz_1", createdAt: { gte: CURRENCY_CHOOSABLE_FROM } },
+      where: { businessId: "biz_1", updatedAt: { gte: CURRENCY_CHOOSABLE_FROM } },
     });
     expect(result).toEqual({
       ok: false,
@@ -185,7 +185,7 @@ describe("saveSettingsAction — currency", () => {
     const result = await saveSettingsAction(payload("USD"));
 
     expect(mocks.tx.clientPayment.count).toHaveBeenCalledWith({
-      where: { businessId: "biz_1", createdAt: { gte: CURRENCY_CHOOSABLE_FROM } },
+      where: { businessId: "biz_1", updatedAt: { gte: CURRENCY_CHOOSABLE_FROM } },
     });
     expect(result.ok).toBe(true);
   });
@@ -196,14 +196,16 @@ describe("saveSettingsAction — currency", () => {
   // itself tells the owner to make. Payments from before currencies existed were
   // recorded under a label nobody chose, so they don't lock it.
   describe("a workspace whose payments predate the currency setting", () => {
-    const paymentsCreatedAt = (...dates: string[]) =>
+    // Serves the count the way the database would: only payments whose
+    // `updatedAt` (the last time one was recorded or edited) satisfies the filter.
+    const paymentsWrittenAt = (...dates: string[]) =>
       mocks.tx.clientPayment.count.mockImplementation(
-        async ({ where }: { where: { createdAt?: { gte: Date } } }) =>
-          dates.filter((date) => new Date(date) >= (where.createdAt?.gte ?? new Date(0))).length
+        async ({ where }: { where: { updatedAt?: { gte: Date } } }) =>
+          dates.filter((date) => new Date(date) >= (where.updatedAt?.gte ?? new Date(0))).length
       );
 
     it("can still correct the currency", async () => {
-      paymentsCreatedAt("2026-08-15T10:00:00Z", "2026-09-26T23:59:59Z"); // recorded under the old "$" label
+      paymentsWrittenAt("2026-08-15T10:00:00Z", "2026-09-26T23:59:59Z"); // recorded under the old "$" label
 
       const result = await saveSettingsAction(payload("USD"));
 
@@ -215,7 +217,7 @@ describe("saveSettingsAction — currency", () => {
     });
 
     it("is locked again by the first payment recorded under a currency it could see and set", async () => {
-      paymentsCreatedAt("2026-08-15T10:00:00Z", "2026-10-01T09:00:00Z");
+      paymentsWrittenAt("2026-08-15T10:00:00Z", "2026-10-01T09:00:00Z");
 
       const result = await saveSettingsAction(payload("USD"));
 
@@ -227,9 +229,32 @@ describe("saveSettingsAction — currency", () => {
     });
 
     it("counts a payment recorded at the very instant currencies became choosable", async () => {
-      paymentsCreatedAt(CURRENCY_CHOOSABLE_FROM.toISOString());
+      paymentsWrittenAt(CURRENCY_CHOOSABLE_FROM.toISOString());
 
       expect((await saveSettingsAction(payload("USD"))).ok).toBe(false);
+    });
+
+    // Codex #130: editing a legacy payment re-enters its amount under the
+    // currency now in force, so from then on it must count like any other. Its
+    // `createdAt` stays old; it is the edit (`updatedAt`) that locks it.
+    it("is locked by a legacy payment that has been edited since, even though it was created long before", async () => {
+      // One legacy payment, created in August and edited on 2026-10-01.
+      mocks.tx.clientPayment.count.mockImplementation(
+        async ({ where }: { where: { updatedAt?: { gte: Date }; createdAt?: { gte: Date } } }) => {
+          const payment = { createdAt: new Date("2026-08-15T10:00:00Z"), updatedAt: new Date("2026-10-01T09:00:00Z") };
+          const matchesCreated = !where.createdAt || payment.createdAt >= where.createdAt.gte;
+          const matchesUpdated = !where.updatedAt || payment.updatedAt >= where.updatedAt.gte;
+          return matchesCreated && matchesUpdated ? 1 : 0;
+        }
+      );
+
+      const result = await saveSettingsAction(payload("USD"));
+
+      expect(result).toEqual({
+        ok: false,
+        error: "Currency can't be changed once payments are on record — it would misstate past amounts.",
+      });
+      expect(mocks.tx.business.update).not.toHaveBeenCalled();
     });
   });
 

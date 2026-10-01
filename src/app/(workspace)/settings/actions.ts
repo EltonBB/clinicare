@@ -247,13 +247,15 @@ export async function saveSettingsAction(
         });
 
         if (freshBusiness.currency !== payload.business.currency) {
-          // Payments from before currencies existed don't count: they were
-          // recorded under the old "$" label, not under a currency this
+          // Payments last written before currencies existed don't count: they
+          // were recorded under the old "$" label, not under a currency this
           // workspace chose, and counting them would stop a workspace that
           // really billed in another currency from ever correcting the
-          // migration's euro default (Codex #130).
+          // migration's euro default (Codex #130). `updatedAt`, not
+          // `createdAt`: editing a legacy payment re-enters its amount under
+          // the label now in force, so from then on it counts like any other.
           const existingPaymentCount = await tx.clientPayment.count({
-            where: { businessId: business.id, createdAt: { gte: CURRENCY_CHOOSABLE_FROM } },
+            where: { businessId: business.id, updatedAt: { gte: CURRENCY_CHOOSABLE_FROM } },
           });
           if (existingPaymentCount > 0) {
             throw new CurrencyLockedError();

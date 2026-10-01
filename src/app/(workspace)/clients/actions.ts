@@ -24,7 +24,7 @@ import { attemptStorageCleanup, recordPendingStorageCleanup } from "@/lib/media-
 import { parseAmountToCents } from "@/lib/payment-amount";
 import { parseRecordId, recordIdSchema } from "@/lib/record-id";
 import { retryOnWriteConflict } from "@/lib/prisma-retry";
-import { removeWaitlistEntry, reofferFreedSlots, retireWaitlistEntries } from "@/lib/slot-offers";
+import { reofferFreedSlots, retireWaitlistEntries } from "@/lib/slot-offers";
 import { acquireBusinessFinancialLock } from "@/lib/business-financial-lock";
 
 // Aborts addClientPaymentAction's transaction from inside its callback when
@@ -1246,26 +1246,6 @@ export async function deleteClientAction(rawClientId: string): Promise<DeleteCli
 
   const business = context.business;
 
-  // If this client is currently OFFERED a waiting-list slot, deleting them
-  // below cascades their WaitlistEntry away — and with it, via that entry's
-  // own cascade, the live SLOT_OFFER draft — without ever releasing the
-  // freed appointment for re-offer. The next candidate on the list would
-  // never be contacted, and the hourly expiry sweep can't recover it either
-  // (there's no draft left for it to find). Settling each held offer first —
-  // same as Skip/Declined/Remove already do — dismisses its draft and offers
-  // the slot to the next match before the client (and its now-REMOVED entry)
-  // are gone (Codex). A tiny window exists between this and the delete below
-  // (not one atomic transaction — removeWaitlistEntry runs its own), but
-  // that's the same trade-off every other multi-step mutation in this file
-  // already accepts, and it only shortens an unbounded gap to a narrow one.
-  const offeredEntries = await prisma.waitlistEntry.findMany({
-    where: { businessId: business.id, clientId, status: "OFFERED" },
-    select: { id: true },
-  });
-  for (const entry of offeredEntries) {
-    await removeWaitlistEntry({ id: entry.id, businessId: business.id });
-  }
-
   // Compare-and-set: scope the delete by the same id+businessId used to find
   // the row read below. If a concurrent request already deleted it, `count`
   // is 0 and this call becomes a typed not-found instead of `.delete`
@@ -1274,7 +1254,19 @@ export async function deleteClientAction(rawClientId: string): Promise<DeleteCli
   // storage-cleanup outbox row is written in the SAME transaction as the
   // delete, so it exists if and only if this request actually won the race —
   // the loser's `count` is 0 and it returns before recording anything.
-  const result = await prisma.$transaction(async (tx) => {
+  //
+  // The client's waiting-list entries are retired in this same transaction,
+  // not before it. Deleting the client cascades their WaitlistEntry away — and
+  // with it, via that entry's own cascade, a live SLOT_OFFER draft — without
+  // ever releasing the freed appointment for re-offer: the next candidate
+  // would never be contacted and the hourly sweep can't recover it either
+  // (there is no draft left for it to find). Retiring them in a separate step
+  // beforehand left a window in which a cancellation could hand a WAITING
+  // entry of this client a new offer, and the delete then removed it (Codex
+  // #130). Retired and deleted together, any offer is dismissed and its slot
+  // offered on before the client is gone, or not at all. Retried once on a
+  // deadlock, like every transaction that reaches the scheduling lock.
+  const result = await retryOnWriteConflict(() => prisma.$transaction(async (tx) => {
     // Read the storage-bearing fields here, inside the transaction and
     // immediately before the delete, rather than beforehand: a document or
     // gallery item uploaded between an earlier read and this statement would
@@ -1296,6 +1288,8 @@ export async function deleteClientAction(rawClientId: string): Promise<DeleteCli
       return { deleted: false as const };
     }
 
+    const freedAppointmentIds = await retireWaitlistEntries(tx, { businessId: business.id, clientId });
+
     const { count } = await tx.client.deleteMany({
       where: {
         id: clientId,
@@ -1306,6 +1300,11 @@ export async function deleteClientAction(rawClientId: string): Promise<DeleteCli
     if (count === 0) {
       return { deleted: false as const };
     }
+
+    // After the delete, so the departing client can never be handed a freed
+    // slot; inside the transaction, so an offer dismissed above is never left
+    // without its slot being offered on.
+    await reofferFreedSlots(tx, { businessId: business.id, appointmentIds: freedAppointmentIds });
 
     // Deleting the client cascades the DB rows, but the actual files in
     // storage don't clean themselves up — without this, patient documents
@@ -1321,7 +1320,7 @@ export async function deleteClientAction(rawClientId: string): Promise<DeleteCli
     ]);
 
     return { deleted: true as const, pending };
-  });
+  }));
 
   if (!result.deleted) {
     return {
@@ -1798,30 +1797,52 @@ export async function updateClientPaymentAction(
     return { ok: false, error: context.error };
   }
 
-  const amountCents = parseAmountToCents(payload.amount, normalizeCurrency(context.business.currency));
-
-  if (amountCents === null) {
-    return { ok: false, error: "Enter a valid payment amount." };
-  }
-
   if (hasUnsafePublicUrl(payload.receiptUrl)) {
     return { ok: false, error: "Use a safe HTTPS receipt link." };
   }
 
-  await prisma.clientPayment.update({
-    where: { id: payload.id },
-    data: {
-      amountCents,
-      status: payload.status.trim() || "Unpaid",
-      description: payload.description.trim() || null,
-      invoiceNumber: payload.invoiceNumber?.trim() || null,
-      receiptNumber: payload.receiptNumber?.trim() || null,
-      paymentMethod: payload.paymentMethod?.trim() || null,
-      billingNote: payload.billingNote?.trim() || null,
-      receiptUrl: normalizeOptionalPublicUrl(payload.receiptUrl) || null,
-      paidAt: parseOptionalDate(payload.paidAt),
-    },
-  });
+  // Under the same financial lock a currency change takes, exactly as when a
+  // payment is recorded (addClientPaymentAction): the amount is parsed against
+  // the currency read fresh under the lock, not the snapshot taken when the
+  // request started, so an edit can't be typed under one currency and stored
+  // under another that a concurrent correction just switched to (Codex #130).
+  // Writing the row also bumps its `updatedAt`, which is what makes an edited
+  // legacy payment count toward the currency lock (see saveSettingsAction).
+  try {
+    await prisma.$transaction(async (tx) => {
+      await acquireBusinessFinancialLock(tx, context.business.id);
+
+      const currentBusiness = await tx.business.findUniqueOrThrow({
+        where: { id: context.business.id },
+        select: { currency: true },
+      });
+      const amountCents = parseAmountToCents(payload.amount, normalizeCurrency(currentBusiness.currency));
+
+      if (amountCents === null) {
+        throw new InvalidPaymentAmountError();
+      }
+
+      await tx.clientPayment.update({
+        where: { id: payload.id },
+        data: {
+          amountCents,
+          status: payload.status.trim() || "Unpaid",
+          description: payload.description.trim() || null,
+          invoiceNumber: payload.invoiceNumber?.trim() || null,
+          receiptNumber: payload.receiptNumber?.trim() || null,
+          paymentMethod: payload.paymentMethod?.trim() || null,
+          billingNote: payload.billingNote?.trim() || null,
+          receiptUrl: normalizeOptionalPublicUrl(payload.receiptUrl) || null,
+          paidAt: parseOptionalDate(payload.paidAt),
+        },
+      });
+    });
+  } catch (error) {
+    if (error instanceof InvalidPaymentAmountError) {
+      return { ok: false, error: "Enter a valid payment amount." };
+    }
+    throw error;
+  }
 
   revalidatePaymentSurfaces();
 
