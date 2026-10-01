@@ -29,6 +29,19 @@ export type SupportedCurrency = (typeof SUPPORTED_CURRENCIES)[number]["code"];
 
 export const DEFAULT_CURRENCY: SupportedCurrency = "EUR";
 
+/**
+ * Before a clinic could pick a currency, every amount was shown in US dollars.
+ * `Business.currency` arrived with prisma/clinic-currency-migration.sql (applied
+ * to the shared database on 2026-09-27), which gave every existing workspace the
+ * euro default. A payment recorded before that was entered under a "$" label no
+ * workspace ever chose, so it must not stop its workspace correcting the
+ * currency: counted, it left the owner of a workspace that really did bill in
+ * dollars unable to undo the migration's default (Codex #130). Only a payment
+ * recorded from this instant on, under a currency the clinic could see and set,
+ * locks the currency (see saveSettingsAction).
+ */
+export const CURRENCY_CHOOSABLE_FROM = new Date("2026-09-27T00:00:00.000Z");
+
 export function isSupportedCurrency(code: unknown): code is SupportedCurrency {
   return SUPPORTED_CURRENCIES.some((currency) => currency.code === code);
 }

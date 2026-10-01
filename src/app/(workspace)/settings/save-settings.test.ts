@@ -51,6 +51,7 @@ vi.mock("@/lib/media-storage-server", () => ({
 }));
 vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn(), error: vi.fn() } }));
 
+import { CURRENCY_CHOOSABLE_FROM } from "@/lib/currency";
 import type { SaveSettingsPayload } from "@/lib/settings";
 
 import { saveSettingsAction } from "./actions";
@@ -166,7 +167,9 @@ describe("saveSettingsAction — currency", () => {
 
     const result = await saveSettingsAction(payload("USD"));
 
-    expect(mocks.tx.clientPayment.count).toHaveBeenCalledWith({ where: { businessId: "biz_1" } });
+    expect(mocks.tx.clientPayment.count).toHaveBeenCalledWith({
+      where: { businessId: "biz_1", createdAt: { gte: CURRENCY_CHOOSABLE_FROM } },
+    });
     expect(result).toEqual({
       ok: false,
       error: "Currency can't be changed once payments are on record — it would misstate past amounts.",
@@ -181,8 +184,53 @@ describe("saveSettingsAction — currency", () => {
   it("allows the change through once payments are checked and none exist", async () => {
     const result = await saveSettingsAction(payload("USD"));
 
-    expect(mocks.tx.clientPayment.count).toHaveBeenCalledWith({ where: { businessId: "biz_1" } });
+    expect(mocks.tx.clientPayment.count).toHaveBeenCalledWith({
+      where: { businessId: "biz_1", createdAt: { gte: CURRENCY_CHOOSABLE_FROM } },
+    });
     expect(result.ok).toBe(true);
+  });
+
+  // Codex #130: clinic-currency-migration.sql gave every existing workspace the
+  // euro default, although their payments were recorded while amounts were shown
+  // in dollars - and the lock above then refused the correction the migration
+  // itself tells the owner to make. Payments from before currencies existed were
+  // recorded under a label nobody chose, so they don't lock it.
+  describe("a workspace whose payments predate the currency setting", () => {
+    const paymentsCreatedAt = (...dates: string[]) =>
+      mocks.tx.clientPayment.count.mockImplementation(
+        async ({ where }: { where: { createdAt?: { gte: Date } } }) =>
+          dates.filter((date) => new Date(date) >= (where.createdAt?.gte ?? new Date(0))).length
+      );
+
+    it("can still correct the currency", async () => {
+      paymentsCreatedAt("2026-08-15T10:00:00Z", "2026-09-26T23:59:59Z"); // recorded under the old "$" label
+
+      const result = await saveSettingsAction(payload("USD"));
+
+      expect(result.ok).toBe(true);
+      expect(mocks.tx.business.update).toHaveBeenCalledWith({
+        where: { id: "biz_1" },
+        data: expect.objectContaining({ currency: "USD" }),
+      });
+    });
+
+    it("is locked again by the first payment recorded under a currency it could see and set", async () => {
+      paymentsCreatedAt("2026-08-15T10:00:00Z", "2026-10-01T09:00:00Z");
+
+      const result = await saveSettingsAction(payload("USD"));
+
+      expect(result).toEqual({
+        ok: false,
+        error: "Currency can't be changed once payments are on record — it would misstate past amounts.",
+      });
+      expect(mocks.tx.business.update).not.toHaveBeenCalled();
+    });
+
+    it("counts a payment recorded at the very instant currencies became choosable", async () => {
+      paymentsCreatedAt(CURRENCY_CHOOSABLE_FROM.toISOString());
+
+      expect((await saveSettingsAction(payload("USD"))).ok).toBe(false);
+    });
   });
 
   // Codex #131: a plain check-then-update only narrows the gap against a

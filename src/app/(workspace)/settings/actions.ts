@@ -17,7 +17,7 @@ import {
   requestBaileysPairing,
 } from "@/lib/messaging/baileys-control";
 import type { WorkerConnectionStatus } from "@/lib/messaging/baileys-contract";
-import { isSupportedCurrency } from "@/lib/currency";
+import { CURRENCY_CHOOSABLE_FROM, isSupportedCurrency } from "@/lib/currency";
 import { normalizePhone } from "@/lib/inbox";
 import {
   isValidUploadShape,
@@ -247,8 +247,13 @@ export async function saveSettingsAction(
         });
 
         if (freshBusiness.currency !== payload.business.currency) {
+          // Payments from before currencies existed don't count: they were
+          // recorded under the old "$" label, not under a currency this
+          // workspace chose, and counting them would stop a workspace that
+          // really billed in another currency from ever correcting the
+          // migration's euro default (Codex #130).
           const existingPaymentCount = await tx.clientPayment.count({
-            where: { businessId: business.id },
+            where: { businessId: business.id, createdAt: { gte: CURRENCY_CHOOSABLE_FROM } },
           });
           if (existingPaymentCount > 0) {
             throw new CurrencyLockedError();
