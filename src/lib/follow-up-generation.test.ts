@@ -712,6 +712,23 @@ describe("expireStaleFollowUpDrafts", () => {
       data: { status: "EXPIRED" },
     });
   });
+
+  // Codex #130: the age limits are N clinic-local days like every other day
+  // window in the workflows, not N * 24 hours (an hour off across a clock change).
+  it("counts the thank-you and rebook age limits in clinic-local days across a daylight-saving change", async () => {
+    // 2026-10-26 10:00 CET, the morning after Europe/Budapest left daylight time.
+    await expireStaleFollowUpDrafts(new Date("2026-10-26T09:00:00Z"));
+
+    const calls = mocks.prisma.followUpDraft.updateMany.mock.calls.map(([arg]) => arg);
+    const ageLimit = (kind: string) =>
+      calls
+        .find((arg) => arg.where.kind === kind)
+        .where.OR.find((branch: { createdAt?: unknown }) => branch.createdAt).createdAt.lt;
+
+    // 3 clinic days earlier: Fri 2026-10-23 10:00 CEST. 35 days earlier: Mon 2026-09-21 10:00 CEST.
+    expect(ageLimit("THANK_YOU")).toEqual(new Date("2026-10-23T08:00:00Z"));
+    expect(ageLimit("REBOOK")).toEqual(new Date("2026-09-21T08:00:00Z"));
+  });
 });
 
 describe("generateFollowUpDrafts — per-kind pending cap (50)", () => {

@@ -40,7 +40,6 @@ export type FollowUpDraftInput = {
 const MAX_CANDIDATES_PER_RUN = 200;
 
 const HOUR_MS = 3_600_000;
-const DAY_MS = 24 * HOUR_MS;
 
 /**
  * A pending rebook draft lives at most ~35 days (follow-up-generation.ts), so a
@@ -62,7 +61,7 @@ export const REBOOK_RECENT_VISIT_DAYS = 28;
  * both built from this one filter so the two are exact complements.
  */
 export function rebookedAppointmentWhere(now: Date): Prisma.AppointmentWhereInput {
-  const recentVisitSince = new Date(now.getTime() - REBOOK_RECENT_VISIT_DAYS * DAY_MS);
+  const recentVisitSince = subtractDays(now, REBOOK_RECENT_VISIT_DAYS);
   return {
     OR: [
       { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } },
@@ -147,6 +146,33 @@ export function subtractMonths(date: Date, months: number): Date {
 }
 
 /**
+ * `date` minus `days` calendar days in the clinic's own calendar, keeping the
+ * wall-clock time. Subtracting `days * 24` hours instead lands an hour off the
+ * clinic's own "N days ago" on either side of a daylight-saving change — a
+ * payment reminder configured for "after 3 days" would be drafted an hour early
+ * or late that week (Codex #130). Every day-denominated window in the
+ * follow-up workflows goes through this; windows counted in hours (the
+ * thank-you delay and re-scan window) are elapsed time and stay as they are.
+ */
+export function subtractDays(date: Date, days: number): Date {
+  const parts = getZonedDateParts(date);
+
+  // Whole seconds through the zone conversion (its offset search is only exact
+  // without a millisecond part), with the milliseconds added back afterwards so
+  // that subtracting nothing returns the same instant.
+  const wallClock = zonedDateTimeToUtc({
+    year: parts.year,
+    month: parts.month,
+    day: parts.day - days,
+    hour: parts.hour,
+    minute: parts.minute,
+    second: parts.second,
+  });
+
+  return new Date(wallClock.getTime() + date.getUTCMilliseconds());
+}
+
+/**
  * Clients whose last visit is older than the configured window, with no
  * future booking, who are not marked inactive or archived (a clinic does that on
  * purpose — don't nag them) and who don't already have an open rebook draft or one from
@@ -207,7 +233,7 @@ export async function findPaymentReminderCandidates(args: {
   const { businessId, settings, now } = args;
   if (!settings.paymentReminderEnabled) return [];
 
-  const cutoff = new Date(now.getTime() - settings.paymentReminderAfterDays * 24 * HOUR_MS);
+  const cutoff = subtractDays(now, settings.paymentReminderAfterDays);
 
   const payments = await prisma.clientPayment.findMany({
     where: {

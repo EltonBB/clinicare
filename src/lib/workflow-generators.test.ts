@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   client: { findMany: vi.fn() },
@@ -14,6 +14,8 @@ import {
   findPaymentReminderCandidates,
   findRebookCandidates,
   findThankYouCandidates,
+  rebookedAppointmentWhere,
+  subtractDays,
 } from "@/lib/workflow-generators";
 
 const NOW = new Date("2026-07-01T12:00:00Z");
@@ -164,6 +166,67 @@ describe("findRebookCandidates", () => {
   });
 });
 
+// Codex #130: "N days" in the follow-up workflows means N calendar days on the
+// clinic's own clock. Europe/Budapest leaves daylight time on Sun 2026-10-25 and
+// enters it on Sun 2026-03-29, so across either change N * 24 hours lands an
+// hour off the clinic's wall-clock time.
+describe("subtractDays", () => {
+  const originalTimeZone = process.env.APP_TIME_ZONE;
+
+  beforeEach(() => {
+    process.env.APP_TIME_ZONE = "Europe/Budapest";
+  });
+
+  afterEach(() => {
+    if (originalTimeZone === undefined) {
+      delete process.env.APP_TIME_ZONE;
+    } else {
+      process.env.APP_TIME_ZONE = originalTimeZone;
+    }
+  });
+
+  it("keeps the wall-clock time across the autumn change: 10:00 CET minus 3 days is 10:00 CEST, not 11:00", () => {
+    // 2026-10-26 10:00 CET -> Fri 2026-10-23 10:00 CEST (08:00Z); 72 hours earlier would be 09:00Z = 11:00 CEST.
+    expect(subtractDays(new Date("2026-10-26T09:00:00Z"), 3)).toEqual(new Date("2026-10-23T08:00:00Z"));
+  });
+
+  it("keeps the wall-clock time across the spring change: 10:00 CEST minus 3 days is 10:00 CET, not 09:00", () => {
+    // 2026-03-31 10:00 CEST -> Sat 2026-03-28 10:00 CET (09:00Z); 72 hours earlier would be 08:00Z = 09:00 CET.
+    expect(subtractDays(new Date("2026-03-31T08:00:00Z"), 3)).toEqual(new Date("2026-03-28T09:00:00Z"));
+  });
+
+  it("is the same as plain subtraction when no clock change is crossed", () => {
+    expect(subtractDays(new Date("2026-07-01T12:00:00Z"), 3)).toEqual(new Date("2026-06-28T12:00:00Z"));
+  });
+
+  it("rolls back over month and year ends", () => {
+    expect(subtractDays(new Date("2026-03-02T12:00:00Z"), 3)).toEqual(new Date("2026-02-27T12:00:00Z"));
+    expect(subtractDays(new Date("2026-01-02T12:00:00Z"), 3)).toEqual(new Date("2025-12-30T12:00:00Z"));
+  });
+
+  it("counts days on the clinic's calendar, not UTC's: just after local midnight is still the previous UTC day", () => {
+    // 2026-07-02 00:30 CEST is 22:30Z on the 1st; one clinic day earlier is 2026-07-01 00:30 CEST.
+    expect(subtractDays(new Date("2026-07-01T22:30:00Z"), 1)).toEqual(new Date("2026-06-30T22:30:00Z"));
+  });
+
+  it("keeps milliseconds, so subtracting nothing returns the same instant", () => {
+    const instant = new Date("2026-07-01T12:00:00.345Z");
+    expect(subtractDays(instant, 0)).toEqual(instant);
+  });
+});
+
+describe("rebookedAppointmentWhere", () => {
+  it("counts the recent-visit window in clinic-local days across a clock change", () => {
+    // 28 clinic days before 2026-10-26 10:00 CET is 2026-09-28 10:00 CEST (08:00Z).
+    expect(rebookedAppointmentWhere(new Date("2026-10-26T09:00:00Z"))).toEqual({
+      OR: [
+        { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: new Date("2026-10-26T09:00:00Z") } },
+        { status: { in: ["CONFIRMED", "COMPLETED"] }, startAt: { gt: new Date("2026-09-28T08:00:00Z") } },
+      ],
+    });
+  });
+});
+
 describe("findPaymentReminderCandidates", () => {
   it("finds unpaid/partially-paid payments older than the configured window, one draft per payment", async () => {
     mocks.clientPayment.findMany.mockResolvedValue([{ id: "pay_1", clientId: "c1", client: { name: "Alex" } }]);
@@ -227,6 +290,23 @@ describe("findPaymentReminderCandidates", () => {
         where: expect.objectContaining({ followUpDrafts: { none: { kind: "PAYMENT" } } }),
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         take: 200,
+      })
+    );
+  });
+
+  it("counts the reminder delay in clinic-local days, so it doesn't drift an hour across a clock change", async () => {
+    mocks.clientPayment.findMany.mockResolvedValue([]);
+
+    await findPaymentReminderCandidates({
+      businessId: "biz_1",
+      settings: DEFAULT_WORKFLOW_SETTINGS,
+      now: new Date("2026-10-26T09:00:00Z"), // 10:00 CET, the morning after daylight time ended
+    });
+
+    // 3 clinic days earlier: Fri 2026-10-23 10:00 CEST. (72 hours earlier would be 09:00Z.)
+    expect(mocks.clientPayment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ createdAt: { lt: new Date("2026-10-23T08:00:00Z") } }),
       })
     );
   });

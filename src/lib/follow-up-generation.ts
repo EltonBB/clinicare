@@ -14,12 +14,12 @@ import {
   findRebookCandidates,
   findThankYouCandidates,
   rebookedAppointmentWhere,
+  subtractDays,
   type FollowUpDraftInput,
   type WorkflowSettingsValues,
 } from "@/lib/workflow-generators";
 
 const HOUR_MS = 3_600_000;
-const DAY_MS = 24 * HOUR_MS;
 
 /**
  * Stop starting new businesses after this long. The route's maxDuration is 120s;
@@ -230,7 +230,7 @@ export async function expireStaleFollowUpDrafts(now: Date): Promise<number> {
         { client: { appointments: { some: rebookedAppointmentWhere(now) } } },
         { client: INELIGIBLE_CLIENT_WHERE },
         { business: { plan: { in: nonProPlans } } },
-        { createdAt: { lt: new Date(now.getTime() - REBOOK_MAX_AGE_DAYS * DAY_MS) } },
+        { createdAt: { lt: subtractDays(now, REBOOK_MAX_AGE_DAYS) } },
       ],
     },
     // Too old to be worth sending — or the visit no longer stands as attended:
@@ -241,7 +241,7 @@ export async function expireStaleFollowUpDrafts(now: Date): Promise<number> {
       kind: "THANK_YOU",
       status: "PENDING",
       OR: [
-        { createdAt: { lt: new Date(now.getTime() - THANK_YOU_MAX_AGE_DAYS * DAY_MS) } },
+        { createdAt: { lt: subtractDays(now, THANK_YOU_MAX_AGE_DAYS) } },
         { appointmentId: null },
         { appointment: { status: { not: "COMPLETED" } } },
         { client: INELIGIBLE_CLIENT_WHERE },
