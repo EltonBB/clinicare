@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
   const findStaffAssignedOpenOfferAppointments = vi.fn();
   const retireSlotOffersForAppointments = vi.fn();
   const retireWaitlistEntries = vi.fn();
+  const reofferFreedSlots = vi.fn();
   return {
     staffMember,
     $transaction,
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => {
     findStaffAssignedOpenOfferAppointments,
     retireSlotOffersForAppointments,
     retireWaitlistEntries,
+    reofferFreedSlots,
   };
 });
 
@@ -39,6 +41,7 @@ vi.mock("@/lib/slot-offers", () => ({
   findStaffAssignedOpenOfferAppointments: mocks.findStaffAssignedOpenOfferAppointments,
   retireSlotOffersForAppointments: mocks.retireSlotOffersForAppointments,
   retireWaitlistEntries: mocks.retireWaitlistEntries,
+  reofferFreedSlots: mocks.reofferFreedSlots,
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -68,6 +71,7 @@ beforeEach(() => {
   mocks.findStaffAssignedOpenOfferAppointments.mockResolvedValue([]);
   mocks.retireSlotOffersForAppointments.mockResolvedValue(undefined);
   mocks.retireWaitlistEntries.mockResolvedValue([]); // no staff-pinned waiting-list entries by default
+  mocks.reofferFreedSlots.mockResolvedValue(undefined);
 });
 
 const revalidatedPaths = () => vi.mocked(revalidatePath).mock.calls.map(([path]) => path);
@@ -276,6 +280,105 @@ describe("saveStaffAction", () => {
       expect.arrayContaining([`/staff/${STAFF_ID}`, "/calendar", "/dashboard", "/inbox", "/inbox/follow-ups"])
     );
   });
+
+  // Codex #130: an entry pinned to a member who is then set Inactive can never be
+  // offered a slot (offerFreedSlot refuses theirs), yet it would keep showing on
+  // the waiting list and counting against its cap until removed by hand.
+  describe("saving a member as Inactive", () => {
+    beforeEach(() => {
+      mocks.staffMember.findFirst.mockResolvedValue({ id: STAFF_ID });
+      mocks.staffMember.update.mockResolvedValue({});
+      mocks.staffMember.findFirstOrThrow.mockResolvedValue(STAFF_ROW);
+    });
+
+    it("retires the entries pinned to them and offers the freed slots on, in the same transaction as the status change", async () => {
+      mocks.retireWaitlistEntries.mockResolvedValue(["appt_1", null]);
+
+      const result = await saveStaffAction(payload);
+
+      expect(result).toMatchObject({ ok: true });
+      expect(mocks.$transaction).toHaveBeenCalledTimes(1);
+      expect(mocks.retireWaitlistEntries).toHaveBeenCalledWith(expect.anything(), {
+        businessId: "biz_1",
+        staffMemberId: STAFF_ID,
+      });
+      expect(mocks.reofferFreedSlots).toHaveBeenCalledWith(expect.anything(), {
+        businessId: "biz_1",
+        appointmentIds: ["appt_1", null],
+      });
+      // Status first, so the re-offer sees them as unavailable; the re-offer last,
+      // so what it offers on reflects the retirement.
+      const [update, retire, reoffer] = [
+        mocks.staffMember.update,
+        mocks.retireWaitlistEntries,
+        mocks.reofferFreedSlots,
+      ].map((fn) => fn.mock.invocationCallOrder[0]);
+      expect(update).toBeLessThan(retire);
+      expect(retire).toBeLessThan(reoffer);
+    });
+
+    it("re-runs the whole save once when Postgres aborts the transaction as a deadlock", async () => {
+      mocks.$transaction.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError("deadlock detected", { code: "P2034", clientVersion: "test" })
+      );
+
+      const result = await saveStaffAction(payload);
+
+      expect(result).toMatchObject({ ok: true });
+      expect(mocks.$transaction).toHaveBeenCalledTimes(2);
+      expect(mocks.retireWaitlistEntries).toHaveBeenCalledTimes(1);
+    });
+
+    it("answers with the generic error and leaves the waiting list alone when the transaction fails", async () => {
+      mocks.retireWaitlistEntries.mockRejectedValue(new Error("connection reset"));
+
+      const result = await saveStaffAction(payload);
+
+      expect(result).toMatchObject({ ok: false });
+      expect(mocks.reofferFreedSlots).not.toHaveBeenCalled();
+    });
+
+    it("does nothing to the waiting list for a member who doesn't exist in this workspace", async () => {
+      mocks.staffMember.findFirst.mockResolvedValue(null);
+
+      const result = await saveStaffAction(payload);
+
+      expect(result).toMatchObject({ ok: false });
+      expect(mocks.$transaction).not.toHaveBeenCalled();
+      expect(mocks.retireWaitlistEntries).not.toHaveBeenCalled();
+    });
+
+    it("leaves a brand-new member's save alone: nothing can be pinned to them yet", async () => {
+      mocks.staffMember.create.mockResolvedValue({ id: "staff_new" });
+      mocks.staffMember.findFirstOrThrow.mockResolvedValue({ ...STAFF_ROW, id: "staff_new" });
+
+      await saveStaffAction({ ...payload, id: "" });
+
+      expect(mocks.staffMember.create).toHaveBeenCalledTimes(1);
+      expect(mocks.$transaction).not.toHaveBeenCalled();
+      expect(mocks.retireWaitlistEntries).not.toHaveBeenCalled();
+    });
+  });
+
+  it.each(["ACTIVE", "AWAY"] as const)(
+    "saving a member as %s is a plain update that touches no waiting-list entry (they stay available)",
+    async (status) => {
+      mocks.staffMember.findFirst.mockResolvedValue({ id: STAFF_ID });
+      mocks.staffMember.update.mockResolvedValue({});
+      mocks.staffMember.findFirstOrThrow.mockResolvedValue({ ...STAFF_ROW, status });
+
+      const result = await saveStaffAction({ ...payload, status });
+
+      expect(result).toMatchObject({ ok: true });
+      expect(mocks.staffMember.update).toHaveBeenCalledWith({
+        where: { id: STAFF_ID },
+        data: expect.objectContaining({ status, isActive: true }),
+      });
+      expect(mocks.$transaction).not.toHaveBeenCalled();
+      expect(mocks.retireWaitlistEntries).not.toHaveBeenCalled();
+      expect(mocks.reofferFreedSlots).not.toHaveBeenCalled();
+    }
+  );
 });
 
 describe("generateMobileAccessCodeAction", () => {

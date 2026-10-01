@@ -35,6 +35,7 @@ import {
 } from "@/lib/staff-auth";
 import {
   findStaffAssignedOpenOfferAppointments,
+  reofferFreedSlots,
   retireSlotOffersForAppointments,
   retireWaitlistEntries,
 } from "@/lib/slot-offers";
@@ -329,12 +330,35 @@ export async function saveStaffAction(payload: SaveStaffPayload): Promise<SaveSt
         };
       }
 
-      await prisma.staffMember.update({
-        where: {
-          id: payload.id,
-        },
-        data,
-      });
+      const memberId = existing.id;
+
+      if (data.status === "INACTIVE") {
+        // An entry pinned to this person can never be offered a slot once they
+        // are Inactive (offerFreedSlot refuses their slots), yet it would keep
+        // showing on the waiting list and counting against its cap until
+        // someone removed it by hand — and reactivating them later would
+        // quietly bring it back with no capacity check. So the status change
+        // and the retirement of their pinned entries (offers dismissed, the
+        // freed slots offered on) commit together, as when they are deleted
+        // (Codex #130). Status first, so the re-offer sees them as unavailable.
+        // Retried once on a deadlock, like every transaction that reaches the
+        // scheduling lock.
+        await retryOnWriteConflict(() =>
+          prisma.$transaction(async (tx) => {
+            await tx.staffMember.update({ where: { id: memberId }, data });
+
+            const freed = await retireWaitlistEntries(tx, { businessId: business.id, staffMemberId: memberId });
+            await reofferFreedSlots(tx, { businessId: business.id, appointmentIds: freed });
+          })
+        );
+      } else {
+        await prisma.staffMember.update({
+          where: {
+            id: memberId,
+          },
+          data,
+        });
+      }
     } else {
       const created = await prisma.staffMember.create({
         data: {

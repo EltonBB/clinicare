@@ -621,14 +621,18 @@ describe("expireStaleFollowUpDrafts", () => {
     }
   });
 
-  it("expires PAYMENT drafts whose payment is gone or no longer owed", async () => {
+  it("expires PAYMENT drafts whose payment is gone or no longer owed, or whose client went inactive/archived", async () => {
     await expireStaleFollowUpDrafts(NOW);
 
     expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledWith({
       where: {
         kind: "PAYMENT",
         status: "PENDING",
-        OR: [{ paymentId: null }, { payment: { status: { notIn: ["Unpaid", "Partially Paid"] } } }],
+        OR: [
+          { paymentId: null },
+          { payment: { status: { notIn: ["Unpaid", "Partially Paid"] } } },
+          { client: INELIGIBLE_CLIENT_WHERE },
+        ],
       },
       data: { status: "EXPIRED" },
     });
@@ -691,7 +695,7 @@ describe("expireStaleFollowUpDrafts", () => {
     expect(planBranch).toEqual({ business: { plan: { in: ["TRIAL", "BASIC", "ADVANCED"] } } });
   });
 
-  it("expires THANK_YOU drafts older than 3 days, or whose visit is gone or no longer completed (e.g. since recorded as a no-show)", async () => {
+  it("expires THANK_YOU drafts older than 3 days, or whose visit is gone or no longer completed (e.g. since recorded as a no-show), or whose client went inactive/archived", async () => {
     await expireStaleFollowUpDrafts(NOW);
 
     expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledWith({
@@ -702,6 +706,7 @@ describe("expireStaleFollowUpDrafts", () => {
           { createdAt: { lt: new Date(NOW.getTime() - 3 * DAY_MS) } },
           { appointmentId: null },
           { appointment: { status: { not: "COMPLETED" } } },
+          { client: INELIGIBLE_CLIENT_WHERE },
         ],
       },
       data: { status: "EXPIRED" },

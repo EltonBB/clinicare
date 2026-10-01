@@ -51,16 +51,25 @@ function actionablePendingWhere(now: Date): Prisma.FollowUpDraftWhereInput {
         },
       },
       // Still owed: never tell someone who just paid that they owe money. And
-      // the payment-reminder workflow is still switched on.
+      // the payment-reminder workflow is still switched on, and the client is
+      // one the clinic still contacts — an Inactive/Archived client gets no
+      // automated outreach suggestion of any kind (Codex #130).
       {
         kind: "PAYMENT",
         business: workflowEnabledWhere("PAYMENT"),
+        client: ELIGIBLE_CLIENT_WHERE,
         payment: { status: { in: ["Unpaid", "Partially Paid"] } },
       },
       // The visit still stands as attended — not since recorded as a no-show,
       // reverted, or deleted (a deleted appointment leaves appointmentId null)
-      // — and the thank-you workflow is still switched on.
-      { kind: "THANK_YOU", business: workflowEnabledWhere("THANK_YOU"), appointment: { status: "COMPLETED" } },
+      // — and the thank-you workflow is still switched on and the client still
+      // one the clinic contacts.
+      {
+        kind: "THANK_YOU",
+        business: workflowEnabledWhere("THANK_YOU"),
+        client: ELIGIBLE_CLIENT_WHERE,
+        appointment: { status: "COMPLETED" },
+      },
     ],
   };
 }

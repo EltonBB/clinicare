@@ -205,11 +205,17 @@ export async function expireStaleFollowUpDrafts(now: Date): Promise<number> {
 
   const rules: Prisma.FollowUpDraftWhereInput[] = [
     // The reminder would tell someone who already paid (or whose entry was
-    // deleted — paymentId is then null) that they owe money.
+    // deleted — paymentId is then null) that they owe money — or the clinic
+    // archived/deactivated the client since, and an Inactive/Archived client
+    // gets no automated outreach suggestion of any kind.
     {
       kind: "PAYMENT",
       status: "PENDING",
-      OR: [{ paymentId: null }, { payment: { status: { notIn: ["Unpaid", "Partially Paid"] } } }],
+      OR: [
+        { paymentId: null },
+        { payment: { status: { notIn: ["Unpaid", "Partially Paid"] } } },
+        { client: INELIGIBLE_CLIENT_WHERE },
+      ],
     },
     // Already rebooked or back since (a future booking, or a recent confirmed/
     // completed visit — see rebookedAppointmentWhere), the clinic
@@ -229,7 +235,8 @@ export async function expireStaleFollowUpDrafts(now: Date): Promise<number> {
     },
     // Too old to be worth sending — or the visit no longer stands as attended:
     // recorded as a no-show or reverted since (COMPLETED -> NO_SHOW is a
-    // normal correction), or deleted (appointmentId is then null).
+    // normal correction), or deleted (appointmentId is then null) — or the
+    // clinic archived/deactivated the client since.
     {
       kind: "THANK_YOU",
       status: "PENDING",
@@ -237,6 +244,7 @@ export async function expireStaleFollowUpDrafts(now: Date): Promise<number> {
         { createdAt: { lt: new Date(now.getTime() - THANK_YOU_MAX_AGE_DAYS * DAY_MS) } },
         { appointmentId: null },
         { appointment: { status: { not: "COMPLETED" } } },
+        { client: INELIGIBLE_CLIENT_WHERE },
       ],
     },
   ];

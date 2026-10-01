@@ -189,9 +189,11 @@ export async function findRebookCandidates(args: {
 }
 
 /**
- * One draft per unpaid/partially-paid payment older than the configured window.
- * Payments that already have a payment draft are excluded so the 200-row cap
- * can't be filled forever by the same old, still-unpaid entries.
+ * One draft per unpaid/partially-paid payment older than the configured window,
+ * for a client the clinic still contacts (not archived or inactive — a clinic
+ * does that on purpose, and the rebooking nudge and slot offers already skip
+ * them). Payments that already have a payment draft are excluded so the 200-row
+ * cap can't be filled forever by the same old, still-unpaid entries.
  *
  * The message names no amount, by choice: it stays minimum-necessary (name
  * only) and staff can add the amount when they review the draft. A clinic's
@@ -212,6 +214,7 @@ export async function findPaymentReminderCandidates(args: {
       businessId,
       status: { in: ["Unpaid", "Partially Paid"] },
       createdAt: { lt: cutoff },
+      client: ELIGIBLE_CLIENT_WHERE,
       followUpDrafts: { none: { kind: "PAYMENT" } },
     },
     select: { id: true, clientId: true, client: { select: { name: true } } },
@@ -229,7 +232,8 @@ export async function findPaymentReminderCandidates(args: {
 }
 
 /**
- * One draft per appointment that completed inside the scan window and has no
+ * One draft per appointment that completed inside the scan window, for a client
+ * the clinic still contacts (see findPaymentReminderCandidates), and has no
  * thank-you draft yet.
  *
  * The query matches `endAt` in `(lookbackWindowStart, now - thankYouDelayHours]`,
@@ -261,6 +265,7 @@ export async function findThankYouCandidates(args: {
       businessId,
       status: "COMPLETED",
       endAt: { lte: cutoff, gt: lookbackWindowStart },
+      client: ELIGIBLE_CLIENT_WHERE,
       followUpDrafts: { none: { kind: "THANK_YOU" } },
     },
     select: { id: true, clientId: true, client: { select: { name: true } } },

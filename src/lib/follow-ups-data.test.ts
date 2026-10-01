@@ -325,6 +325,24 @@ const LIVENESS_CASES: Array<{ name: string; live: boolean; row: Row; keptBySweep
       business: { plan: "PRO", workflowSettings: { ...ALL_WORKFLOWS_ON, paymentReminderEnabled: false } },
     }),
   },
+  // Codex #130: an Inactive/Archived client gets no automated outreach suggestion
+  // of any kind - the rebooking nudge and slot offers already said so, and now the
+  // payment reminder does too.
+  {
+    name: "payment, client archived",
+    live: false,
+    row: draftRow({ kind: "PAYMENT", paymentId: "pay_1", payment: { status: "Unpaid" }, client: client({ isArchived: true }) }),
+  },
+  {
+    name: "payment, client inactive",
+    live: false,
+    row: draftRow({ kind: "PAYMENT", paymentId: "pay_1", payment: { status: "Unpaid" }, client: client({ status: "INACTIVE" }) }),
+  },
+  {
+    name: "payment, client status archived",
+    live: false,
+    row: draftRow({ kind: "PAYMENT", paymentId: "pay_1", payment: { status: "Unpaid" }, client: client({ status: "ARCHIVED" }) }),
+  },
   {
     name: "payment, no saved workflow settings (payment reminders are on by default)",
     live: true,
@@ -367,6 +385,26 @@ const LIVENESS_CASES: Array<{ name: string; live: boolean; row: Row; keptBySweep
     row: draftRow({ kind: "THANK_YOU", appointmentId: "appt_1", appointment: { status: "CANCELLED", startAt: PAST, staffMemberId: null } }),
   },
   { name: "thank-you, visit deleted", live: false, row: draftRow({ kind: "THANK_YOU", appointmentId: null, appointment: null }) },
+  {
+    name: "thank-you, client archived",
+    live: false,
+    row: draftRow({
+      kind: "THANK_YOU",
+      appointmentId: "appt_1",
+      appointment: { status: "COMPLETED", startAt: PAST },
+      client: client({ isArchived: true }),
+    }),
+  },
+  {
+    name: "thank-you, client inactive",
+    live: false,
+    row: draftRow({
+      kind: "THANK_YOU",
+      appointmentId: "appt_1",
+      appointment: { status: "COMPLETED", startAt: PAST },
+      client: client({ status: "INACTIVE" }),
+    }),
+  },
   {
     name: "thank-you, thank-you workflow since switched off",
     live: false,

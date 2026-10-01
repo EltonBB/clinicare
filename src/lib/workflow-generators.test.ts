@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/prisma", () => ({ prisma: mocks }));
 
+import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import {
   DEFAULT_WORKFLOW_SETTINGS,
   findPaymentReminderCandidates,
@@ -202,6 +203,20 @@ describe("findPaymentReminderCandidates", () => {
     });
   });
 
+  // Codex #130: the rebooking nudge and slot offers already skip a client the
+  // clinic archived or deactivated on purpose; a payment reminder must not be
+  // drafted for one either (and it is the query that must say so, so the 200-row
+  // cap drains real candidates instead of re-reading the same ineligible rows).
+  it("only drafts for clients the clinic still contacts", async () => {
+    mocks.clientPayment.findMany.mockResolvedValue([]);
+
+    await findPaymentReminderCandidates({ businessId: "biz_1", settings: DEFAULT_WORKFLOW_SETTINGS, now: NOW });
+
+    expect(mocks.clientPayment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ client: ELIGIBLE_CLIENT_WHERE }) })
+    );
+  });
+
   it("skips payments that already have a payment draft, and bounds each run", async () => {
     mocks.clientPayment.findMany.mockResolvedValue([]);
 
@@ -266,6 +281,21 @@ describe("findThankYouCandidates", () => {
           endAt: { lte: new Date("2026-07-01T10:00:00Z"), gt: new Date("2026-06-30T10:00:00Z") },
         }),
       })
+    );
+  });
+
+  it("only drafts for clients the clinic still contacts", async () => {
+    mocks.appointment.findMany.mockResolvedValue([]);
+
+    await findThankYouCandidates({
+      businessId: "biz_1",
+      settings: DEFAULT_WORKFLOW_SETTINGS,
+      now: NOW,
+      lookbackWindowStart: LOOKBACK_START,
+    });
+
+    expect(mocks.appointment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ client: ELIGIBLE_CLIENT_WHERE }) })
     );
   });
 
