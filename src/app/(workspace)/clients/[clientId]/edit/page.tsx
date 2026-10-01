@@ -5,6 +5,7 @@ import { CreatePageShell } from "@/components/workspace/create-page-shell";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { buildClientRecord } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
+import { initialPaymentHistory } from "@/lib/client-payments";
 
 export default async function EditClientPage({
   params,
@@ -94,26 +95,7 @@ export default async function EditClientPage({
         },
         take: 60,
       },
-      payments: {
-        select: {
-          id: true,
-          appointmentId: true,
-          amountCents: true,
-          status: true,
-          description: true,
-          receiptUrl: true,
-          paidAt: true,
-          invoiceNumber: true,
-          receiptNumber: true,
-          paymentMethod: true,
-          billingNote: true,
-          createdAt: true,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-        take: 60,
-      },
+      payments: { ...initialPaymentHistory, where: { businessId: business.id } },
       healthItems: {
         orderBy: {
           createdAt: "desc",

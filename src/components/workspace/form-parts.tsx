@@ -93,11 +93,13 @@ export function FormActions({
   cancelHref,
   submitLabel,
   isPending,
+  disabled = false,
   children,
 }: {
   cancelHref: string;
   submitLabel: string;
   isPending: boolean;
+  disabled?: boolean;
   children?: ReactNode;
 }) {
   return (
@@ -107,7 +109,7 @@ export function FormActions({
         <Link href={cancelHref} className={buttonVariants({ variant: "outline" })}>
           Cancel
         </Link>
-        <Button type="submit" disabled={isPending}>
+        <Button type="submit" disabled={isPending || disabled}>
           {isPending ? "Saving..." : submitLabel}
         </Button>
       </div>
