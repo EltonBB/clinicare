@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const client = {
     findFirst: vi.fn(),
+    findFirstOrThrow: vi.fn(),
     deleteMany: vi.fn(),
   };
   const clientMedication = { findFirst: vi.fn(), deleteMany: vi.fn() };
@@ -10,11 +11,12 @@ const mocks = vi.hoisted(() => {
   const clientCareNote = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientTreatmentPlanItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientFollowUpReminder = { findFirst: vi.fn(), deleteMany: vi.fn() };
-  const clientPayment = { findFirst: vi.fn(), deleteMany: vi.fn() };
+  const clientPayment = { findFirst: vi.fn(), deleteMany: vi.fn(), create: vi.fn(), update: vi.fn() };
   const clientDocument = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientGalleryItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const $transaction = vi.fn();
   const getAuthedBusiness = vi.fn();
+  const buildClientRecord = vi.fn();
   const attemptStorageCleanup = vi.fn();
   const recordPendingStorageCleanup = vi.fn();
   const after = vi.fn();
@@ -30,6 +32,7 @@ const mocks = vi.hoisted(() => {
     clientGalleryItem,
     $transaction,
     getAuthedBusiness,
+    buildClientRecord,
     attemptStorageCleanup,
     recordPendingStorageCleanup,
     after,
@@ -55,6 +58,11 @@ vi.mock("@/lib/business", () => ({
   getAuthedBusiness: mocks.getAuthedBusiness,
 }));
 
+vi.mock("@/lib/clients", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/clients")>()),
+  buildClientRecord: mocks.buildClientRecord,
+}));
+
 vi.mock("@/lib/media-storage-server", () => ({
   attemptStorageCleanup: mocks.attemptStorageCleanup,
   recordPendingStorageCleanup: mocks.recordPendingStorageCleanup,
@@ -73,6 +81,8 @@ async function flushAfter() {
 }
 
 import {
+  addClientPaymentAction,
+  updateClientPaymentAction,
   deleteClientAction,
   deleteClientCareNoteAction,
   deleteClientHealthItemAction,
@@ -103,6 +113,55 @@ beforeEach(() => {
       clientDocument: mocks.clientDocument,
       clientGalleryItem: mocks.clientGalleryItem,
     })
+  );
+});
+
+describe("payment amount validation", () => {
+  it("writes comma-decimal amounts as exact cents on create and update", async () => {
+    mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID });
+    mocks.client.findFirstOrThrow.mockResolvedValue({ id: CLIENT_ID });
+    mocks.clientPayment.findFirst.mockResolvedValue({ id: SUB_RECORD_ID });
+    mocks.buildClientRecord.mockResolvedValue({ id: CLIENT_ID });
+    const payload = {
+      clientId: CLIENT_ID,
+      amount: "85,50",
+      status: "Unpaid",
+      description: "",
+      receiptUrl: "",
+      paidAt: "",
+    };
+
+    expect((await addClientPaymentAction(payload)).ok).toBe(true);
+    expect((await updateClientPaymentAction({ ...payload, id: SUB_RECORD_ID })).ok).toBe(true);
+    expect(mocks.clientPayment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ amountCents: 8550 }),
+    });
+    expect(mocks.clientPayment.update).toHaveBeenCalledWith({
+      where: { id: SUB_RECORD_ID },
+      data: expect.objectContaining({ amountCents: 8550 }),
+    });
+  });
+
+  it.each(["abc", "1e3", "85.501", "1.000,00", "1000000.01"])(
+    "rejects %j on create and update without writing a payment",
+    async (amount) => {
+      mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID });
+      mocks.clientPayment.findFirst.mockResolvedValue({ id: SUB_RECORD_ID });
+      const payload = {
+        clientId: CLIENT_ID,
+        amount,
+        status: "Unpaid",
+        description: "",
+        receiptUrl: "",
+        paidAt: "",
+      };
+      const expected = { ok: false, error: "Enter a valid payment amount." };
+
+      expect(await addClientPaymentAction(payload)).toEqual(expected);
+      expect(await updateClientPaymentAction({ ...payload, id: SUB_RECORD_ID })).toEqual(expected);
+      expect(mocks.clientPayment.create).not.toHaveBeenCalled();
+      expect(mocks.clientPayment.update).not.toHaveBeenCalled();
+    }
   );
 });
 
