@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => {
   const removeWaitlistEntry = vi.fn();
   const retireWaitlistEntries = vi.fn();
   const reofferFreedSlots = vi.fn();
+  const withdrawSlotOffersOnClientAppointments = vi.fn();
   const after = vi.fn();
   return {
     client,
@@ -51,6 +52,7 @@ const mocks = vi.hoisted(() => {
     removeWaitlistEntry,
     retireWaitlistEntries,
     reofferFreedSlots,
+    withdrawSlotOffersOnClientAppointments,
     after,
   };
 });
@@ -80,6 +82,7 @@ vi.mock("@/lib/slot-offers", () => ({
   removeWaitlistEntry: mocks.removeWaitlistEntry,
   retireWaitlistEntries: mocks.retireWaitlistEntries,
   reofferFreedSlots: mocks.reofferFreedSlots,
+  withdrawSlotOffersOnClientAppointments: mocks.withdrawSlotOffersOnClientAppointments,
 }));
 
 // Unrelated to this file's subject (inbox thread syncing on save) — stubbed
@@ -188,6 +191,7 @@ beforeEach(() => {
   mocks.waitlistEntry.findMany.mockResolvedValue([]);
   mocks.retireWaitlistEntries.mockResolvedValue([]);
   mocks.reofferFreedSlots.mockResolvedValue(undefined);
+  mocks.withdrawSlotOffersOnClientAppointments.mockResolvedValue(undefined);
   mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) =>
     cb({
       client: mocks.client,
@@ -304,6 +308,42 @@ describe("deleteClientAction", () => {
       ].map((fn) => fn.mock.invocationCallOrder[0]);
       expect(retire).toBeLessThan(remove);
       expect(remove).toBeLessThan(reoffer);
+    });
+
+    // Codex #130: deleting the client cascades their appointments away. One that
+    // was cancelled and offered to ANOTHER waiting client would lose that offer's
+    // link and strand the other client's entry as OFFERED, so the offers on the
+    // client's own appointments are withdrawn first, in the same transaction.
+    it("withdraws the open offers on the client's own appointments before they are cascade-deleted, in the same transaction", async () => {
+      await deleteClientAction(CLIENT_ID);
+
+      expect(mocks.$transaction).toHaveBeenCalledTimes(1);
+      expect(mocks.withdrawSlotOffersOnClientAppointments).toHaveBeenCalledWith(expect.anything(), {
+        businessId: "biz_1",
+        clientId: CLIENT_ID,
+      });
+      const [withdraw, remove] = [mocks.withdrawSlotOffersOnClientAppointments, mocks.client.deleteMany].map(
+        (fn) => fn.mock.invocationCallOrder[0]
+      );
+      expect(withdraw).toBeLessThan(remove);
+    });
+
+    it("doesn't withdraw anything when the client doesn't exist", async () => {
+      mocks.client.findFirst.mockResolvedValue(null);
+
+      await deleteClientAction(CLIENT_ID);
+
+      expect(mocks.withdrawSlotOffersOnClientAppointments).not.toHaveBeenCalled();
+    });
+
+    it("rolls the whole deletion back when withdrawing them fails: the client stays, no cleanup is recorded", async () => {
+      mocks.withdrawSlotOffersOnClientAppointments.mockRejectedValue(new Error("db down"));
+
+      await expect(deleteClientAction(CLIENT_ID)).rejects.toThrow("db down");
+
+      expect(mocks.client.deleteMany).not.toHaveBeenCalled();
+      expect(mocks.recordPendingStorageCleanup).not.toHaveBeenCalled();
+      expect(mocks.after).not.toHaveBeenCalled();
     });
 
     it("are not touched, nor anything offered on, when the client doesn't exist", async () => {

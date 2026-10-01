@@ -24,7 +24,7 @@ import { attemptStorageCleanup, recordPendingStorageCleanup } from "@/lib/media-
 import { parseAmountToCents } from "@/lib/payment-amount";
 import { parseRecordId, recordIdSchema } from "@/lib/record-id";
 import { retryOnWriteConflict } from "@/lib/prisma-retry";
-import { reofferFreedSlots, retireWaitlistEntries } from "@/lib/slot-offers";
+import { reofferFreedSlots, retireWaitlistEntries, withdrawSlotOffersOnClientAppointments } from "@/lib/slot-offers";
 import { acquireBusinessFinancialLock } from "@/lib/business-financial-lock";
 
 // Aborts addClientPaymentAction's transaction from inside its callback when
@@ -1289,6 +1289,12 @@ export async function deleteClientAction(rawClientId: string): Promise<DeleteCli
     }
 
     const freedAppointmentIds = await retireWaitlistEntries(tx, { businessId: business.id, clientId });
+
+    // The client's own appointments are cascade-deleted with them. One that was
+    // cancelled and offered to another waiting client would lose that offer's
+    // link (SET NULL) and strand the other client's entry as OFFERED, so any
+    // open offer on them is withdrawn first (Codex #130).
+    await withdrawSlotOffersOnClientAppointments(tx, { businessId: business.id, clientId });
 
     const { count } = await tx.client.deleteMany({
       where: {

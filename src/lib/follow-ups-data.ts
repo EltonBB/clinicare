@@ -2,6 +2,7 @@ import { BusinessPlan, Prisma } from "@prisma/client";
 
 import { isProBusinessPlan } from "@/lib/billing";
 import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
+import { isSlotInsideOperatingHours } from "@/lib/operating-hours";
 import { prisma } from "@/lib/prisma";
 import type { FollowUpDraftRecord } from "@/lib/follow-ups";
 import { liveSlotOfferWhere, reofferFreedSlot, retryOnWriteConflict } from "@/lib/slot-offers";
@@ -135,6 +136,12 @@ type MarkDraftSentResult = { ok: true; draft: SentFollowUpDraft } | { ok: false;
 
 export const ALREADY_HANDLED_ERROR = "This follow-up was already handled.";
 export const SLOT_OFFER_UNAVAILABLE_ERROR = "This slot offer is no longer available.";
+export const SLOT_OUTSIDE_HOURS_ERROR =
+  "This slot is outside your working hours now. Update your working hours in Settings, or skip or decline the offer.";
+
+// Thrown inside markFollowUpDraftSent's transaction to roll the SENT flip back
+// when the offered slot no longer fits the clinic's working hours.
+class SlotOutsideHours extends Error {}
 
 /**
  * Atomic PENDING -> SENT flip: two staff tapping Send at once can't both
@@ -155,6 +162,13 @@ export const SLOT_OFFER_UNAVAILABLE_ERROR = "This slot offer is no longer availa
  * invalidate the offer between the two calls — the flip already committed,
  * so the unguarded read would still return the row and the caller would
  * still send the now-stale offer (Codex).
+ *
+ * A slot offer also has to still fit the clinic's working hours: they can be
+ * shortened, or a weekday closed, after the appointment was booked, and the
+ * calendar would then refuse the very booking this message invites. That can't
+ * be a SQL liveness filter (it needs the clinic's weekday and wall clock), so
+ * it is checked here, in the flip's own transaction, which is rolled back when
+ * the slot is outside the hours (Codex #130).
  */
 export async function markFollowUpDraftSent(args: {
   id: string;
@@ -163,6 +177,25 @@ export async function markFollowUpDraftSent(args: {
   editedBody?: string;
 }): Promise<MarkDraftSentResult> {
   const { id, businessId, now = new Date(), editedBody } = args;
+
+  try {
+    return await flipDraftToSent({ id, businessId, now, editedBody });
+  } catch (error) {
+    if (error instanceof SlotOutsideHours) {
+      return { ok: false, error: SLOT_OUTSIDE_HOURS_ERROR };
+    }
+    throw error;
+  }
+}
+
+function flipDraftToSent(args: {
+  id: string;
+  businessId: string;
+  now: Date;
+  editedBody?: string;
+}): Promise<MarkDraftSentResult> {
+  const { id, businessId, now, editedBody } = args;
+
   return retryOnWriteConflict(() =>
     prisma.$transaction(async (tx) => {
       const { count } = await tx.followUpDraft.updateMany({
@@ -188,8 +221,23 @@ export async function markFollowUpDraftSent(args: {
 
       const draft = await tx.followUpDraft.findFirstOrThrow({
         where: { id, businessId },
-        select: { id: true, body: true, clientId: true, client: { select: { phone: true, name: true } } },
+        select: {
+          id: true,
+          body: true,
+          kind: true,
+          clientId: true,
+          client: { select: { phone: true, name: true } },
+          appointment: { select: { startAt: true, endAt: true } },
+        },
       });
+
+      if (
+        draft.kind === "SLOT_OFFER" &&
+        draft.appointment &&
+        !(await isSlotInsideOperatingHours(tx, { businessId, ...draft.appointment }))
+      ) {
+        throw new SlotOutsideHours();
+      }
 
       return {
         ok: true,
@@ -356,6 +404,20 @@ export async function bookSlotOffer(args: { id: string; businessId: string; now?
 
     if (locked === 0) {
       return { ok: false, error: SLOT_OFFER_UNAVAILABLE_ERROR };
+    }
+
+    // The slot also has to still fit the clinic's working hours (see
+    // markFollowUpDraftSent): checked once the draft is locked and before the
+    // entry is flipped, so a refused Book leaves the entry OFFERED — it can still
+    // be declined and offered on — instead of FILLED with a booking the calendar
+    // will not accept (Codex #130).
+    const offered = await tx.followUpDraft.findFirst({
+      where: { id, businessId },
+      select: { appointment: { select: { startAt: true, endAt: true } } },
+    });
+
+    if (offered?.appointment && !(await isSlotInsideOperatingHours(tx, { businessId, ...offered.appointment }))) {
+      return { ok: false, error: SLOT_OUTSIDE_HOURS_ERROR };
     }
 
     const { count } = await tx.waitlistEntry.updateMany({

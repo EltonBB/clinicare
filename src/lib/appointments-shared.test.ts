@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => {
   const followUpDraft = { createMany: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() };
   const scheduleBlock = { findFirst: vi.fn() };
   const staffMember = { findFirst: vi.fn() };
+  const businessHours = { findUnique: vi.fn() };
   const $executeRaw = vi.fn();
   const outer = {
     business: { findUniqueOrThrow: vi.fn() },
@@ -37,6 +38,7 @@ const mocks = vi.hoisted(() => {
     followUpDraft,
     scheduleBlock,
     staffMember,
+    businessHours,
     $executeRaw,
     outer,
     $transaction,
@@ -133,6 +135,7 @@ beforeEach(() => {
   mocks.followUpDraft.findMany.mockResolvedValue([]);
   mocks.scheduleBlock.findFirst.mockResolvedValue(null); // no business-wide block by default
   mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_1" }); // the freed slot's staff is available by default
+  mocks.businessHours.findUnique.mockResolvedValue({ isOpen: true, startTime: "00:00", endTime: "23:59" }); // open all day by default
   mocks.$executeRaw.mockResolvedValue(undefined);
   mocks.$transaction.mockImplementation(
     async (cb: (tx: unknown) => unknown) =>
@@ -145,6 +148,7 @@ beforeEach(() => {
         followUpDraft: mocks.followUpDraft,
         scheduleBlock: mocks.scheduleBlock,
         staffMember: mocks.staffMember,
+        businessHours: mocks.businessHours,
         $executeRaw: mocks.$executeRaw,
       })
   );
@@ -507,6 +511,24 @@ describe("cancelAppointmentCore — slot-fill matching", () => {
     expect(mocks.followUpDraft.createMany).not.toHaveBeenCalled();
   });
 
+  // Codex #130: working hours can shrink after a booking was made; the freed
+  // slot is then one the calendar would refuse to book, so it isn't offered.
+  it("completes the cancel but offers nothing when the slot is outside the clinic's working hours now", async () => {
+    mockGuardHit();
+    mockPro();
+    mocks.businessHours.findUnique.mockResolvedValue({ isOpen: false, startTime: "08:00", endTime: "20:00" });
+    mocks.waitlistEntry.findMany.mockResolvedValue([
+      { id: "wl_1", clientId: "client_wl", service: "Checkup", staffMemberId: null, earliestDate: null, preferredDays: [], preferredFrom: null, preferredTo: null, createdAt: new Date("2026-01-01T00:00:00Z"), client: { name: "Mira" } },
+    ]);
+
+    const result = await cancelAppointmentCore(WHERE);
+
+    expect(result).toMatchObject({ ok: true, changed: true });
+    expect(mocks.businessHours.findUnique).toHaveBeenCalledTimes(1);
+    expect(mocks.waitlistEntry.updateMany).not.toHaveBeenCalled();
+    expect(mocks.followUpDraft.createMany).not.toHaveBeenCalled();
+  });
+
   it("does not create an orphaned draft when the matched entry was already claimed between the read and the flip", async () => {
     // The status-flip updateMany is its own CAS — a concurrent offer/removal
     // could win the race between the candidate read and this write, so
@@ -548,6 +570,7 @@ describe("cancelAppointmentCore — slot-fill matching", () => {
     mocks.appointment.findFirstOrThrow.mockResolvedValue({
       ...RECORD,
       startAt: new Date("2026-01-14T23:30:00.000Z"),
+      endAt: new Date("2026-01-15T00:00:00.000Z"), // a 30-minute slot, so the working-hours check sees a real length
     });
     mockPro();
     mocks.waitlistEntry.findMany.mockResolvedValue([
@@ -574,6 +597,7 @@ describe("cancelAppointmentCore — slot-fill matching", () => {
     mocks.appointment.findFirstOrThrow.mockResolvedValue({
       ...RECORD,
       startAt: new Date("2026-01-14T23:30:00.000Z"),
+      endAt: new Date("2026-01-15T00:00:00.000Z"), // a 30-minute slot, so the working-hours check sees a real length
     });
     mockPro();
     mocks.waitlistEntry.findMany.mockResolvedValue([

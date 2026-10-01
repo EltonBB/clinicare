@@ -24,18 +24,13 @@ import {
 } from "@/lib/appointments-shared";
 import { isProBusinessPlan } from "@/lib/billing";
 import { getNoShowRiskAssessments } from "@/lib/no-show-risk-data";
+import { isInsideOperatingHours } from "@/lib/operating-hours";
 import { MAX_RISK_BATCH_SIZE, type NoShowRiskAssessment } from "@/lib/no-show-risk";
 import { parseRecordId } from "@/lib/record-id";
 import { acquireSchedulingLock, hasSchedulingConflict } from "@/lib/scheduling-conflicts";
 import { offerFreedSlot, withdrawSlotOffers } from "@/lib/slot-offers";
+import { formatZonedDateKey, formatZonedTime24, parseZonedWallClock } from "@/lib/time-zone";
 import {
-  formatZonedDateKey,
-  formatZonedTime24,
-  getZonedWeekday,
-  parseZonedWallClock,
-} from "@/lib/time-zone";
-import {
-  timeToMinutes,
   toCalendarStatus,
   toCalendarTone,
   toPrismaAppointmentStatus,
@@ -95,42 +90,6 @@ function getAuthedBusiness() {
 // the true UTC instant (shared helper — see lib/time-zone.ts).
 function parseDateTime(date: string, time: string) {
   return parseZonedWallClock(date, time);
-}
-
-async function isInsideBusinessHours(args: {
-  businessId: string;
-  startAt: Date;
-  startTime: string;
-  endTime: string;
-}) {
-  // Map the zoned weekday (Sun=0..Sat=6) onto the clinic schedule's Monday=0
-  // convention so near-midnight bookings resolve to the correct day's hours.
-  const weekday = (getZonedWeekday(args.startAt) + 6) % 7;
-  const hours = await prisma.businessHours.findUnique({
-    where: {
-      businessId_weekday: {
-        businessId: args.businessId,
-        weekday,
-      },
-    },
-    select: {
-      isOpen: true,
-      startTime: true,
-      endTime: true,
-    },
-  });
-
-  const start = timeToMinutes(args.startTime);
-  const end = timeToMinutes(args.endTime);
-
-  // No configured row for this weekday means closed, not a guessed Mon-Fri
-  // 9-5 default — matches calendar-workspace.tsx, reports.ts, and the
-  // client-side businessHoursForDate in new-appointment-form.tsx.
-  if (!hours?.isOpen) {
-    return false;
-  }
-
-  return start >= timeToMinutes(hours.startTime) && end <= timeToMinutes(hours.endTime);
 }
 
 async function hydrateAppointment(appointmentId: string) {
@@ -238,7 +197,7 @@ export async function saveAppointmentAction(
     }
   }
 
-  const insideBusinessHours = await isInsideBusinessHours({
+  const insideBusinessHours = await isInsideOperatingHours(prisma, {
     businessId: business.id,
     startAt,
     startTime: payload.startTime,

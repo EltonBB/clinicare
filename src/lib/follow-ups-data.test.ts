@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
     appointment: { findFirst: vi.fn() },
     business: { findUniqueOrThrow: vi.fn() },
     scheduleBlock: { findFirst: vi.fn() },
+    businessHours: { findUnique: vi.fn() },
     $executeRaw: vi.fn(),
   },
 }));
@@ -31,6 +32,7 @@ import {
   listPendingFollowUpDrafts,
   markFollowUpDraftSent,
   passSlotOffer,
+  SLOT_OUTSIDE_HOURS_ERROR,
 } from "@/lib/follow-ups-data";
 
 const NOW = new Date("2026-09-01T08:00:00.000Z");
@@ -53,6 +55,7 @@ beforeEach(() => {
   mocks.tx.business.findUniqueOrThrow.mockResolvedValue({ plan: "PRO" });
   mocks.tx.followUpDraft.findFirst.mockResolvedValue(null); // no other live offer for the slot
   mocks.tx.scheduleBlock.findFirst.mockResolvedValue(null); // no business-wide block by default
+  mocks.tx.businessHours.findUnique.mockResolvedValue({ isOpen: true, startTime: "00:00", endTime: "23:59" }); // open all day by default
   mocks.tx.$executeRaw.mockResolvedValue(undefined);
 });
 
@@ -188,11 +191,20 @@ function serveDrafts(rows: Row[]) {
     const [row] = pick(where);
     if (!row) throw new Error("no row matched (findFirstOrThrow)");
     const rowClient = (row.client as Row | null) ?? {};
+    const rowAppointment = row.appointment as Row | null;
     return {
       id: row.id,
       body: row.body,
+      kind: row.kind,
       clientId: row.clientId,
       client: { phone: rowClient.phone ?? null, name: rowClient.name ?? null },
+      // A fixture without an end time is a half-hour slot.
+      appointment: rowAppointment
+        ? {
+            startAt: rowAppointment.startAt,
+            endAt: rowAppointment.endAt ?? new Date((rowAppointment.startAt as Date).getTime() + 30 * 60_000),
+          }
+        : null,
     };
   });
 }
@@ -734,6 +746,94 @@ describe("follow-ups data layer — list order and cap", () => {
   });
 });
 
+// Codex #130: the clinic's hours can be shortened, or a weekday closed, after an
+// appointment was booked. The calendar would refuse the booking an offer for its
+// cancelled slot invites, so the offer can no longer be sent. That needs the
+// clinic's weekday and wall clock, so it is checked in Send's own transaction
+// (not in the SQL liveness filter) and rolls the SENT flip back.
+describe("markFollowUpDraftSent — a slot offer's working hours", () => {
+  // Thursday 11:00-11:30 in Budapest (FUTURE is 09:00 UTC, CEST).
+  const offer = () =>
+    draftRow({
+      kind: "SLOT_OFFER",
+      waitlistEntry: { status: "OFFERED" },
+      appointmentId: "appt_2",
+      appointment: { status: "CANCELLED", startAt: FUTURE, endAt: new Date(FUTURE.getTime() + 30 * 60_000), staffMemberId: null },
+    });
+
+  function trackRollback() {
+    const state = { rolledBack: false };
+    mocks.prisma.$transaction.mockImplementation(async (cb: (client: unknown) => unknown) => {
+      try {
+        return await cb(mocks.tx);
+      } catch (error) {
+        state.rolledBack = true; // Prisma rolls an interactive transaction back when its callback throws
+        throw error;
+      }
+    });
+    return state;
+  }
+
+  it("sends an offer whose slot fits the hours, checking the hours of the slot's own weekday", async () => {
+    serveDrafts([offer()]);
+    mocks.tx.businessHours.findUnique.mockResolvedValue({ isOpen: true, startTime: "00:00", endTime: "23:59" });
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({ ok: true });
+    // Thursday is 3 in the schedule's Monday=0 convention.
+    expect(mocks.tx.businessHours.findUnique).toHaveBeenCalledWith({
+      where: { businessId_weekday: { businessId: "biz_1", weekday: 3 } },
+      select: { isOpen: true, startTime: true, endTime: true },
+    });
+  });
+
+  it.each([
+    ["the weekday is switched off", { isOpen: false, startTime: "00:00", endTime: "23:59" }],
+    ["the weekday has no hours row", null],
+    ["the clinic now opens after the slot starts", { isOpen: true, startTime: "12:00", endTime: "18:00" }],
+    ["the clinic now closes before the slot ends", { isOpen: true, startTime: "07:00", endTime: "08:00" }],
+  ])("refuses the offer, and rolls the SENT flip back, when %s", async (_label, hours) => {
+    serveDrafts([offer()]);
+    mocks.tx.businessHours.findUnique.mockResolvedValue(hours);
+    const state = trackRollback();
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toEqual({
+      ok: false,
+      error: SLOT_OUTSIDE_HOURS_ERROR,
+    });
+    expect(state.rolledBack).toBe(true);
+    // A refusal is not a write conflict: no second attempt.
+    expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("names a customer-facing way out and no provider", () => {
+    expect(SLOT_OUTSIDE_HOURS_ERROR).toMatch(/working hours/i);
+    expect(SLOT_OUTSIDE_HOURS_ERROR).not.toMatch(/baileys|twilio|supabase|prisma|openai/i);
+  });
+
+  // A thank-you is about a visit that already happened (its draft carries that
+  // appointment too), so the clinic's hours today have nothing to say about it.
+  it.each([
+    ["a rebooking nudge", () => draftRow({ kind: "REBOOK" })],
+    [
+      "a thank-you for a past visit",
+      () => draftRow({ kind: "THANK_YOU", appointmentId: "appt_1", appointment: { status: "COMPLETED", startAt: PAST } }),
+    ],
+  ])("doesn't look at the hours for %s, even with the clinic closed", async (_label, make) => {
+    serveDrafts([make()]);
+    mocks.tx.businessHours.findUnique.mockResolvedValue({ isOpen: false, startTime: "00:00", endTime: "23:59" });
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({ ok: true });
+    expect(mocks.tx.businessHours.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("still refuses an offer that is no longer live before it looks at the hours", async () => {
+    serveDrafts([{ ...offer(), waitlistEntry: { status: "WAITING" } }]);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({ ok: false });
+    expect(mocks.tx.businessHours.findUnique).not.toHaveBeenCalled();
+  });
+});
+
 describe("dismissFollowUpDraft (Skip)", () => {
   it("dismisses a non-slot-offer draft and touches nothing else", async () => {
     mocks.tx.followUpDraft.findFirstOrThrow.mockResolvedValue({ kind: "REBOOK", waitlistEntryId: null, appointmentId: null });
@@ -986,6 +1086,58 @@ describe("bookSlotOffer (Book)", () => {
     expect(await bookSlotOffer({ id: "d1", businessId: "biz_1" })).toEqual({
       ok: false,
       error: "This slot offer is no longer available.",
+    });
+  });
+
+  // Codex #130: a slot outside the clinic's hours now is one the calendar's save
+  // refuses, so Book must not mark the entry FILLED for it.
+  describe("working hours", () => {
+    const SLOT = { startAt: FUTURE, endAt: new Date(FUTURE.getTime() + 30 * 60_000) };
+
+    it("books a slot that still fits the hours, reading them after the draft lock and before the entry flip", async () => {
+      mocks.tx.followUpDraft.findFirst.mockResolvedValue({ appointment: SLOT });
+
+      expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({ ok: true });
+
+      expect(mocks.tx.followUpDraft.findFirst).toHaveBeenCalledWith({
+        where: { id: "d1", businessId: "biz_1" },
+        select: { appointment: { select: { startAt: true, endAt: true } } },
+      });
+      expect(mocks.tx.businessHours.findUnique).toHaveBeenCalledWith({
+        where: { businessId_weekday: { businessId: "biz_1", weekday: 3 } },
+        select: { isOpen: true, startTime: true, endTime: true },
+      });
+      const [lock] = mocks.tx.followUpDraft.updateMany.mock.invocationCallOrder;
+      const [hours] = mocks.tx.businessHours.findUnique.mock.invocationCallOrder;
+      const [flip] = mocks.tx.waitlistEntry.updateMany.mock.invocationCallOrder;
+      expect(lock).toBeLessThan(hours);
+      expect(hours).toBeLessThan(flip);
+    });
+
+    it.each([
+      ["the weekday is switched off", { isOpen: false, startTime: "00:00", endTime: "23:59" }],
+      ["the weekday has no hours row", null],
+      ["the clinic now opens after the slot starts", { isOpen: true, startTime: "12:00", endTime: "18:00" }],
+      ["the clinic now closes before the slot ends", { isOpen: true, startTime: "07:00", endTime: "08:00" }],
+    ])("refuses, leaving the entry OFFERED, when %s", async (_label, hours) => {
+      mocks.tx.followUpDraft.findFirst.mockResolvedValue({ appointment: SLOT });
+      mocks.tx.businessHours.findUnique.mockResolvedValue(hours);
+
+      expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({
+        ok: false,
+        error: SLOT_OUTSIDE_HOURS_ERROR,
+      });
+      expect(mocks.tx.waitlistEntry.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("leaves the hours alone when the draft itself is already settled", async () => {
+      mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 0 });
+
+      expect(await bookSlotOffer({ id: "d1", businessId: "biz_1" })).toEqual({
+        ok: false,
+        error: "This slot offer is no longer available.",
+      });
+      expect(mocks.tx.businessHours.findUnique).not.toHaveBeenCalled();
     });
   });
 

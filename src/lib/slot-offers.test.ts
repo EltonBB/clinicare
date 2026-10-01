@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
     appointment: { findFirst: vi.fn() },
     scheduleBlock: { findFirst: vi.fn() },
     staffMember: { findFirst: vi.fn() },
+    businessHours: { findUnique: vi.fn() },
     $executeRaw: vi.fn(),
   },
 }));
@@ -39,6 +40,7 @@ import {
   retryOnWriteConflict,
   slotOfferBody,
   withdrawSlotOffers,
+  withdrawSlotOffersOnClientAppointments,
 } from "@/lib/slot-offers";
 
 const tx = mocks.tx as unknown as Prisma.TransactionClient;
@@ -71,6 +73,10 @@ function candidateRow(id: string, createdAt: string, overrides: Record<string, u
     ...overrides,
   };
 }
+
+// The clinic is open all day by default, so only the tests about working hours
+// depend on them. The mock ignores the weekday it is asked for.
+const OPEN_ALL_DAY = { isOpen: true, startTime: "00:00", endTime: "23:59" };
 
 const originalTimeZone = process.env.APP_TIME_ZONE;
 
@@ -105,6 +111,7 @@ beforeEach(() => {
   serveAppointmentReads();
   mocks.tx.scheduleBlock.findFirst.mockResolvedValue(null); // no business-wide block by default
   mocks.tx.staffMember.findFirst.mockResolvedValue({ id: "staff_1" }); // the freed slot's staff is available by default
+  mocks.tx.businessHours.findUnique.mockResolvedValue(OPEN_ALL_DAY);
   mocks.tx.$executeRaw.mockResolvedValue(undefined);
   mocks.prisma.$transaction.mockImplementation(async (cb: (client: unknown) => unknown) => cb(mocks.tx));
 });
@@ -203,6 +210,67 @@ describe("offerFreedSlot", () => {
 
     expect(offered).toBe("wl_1");
     expect(mocks.tx.staffMember.findFirst).not.toHaveBeenCalled();
+  });
+
+  // Codex #130: the clinic's hours can be shortened, or a weekday closed, after
+  // an appointment was booked. The calendar's save would refuse a booking into
+  // that slot, so the slot must not be promised to a waiting patient either.
+  describe("working hours", () => {
+    it("reads the clinic's hours for the slot's weekday in the schedule's Monday=0 convention", async () => {
+      mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_1", "2026-01-01")]);
+
+      await offerFreedSlot(tx, { businessId: "biz_1", cancelled: CANCELLED, now: NOW });
+
+      // CANCELLED is a Monday in Budapest.
+      expect(mocks.tx.businessHours.findUnique).toHaveBeenCalledWith({
+        where: { businessId_weekday: { businessId: "biz_1", weekday: 0 } },
+        select: { isOpen: true, startTime: true, endTime: true },
+      });
+    });
+
+    it("takes the weekday from the clinic's zone, not UTC: just after local midnight is still Monday", async () => {
+      mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_1", "2026-01-01")]);
+
+      // Sunday 22:30 UTC is Monday 00:30 in Budapest (CEST).
+      await offerFreedSlot(tx, {
+        businessId: "biz_1",
+        cancelled: {
+          ...CANCELLED,
+          startAt: new Date("2026-10-04T22:30:00.000Z"),
+          endAt: new Date("2026-10-04T23:00:00.000Z"),
+        },
+        now: NOW,
+      });
+
+      expect(mocks.tx.businessHours.findUnique.mock.calls[0][0].where.businessId_weekday.weekday).toBe(0);
+    });
+
+    it.each([
+      ["the weekday is switched off", { isOpen: false, startTime: "08:00", endTime: "20:00" }],
+      ["the weekday has no hours row at all", null],
+      ["the slot starts before opening", { isOpen: true, startTime: "09:30", endTime: "20:00" }],
+      ["the slot would end after closing", { isOpen: true, startTime: "08:00", endTime: "09:15" }],
+      ["the slot starts at closing time", { isOpen: true, startTime: "08:00", endTime: "09:00" }],
+    ])("offers nothing when %s", async (_label, hours) => {
+      mocks.tx.businessHours.findUnique.mockResolvedValue(hours);
+      mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_1", "2026-01-01")]);
+
+      const offered = await offerFreedSlot(tx, { businessId: "biz_1", cancelled: CANCELLED, now: NOW });
+
+      expect(offered).toBeNull();
+      // Refused up front: no scheduling lock, no match read, no flip, no draft.
+      expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
+      expect(mocks.tx.waitlistEntry.findMany).not.toHaveBeenCalled();
+      expect(mocks.tx.waitlistEntry.updateMany).not.toHaveBeenCalled();
+      expect(mocks.tx.followUpDraft.createMany).not.toHaveBeenCalled();
+    });
+
+    it("still offers a slot that exactly fills the hours, from opening to closing", async () => {
+      mocks.tx.businessHours.findUnique.mockResolvedValue({ isOpen: true, startTime: "09:00", endTime: "09:30" });
+      mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_1", "2026-01-01")]);
+
+      expect(await offerFreedSlot(tx, { businessId: "biz_1", cancelled: CANCELLED, now: NOW })).toBe("wl_1");
+    });
   });
 
   it("never offers the slot back to the client who cancelled it, to an archived client, or to a client with an open or let-go offer for it", async () => {
@@ -710,6 +778,82 @@ describe("withdrawSlotOffers (appointment un-cancelled)", () => {
       expired: 0,
       released: 0,
     });
+    expect(mocks.tx.waitlistEntry.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+// Codex #130: deleting a client cascades their appointments away; a cancelled
+// one whose slot was offered to ANOTHER client would lose that offer's link
+// (SET NULL) and strand the other client's entry as OFFERED.
+describe("withdrawSlotOffersOnClientAppointments", () => {
+  const openOffer = [{ status: "PENDING" }, { status: "SENT", waitlistEntry: { status: "OFFERED" } }];
+
+  it("withdraws the open offer on each of the client's appointments, putting the other clients' entries back on the list", async () => {
+    mocks.tx.followUpDraft.findMany
+      .mockResolvedValueOnce([{ appointmentId: "appt_a" }, { appointmentId: "appt_b" }])
+      .mockResolvedValueOnce([{ id: "d_a", businessId: "biz_1", waitlistEntryId: "wl_a" }])
+      .mockResolvedValueOnce([{ id: "d_b", businessId: "biz_1", waitlistEntryId: "wl_b" }]);
+    mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
+
+    await withdrawSlotOffersOnClientAppointments(tx, { businessId: "biz_1", clientId: "client_dying" });
+
+    // Open offers whose appointment belongs to this client, one row per appointment.
+    expect(mocks.tx.followUpDraft.findMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        businessId: "biz_1",
+        kind: "SLOT_OFFER",
+        OR: openOffer,
+        appointment: { clientId: "client_dying" },
+      },
+      select: { appointmentId: true },
+      distinct: ["appointmentId"],
+    });
+    expect(mocks.tx.followUpDraft.updateMany.mock.calls.map(([call]) => [call.where.id, call.data.status])).toEqual([
+      ["d_a", "EXPIRED"],
+      ["d_b", "EXPIRED"],
+    ]);
+    expect(mocks.tx.waitlistEntry.updateMany.mock.calls.map(([call]) => [call.where.id, call.data.status])).toEqual([
+      ["wl_a", "WAITING"],
+      ["wl_b", "WAITING"],
+    ]);
+  });
+
+  it("only withdraws: the slot is about to disappear, so nothing is offered on, locked or drafted", async () => {
+    mocks.tx.followUpDraft.findMany
+      .mockResolvedValueOnce([{ appointmentId: "appt_a" }])
+      .mockResolvedValueOnce([{ id: "d_a", businessId: "biz_1", waitlistEntryId: "wl_a" }]);
+    mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
+
+    await withdrawSlotOffersOnClientAppointments(tx, { businessId: "biz_1", clientId: "client_dying" });
+
+    expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
+    expect(mocks.tx.followUpDraft.createMany).not.toHaveBeenCalled();
+    expect(mocks.tx.waitlistEntry.findMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("is not capped: a client with more than 20 open offers has every one of them withdrawn", async () => {
+    const rows = Array.from({ length: 35 }, (_, i) => ({ appointmentId: `appt_${i}` }));
+    mocks.tx.followUpDraft.findMany.mockResolvedValueOnce(rows).mockResolvedValue([]);
+
+    await withdrawSlotOffersOnClientAppointments(tx, { businessId: "biz_1", clientId: "client_busy" });
+
+    expect(mocks.tx.followUpDraft.findMany.mock.calls[0][0]).not.toHaveProperty("take");
+    // One withdrawal read per appointment, after the first read that found them.
+    expect(mocks.tx.followUpDraft.findMany).toHaveBeenCalledTimes(36);
+  });
+
+  it("drops a null appointmentId and does nothing for a client with no open offers", async () => {
+    mocks.tx.followUpDraft.findMany.mockResolvedValueOnce([{ appointmentId: null }]);
+
+    await withdrawSlotOffersOnClientAppointments(tx, { businessId: "biz_1", clientId: "client_dying" });
+    expect(mocks.tx.followUpDraft.findMany).toHaveBeenCalledTimes(1);
+
+    mocks.tx.followUpDraft.findMany.mockReset();
+    mocks.tx.followUpDraft.findMany.mockResolvedValueOnce([]);
+
+    await withdrawSlotOffersOnClientAppointments(tx, { businessId: "biz_1", clientId: "client_dying" });
+    expect(mocks.tx.followUpDraft.updateMany).not.toHaveBeenCalled();
     expect(mocks.tx.waitlistEntry.updateMany).not.toHaveBeenCalled();
   });
 });

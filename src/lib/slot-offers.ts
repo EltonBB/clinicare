@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { isProBusinessPlan } from "@/lib/billing";
 import { timeToMinutes } from "@/lib/calendar";
 import { ELIGIBLE_CLIENT_WHERE, INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
+import { isSlotInsideOperatingHours, operatingWeekday } from "@/lib/operating-hours";
 import { prisma } from "@/lib/prisma";
 import { retryOnWriteConflict } from "@/lib/prisma-retry";
 import { acquireSchedulingLock, hasSchedulingConflict } from "@/lib/scheduling-conflicts";
@@ -12,7 +13,7 @@ import {
   APPOINTMENT_STAFF_UNAVAILABLE_WHERE,
   AVAILABLE_STAFF_WHERE,
 } from "@/lib/staff-eligibility";
-import { formatZonedFullDate, formatZonedTime, formatZonedTime24, getZonedWeekday } from "@/lib/time-zone";
+import { formatZonedFullDate, formatZonedTime, formatZonedTime24 } from "@/lib/time-zone";
 import { WAITLIST_ENTRY_REMOVED_ERROR } from "@/lib/waitlist";
 import { findMatchingWaitlistCandidates, releaseWaitlistEntry } from "@/lib/waitlist-data";
 
@@ -59,8 +60,9 @@ export function slotOfferBody(clientName: string, startAt: Date) {
 /**
  * Offers a freed slot to the best-matching waiting entry, inside the caller's
  * transaction. Does nothing unless the workspace is on Pro (re-checked here,
- * inside the transaction, so no caller can skip the gate) and the slot is
- * still ahead. Walks every ranked match and stops at the first entry whose
+ * inside the transaction, so no caller can skip the gate), the slot is still
+ * ahead, its staff member is available, and it still fits the clinic's
+ * working hours. Walks every ranked match and stops at the first entry whose
  * WAITING -> OFFERED flip succeeds — a miss just means a concurrent request
  * claimed that entry between the read and the flip, so it moves on to the
  * next; six or more matches racing at once used to be handed a cap
@@ -106,6 +108,21 @@ export async function offerFreedSlot(
     if (!staffAvailable) {
       return null;
     }
+  }
+
+  // The same goes for a slot that no longer fits the clinic's working hours
+  // (hours shortened, or the weekday closed, since the appointment was booked):
+  // the calendar's save would refuse the booking, so offering the slot would
+  // promise the patient something nobody can book (Codex #130). Skip and
+  // Declined re-enter here, so a refused slot is simply not offered on.
+  const insideHours = await isSlotInsideOperatingHours(tx, {
+    businessId,
+    startAt: cancelled.startAt,
+    endAt: cancelled.endAt,
+  });
+
+  if (!insideHours) {
+    return null;
   }
 
   // hasSchedulingConflict deliberately excludes CANCELLED rows, so a real
@@ -158,13 +175,13 @@ export async function offerFreedSlot(
 
   // Waiting-list day/time preferences are clinic-local wall-clock values, so
   // the freed slot's weekday and time-of-day come from the clinic's zone too
-  // (zoned Sun=0..Sat=6 mapped onto the schedule's Monday=0 convention — same
-  // conversion as isInsideBusinessHours in calendar/actions.ts).
+  // (the schedule's Monday=0 weekday — the same conversion the working-hours
+  // check uses).
   const ranked = rankWaitlistMatches(candidates, {
     service: cancelled.title,
     staffMemberId: cancelled.staffMemberId,
     startAt: cancelled.startAt,
-    weekday: (getZonedWeekday(cancelled.startAt) + 6) % 7,
+    weekday: operatingWeekday(cancelled.startAt),
     timeMinutes: timeToMinutes(formatZonedTime24(cancelled.startAt)),
   });
 
@@ -294,6 +311,14 @@ async function offerSlotAgain(
  * (bookFollowUpSlotAction), so an offer that can't be honored must stop
  * being sendable at once too, not only once staff discover it while trying
  * to Book (Codex #130).
+ *
+ * The clinic's working hours are deliberately NOT part of this filter: whether
+ * a slot still fits them needs the clinic's weekday and wall clock, which a
+ * Prisma where-input can't express. An offer drafted before the hours changed
+ * therefore stays listed (staff can still Skip or Decline it), but Send and
+ * Book check the hours in their own transactions (follow-ups-data.ts) and
+ * refuse with a clear message, and offerFreedSlot never drafts an offer for a
+ * slot outside them (Codex #130).
  */
 export function liveSlotOfferWhere(now: Date): Prisma.FollowUpDraftWhereInput {
   return {
@@ -398,6 +423,42 @@ export async function withdrawSlotOffers(
   }
 
   return { expired, released };
+}
+
+/**
+ * Withdraws every open offer on any of a client's own appointments — call it
+ * BEFORE the client is deleted, inside the same transaction. Deleting a client
+ * cascades their appointments away; a cancelled one whose slot was offered to
+ * another client would otherwise lose its link to that offer (the draft's
+ * appointmentId goes to NULL), leaving the other client's entry OFFERED with a
+ * draft nobody can see until the hourly sweep finds it (Codex #130). Withdrawn
+ * rather than retired-and-re-offered like the staff-delete path: the slot is
+ * about to disappear, so there is nothing left to offer on.
+ *
+ * Not capped, for the same reason as findStaffAssignedOpenOfferAppointments:
+ * open offers never exceed the waiting list's own 500-entry ceiling, and a cap
+ * would strand the rest.
+ */
+export async function withdrawSlotOffersOnClientAppointments(
+  tx: Prisma.TransactionClient,
+  args: { businessId: string; clientId: string }
+): Promise<void> {
+  const drafts = await tx.followUpDraft.findMany({
+    where: {
+      businessId: args.businessId,
+      kind: "SLOT_OFFER",
+      ...OPEN_SLOT_OFFER_WHERE,
+      appointment: { clientId: args.clientId },
+    },
+    select: { appointmentId: true },
+    distinct: ["appointmentId"],
+  });
+
+  for (const { appointmentId } of drafts) {
+    if (appointmentId) {
+      await withdrawSlotOffers(tx, { businessId: args.businessId, appointmentId });
+    }
+  }
 }
 
 /**
