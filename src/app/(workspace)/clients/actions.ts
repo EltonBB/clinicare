@@ -23,7 +23,8 @@ import { normalizeStorageReference } from "@/lib/media-storage";
 import { attemptStorageCleanup, recordPendingStorageCleanup } from "@/lib/media-storage-server";
 import { parseAmountToCents } from "@/lib/payment-amount";
 import { parseRecordId, recordIdSchema } from "@/lib/record-id";
-import { removeWaitlistEntry } from "@/lib/slot-offers";
+import { retryOnWriteConflict } from "@/lib/prisma-retry";
+import { removeWaitlistEntry, reofferFreedSlots, retireWaitlistEntries } from "@/lib/slot-offers";
 import { acquireBusinessFinancialLock } from "@/lib/business-financial-lock";
 
 // Aborts addClientPaymentAction's transaction from inside its callback when
@@ -776,33 +777,38 @@ export async function saveClientAction(
         };
       }
 
-      // ELIGIBLE_CLIENT_WHERE hides this client's waitlist entries from the
-      // active list/cap the moment they go inactive/archived, but leaves
-      // their status untouched — so reactivating them later would silently
-      // let those entries re-enter the panel and count again, with no
-      // capacity check at that point (Codex #130). Retire them BEFORE the
-      // status change commits, the same way deleteClientAction settles a
-      // held offer before its own delete — removeWaitlistEntry opens its own
-      // transaction and can't be nested inside this update, so ordering is
-      // what keeps a mid-loop failure safe: if it throws, the client's
-      // status hasn't changed yet, instead of leaving an ineligible client
-      // with active entries the way running this after update would (Codex).
-      if (data.status === "INACTIVE" || data.status === "ARCHIVED") {
-        const staleEntries = await prisma.waitlistEntry.findMany({
-          where: { businessId: business.id, clientId: payload.id, status: { in: ["WAITING", "OFFERED"] } },
-          select: { id: true },
-        });
-        for (const entry of staleEntries) {
-          await removeWaitlistEntry({ id: entry.id, businessId: business.id });
-        }
-      }
+      // A client going Inactive/Archived stops being usable for the waiting
+      // list — ELIGIBLE_CLIENT_WHERE hides their entries from the panel and the
+      // cap and the matcher never picks them — but nothing changes those
+      // entries' own status, so reactivating the client later would silently
+      // bring them back, with no capacity check at that point. The status
+      // change and the retirement of their entries (offers dismissed, the freed
+      // slots offered on) therefore commit together or not at all: as separate
+      // writes, a failure between them left either a deactivated client with
+      // entries still active, or entries retired for a client who stayed
+      // eligible (Codex / CodeRabbit #130). Retried once on a deadlock, like
+      // every transaction that reaches the scheduling lock.
+      const savedClientId = existing.id;
 
-      await prisma.client.update({
-        where: {
-          id: payload.id,
-        },
-        data,
-      });
+      if (data.status === "INACTIVE" || data.status === "ARCHIVED") {
+        await retryOnWriteConflict(() =>
+          prisma.$transaction(async (tx) => {
+            // Status first, so the re-offer below can never hand a freed slot
+            // to this client's own other entries.
+            await tx.client.update({ where: { id: savedClientId }, data });
+
+            const freed = await retireWaitlistEntries(tx, { businessId: business.id, clientId: savedClientId });
+            await reofferFreedSlots(tx, { businessId: business.id, appointmentIds: freed });
+          })
+        );
+      } else {
+        await prisma.client.update({
+          where: {
+            id: savedClientId,
+          },
+          data,
+        });
+      }
 
       if (normalizePhone(existing.phone) !== cleanedPhone) {
         await normalizeConversationsForBusiness(business.id);

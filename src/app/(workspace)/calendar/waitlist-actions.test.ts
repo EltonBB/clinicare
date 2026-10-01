@@ -211,14 +211,14 @@ describe("addWaitlistEntryAction — successful add", () => {
     });
   });
 
-  it("refuses a staff member that doesn't belong to this business", async () => {
+  it("refuses a staff member that doesn't belong to this business (or is inactive)", async () => {
     mocks.staffMember.findFirst.mockResolvedValue(null);
 
     const result = await addWaitlistEntryAction({ ...VALID_PAYLOAD, staffMemberId: "staff_1" });
 
     expect(result).toEqual({
       ok: false,
-      error: "The selected staff member does not belong to this clinic workspace.",
+      error: "Choose an active staff member. Inactive staff can't be requested on the waiting list.",
     });
     expect(mocks.createWaitlistEntry).not.toHaveBeenCalled();
   });

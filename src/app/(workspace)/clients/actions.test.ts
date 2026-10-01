@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
@@ -25,6 +26,8 @@ const mocks = vi.hoisted(() => {
   const recordPendingStorageCleanup = vi.fn();
   const resolveMediaDisplayUrls = vi.fn();
   const removeWaitlistEntry = vi.fn();
+  const retireWaitlistEntries = vi.fn();
+  const reofferFreedSlots = vi.fn();
   const after = vi.fn();
   return {
     client,
@@ -46,6 +49,8 @@ const mocks = vi.hoisted(() => {
     recordPendingStorageCleanup,
     resolveMediaDisplayUrls,
     removeWaitlistEntry,
+    retireWaitlistEntries,
+    reofferFreedSlots,
     after,
   };
 });
@@ -73,6 +78,8 @@ vi.mock("@/lib/business", () => ({
 
 vi.mock("@/lib/slot-offers", () => ({
   removeWaitlistEntry: mocks.removeWaitlistEntry,
+  retireWaitlistEntries: mocks.retireWaitlistEntries,
+  reofferFreedSlots: mocks.reofferFreedSlots,
 }));
 
 // Unrelated to this file's subject (inbox thread syncing on save) — stubbed
@@ -178,6 +185,8 @@ beforeEach(() => {
   // No held waiting-list offer by default — the offer-settling test below
   // overrides this to a real row.
   mocks.waitlistEntry.findMany.mockResolvedValue([]);
+  mocks.retireWaitlistEntries.mockResolvedValue([]);
+  mocks.reofferFreedSlots.mockResolvedValue(undefined);
   mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) =>
     cb({
       client: mocks.client,
@@ -523,13 +532,13 @@ describe("client actions refuse a non-string id before touching the database", (
   });
 });
 
-// Codex #130: ELIGIBLE_CLIENT_WHERE hides this client's waitlist entries from
-// the active list/cap the moment they go inactive/archived, but their status
-// never changes — so reactivating the client later would silently let those
-// entries re-enter the panel and count again with no capacity check at that
-// point. saveClientAction must retire them the moment the save makes the
-// client ineligible, the same way deleteClientAction already retires a held
-// offer before the delete cascades it away.
+// Codex #130 / CodeRabbit #130: ELIGIBLE_CLIENT_WHERE hides an ineligible
+// client's waitlist entries from the active list/cap, but their status never
+// changes — so reactivating the client later would silently let them back in
+// with no capacity check. saveClientAction retires them when the save makes the
+// client ineligible, and does it in the SAME transaction as the status change:
+// as two separate writes, a failure between them left a deactivated client with
+// active entries (or retired entries for a client who stayed eligible).
 describe("saveClientAction retires stale waiting-list entries when a client becomes ineligible", () => {
   const BASE_PAYLOAD: SaveClientPayload = {
     id: CLIENT_ID,
@@ -543,6 +552,8 @@ describe("saveClientAction retires stale waiting-list entries when a client beco
     tags: "",
   };
 
+  const order = (fn: { mock: { invocationCallOrder: number[] } }) => fn.mock.invocationCallOrder[0];
+
   beforeEach(() => {
     mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID, phone: "+38344111222" });
     mocks.client.update.mockResolvedValue({});
@@ -553,53 +564,84 @@ describe("saveClientAction retires stale waiting-list entries when a client beco
     mocks.resolveMediaDisplayUrls.mockResolvedValue(new Map());
   });
 
-  it("retires WAITING and OFFERED entries when the save marks the client inactive", async () => {
-    mocks.waitlistEntry.findMany.mockResolvedValue([{ id: "wl_1" }, { id: "wl_2" }]);
-    mocks.removeWaitlistEntry.mockResolvedValue({ ok: true });
+  it("changes the status and retires the client's entries in ONE transaction — status first, then the freed slots are offered on", async () => {
+    mocks.retireWaitlistEntries.mockResolvedValue(["appt_1", null]);
 
     const result = await saveClientAction({ ...BASE_PAYLOAD, status: "inactive" });
 
     expect(result.ok).toBe(true);
+    expect(mocks.$transaction).toHaveBeenCalledTimes(1);
     expect(mocks.client.update).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: { id: CLIENT_ID },
         data: expect.objectContaining({ status: "INACTIVE", isArchived: false }),
       })
     );
-    expect(mocks.waitlistEntry.findMany).toHaveBeenCalledWith({
-      where: { businessId: "biz_1", clientId: CLIENT_ID, status: { in: ["WAITING", "OFFERED"] } },
-      select: { id: true },
+    expect(mocks.retireWaitlistEntries).toHaveBeenCalledWith(expect.anything(), {
+      businessId: "biz_1",
+      clientId: CLIENT_ID,
     });
-    expect(mocks.removeWaitlistEntry).toHaveBeenCalledTimes(2);
-    expect(mocks.removeWaitlistEntry).toHaveBeenCalledWith({ id: "wl_1", businessId: "biz_1" });
-    expect(mocks.removeWaitlistEntry).toHaveBeenCalledWith({ id: "wl_2", businessId: "biz_1" });
-    // Retirement runs before the status change commits (Codex #130): a
-    // mid-loop removeWaitlistEntry failure must never leave the client
-    // already marked inactive with entries still active.
-    expect(mocks.removeWaitlistEntry.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.client.update.mock.invocationCallOrder[0]
-    );
+    expect(mocks.reofferFreedSlots).toHaveBeenCalledWith(expect.anything(), {
+      businessId: "biz_1",
+      appointmentIds: ["appt_1", null],
+    });
+    // Status before retirement, so the re-offer can never hand a freed slot to
+    // this very client's other entries; re-offer last, once both are written.
+    expect(order(mocks.client.update)).toBeLessThan(order(mocks.retireWaitlistEntries));
+    expect(order(mocks.retireWaitlistEntries)).toBeLessThan(order(mocks.reofferFreedSlots));
   });
 
-  it("retires entries when the save archives the client too", async () => {
-    mocks.waitlistEntry.findMany.mockResolvedValue([{ id: "wl_3" }]);
-    mocks.removeWaitlistEntry.mockResolvedValue({ ok: true });
+  it("does the same when the save archives the client", async () => {
+    mocks.retireWaitlistEntries.mockResolvedValue(["appt_2"]);
 
     const result = await saveClientAction({ ...BASE_PAYLOAD, status: "archived" });
 
     expect(result.ok).toBe(true);
-    expect(mocks.waitlistEntry.findMany).toHaveBeenCalledWith({
-      where: { businessId: "biz_1", clientId: CLIENT_ID, status: { in: ["WAITING", "OFFERED"] } },
-      select: { id: true },
+    expect(mocks.client.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "ARCHIVED", isArchived: true }) })
+    );
+    expect(mocks.retireWaitlistEntries).toHaveBeenCalledWith(expect.anything(), {
+      businessId: "biz_1",
+      clientId: CLIENT_ID,
     });
-    expect(mocks.removeWaitlistEntry).toHaveBeenCalledWith({ id: "wl_3", businessId: "biz_1" });
+    expect(mocks.reofferFreedSlots).toHaveBeenCalledWith(expect.anything(), {
+      businessId: "biz_1",
+      appointmentIds: ["appt_2"],
+    });
   });
 
-  it("never looks for stale entries when the save keeps the client eligible", async () => {
+  it("reports the failure — and rolls the transaction back — when retiring an entry throws", async () => {
+    mocks.retireWaitlistEntries.mockRejectedValue(new Error("db down"));
+
+    const result = await saveClientAction({ ...BASE_PAYLOAD, status: "inactive" });
+
+    expect(result.ok).toBe(false);
+    // The transaction callback threw, so Postgres rolls the status change back
+    // with it; nothing is offered on.
+    await expect(mocks.$transaction.mock.results[0].value).rejects.toThrow("db down");
+    expect(mocks.reofferFreedSlots).not.toHaveBeenCalled();
+  });
+
+  it("re-runs the whole status change and retirement once when Postgres aborts it as a deadlock", async () => {
+    mocks.$transaction.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("deadlock detected", { code: "P2034", clientVersion: "test" })
+    );
+
+    const result = await saveClientAction({ ...BASE_PAYLOAD, status: "inactive" });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.$transaction).toHaveBeenCalledTimes(2);
+    expect(mocks.client.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens no transaction and touches no entries for a save that keeps the client eligible", async () => {
     const result = await saveClientAction({ ...BASE_PAYLOAD, status: "active" });
 
     expect(result.ok).toBe(true);
-    expect(mocks.waitlistEntry.findMany).not.toHaveBeenCalled();
-    expect(mocks.removeWaitlistEntry).not.toHaveBeenCalled();
+    expect(mocks.$transaction).not.toHaveBeenCalled();
+    expect(mocks.client.update).toHaveBeenCalledTimes(1);
+    expect(mocks.retireWaitlistEntries).not.toHaveBeenCalled();
+    expect(mocks.reofferFreedSlots).not.toHaveBeenCalled();
   });
 });
 

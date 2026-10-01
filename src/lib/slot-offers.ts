@@ -551,6 +551,88 @@ async function dismissOpenOffersOfEntry(
 }
 
 /**
+ * Takes one entry off the waiting list (WAITING or OFFERED -> REMOVED) inside
+ * the caller's transaction, dismissing its open offer draft(s) on the way.
+ * Returns whether the entry was really retired and the freed appointments
+ * whose offers were dismissed — the caller re-offers those once its own writes
+ * are done (see reofferFreedSlots), because what makes a re-offer correct (the
+ * client no longer eligible, the staff member gone) is often written by the
+ * caller in the same transaction.
+ *
+ * An entry that was already gone (FILLED, REMOVED, not this business's) retires
+ * nothing and reports `retired: false`; any open draft it still had is
+ * dismissed anyway, since its entry is no longer waiting.
+ */
+async function retireEntry(
+  tx: Prisma.TransactionClient,
+  args: { id: string; businessId: string }
+): Promise<{ retired: boolean; freed: Array<string | null> }> {
+  const { id, businessId } = args;
+
+  const freed = await dismissOpenOffersOfEntry(tx, { businessId, entryId: id });
+
+  const { count } = await tx.waitlistEntry.updateMany({
+    where: { id, businessId, status: { in: ["WAITING", "OFFERED"] } },
+    data: { status: "REMOVED" },
+  });
+
+  if (count === 0) {
+    return { retired: false, freed };
+  }
+
+  // An offer that landed on this entry while the write above waited for its
+  // row lock is caught by a second pass, so its slot is re-offered, not lost.
+  freed.push(...(await dismissOpenOffersOfEntry(tx, { businessId, entryId: id })));
+
+  return { retired: true, freed };
+}
+
+/**
+ * Retires every active entry of one client, or pinned to one staff member,
+ * inside the caller's transaction (so the status change or deletion that makes
+ * them unusable commits together with their retirement, or not at all).
+ * Returns the freed appointments to hand to reofferFreedSlots afterwards.
+ */
+export async function retireWaitlistEntries(
+  tx: Prisma.TransactionClient,
+  args: { businessId: string } & ({ clientId: string } | { staffMemberId: string })
+): Promise<Array<string | null>> {
+  const { businessId } = args;
+
+  const entries = await tx.waitlistEntry.findMany({
+    where: {
+      businessId,
+      status: { in: ["WAITING", "OFFERED"] },
+      ...("clientId" in args ? { clientId: args.clientId } : { staffMemberId: args.staffMemberId }),
+    },
+    select: { id: true },
+  });
+
+  const freed: Array<string | null> = [];
+
+  for (const entry of entries) {
+    freed.push(...(await retireEntry(tx, { id: entry.id, businessId })).freed);
+  }
+
+  return freed;
+}
+
+/**
+ * Offers each freed appointment's slot to the next match, inside the caller's
+ * transaction. offerSlotAgain re-checks the appointment is still cancelled (and
+ * offerFreedSlot that the slot is still ahead, free and its staff available),
+ * so a slot that stopped being offerable is simply skipped.
+ */
+export async function reofferFreedSlots(
+  tx: Prisma.TransactionClient,
+  args: { businessId: string; appointmentIds: Array<string | null>; now?: Date }
+): Promise<void> {
+  for (const appointmentId of new Set(args.appointmentIds)) {
+    await offerSlotAgain(tx, { businessId: args.businessId, appointmentId, now: args.now });
+  }
+}
+
+/**
  * Takes an entry off the waiting list (WAITING or OFFERED -> REMOVED), in one
  * transaction. An entry holding an offer counts as declining it: its open
  * offer draft is dismissed and the freed slot goes to the next match (the
@@ -574,22 +656,13 @@ export async function removeWaitlistEntry(args: {
   try {
     return await retryOnWriteConflict(() =>
       prisma.$transaction(async (tx): Promise<{ ok: true }> => {
-        const freed = await dismissOpenOffersOfEntry(tx, { businessId, entryId: id });
+        const { retired, freed } = await retireEntry(tx, { id, businessId });
 
-        const { count } = await tx.waitlistEntry.updateMany({
-          where: { id, businessId, status: { in: ["WAITING", "OFFERED"] } },
-          data: { status: "REMOVED" },
-        });
-
-        if (count === 0) {
+        if (!retired) {
           throw new EntryAlreadyGone();
         }
 
-        freed.push(...(await dismissOpenOffersOfEntry(tx, { businessId, entryId: id })));
-
-        for (const appointmentId of freed) {
-          await offerSlotAgain(tx, { businessId, appointmentId, now });
-        }
+        await reofferFreedSlots(tx, { businessId, appointmentIds: freed, now });
 
         return { ok: true };
       })

@@ -17,6 +17,7 @@ import {
   WAITLIST_CLIENT_ERROR,
   WAITLIST_ENTRY_REMOVED_ERROR,
   WAITLIST_PLAN_ERROR,
+  WAITLIST_STAFF_ERROR,
   WAITLIST_TIME_RANGE_ERROR,
 } from "@/lib/waitlist";
 import { parseZonedWallClock } from "@/lib/time-zone";
@@ -127,10 +128,7 @@ export async function addWaitlistEntryAction(
     });
 
     if (!staff) {
-      return {
-        ok: false,
-        error: "The selected staff member does not belong to this clinic workspace.",
-      };
+      return { ok: false, error: WAITLIST_STAFF_ERROR };
     }
 
     staffMemberId = staff.id;

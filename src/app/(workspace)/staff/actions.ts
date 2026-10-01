@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { closeOpenTimeEntryIfPresent, openTimeEntryIfAbsent } from "@/lib/mobile/clock";
 import { prisma } from "@/lib/prisma";
+import { retryOnWriteConflict } from "@/lib/prisma-retry";
 import {
   formatZonedTime,
   getAppTimeZone,
@@ -35,6 +36,7 @@ import {
 import {
   findStaffAssignedOpenOfferAppointments,
   retireSlotOffersForAppointments,
+  retireWaitlistEntries,
 } from "@/lib/slot-offers";
 
 export type SaveStaffResult = {
@@ -397,11 +399,25 @@ export async function deleteStaffAction(rawStaffId: string): Promise<DeleteStaff
     };
   }
 
-  const count = await prisma.$transaction(async (tx) => {
+  // Retried once on a deadlock: retiring offers takes draft and entry row
+  // locks, and re-offering a slot takes the staff scheduling advisory lock,
+  // in the opposite order from a booking.
+  const count = await retryOnWriteConflict(() => prisma.$transaction(async (tx) => {
     // Read BEFORE the delete: the FK's SET NULL clears staffMemberId on
     // every one of this staff member's appointments the instant the row is
     // gone, so this exact filter would match nothing afterward.
     const staleAppointmentIds = await findStaffAssignedOpenOfferAppointments(tx, {
+      businessId: business.id,
+      staffMemberId: staffId,
+    });
+
+    // Waiting-list entries pinned to this person: the FK's SET NULL would turn
+    // each one into "no staff preference", which the matcher accepts for any
+    // slot — clients who asked for this clinician would start receiving
+    // automatic offers for unrelated ones, with nobody having reviewed the
+    // changed preference. Retire them instead (offers dismissed). Their freed
+    // slots are offered on below, once the staff row is gone (Codex #130).
+    const pinnedFreedAppointmentIds = await retireWaitlistEntries(tx, {
       businessId: business.id,
       staffMemberId: staffId,
     });
@@ -430,11 +446,16 @@ export async function deleteStaffAction(rawStaffId: string): Promise<DeleteStaff
     // candidate before this transaction commits.
     await retireSlotOffersForAppointments(tx, {
       businessId: business.id,
-      appointmentIds: staleAppointmentIds,
+      appointmentIds: [
+        ...new Set([
+          ...staleAppointmentIds,
+          ...pinnedFreedAppointmentIds.flatMap((appointmentId) => (appointmentId ? [appointmentId] : [])),
+        ]),
+      ],
     });
 
     return deleted;
-  });
+  }));
 
   if (count === 0) {
     return {

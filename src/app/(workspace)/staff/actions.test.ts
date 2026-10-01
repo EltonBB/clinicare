@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
@@ -11,12 +12,14 @@ const mocks = vi.hoisted(() => {
   const getAuthedBusiness = vi.fn();
   const findStaffAssignedOpenOfferAppointments = vi.fn();
   const retireSlotOffersForAppointments = vi.fn();
+  const retireWaitlistEntries = vi.fn();
   return {
     staffMember,
     $transaction,
     getAuthedBusiness,
     findStaffAssignedOpenOfferAppointments,
     retireSlotOffersForAppointments,
+    retireWaitlistEntries,
   };
 });
 
@@ -34,6 +37,7 @@ vi.mock("@/lib/business", () => ({
 vi.mock("@/lib/slot-offers", () => ({
   findStaffAssignedOpenOfferAppointments: mocks.findStaffAssignedOpenOfferAppointments,
   retireSlotOffersForAppointments: mocks.retireSlotOffersForAppointments,
+  retireWaitlistEntries: mocks.retireWaitlistEntries,
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -60,6 +64,7 @@ beforeEach(() => {
   );
   mocks.findStaffAssignedOpenOfferAppointments.mockResolvedValue([]);
   mocks.retireSlotOffersForAppointments.mockResolvedValue(undefined);
+  mocks.retireWaitlistEntries.mockResolvedValue([]); // no staff-pinned waiting-list entries by default
 });
 
 describe("deleteStaffAction", () => {
@@ -127,6 +132,55 @@ describe("deleteStaffAction", () => {
     expect(mocks.retireSlotOffersForAppointments.mock.invocationCallOrder[0]).toBeGreaterThan(
       mocks.staffMember.deleteMany.mock.invocationCallOrder[0]
     );
+  });
+
+  // Codex #130: WaitlistEntry.staffMember is SET NULL, and a null staff on an
+  // entry means "any staff" to the matcher — so deleting the clinician someone
+  // specifically asked for would silently start offering them everyone else's
+  // freed slots.
+  it("retires the waiting-list entries pinned to this staff member before the delete, in the same transaction", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: STAFF_ID });
+    mocks.staffMember.deleteMany.mockResolvedValue({ count: 1 });
+
+    await deleteStaffAction(STAFF_ID);
+
+    expect(mocks.retireWaitlistEntries).toHaveBeenCalledWith(expect.anything(), {
+      businessId: "biz_1",
+      staffMemberId: STAFF_ID,
+    });
+    expect(mocks.retireWaitlistEntries.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.staffMember.deleteMany.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("offers the slots freed by those entries' dismissed offers on after the delete, once, alongside the stale ones", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: STAFF_ID });
+    mocks.staffMember.deleteMany.mockResolvedValue({ count: 1 });
+    mocks.findStaffAssignedOpenOfferAppointments.mockResolvedValue(["appt_1", "appt_2"]);
+    // appt_2 is in both lists; a null (an offer whose appointment was already
+    // gone) has nothing to re-offer.
+    mocks.retireWaitlistEntries.mockResolvedValue(["appt_2", null, "appt_3"]);
+
+    await deleteStaffAction(STAFF_ID);
+
+    expect(mocks.retireSlotOffersForAppointments).toHaveBeenCalledWith(expect.anything(), {
+      businessId: "biz_1",
+      appointmentIds: ["appt_1", "appt_2", "appt_3"],
+    });
+  });
+
+  it("re-runs the whole deletion once when Postgres aborts the transaction as a deadlock", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: STAFF_ID });
+    mocks.staffMember.deleteMany.mockResolvedValue({ count: 1 });
+    mocks.$transaction.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("deadlock detected", { code: "P2034", clientVersion: "test" })
+    );
+
+    const result = await deleteStaffAction(STAFF_ID);
+
+    expect(result).toEqual({ ok: true, staffId: STAFF_ID });
+    expect(mocks.$transaction).toHaveBeenCalledTimes(2);
+    expect(mocks.staffMember.deleteMany).toHaveBeenCalledTimes(1);
   });
 
   it("skips retirement work when the staff member holds no open slot offers", async () => {

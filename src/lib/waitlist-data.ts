@@ -4,9 +4,14 @@ import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { prisma } from "@/lib/prisma";
 import { retryOnWriteConflict } from "@/lib/prisma-retry";
 import { isSameService, type WaitlistCandidate } from "@/lib/slot-fill-matching";
-import { APPOINTMENT_STAFF_AVAILABLE_WHERE } from "@/lib/staff-eligibility";
+import { APPOINTMENT_STAFF_AVAILABLE_WHERE, AVAILABLE_STAFF_WHERE } from "@/lib/staff-eligibility";
 import { formatZonedShortDate } from "@/lib/time-zone";
-import { MAX_ACTIVE_WAITLIST_ENTRIES, WAITLIST_FULL_ERROR } from "@/lib/waitlist";
+import {
+  MAX_ACTIVE_WAITLIST_ENTRIES,
+  WAITLIST_CLIENT_ERROR,
+  WAITLIST_FULL_ERROR,
+  WAITLIST_STAFF_ERROR,
+} from "@/lib/waitlist";
 
 export type WaitlistEntryRow = {
   id: string;
@@ -102,6 +107,14 @@ export async function listWaitingEntries(businessId: string, now: Date = new Dat
  * of the two as a write conflict instead of letting both see the stale count;
  * retryOnWriteConflict re-runs it once, and the retry's count already
  * includes the winner's row (Codex #130).
+ *
+ * The client's (and a pinned staff member's) eligibility is re-read in the
+ * same transaction. The action checks it too, but before this transaction
+ * starts: a client marked Inactive or Archived in the gap would keep a valid
+ * foreign key, so the row would insert — and then be hidden by
+ * activeWaitlistEntryWhere and never matched, an invisible orphan. Reading the
+ * rows under SERIALIZABLE means a concurrent status change conflicts with this
+ * insert instead of slipping between the check and the write (Codex #130).
  */
 export async function createWaitlistEntry(args: {
   businessId: string;
@@ -117,6 +130,26 @@ export async function createWaitlistEntry(args: {
   return retryOnWriteConflict(() =>
     prisma.$transaction(
       async (tx) => {
+        const client = await tx.client.findFirst({
+          where: { id: args.clientId, businessId: args.businessId, ...ELIGIBLE_CLIENT_WHERE },
+          select: { id: true },
+        });
+
+        if (!client) {
+          return { ok: false, error: WAITLIST_CLIENT_ERROR };
+        }
+
+        if (args.staffMemberId) {
+          const staff = await tx.staffMember.findFirst({
+            where: { id: args.staffMemberId, businessId: args.businessId, ...AVAILABLE_STAFF_WHERE },
+            select: { id: true },
+          });
+
+          if (!staff) {
+            return { ok: false, error: WAITLIST_STAFF_ERROR };
+          }
+        }
+
         const active = await tx.waitlistEntry.count({
           where: activeWaitlistEntryWhere(args.businessId),
         });

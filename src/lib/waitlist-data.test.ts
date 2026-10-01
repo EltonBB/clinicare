@@ -7,7 +7,11 @@ import { Prisma } from "@prisma/client";
 const mocks = vi.hoisted(() => ({
   waitlistEntry: { findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn(), count: vi.fn() },
   $transaction: vi.fn(),
-  tx: { waitlistEntry: { count: vi.fn(), create: vi.fn() } },
+  tx: {
+    waitlistEntry: { count: vi.fn(), create: vi.fn() },
+    client: { findFirst: vi.fn() },
+    staffMember: { findFirst: vi.fn() },
+  },
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: mocks }));
@@ -24,6 +28,8 @@ const originalTimeZone = process.env.APP_TIME_ZONE;
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.$transaction.mockImplementation(async (cb: (client: unknown) => unknown) => cb(mocks.tx));
+  mocks.tx.client.findFirst.mockResolvedValue({ id: "client_1" }); // an eligible client by default
+  mocks.tx.staffMember.findFirst.mockResolvedValue({ id: "staff_1" }); // an available staff member by default
 });
 
 afterEach(() => {
@@ -147,6 +153,54 @@ describe("waitlist data layer", () => {
     expect(mocks.tx.waitlistEntry.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ businessId: "biz_1", clientId: "client_1", service: "Checkup", status: "WAITING" }) })
     );
+  });
+
+  // Codex #130: the action checks the client before this transaction starts, so
+  // a client marked Inactive or Archived in between would still insert (the
+  // foreign key is valid) and then be an entry nobody sees or matches.
+  it("re-checks the client's eligibility inside the transaction and inserts nothing for one who just became ineligible", async () => {
+    mocks.tx.client.findFirst.mockResolvedValue(null);
+
+    const result = await createWaitlistEntry(newEntry);
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Choose an active client. Archived and inactive clients can't join the waiting list.",
+    });
+    expect(mocks.tx.client.findFirst).toHaveBeenCalledWith({
+      where: { id: "client_1", businessId: "biz_1", isArchived: false, status: { notIn: ["INACTIVE", "ARCHIVED"] } },
+      select: { id: true },
+    });
+    expect(mocks.tx.waitlistEntry.count).not.toHaveBeenCalled();
+    expect(mocks.tx.waitlistEntry.create).not.toHaveBeenCalled();
+  });
+
+  it("re-checks a pinned staff member's availability inside the transaction too", async () => {
+    mocks.tx.staffMember.findFirst.mockResolvedValue(null);
+
+    const result = await createWaitlistEntry({ ...newEntry, staffMemberId: "staff_1" });
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Choose an active staff member. Inactive staff can't be requested on the waiting list.",
+    });
+    expect(mocks.tx.staffMember.findFirst).toHaveBeenCalledWith({
+      where: { id: "staff_1", businessId: "biz_1", isActive: true, status: { not: "INACTIVE" } },
+      select: { id: true },
+    });
+    expect(mocks.tx.waitlistEntry.create).not.toHaveBeenCalled();
+  });
+
+  it("creates a staff-pinned entry when the staff member is still available, and skips the staff read when nothing is pinned", async () => {
+    mocks.tx.waitlistEntry.count.mockResolvedValue(0);
+    mocks.tx.waitlistEntry.create.mockResolvedValue({ id: "wl_1" });
+
+    expect(await createWaitlistEntry({ ...newEntry, staffMemberId: "staff_1" })).toEqual({ ok: true });
+    expect(mocks.tx.staffMember.findFirst).toHaveBeenCalledTimes(1);
+
+    mocks.tx.staffMember.findFirst.mockClear();
+    expect(await createWaitlistEntry(newEntry)).toEqual({ ok: true });
+    expect(mocks.tx.staffMember.findFirst).not.toHaveBeenCalled();
   });
 
   it("refuses a new entry once the business's active waiting list is full, counting only eligible WAITING/OFFERED entries (Codex #130)", async () => {

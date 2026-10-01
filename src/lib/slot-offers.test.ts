@@ -33,7 +33,9 @@ import {
   offerFreedSlot,
   removeWaitlistEntry,
   reofferFreedSlot,
+  reofferFreedSlots,
   retireSlotOffersForAppointments,
+  retireWaitlistEntries,
   retryOnWriteConflict,
   slotOfferBody,
   withdrawSlotOffers,
@@ -824,6 +826,117 @@ describe("retireSlotOffersForAppointments", () => {
     await retireSlotOffersForAppointments(tx, { businessId: "biz_1", appointmentIds: [], now: NOW });
 
     expect(mocks.tx.followUpDraft.findMany).not.toHaveBeenCalled();
+    expect(mocks.tx.appointment.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("retireWaitlistEntries", () => {
+  const OPEN_ENTRY_STATUSES = { in: ["WAITING", "OFFERED"] };
+
+  it("retires every active entry of a client — offer drafts first, then the entry — and returns the freed appointments", async () => {
+    mocks.tx.waitlistEntry.findMany.mockResolvedValue([{ id: "wl_a" }, { id: "wl_b" }]);
+    // wl_a holds an offer for appt_1 (dismissed before its entry write, nothing
+    // new in the catch-up pass); wl_b holds none.
+    mocks.tx.followUpDraft.findMany
+      .mockResolvedValueOnce([{ id: "d_a", appointmentId: "appt_1" }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
+
+    const freed = await retireWaitlistEntries(tx, { businessId: "biz_1", clientId: "client_1" });
+
+    expect(mocks.tx.waitlistEntry.findMany).toHaveBeenCalledWith({
+      where: { businessId: "biz_1", status: OPEN_ENTRY_STATUSES, clientId: "client_1" },
+      select: { id: true },
+    });
+    expect(mocks.tx.waitlistEntry.updateMany.mock.calls.map(([call]) => [call.where.id, call.data.status])).toEqual([
+      ["wl_a", "REMOVED"],
+      ["wl_b", "REMOVED"],
+    ]);
+    expect(mocks.tx.followUpDraft.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: "d_a" }), data: { status: "DISMISSED" } })
+    );
+    expect(mocks.tx.followUpDraft.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.tx.waitlistEntry.updateMany.mock.invocationCallOrder[0]
+    );
+    expect(freed).toEqual(["appt_1"]);
+  });
+
+  it("selects the entries pinned to a staff member when given one", async () => {
+    mocks.tx.waitlistEntry.findMany.mockResolvedValue([]);
+
+    await retireWaitlistEntries(tx, { businessId: "biz_1", staffMemberId: "staff_1" });
+
+    expect(mocks.tx.waitlistEntry.findMany).toHaveBeenCalledWith({
+      where: { businessId: "biz_1", status: OPEN_ENTRY_STATUSES, staffMemberId: "staff_1" },
+      select: { id: true },
+    });
+  });
+
+  it("only hands the freed slots back — it never re-offers them itself, so the caller can finish its own writes first", async () => {
+    mocks.tx.waitlistEntry.findMany.mockResolvedValue([{ id: "wl_a" }]);
+    mocks.tx.followUpDraft.findMany.mockResolvedValueOnce([{ id: "d_a", appointmentId: "appt_1" }]).mockResolvedValueOnce([]);
+    mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
+
+    await retireWaitlistEntries(tx, { businessId: "biz_1", clientId: "client_1" });
+
+    expect(mocks.tx.appointment.findFirst).not.toHaveBeenCalled();
+    expect(mocks.tx.followUpDraft.createMany).not.toHaveBeenCalled();
+  });
+
+  it("does no writes for a client with nothing on the waiting list", async () => {
+    mocks.tx.waitlistEntry.findMany.mockResolvedValue([]);
+
+    expect(await retireWaitlistEntries(tx, { businessId: "biz_1", clientId: "client_1" })).toEqual([]);
+    expect(mocks.tx.waitlistEntry.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.followUpDraft.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("keeps the slot of an offer that landed during the entry write's lock wait, and one whose appointment is already gone", async () => {
+    mocks.tx.waitlistEntry.findMany.mockResolvedValue([{ id: "wl_a" }]);
+    mocks.tx.followUpDraft.findMany
+      .mockResolvedValueOnce([{ id: "d_old", appointmentId: null }]) // an offer whose appointment row is already gone
+      .mockResolvedValueOnce([{ id: "d_new", appointmentId: "appt_2" }]); // committed while the entry write waited
+    mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
+
+    expect(await retireWaitlistEntries(tx, { businessId: "biz_1", clientId: "client_1" })).toEqual([null, "appt_2"]);
+  });
+
+  it("still dismisses the open offers of an entry that another writer retired first, and reports their slots", async () => {
+    mocks.tx.waitlistEntry.findMany.mockResolvedValue([{ id: "wl_a" }]);
+    mocks.tx.followUpDraft.findMany.mockResolvedValueOnce([{ id: "d_a", appointmentId: "appt_1" }]);
+    mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.waitlistEntry.updateMany.mockResolvedValue({ count: 0 }); // already REMOVED / FILLED by someone else
+
+    expect(await retireWaitlistEntries(tx, { businessId: "biz_1", clientId: "client_1" })).toEqual(["appt_1"]);
+  });
+});
+
+describe("reofferFreedSlots", () => {
+  it("offers each distinct freed slot to its next match once, skipping nulls", async () => {
+    mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_next", "2026-02-01")]);
+
+    await reofferFreedSlots(tx, { businessId: "biz_1", appointmentIds: ["appt_1", null, "appt_1"], now: NOW });
+
+    const appointmentReads = mocks.tx.appointment.findFirst.mock.calls
+      .map(([call]) => call.where)
+      .filter((where) => where.status === "CANCELLED");
+    expect(appointmentReads).toEqual([{ id: "appt_1", businessId: "biz_1", status: "CANCELLED" }]);
+    expect(mocks.tx.followUpDraft.createMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips a slot that stopped being offerable (the appointment is no longer cancelled)", async () => {
+    serveAppointmentReads({ read: null });
+
+    await reofferFreedSlots(tx, { businessId: "biz_1", appointmentIds: ["appt_1"], now: NOW });
+
+    expect(mocks.tx.followUpDraft.createMany).not.toHaveBeenCalled();
+  });
+
+  it("does nothing for an empty list", async () => {
+    await reofferFreedSlots(tx, { businessId: "biz_1", appointmentIds: [], now: NOW });
+
     expect(mocks.tx.appointment.findFirst).not.toHaveBeenCalled();
   });
 });
