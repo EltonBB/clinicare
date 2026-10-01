@@ -160,12 +160,18 @@ function revalidateStaffSurfaces(staffId?: string | null) {
 // "Staff today" card, Reports' active-staff / top-provider / load highlights,
 // and the clients directory's "last provider" column all derive from the member
 // list. (Mirrors how the calendar helper fans out across the same triangle.)
+// The Inbox too: a slot offer is live only while the staff member of the
+// appointment it frees is still available (liveSlotOfferWhere), so marking
+// someone Inactive or removing them changes the Follow-ups list and the Inbox's
+// follow-up count (Codex #130).
 function revalidateStaffRosterSurfaces(staffId?: string | null) {
   revalidateStaffSurfaces(staffId);
   revalidatePath("/dashboard");
   revalidatePath("/calendar");
   revalidatePath("/reports");
   revalidatePath("/clients");
+  revalidatePath("/inbox");
+  revalidatePath("/inbox/follow-ups");
 }
 
 function isValidTime(value: string) {

@@ -328,7 +328,7 @@ describe("generateFollowUpDrafts — stale-draft sweep and totals", () => {
   it("runs the sweep even when there are no businesses to process", async () => {
     const result = await generateFollowUpDrafts(NOW);
 
-    expect(result).toEqual({ businessesProcessed: 0, draftsCreated: 0, draftsExpired: 0, errors: 0 });
+    expect(result).toEqual({ businessesProcessed: 0, draftsCreated: 0, draftsExpired: 0, errors: 0, abandonedBusinesses: 0 });
     expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(3);
     expect(mocks.expirePastSlotOffers).toHaveBeenCalledTimes(1);
   });
@@ -424,6 +424,111 @@ describe("generateFollowUpDrafts — stale-draft sweep and totals", () => {
     expect(result.draftsCreated).toBe(1);
     expect(mocks.logger.warn).toHaveBeenCalledTimes(1);
     expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(3);
+  });
+
+  // Codex #130: the budget above is only checked between businesses and between
+  // writes, so a query that stalls inside a business used to hold the whole
+  // invocation until the platform killed it — cursor not advanced, neither
+  // sweep run, the same clinic stalling every hourly run. Each business now has
+  // its own deadline, like the reminders cron's.
+  describe("per-business deadline", () => {
+    it("gives up on a business that stalls, still gives the next one its turn, advances the cursor past it and sweeps", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      mocks.prisma.business.findMany.mockResolvedValue([business("biz_1"), business("biz_2")]);
+      mocks.findPaymentReminderCandidates.mockImplementationOnce(() => new Promise(() => {})); // biz_1 hangs
+
+      const run = generateFollowUpDrafts(NOW);
+      await vi.advanceTimersByTimeAsync(30_000);
+      const result = await run;
+
+      expect(mocks.findPaymentReminderCandidates.mock.calls.map((call) => call[0].businessId)).toEqual(["biz_1", "biz_2"]);
+      expect(result).toMatchObject({ businessesProcessed: 2, abandonedBusinesses: 1, errors: 1 });
+      expect(mocks.logger.error).toHaveBeenCalledWith(
+        expect.stringContaining("per-business timeout"),
+        undefined,
+        expect.objectContaining({ businessId: "biz_1" })
+      );
+      // Not "biz_1" again: the stalled business took its turn, so the next run
+      // starts after it instead of stalling on it forever.
+      expect(mocks.setFollowUpCursor).toHaveBeenCalledWith("biz_2");
+      expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(3);
+      expect(mocks.expirePastSlotOffers).toHaveBeenCalledTimes(1);
+    });
+
+    it("still counts the drafts a business wrote before it stalled", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      mocks.prisma.business.findMany.mockResolvedValue([business("biz_1")]);
+      mocks.findPaymentReminderCandidates.mockResolvedValue([paymentInput]);
+      mocks.findThankYouCandidates.mockResolvedValue([thankYouInput]);
+      mocks.prisma.followUpDraft.create
+        .mockResolvedValueOnce({})
+        .mockImplementationOnce(() => new Promise(() => {})); // the second insert hangs
+
+      const run = generateFollowUpDrafts(NOW);
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(await run).toMatchObject({ draftsCreated: 1, abandonedBusinesses: 1 });
+    });
+
+    it("never lets a business run past the run budget: a late-starting one gets only what is left of it", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      mocks.prisma.business.findMany.mockResolvedValue([business("biz_1"), business("biz_2")]);
+      // biz_1 finishes 80s into the 90s budget (the clock jumps; no timer fires).
+      mocks.findPaymentReminderCandidates
+        .mockImplementationOnce(async () => {
+          vi.setSystemTime(Date.now() + 80_000);
+          return [];
+        })
+        .mockImplementationOnce(() => new Promise(() => {})); // biz_2 hangs
+      let settled = false;
+
+      const run = generateFollowUpDrafts(NOW).then((result) => {
+        settled = true;
+        return result;
+      });
+      await vi.advanceTimersByTimeAsync(10_000); // all that is left of the budget, not the full 30s
+      const finishedInTime = settled;
+      await vi.advanceTimersByTimeAsync(60_000); // let a failing run finish instead of dangling
+
+      expect(finishedInTime).toBe(true);
+      expect((await run).abandonedBusinesses).toBe(1);
+    });
+
+    it("does not count, log or time out a business that finishes inside its deadline", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      mocks.prisma.business.findMany.mockResolvedValue([business("biz_1")]);
+      mocks.findPaymentReminderCandidates.mockImplementationOnce(async () => {
+        vi.setSystemTime(Date.now() + 20_000);
+        return [];
+      });
+
+      const result = await generateFollowUpDrafts(NOW);
+
+      expect(result).toMatchObject({ businessesProcessed: 1, abandonedBusinesses: 0, errors: 0 });
+      expect(mocks.logger.error).not.toHaveBeenCalled();
+    });
+
+    it("swallows the failure of work it already gave up on instead of crashing the run", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      mocks.prisma.business.findMany.mockResolvedValue([business("biz_1")]);
+      let failLate: (error: Error) => void = () => {};
+      mocks.findPaymentReminderCandidates.mockImplementationOnce(
+        () => new Promise((_resolve, reject) => (failLate = reject))
+      );
+
+      const run = generateFollowUpDrafts(NOW);
+      await vi.advanceTimersByTimeAsync(30_000);
+      const result = await run;
+      failLate(new Error("connection reset")); // the abandoned query finally fails
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(result.abandonedBusinesses).toBe(1);
+    });
   });
 
   // Codex #130: a fixed `orderBy: { id: "asc" }` list combined with a budget

@@ -71,6 +71,44 @@ export function rebookedAppointmentWhere(now: Date): Prisma.AppointmentWhereInpu
   };
 }
 
+/**
+ * Each generated kind's switch in the Workflows settings. `onWithoutRow` is the
+ * kind's default, taken from DEFAULT_WORKFLOW_SETTINGS so the one place that
+ * says what a workspace with no saved settings does (the generator's
+ * `workflowSettings ?? DEFAULT_WORKFLOW_SETTINGS`) is also the one the draft
+ * liveness filter reads — not a second copy of "rebooking off, the others on".
+ */
+const WORKFLOW_SWITCHES: Record<
+  FollowUpDraftInput["kind"],
+  { on: Prisma.WorkflowSettingsWhereInput; onWithoutRow: boolean }
+> = {
+  REBOOK: { on: { rebookEnabled: true }, onWithoutRow: DEFAULT_WORKFLOW_SETTINGS.rebookEnabled },
+  PAYMENT: { on: { paymentReminderEnabled: true }, onWithoutRow: DEFAULT_WORKFLOW_SETTINGS.paymentReminderEnabled },
+  THANK_YOU: { on: { thankYouEnabled: true }, onWithoutRow: DEFAULT_WORKFLOW_SETTINGS.thankYouEnabled },
+};
+
+/**
+ * "The clinic has this workflow switched on", as a filter on the business a
+ * draft belongs to. The generators only read the switch when they create
+ * drafts, so without this an owner choosing Off stopped new drafts but left
+ * every already-queued one listed, counted and sendable (Codex #130). The
+ * Follow-ups list, the Inbox count and Send's compare-and-set all spread this
+ * into their liveness filter, so Off takes effect at once.
+ *
+ * A draft the switch hides is deliberately NOT expired by the hourly sweep:
+ * the payment and thank-you generators skip anything that already has a draft
+ * of its kind in any status, so an expired payment reminder would never be
+ * drafted again once the owner turned the workflow back on, even for a payment
+ * that is still unpaid. Hidden, it simply comes back with the switch; the
+ * sweep's own age limits still retire what has gone stale meanwhile.
+ */
+export function workflowEnabledWhere(kind: FollowUpDraftInput["kind"]): Prisma.BusinessWhereInput {
+  const { on, onWithoutRow } = WORKFLOW_SWITCHES[kind];
+  return onWithoutRow
+    ? { OR: [{ workflowSettings: { is: null } }, { workflowSettings: { is: on } }] }
+    : { workflowSettings: { is: on } };
+}
+
 // Clinic-local, not UTC: a UTC month boundary drifts from the clinic's own
 // calendar month by the zone's offset (e.g. Europe/Budapest is UTC+1/+2), so
 // an hourly run in the first local hours of a new month could still see the

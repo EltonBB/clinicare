@@ -5,7 +5,7 @@ import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { prisma } from "@/lib/prisma";
 import type { FollowUpDraftRecord } from "@/lib/follow-ups";
 import { liveSlotOfferWhere, reofferFreedSlot, retryOnWriteConflict } from "@/lib/slot-offers";
-import { rebookedAppointmentWhere } from "@/lib/workflow-generators";
+import { rebookedAppointmentWhere, workflowEnabledWhere } from "@/lib/workflow-generators";
 
 // "Pro"/"not Pro" as billing.ts defines it — the same derivation as the
 // sweep's non-Pro rule (follow-up-generation.ts), so no plan list is kept
@@ -22,7 +22,9 @@ function nonProPlans(): BusinessPlan[] {
 // The list, the Inbox count and Send's compare-and-set all use this one
 // filter, so a draft that went stale since it was drafted is hidden and
 // refused at once — not only once the hourly sweeps (expirePastSlotOffers,
-// expireStaleFollowUpDrafts) retire it.
+// expireStaleFollowUpDrafts) retire it. A workflow the clinic has since
+// switched Off is the one reason a draft is hidden here and NOT swept: it
+// comes back if the workflow is switched on again (see workflowEnabledWhere).
 function actionablePendingWhere(now: Date): Prisma.FollowUpDraftWhereInput {
   return {
     status: "PENDING",
@@ -38,20 +40,27 @@ function actionablePendingWhere(now: Date): Prisma.FollowUpDraftWhereInput {
       // completed visit — a walk-in recorded after the draft was made), still a
       // client the clinic wants to nudge, and the workspace is still on Pro
       // (rebooking nudges are a Pro feature — a downgrade stops them at once,
-      // not only after the hourly sweep).
+      // not only after the hourly sweep) with the rebooking workflow still
+      // switched on.
       {
         kind: "REBOOK",
-        business: { plan: { in: proPlans() } },
+        business: { plan: { in: proPlans() }, ...workflowEnabledWhere("REBOOK") },
         client: {
           ...ELIGIBLE_CLIENT_WHERE,
           appointments: { none: rebookedAppointmentWhere(now) },
         },
       },
-      // Still owed: never tell someone who just paid that they owe money.
-      { kind: "PAYMENT", payment: { status: { in: ["Unpaid", "Partially Paid"] } } },
+      // Still owed: never tell someone who just paid that they owe money. And
+      // the payment-reminder workflow is still switched on.
+      {
+        kind: "PAYMENT",
+        business: workflowEnabledWhere("PAYMENT"),
+        payment: { status: { in: ["Unpaid", "Partially Paid"] } },
+      },
       // The visit still stands as attended — not since recorded as a no-show,
-      // reverted, or deleted (a deleted appointment leaves appointmentId null).
-      { kind: "THANK_YOU", appointment: { status: "COMPLETED" } },
+      // reverted, or deleted (a deleted appointment leaves appointmentId null)
+      // — and the thank-you workflow is still switched on.
+      { kind: "THANK_YOU", business: workflowEnabledWhere("THANK_YOU"), appointment: { status: "COMPLETED" } },
     ],
   };
 }

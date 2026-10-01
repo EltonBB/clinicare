@@ -2,6 +2,7 @@ import { BusinessPlan, type Prisma } from "@prisma/client";
 
 import { isProBusinessPlan } from "@/lib/billing";
 import { INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
+import { withDeadline } from "@/lib/concurrency";
 import { getFollowUpCursor, setFollowUpCursor } from "@/lib/follow-up-cursor";
 import { lastAttemptedId, rotateForFairness } from "@/lib/reminder-fairness";
 import { logger } from "@/lib/logger";
@@ -24,8 +25,22 @@ const DAY_MS = 24 * HOUR_MS;
  * Stop starting new businesses after this long. The route's maxDuration is 120s;
  * this is only a safety net at pilot scale, and the leftover businesses are
  * picked up by the next hourly run (candidates already drafted are excluded).
+ * No business may run past it either (see PER_BUSINESS_TIMEOUT_MS), so the
+ * cursor write and both sweeps always keep the headroom it leaves them.
  */
 const GENERATION_BUDGET_MS = 90_000;
+
+/**
+ * Wall-clock cap on ONE business's generation: its pending-count query, the
+ * candidate queries and the draft writes. Prisma calls have no abort handle, so
+ * a stalled query would otherwise hold the awaited call — and with it the cursor
+ * write and both stale-draft sweeps after the loop — until the platform killed
+ * the invocation at maxDuration. The cursor would not have moved, so the next
+ * hourly run would start at the same business and stall the same way (Codex
+ * #130). A normal business takes a second or two; this is generous, and still
+ * lets the other businesses have their turn after a hung one.
+ */
+const PER_BUSINESS_TIMEOUT_MS = 30_000;
 
 /**
  * How far behind "now - thank-you delay" the thank-you scan looks. It must
@@ -65,7 +80,7 @@ async function countPendingByKind(businessId: string): Promise<Map<GeneratedKind
   return new Map(rows.map((row) => [row.kind as GeneratedKind, row._count._all]));
 }
 
-type RunTotals = { draftsCreated: number; errors: number; budgetSpent: boolean };
+type RunTotals = { draftsCreated: number; errors: number; abandoned: number; budgetSpent: boolean };
 
 // A Prisma error code, without importing the runtime error class (same duck
 // typing as messaging/inbound.ts).
@@ -239,6 +254,12 @@ export type FollowUpGenerationResult = {
   draftsCreated: number;
   draftsExpired: number;
   errors: number;
+  /**
+   * Businesses given up on after PER_BUSINESS_TIMEOUT_MS (also counted in
+   * `errors`). Their database work cannot be cancelled and may still be running,
+   * so the cron route keeps its lock held when this is non-zero.
+   */
+  abandonedBusinesses: number;
 };
 
 /**
@@ -283,7 +304,7 @@ export async function generateFollowUpDrafts(now: Date = new Date()): Promise<Fo
   const startAfterId = await getFollowUpCursor();
   const orderedBusinesses = rotateForFairness(businesses, startAfterId);
 
-  const totals: RunTotals = { draftsCreated: 0, errors: 0, budgetSpent: false };
+  const totals: RunTotals = { draftsCreated: 0, errors: 0, abandoned: 0, budgetSpent: false };
   let businessesProcessed = 0;
 
   for (const business of orderedBusinesses) {
@@ -297,7 +318,21 @@ export async function generateFollowUpDrafts(now: Date = new Date()): Promise<Fo
 
     businessesProcessed += 1;
     try {
-      await generateForBusiness(business, now, totals, deadlineAt);
+      // Never longer than what is left of the run budget, so even the last
+      // business can't carry the run past it. The abandoned work is left to
+      // finish on its own: its writes are idempotent (dedupeKey) and writeDrafts
+      // stops at the budget, and `totals` is mutated live, so drafts it already
+      // created still count.
+      const timeoutMs = Math.max(0, Math.min(PER_BUSINESS_TIMEOUT_MS, deadlineAt - Date.now()));
+      await withDeadline(generateForBusiness(business, now, totals, deadlineAt), timeoutMs, () => {
+        totals.abandoned += 1;
+        totals.errors += 1;
+        logger.error(
+          "Follow-up draft generation exceeded its per-business timeout — likely a hung database call. Moving on so this run (and its cursor) keeps making progress, but the abandoned call may still be running.",
+          undefined,
+          { businessId: business.id, timeoutMs }
+        );
+      });
     } catch (error) {
       // One business failing must never stop the rest.
       totals.errors += 1;
@@ -338,5 +373,11 @@ export async function generateFollowUpDrafts(now: Date = new Date()): Promise<Fo
     logger.error("Expiring past slot offers failed.", error);
   }
 
-  return { businessesProcessed, draftsCreated: totals.draftsCreated, draftsExpired, errors: totals.errors };
+  return {
+    businessesProcessed,
+    draftsCreated: totals.draftsCreated,
+    draftsExpired,
+    errors: totals.errors,
+    abandonedBusinesses: totals.abandoned,
+  };
 }

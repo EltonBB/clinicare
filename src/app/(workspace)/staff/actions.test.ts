@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const staffMember = {
     findFirst: vi.fn(),
+    findFirstOrThrow: vi.fn(),
     deleteMany: vi.fn(),
     update: vi.fn(),
     create: vi.fn(),
@@ -42,6 +43,8 @@ vi.mock("@/lib/slot-offers", () => ({
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
+import { revalidatePath } from "next/cache";
+
 import type { SaveStaffPayload } from "@/lib/staff";
 
 import {
@@ -67,6 +70,8 @@ beforeEach(() => {
   mocks.retireWaitlistEntries.mockResolvedValue([]); // no staff-pinned waiting-list entries by default
 });
 
+const revalidatedPaths = () => vi.mocked(revalidatePath).mock.calls.map(([path]) => path);
+
 describe("deleteStaffAction", () => {
   it("deletes a staff member and revalidates", async () => {
     mocks.staffMember.findFirst.mockResolvedValue({ id: STAFF_ID });
@@ -78,6 +83,29 @@ describe("deleteStaffAction", () => {
     expect(mocks.staffMember.deleteMany).toHaveBeenCalledWith({
       where: { id: STAFF_ID, businessId: "biz_1" },
     });
+  });
+
+  // Codex #130: a slot offer is live only while its freed appointment's staff
+  // member is still available, so removing someone moves the Follow-ups list and
+  // the Inbox's follow-up count — both must be revalidated with the roster.
+  it("revalidates the Inbox surfaces a removal changes, with the rest of the roster", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: STAFF_ID });
+    mocks.staffMember.deleteMany.mockResolvedValue({ count: 1 });
+
+    await deleteStaffAction(STAFF_ID);
+
+    expect(revalidatedPaths()).toEqual(
+      expect.arrayContaining(["/staff", "/calendar", "/dashboard", "/inbox", "/inbox/follow-ups"])
+    );
+  });
+
+  it("revalidates nothing when the delete lost the concurrent race", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: STAFF_ID });
+    mocks.staffMember.deleteMany.mockResolvedValue({ count: 0 });
+
+    await deleteStaffAction(STAFF_ID);
+
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
   it("closes the race: a concurrent delete that already won makes this one a typed not-found, not an unhandled Prisma throw", async () => {
@@ -203,6 +231,50 @@ describe("deleteStaffAction", () => {
     await deleteStaffAction(STAFF_ID);
 
     expect(mocks.retireSlotOffersForAppointments).not.toHaveBeenCalled();
+  });
+});
+
+describe("saveStaffAction", () => {
+  const STAFF_ROW = {
+    id: STAFF_ID,
+    name: "Dr. Reed",
+    role: "Specialist",
+    email: null,
+    phone: null,
+    profileNote: null,
+    status: "INACTIVE",
+    timeEntries: [],
+    shifts: [],
+    appointments: [],
+  };
+  const payload: SaveStaffPayload = {
+    id: STAFF_ID,
+    name: "Dr. Reed",
+    role: "Specialist",
+    email: "",
+    phone: "",
+    profileNote: "",
+    status: "INACTIVE",
+  };
+
+  // Codex #130: marking someone Inactive makes the slot offers for their
+  // appointments stale at once (liveSlotOfferWhere), so the Follow-ups list and
+  // the Inbox's follow-up count change with the roster.
+  it("revalidates the Inbox surfaces an availability change moves, with the rest of the roster", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: STAFF_ID });
+    mocks.staffMember.update.mockResolvedValue({});
+    mocks.staffMember.findFirstOrThrow.mockResolvedValue(STAFF_ROW);
+
+    const result = await saveStaffAction(payload);
+
+    expect(result).toMatchObject({ ok: true });
+    expect(mocks.staffMember.update).toHaveBeenCalledWith({
+      where: { id: STAFF_ID },
+      data: expect.objectContaining({ status: "INACTIVE", isActive: false }),
+    });
+    expect(revalidatedPaths()).toEqual(
+      expect.arrayContaining([`/staff/${STAFF_ID}`, "/calendar", "/dashboard", "/inbox", "/inbox/follow-ups"])
+    );
   });
 });
 

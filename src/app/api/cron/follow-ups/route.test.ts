@@ -27,6 +27,7 @@ describe("follow-ups cron route", () => {
       draftsCreated: 0,
       draftsExpired: 0,
       errors: 0,
+      abandonedBusinesses: 0,
     });
     logger.error.mockReset();
     logger.warn.mockReset();
@@ -63,6 +64,7 @@ describe("follow-ups cron route", () => {
       draftsCreated: 7,
       draftsExpired: 2,
       errors: 0,
+      abandonedBusinesses: 0,
     });
     const { GET } = await import("./route");
 
@@ -71,7 +73,14 @@ describe("follow-ups cron route", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("Cache-Control")).toBe("no-store");
-    expect(body).toEqual({ ok: true, businessesProcessed: 4, draftsCreated: 7, draftsExpired: 2, errors: 0 });
+    expect(body).toEqual({
+      ok: true,
+      businessesProcessed: 4,
+      draftsCreated: 7,
+      draftsExpired: 2,
+      errors: 0,
+      abandonedBusinesses: 0,
+    });
     expect(acquireCronLock).toHaveBeenCalledWith("follow-ups", expect.any(Number));
     expect(releaseCronLock).toHaveBeenCalledWith("follow-ups", "test-token");
     expect(logger.warn).not.toHaveBeenCalled();
@@ -92,6 +101,7 @@ describe("follow-ups cron route", () => {
       draftsCreated: 1,
       draftsExpired: 0,
       errors: 2,
+      abandonedBusinesses: 0,
     });
     const { GET } = await import("./route");
 
@@ -103,6 +113,31 @@ describe("follow-ups cron route", () => {
       draftsCreated: 1,
       draftsExpired: 0,
       errors: 2,
+      abandonedBusinesses: 0,
+    });
+  });
+
+  // A business abandoned to its per-business timeout may still be writing (a
+  // Prisma call has no abort handle), so releasing the lock here would let a
+  // manual re-trigger overlap it. The TTL frees the lock instead.
+  it("keeps the lock held, and says so, when a business was abandoned to its timeout", async () => {
+    generateFollowUpDrafts.mockResolvedValue({
+      businessesProcessed: 3,
+      draftsCreated: 1,
+      draftsExpired: 0,
+      errors: 1,
+      abandonedBusinesses: 1,
+    });
+    const { GET } = await import("./route");
+
+    const res = await GET(request());
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, abandonedBusinesses: 1 });
+    expect(releaseCronLock).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("keeping the cron lock held"), {
+      abandonedBusinesses: 1,
     });
   });
 

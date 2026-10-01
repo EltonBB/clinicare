@@ -119,6 +119,14 @@ function matchesWhere(row: Row, where: Row): boolean {
       if (some) return value.some((related) => matchesWhere(related, some));
       if (none) return !value.some((related) => matchesWhere(related, none));
     }
+    // To-one relation filter `{ is: ... }`: `is: null` matches a missing related
+    // row, `is: {...}` a present one that meets the filter.
+    if (typeof filter === "object" && filter !== null && "is" in filter) {
+      const { is, ...rest } = filter as { is: Row | null };
+      if (Object.keys(rest).length > 0) throw new Error(`unsupported relation filter on ${key}`);
+      if (is === null) return value === null || value === undefined;
+      return value !== null && value !== undefined && matchesWhere(value as Row, is);
+    }
     return value !== null && value !== undefined && matchesWhere(value as Row, filter as Row);
   });
 }
@@ -129,6 +137,8 @@ const PAST = new Date("2026-08-20T09:00:00.000Z"); // 12 days before NOW
 const LONG_AGO = new Date("2026-07-20T09:00:00.000Z");
 const WINDOW_EDGE = new Date(NOW.getTime() - 28 * 24 * 3_600_000);
 const JUST_INSIDE_WINDOW = new Date(WINDOW_EDGE.getTime() + 60_000);
+
+const ALL_WORKFLOWS_ON = { rebookEnabled: true, paymentReminderEnabled: true, thankYouEnabled: true };
 
 function draftRow(overrides: Row = {}): Row {
   return {
@@ -146,7 +156,7 @@ function draftRow(overrides: Row = {}): Row {
     waitlistEntryId: null,
     waitlistEntry: null,
     client: { isArchived: false, status: "ACTIVE", appointments: [], phone: "+38344000000", name: "Test Client" },
-    business: { plan: "PRO" },
+    business: { plan: "PRO", workflowSettings: ALL_WORKFLOWS_ON },
     ...overrides,
   };
 }
@@ -194,7 +204,10 @@ async function listedIds(businessId = "biz_1") {
 // One live and several stale variants of every kind. A stale draft must be
 // hidden from the list and the count, and refused by Send, at once — not only
 // after the hourly sweep retires it.
-const LIVENESS_CASES: Array<{ name: string; live: boolean; row: Row }> = [
+// `keptBySweep`: hidden from the list and refused by Send, yet NOT expired by
+// the hourly sweep — a workflow the clinic switched Off. Its drafts come back if
+// the workflow is switched on again (see workflowEnabledWhere).
+const LIVENESS_CASES: Array<{ name: string; live: boolean; row: Row; keptBySweep?: boolean }> = [
   { name: "rebook, client still lapsed", live: true, row: draftRow({ kind: "REBOOK" }) },
   {
     name: "rebook, client's only visit is older than 28 days (confirmed)",
@@ -256,7 +269,36 @@ const LIVENESS_CASES: Array<{ name: string; live: boolean; row: Row }> = [
   { name: "rebook, client status archived", live: false, row: draftRow({ kind: "REBOOK", client: client({ status: "ARCHIVED" }) }) },
   // Rebooking nudges are Pro: a downgrade stops them at once, not after the hourly sweep.
   { name: "rebook, workspace since dropped to Basic", live: false, row: draftRow({ kind: "REBOOK", business: { plan: "BASIC" } }) },
-  { name: "rebook, legacy Advanced plan (counts as Pro)", live: true, row: draftRow({ kind: "REBOOK", business: { plan: "ADVANCED" } }) },
+  {
+    name: "rebook, legacy Advanced plan (counts as Pro)",
+    live: true,
+    row: draftRow({ kind: "REBOOK", business: { plan: "ADVANCED", workflowSettings: ALL_WORKFLOWS_ON } }),
+  },
+  // The owner can switch the rebooking nudge Off; a workspace that never saved
+  // its settings has it off by default (DEFAULT_WORKFLOW_SETTINGS).
+  {
+    name: "rebook, rebooking workflow since switched off",
+    live: false,
+    keptBySweep: true,
+    row: draftRow({
+      kind: "REBOOK",
+      business: { plan: "PRO", workflowSettings: { ...ALL_WORKFLOWS_ON, rebookEnabled: false } },
+    }),
+  },
+  {
+    name: "rebook, no saved workflow settings (rebooking is off by default)",
+    live: false,
+    keptBySweep: true,
+    row: draftRow({ kind: "REBOOK", business: { plan: "PRO", workflowSettings: null } }),
+  },
+  {
+    name: "rebook, other workflows switched off (only this one counts)",
+    live: true,
+    row: draftRow({
+      kind: "REBOOK",
+      business: { plan: "PRO", workflowSettings: { rebookEnabled: true, paymentReminderEnabled: false, thankYouEnabled: false } },
+    }),
+  },
 
   { name: "payment, still unpaid", live: true, row: draftRow({ kind: "PAYMENT", paymentId: "pay_1", payment: { status: "Unpaid" } }) },
   {
@@ -271,6 +313,37 @@ const LIVENESS_CASES: Array<{ name: string; live: boolean; row: Row }> = [
     name: "payment, Basic workspace (payment reminders are on every plan)",
     live: true,
     row: draftRow({ kind: "PAYMENT", paymentId: "pay_1", payment: { status: "Unpaid" }, business: { plan: "BASIC" } }),
+  },
+  {
+    name: "payment, payment-reminder workflow since switched off",
+    live: false,
+    keptBySweep: true,
+    row: draftRow({
+      kind: "PAYMENT",
+      paymentId: "pay_1",
+      payment: { status: "Unpaid" },
+      business: { plan: "PRO", workflowSettings: { ...ALL_WORKFLOWS_ON, paymentReminderEnabled: false } },
+    }),
+  },
+  {
+    name: "payment, no saved workflow settings (payment reminders are on by default)",
+    live: true,
+    row: draftRow({
+      kind: "PAYMENT",
+      paymentId: "pay_1",
+      payment: { status: "Unpaid" },
+      business: { plan: "PRO", workflowSettings: null },
+    }),
+  },
+  {
+    name: "payment, only the other workflows switched off",
+    live: true,
+    row: draftRow({
+      kind: "PAYMENT",
+      paymentId: "pay_1",
+      payment: { status: "Unpaid" },
+      business: { plan: "PRO", workflowSettings: { rebookEnabled: false, paymentReminderEnabled: true, thankYouEnabled: false } },
+    }),
   },
 
   {
@@ -294,6 +367,37 @@ const LIVENESS_CASES: Array<{ name: string; live: boolean; row: Row }> = [
     row: draftRow({ kind: "THANK_YOU", appointmentId: "appt_1", appointment: { status: "CANCELLED", startAt: PAST, staffMemberId: null } }),
   },
   { name: "thank-you, visit deleted", live: false, row: draftRow({ kind: "THANK_YOU", appointmentId: null, appointment: null }) },
+  {
+    name: "thank-you, thank-you workflow since switched off",
+    live: false,
+    keptBySweep: true,
+    row: draftRow({
+      kind: "THANK_YOU",
+      appointmentId: "appt_1",
+      appointment: { status: "COMPLETED", startAt: PAST },
+      business: { plan: "PRO", workflowSettings: { ...ALL_WORKFLOWS_ON, thankYouEnabled: false } },
+    }),
+  },
+  {
+    name: "thank-you, no saved workflow settings (thank-yous are on by default)",
+    live: true,
+    row: draftRow({
+      kind: "THANK_YOU",
+      appointmentId: "appt_1",
+      appointment: { status: "COMPLETED", startAt: PAST },
+      business: { plan: "PRO", workflowSettings: null },
+    }),
+  },
+  {
+    name: "thank-you, only the other workflows switched off",
+    live: true,
+    row: draftRow({
+      kind: "THANK_YOU",
+      appointmentId: "appt_1",
+      appointment: { status: "COMPLETED", startAt: PAST },
+      business: { plan: "PRO", workflowSettings: { rebookEnabled: false, paymentReminderEnabled: false, thankYouEnabled: true } },
+    }),
+  },
 
   {
     name: "slot offer, still open",
@@ -431,8 +535,9 @@ describe("follow-ups data layer — which drafts are actionable", () => {
   // The hourly sweep is the permanent version of the live filter: whatever the
   // list hides must be expired by the next sweep, or a hidden draft would hold
   // one of the business's 50 pending slots for its kind forever. Slot offers
-  // have their own sweep (expirePastSlotOffers), so they're left out.
-  it.each(LIVENESS_CASES.filter(({ row }) => row.kind !== "SLOT_OFFER"))(
+  // have their own sweep (expirePastSlotOffers), so they're left out; so are the
+  // drafts a switched-off workflow hides, which the next test covers.
+  it.each(LIVENESS_CASES.filter(({ row, keptBySweep }) => row.kind !== "SLOT_OFFER" && !keptBySweep))(
     "$name: the hourly sweep expires it exactly when it isn't live",
     async ({ live, row }) => {
       serveDrafts([row]);
@@ -440,6 +545,36 @@ describe("follow-ups data layer — which drafts are actionable", () => {
       expect(await expireStaleFollowUpDrafts(NOW)).toBe(live ? 0 : 1);
     }
   );
+
+  // Switching a workflow Off hides and blocks its queued drafts at once, but the
+  // sweep leaves them: the generators skip anything that already has a draft of
+  // its kind, so an expired payment reminder would never be drafted again after
+  // the owner switched the workflow back on, even for a payment still unpaid.
+  it.each(LIVENESS_CASES.filter(({ keptBySweep }) => keptBySweep))(
+    "$name: the hourly sweep leaves it pending, so it returns with the switch",
+    async ({ row }) => {
+      serveDrafts([row]);
+
+      expect(await expireStaleFollowUpDrafts(NOW)).toBe(0);
+    }
+  );
+
+  it("brings a switched-off workflow's queued draft back when the owner switches it on again", async () => {
+    const row = draftRow({
+      kind: "PAYMENT",
+      paymentId: "pay_1",
+      payment: { status: "Unpaid" },
+      business: { plan: "PRO", workflowSettings: { ...ALL_WORKFLOWS_ON, paymentReminderEnabled: false } },
+    });
+    serveDrafts([row]);
+    expect(await listedIds()).toEqual([]);
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({ ok: false });
+
+    row.business = { plan: "PRO", workflowSettings: ALL_WORKFLOWS_ON };
+
+    expect(await listedIds()).toEqual(["d_1"]);
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({ ok: true });
+  });
 
   it("keeps the count in step with the list — sent-but-live slot offers included — scoped to the business", async () => {
     const pendingRows = LIVENESS_CASES.map(({ row }, index) => ({ ...row, id: `d_${index}` }));
