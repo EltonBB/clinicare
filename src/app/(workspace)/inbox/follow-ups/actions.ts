@@ -11,6 +11,7 @@ import type { SendMessageResult } from "@/lib/messaging/types";
 import {
   ALREADY_HANDLED_ERROR,
   bookSlotOffer,
+  confirmFollowUpDraftDispatch,
   dismissFollowUpDraft,
   markFollowUpDraftSent,
   passSlotOffer,
@@ -43,10 +44,11 @@ function revalidateFollowUpSurfaces() {
 
 /**
  * Flips a pending draft to SENT (atomic compare-and-set — see
- * markFollowUpDraftSent), then sends it through the messaging seam. Any
- * failure past the flip (no phone on file, the provider send failing, or a
- * lookup/send that throws) reverts the draft back to PENDING so it can be
- * retried, rather than leaving it stuck as SENT with nothing actually delivered.
+ * markFollowUpDraftSent), checks it once more (confirmFollowUpDraftDispatch),
+ * then sends it through the messaging seam. Any failure past the flip (the last
+ * check refusing, no phone on file, the provider send failing, or a lookup/send
+ * that throws) reverts the draft back to PENDING so it can be retried, rather
+ * than leaving it stuck as SENT with nothing actually delivered.
  *
  * `body` is an optional edited-text override — the row list lets staff edit
  * the draft before sending, so the flip and the send must use the text the
@@ -93,12 +95,6 @@ export async function sendFollowUpDraftAction(
     return { ok: false, error: flip.error };
   }
 
-  // Read from the flip's own result, not a fresh query — the flip already
-  // fetched this inside the same transaction as the SENT write, so there's
-  // no gap after it for another action to invalidate the offer before this
-  // send goes out (Codex).
-  const draft = flip.draft;
-
   let failure: string | null = null;
   let sent: {
     clientId: string;
@@ -108,20 +104,36 @@ export async function sendFollowUpDraftAction(
   } | null = null;
 
   try {
-    if (!draft.phone) {
-      failure = "This client has no phone number on file.";
-    } else {
-      const result = await sendMessage({
-        channel: "WHATSAPP",
-        businessId: business.id,
-        to: draft.phone,
-        message: { kind: "freeform", body: editedBody && editedBody.length > 0 ? editedBody : draft.body },
-      });
+    // The flip checked the draft and committed; the message is only handed to the
+    // provider after that, outside any transaction, so another request can
+    // invalidate the draft in between — a cancelled slot reactivated or filled
+    // (which expires its offer), a payment settled, a client booked or archived.
+    // One more check, as late as it can be made: the flip's whole check again,
+    // directly before the patient is contacted. The draft it returns is the one
+    // to send, with its body and phone number as they are now (Codex #130).
+    const ready = await confirmFollowUpDraftDispatch({ id: draftId, businessId: business.id });
 
-      if (result.ok) {
-        sent = { clientId: draft.clientId, clientName: draft.clientName, phone: draft.phone, result };
+    if (!ready.ok) {
+      failure = ready.error;
+    } else {
+      const { draft } = ready;
+      const phone = draft.phone;
+
+      if (!phone) {
+        failure = "This client has no phone number on file.";
       } else {
-        failure = "Couldn't send this message. Try again.";
+        const result = await sendMessage({
+          channel: "WHATSAPP",
+          businessId: business.id,
+          to: phone,
+          message: { kind: "freeform", body: editedBody && editedBody.length > 0 ? editedBody : draft.body },
+        });
+
+        if (result.ok) {
+          sent = { clientId: draft.clientId, clientName: draft.clientName, phone, result };
+        } else {
+          failure = "Couldn't send this message. Try again.";
+        }
       }
     }
   } catch (error) {

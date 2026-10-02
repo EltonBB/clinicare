@@ -27,9 +27,16 @@ function nonProPlans(): BusinessPlan[] {
 // expireStaleFollowUpDrafts) retire it. A workflow the clinic has since
 // switched Off is the one reason a draft is hidden here and NOT swept: it
 // comes back if the workflow is switched on again (see workflowEnabledWhere).
+//
+// "What it's about still holds" is its own filter, without the status, because
+// Send checks it twice: when it claims a PENDING draft and again, on the claimed
+// SENT one, immediately before the message leaves (see confirmFollowUpDraftDispatch).
 function actionablePendingWhere(now: Date): Prisma.FollowUpDraftWhereInput {
+  return { status: "PENDING", ...stillHoldsWhere(now) };
+}
+
+function stillHoldsWhere(now: Date): Prisma.FollowUpDraftWhereInput {
   return {
-    status: "PENDING",
     OR: [
       // Entry still holds the offer, slot still cancelled and ahead. No plan
       // check here — this same predicate feeds listableWhere below, and a
@@ -164,6 +171,12 @@ class SlotOutsideHours extends Error {}
  * so the unguarded read would still return the row and the caller would
  * still send the now-stale offer (Codex).
  *
+ * That is only the claim, though: the message itself is handed to the provider
+ * afterwards, outside any transaction, so a draft can still be invalidated between
+ * this commit and the send. The caller closes that with
+ * confirmFollowUpDraftDispatch, immediately before it contacts the patient
+ * (Codex #130).
+ *
  * A slot offer also has to still fit the clinic's working hours: they can be
  * shortened, or a weekday closed, after the appointment was booked, and the
  * calendar would then refuse the very booking this message invites. That can't
@@ -189,8 +202,56 @@ export async function markFollowUpDraftSent(args: {
     return { ok: false, error: MESSAGE_TOO_LONG_ERROR };
   }
 
+  return runSendGate({ id, businessId, now, stage: "claim", editedBody });
+}
+
+/**
+ * The last check before a message leaves: the claim's whole check again, on the
+ * claimed (SENT) draft, as late as the caller can make it — directly before it
+ * hands the message to the provider. markFollowUpDraftSent commits first and the
+ * send happens after, so anything another request commits in between is not seen
+ * by the claim: a cancelled slot reactivated or filled (which expires its offer),
+ * a payment settled, a client who booked or was archived, a workflow switched off
+ * (Codex #130). Without this the patient would be sent the stale message anyway.
+ *
+ * It is a row-locked compare-and-set on the claim (a write that changes nothing
+ * but takes the draft's lock, the same trick Book uses): a request that is midway
+ * through retiring this very draft is waited for and the draft is then read as it
+ * left it, and one that already committed is simply seen. A draft that no longer
+ * qualifies - expired, dismissed, booked, or no longer live - refuses with the
+ * same "already handled" error as a stale claim, and the caller puts it back to
+ * Pending. The draft returned is read in the same transaction, so its body and
+ * phone number are the ones to send.
+ *
+ * What it cannot close is the hand-off itself: a message can't be recalled, so a
+ * change that commits while it is already on its way is no different from one
+ * that commits just after it was sent. This keeps that to one round trip to the
+ * messaging bridge instead of everything between the claim and the send. Holding a
+ * lock across the send instead would pin a connection of the pool for the
+ * bridge's whole timeout and make every invalidating request wait for it.
+ */
+export async function confirmFollowUpDraftDispatch(args: {
+  id: string;
+  businessId: string;
+  now?: Date;
+}): Promise<MarkDraftSentResult> {
+  const { id, businessId, now = new Date() } = args;
+
+  return runSendGate({ id, businessId, now, stage: "recheck" });
+}
+
+// The claim moves a PENDING draft to SENT; the re-check holds the draft in SENT.
+// Both run the same compare-and-set, so there is one definition of "can this
+// draft go out right now".
+async function runSendGate(args: {
+  id: string;
+  businessId: string;
+  now: Date;
+  stage: "claim" | "recheck";
+  editedBody?: string;
+}): Promise<MarkDraftSentResult> {
   try {
-    return await flipDraftToSent({ id, businessId, now, editedBody });
+    return await flipDraftToSent(args);
   } catch (error) {
     if (error instanceof SlotOutsideHours) {
       return { ok: false, error: SLOT_OUTSIDE_HOURS_ERROR };
@@ -203,9 +264,10 @@ function flipDraftToSent(args: {
   id: string;
   businessId: string;
   now: Date;
+  stage: "claim" | "recheck";
   editedBody?: string;
 }): Promise<MarkDraftSentResult> {
-  const { id, businessId, now, editedBody } = args;
+  const { id, businessId, now, stage, editedBody } = args;
 
   return retryOnWriteConflict(() =>
     prisma.$transaction(async (tx) => {
@@ -213,7 +275,8 @@ function flipDraftToSent(args: {
         where: {
           id,
           businessId,
-          ...actionablePendingWhere(now),
+          status: stage === "claim" ? "PENDING" : "SENT",
+          ...stillHoldsWhere(now),
           // A slot offer additionally needs the workspace still on Pro to be
           // sent — a downgrade stops staff from sending a new one at once, not
           // only once the hourly sweep catches up (matching the REBOOK branch's
@@ -223,7 +286,11 @@ function flipDraftToSent(args: {
           // only Send is blocked here (Codex).
           NOT: { kind: "SLOT_OFFER", business: { plan: { in: nonProPlans() } } },
         },
-        data: { status: "SENT", sentAt: now, ...(editedBody ? { body: editedBody } : {}) },
+        // The re-check changes nothing: it only needs the write's row lock.
+        data:
+          stage === "claim"
+            ? { status: "SENT", sentAt: now, ...(editedBody ? { body: editedBody } : {}) }
+            : { status: "SENT" },
       });
 
       if (count === 0) {

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
   const $transaction = vi.fn();
   const getAuthedBusiness = vi.fn();
   const markFollowUpDraftSent = vi.fn();
+  const confirmFollowUpDraftDispatch = vi.fn();
   const revertFollowUpDraftToPending = vi.fn();
   const dismissFollowUpDraft = vi.fn();
   const passSlotOffer = vi.fn();
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => {
     $transaction,
     getAuthedBusiness,
     markFollowUpDraftSent,
+    confirmFollowUpDraftDispatch,
     revertFollowUpDraftToPending,
     dismissFollowUpDraft,
     passSlotOffer,
@@ -47,6 +49,7 @@ vi.mock("@/lib/business", () => ({
 
 vi.mock("@/lib/follow-ups-data", () => ({
   markFollowUpDraftSent: mocks.markFollowUpDraftSent,
+  confirmFollowUpDraftDispatch: mocks.confirmFollowUpDraftDispatch,
   revertFollowUpDraftToPending: mocks.revertFollowUpDraftToPending,
   dismissFollowUpDraft: mocks.dismissFollowUpDraft,
   passSlotOffer: mocks.passSlotOffer,
@@ -93,6 +96,15 @@ function expectFollowUpSurfacesRevalidated() {
 const DRAFT_ID = "draft_1";
 const ALREADY_HANDLED_ERROR = "This follow-up was already handled.";
 
+type SendableDraft = { id: string; body: string; clientId: string; clientName: string | null; phone: string | null };
+
+// A draft nothing happens to: the claim goes through, and the last check before the
+// message leaves finds it as it was and hands back the same draft.
+function draftIsLive(draft: SendableDraft) {
+  mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true, draft });
+  mocks.confirmFollowUpDraftDispatch.mockResolvedValue({ ok: true, draft });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.getAuthedBusiness.mockResolvedValue({ business: BUSINESS, user: {} });
@@ -105,16 +117,13 @@ beforeEach(() => {
 
 describe("sendFollowUpDraftAction", () => {
   it("sends successfully and mirrors the send into the client's inbox thread", async () => {
-    mocks.markFollowUpDraftSent.mockResolvedValue({
-      ok: true,
-      draft: {
+    draftIsLive({
         id: DRAFT_ID,
         body: "Hi Alex, quick note about your next visit.",
         clientId: "client_1",
         clientName: "Alex",
         phone: "+15550100",
-      },
-    });
+      });
     mocks.sendMessage.mockResolvedValue({
       ok: true,
       providerMessageId: "msg_1",
@@ -157,10 +166,7 @@ describe("sendFollowUpDraftAction", () => {
   });
 
   it("sends the edited body when an override is provided, instead of the stored draft body", async () => {
-    mocks.markFollowUpDraftSent.mockResolvedValue({
-      ok: true,
-      draft: { id: DRAFT_ID, body: "Original draft body", clientId: "client_1", clientName: "Alex", phone: "+15550100" },
-    });
+    draftIsLive({ id: DRAFT_ID, body: "Original draft body", clientId: "client_1", clientName: "Alex", phone: "+15550100" });
     mocks.sendMessage.mockResolvedValue({
       ok: true,
       providerMessageId: "msg_1",
@@ -180,16 +186,13 @@ describe("sendFollowUpDraftAction", () => {
   });
 
   it("does not fail the send when the inbox mirror write throws", async () => {
-    mocks.markFollowUpDraftSent.mockResolvedValue({
-      ok: true,
-      draft: {
+    draftIsLive({
         id: DRAFT_ID,
         body: "Hi Alex, quick note about your next visit.",
         clientId: "client_1",
         clientName: "Alex",
         phone: "+15550100",
-      },
-    });
+      });
     mocks.sendMessage.mockResolvedValue({
       ok: true,
       providerMessageId: "msg_1",
@@ -251,16 +254,13 @@ describe("sendFollowUpDraftAction", () => {
   });
 
   it("reverts to pending and returns a plain error when the client has no phone on file", async () => {
-    mocks.markFollowUpDraftSent.mockResolvedValue({
-      ok: true,
-      draft: {
+    draftIsLive({
         id: DRAFT_ID,
         body: "Hi Alex, quick note about your next visit.",
         clientId: "client_1",
         clientName: null,
         phone: null,
-      },
-    });
+      });
 
     const result = await sendFollowUpDraftAction(DRAFT_ID);
 
@@ -273,10 +273,7 @@ describe("sendFollowUpDraftAction", () => {
   });
 
   it("reverts to pending and hides the raw provider error when sendMessage fails", async () => {
-    mocks.markFollowUpDraftSent.mockResolvedValue({
-      ok: true,
-      draft: { id: DRAFT_ID, body: "Hi Alex, quick note about your next visit.", clientId: "client_1", clientName: null, phone: "+15550100" },
-    });
+    draftIsLive({ id: DRAFT_ID, body: "Hi Alex, quick note about your next visit.", clientId: "client_1", clientName: null, phone: "+15550100" });
     mocks.sendMessage.mockResolvedValue({
       ok: false,
       reason: "provider_error",
@@ -299,16 +296,109 @@ describe("sendFollowUpDraftAction", () => {
   // throwing after a successful flip is still covered below.
 
   it("reverts to pending when sendMessage itself throws", async () => {
-    mocks.markFollowUpDraftSent.mockResolvedValue({
-      ok: true,
-      draft: { id: DRAFT_ID, body: "Hi Alex, quick note about your next visit.", clientId: "client_1", clientName: null, phone: "+15550100" },
-    });
+    draftIsLive({ id: DRAFT_ID, body: "Hi Alex, quick note about your next visit.", clientId: "client_1", clientName: null, phone: "+15550100" });
     mocks.sendMessage.mockRejectedValue(new Error("boom"));
 
     const result = await sendFollowUpDraftAction(DRAFT_ID);
 
     expect(result).toEqual({ ok: false, error: "Couldn't send this message. Try again." });
     expect(mocks.revertFollowUpDraftToPending).toHaveBeenCalledTimes(1);
+  });
+
+  // Codex #130: the flip checks the draft and commits, and the message is only handed
+  // to the provider after that - outside any transaction - so another request can
+  // invalidate the draft in the gap (a reactivated or filled slot expiring its offer,
+  // a payment settled, a client booked or archived). The last check runs again
+  // directly before the patient is contacted.
+  describe("the last check before the patient is contacted", () => {
+    const DRAFT = { id: DRAFT_ID, body: "Hi Alex, quick note about your next visit.", clientId: "client_1", clientName: "Alex", phone: "+15550100" };
+
+    it("runs after the flip and before the message is handed to the provider", async () => {
+      draftIsLive(DRAFT);
+      mocks.sendMessage.mockResolvedValue({ ok: true, providerMessageId: "msg_1", status: "SENT", body: DRAFT.body });
+      mocks.conversation.upsert.mockResolvedValue({ id: "conv_1" });
+
+      expect(await sendFollowUpDraftAction(DRAFT_ID)).toEqual({ ok: true });
+
+      expect(mocks.confirmFollowUpDraftDispatch).toHaveBeenCalledWith({ id: DRAFT_ID, businessId: BUSINESS.id });
+      const flipped = mocks.markFollowUpDraftSent.mock.invocationCallOrder[0];
+      const checked = mocks.confirmFollowUpDraftDispatch.mock.invocationCallOrder[0];
+      const sent = mocks.sendMessage.mock.invocationCallOrder[0];
+      expect(flipped).toBeLessThan(checked);
+      expect(checked).toBeLessThan(sent);
+    });
+
+    it.each([
+      ["went stale after the flip", ALREADY_HANDLED_ERROR],
+      [
+        "no longer fits the working hours",
+        "This slot is outside your working hours now. Update your working hours in Settings, or skip or decline the offer.",
+      ],
+    ])("sends nothing and puts the draft back to pending when the draft %s", async (_label, error) => {
+      mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true, draft: DRAFT });
+      mocks.confirmFollowUpDraftDispatch.mockResolvedValue({ ok: false, error });
+
+      const result = await sendFollowUpDraftAction(DRAFT_ID);
+
+      expect(result).toEqual({ ok: false, error });
+      expect(mocks.sendMessage).not.toHaveBeenCalled();
+      expect(mocks.revertFollowUpDraftToPending).toHaveBeenCalledWith({ id: DRAFT_ID, businessId: BUSINESS.id });
+      // Nothing went out, so nothing is mirrored into the inbox either.
+      expect(mocks.conversation.upsert).not.toHaveBeenCalled();
+      expect(mocks.message.create).not.toHaveBeenCalled();
+    });
+
+    it("sends the draft the last check returned, with its phone number and edited text as they are now", async () => {
+      mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true, draft: DRAFT });
+      mocks.confirmFollowUpDraftDispatch.mockResolvedValue({ ok: true, draft: { ...DRAFT, phone: "+15550199", clientName: "Alexandra" } });
+      mocks.sendMessage.mockResolvedValue({ ok: true, providerMessageId: "msg_1", status: "SENT", body: DRAFT.body });
+      mocks.conversation.upsert.mockResolvedValue({ id: "conv_1" });
+
+      expect(await sendFollowUpDraftAction(DRAFT_ID)).toEqual({ ok: true });
+
+      expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ to: "+15550199" }));
+      expect(mocks.conversation.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ create: expect.objectContaining({ phoneNumber: "+15550199" }) })
+      );
+    });
+
+    it("sends the text staff approved, not the stored one, when they edited it", async () => {
+      draftIsLive(DRAFT);
+      mocks.sendMessage.mockResolvedValue({ ok: true, providerMessageId: "msg_1", status: "SENT", body: "Edited body" });
+      mocks.conversation.upsert.mockResolvedValue({ id: "conv_1" });
+
+      await sendFollowUpDraftAction(DRAFT_ID, "  Edited body  ");
+
+      expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ message: { kind: "freeform", body: "Edited body" } }));
+    });
+
+    it("puts the draft back to pending, sending nothing, when the check itself fails", async () => {
+      mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true, draft: DRAFT });
+      mocks.confirmFollowUpDraftDispatch.mockRejectedValue(new Error("deadlock detected"));
+
+      const result = await sendFollowUpDraftAction(DRAFT_ID);
+
+      expect(result).toEqual({ ok: false, error: "Couldn't send this message. Try again." });
+      expect(mocks.sendMessage).not.toHaveBeenCalled();
+      expect(mocks.revertFollowUpDraftToPending).toHaveBeenCalledTimes(1);
+    });
+
+    it("reverts when the check finds the client without a phone number any more", async () => {
+      mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true, draft: DRAFT });
+      mocks.confirmFollowUpDraftDispatch.mockResolvedValue({ ok: true, draft: { ...DRAFT, phone: null } });
+
+      expect(await sendFollowUpDraftAction(DRAFT_ID)).toEqual({ ok: false, error: "This client has no phone number on file." });
+      expect(mocks.sendMessage).not.toHaveBeenCalled();
+      expect(mocks.revertFollowUpDraftToPending).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not check again when the flip itself refused the draft", async () => {
+      mocks.markFollowUpDraftSent.mockResolvedValue({ ok: false, error: ALREADY_HANDLED_ERROR });
+
+      await sendFollowUpDraftAction(DRAFT_ID);
+
+      expect(mocks.confirmFollowUpDraftDispatch).not.toHaveBeenCalled();
+    });
   });
 
   it("returns the session-expired error and never touches the draft when unauthenticated", async () => {

@@ -27,6 +27,7 @@ import { FollowUpDraftKind, Prisma } from "@prisma/client";
 import { expireStaleFollowUpDrafts } from "@/lib/follow-up-generation";
 import {
   bookSlotOffer,
+  confirmFollowUpDraftDispatch,
   dismissFollowUpDraft,
   getPendingFollowUpDraftCount,
   listPendingFollowUpDrafts,
@@ -744,6 +745,179 @@ describe("follow-ups data layer — list order and cap", () => {
     expect(mocks.prisma.followUpDraft.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ take: 650 })
     );
+  });
+});
+
+// Codex #130: markFollowUpDraftSent checks the draft and commits the claim; the
+// message is only handed to the provider after that, outside any transaction, so
+// another request can invalidate the draft in the gap and the patient would still
+// be sent it. confirmFollowUpDraftDispatch is the same check again, on the claimed
+// draft, directly before the patient is contacted.
+describe("confirmFollowUpDraftDispatch — the last check before a message leaves", () => {
+  const SENT_DRAFT = { id: "d_1", body: "Draft message", clientId: "client_1", clientName: "Test Client", phone: "+38344000000" };
+  // The claim has committed: the draft is SENT.
+  const claimed = (row: Row): Row => ({ ...row, status: "SENT" });
+
+  it.each(LIVENESS_CASES)("$name: still goes out only while live ($live)", async ({ live, row }) => {
+    serveDrafts([claimed(row)]);
+
+    expect(await confirmFollowUpDraftDispatch({ id: "d_1", businessId: "biz_1", now: NOW })).toEqual(
+      live ? { ok: true, draft: SENT_DRAFT } : { ok: false, error: "This follow-up was already handled." }
+    );
+  });
+
+  // The exact gap: the claim saw a live draft and committed; then another request
+  // changed what the draft is about. The claim's check can't see that.
+  const slotOffer = () =>
+    draftRow({
+      kind: "SLOT_OFFER",
+      waitlistEntry: { status: "OFFERED" },
+      appointmentId: "appt_2",
+      appointment: { status: "CANCELLED", startAt: FUTURE, staffMemberId: null },
+    });
+
+  it.each([
+    [
+      "a payment is settled",
+      () => draftRow({ kind: "PAYMENT", paymentId: "pay_1", payment: { status: "Unpaid" } }),
+      (row: Row) => {
+        row.payment = { status: "Paid" };
+      },
+    ],
+    [
+      "the client books again",
+      () => draftRow({ kind: "REBOOK" }),
+      (row: Row) => {
+        row.client = client({ appointments: [{ status: "CONFIRMED", startAt: FUTURE }] });
+      },
+    ],
+    [
+      "the visit is recorded as a no-show",
+      () => draftRow({ kind: "THANK_YOU", appointmentId: "appt_1", appointment: { status: "COMPLETED", startAt: PAST } }),
+      (row: Row) => {
+        row.appointment = { status: "NO_SHOW", startAt: PAST };
+      },
+    ],
+    [
+      "the client is archived",
+      () => draftRow({ kind: "PAYMENT", paymentId: "pay_1", payment: { status: "Unpaid" } }),
+      (row: Row) => {
+        row.client = client({ isArchived: true });
+      },
+    ],
+    [
+      "the workflow is switched off",
+      () => draftRow({ kind: "PAYMENT", paymentId: "pay_1", payment: { status: "Unpaid" } }),
+      (row: Row) => {
+        row.business = { plan: "PRO", workflowSettings: { ...ALL_WORKFLOWS_ON, paymentReminderEnabled: false } };
+      },
+    ],
+    [
+      "the cancelled slot is reactivated, which expires its offer",
+      slotOffer,
+      (row: Row) => {
+        row.status = "EXPIRED";
+        row.appointment = { status: "CONFIRMED", startAt: FUTURE, staffMemberId: null };
+        row.waitlistEntry = { status: "WAITING" };
+      },
+    ],
+    [
+      "another booking fills the slot, which withdraws its offer",
+      slotOffer,
+      (row: Row) => {
+        row.status = "EXPIRED";
+        row.waitlistEntry = { status: "WAITING" };
+      },
+    ],
+    [
+      "staff book the offer for the patient meanwhile",
+      slotOffer,
+      (row: Row) => {
+        row.waitlistEntry = { status: "FILLED" };
+      },
+    ],
+    [
+      "the workspace drops to Basic",
+      slotOffer,
+      (row: Row) => {
+        row.business = { plan: "BASIC" };
+      },
+    ],
+  ])("refuses a draft where, after the claim committed, %s", async (_label, make, invalidate) => {
+    const row = make();
+    serveDrafts([row]);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({ ok: true });
+    row.status = "SENT"; // the claim has committed
+    invalidate(row); // another request commits before the message is handed over
+
+    expect(await confirmFollowUpDraftDispatch({ id: "d_1", businessId: "biz_1", now: NOW })).toEqual({
+      ok: false,
+      error: "This follow-up was already handled.",
+    });
+  });
+
+  it("lets a draft nothing happened to go out, with the body and phone number as they are now", async () => {
+    const row = draftRow();
+    serveDrafts([row]);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({ ok: true });
+    row.status = "SENT";
+    row.client = client({ phone: "+38344999999", name: "Renamed Client" }); // edited in the gap
+
+    expect(await confirmFollowUpDraftDispatch({ id: "d_1", businessId: "biz_1", now: NOW })).toEqual({
+      ok: true,
+      draft: { ...SENT_DRAFT, clientName: "Renamed Client", phone: "+38344999999" },
+    });
+  });
+
+  it("only ever confirms a claimed draft: one still PENDING is not sendable through it", async () => {
+    serveDrafts([draftRow()]); // PENDING, live
+
+    expect(await confirmFollowUpDraftDispatch({ id: "d_1", businessId: "biz_1", now: NOW })).toEqual({
+      ok: false,
+      error: "This follow-up was already handled.",
+    });
+  });
+
+  it.each(["DISMISSED", "EXPIRED"])("refuses a draft another request has since marked %s", async (status) => {
+    serveDrafts([{ ...draftRow(), status }]);
+
+    expect(await confirmFollowUpDraftDispatch({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({ ok: false });
+  });
+
+  it("never confirms another workspace's draft", async () => {
+    serveDrafts([claimed(draftRow({ businessId: "biz_2" }))]);
+
+    expect(await confirmFollowUpDraftDispatch({ id: "d_1", businessId: "biz_1", now: NOW })).toEqual({
+      ok: false,
+      error: "This follow-up was already handled.",
+    });
+  });
+
+  // The write changes nothing: it exists for the draft's row lock. A request that
+  // is midway through retiring this very draft is waited for, and the draft is then
+  // read as that request left it - a plain read would not see its uncommitted change.
+  it("holds the claimed draft with a write that changes nothing", async () => {
+    serveDrafts([claimed(draftRow())]);
+
+    await confirmFollowUpDraftDispatch({ id: "d_1", businessId: "biz_1", now: NOW });
+
+    const [write] = mocks.tx.followUpDraft.updateMany.mock.calls[0];
+    expect(write.data).toEqual({ status: "SENT" });
+    expect(write.where).toMatchObject({ id: "d_1", businessId: "biz_1", status: "SENT" });
+  });
+
+  it("checks a slot offer against the working hours again, and refuses it when the clinic has closed meanwhile", async () => {
+    const row = claimed(slotOffer());
+    row.appointment = { status: "CANCELLED", startAt: FUTURE, endAt: new Date(FUTURE.getTime() + 30 * 60_000), staffMemberId: null };
+    serveDrafts([row]);
+    mocks.tx.businessHours.findUnique.mockResolvedValue({ isOpen: false, startTime: "00:00", endTime: "23:59" });
+
+    expect(await confirmFollowUpDraftDispatch({ id: "d_1", businessId: "biz_1", now: NOW })).toEqual({
+      ok: false,
+      error: SLOT_OUTSIDE_HOURS_ERROR,
+    });
   });
 });
 
