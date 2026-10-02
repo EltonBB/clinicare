@@ -292,6 +292,16 @@ export async function saveAppointmentAction(
     // violates that the moment the edit lands (Codex #130). Re-offer with the
     // saved details instead in every one of these cases.
     let slotDetailsChangedWhileCancelled = false;
+    // The row's client, staff, service and window exactly as read below. Every flag
+    // above is derived from this read, which happens before the transaction, so the
+    // guarded write is tied to the same values (see the compare-and-set).
+    let readSlot: {
+      clientId: string;
+      staffMemberId: string | null;
+      title: string;
+      startAt: Date;
+      endAt: Date;
+    } | null = null;
 
     if (payload.id) {
       const existing = await prisma.appointment.findFirst({
@@ -319,6 +329,13 @@ export async function saveAppointmentAction(
 
       previousClientId = existing.clientId;
       previousStaffMemberId = existing.staffMemberId;
+      readSlot = {
+        clientId: existing.clientId,
+        staffMemberId: existing.staffMemberId,
+        title: existing.title,
+        startAt: existing.startAt,
+        endAt: existing.endAt,
+      };
       // Same rule cancelAppointmentCore enforces for the dedicated Cancel
       // button (409 there) — a completed visit already happened, so flipping
       // it to CANCELLED would corrupt the completion-rate metric and the
@@ -454,17 +471,26 @@ export async function saveAppointmentAction(
         // dedicated cancel action, just keyed on the client's baseline
         // instead of an exclusion set (a save can legitimately move status
         // to any value, unlike a cancel which only ever moves to CANCELLED).
-        // Scope: this guards `status` only, not clientId/staffMemberId/
-        // title/startAt/endAt/notes — two concurrent saves that leave
-        // status untouched can still clobber each other's other fields.
-        // Closing that fully would be general optimistic-concurrency
-        // control for the whole edit form, a materially bigger feature;
-        // this fix targets the specific status-vs-completion-sweep race.
+        // The guard also holds the client, staff member, service and window the
+        // flags above were derived from (readSlot, read just before this
+        // transaction). Without it, a second save that read the original slot
+        // and then waited for a first save to commit would compute "nothing
+        // moved" from its stale read, overwrite the first save's slot, and skip
+        // the conflict check, the reminder reset and - for a cancelled booking -
+        // the withdraw and re-offer, leaving an open offer that promises the
+        // first save's details on a row that no longer has them (Codex #130).
+        // A save that loses this check is refused like a stale status: refresh,
+        // and the next attempt compares against the row as it now is.
+        // Not general optimistic-concurrency control for the whole edit form:
+        // the notes are still last-writer-wins, and the form's own baseline is
+        // only the status; this ties the derived flags to the row they were
+        // read from.
         const { count } = await tx.appointment.updateMany({
           where: {
             id: payload.id,
             businessId: business.id,
             status: toPrismaAppointmentStatus(payload.baselineStatus),
+            ...readSlot,
           },
           data: {
             clientId: payload.clientId,

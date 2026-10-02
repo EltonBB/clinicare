@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseZonedWallClock } from "@/lib/time-zone";
 
@@ -144,6 +144,15 @@ const EXISTING = {
   status: "CONFIRMED" as const,
 };
 
+// The slot fields a save reads before its transaction; its guarded write must still match them.
+const READ_SLOT = {
+  clientId: EXISTING.clientId,
+  staffMemberId: EXISTING.staffMemberId,
+  title: EXISTING.title,
+  startAt: EXISTING.startAt,
+  endAt: EXISTING.endAt,
+};
+
 const PAYLOAD: SaveAppointmentPayload = {
   id: "appt_1",
   clientId: "client_1",
@@ -216,7 +225,7 @@ describe("saveAppointmentAction — concurrent-edit guard", () => {
     });
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "appt_1", businessId: "biz_1", status: "CONFIRMED" },
+        where: { id: "appt_1", businessId: "biz_1", status: "CONFIRMED", ...READ_SLOT },
       })
     );
     // Nothing downstream of the write should run for a refused save.
@@ -245,7 +254,7 @@ describe("saveAppointmentAction — concurrent-edit guard", () => {
     expect(result.ok).toBe(true);
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "appt_1", businessId: "biz_1", status: "CONFIRMED" },
+        where: { id: "appt_1", businessId: "biz_1", status: "CONFIRMED", ...READ_SLOT },
       })
     );
     // The edit page renders the status this save changes, so it is refreshed too.
@@ -310,7 +319,7 @@ describe("saveAppointmentAction — concurrent-edit guard", () => {
 
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "appt_1", businessId: "biz_1", status: "CONFIRMED" },
+        where: { id: "appt_1", businessId: "biz_1", status: "CONFIRMED", ...READ_SLOT },
       })
     );
     expect(result).toEqual({
@@ -351,7 +360,7 @@ describe("saveAppointmentAction — concurrent-edit guard", () => {
     expect(result.ok).toBe(true);
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "appt_1", businessId: "biz_1", status: "CONFIRMED" },
+        where: { id: "appt_1", businessId: "biz_1", status: "CONFIRMED", ...READ_SLOT },
         data: expect.objectContaining({ status: "CANCELLED" }),
       })
     );
@@ -509,6 +518,147 @@ describe("saveAppointmentAction — cancelledAt: an immutable timestamp, not the
     const call = mocks.appointment.updateMany.mock.calls[0][0];
     expect(call.data.cancelledAt).toBeUndefined();
     expect(call.data.cancelledScheduledStartAt).toBeUndefined();
+  });
+});
+
+describe("saveAppointmentAction — the guarded write holds the slot it read", () => {
+  // A save derives its flags (did the slot move, reset the reminders, withdraw
+  // and re-offer a cancelled booking's offer) from a read made before its
+  // transaction. If another save commits a different slot in between, those
+  // flags describe a row that is gone, so the write must refuse instead of
+  // overwriting it and skipping the follow-through - which would leave an open
+  // offer promising the other save's details on a row that no longer has them
+  // (Codex #130, round 22).
+  const READ_ROW = {
+    ...EXISTING,
+    businessId: "biz_1",
+    status: "CANCELLED" as const,
+    startAt: parseZonedWallClock("2026-06-01", "09:00"),
+    endAt: parseZonedWallClock("2026-06-01", "09:30"),
+  };
+  const UNCHANGED_CANCELLED_SAVE = { ...PAYLOAD, status: "cancelled" as const, baselineStatus: "cancelled" as const };
+
+  // Stands in for Postgres matching the update's WHERE against the row as it is now.
+  function currentRowIs(row: Record<string, unknown>) {
+    mocks.appointment.updateMany.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => ({
+      count: Object.entries(where).every(([field, wanted]) => {
+        const actual = row[field];
+        return wanted instanceof Date && actual instanceof Date ? wanted.getTime() === actual.getTime() : wanted === actual;
+      })
+        ? 1
+        : 0,
+    }));
+  }
+
+  beforeEach(() => {
+    mocks.appointment.findFirst.mockResolvedValue(READ_ROW);
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      ...READ_ROW,
+      client: { id: "client_1", name: "Mira" },
+      staffMember: null,
+    });
+  });
+
+  afterEach(() => {
+    mocks.appointment.updateMany.mockReset();
+  });
+
+  const CONCURRENT_CHANGES: Array<[string, Record<string, unknown>]> = [
+    ["client", { clientId: "client_2" }],
+    ["staff member", { staffMemberId: "staff_2" }],
+    ["service", { title: "Cleaning" }],
+    ["start time", { startAt: parseZonedWallClock("2026-06-01", "10:00") }],
+    ["end time", { endAt: parseZonedWallClock("2026-06-01", "10:30") }],
+  ];
+
+  it.each(CONCURRENT_CHANGES)(
+    "refuses to overwrite a still-cancelled booking whose %s another save just changed, and touches its offer not at all",
+    async (_label, change) => {
+      // The stale read says nothing moved (so no withdraw / re-offer is planned);
+      // the row, though, already carries the other save's value.
+      currentRowIs({ ...READ_ROW, ...change });
+
+      const result = await saveAppointmentAction(UNCHANGED_CANCELLED_SAVE);
+
+      expect(result).toEqual({ ok: false, error: APPOINTMENT_CONFLICT_ERROR });
+      expect(mocks.withdrawSlotOffers).not.toHaveBeenCalled();
+      expect(mocks.offerFreedSlot).not.toHaveBeenCalled();
+      expect(mocks.appointmentReminder.deleteMany).not.toHaveBeenCalled();
+      expect(mocks.refreshClientLastVisitAt).not.toHaveBeenCalled();
+      expect(mocks.notifyStaffOfAppointmentChange).not.toHaveBeenCalled();
+      expect(mocks.revalidateCalendarSurfaces).not.toHaveBeenCalled();
+    }
+  );
+
+  it("refuses a plain confirmed save the same way, so the conflict check and reminder reset it skipped are never silently dropped", async () => {
+    mocks.appointment.findFirst.mockResolvedValue({
+      ...EXISTING,
+      startAt: parseZonedWallClock("2026-06-01", "09:00"),
+      endAt: parseZonedWallClock("2026-06-01", "09:30"),
+    });
+    currentRowIs({
+      ...EXISTING,
+      businessId: "biz_1",
+      startAt: parseZonedWallClock("2026-06-01", "15:00"),
+      endAt: parseZonedWallClock("2026-06-01", "15:30"),
+    });
+
+    const result = await saveAppointmentAction(PAYLOAD);
+
+    expect(result).toEqual({ ok: false, error: APPOINTMENT_CONFLICT_ERROR });
+    expect(mocks.appointmentReminder.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.revalidateCalendarSurfaces).not.toHaveBeenCalled();
+  });
+
+  it("saves normally when the row is still exactly as the save read it", async () => {
+    currentRowIs(READ_ROW);
+
+    const result = await saveAppointmentAction(UNCHANGED_CANCELLED_SAVE);
+
+    expect(result.ok).toBe(true);
+    expect(mocks.appointment.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds the values it READ, not the ones being saved, so an edit that changes every one of them still goes through", async () => {
+    // The guard keeps the row's old client, staff member, service and window;
+    // the data written holds the new ones. Using the payload's values in the
+    // guard would make every real edit conflict with itself.
+    mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_2" });
+    mocks.client.findFirst.mockResolvedValue({ id: "client_2" });
+    mocks.appointment.findFirst.mockReset();
+    mocks.appointment.findFirst
+      .mockResolvedValueOnce({ ...EXISTING, staffMemberId: "staff_1" }) // the save's own read
+      .mockResolvedValueOnce(null); // the overlap check
+    mocks.appointment.findMany.mockResolvedValue([]);
+    currentRowIs({ ...EXISTING, businessId: "biz_1", staffMemberId: "staff_1" });
+
+    const result = await saveAppointmentAction({
+      ...PAYLOAD,
+      clientId: "client_2",
+      staffMemberId: "staff_2",
+      service: "Cleaning",
+      startTime: "11:00",
+      endTime: "11:45",
+    });
+
+    expect(result.ok).toBe(true);
+    const call = mocks.appointment.updateMany.mock.calls[0][0];
+    expect(call.where).toEqual({
+      id: "appt_1",
+      businessId: "biz_1",
+      status: "CONFIRMED",
+      ...READ_SLOT,
+      staffMemberId: "staff_1",
+    });
+    expect(call.data).toEqual(
+      expect.objectContaining({
+        clientId: "client_2",
+        staffMemberId: "staff_2",
+        title: "Cleaning",
+        startAt: parseZonedWallClock("2026-06-01", "11:00"),
+        endAt: parseZonedWallClock("2026-06-01", "11:45"),
+      })
+    );
   });
 });
 
