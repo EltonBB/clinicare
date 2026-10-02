@@ -151,6 +151,38 @@ describe("isSlotInsideOperatingHours (a freed appointment, given as instants)", 
     ).toBe(true);
   });
 
+  // Codex #130: a slot's length is measured on the clinic's clock, the same as
+  // the length Book pre-fills, so a clock change inside the slot moves neither.
+  it("measures a slot across the spring-forward night on the wall clock: 01:30-03:30 ends at 03:30, not 02:30", async () => {
+    // Sunday 2026-03-29: 00:30Z is 01:30 CET, 01:30Z is 03:30 CEST (60 elapsed minutes).
+    const springSlot = {
+      businessId: "biz_1",
+      startAt: new Date("2026-03-29T00:30:00.000Z"),
+      endAt: new Date("2026-03-29T01:30:00.000Z"),
+    };
+
+    findUnique.mockResolvedValue({ isOpen: true, startTime: "00:00", endTime: "03:00" });
+    expect(await isSlotInsideOperatingHours(db, springSlot)).toBe(false);
+
+    findUnique.mockResolvedValue({ isOpen: true, startTime: "00:00", endTime: "03:30" });
+    expect(await isSlotInsideOperatingHours(db, springSlot)).toBe(true);
+  });
+
+  it("measures a slot across the fall-back night on the wall clock: 01:30-03:30 is still 120 minutes", async () => {
+    // Sunday 2026-10-25: 23:30Z the day before is 01:30 CEST, 02:30Z is 03:30 CET (180 elapsed minutes).
+    const fallSlot = {
+      businessId: "biz_1",
+      startAt: new Date("2026-10-24T23:30:00.000Z"),
+      endAt: new Date("2026-10-25T02:30:00.000Z"),
+    };
+
+    findUnique.mockResolvedValue({ isOpen: true, startTime: "00:00", endTime: "04:00" });
+    expect(await isSlotInsideOperatingHours(db, fallSlot)).toBe(true);
+
+    findUnique.mockResolvedValue({ isOpen: true, startTime: "00:00", endTime: "03:29" });
+    expect(await isSlotInsideOperatingHours(db, fallSlot)).toBe(false);
+  });
+
   it("uses the weekday of the clinic's local day for a slot just after local midnight", async () => {
     findUnique.mockResolvedValue({ isOpen: true, startTime: "00:00", endTime: "23:59" });
 

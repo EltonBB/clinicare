@@ -64,6 +64,8 @@ vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: 
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 
+import { parseZonedWallClock } from "@/lib/time-zone";
+
 import {
   bookFollowUpSlotAction,
   dismissFollowUpDraftAction,
@@ -407,6 +409,51 @@ describe("bookFollowUpSlotAction", () => {
       select: { id: true },
     });
     expectFollowUpSurfacesRevalidated();
+  });
+
+  // Codex #130: the booking form adds the duration to the wall-clock time to get
+  // the end, so a slot that spans a clock change needs its WALL-CLOCK length, or
+  // the form derives an end time that is not the slot's - on the spring-forward
+  // night, one that does not exist and resolves back to the start (Save refuses).
+  it.each([
+    [
+      "spring-forward night (01:30 CET -> 03:30 CEST, 60 elapsed minutes)",
+      { startAt: "2026-03-29T00:30:00.000Z", endAt: "2026-03-29T01:30:00.000Z" },
+      { date: "2026-03-29", time: "01:30", duration: "120" },
+    ],
+    [
+      "fall-back night (01:30 CEST -> 03:30 CET, 180 elapsed minutes)",
+      { startAt: "2026-10-24T23:30:00.000Z", endAt: "2026-10-25T02:30:00.000Z" },
+      { date: "2026-10-25", time: "01:30", duration: "120" },
+    ],
+  ])("pre-fills the wall-clock length of a slot across the %s", async (_label, slot, expected) => {
+    process.env.APP_TIME_ZONE = "Europe/Budapest";
+    mocks.followUpDraft.findFirst.mockResolvedValue({
+      clientId: "client_1",
+      appointment: {
+        title: "Night clinic",
+        staffMemberId: null,
+        startAt: new Date(slot.startAt),
+        endAt: new Date(slot.endAt),
+      },
+    });
+    mocks.bookSlotOffer.mockResolvedValue({ ok: true });
+
+    const result = await bookFollowUpSlotAction(DRAFT_ID);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const params = new URL(result.bookingUrl, "https://app.test").searchParams;
+    expect({ date: params.get("date"), time: params.get("time"), duration: params.get("duration") }).toEqual(expected);
+
+    // What the booking form does with those values: start from the date and time,
+    // end at the time plus the duration on the wall clock. Both must land on the
+    // freed slot's own instants, so Save accepts exactly the slot that was offered.
+    const startMinutes = Number(expected.time.slice(0, 2)) * 60 + Number(expected.time.slice(3));
+    const endMinutes = startMinutes + Number(expected.duration);
+    const endTime = `${String(Math.floor(endMinutes / 60)).padStart(2, "0")}:${String(endMinutes % 60).padStart(2, "0")}`;
+    expect(parseZonedWallClock(expected.date, expected.time)?.toISOString()).toBe(slot.startAt);
+    expect(parseZonedWallClock(expected.date, endTime)?.toISOString()).toBe(slot.endAt);
   });
 
   it("passes an explicit empty staffMemberId when the freed slot had nobody assigned, without checking any staff member", async () => {

@@ -375,7 +375,14 @@ export async function generateFollowUpDrafts(now: Date = new Date()): Promise<Fo
     logger.error("Expiring stale follow-up drafts failed.", error);
   }
   try {
-    draftsExpired += (await expirePastSlotOffers(undefined, now)).expired;
+    const slotOffers = await expirePastSlotOffers(undefined, now, {
+      // One offer failing never stops the rest of the sweep; it is logged by id
+      // (never a client's name or the offer's text) and counted below.
+      onError: (error, draft) =>
+        logger.error("Expiring a slot offer failed.", error, { draftId: draft.id, businessId: draft.businessId }),
+    });
+    draftsExpired += slotOffers.expired;
+    totals.errors += slotOffers.failed;
   } catch (error) {
     totals.errors += 1;
     logger.error("Expiring past slot offers failed.", error);

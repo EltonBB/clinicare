@@ -359,7 +359,8 @@ const OPEN_SLOT_OFFER_WHERE: Prisma.FollowUpDraftWhereInput = {
   OR: [{ status: "PENDING" }, { status: "SENT", waitlistEntry: { status: "OFFERED" } }],
 };
 
-// Bounds one sweep; a backlog beyond it is picked up by the next run.
+// Bounds one sweep; a backlog beyond it is picked up by the next run. A sweep
+// of every workspace shares it between them (see expirePastSlotOffers).
 const MAX_EXPIRE_BATCH = 200;
 
 type OpenSlotOfferDraft = { id: string; businessId: string; waitlistEntryId: string | null; appointmentId?: string | null };
@@ -514,56 +515,129 @@ export async function retireSlotOffersForAppointments(
 }
 
 /**
+ * The workspaces that have a stale open offer, the one whose oldest stale offer
+ * has waited longest first. At most MAX_EXPIRE_BATCH of them: a sweep retires no
+ * more offers than that, and each workspace listed has at least one.
+ */
+async function workspacesWithStaleOffers(openStale: Prisma.FollowUpDraftWhereInput): Promise<string[]> {
+  const groups = await prisma.followUpDraft.groupBy({
+    by: ["businessId"],
+    where: openStale,
+    _min: { createdAt: true },
+    orderBy: { _min: { createdAt: "asc" } },
+    take: MAX_EXPIRE_BATCH,
+  });
+
+  return groups.map((group) => group.businessId);
+}
+
+/**
  * Retires slot offers whose slot has passed (or whose appointment was deleted
  * or reactivated, or whose waiting client was archived or deactivated): the
  * open draft -> EXPIRED and its entry OFFERED -> WAITING, one small
  * transaction per draft so the release only happens for a draft this sweep
  * actually retired. When the slot is still cancelled and ahead (the client
- * cause), the same transaction offers it to the next match. Idempotent and bounded; pass a businessId to
- * sweep one workspace (the follow-ups cron), omit it to sweep all.
+ * cause), the same transaction offers it to the next match. Idempotent and
+ * bounded; pass a businessId to sweep one workspace (the follow-ups cron sweeps
+ * them all), omit it to sweep all.
+ *
+ * A sweep retires at most MAX_EXPIRE_BATCH offers, and a sweep of every
+ * workspace shares that batch between them instead of working oldest-first
+ * across the board. An entry stays OFFERED, and out of matching, until its stale
+ * offer is retired, so after an outage a workspace with a deep backlog would
+ * otherwise use every run's batch and leave everyone else's entries (and the
+ * next slot they could have been offered) waiting hours (Codex #130). Instead
+ * each workspace with something stale takes an equal share per round, the one
+ * waiting longest first, and a workspace with less than its share leaves the
+ * rest to the others, so the whole batch is always used.
+ *
+ * One draft failing never stops the others: it is reported to `onError` (ids
+ * only - callers must not log anything else) and counted in `failed`. Left to
+ * propagate, the oldest stale offer of the first workspace would be the first
+ * thing every run tried, and the same failure there would block everyone behind
+ * it for good.
  */
 export async function expirePastSlotOffers(
   businessId?: string,
-  now: Date = new Date()
-): Promise<{ expired: number; released: number }> {
+  now: Date = new Date(),
+  options: { onError?: (error: unknown, draft: { id: string; businessId: string }) => void } = {}
+): Promise<{ expired: number; released: number; failed: number }> {
   const openStale: Prisma.FollowUpDraftWhereInput = {
     kind: "SLOT_OFFER",
     AND: [staleSlotWhere(now), OPEN_SLOT_OFFER_WHERE],
   };
 
-  const drafts = await prisma.followUpDraft.findMany({
-    where: { ...(businessId ? { businessId } : {}), ...openStale },
-    select: { id: true, businessId: true, waitlistEntryId: true, appointmentId: true },
-    orderBy: { createdAt: "asc" },
-    take: MAX_EXPIRE_BATCH,
-  });
-
+  let waiting = businessId ? [businessId] : await workspacesWithStaleOffers(openStale);
+  // Every draft this sweep has looked at, so asking a workspace for more never
+  // returns one it already handled (or failed on) this run.
+  const attempted: string[] = [];
+  let remaining = MAX_EXPIRE_BATCH;
   let expired = 0;
   let released = 0;
+  let failed = 0;
 
-  for (const draft of drafts) {
-    const outcome = await retryOnWriteConflict(() => prisma.$transaction(async (tx) => {
-      const retired = await retireOpenSlotOffer(tx, draft, openStale);
+  while (waiting.length > 0 && remaining > 0) {
+    const share = Math.max(1, Math.floor(remaining / waiting.length));
+    const unfinished: string[] = [];
 
-      // The slot may still be free: an offer retired only because its waiting
-      // client was archived or deactivated leaves the appointment cancelled and
-      // ahead, and nothing else would ever revisit it, so the next eligible
-      // waiting client would never hear about it (Codex #130). offerSlotAgain
-      // re-checks the slot itself, so it does nothing for the other causes (the
-      // slot passed, the appointment was deleted or is back on) and leaves out
-      // the client whose entry was just released.
-      if (retired.released) {
-        await offerSlotAgain(tx, { businessId: draft.businessId, appointmentId: draft.appointmentId ?? null, now });
+    for (const workspaceId of waiting) {
+      if (remaining <= 0) {
+        break;
       }
 
-      return retired;
-    }));
+      const take = Math.min(share, remaining);
+      const drafts = await prisma.followUpDraft.findMany({
+        where: {
+          businessId: workspaceId,
+          ...openStale,
+          ...(attempted.length > 0 ? { id: { notIn: [...attempted] } } : {}),
+        },
+        select: { id: true, businessId: true, waitlistEntryId: true, appointmentId: true },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        take,
+      });
 
-    expired += outcome.expired ? 1 : 0;
-    released += outcome.released ? 1 : 0;
+      for (const draft of drafts) {
+        attempted.push(draft.id);
+        remaining -= 1;
+
+        try {
+          const outcome = await retryOnWriteConflict(() => prisma.$transaction(async (tx) => {
+            const retired = await retireOpenSlotOffer(tx, draft, openStale);
+
+            // The slot may still be free: an offer retired only because its waiting
+            // client was archived or deactivated leaves the appointment cancelled and
+            // ahead, and nothing else would ever revisit it, so the next eligible
+            // waiting client would never hear about it (Codex #130). offerSlotAgain
+            // re-checks the slot itself, so it does nothing for the other causes (the
+            // slot passed, the appointment was deleted or is back on) and leaves out
+            // the client whose entry was just released.
+            if (retired.released) {
+              await offerSlotAgain(tx, { businessId: draft.businessId, appointmentId: draft.appointmentId ?? null, now });
+            }
+
+            return retired;
+          }));
+
+          expired += outcome.expired ? 1 : 0;
+          released += outcome.released ? 1 : 0;
+        } catch (error) {
+          failed += 1;
+          options.onError?.(error, { id: draft.id, businessId: draft.businessId });
+        }
+      }
+
+      // A full batch may have more behind it; a short one means this workspace
+      // has nothing stale left.
+      if (drafts.length === take) {
+        unfinished.push(workspaceId);
+      }
+    }
+
+    waiting = unfinished;
   }
 
-  return { expired, released };
+  return { expired, released, failed };
 }
 
 export { retryOnWriteConflict };

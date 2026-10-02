@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getZonedDayWindow,
   getZonedDayWindowFromDateKey,
+  getZonedWallClockMinutesBetween,
   getZonedWeekWindow,
   isRealCalendarDate,
   isRealDateKey,
@@ -145,5 +146,75 @@ describe("getZonedWeekWindow", () => {
     expect(start.toISOString()).toBe("2026-06-22T00:00:00.000Z");
     expect(end.toISOString()).toBe("2026-06-28T23:59:59.999Z");
     expect(end.getTime() - start.getTime()).toBe(7 * 86_400_000 - 1);
+  });
+});
+
+describe("getZonedWallClockMinutesBetween", () => {
+  const elapsedMinutes = (start: string, end: string) => (Date.parse(end) - Date.parse(start)) / 60_000;
+
+  it("is the plain length of an ordinary slot", () => {
+    // 09:00-09:45 in Budapest (CEST, UTC+2).
+    expect(
+      getZonedWallClockMinutesBetween(
+        new Date("2026-06-01T07:00:00.000Z"),
+        new Date("2026-06-01T07:45:00.000Z"),
+        "Europe/Budapest"
+      )
+    ).toBe(45);
+  });
+
+  // Codex #130: the booking form adds the length to the wall-clock start to get
+  // the end time, so the length it needs is the wall clock's, not the elapsed one.
+  it("counts the skipped hour as wall-clock time on the spring-forward night", () => {
+    // 01:30 CET -> 03:30 CEST on 2026-03-29: the clock jumps 02:00 -> 03:00.
+    const start = "2026-03-29T00:30:00.000Z";
+    const end = "2026-03-29T01:30:00.000Z";
+
+    expect(elapsedMinutes(start, end)).toBe(60);
+    expect(getZonedWallClockMinutesBetween(new Date(start), new Date(end), "Europe/Budapest")).toBe(120);
+  });
+
+  it("does not count the repeated hour on the fall-back night", () => {
+    // 01:30 CEST -> 03:30 CET on 2026-10-25: 02:00-03:00 happens twice.
+    const start = "2026-10-24T23:30:00.000Z";
+    const end = "2026-10-25T02:30:00.000Z";
+
+    expect(elapsedMinutes(start, end)).toBe(180);
+    expect(getZonedWallClockMinutesBetween(new Date(start), new Date(end), "Europe/Budapest")).toBe(120);
+  });
+
+  it("reads both instants in the zone it is given, not in UTC", () => {
+    // 01:30 EST -> 03:30 EDT on 2026-03-08 in New York.
+    const start = "2026-03-08T06:30:00.000Z";
+    const end = "2026-03-08T07:30:00.000Z";
+
+    expect(getZonedWallClockMinutesBetween(new Date(start), new Date(end), "America/New_York")).toBe(120);
+    expect(getZonedWallClockMinutesBetween(new Date(start), new Date(end), "UTC")).toBe(60);
+  });
+
+  it("counts whole calendar days across midnight, and goes negative when the end comes first", () => {
+    // 23:30 -> 00:30 the next day in Budapest (CEST).
+    const start = new Date("2026-06-01T21:30:00.000Z");
+    const end = new Date("2026-06-01T22:30:00.000Z");
+
+    expect(getZonedWallClockMinutesBetween(start, end, "Europe/Budapest")).toBe(60);
+    expect(getZonedWallClockMinutesBetween(end, start, "Europe/Budapest")).toBe(-60);
+  });
+
+  it("defaults to the app zone", () => {
+    const original = process.env.APP_TIME_ZONE;
+    process.env.APP_TIME_ZONE = "Europe/Budapest";
+
+    try {
+      expect(
+        getZonedWallClockMinutesBetween(new Date("2026-03-29T00:30:00.000Z"), new Date("2026-03-29T01:30:00.000Z"))
+      ).toBe(120);
+    } finally {
+      if (original === undefined) {
+        delete process.env.APP_TIME_ZONE;
+      } else {
+        process.env.APP_TIME_ZONE = original;
+      }
+    }
   });
 });

@@ -401,6 +401,27 @@ export function formatZonedTime24(date: Date, timeZone = getAppTimeZone()) {
   return `${hour}:${minute}`;
 }
 
+/**
+ * How many minutes the clinic's wall clock advances from `start` to `end`: whole
+ * calendar days plus the difference in time of day, both read in the app zone.
+ * This is the length the booking form needs - it adds the length to the wall-clock
+ * start to get the end time - and it is NOT the elapsed time: across a daylight-
+ * saving change the two differ by the clock shift. A 01:30-03:30 slot on the
+ * spring-forward night (Europe/Budapest, 2026-03-29) lasts 60 minutes but runs 120
+ * on the wall clock; pre-filling the elapsed 60 makes the form derive 02:30, a
+ * time that does not exist that night, which resolves back to the start and is
+ * refused (Codex #130).
+ */
+export function getZonedWallClockMinutesBetween(start: Date, end: Date, timeZone = getAppTimeZone()) {
+  const from = getZonedDateParts(start, timeZone);
+  const to = getZonedDateParts(end, timeZone);
+  const days = Math.round(
+    (Date.UTC(to.year, to.month - 1, to.day) - Date.UTC(from.year, from.month - 1, from.day)) / 86_400_000
+  );
+
+  return days * 1440 + (to.hour * 60 + to.minute) - (from.hour * 60 + from.minute);
+}
+
 export function formatZonedShortDateTime(date: Date, timeZone = getAppTimeZone()) {
   return new Intl.DateTimeFormat("en-US", {
     timeZone,

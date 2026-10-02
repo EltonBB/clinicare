@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
 import { timeToMinutes } from "@/lib/calendar";
-import { formatZonedTime24, getZonedWeekday } from "@/lib/time-zone";
+import { formatZonedTime24, getZonedWallClockMinutesBetween, getZonedWeekday } from "@/lib/time-zone";
 
 /**
  * The clinic's weekly working hours (Settings > Working hours): one row per
@@ -62,9 +62,10 @@ export async function isInsideOperatingHours(
 
 /**
  * The same check for a slot given as instants (a freed appointment). The end is
- * the wall-clock start plus the slot's length — exactly what Book pre-fills into
- * the booking form (a time and a duration), so this agrees with what the save
- * will then accept, including across a clock change.
+ * the wall-clock start plus the slot's length on the clinic's clock - exactly what
+ * Book pre-fills into the booking form (a time and a duration), so this agrees
+ * with what the save will then accept, including across a clock change, where the
+ * wall-clock length is not the elapsed one (see getZonedWallClockMinutesBetween).
  */
 export async function isSlotInsideOperatingHours(
   db: HoursReader,
@@ -72,7 +73,7 @@ export async function isSlotInsideOperatingHours(
 ): Promise<boolean> {
   const hours = await readHours(db, args.businessId, args.startAt);
   const startMinutes = timeToMinutes(formatZonedTime24(args.startAt));
-  const lengthMinutes = Math.round((args.endAt.getTime() - args.startAt.getTime()) / 60_000);
+  const lengthMinutes = getZonedWallClockMinutesBetween(args.startAt, args.endAt);
 
   return fitsOperatingHours(hours, startMinutes, startMinutes + lengthMinutes);
 }

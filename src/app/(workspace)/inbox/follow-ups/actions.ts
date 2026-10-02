@@ -20,7 +20,7 @@ import {
 import { parseRecordId } from "@/lib/record-id";
 import { liveSlotOfferWhere } from "@/lib/slot-offers";
 import { AVAILABLE_STAFF_WHERE } from "@/lib/staff-eligibility";
-import { formatZonedDateKey, formatZonedTime24 } from "@/lib/time-zone";
+import { formatZonedDateKey, formatZonedTime24, getZonedWallClockMinutesBetween } from "@/lib/time-zone";
 
 export type FollowUpDraftActionResult = { ok: boolean; error?: string };
 
@@ -249,8 +249,12 @@ export async function bookFollowUpSlotAction(rawDraftId: string): Promise<BookFo
   params.set("staffMemberId", staffMemberId ?? "");
   // Preserve the freed slot's own length — a 30-minute opening rebooked at the
   // form's 60-minute default could conflict with the next appointment, and a
-  // longer one would be silently shortened (Codex).
-  const durationMinutes = Math.round((endAt.getTime() - startAt.getTime()) / 60_000);
+  // longer one would be silently shortened (Codex). Measured on the clinic's
+  // clock, not as elapsed time: the form adds this to the wall-clock start to get
+  // the end time, so across a daylight-saving change the elapsed minutes would
+  // derive an end time that is not the slot's - on the spring-forward night one
+  // that does not exist at all (Codex #130).
+  const durationMinutes = getZonedWallClockMinutesBetween(startAt, endAt);
   if (durationMinutes > 0) {
     params.set("duration", String(durationMinutes));
   }

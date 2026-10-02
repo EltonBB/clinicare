@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The outer client (only expirePastSlotOffers' read + $transaction may use
+// The outer client (only expirePastSlotOffers' reads + $transaction may use
 // it) and the transaction client are separate objects, so every test can
 // prove the offer work runs on the transaction it was handed.
 const mocks = vi.hoisted(() => ({
   prisma: {
-    followUpDraft: { findMany: vi.fn(), updateMany: vi.fn(), createMany: vi.fn() },
+    followUpDraft: { findMany: vi.fn(), groupBy: vi.fn(), updateMany: vi.fn(), createMany: vi.fn() },
     waitlistEntry: { findMany: vi.fn(), updateMany: vi.fn() },
     business: { findUniqueOrThrow: vi.fn() },
     appointment: { findFirst: vi.fn() },
@@ -604,13 +604,22 @@ describe("reofferFreedSlot", () => {
 });
 
 describe("expirePastSlotOffers", () => {
-  it("reads only open, stale slot offers for the given business, bounded", async () => {
+  beforeEach(() => {
+    // These tests give the sweep's reads their own implementations.
+    mocks.prisma.followUpDraft.findMany.mockReset();
+    mocks.prisma.followUpDraft.groupBy.mockReset();
+  });
+
+  it("reads only open, stale slot offers for the given business, oldest first, bounded", async () => {
     mocks.prisma.followUpDraft.findMany.mockResolvedValue([]);
 
-    expect(await expirePastSlotOffers("biz_1", NOW)).toEqual({ expired: 0, released: 0 });
+    expect(await expirePastSlotOffers("biz_1", NOW)).toEqual({ expired: 0, released: 0, failed: 0 });
 
-    const [{ where, take }] = mocks.prisma.followUpDraft.findMany.mock.calls[0];
+    // One workspace named: nothing to look up first.
+    expect(mocks.prisma.followUpDraft.groupBy).not.toHaveBeenCalled();
+    const [{ where, take, orderBy }] = mocks.prisma.followUpDraft.findMany.mock.calls[0];
     expect(take).toBe(200);
+    expect(orderBy).toEqual([{ createdAt: "asc" }, { id: "asc" }]);
     expect(where).toEqual({
       businessId: "biz_1",
       kind: "SLOT_OFFER",
@@ -634,12 +643,37 @@ describe("expirePastSlotOffers", () => {
     });
   });
 
-  it("sweeps every workspace when no businessId is given", async () => {
+  it("sweeps every workspace that has something stale when no businessId is given, the one waiting longest first", async () => {
+    mocks.prisma.followUpDraft.groupBy.mockResolvedValue([{ businessId: "biz_old" }, { businessId: "biz_new" }]);
     mocks.prisma.followUpDraft.findMany.mockResolvedValue([]);
 
     await expirePastSlotOffers(undefined, NOW);
 
-    expect(mocks.prisma.followUpDraft.findMany.mock.calls[0][0].where).not.toHaveProperty("businessId");
+    // The workspaces come from one grouped read of the same open-and-stale filter
+    // (without a business), ordered by each one's oldest stale offer, and bounded
+    // by the batch: each listed workspace has at least one offer to retire.
+    const { businessId: firstWorkspace, ...perWorkspaceWhere } = mocks.prisma.followUpDraft.findMany.mock.calls[0][0].where;
+    expect(firstWorkspace).toBe("biz_old");
+    expect(mocks.prisma.followUpDraft.groupBy).toHaveBeenCalledTimes(1);
+    expect(mocks.prisma.followUpDraft.groupBy).toHaveBeenCalledWith({
+      by: ["businessId"],
+      where: perWorkspaceWhere,
+      _min: { createdAt: true },
+      orderBy: { _min: { createdAt: "asc" } },
+      take: 200,
+    });
+    expect(mocks.prisma.followUpDraft.findMany.mock.calls.map(([args]) => args.where.businessId)).toEqual([
+      "biz_old",
+      "biz_new",
+    ]);
+  });
+
+  it("does nothing, and reads no drafts, when no workspace has anything stale", async () => {
+    mocks.prisma.followUpDraft.groupBy.mockResolvedValue([]);
+
+    expect(await expirePastSlotOffers(undefined, NOW)).toEqual({ expired: 0, released: 0, failed: 0 });
+    expect(mocks.prisma.followUpDraft.findMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("expires each stale draft and releases its entry in one transaction per draft", async () => {
@@ -649,7 +683,7 @@ describe("expirePastSlotOffers", () => {
     ]);
     mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
 
-    expect(await expirePastSlotOffers("biz_1", NOW)).toEqual({ expired: 2, released: 2 });
+    expect(await expirePastSlotOffers("biz_1", NOW)).toEqual({ expired: 2, released: 2, failed: 0 });
 
     expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(2);
     expect(mocks.tx.followUpDraft.updateMany).toHaveBeenCalledWith(
@@ -674,7 +708,7 @@ describe("expirePastSlotOffers", () => {
     mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_next", "2026-02-01")]);
 
-    expect(await expirePastSlotOffers("biz_1", NOW)).toEqual({ expired: 1, released: 1 });
+    expect(await expirePastSlotOffers("biz_1", NOW)).toEqual({ expired: 1, released: 1, failed: 0 });
 
     expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(mocks.tx.appointment.findFirst).toHaveBeenCalledWith(
@@ -696,7 +730,7 @@ describe("expirePastSlotOffers", () => {
     mocks.tx.staffMember.findFirst.mockResolvedValue(null);
     mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_next", "2026-02-01")]);
 
-    expect(await expirePastSlotOffers("biz_1", NOW)).toEqual({ expired: 1, released: 1 });
+    expect(await expirePastSlotOffers("biz_1", NOW)).toEqual({ expired: 1, released: 1, failed: 0 });
 
     expect(mocks.tx.waitlistEntry.updateMany).toHaveBeenCalledWith({
       where: { id: "wl_1", businessId: "biz_1", status: "OFFERED" },
@@ -713,7 +747,7 @@ describe("expirePastSlotOffers", () => {
     mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.appointment.findFirst.mockResolvedValue(null);
 
-    expect(await expirePastSlotOffers("biz_1", NOW)).toEqual({ expired: 1, released: 1 });
+    expect(await expirePastSlotOffers("biz_1", NOW)).toEqual({ expired: 1, released: 1, failed: 0 });
     expect(mocks.tx.followUpDraft.createMany).not.toHaveBeenCalled();
   });
 
@@ -732,8 +766,145 @@ describe("expirePastSlotOffers", () => {
     mocks.prisma.followUpDraft.findMany.mockResolvedValue([{ id: "d_1", businessId: "biz_1", waitlistEntryId: "wl_1" }]);
     mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 0 });
 
-    expect(await expirePastSlotOffers("biz_1", NOW)).toEqual({ expired: 0, released: 0 });
+    expect(await expirePastSlotOffers("biz_1", NOW)).toEqual({ expired: 0, released: 0, failed: 0 });
     expect(mocks.tx.waitlistEntry.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+// Codex #130: an entry stays OFFERED, and out of matching, until its stale offer
+// is retired, so one workspace's deep backlog (after an outage, say) must not use
+// every run's batch and leave the other workspaces' offers waiting for hours.
+describe("expirePastSlotOffers — one batch shared between workspaces", () => {
+  type StaleDraft = { id: string; businessId: string; waitlistEntryId: string; appointmentId: null };
+
+  function backlog(businessId: string, count: number): StaleDraft[] {
+    return Array.from({ length: count }, (_, index) => ({
+      id: `${businessId}_d${index}`,
+      businessId,
+      waitlistEntryId: `${businessId}_wl${index}`,
+      appointmentId: null,
+    }));
+  }
+
+  // The stale drafts each workspace still has. Serves the sweep's reads the way
+  // the database would: that workspace's drafts, minus the ones excluded by id,
+  // limited to `take`. Retiring a draft is the mocked update below, so the data
+  // itself stays put: only `notIn` keeps a draft from being handed out twice.
+  function serveBacklogs(backlogs: Record<string, StaleDraft[]>) {
+    mocks.prisma.followUpDraft.groupBy.mockResolvedValue(Object.keys(backlogs).map((businessId) => ({ businessId })));
+    mocks.prisma.followUpDraft.findMany.mockImplementation(
+      async ({ where, take }: { where: { businessId: string; id?: { notIn: string[] } }; take: number }) =>
+        backlogs[where.businessId].filter((draft) => !where.id?.notIn.includes(draft.id)).slice(0, take)
+    );
+    mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
+  }
+
+  function retiredPerWorkspace() {
+    const counts: Record<string, number> = {};
+    for (const [{ where }] of mocks.tx.followUpDraft.updateMany.mock.calls) {
+      counts[where.businessId] = (counts[where.businessId] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  beforeEach(() => {
+    mocks.prisma.followUpDraft.findMany.mockReset();
+    mocks.prisma.followUpDraft.groupBy.mockReset();
+  });
+
+  it("serves a small workspace in full beside one with far more than the batch, and gives the big one everything left", async () => {
+    serveBacklogs({ biz_big: backlog("biz_big", 500), biz_small: backlog("biz_small", 5), biz_one: backlog("biz_one", 1) });
+
+    const result = await expirePastSlotOffers(undefined, NOW);
+
+    // The batch is 200: the two small workspaces are finished, and the big one
+    // takes the 194 they did not need - not just its first equal share.
+    expect(retiredPerWorkspace()).toEqual({ biz_big: 194, biz_small: 5, biz_one: 1 });
+    expect(result).toEqual({ expired: 200, released: 200, failed: 0 });
+    // Equal shares of 66 in the first round, then the whole remainder (128) for
+    // the one workspace that still had more.
+    expect(
+      mocks.prisma.followUpDraft.findMany.mock.calls.map(([args]) => [args.where.businessId, args.take])
+    ).toEqual([
+      ["biz_big", 66],
+      ["biz_small", 66],
+      ["biz_one", 66],
+      ["biz_big", 128],
+    ]);
+  });
+
+  it("splits a full batch evenly between workspaces that all have more than their share", async () => {
+    serveBacklogs({ biz_a: backlog("biz_a", 1000), biz_b: backlog("biz_b", 1000), biz_c: backlog("biz_c", 1000) });
+
+    const result = await expirePastSlotOffers(undefined, NOW);
+
+    // 200 in all: 66 each, and the last two go to the workspaces that waited longest.
+    expect(retiredPerWorkspace()).toEqual({ biz_a: 67, biz_b: 67, biz_c: 66 });
+    expect(result.expired).toBe(200);
+    expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(200);
+  });
+
+  it("still gives every workspace with something stale a turn when there are more of them than offers to share", async () => {
+    const backlogs: Record<string, StaleDraft[]> = {};
+    for (let index = 0; index < 200; index += 1) {
+      backlogs[`biz_${String(index).padStart(3, "0")}`] = backlog(`biz_${String(index).padStart(3, "0")}`, 3);
+    }
+    serveBacklogs(backlogs);
+
+    await expirePastSlotOffers(undefined, NOW);
+
+    // One each in the first round, so nobody is left out behind a deeper backlog.
+    expect(Object.values(retiredPerWorkspace())).toEqual(Array(200).fill(1));
+  });
+
+  it("never asks a workspace for a draft it already handled this run", async () => {
+    serveBacklogs({ biz_big: backlog("biz_big", 500), biz_small: backlog("biz_small", 3) });
+
+    await expirePastSlotOffers(undefined, NOW);
+
+    const calls = mocks.prisma.followUpDraft.findMany.mock.calls.map(([args]) => args);
+    // The first read of the run excludes nothing; the second read of biz_big
+    // excludes everything handled so far, including the other workspace's.
+    expect(calls[0].where).not.toHaveProperty("id");
+    const secondForBig = calls.filter((args) => args.where.businessId === "biz_big")[1];
+    expect(secondForBig.where.id.notIn).toHaveLength(100 + 3);
+    expect(secondForBig.where.id.notIn).toEqual(expect.arrayContaining(["biz_big_d0", "biz_big_d99", "biz_small_d0", "biz_small_d2"]));
+  });
+
+  // Codex #130: left to propagate, the oldest stale offer of the first workspace
+  // is the first thing every run tries, so one failure there would block every
+  // workspace behind it for good.
+  it("carries on with the other offers when one fails, reporting it by id", async () => {
+    serveBacklogs({ biz_a: backlog("biz_a", 3), biz_b: backlog("biz_b", 2) });
+    const failure = new Error("constraint failed");
+    mocks.tx.followUpDraft.updateMany.mockImplementation(async ({ where }: { where: { id: string } }) => {
+      if (where.id === "biz_a_d1") {
+        throw failure;
+      }
+      return { count: 1 };
+    });
+    const onError = vi.fn();
+
+    const result = await expirePastSlotOffers(undefined, NOW, { onError });
+
+    expect(result).toEqual({ expired: 4, released: 4, failed: 1 });
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(failure, { id: "biz_a_d1", businessId: "biz_a" });
+    // The draft after the failing one, and the next workspace's, were still retired.
+    expect(mocks.tx.followUpDraft.updateMany.mock.calls.map(([{ where }]) => where.id)).toEqual([
+      "biz_a_d0",
+      "biz_a_d1",
+      "biz_a_d2",
+      "biz_b_d0",
+      "biz_b_d1",
+    ]);
+  });
+
+  it("counts a failure even when nobody is listening for it", async () => {
+    serveBacklogs({ biz_a: backlog("biz_a", 2) });
+    mocks.tx.followUpDraft.updateMany.mockRejectedValue(new Error("constraint failed"));
+
+    expect(await expirePastSlotOffers(undefined, NOW)).toEqual({ expired: 0, released: 0, failed: 2 });
   });
 });
 

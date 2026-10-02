@@ -88,7 +88,7 @@ beforeEach(() => {
   mocks.findRebookCandidates.mockResolvedValue([]);
   mocks.findPaymentReminderCandidates.mockResolvedValue([]);
   mocks.findThankYouCandidates.mockResolvedValue([]);
-  mocks.expirePastSlotOffers.mockResolvedValue({ expired: 0, released: 0 });
+  mocks.expirePastSlotOffers.mockResolvedValue({ expired: 0, released: 0, failed: 0 });
   // Mirrors billing.ts: PRO and ADVANCED are Pro; TRIAL and BASIC are not.
   mocks.isProBusinessPlan.mockImplementation((plan: string) => plan === "PRO" || plan === "ADVANCED");
   mocks.getFollowUpCursor.mockResolvedValue(null);
@@ -322,7 +322,7 @@ describe("generateFollowUpDrafts — stale-draft sweep and totals", () => {
 
     expect(result.errors).toBe(1);
     expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(3);
-    expect(mocks.expirePastSlotOffers).toHaveBeenCalledWith(undefined, NOW);
+    expect(mocks.expirePastSlotOffers).toHaveBeenCalledWith(undefined, NOW, { onError: expect.any(Function) });
   });
 
   it("runs the sweep even when there are no businesses to process", async () => {
@@ -338,7 +338,7 @@ describe("generateFollowUpDrafts — stale-draft sweep and totals", () => {
       .mockResolvedValueOnce({ count: 2 }) // PAYMENT
       .mockResolvedValueOnce({ count: 3 }) // REBOOK
       .mockResolvedValueOnce({ count: 4 }); // THANK_YOU
-    mocks.expirePastSlotOffers.mockResolvedValue({ expired: 5, released: 1 });
+    mocks.expirePastSlotOffers.mockResolvedValue({ expired: 5, released: 1, failed: 0 });
 
     const result = await generateFollowUpDrafts(NOW);
 
@@ -347,7 +347,7 @@ describe("generateFollowUpDrafts — stale-draft sweep and totals", () => {
 
   it("counts a failed stale-draft sweep as an error but still sweeps slot offers", async () => {
     mocks.prisma.followUpDraft.updateMany.mockRejectedValue(new Error("db down"));
-    mocks.expirePastSlotOffers.mockResolvedValue({ expired: 2, released: 0 });
+    mocks.expirePastSlotOffers.mockResolvedValue({ expired: 2, released: 0, failed: 0 });
 
     const result = await generateFollowUpDrafts(NOW);
 
@@ -362,6 +362,31 @@ describe("generateFollowUpDrafts — stale-draft sweep and totals", () => {
     const result = await generateFollowUpDrafts(NOW);
 
     expect(result).toMatchObject({ errors: 1, draftsExpired: 3 });
+  });
+
+  // Codex #130: one offer failing no longer aborts the sweep, so the cron has to
+  // hear about it some other way - counted, and logged by id.
+  it("counts each slot offer the sweep could not retire as an error, keeping the count of those it did", async () => {
+    mocks.expirePastSlotOffers.mockResolvedValue({ expired: 4, released: 3, failed: 2 });
+
+    const result = await generateFollowUpDrafts(NOW);
+
+    expect(result).toMatchObject({ errors: 2, draftsExpired: 4 });
+  });
+
+  it("logs a slot offer the sweep failed on by draft and business id only", async () => {
+    const failure = new Error("deadlock detected");
+    mocks.expirePastSlotOffers.mockImplementation(async (_businessId, _now, options) => {
+      options.onError(failure, { id: "draft_9", businessId: "biz_9" });
+      return { expired: 0, released: 0, failed: 1 };
+    });
+
+    await generateFollowUpDrafts(NOW);
+
+    expect(mocks.logger.error).toHaveBeenCalledWith("Expiring a slot offer failed.", failure, {
+      draftId: "draft_9",
+      businessId: "biz_9",
+    });
   });
 
   it("stops starting new businesses once the wall-clock budget is spent, warns, and still sweeps", async () => {
