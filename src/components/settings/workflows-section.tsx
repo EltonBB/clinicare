@@ -55,7 +55,10 @@ export function WorkflowsSection({
   onChange: (patch: Partial<WorkflowSettingsValues>) => void;
 }) {
   return (
-    <div>
+    // Divided rows, the same treatment as Reminders and Working hours (AGENTS.md:
+    // "three divided toggle rows") - ToggleRow's first:pt-0 / last:pb-0 assume this
+    // wrapper (Codex #130).
+    <div className="divide-y divide-border/65">
       {isPro ? (
         <ToggleRow
           label="Rebooking nudge"
