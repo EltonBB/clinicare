@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
   const retireSlotOffersForAppointments = vi.fn();
   const retireWaitlistEntries = vi.fn();
   const reofferFreedSlots = vi.fn();
+  const lockStaffMemberExclusive = vi.fn();
   return {
     staffMember,
     $transaction,
@@ -23,6 +24,7 @@ const mocks = vi.hoisted(() => {
     retireSlotOffersForAppointments,
     retireWaitlistEntries,
     reofferFreedSlots,
+    lockStaffMemberExclusive,
   };
 });
 
@@ -42,6 +44,10 @@ vi.mock("@/lib/slot-offers", () => ({
   retireSlotOffersForAppointments: mocks.retireSlotOffersForAppointments,
   retireWaitlistEntries: mocks.retireWaitlistEntries,
   reofferFreedSlots: mocks.reofferFreedSlots,
+}));
+
+vi.mock("@/lib/row-locks", () => ({
+  lockStaffMemberExclusive: mocks.lockStaffMemberExclusive,
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -72,6 +78,7 @@ beforeEach(() => {
   mocks.retireSlotOffersForAppointments.mockResolvedValue(undefined);
   mocks.retireWaitlistEntries.mockResolvedValue([]); // no staff-pinned waiting-list entries by default
   mocks.reofferFreedSlots.mockResolvedValue(undefined);
+  mocks.lockStaffMemberExclusive.mockResolvedValue(undefined);
 });
 
 const revalidatedPaths = () => vi.mocked(revalidatePath).mock.calls.map(([path]) => path);
@@ -183,6 +190,52 @@ describe("deleteStaffAction", () => {
     expect(mocks.retireWaitlistEntries.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.staffMember.deleteMany.mock.invocationCallOrder[0]
     );
+  });
+
+  // Codex #130: a waiting-list entry added for this person right now holds a share
+  // lock on their row until it commits. Scanning for pinned entries first would
+  // miss it, and the delete's SET NULL would then turn it into an "any staff"
+  // entry (reproduced against a live Postgres). Taking the row lock first makes the
+  // delete wait for that add, so the scan below sees the entry and retires it.
+  it("locks the staff row exclusively before it scans for offers or pinned entries or deletes, in the same transaction", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: STAFF_ID });
+    mocks.staffMember.deleteMany.mockResolvedValue({ count: 1 });
+
+    await deleteStaffAction(STAFF_ID);
+
+    expect(mocks.lockStaffMemberExclusive).toHaveBeenCalledTimes(1);
+    expect(mocks.lockStaffMemberExclusive).toHaveBeenCalledWith(expect.anything(), STAFF_ID);
+    // The very transaction client the rest of the work runs on.
+    expect(mocks.lockStaffMemberExclusive.mock.calls[0][0]).toBe(mocks.findStaffAssignedOpenOfferAppointments.mock.calls[0][0]);
+    expect(mocks.lockStaffMemberExclusive.mock.calls[0][0]).toBe(mocks.retireWaitlistEntries.mock.calls[0][0]);
+
+    const [lock, offers, entries, remove] = [
+      mocks.lockStaffMemberExclusive,
+      mocks.findStaffAssignedOpenOfferAppointments,
+      mocks.retireWaitlistEntries,
+      mocks.staffMember.deleteMany,
+    ].map((fn) => fn.mock.invocationCallOrder[0]);
+    expect(lock).toBeLessThan(offers);
+    expect(lock).toBeLessThan(entries);
+    expect(lock).toBeLessThan(remove);
+  });
+
+  it("takes no lock for a staff member who doesn't exist", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue(null);
+
+    await deleteStaffAction(STAFF_ID);
+
+    expect(mocks.lockStaffMemberExclusive).not.toHaveBeenCalled();
+  });
+
+  it("deletes nothing when taking the lock fails", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: STAFF_ID });
+    mocks.lockStaffMemberExclusive.mockRejectedValue(new Error("db down"));
+
+    await expect(deleteStaffAction(STAFF_ID)).rejects.toThrow("db down");
+
+    expect(mocks.retireWaitlistEntries).not.toHaveBeenCalled();
+    expect(mocks.staffMember.deleteMany).not.toHaveBeenCalled();
   });
 
   it("offers the slots freed by those entries' dismissed offers on after the delete, once, alongside the stale ones", async () => {

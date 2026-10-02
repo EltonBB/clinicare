@@ -34,6 +34,7 @@ import {
   passSlotOffer,
   SLOT_OUTSIDE_HOURS_ERROR,
 } from "@/lib/follow-ups-data";
+import { MAX_MESSAGE_BODY_LENGTH, MESSAGE_TOO_LONG_ERROR } from "@/lib/messaging/limits";
 
 const NOW = new Date("2026-09-01T08:00:00.000Z");
 const FREED_APPOINTMENT = {
@@ -831,6 +832,75 @@ describe("markFollowUpDraftSent — a slot offer's working hours", () => {
 
     expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({ ok: false });
     expect(mocks.tx.businessHours.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+// Codex #130: the SENT flip stores the edited body, and the messaging seam rejects an
+// over-limit one only afterwards - so a failed send would put the draft back to
+// Pending with the oversized text still stored, unsendable on every retry, and
+// inflating every pending draft's response. The cap is enforced before the flip.
+describe("markFollowUpDraftSent - an edited body over the messaging cap", () => {
+  const liveRebook = () => draftRow({ kind: "REBOOK" });
+
+  it("refuses a body one character over the cap before reading or writing anything", async () => {
+    serveDrafts([liveRebook()]);
+
+    const result = await markFollowUpDraftSent({
+      id: "d_1",
+      businessId: "biz_1",
+      now: NOW,
+      editedBody: "x".repeat(MAX_MESSAGE_BODY_LENGTH + 1),
+    });
+
+    expect(result).toEqual({ ok: false, error: MESSAGE_TOO_LONG_ERROR });
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+    expect(mocks.tx.followUpDraft.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.followUpDraft.findFirstOrThrow).not.toHaveBeenCalled();
+  });
+
+  it("stores and sends a body of exactly the cap", async () => {
+    serveDrafts([liveRebook()]);
+    const editedBody = "x".repeat(MAX_MESSAGE_BODY_LENGTH);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW, editedBody })).toMatchObject({ ok: true });
+
+    const [flip] = mocks.tx.followUpDraft.updateMany.mock.calls[0];
+    expect(flip.data).toMatchObject({ status: "SENT", body: editedBody });
+  });
+
+  it("refuses it for a slot offer too, before the working-hours read", async () => {
+    serveDrafts([
+      draftRow({
+        kind: "SLOT_OFFER",
+        waitlistEntry: { status: "OFFERED" },
+        appointmentId: "appt_2",
+        appointment: { status: "CANCELLED", startAt: FUTURE, staffMemberId: null },
+      }),
+    ]);
+
+    const result = await markFollowUpDraftSent({
+      id: "d_1",
+      businessId: "biz_1",
+      now: NOW,
+      editedBody: "x".repeat(MAX_MESSAGE_BODY_LENGTH + 1),
+    });
+
+    expect(result).toEqual({ ok: false, error: MESSAGE_TOO_LONG_ERROR });
+    expect(mocks.tx.businessHours.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("sends the stored draft as it is when nothing was edited", async () => {
+    serveDrafts([liveRebook()]);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({ ok: true });
+
+    const [flip] = mocks.tx.followUpDraft.updateMany.mock.calls[0];
+    expect(flip.data).not.toHaveProperty("body");
+  });
+
+  it("words the refusal for the customer, without naming a provider", () => {
+    expect(MESSAGE_TOO_LONG_ERROR).toBe("The message is too long to send.");
+    expect(MESSAGE_TOO_LONG_ERROR).not.toMatch(/baileys|twilio|supabase|prisma|openai|whatsapp/i);
   });
 });
 

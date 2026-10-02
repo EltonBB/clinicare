@@ -2,6 +2,7 @@ import { BusinessPlan, Prisma } from "@prisma/client";
 
 import { isProBusinessPlan } from "@/lib/billing";
 import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
+import { MAX_MESSAGE_BODY_LENGTH, MESSAGE_TOO_LONG_ERROR } from "@/lib/messaging/limits";
 import { isSlotInsideOperatingHours } from "@/lib/operating-hours";
 import { prisma } from "@/lib/prisma";
 import type { FollowUpDraftRecord } from "@/lib/follow-ups";
@@ -169,6 +170,12 @@ class SlotOutsideHours extends Error {}
  * be a SQL liveness filter (it needs the clinic's weekday and wall clock), so
  * it is checked here, in the flip's own transaction, which is rolled back when
  * the slot is outside the hours (Codex #130).
+ *
+ * An edited body longer than the messaging seam's cap is refused before
+ * anything is written. The flip stores the body, and the seam rejects an
+ * over-limit one only afterwards — so the failed send would put the draft back
+ * to Pending with the oversized text still stored, unsendable on every retry
+ * and inflating every pending draft's response (Codex #130).
  */
 export async function markFollowUpDraftSent(args: {
   id: string;
@@ -177,6 +184,10 @@ export async function markFollowUpDraftSent(args: {
   editedBody?: string;
 }): Promise<MarkDraftSentResult> {
   const { id, businessId, now = new Date(), editedBody } = args;
+
+  if (editedBody !== undefined && editedBody.length > MAX_MESSAGE_BODY_LENGTH) {
+    return { ok: false, error: MESSAGE_TOO_LONG_ERROR };
+  }
 
   try {
     return await flipDraftToSent({ id, businessId, now, editedBody });

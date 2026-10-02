@@ -3,16 +3,30 @@ import { Prisma } from "@prisma/client";
 // Postgres reports a deadlock as SQLSTATE 40P01 ("deadlock detected").
 const DEADLOCK_PATTERN = /\b40P01\b|deadlock detected/i;
 
+// A raw query ($executeRaw / $queryRaw) that Postgres aborts reports its SQLSTATE
+// in `meta.code` of a P2010 error: 40001 for a serialization failure, 40P01 for
+// a deadlock.
+const RAW_QUERY_CONFLICT_SQLSTATES = new Set(["40001", "40P01"]);
+
 /**
  * True for a transaction Postgres aborted as a deadlock / write conflict.
  * Prisma names those P2034, but through the pg driver adapter a real deadlock
  * arrives as an unclassified PrismaClientUnknownRequestError with no `code`
  * — the SQLSTATE and text are only in its message (verified against a live
- * database). Any other unknown error is not a conflict and is never retried.
+ * database) — and the same conflict raised by a raw query (the row locks in
+ * lib/row-locks.ts) arrives as P2010 with the SQLSTATE in `meta.code`, not as
+ * P2034 (also verified against a live database). Any other error is not a
+ * conflict and is never retried.
  */
 function isWriteConflict(error: unknown): boolean {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    return error.code === "P2034";
+    if (error.code === "P2034") {
+      return true;
+    }
+
+    const sqlState = (error.meta as { code?: unknown } | undefined)?.code;
+
+    return error.code === "P2010" && typeof sqlState === "string" && RAW_QUERY_CONFLICT_SQLSTATES.has(sqlState);
   }
 
   return error instanceof Prisma.PrismaClientUnknownRequestError && DEADLOCK_PATTERN.test(error.message);

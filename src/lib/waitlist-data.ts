@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { prisma } from "@/lib/prisma";
 import { retryOnWriteConflict } from "@/lib/prisma-retry";
+import { lockClientShared, lockStaffMemberShared } from "@/lib/row-locks";
 import { isSameService, type WaitlistCandidate } from "@/lib/slot-fill-matching";
 import { APPOINTMENT_STAFF_AVAILABLE_WHERE, AVAILABLE_STAFF_WHERE } from "@/lib/staff-eligibility";
 import { formatZonedShortDate } from "@/lib/time-zone";
@@ -115,6 +116,15 @@ export async function listWaitingEntries(businessId: string, now: Date = new Dat
  * activeWaitlistEntryWhere and never matched, an invisible orphan. Reading the
  * rows under SERIALIZABLE means a concurrent status change conflicts with this
  * insert instead of slipping between the check and the write (Codex #130).
+ *
+ * SERIALIZABLE alone does not do that, though: Postgres only detects a conflict
+ * between two SERIALIZABLE transactions, and the writers that make a client or
+ * staff member ineligible (a status change, a delete) are READ COMMITTED. A
+ * deactivation could finish its scan for entries to retire, find none, and
+ * commit while this insert was still pending, and both would commit — a hidden,
+ * unmatchable WAITING row. So the client (and a pinned staff member) is also
+ * share-locked once read, which makes the deactivation wait for this insert, or
+ * this transaction fail and re-read (see lib/row-locks.ts) (Codex #130).
  */
 export async function createWaitlistEntry(args: {
   businessId: string;
@@ -148,6 +158,12 @@ export async function createWaitlistEntry(args: {
           if (!staff) {
             return { ok: false, error: WAITLIST_STAFF_ERROR };
           }
+        }
+
+        await lockClientShared(tx, args.clientId);
+
+        if (args.staffMemberId) {
+          await lockStaffMemberShared(tx, args.staffMemberId);
         }
 
         const active = await tx.waitlistEntry.count({

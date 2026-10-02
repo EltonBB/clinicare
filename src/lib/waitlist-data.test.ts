@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     waitlistEntry: { count: vi.fn(), create: vi.fn() },
     client: { findFirst: vi.fn() },
     staffMember: { findFirst: vi.fn() },
+    $executeRaw: vi.fn(),
   },
 }));
 
@@ -30,6 +31,7 @@ beforeEach(() => {
   mocks.$transaction.mockImplementation(async (cb: (client: unknown) => unknown) => cb(mocks.tx));
   mocks.tx.client.findFirst.mockResolvedValue({ id: "client_1" }); // an eligible client by default
   mocks.tx.staffMember.findFirst.mockResolvedValue({ id: "staff_1" }); // an available staff member by default
+  mocks.tx.$executeRaw.mockResolvedValue(1); // the row locks succeed by default
 });
 
 afterEach(() => {
@@ -201,6 +203,102 @@ describe("waitlist data layer", () => {
     mocks.tx.staffMember.findFirst.mockClear();
     expect(await createWaitlistEntry(newEntry)).toEqual({ ok: true });
     expect(mocks.tx.staffMember.findFirst).not.toHaveBeenCalled();
+  });
+
+  // Codex #130: this transaction is SERIALIZABLE, but the writers that make a
+  // client or staff member ineligible (a status change, a delete) are READ
+  // COMMITTED, and Postgres only detects a conflict between two SERIALIZABLE
+  // transactions. A deactivation could scan for entries to retire, find none, and
+  // commit while this insert was still pending — leaving a hidden WAITING entry.
+  // Verified against a live Postgres: share-locking the rows once read makes the
+  // deactivation wait for this insert (so its scan sees the entry), or this
+  // transaction fail and re-read.
+  describe("row locks", () => {
+    const sqlOf = (call: unknown[]) => (call[0] as TemplateStringsArray).join("?").replace(/\s+/g, " ");
+
+    beforeEach(() => {
+      mocks.tx.waitlistEntry.count.mockResolvedValue(0);
+      mocks.tx.waitlistEntry.create.mockResolvedValue({ id: "wl_1" });
+    });
+
+    it("share-locks the client once read, by id and never by string-building the SQL", async () => {
+      await createWaitlistEntry(newEntry);
+
+      expect(mocks.tx.$executeRaw).toHaveBeenCalledTimes(1);
+      const [call] = mocks.tx.$executeRaw.mock.calls;
+      expect(sqlOf(call)).toBe('SELECT 1 FROM "Client" WHERE "id" = ? FOR SHARE');
+      expect(call.slice(1)).toEqual(["client_1"]);
+    });
+
+    it("share-locks a pinned staff member too, after the client", async () => {
+      await createWaitlistEntry({ ...newEntry, staffMemberId: "staff_1" });
+
+      const calls = mocks.tx.$executeRaw.mock.calls;
+      expect(calls.map(sqlOf)).toEqual([
+        'SELECT 1 FROM "Client" WHERE "id" = ? FOR SHARE',
+        'SELECT 1 FROM "StaffMember" WHERE "id" = ? FOR SHARE',
+      ]);
+      expect(calls.map((call) => call[1])).toEqual(["client_1", "staff_1"]);
+    });
+
+    it("locks only after the eligibility reads and before the count and the insert", async () => {
+      await createWaitlistEntry({ ...newEntry, staffMemberId: "staff_1" });
+
+      const order = [
+        mocks.tx.client.findFirst,
+        mocks.tx.staffMember.findFirst,
+        mocks.tx.$executeRaw,
+        mocks.tx.waitlistEntry.count,
+        mocks.tx.waitlistEntry.create,
+      ].map((fn) => fn.mock.invocationCallOrder[0]);
+      expect([...order].sort((a, b) => a - b)).toEqual(order);
+      expect(mocks.tx.$executeRaw.mock.invocationCallOrder).toHaveLength(2);
+      expect(mocks.tx.$executeRaw.mock.invocationCallOrder[1]).toBeLessThan(order[3]);
+    });
+
+    it("takes no lock for a client or staff member it already turned away", async () => {
+      mocks.tx.client.findFirst.mockResolvedValueOnce(null);
+      await createWaitlistEntry(newEntry);
+
+      mocks.tx.staffMember.findFirst.mockResolvedValueOnce(null);
+      await createWaitlistEntry({ ...newEntry, staffMemberId: "staff_1" });
+
+      expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
+      expect(mocks.tx.waitlistEntry.create).not.toHaveBeenCalled();
+    });
+
+    // What Postgres really reports when the client was deactivated after this
+    // transaction's snapshot: a raw query's serialization failure arrives as P2010
+    // with the SQLSTATE in meta.code, not as P2034 (captured from a live run).
+    it("re-runs once when the lock reports the client changed since the read, and then turns the deactivated client away", async () => {
+      mocks.tx.$executeRaw.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError("Raw query failed. Code: `40001`. Message: `could not serialize access due to concurrent update`", {
+          code: "P2010",
+          clientVersion: "test",
+          meta: { code: "40001", message: "could not serialize access due to concurrent update" },
+        })
+      );
+      // The retry's fresh read sees the deactivation that landed in between.
+      mocks.tx.client.findFirst.mockResolvedValueOnce({ id: "client_1" }).mockResolvedValueOnce(null);
+
+      const result = await createWaitlistEntry(newEntry);
+
+      expect(result).toEqual({
+        ok: false,
+        error: "Choose an active client. Archived and inactive clients can't join the waiting list.",
+      });
+      expect(mocks.$transaction).toHaveBeenCalledTimes(2);
+      expect(mocks.tx.waitlistEntry.create).not.toHaveBeenCalled();
+    });
+
+    it("does not retry a lock failure that is not a conflict", async () => {
+      const failure = new Error("connection reset");
+      mocks.tx.$executeRaw.mockRejectedValueOnce(failure);
+
+      await expect(createWaitlistEntry(newEntry)).rejects.toBe(failure);
+      expect(mocks.$transaction).toHaveBeenCalledTimes(1);
+      expect(mocks.tx.waitlistEntry.create).not.toHaveBeenCalled();
+    });
   });
 
   it("refuses a new entry once the business's active waiting list is full, counting only eligible WAITING/OFFERED entries (Codex #130)", async () => {

@@ -1224,6 +1224,25 @@ describe("retryOnWriteConflict", () => {
     expect(run).toHaveBeenCalledTimes(2);
   });
 
+  // Captured from a live run: a raw query ($executeRaw, e.g. a FOR SHARE row lock) that Postgres
+  // aborts arrives as P2010 with the SQLSTATE in meta.code, not as P2034 (Codex #130).
+  const rawQueryError = (sqlState: string, message: string) =>
+    new Prisma.PrismaClientKnownRequestError(`Raw query failed. Code: \`${sqlState}\`. Message: \`${message}\``, {
+      code: "P2010",
+      clientVersion: "test",
+      meta: { code: sqlState, message },
+    });
+
+  it.each([
+    ["a serialization failure", rawQueryError("40001", "could not serialize access due to concurrent update")],
+    ["a deadlock", rawQueryError("40P01", "deadlock detected")],
+  ])("retries once on %s reported by a raw query as P2010", async (_label, error) => {
+    const run = vi.fn().mockRejectedValueOnce(error).mockResolvedValueOnce("done");
+
+    expect(await retryOnWriteConflict(run)).toBe("done");
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
   it("retries once on a real deadlock, which the driver adapter reports as an unknown request error naming 40P01", async () => {
     const run = vi.fn().mockRejectedValueOnce(unknownError(REAL_DEADLOCK)).mockResolvedValueOnce("done");
 
@@ -1251,6 +1270,9 @@ describe("retryOnWriteConflict", () => {
       unknownError("Error occurred during query execution: connection terminated unexpectedly"),
       new Prisma.PrismaClientKnownRequestError("unique", { code: "P2002", clientVersion: "test" }),
       new Prisma.PrismaClientKnownRequestError("a P2002 message that mentions deadlock detected", { code: "P2002", clientVersion: "test" }),
+      rawQueryError("23505", "duplicate key value violates unique constraint"), // a raw query failing for another reason
+      new Prisma.PrismaClientKnownRequestError("raw query failed", { code: "P2010", clientVersion: "test" }), // no SQLSTATE at all
+      new Prisma.PrismaClientKnownRequestError("not a raw query", { code: "P2002", clientVersion: "test", meta: { code: "40001" } }),
       new Error("deadlock detected"), // not a Prisma error at all
     ];
 

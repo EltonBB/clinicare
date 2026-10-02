@@ -8,6 +8,7 @@ import {
   type AdapterSendResult,
   type ChannelAdapter,
 } from "./index";
+import { MAX_MESSAGE_BODY_LENGTH, MESSAGE_TOO_LONG_ERROR } from "./limits";
 
 function registryWith(...adapters: ChannelAdapter[]): ChannelRegistry {
   const registry = new ChannelRegistry();
@@ -194,6 +195,26 @@ describe("sendMessage dispatch", () => {
     if (!result.ok) expect(result.reason).toBe("message_too_long");
     // Never handed to the adapter — so nothing truncated is recorded as full.
     expect(echo.sent).toHaveLength(0);
+  });
+
+  // The follow-up send refuses an over-limit edited body up front with these same
+  // values (Codex #130), so the cap and its wording must be exactly the seam's own.
+  it("sends a body of exactly the shared cap and refuses one character more with the shared wording", async () => {
+    const echo = new EchoAdapter("WHATSAPP");
+    const send = (body: string) =>
+      sendMessage(
+        { channel: "WHATSAPP", businessId: "biz_1", to: "+14155550100", message: { kind: "freeform", body } },
+        registryWith(echo)
+      );
+
+    expect(MAX_MESSAGE_BODY_LENGTH).toBe(8000);
+    expect((await send("x".repeat(MAX_MESSAGE_BODY_LENGTH))).ok).toBe(true);
+    expect(await send("x".repeat(MAX_MESSAGE_BODY_LENGTH + 1))).toEqual({
+      ok: false,
+      reason: "message_too_long",
+      error: MESSAGE_TOO_LONG_ERROR,
+    });
+    expect(echo.sent).toHaveLength(1);
   });
 
   it("rejects an unusable phone recipient", async () => {

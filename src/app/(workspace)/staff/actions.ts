@@ -6,6 +6,7 @@ import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { closeOpenTimeEntryIfPresent, openTimeEntryIfAbsent } from "@/lib/mobile/clock";
 import { prisma } from "@/lib/prisma";
 import { retryOnWriteConflict } from "@/lib/prisma-retry";
+import { lockStaffMemberExclusive } from "@/lib/row-locks";
 import {
   formatZonedTime,
   getAppTimeZone,
@@ -433,6 +434,14 @@ export async function deleteStaffAction(rawStaffId: string): Promise<DeleteStaff
   // locks, and re-offering a slot takes the staff scheduling advisory lock,
   // in the opposite order from a booking.
   const count = await retryOnWriteConflict(() => prisma.$transaction(async (tx) => {
+    // Lock the staff row before anything is scanned. A waiting-list entry added
+    // for this person right now holds a share lock on it until it commits; this
+    // waits for that, so the pinned-entry scan below sees the new entry and
+    // retires it, instead of missing it and letting the delete's SET NULL turn it
+    // into an "any staff" entry. An add that starts after this lock is turned
+    // away once the delete commits (Codex #130).
+    await lockStaffMemberExclusive(tx, staffId);
+
     // Read BEFORE the delete: the FK's SET NULL clears staffMemberId on
     // every one of this staff member's appointments the instant the row is
     // gone, so this exact filter would match nothing afterward.

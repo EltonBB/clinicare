@@ -232,6 +232,22 @@ describe("sendFollowUpDraftAction", () => {
     expect(mocks.revertFollowUpDraftToPending).not.toHaveBeenCalled();
   });
 
+  // Codex #130: an edited body over the messaging seam's cap used to be stored by the
+  // SENT flip and only then rejected by the send, leaving the oversized text on the
+  // draft. The data layer now refuses it before the flip; nothing is sent or reverted.
+  it("passes the edited body to the flip and returns its too-long refusal, sending and reverting nothing", async () => {
+    const tooLong = "x".repeat(8001);
+    mocks.markFollowUpDraftSent.mockResolvedValue({ ok: false, error: "The message is too long to send." });
+
+    const result = await sendFollowUpDraftAction(DRAFT_ID, `  ${tooLong}  `);
+
+    expect(result).toEqual({ ok: false, error: "The message is too long to send." });
+    expect(mocks.markFollowUpDraftSent).toHaveBeenCalledWith(expect.objectContaining({ editedBody: tooLong }));
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+    expect(mocks.revertFollowUpDraftToPending).not.toHaveBeenCalled();
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
   it("reverts to pending and returns a plain error when the client has no phone on file", async () => {
     mocks.markFollowUpDraftSent.mockResolvedValue({
       ok: true,
