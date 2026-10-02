@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => {
     update: vi.fn(),
     create: vi.fn(),
   };
+  const staffShift = { deleteMany: vi.fn(), createMany: vi.fn() };
   const $transaction = vi.fn();
   const getAuthedBusiness = vi.fn();
   const findStaffAssignedOpenOfferAppointments = vi.fn();
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => {
   const lockStaffMemberExclusive = vi.fn();
   return {
     staffMember,
+    staffShift,
     $transaction,
     getAuthedBusiness,
     findStaffAssignedOpenOfferAppointments,
@@ -31,6 +33,7 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     staffMember: mocks.staffMember,
+    staffShift: mocks.staffShift,
     $transaction: mocks.$transaction,
   },
 }));
@@ -332,6 +335,50 @@ describe("saveStaffAction", () => {
     expect(revalidatedPaths()).toEqual(
       expect.arrayContaining([`/staff/${STAFF_ID}`, "/calendar", "/dashboard", "/inbox", "/inbox/follow-ups"])
     );
+  });
+
+  // Codex #130: a weekly-schedule date with the right shape but no such day (2026-02-31)
+  // used to be rolled over into a different real one, so the save would replace - delete -
+  // the shifts on that other day. An impossible date is skipped, and replaces nothing.
+  describe("replacing the weekly schedule", () => {
+    const schedule = (date: string) => ({ date, enabled: true, startTime: "09:00", endTime: "17:00" });
+
+    beforeEach(() => {
+      mocks.staffMember.create.mockResolvedValue({ id: STAFF_ID });
+      mocks.staffMember.findFirstOrThrow.mockResolvedValue({ ...STAFF_ROW, status: "ACTIVE" });
+      // The schedule replace runs as an array of operations; everything else as a callback.
+      mocks.$transaction.mockImplementation(async (arg: unknown) =>
+        Array.isArray(arg) ? Promise.all(arg) : (arg as (tx: unknown) => unknown)({ staffMember: mocks.staffMember })
+      );
+      mocks.staffShift.deleteMany.mockResolvedValue({ count: 0 });
+      mocks.staffShift.createMany.mockResolvedValue({ count: 1 });
+    });
+
+    const saveWith = (dates: string[]) =>
+      saveStaffAction({ ...payload, id: undefined, status: "ACTIVE", weeklySchedule: dates.map(schedule) });
+
+    it("clears and creates shifts only for the real dates", async () => {
+      const result = await saveWith(["2026-02-31", "2026-10-05"]);
+
+      expect(result).toMatchObject({ ok: true });
+      // One window - 5 Oct 2026 in Budapest (UTC+2) - not a second one for March 3.
+      expect(mocks.staffShift.deleteMany).toHaveBeenCalledTimes(1);
+      const [{ where }] = mocks.staffShift.deleteMany.mock.calls[0];
+      expect(where.OR).toEqual([
+        { startsAt: { gte: new Date("2026-10-04T22:00:00.000Z"), lte: new Date("2026-10-05T21:59:59.999Z") } },
+      ]);
+      const [{ data }] = mocks.staffShift.createMany.mock.calls[0];
+      expect(data).toHaveLength(1);
+      expect(data[0].startsAt).toEqual(new Date("2026-10-05T07:00:00.000Z"));
+    });
+
+    it("replaces nothing when every date is impossible", async () => {
+      const result = await saveWith(["2026-02-31", "2026-13-01"]);
+
+      expect(result).toMatchObject({ ok: true });
+      expect(mocks.staffShift.deleteMany).not.toHaveBeenCalled();
+      expect(mocks.staffShift.createMany).not.toHaveBeenCalled();
+    });
   });
 
   // Codex #130: an entry pinned to a member who is then set Inactive can never be

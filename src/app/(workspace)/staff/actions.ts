@@ -11,7 +11,7 @@ import {
   formatZonedTime,
   getAppTimeZone,
   getZonedDayWindow,
-  getZonedDayWindowFromParts,
+  getZonedDayWindowFromDateKey,
   parseZonedWallClock,
 } from "@/lib/time-zone";
 import {
@@ -180,21 +180,6 @@ function isValidTime(value: string) {
   return /^\d{2}:\d{2}$/.test(value);
 }
 
-// Zoned day window (true UTC instants) for a `YYYY-MM-DD` clinic-local date key.
-function zonedDateKeyWindow(dateKey: string, timeZone: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey.trim());
-  if (!match) {
-    return null;
-  }
-
-  return getZonedDayWindowFromParts(
-    Number(match[1]),
-    Number(match[2]),
-    Number(match[3]),
-    timeZone
-  );
-}
-
 async function replaceWeeklySchedule(args: {
   businessId: string;
   staffMemberId: string;
@@ -234,7 +219,7 @@ async function replaceWeeklySchedule(args: {
         .filter((date): date is string => /^\d{4}-\d{2}-\d{2}$/.test((date ?? "").trim()))
     )
   )
-    .map((dateKey) => zonedDateKeyWindow(dateKey, timeZone))
+    .map((dateKey) => getZonedDayWindowFromDateKey(dateKey, timeZone))
     .filter((window): window is NonNullable<typeof window> => window !== null);
 
   const operations = [

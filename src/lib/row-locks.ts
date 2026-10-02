@@ -24,6 +24,10 @@ import type { Prisma } from "@prisma/client";
  *   the retry reads the member as ineligible.
  * A deleting transaction takes the exclusive lock BEFORE its scan, so an add
  * either finished first (and is scanned) or is turned away after the delete.
+ * Without that, an add that took its share lock after the scan had found nothing
+ * would commit an entry the delete never retires; a cancellation could then offer
+ * it a slot, and the delete's cascade would remove entry and offer together, so
+ * the freed slot is never offered to anyone else (Codex #130).
  *
  * Not the advisory lock acquireSchedulingLock uses: a SERIALIZABLE transaction
  * fixes its snapshot at its first statement, so an advisory lock waited on
@@ -42,4 +46,19 @@ export async function lockStaffMemberShared(tx: Prisma.TransactionClient, staffM
 
 export async function lockStaffMemberExclusive(tx: Prisma.TransactionClient, staffMemberId: string): Promise<void> {
   await tx.$executeRaw`SELECT 1 FROM "StaffMember" WHERE "id" = ${staffMemberId} FOR UPDATE`;
+}
+
+/**
+ * The client counterpart of lockStaffMemberExclusive, for a client delete.
+ *
+ * FOR NO KEY UPDATE rather than FOR UPDATE: it conflicts with the share lock the
+ * waiting-list add holds, and with the UPDATE a status change does, which is all
+ * the protocol needs - but not with the KEY SHARE lock a foreign key check takes.
+ * So a slot offer, appointment or payment being inserted for this client is not
+ * made to wait on this transaction, which would otherwise be a lock cycle with the
+ * entry rows this transaction goes on to retire. The DELETE itself still takes the
+ * full lock when it runs.
+ */
+export async function lockClientExclusive(tx: Prisma.TransactionClient, clientId: string): Promise<void> {
+  await tx.$executeRaw`SELECT 1 FROM "Client" WHERE "id" = ${clientId} FOR NO KEY UPDATE`;
 }

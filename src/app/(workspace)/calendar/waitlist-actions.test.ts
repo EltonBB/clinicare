@@ -163,6 +163,28 @@ describe("addWaitlistEntryAction — successful add", () => {
     );
   });
 
+  // Codex #130: 2026-02-31 matches the YYYY-MM-DD shape, and used to be rolled over into
+  // March 3 and saved as that - a hidden earliest-date restriction that could keep
+  // otherwise matching slots from ever being offered.
+  it.each(["2026-02-31", "2026-13-01", "2026-04-31", "2026-02-29"])(
+    "refuses an impossible earliest date %s instead of saving a different day",
+    async (earliestDate) => {
+      const result = await addWaitlistEntryAction({ ...VALID_PAYLOAD, earliestDate });
+
+      expect(result).toEqual({ ok: false, error: "Choose a valid earliest date." });
+      expect(mocks.createWaitlistEntry).not.toHaveBeenCalled();
+    }
+  );
+
+  it("still saves a real earliest date, as the clinic-zone midnight of that day", async () => {
+    const result = await addWaitlistEntryAction({ ...VALID_PAYLOAD, earliestDate: "2028-02-29" });
+
+    expect(result).toEqual({ ok: true });
+    expect(mocks.createWaitlistEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ earliestDate: expect.any(Date) })
+    );
+  });
+
   it.each([
     ["later than", "14:00", "09:00"],
     ["equal to", "09:00", "09:00"],

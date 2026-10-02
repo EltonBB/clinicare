@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { Prisma } from "@prisma/client";
 
-import { lockClientShared, lockStaffMemberExclusive, lockStaffMemberShared } from "@/lib/row-locks";
+import {
+  lockClientExclusive,
+  lockClientShared,
+  lockStaffMemberExclusive,
+  lockStaffMemberShared,
+} from "@/lib/row-locks";
 
 function fakeTx() {
   const $executeRaw = vi.fn().mockResolvedValue(1);
@@ -40,6 +45,20 @@ describe("row locks", () => {
 
     expect(sqlOf($executeRaw.mock.calls[0])).toBe('SELECT 1 FROM "StaffMember" WHERE "id" = ? FOR UPDATE');
     expect($executeRaw.mock.calls[0].slice(1)).toEqual(["staff_1"]);
+  });
+
+  // FOR NO KEY UPDATE, not FOR UPDATE: it still conflicts with the waiting-list add's share
+  // lock (which is what the delete has to wait for), but not with the KEY SHARE lock a
+  // foreign-key check takes - so a slot offer being inserted for the client is not made to
+  // wait on, and fail after, the delete (measured against a live Postgres: 10 failed offers
+  // per 120 trials with FOR UPDATE, none with FOR NO KEY UPDATE).
+  it("locks a client row for a delete without blocking foreign-key checks, by bound id", async () => {
+    const { tx, $executeRaw } = fakeTx();
+
+    await lockClientExclusive(tx, "client_1");
+
+    expect(sqlOf($executeRaw.mock.calls[0])).toBe('SELECT 1 FROM "Client" WHERE "id" = ? FOR NO KEY UPDATE');
+    expect($executeRaw.mock.calls[0].slice(1)).toEqual(["client_1"]);
   });
 
   it("does not swallow a failure: a serialization failure must reach retryOnWriteConflict", async () => {

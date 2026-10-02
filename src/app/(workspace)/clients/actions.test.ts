@@ -346,6 +346,46 @@ describe("deleteClientAction", () => {
       expect(mocks.after).not.toHaveBeenCalled();
     });
 
+    // Codex #130: an entry being added for this client right now holds a share lock on the
+    // row until it commits. The delete has to wait for that BEFORE it scans: an add that
+    // lands after the scan would be cascade-deleted unretired - with any offer a cancellation
+    // made it in between - and the freed slot would never be offered to anyone else
+    // (reproduced against a live Postgres: 15 of 120 trials).
+    it("locks the client row before it reads, scans for entries or deletes, in the same transaction", async () => {
+      await deleteClientAction(CLIENT_ID);
+
+      expect(mocks.$transaction).toHaveBeenCalledTimes(1);
+      expect(mocks.$executeRaw).toHaveBeenCalledTimes(1);
+      const [call] = mocks.$executeRaw.mock.calls;
+      expect((call[0] as TemplateStringsArray).join("?").replace(/\s+/g, " ")).toBe(
+        'SELECT 1 FROM "Client" WHERE "id" = ? FOR NO KEY UPDATE'
+      );
+      expect(call.slice(1)).toEqual([CLIENT_ID]);
+
+      const [lock, read, scan, withdraw, remove] = [
+        mocks.$executeRaw,
+        mocks.client.findFirst,
+        mocks.retireWaitlistEntries,
+        mocks.withdrawSlotOffersOnClientAppointments,
+        mocks.client.deleteMany,
+      ].map((fn) => fn.mock.invocationCallOrder[0]);
+      expect(lock).toBeLessThan(read);
+      expect(lock).toBeLessThan(scan);
+      expect(lock).toBeLessThan(withdraw);
+      expect(lock).toBeLessThan(remove);
+    });
+
+    it("deletes nothing when taking the lock fails: no scan, no delete, no cleanup recorded", async () => {
+      mocks.$executeRaw.mockRejectedValueOnce(new Error("db down"));
+
+      await expect(deleteClientAction(CLIENT_ID)).rejects.toThrow("db down");
+
+      expect(mocks.retireWaitlistEntries).not.toHaveBeenCalled();
+      expect(mocks.client.deleteMany).not.toHaveBeenCalled();
+      expect(mocks.recordPendingStorageCleanup).not.toHaveBeenCalled();
+      expect(mocks.after).not.toHaveBeenCalled();
+    });
+
     it("are not touched, nor anything offered on, when the client doesn't exist", async () => {
       mocks.client.findFirst.mockResolvedValue(null);
 

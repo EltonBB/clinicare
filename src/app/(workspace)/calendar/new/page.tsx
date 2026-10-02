@@ -4,9 +4,12 @@ import { NewAppointmentForm } from "@/components/calendar/new-appointment-form";
 import { CreatePageShell } from "@/components/workspace/create-page-shell";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
+import { isRealDateKey } from "@/lib/time-zone";
 
+// A real calendar date: the shape alone lets 2026-02-31 through to be prefilled
+// (and then rolled over into March 3 when saved).
 function isValidDateParam(value?: string): value is string {
-  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  return typeof value === "string" && isRealDateKey(value);
 }
 
 function isValidTimeParam(value?: string): value is string {

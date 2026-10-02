@@ -26,6 +26,7 @@ import { parseRecordId, recordIdSchema } from "@/lib/record-id";
 import { retryOnWriteConflict } from "@/lib/prisma-retry";
 import { reofferFreedSlots, retireWaitlistEntries, withdrawSlotOffersOnClientAppointments } from "@/lib/slot-offers";
 import { acquireBusinessFinancialLock } from "@/lib/business-financial-lock";
+import { lockClientExclusive } from "@/lib/row-locks";
 
 // Aborts addClientPaymentAction's transaction from inside its callback when
 // the amount fails to parse against the currency re-read under the
@@ -1267,6 +1268,16 @@ export async function deleteClientAction(rawClientId: string): Promise<DeleteCli
   // offered on before the client is gone, or not at all. Retried once on a
   // deadlock, like every transaction that reaches the scheduling lock.
   const result = await retryOnWriteConflict(() => prisma.$transaction(async (tx) => {
+    // Lock the client row before anything else, the scan for waiting-list entries
+    // included. An entry being added for this client right now holds a share lock
+    // on the row until it commits; waiting for it means the scan below sees that
+    // entry and retires it. Without this, an add landing after the scan would be
+    // cascade-deleted unretired - along with any offer a cancellation had just
+    // made it - and the freed slot would never be offered to anyone else. An add
+    // that starts after this lock is turned away once the delete commits, the
+    // same as for a staff member (Codex #130).
+    await lockClientExclusive(tx, clientId);
+
     // Read the storage-bearing fields here, inside the transaction and
     // immediately before the delete, rather than beforehand: a document or
     // gallery item uploaded between an earlier read and this statement would
