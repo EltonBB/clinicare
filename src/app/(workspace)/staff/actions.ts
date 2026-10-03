@@ -334,6 +334,23 @@ export async function saveStaffAction(payload: SaveStaffPayload): Promise<SaveSt
             await tx.staffMember.update({ where: { id: memberId }, data });
 
             const freed = await retireWaitlistEntries(tx, { businessId: business.id, staffMemberId: memberId });
+
+            // An offer for one of THEIR freed slots, held by an entry that isn't
+            // pinned to them, went stale the moment they became Inactive (Book
+            // refuses it), yet its entry stayed OFFERED — out of matching, so that
+            // client couldn't be offered another clinician's freed slot until the
+            // hourly sweep released it. Withdraw those offers here and put their
+            // entries back to waiting, as the delete path does; the slots
+            // themselves can't be offered on while their clinician is Inactive
+            // (offerFreedSlot skips them) (Codex #130).
+            await retireSlotOffersForAppointments(tx, {
+              businessId: business.id,
+              appointmentIds: await findStaffAssignedOpenOfferAppointments(tx, {
+                businessId: business.id,
+                staffMemberId: memberId,
+              }),
+            });
+
             await reofferFreedSlots(tx, { businessId: business.id, appointmentIds: freed });
           })
         );

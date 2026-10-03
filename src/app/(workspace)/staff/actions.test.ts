@@ -337,6 +337,44 @@ describe("saveStaffAction", () => {
     );
   });
 
+  // Codex #130: an offer for one of their freed slots, held by an entry NOT
+  // pinned to them, goes stale the moment they become Inactive. Its entry must
+  // be put back to waiting in the same transaction (as the delete path does),
+  // not left OFFERED — and out of matching — until the hourly sweep.
+  it("withdraws the open offers on their freed slots when they are made Inactive, in the same transaction", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: STAFF_ID });
+    mocks.staffMember.update.mockResolvedValue({});
+    mocks.staffMember.findFirstOrThrow.mockResolvedValue(STAFF_ROW);
+    mocks.findStaffAssignedOpenOfferAppointments.mockResolvedValue(["appt_1", "appt_2"]);
+
+    expect(await saveStaffAction(payload)).toMatchObject({ ok: true });
+
+    const [tx] = mocks.findStaffAssignedOpenOfferAppointments.mock.calls[0];
+    expect(mocks.findStaffAssignedOpenOfferAppointments).toHaveBeenCalledWith(tx, {
+      businessId: BUSINESS.id,
+      staffMemberId: STAFF_ID,
+    });
+    expect(mocks.retireSlotOffersForAppointments).toHaveBeenCalledWith(tx, {
+      businessId: BUSINESS.id,
+      appointmentIds: ["appt_1", "appt_2"],
+    });
+    // After the status change, so the slots read as their clinician's unavailable
+    // and aren't re-offered to anyone.
+    expect(mocks.staffMember.update.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.retireSlotOffersForAppointments.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("leaves offers alone when a staff member is saved without being made Inactive", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: STAFF_ID });
+    mocks.staffMember.update.mockResolvedValue({});
+    mocks.staffMember.findFirstOrThrow.mockResolvedValue({ ...STAFF_ROW, status: "AWAY" });
+
+    expect(await saveStaffAction({ ...payload, status: "AWAY" })).toMatchObject({ ok: true });
+    expect(mocks.findStaffAssignedOpenOfferAppointments).not.toHaveBeenCalled();
+    expect(mocks.retireSlotOffersForAppointments).not.toHaveBeenCalled();
+  });
+
   // Codex #130: a weekly-schedule date with the right shape but no such day (2026-02-31)
   // used to be rolled over into a different real one, so the save would replace - delete -
   // the shifts on that other day. An impossible date is skipped, and replaces nothing.
