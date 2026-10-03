@@ -176,6 +176,17 @@ describe("POST /api/webhooks/whatsapp/baileys — message events: reply-intent r
     expect(mocks.applyInboundReplyIntent).not.toHaveBeenCalled();
   });
 
+  // Codex #130: with no provider id the message can't be deduplicated, so a
+  // worker retry records it again under a new messageId — the per-message claim
+  // can't stop a second automated reply. It is still recorded for the Inbox.
+  it("records but does not act on a message that arrives without a provider id", async () => {
+    const response = await POST(legacy(JSON.stringify({ ...MESSAGE, providerMessageId: "" })));
+
+    expect(response.status).toBe(200);
+    expect(mocks.recordInboundMessage).toHaveBeenCalledWith(expect.objectContaining({ providerMessageId: "" }));
+    expect(mocks.applyInboundReplyIntent).not.toHaveBeenCalled();
+  });
+
   it("does not attempt a reply intent for an invalid-phone/empty-body non-recording", async () => {
     mocks.recordInboundMessage.mockResolvedValue({ recorded: false, reason: "invalid_phone" });
 

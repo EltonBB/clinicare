@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => {
     business: { update: vi.fn(), findUniqueOrThrow: vi.fn() },
     businessHours: { upsert: vi.fn() },
     reminderSettings: { upsert: vi.fn() },
-    clientPayment: { count: vi.fn() },
+    clientPayment: { count: vi.fn(), updateMany: vi.fn() },
     $executeRaw: vi.fn(),
   };
   return {
@@ -255,6 +255,54 @@ describe("saveSettingsAction — currency", () => {
         error: "Currency can't be changed once payments are on record — it would misstate past amounts.",
       });
       expect(mocks.tx.business.update).not.toHaveBeenCalled();
+    });
+
+    // Codex #130: the correction relabels the legacy ledger, so it may happen
+    // only once. Without a lasting mark, the count above stayed zero after
+    // EUR -> USD and the owner could relabel the same history again as GBP.
+    it("can be corrected only once: the correction stamps the legacy payments, which then lock it", async () => {
+      // A tiny stateful ledger: count and updateMany act on the same rows.
+      const ledger = [{ updatedAt: new Date("2026-08-15T10:00:00Z") }];
+      mocks.tx.clientPayment.count.mockImplementation(
+        async ({ where }: { where: { updatedAt: { gte: Date } } }) =>
+          ledger.filter((p) => p.updatedAt >= where.updatedAt.gte).length
+      );
+      mocks.tx.clientPayment.updateMany.mockImplementation(
+        async ({ where, data }: { where: { updatedAt: { lt: Date } }; data: { updatedAt: Date } }) => {
+          const rows = ledger.filter((p) => p.updatedAt < where.updatedAt.lt);
+          rows.forEach((p) => (p.updatedAt = data.updatedAt));
+          return { count: rows.length };
+        }
+      );
+
+      expect((await saveSettingsAction(payload("USD"))).ok).toBe(true);
+      expect(mocks.tx.clientPayment.updateMany).toHaveBeenCalledWith({
+        where: { businessId: "biz_1", updatedAt: { lt: CURRENCY_CHOOSABLE_FROM } },
+        data: { updatedAt: expect.any(Date) },
+      });
+
+      mocks.tx.business.findUniqueOrThrow.mockResolvedValue({ currency: "USD" });
+      mocks.tx.business.update.mockClear();
+
+      const second = await saveSettingsAction(payload("GBP"));
+
+      expect(second).toEqual({
+        ok: false,
+        error: "Currency can't be changed once payments are on record — it would misstate past amounts.",
+      });
+      expect(mocks.tx.business.update).not.toHaveBeenCalled();
+    });
+
+    it("stamps nothing when the save doesn't change the currency", async () => {
+      expect((await saveSettingsAction(payload("EUR"))).ok).toBe(true);
+      expect(mocks.tx.clientPayment.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("stamps nothing when the change is refused", async () => {
+      mocks.tx.clientPayment.count.mockResolvedValue(1);
+
+      expect((await saveSettingsAction(payload("USD"))).ok).toBe(false);
+      expect(mocks.tx.clientPayment.updateMany).not.toHaveBeenCalled();
     });
   });
 

@@ -260,6 +260,16 @@ export async function saveSettingsAction(
           if (existingPaymentCount > 0) {
             throw new CurrencyLockedError();
           }
+
+          // This change relabels the legacy payments too, so it is their one
+          // correction: stamping them now makes them count above from here on,
+          // and the currency locks like any workspace's with payments. Left
+          // untouched, they'd let the owner relabel the same history again and
+          // again (Codex #130).
+          await tx.clientPayment.updateMany({
+            where: { businessId: business.id, updatedAt: { lt: CURRENCY_CHOOSABLE_FROM } },
+            data: { updatedAt: new Date() },
+          });
         }
       }
 

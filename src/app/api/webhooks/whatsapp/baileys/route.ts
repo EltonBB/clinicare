@@ -229,7 +229,11 @@ export async function POST(request: Request) {
       // No messageId means there is no row to claim (a raced duplicate whose winner
       // could not be found again), and running without a claim is exactly how a
       // reply gets sent twice - so skip; the message is recorded and in the Inbox.
-      if (messageId && (result.recorded || clientId)) {
+      // Same for a message with no provider id: the worker sends "" when
+      // Baileys omits one, recordInboundMessage can't dedupe it, and so a worker
+      // retry would record it again under a NEW messageId and the claim above
+      // wouldn't stop the reply going out twice (Codex #130).
+      if (event.providerMessageId && messageId && (result.recorded || clientId)) {
         await applyInboundReplyIntent({
           businessId: event.businessId,
           clientId,

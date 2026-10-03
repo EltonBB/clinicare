@@ -39,7 +39,9 @@ export const DEFAULT_CURRENCY: SupportedCurrency = "EUR";
  * in dollars unable to undo the migration's default (Codex #130). Only a payment
  * recorded or edited from this instant on, under a currency the clinic could
  * see and set, locks the currency (see saveSettingsAction) - which is why the
- * test is on the payment's `updatedAt`.
+ * test is on the payment's `updatedAt`. That correction can only happen once:
+ * the change that makes it stamps the legacy payments' `updatedAt`, so from then
+ * on they lock the currency like any other payment.
  */
 export const CURRENCY_CHOOSABLE_FROM = new Date("2026-09-27T00:00:00.000Z");
 

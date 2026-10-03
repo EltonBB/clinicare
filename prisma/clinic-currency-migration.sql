@@ -15,7 +15,8 @@
 -- migration ran: the app's currency lock (saveSettingsAction) only counts
 -- payments last written from CURRENCY_CHOOSABLE_FROM (src/lib/currency.ts) on,
 -- because earlier ones were entered under the old "$" label rather than under a
--- currency the clinic chose.
+-- currency the clinic chose. That correction works once: saving it stamps those
+-- earlier payments, so they lock the currency from then on.
 --
 -- Not re-runnable as a whole file: run it once (the second run errors that the
 -- column already exists, and changes nothing).
