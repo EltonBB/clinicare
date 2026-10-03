@@ -198,9 +198,6 @@ export default async function DashboardPage() {
         _sum: {
           amountCents: true,
         },
-        _count: {
-          _all: true,
-        },
       }),
       prisma.conversation.findMany({
         where: {

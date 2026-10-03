@@ -1,6 +1,15 @@
 export type NoShowRiskLevel = "low" | "medium" | "high";
 
 /**
+ * Most appointment ids one risk lookup accepts — a generous bound on any real
+ * call site (one popover is 1 id, a Day view a very busy day's appointments) that
+ * stops a runaway caller from building an unbounded `IN` clause. Callers with more
+ * ids send them in batches of this size (the server action does not process the
+ * overflow).
+ */
+export const MAX_RISK_BATCH_SIZE = 200;
+
+/**
  * Transparent, weighted signals from the patient's own history — never an AI
  * call, never stored (see lib/no-show-risk-data.ts). `reasons` is ordered
  * most-important-first; it can be non-empty even at "low" (e.g. a long lead

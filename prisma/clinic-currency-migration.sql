@@ -1,0 +1,23 @@
+-- Per-clinic currency
+-- =============================================================================
+-- Adds Business.currency: the ISO 4217 code every amount in a workspace is shown
+-- in (euro by default; the supported list lives in src/lib/currency.ts and is
+-- enforced by the app, not the database). Fully additive: one NOT NULL column
+-- with a default, so existing rows are filled in without a backfill and nothing
+-- existing is altered.
+--
+-- Until this is applied the app does NOT work: Prisma selects the column, so
+-- every page that loads the business would fail. Apply it BEFORE deploying the
+-- code that reads it. Note that existing workspaces will read as euro after this
+-- runs - including any demo/test workspace that was previously showing dollars.
+-- Change one in Settings > Business details. That works even when the workspace
+-- already has payments, as long as none was recorded or edited after the
+-- currency picker went live: the app's currency lock (saveSettingsAction) only
+-- counts payments last written from CURRENCY_CHOOSABLE_FROM (src/lib/currency.ts) on,
+-- because earlier ones were entered under the old "$" label rather than under a
+-- currency the clinic chose. That correction works once: saving it stamps those
+-- earlier payments, so they lock the currency from then on.
+--
+-- Not re-runnable as a whole file: run it once (the second run errors that the
+-- column already exists, and changes nothing).
+ALTER TABLE "Business" ADD COLUMN "currency" TEXT NOT NULL DEFAULT 'EUR';

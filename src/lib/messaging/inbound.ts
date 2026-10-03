@@ -1,5 +1,19 @@
+import {
+  cancelAppointmentCore,
+  confirmAppointmentCore,
+  notifyStaffOfAppointmentChange,
+  revalidateCalendarSurfaces,
+} from "@/lib/appointments-shared";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
+import { logger } from "@/lib/logger";
+import { sendMessage } from "@/lib/messaging";
+import { mirrorOutboundToInbox } from "@/lib/messaging/inbox-mirror";
 import { prisma } from "@/lib/prisma";
+import { classifyReplyIntent } from "@/lib/reply-intent";
+import { liveSlotOfferWhere } from "@/lib/slot-offers";
+import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
+
+import type { AppointmentStatus } from "@prisma/client";
 
 import type { MessageDeliveryStatus } from "./types";
 
@@ -14,8 +28,17 @@ export type InboundMessage = {
 };
 
 export type RecordInboundResult =
-  | { recorded: true; conversationId: string }
-  | { recorded: false; reason: "duplicate" | "invalid_phone" | "empty_body" };
+  | { recorded: true; conversationId: string; clientId: string | null; messageId: string }
+  // "duplicate" still carries a resolved clientId (when the phone matches
+  // exactly one client) and the existing row's messageId — a worker retry
+  // means the message is already stored, but its reply-intent step is worth
+  // re-attempting too, on the chance a transient failure applied the message
+  // recording but not the reply intent the first time (Codex #130).
+  // applyInboundReplyIntent claims the message (keyed off messageId) before
+  // acting, which is what keeps that re-attempt from re-sending a reply the
+  // first attempt already sent.
+  | { recorded: false; reason: "duplicate"; clientId: string | null; messageId: string | null }
+  | { recorded: false; reason: "invalid_phone" | "empty_body" };
 
 /**
  * Provider-agnostic inbound handler.
@@ -47,27 +70,49 @@ export async function recordInboundMessage(
     return { recorded: false, reason: "invalid_phone" };
   }
 
+  // `Client.phoneKey` is indexed but NOT unique — two different clients in the
+  // same business can legitimately share one phone (e.g. a family). When more
+  // than one matches, there is no confident single identity to link the
+  // reply-intent workflow to, so `clientId` below is left `null` in that case
+  // — same as the "no client matched at all" case — rather than silently
+  // picking an arbitrary one of them (which could let a "2" reply cancel the
+  // wrong family member's appointment). The message itself is still recorded
+  // and threaded normally either way; only the identity used for reply-intent
+  // matching becomes conservative. Computed unconditionally before the dedup
+  // check below — a duplicate simply doesn't use it (it returns the message's
+  // own stored clientId instead, see below) — because that's cheaper than
+  // restructuring around whether this turns out to be new.
+  const matchingClients = await prisma.client.findMany({
+    where: { businessId: event.businessId, phoneKey },
+    select: { id: true, name: true },
+    take: 2,
+  });
+  const matchingClient = matchingClients.length === 1 ? matchingClients[0] : null;
+
   // Idempotency: a worker retry must not duplicate a message or re-bump unread.
   if (event.providerMessageId) {
     const existing = await prisma.message.findFirst({
       where: { providerMessageSid: event.providerMessageId },
-      select: { id: true },
+      select: { id: true, clientId: true },
     });
     if (existing) {
-      return { recorded: false, reason: "duplicate" };
+      // Return the identity this message was actually stored under, not a
+      // fresh re-resolve of `matchingClient` — if the phone was reassigned,
+      // or a previously-ambiguous match resolved differently (a duplicate
+      // client record removed), between the original delivery and this
+      // retry, re-resolving could hand a "2" reply to a different client
+      // than the one the message was originally recorded against, cancelling
+      // the wrong person's appointment (Codex #131).
+      return { recorded: false, reason: "duplicate", clientId: existing.clientId, messageId: existing.id };
     }
   }
 
-  const matchingClient = await prisma.client.findFirst({
-    where: { businessId: event.businessId, phoneKey },
-    select: { id: true, name: true },
-  });
-
-  const preferredName = event.contactName?.trim() || matchingClient?.name;
+  const preferredName = event.contactName?.trim() || matchingClients[0]?.name;
 
   let conversationId: string;
+  let messageId: string;
   try {
-    conversationId = await prisma.$transaction(async (tx) => {
+    ({ conversationId, messageId } = await prisma.$transaction(async (tx) => {
       const conversation = await tx.conversation.upsert({
         where: {
           businessId_phoneKey: { businessId: event.businessId, phoneKey },
@@ -87,7 +132,7 @@ export async function recordInboundMessage(
         select: { id: true },
       });
 
-      await tx.message.create({
+      const message = await tx.message.create({
         data: {
           conversationId: conversation.id,
           clientId: matchingClient?.id ?? null,
@@ -95,15 +140,17 @@ export async function recordInboundMessage(
           body,
           providerMessageSid: event.providerMessageId || null,
         },
+        select: { id: true },
       });
 
-      return conversation.id;
-    });
+      return { conversationId: conversation.id, messageId: message.id };
+    }));
   } catch (error) {
     // A worker retry can race the dedup check above and then collide on the
     // unique `providerMessageSid` here — treat that as an idempotent no-op so
     // the webhook returns ok and the worker stops retrying (instead of a 500
-    // loop). The transaction rolls back, so no unread bump leaks.
+    // loop). The transaction rolls back, so no unread bump leaks. Re-look up
+    // the row the other request won, so the caller still gets its messageId.
     if (
       event.providerMessageId &&
       typeof error === "object" &&
@@ -111,12 +158,289 @@ export async function recordInboundMessage(
       "code" in error &&
       (error as { code?: unknown }).code === "P2002"
     ) {
-      return { recorded: false, reason: "duplicate" };
+      const winner = await prisma.message.findFirst({
+        where: { providerMessageSid: event.providerMessageId },
+        select: { id: true, clientId: true },
+      });
+      // winner should always exist (that's what the P2002 collided on); null
+      // only if it's somehow gone by the time we look again. applyInboundReplyIntent
+      // treats a null/undefined messageId as "no claim to take", same as not
+      // passing one at all — a safe fallback, not a silent bug.
+      // Same reasoning as the dedup branch above: return the identity the
+      // winning row was actually stored under, not a fresh re-resolve of
+      // `matchingClient` (Codex #131).
+      return {
+        recorded: false,
+        reason: "duplicate",
+        clientId: winner?.clientId ?? null,
+        messageId: winner?.id ?? null,
+      };
     }
     throw error;
   }
 
-  return { recorded: true, conversationId };
+  return { recorded: true, conversationId, clientId: matchingClient?.id ?? null, messageId };
+}
+
+export type ApplyReplyIntentResult =
+  | {
+      applied: false;
+      reason:
+        | "no_intent"
+        | "no_client"
+        | "no_match"
+        | "ambiguous"
+        | "already_confirmed"
+        | "open_offer"
+        | "already_handled"
+        | "in_progress";
+    }
+  | { applied: true; intent: "confirm" | "cancel"; appointmentId: string };
+
+/**
+ * Reads an inbound message for a confirm/cancel reply and, only when exactly
+ * one upcoming reminded appointment matches, acts on it. Called by the
+ * webhook route right after recordInboundMessage succeeds — separate from it
+ * so the message-recording path (already heavily tested, with its own P2002
+ * race handling) stays unchanged in behavior and risk surface.
+ *
+ * `messageId` is optional so every existing direct call/test keeps working
+ * unchanged; the webhook route (its only real caller) always passes it. When
+ * given, this is a thin wrapper that lets each inbound message be acted on
+ * once: it claims the message with a compare-and-set on replyIntentHandledAt
+ * before doing anything, and a delivery that finds it already claimed returns
+ * without touching the appointment or sending a reply. That covers both
+ * shapes of a worker retry — one that arrives after the first attempt fully
+ * succeeded (its 200 was lost in transit), and one that arrives while the
+ * first is still running (the worker gives up after 10s, but the request
+ * keeps going server-side); a plain check-then-act would let the second
+ * overlap the first and reply twice. A check that throws releases its claim,
+ * so the retry the resulting 5xx triggers still gets to do the work.
+ *
+ * While the check runs, the claim holds a lease that ends in the future; once
+ * it finishes, the claim is set to the time it did. So a delivery that finds
+ * the message claimed can tell the two apart: a finished claim is
+ * "already_handled", but a running one is "in_progress", which the webhook
+ * answers with a 5xx so the worker keeps retrying — if the running check then
+ * fails and releases its claim, a later retry still does the work, instead of
+ * having been told with a 200 that it was done (Codex #130).
+ */
+// Comfortably longer than one check can run: a few queries plus the
+// acknowledgement send, which the messaging adapter gives up on after 25s.
+const REPLY_INTENT_LEASE_MS = 2 * 60 * 1000;
+// Under the worker's 10s request timeout, so the waiting retry still answers.
+const IN_PROGRESS_WAIT_MS = 8_000;
+const IN_PROGRESS_POLL_MS = 500;
+
+export async function applyInboundReplyIntent(args: {
+  businessId: string;
+  clientId: string | null;
+  body: string;
+  messageId?: string | null;
+  now?: Date;
+}): Promise<ApplyReplyIntentResult> {
+  const { messageId, now = new Date() } = args;
+
+  // Nothing to claim when there is no message row, or when nothing could be
+  // acted on anyway (ordinary chat text, or a phone that matched no single
+  // client): those would only add a write to every inbound message.
+  if (!messageId || !args.clientId || !classifyReplyIntent(args.body)) {
+    return applyInboundReplyIntentCore(args, now);
+  }
+
+  // A delivery that finds the message claimed by a check that is still running
+  // waits for it here, rather than answering at once: the worker's retries come
+  // 1, 2 and 4 seconds apart, so answering each one immediately would spend all
+  // of them in about 17 seconds — sooner than a check (whose acknowledgement
+  // send alone may take 25s) can fail and release its claim, leaving no retry
+  // to do the work (Codex #130). Waiting up to IN_PROGRESS_WAIT_MS per retry,
+  // inside the worker's 10s request timeout, stretches them to about 40s.
+  const waitUntil = Date.now() + IN_PROGRESS_WAIT_MS;
+  for (;;) {
+    const claim = await prisma.message.updateMany({
+      where: { id: messageId, replyIntentHandledAt: null },
+      data: { replyIntentHandledAt: new Date(now.getTime() + REPLY_INTENT_LEASE_MS) },
+    });
+    if (claim.count === 1) {
+      break;
+    }
+
+    const claimed = await prisma.message.findUnique({
+      where: { id: messageId },
+      select: { replyIntentHandledAt: true },
+    });
+    // A running claim's lease ends at least a minute past any retry's `now`
+    // (the worker stops retrying well within that); a finished one holds a time
+    // at or before it. Halfway is the line, so a few seconds of clock difference
+    // between two server instances can't flip the answer.
+    // A message deleted since (its conversation removed) has nothing left to act on.
+    if (!claimed) {
+      return { applied: false, reason: "already_handled" };
+    }
+    const handledAt = claimed.replyIntentHandledAt;
+    if (handledAt && handledAt.getTime() <= now.getTime() + REPLY_INTENT_LEASE_MS / 2) {
+      return { applied: false, reason: "already_handled" };
+    }
+    if (Date.now() >= waitUntil) {
+      return { applied: false, reason: "in_progress" };
+    }
+    // Released since the claim attempt (null): try to claim it again at once.
+    if (handledAt) {
+      await new Promise((resolve) => setTimeout(resolve, IN_PROGRESS_POLL_MS));
+    }
+  }
+
+  let result: ApplyReplyIntentResult;
+  try {
+    result = await applyInboundReplyIntentCore(args, now);
+  } catch (error) {
+    // Best-effort release. If it fails, retries find the lease still running
+    // until the worker gives up, and it then reads as handled: the patient's
+    // message is still in the Inbox for staff, which is the same outcome the
+    // original swallowed-error behavior had.
+    await prisma.message
+      .updateMany({ where: { id: messageId }, data: { replyIntentHandledAt: null } })
+      .catch((releaseError) => {
+        logger.error("A reply-intent check failed and its claim couldn't be released.", releaseError, {
+          businessId: args.businessId,
+        });
+      });
+    throw error;
+  }
+
+  // Ends the lease: from here a retry is told the message is handled. Not
+  // fatal if it fails — the work is done, and once the lease runs out the
+  // claim reads as handled anyway.
+  await prisma.message
+    .updateMany({ where: { id: messageId }, data: { replyIntentHandledAt: now } })
+    .catch((finishError) => {
+      logger.error("A reply-intent check finished but its claim couldn't be marked done.", finishError, {
+        businessId: args.businessId,
+      });
+    });
+  return result;
+}
+
+async function applyInboundReplyIntentCore(
+  args: { businessId: string; clientId: string | null; body: string },
+  now: Date
+): Promise<ApplyReplyIntentResult> {
+  const { businessId, clientId, body } = args;
+
+  const intent = classifyReplyIntent(body);
+  if (!intent) {
+    return { applied: false, reason: "no_intent" };
+  }
+  if (!clientId) {
+    return { applied: false, reason: "no_client" };
+  }
+
+  // While a waiting-list slot offer to this client is open, a "yes" most
+  // likely answers the offer — not a reminder — so it must not confirm (or a
+  // "no" cancel) some other appointment. Stand down; the message is already
+  // in the Inbox for staff to act on. Only while the offer is still live
+  // (entry still holds it, slot still cancelled and ahead) — once its slot
+  // passes or the appointment is back on, replies go back to normal. A sent
+  // offer stays live for its whole lifetime, however long that is — there was
+  // previously also a 48-hour cutoff on top of this liveness check, which cut
+  // in well before a genuinely still-open offer could ever go stale, letting
+  // a late "2" fall through and cancel an unrelated appointment instead
+  // (Codex).
+  const openOffer = await prisma.followUpDraft.findFirst({
+    where: {
+      businessId,
+      clientId,
+      status: "SENT",
+      ...liveSlotOfferWhere(now),
+    },
+    select: { id: true },
+  });
+  if (openOffer) {
+    return { applied: false, reason: "open_offer" };
+  }
+
+  // A reminder goes to pending and confirmed appointments alike and invites
+  // "1 to confirm", so both statuses are candidates for either reply: cancelling
+  // an already-confirmed visit is the far more common real case, and a patient
+  // who replies 1 to an already-confirmed visit deserves the same
+  // acknowledgement rather than silence.
+  const candidateStatuses: AppointmentStatus[] = ["PENDING", "CONFIRMED"];
+
+  const found = await prisma.appointment.findMany({
+    where: {
+      businessId,
+      clientId,
+      status: { in: candidateStatuses },
+      startAt: { gt: now },
+      reminders: { some: { status: "SENT" } },
+    },
+    select: { id: true, startAt: true, status: true, client: { select: { phone: true, name: true } } },
+  });
+
+  // Confirming prefers a pending visit: a client with one pending and one
+  // confirmed upcoming visit still confirms the pending one.
+  const candidates =
+    intent === "confirm" && found.some((appointment) => appointment.status === "PENDING")
+      ? found.filter((appointment) => appointment.status === "PENDING")
+      : found;
+
+  if (candidates.length !== 1) {
+    return { applied: false, reason: candidates.length === 0 ? "no_match" : "ambiguous" };
+  }
+
+  const appointment = candidates[0];
+  const phone = appointment.client.phone;
+
+  // Answers the patient and mirrors the answer into the client's Inbox thread.
+  const reply = async (repliedClientId: string) => {
+    if (!phone) return;
+    const time = formatZonedTime(appointment.startAt);
+    const date = formatZonedFullDate(appointment.startAt);
+    const result = await sendMessage({
+      channel: "WHATSAPP",
+      businessId,
+      to: phone,
+      message: {
+        kind: "freeform",
+        body:
+          intent === "confirm"
+            ? `You're confirmed for ${time} on ${date}. See you then!`
+            : `Your appointment on ${date} at ${time} has been cancelled.`,
+      },
+    });
+    if (result.ok) {
+      await mirrorOutboundToInbox({
+        businessId,
+        clientId: repliedClientId,
+        clientName: appointment.client.name,
+        phone,
+        result,
+        failureMessage: "Recorded a confirm/cancel reply but couldn't mirror it to the inbox.",
+        logContext: { businessId, clientId: repliedClientId },
+      });
+    }
+  };
+
+  if (intent === "confirm" && appointment.status === "CONFIRMED") {
+    // Nothing to change — just answer the reply.
+    await reply(clientId);
+    return { applied: false, reason: "already_confirmed" };
+  }
+
+  const core = intent === "confirm" ? confirmAppointmentCore : cancelAppointmentCore;
+  const outcome = await core({ id: appointment.id, businessId });
+  if (!outcome.ok || !outcome.changed) {
+    return { applied: false, reason: "no_match" };
+  }
+
+  await reply(outcome.clientId);
+
+  if (intent === "cancel" && outcome.staffMemberId) {
+    await notifyStaffOfAppointmentChange(businessId, outcome.staffMemberId, appointment.id, "changed");
+  }
+  revalidateCalendarSurfaces([outcome.clientId], outcome.staffMemberId ? [outcome.staffMemberId] : []);
+
+  return { applied: true, intent, appointmentId: appointment.id };
 }
 
 /**

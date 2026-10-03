@@ -1,0 +1,811 @@
+import { Prisma } from "@prisma/client";
+
+import { isProBusinessPlan } from "@/lib/billing";
+import { timeToMinutes } from "@/lib/calendar";
+import { ELIGIBLE_CLIENT_WHERE, INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
+import { isSlotInsideOperatingHours, operatingWeekday } from "@/lib/operating-hours";
+import { prisma } from "@/lib/prisma";
+import { retryOnWriteConflict } from "@/lib/prisma-retry";
+import { acquireSchedulingLock, hasSchedulingConflict } from "@/lib/scheduling-conflicts";
+import { rankWaitlistMatches } from "@/lib/slot-fill-matching";
+import {
+  APPOINTMENT_STAFF_AVAILABLE_WHERE,
+  APPOINTMENT_STAFF_UNAVAILABLE_WHERE,
+  AVAILABLE_STAFF_WHERE,
+} from "@/lib/staff-eligibility";
+import { formatZonedFullDate, formatZonedTime, formatZonedTime24 } from "@/lib/time-zone";
+import { WAITLIST_ENTRY_REMOVED_ERROR } from "@/lib/waitlist";
+import { findMatchingWaitlistCandidates, releaseWaitlistEntry } from "@/lib/waitlist-data";
+
+/**
+ * Waiting-list slot offers (Pro). One lifecycle, shared by every path:
+ *
+ * - A cancellation frees a slot -> `offerFreedSlot` flips the best waiting
+ *   entry WAITING -> OFFERED and drafts one SLOT_OFFER for it, atomically.
+ * - The offer falls through (staff skip the draft, the patient declines, the
+ *   slot passes, the appointment is un-cancelled) -> the draft is retired and
+ *   the entry goes back to WAITING (`reofferFreedSlot`, `expirePastSlotOffers`,
+ *   `withdrawSlotOffers`); skip and decline then offer the same slot to the
+ *   next match. Removing an entry that holds an offer retires the offer and
+ *   re-offers the slot too (`removeWaitlistEntry`).
+ *
+ * Invariant: an entry is OFFERED exactly while one of its SLOT_OFFER drafts
+ * is live (PENDING or SENT). Every path that releases an entry retires that
+ * draft in the same transaction, so a stale draft can never resurface when
+ * the entry is later offered a different slot.
+ */
+
+export type FreedAppointment = {
+  id: string;
+  /** The client who gave the slot up — never offered it back. */
+  clientId: string;
+  staffMemberId: string | null;
+  title: string;
+  startAt: Date;
+  endAt: Date;
+};
+
+// Open offers one appointment or one entry can hold — one, by the invariant;
+// the cap only bounds the query.
+const MAX_OPEN_DRAFTS = 20;
+
+/**
+ * Minimum-necessary patient message: the waiting client's name and the freed
+ * slot's date and time in the clinic's zone. Never the service or treatment.
+ */
+export function slotOfferBody(clientName: string, startAt: Date) {
+  return `Hi ${clientName}, a slot has opened up on ${formatZonedFullDate(startAt)} at ${formatZonedTime(startAt)}. Reply here if you'd like it.`;
+}
+
+/**
+ * Offers a freed slot to the best-matching waiting entry, inside the caller's
+ * transaction. Does nothing unless the workspace is on Pro (re-checked here,
+ * inside the transaction, so no caller can skip the gate), the slot is still
+ * ahead, its staff member is available, and it still fits the clinic's
+ * working hours. Walks every ranked match and stops at the first entry whose
+ * WAITING -> OFFERED flip succeeds — a miss just means a concurrent request
+ * claimed that entry between the read and the flip, so it moves on to the
+ * next; six or more matches racing at once used to be handed a cap
+ * (MAX_OFFER_ATTEMPTS = 5) and the slot would then go unoffered even with
+ * real waiting candidates still on the list. `ranked` is already bounded by
+ * `findMatchingWaitlistCandidates` (at most one row per active waiting entry,
+ * itself capped at MAX_ACTIVE_WAITLIST_ENTRIES), so walking all of it inside
+ * this transaction stays cheap (Codex #130). The draft insert skips
+ * duplicates rather than throwing — a unique violation would abort the whole
+ * transaction, cancellation included. Returns the offered entry's id, or
+ * null.
+ */
+export async function offerFreedSlot(
+  tx: Prisma.TransactionClient,
+  args: { businessId: string; cancelled: FreedAppointment; now?: Date }
+): Promise<string | null> {
+  const { businessId, cancelled, now = new Date() } = args;
+
+  if (cancelled.startAt.getTime() <= now.getTime()) {
+    return null;
+  }
+
+  const business = await tx.business.findUniqueOrThrow({
+    where: { id: businessId },
+    select: { plan: true },
+  });
+
+  if (!isProBusinessPlan(business.plan)) {
+    return null;
+  }
+
+  // A slot whose assigned staff member has since been deactivated can't be
+  // honored: Book refuses it and liveSlotOfferWhere hides it. It must not be
+  // offered at all — otherwise the hourly sweep retires the stale offer,
+  // re-offers the slot here, and churns through the waiting list on every run
+  // with a draft nobody can review or send (Codex #130).
+  if (cancelled.staffMemberId) {
+    const staffAvailable = await tx.staffMember.findFirst({
+      where: { id: cancelled.staffMemberId, businessId, ...AVAILABLE_STAFF_WHERE },
+      select: { id: true },
+    });
+
+    if (!staffAvailable) {
+      return null;
+    }
+  }
+
+  // The same goes for a slot that no longer fits the clinic's working hours
+  // (hours shortened, or the weekday closed, since the appointment was booked):
+  // the calendar's save would refuse the booking, so offering the slot would
+  // promise the patient something nobody can book (Codex #130). Skip and
+  // Declined re-enter here, so a refused slot is simply not offered on.
+  const insideHours = await isSlotInsideOperatingHours(tx, {
+    businessId,
+    startAt: cancelled.startAt,
+    endAt: cancelled.endAt,
+  });
+
+  if (!insideHours) {
+    return null;
+  }
+
+  // hasSchedulingConflict deliberately excludes CANCELLED rows, so a real
+  // appointment can be booked directly into a freed slot without ever
+  // touching cancelled.id — every path that reaches here (the original
+  // cancellation, Skip, Declined, Remove, the hourly expiry sweep, an edited
+  // still-cancelled save, or a still-active booking edited straight to
+  // Cancelled) must re-verify the slot is still actually free before
+  // promising it to a waiting client, not just the one call site that
+  // happened to be audited first (Codex #130). Centralized here so every
+  // caller gets it, instead of re-adding the same lock+check at each one.
+  await acquireSchedulingLock(tx, cancelled.staffMemberId);
+
+  const occupied = await hasSchedulingConflict(tx, {
+    businessId,
+    staffMemberId: cancelled.staffMemberId,
+    startAt: cancelled.startAt,
+    endAt: cancelled.endAt,
+    excludeAppointmentId: cancelled.id,
+  });
+
+  if (occupied) {
+    return null;
+  }
+
+  // One live offer per freed slot. Skip, Declined and Remove retire the old
+  // offer earlier in the same transaction, so they never trip this — it only
+  // stops a second patient being offered a slot that is already on offer.
+  const liveOffer = await tx.followUpDraft.findFirst({
+    where: {
+      businessId,
+      appointmentId: cancelled.id,
+      status: { in: ["PENDING", "SENT"] },
+      ...liveSlotOfferWhere(now),
+    },
+    select: { id: true },
+  });
+
+  if (liveOffer) {
+    return null;
+  }
+
+  const candidates = await findMatchingWaitlistCandidates({
+    businessId,
+    service: cancelled.title,
+    excludeClientId: cancelled.clientId,
+    freedAppointmentId: cancelled.id,
+    tx,
+  });
+
+  // Waiting-list day/time preferences are clinic-local wall-clock values, so
+  // the freed slot's weekday and time-of-day come from the clinic's zone too
+  // (the schedule's Monday=0 weekday — the same conversion the working-hours
+  // check uses).
+  const ranked = rankWaitlistMatches(candidates, {
+    service: cancelled.title,
+    staffMemberId: cancelled.staffMemberId,
+    startAt: cancelled.startAt,
+    weekday: operatingWeekday(cancelled.startAt),
+    timeMinutes: timeToMinutes(formatZonedTime24(cancelled.startAt)),
+  });
+
+  if (ranked.length === 0) {
+    return null;
+  }
+
+  // The offer's dedupe key names the cancellation cycle: an appointment can be
+  // cancelled, un-cancelled and cancelled again, and each cancellation is a
+  // fresh chance to offer the slot. The appointment's updatedAt is the moment
+  // of its latest write — the cancellation itself when the offer is drafted
+  // (the same value for every attempt in that transaction) and different in
+  // the next cycle. Read here, on the row as this transaction sees it, so it
+  // doesn't matter how the caller built `cancelled`. The key is the last-
+  // resort guard against a concurrent duplicate insert; the candidate filter
+  // is what keeps one patient from being offered one slot twice.
+  const current = await tx.appointment.findFirst({
+    where: { id: cancelled.id, businessId },
+    select: { updatedAt: true },
+  });
+
+  if (!current) {
+    return null; // deleted since it was cancelled — the slot is gone
+  }
+
+  const cycle = current.updatedAt.getTime();
+
+  for (const entry of ranked) {
+    const { count: flipped } = await tx.waitlistEntry.updateMany({
+      where: { id: entry.id, businessId, status: "WAITING" },
+      data: { status: "OFFERED" },
+    });
+
+    if (flipped === 0) {
+      continue; // claimed or removed since the read — try the next match
+    }
+
+    const { count: created } = await tx.followUpDraft.createMany({
+      data: [
+        {
+          businessId,
+          clientId: entry.clientId,
+          kind: "SLOT_OFFER",
+          status: "PENDING",
+          appointmentId: cancelled.id,
+          waitlistEntryId: entry.id,
+          dedupeKey: `SLOT_OFFER:${cancelled.id}:${cycle}:${entry.id}`,
+          body: slotOfferBody(entry.clientName, cancelled.startAt),
+        },
+      ],
+      skipDuplicates: true,
+    });
+
+    if (created > 0) {
+      return entry.id;
+    }
+
+    // This entry was already offered this slot (a concurrent write landed
+    // after the read above) — don't leave it OFFERED without a live draft.
+    await releaseWaitlistEntry({ id: entry.id, businessId }, tx);
+  }
+
+  return null;
+}
+
+/**
+ * An offer fell through — staff skipped the draft or the patient declined —
+ * and the caller has just retired its draft in `tx`. Puts the entry back on
+ * the waiting list and offers the same freed slot to the next match (the
+ * entry that let it go is excluded: it already has a draft for this slot).
+ * Leaves the slot alone when the entry was booked or removed meanwhile, the
+ * appointment was deleted, or it is no longer cancelled (reactivated).
+ *
+ * `released` says whether the entry really moved OFFERED -> WAITING. When it
+ * didn't (it was booked or removed meanwhile, so the retired draft belongs to
+ * an entry that has moved on) the caller rolls its transaction back rather
+ * than commit a retired draft beside an entry that is not waiting.
+ */
+export async function reofferFreedSlot(
+  tx: Prisma.TransactionClient,
+  args: { businessId: string; waitlistEntryId: string | null; appointmentId: string | null; now?: Date }
+): Promise<{ released: boolean; offeredEntryId: string | null }> {
+  const { businessId, waitlistEntryId, appointmentId, now } = args;
+
+  if (!waitlistEntryId || !(await releaseWaitlistEntry({ id: waitlistEntryId, businessId }, tx))) {
+    return { released: false, offeredEntryId: null };
+  }
+
+  return { released: true, offeredEntryId: await offerSlotAgain(tx, { businessId, appointmentId, now }) };
+}
+
+/**
+ * Offers an appointment's slot to the next match after its previous offer
+ * was retired — only while the appointment still exists and is still
+ * cancelled (offerFreedSlot itself checks the slot is still ahead).
+ */
+async function offerSlotAgain(
+  tx: Prisma.TransactionClient,
+  args: { businessId: string; appointmentId: string | null; now?: Date }
+): Promise<string | null> {
+  const { businessId, appointmentId, now } = args;
+
+  if (!appointmentId) {
+    return null;
+  }
+
+  const cancelled = await tx.appointment.findFirst({
+    where: { id: appointmentId, businessId, status: "CANCELLED" },
+    select: { id: true, clientId: true, staffMemberId: true, title: true, startAt: true, endAt: true },
+  });
+
+  return cancelled ? offerFreedSlot(tx, { businessId, cancelled, now }) : null;
+}
+
+/**
+ * A slot offer is live while its entry still holds the offer, the freed slot
+ * is still cancelled and ahead, the waiting client hasn't since been archived
+ * or deactivated, and — when the freed appointment had an assigned staff
+ * member — that staff member is still active. Anything else is stale: hidden
+ * from the Follow-ups list and count, refused by Send/Book, and retired by
+ * expirePastSlotOffers. The client check matters here specifically because
+ * an archived client can't be booked at all (the booking form's picker
+ * refuses them), so a still-"live" offer to one would send a message inviting
+ * a reply, or let Book silently default the form to some other client
+ * instead of failing cleanly (Codex #130). The staff check matters the same
+ * way: Book already refuses a slot whose staff has since gone inactive
+ * (bookFollowUpSlotAction), so an offer that can't be honored must stop
+ * being sendable at once too, not only once staff discover it while trying
+ * to Book (Codex #130).
+ *
+ * The clinic's working hours are deliberately NOT part of this filter: whether
+ * a slot still fits them needs the clinic's weekday and wall clock, which a
+ * Prisma where-input can't express. An offer drafted before the hours changed
+ * therefore stays listed (staff can still Skip or Decline it), but Send and
+ * Book check the hours in their own transactions (follow-ups-data.ts) and
+ * refuse with a clear message, and offerFreedSlot never drafts an offer for a
+ * slot outside them (Codex #130).
+ */
+export function liveSlotOfferWhere(now: Date): Prisma.FollowUpDraftWhereInput {
+  return {
+    kind: "SLOT_OFFER",
+    waitlistEntry: { status: "OFFERED" },
+    appointment: {
+      status: "CANCELLED",
+      startAt: { gt: now },
+      ...APPOINTMENT_STAFF_AVAILABLE_WHERE,
+    },
+    client: ELIGIBLE_CLIENT_WHERE,
+  };
+}
+
+function staleSlotWhere(now: Date): Prisma.FollowUpDraftWhereInput {
+  return {
+    OR: [
+      { appointmentId: null },
+      { appointment: { startAt: { lte: now } } },
+      { appointment: { status: { not: "CANCELLED" } } },
+      // Mirrors liveSlotOfferWhere's own client check: an archived/deactivated
+      // waiting client can't be booked at all, so their open offer is exactly
+      // as stale as one whose slot already passed — retire it and release the
+      // entry so the slot can be re-offered to the next real candidate
+      // (Codex #130).
+      { client: INELIGIBLE_CLIENT_WHERE },
+      // Mirrors liveSlotOfferWhere's own staff check: the freed appointment
+      // had an assigned staff member who has since gone inactive, so Book
+      // would refuse this offer anyway — retire it now and release the
+      // entry, the same as the client check above (Codex #130).
+      { appointment: APPOINTMENT_STAFF_UNAVAILABLE_WHERE },
+    ],
+  };
+}
+
+// A PENDING offer, or a SENT one the patient hasn't been booked into yet.
+const OPEN_SLOT_OFFER_WHERE: Prisma.FollowUpDraftWhereInput = {
+  OR: [{ status: "PENDING" }, { status: "SENT", waitlistEntry: { status: "OFFERED" } }],
+};
+
+// Bounds one sweep; a backlog beyond it is picked up by the next run. A sweep
+// of every workspace shares it between them (see expirePastSlotOffers).
+const MAX_EXPIRE_BATCH = 200;
+
+type OpenSlotOfferDraft = { id: string; businessId: string; waitlistEntryId: string | null; appointmentId?: string | null };
+
+/**
+ * Retires one open offer draft: -> EXPIRED, guarded by `guard` (re-checked in
+ * the write itself, so a draft booked, skipped, or declined since it was read
+ * is left alone), then releases its entry only if this write applied.
+ */
+async function retireOpenSlotOffer(
+  tx: Prisma.TransactionClient,
+  draft: OpenSlotOfferDraft,
+  guard: Prisma.FollowUpDraftWhereInput
+): Promise<{ expired: boolean; released: boolean }> {
+  const { count } = await tx.followUpDraft.updateMany({
+    where: { id: draft.id, businessId: draft.businessId, ...guard },
+    data: { status: "EXPIRED" },
+  });
+
+  if (count === 0) {
+    return { expired: false, released: false };
+  }
+
+  const released = draft.waitlistEntryId
+    ? await releaseWaitlistEntry({ id: draft.waitlistEntryId, businessId: draft.businessId }, tx)
+    : false;
+
+  return { expired: true, released };
+}
+
+/**
+ * A cancelled appointment is back on (un-cancelled): its slot is taken again,
+ * so any open offer for it is withdrawn — draft -> EXPIRED, entry back to
+ * WAITING — inside the caller's transaction. Without this, cancelling the
+ * same appointment again later would revive the old offer beside a new one
+ * and tell two patients the same slot is free.
+ */
+export async function withdrawSlotOffers(
+  tx: Prisma.TransactionClient,
+  args: { businessId: string; appointmentId: string }
+): Promise<{ expired: number; released: number }> {
+  const guard: Prisma.FollowUpDraftWhereInput = {
+    kind: "SLOT_OFFER",
+    appointmentId: args.appointmentId,
+    ...OPEN_SLOT_OFFER_WHERE,
+  };
+
+  const drafts = await tx.followUpDraft.findMany({
+    where: { businessId: args.businessId, ...guard },
+    select: { id: true, businessId: true, waitlistEntryId: true },
+    take: MAX_OPEN_DRAFTS,
+  });
+
+  let expired = 0;
+  let released = 0;
+
+  for (const draft of drafts) {
+    const outcome = await retireOpenSlotOffer(tx, draft, guard);
+    expired += outcome.expired ? 1 : 0;
+    released += outcome.released ? 1 : 0;
+  }
+
+  return { expired, released };
+}
+
+/**
+ * Withdraws every open offer on any of a client's own appointments — call it
+ * BEFORE the client is deleted, inside the same transaction. Deleting a client
+ * cascades their appointments away; a cancelled one whose slot was offered to
+ * another client would otherwise lose its link to that offer (the draft's
+ * appointmentId goes to NULL), leaving the other client's entry OFFERED with a
+ * draft nobody can see until the hourly sweep finds it (Codex #130). Withdrawn
+ * rather than retired-and-re-offered like the staff-delete path: the slot is
+ * about to disappear, so there is nothing left to offer on.
+ *
+ * Not capped, for the same reason as findStaffAssignedOpenOfferAppointments:
+ * open offers never exceed the waiting list's own 500-entry ceiling, and a cap
+ * would strand the rest.
+ */
+export async function withdrawSlotOffersOnClientAppointments(
+  tx: Prisma.TransactionClient,
+  args: { businessId: string; clientId: string }
+): Promise<void> {
+  const drafts = await tx.followUpDraft.findMany({
+    where: {
+      businessId: args.businessId,
+      kind: "SLOT_OFFER",
+      ...OPEN_SLOT_OFFER_WHERE,
+      appointment: { clientId: args.clientId },
+    },
+    select: { appointmentId: true },
+    distinct: ["appointmentId"],
+  });
+
+  for (const { appointmentId } of drafts) {
+    if (appointmentId) {
+      await withdrawSlotOffers(tx, { businessId: args.businessId, appointmentId });
+    }
+  }
+}
+
+/**
+ * The freed appointments a staff member's deletion is about to make stale:
+ * open SLOT_OFFER drafts for one of their still-cancelled appointments. Read
+ * this BEFORE the delete — the appointment's staffMemberId goes to NULL via
+ * SET NULL the moment the staff row is gone, so this exact filter would match
+ * nothing afterward (Codex #130).
+ *
+ * Deliberately not capped: unlike the per-appointment and per-entry reads
+ * above (one open offer each, by the invariant), this one spans every freed
+ * appointment the staff member ever held, and a cap would leave the rest
+ * un-retired, reading as live unassigned slots the moment SET NULL clears
+ * their staff. It is bounded by the system's own ceiling instead — open
+ * offers never exceed the waiting list's 500 entries (Codex #130).
+ */
+export async function findStaffAssignedOpenOfferAppointments(
+  tx: Prisma.TransactionClient,
+  args: { businessId: string; staffMemberId: string }
+): Promise<string[]> {
+  const drafts = await tx.followUpDraft.findMany({
+    where: {
+      businessId: args.businessId,
+      kind: "SLOT_OFFER",
+      ...OPEN_SLOT_OFFER_WHERE,
+      appointment: { staffMemberId: args.staffMemberId, status: "CANCELLED" },
+    },
+    select: { appointmentId: true },
+    distinct: ["appointmentId"],
+  });
+
+  return drafts.flatMap((d) => (d.appointmentId ? [d.appointmentId] : []));
+}
+
+/**
+ * Withdraws each listed appointment's stale offer and immediately re-offers
+ * the freed slot to the next real candidate — call AFTER the staff delete
+ * that made these offers stale (`liveSlotOfferWhere`'s unassigned branch
+ * would otherwise read a staff-specific offer as a fresh open slot the
+ * instant SET NULL clears the appointment's staffMemberId), inside the same
+ * transaction so the delete and the retirement commit together. The re-read
+ * appointment now genuinely has no staff, matching however offerFreedSlot
+ * treats any other unassigned freed slot.
+ */
+export async function retireSlotOffersForAppointments(
+  tx: Prisma.TransactionClient,
+  args: { businessId: string; appointmentIds: string[]; now?: Date }
+): Promise<void> {
+  for (const appointmentId of args.appointmentIds) {
+    await withdrawSlotOffers(tx, { businessId: args.businessId, appointmentId });
+    await offerSlotAgain(tx, { businessId: args.businessId, appointmentId, now: args.now });
+  }
+}
+
+/**
+ * The workspaces that have a stale open offer, the one whose oldest stale offer
+ * has waited longest first. At most MAX_EXPIRE_BATCH of them: a sweep retires no
+ * more offers than that, and each workspace listed has at least one.
+ */
+async function workspacesWithStaleOffers(openStale: Prisma.FollowUpDraftWhereInput): Promise<string[]> {
+  const groups = await prisma.followUpDraft.groupBy({
+    by: ["businessId"],
+    where: openStale,
+    _min: { createdAt: true },
+    orderBy: { _min: { createdAt: "asc" } },
+    take: MAX_EXPIRE_BATCH,
+  });
+
+  return groups.map((group) => group.businessId);
+}
+
+/**
+ * Retires slot offers whose slot has passed (or whose appointment was deleted
+ * or reactivated, or whose waiting client was archived or deactivated): the
+ * open draft -> EXPIRED and its entry OFFERED -> WAITING, one small
+ * transaction per draft so the release only happens for a draft this sweep
+ * actually retired. When the slot is still cancelled and ahead (the client
+ * cause), the same transaction offers it to the next match. Idempotent and
+ * bounded; pass a businessId to sweep one workspace (the follow-ups cron sweeps
+ * them all), omit it to sweep all.
+ *
+ * A sweep retires at most MAX_EXPIRE_BATCH offers, and a sweep of every
+ * workspace shares that batch between them instead of working oldest-first
+ * across the board. An entry stays OFFERED, and out of matching, until its stale
+ * offer is retired, so after an outage a workspace with a deep backlog would
+ * otherwise use every run's batch and leave everyone else's entries (and the
+ * next slot they could have been offered) waiting hours (Codex #130). Instead
+ * each workspace with something stale takes an equal share per round, the one
+ * waiting longest first, and a workspace with less than its share leaves the
+ * rest to the others, so the whole batch is always used.
+ *
+ * One draft failing never stops the others: it is reported to `onError` (ids
+ * only - callers must not log anything else) and counted in `failed`. Left to
+ * propagate, the oldest stale offer of the first workspace would be the first
+ * thing every run tried, and the same failure there would block everyone behind
+ * it for good.
+ */
+export async function expirePastSlotOffers(
+  businessId?: string,
+  now: Date = new Date(),
+  options: { onError?: (error: unknown, draft: { id: string; businessId: string }) => void } = {}
+): Promise<{ expired: number; released: number; failed: number }> {
+  const openStale: Prisma.FollowUpDraftWhereInput = {
+    kind: "SLOT_OFFER",
+    AND: [staleSlotWhere(now), OPEN_SLOT_OFFER_WHERE],
+  };
+
+  let waiting = businessId ? [businessId] : await workspacesWithStaleOffers(openStale);
+  // Every draft this sweep has looked at, so asking a workspace for more never
+  // returns one it already handled (or failed on) this run.
+  const attempted: string[] = [];
+  let remaining = MAX_EXPIRE_BATCH;
+  let expired = 0;
+  let released = 0;
+  let failed = 0;
+
+  while (waiting.length > 0 && remaining > 0) {
+    const share = Math.max(1, Math.floor(remaining / waiting.length));
+    const unfinished: string[] = [];
+
+    for (const workspaceId of waiting) {
+      if (remaining <= 0) {
+        break;
+      }
+
+      const take = Math.min(share, remaining);
+      const drafts = await prisma.followUpDraft.findMany({
+        where: {
+          businessId: workspaceId,
+          ...openStale,
+          ...(attempted.length > 0 ? { id: { notIn: [...attempted] } } : {}),
+        },
+        select: { id: true, businessId: true, waitlistEntryId: true, appointmentId: true },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        take,
+      });
+
+      for (const draft of drafts) {
+        attempted.push(draft.id);
+        remaining -= 1;
+
+        try {
+          const outcome = await retryOnWriteConflict(() => prisma.$transaction(async (tx) => {
+            const retired = await retireOpenSlotOffer(tx, draft, openStale);
+
+            // The slot may still be free: an offer retired only because its waiting
+            // client was archived or deactivated leaves the appointment cancelled and
+            // ahead, and nothing else would ever revisit it, so the next eligible
+            // waiting client would never hear about it (Codex #130). offerSlotAgain
+            // re-checks the slot itself, so it does nothing for the other causes (the
+            // slot passed, the appointment was deleted or is back on) and leaves out
+            // the client whose entry was just released.
+            if (retired.released) {
+              await offerSlotAgain(tx, { businessId: draft.businessId, appointmentId: draft.appointmentId ?? null, now });
+            }
+
+            return retired;
+          }));
+
+          expired += outcome.expired ? 1 : 0;
+          released += outcome.released ? 1 : 0;
+        } catch (error) {
+          failed += 1;
+          options.onError?.(error, { id: draft.id, businessId: draft.businessId });
+        }
+      }
+
+      // A full batch may have more behind it; a short one means this workspace
+      // has nothing stale left.
+      if (drafts.length === take) {
+        unfinished.push(workspaceId);
+      }
+    }
+
+    waiting = unfinished;
+  }
+
+  return { expired, released, failed };
+}
+
+export { retryOnWriteConflict };
+
+// Thrown inside removeWaitlistEntry's transaction to roll back the draft
+// dismissals when the entry itself turned out to be gone already.
+class EntryAlreadyGone extends Error {}
+
+/**
+ * Dismisses an entry's open offer draft(s) — the draft rows are locked here,
+ * before the entry row, which is the same order every other path takes
+ * (Skip, Declined, withdraw, expiry), so they can't deadlock on one offer.
+ * Returns the freed appointments to offer again.
+ */
+async function dismissOpenOffersOfEntry(
+  tx: Prisma.TransactionClient,
+  args: { businessId: string; entryId: string }
+): Promise<Array<string | null>> {
+  const open: Prisma.FollowUpDraftWhereInput = {
+    businessId: args.businessId,
+    waitlistEntryId: args.entryId,
+    kind: "SLOT_OFFER",
+    ...OPEN_SLOT_OFFER_WHERE,
+  };
+
+  const drafts = await tx.followUpDraft.findMany({
+    where: open,
+    select: { id: true, appointmentId: true },
+    take: MAX_OPEN_DRAFTS,
+  });
+
+  const freed: Array<string | null> = [];
+
+  for (const draft of drafts) {
+    const { count } = await tx.followUpDraft.updateMany({
+      where: { id: draft.id, ...open },
+      data: { status: "DISMISSED" },
+    });
+
+    if (count > 0) {
+      freed.push(draft.appointmentId);
+    }
+  }
+
+  return freed;
+}
+
+/**
+ * Takes one entry off the waiting list (WAITING or OFFERED -> REMOVED) inside
+ * the caller's transaction, dismissing its open offer draft(s) on the way.
+ * Returns whether the entry was really retired and the freed appointments
+ * whose offers were dismissed — the caller re-offers those once its own writes
+ * are done (see reofferFreedSlots), because what makes a re-offer correct (the
+ * client no longer eligible, the staff member gone) is often written by the
+ * caller in the same transaction.
+ *
+ * An entry that was already gone (FILLED, REMOVED, not this business's) retires
+ * nothing and reports `retired: false`; any open draft it still had is
+ * dismissed anyway, since its entry is no longer waiting.
+ */
+async function retireEntry(
+  tx: Prisma.TransactionClient,
+  args: { id: string; businessId: string }
+): Promise<{ retired: boolean; freed: Array<string | null> }> {
+  const { id, businessId } = args;
+
+  const freed = await dismissOpenOffersOfEntry(tx, { businessId, entryId: id });
+
+  const { count } = await tx.waitlistEntry.updateMany({
+    where: { id, businessId, status: { in: ["WAITING", "OFFERED"] } },
+    data: { status: "REMOVED" },
+  });
+
+  if (count === 0) {
+    return { retired: false, freed };
+  }
+
+  // An offer that landed on this entry while the write above waited for its
+  // row lock is caught by a second pass, so its slot is re-offered, not lost.
+  freed.push(...(await dismissOpenOffersOfEntry(tx, { businessId, entryId: id })));
+
+  return { retired: true, freed };
+}
+
+/**
+ * Retires every active entry of one client, or pinned to one staff member,
+ * inside the caller's transaction (so the status change or deletion that makes
+ * them unusable commits together with their retirement, or not at all).
+ * Returns the freed appointments to hand to reofferFreedSlots afterwards.
+ */
+export async function retireWaitlistEntries(
+  tx: Prisma.TransactionClient,
+  args: { businessId: string } & ({ clientId: string } | { staffMemberId: string })
+): Promise<Array<string | null>> {
+  const { businessId } = args;
+
+  const entries = await tx.waitlistEntry.findMany({
+    where: {
+      businessId,
+      status: { in: ["WAITING", "OFFERED"] },
+      ...("clientId" in args ? { clientId: args.clientId } : { staffMemberId: args.staffMemberId }),
+    },
+    select: { id: true },
+  });
+
+  const freed: Array<string | null> = [];
+
+  for (const entry of entries) {
+    freed.push(...(await retireEntry(tx, { id: entry.id, businessId })).freed);
+  }
+
+  return freed;
+}
+
+/**
+ * Offers each freed appointment's slot to the next match, inside the caller's
+ * transaction. offerSlotAgain re-checks the appointment is still cancelled (and
+ * offerFreedSlot that the slot is still ahead, free and its staff available),
+ * so a slot that stopped being offerable is simply skipped.
+ */
+export async function reofferFreedSlots(
+  tx: Prisma.TransactionClient,
+  args: { businessId: string; appointmentIds: Array<string | null>; now?: Date }
+): Promise<void> {
+  for (const appointmentId of new Set(args.appointmentIds)) {
+    await offerSlotAgain(tx, { businessId: args.businessId, appointmentId, now: args.now });
+  }
+}
+
+/**
+ * Takes an entry off the waiting list (WAITING or OFFERED -> REMOVED), in one
+ * transaction. An entry holding an offer counts as declining it: its open
+ * offer draft is dismissed and the freed slot goes to the next match (the
+ * removed entry is excluded — it's no longer WAITING and already has a draft
+ * for that slot).
+ *
+ * Order: the offer drafts first, then the entry (see dismissOpenOffersOfEntry).
+ * If the entry was already gone (FILLED, REMOVED, or not this business's),
+ * the transaction rolls back so nothing is left dismissed, and the caller
+ * gets a clean "already removed". An offer that landed on this entry while
+ * the remove waited for its row lock is caught by a second pass after the
+ * entry write, so its slot is re-offered rather than lost.
+ */
+export async function removeWaitlistEntry(args: {
+  id: string;
+  businessId: string;
+  now?: Date;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { id, businessId, now = new Date() } = args;
+
+  try {
+    return await retryOnWriteConflict(() =>
+      prisma.$transaction(async (tx): Promise<{ ok: true }> => {
+        const { retired, freed } = await retireEntry(tx, { id, businessId });
+
+        if (!retired) {
+          throw new EntryAlreadyGone();
+        }
+
+        await reofferFreedSlots(tx, { businessId, appointmentIds: freed, now });
+
+        return { ok: true };
+      })
+    );
+  } catch (error) {
+    if (error instanceof EntryAlreadyGone) {
+      return { ok: false, error: WAITLIST_ENTRY_REMOVED_ERROR };
+    }
+    throw error;
+  }
+}

@@ -3,11 +3,11 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { retryOnWriteConflict } from "@/lib/prisma-retry";
 import { getAuthedBusiness as getAuthedBusinessContext, toBusinessIdentity } from "@/lib/business";
 import { loadCalendarMonth, type CalendarMonthData } from "@/lib/calendar-data";
 import { isValidMonthKey } from "@/lib/calendar-range";
 import {
-  acquireSchedulingLock,
   APPOINTMENT_ALREADY_COMPLETED_ERROR,
   APPOINTMENT_ALREADY_NO_SHOW_ERROR,
   APPOINTMENT_CANCELLED_NO_SHOW_ERROR,
@@ -16,7 +16,6 @@ import {
   APPOINTMENT_TIME_CONFLICT_ERROR,
   cancelAppointmentCore,
   deleteAppointmentCore,
-  hasSchedulingConflict,
   NO_SHOW_PLAN_ERROR,
   notifyStaffOfAppointmentChange,
   recordAppointmentAttendanceCore,
@@ -25,15 +24,13 @@ import {
 } from "@/lib/appointments-shared";
 import { isProBusinessPlan } from "@/lib/billing";
 import { getNoShowRiskAssessments } from "@/lib/no-show-risk-data";
-import type { NoShowRiskAssessment } from "@/lib/no-show-risk";
+import { isInsideOperatingHours } from "@/lib/operating-hours";
+import { MAX_RISK_BATCH_SIZE, type NoShowRiskAssessment } from "@/lib/no-show-risk";
+import { parseRecordId } from "@/lib/record-id";
+import { acquireSchedulingLock, hasSchedulingConflict } from "@/lib/scheduling-conflicts";
+import { offerFreedSlot, withdrawSlotOffers } from "@/lib/slot-offers";
+import { formatZonedDateKey, formatZonedTime24, parseZonedWallClock } from "@/lib/time-zone";
 import {
-  formatZonedDateKey,
-  formatZonedTime24,
-  getZonedWeekday,
-  parseZonedWallClock,
-} from "@/lib/time-zone";
-import {
-  timeToMinutes,
   toCalendarStatus,
   toCalendarTone,
   toPrismaAppointmentStatus,
@@ -80,64 +77,19 @@ export type DeleteAppointmentResult = {
   appointmentId?: string;
 };
 
+const APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR = "Appointment not found in this clinic workspace.";
+const STAFF_NOT_IN_WORKSPACE_ERROR = "The selected staff member does not belong to this clinic workspace.";
+
 function getAuthedBusiness() {
   return getAuthedBusinessContext(
     "Your session expired. Log in again to manage appointments."
   );
 }
 
-// Client-serialized server-action arguments aren't type-checked at runtime,
-// so a crafted object like `{ not: "" }` in place of a plain id string would
-// otherwise reach Prisma as part of a `where` clause — turning a single-row
-// mutation into one that matches (and cancels/deletes/updates) every
-// eligible appointment in the workspace. Every action below that takes a raw
-// appointment id runs it through this first (Codex).
-function parseAppointmentId(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-const APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR = "Appointment not found in this clinic workspace.";
-
 // Interpret the operator's wall-clock entry in the clinic's time zone and store
 // the true UTC instant (shared helper — see lib/time-zone.ts).
 function parseDateTime(date: string, time: string) {
   return parseZonedWallClock(date, time);
-}
-
-async function isInsideBusinessHours(args: {
-  businessId: string;
-  startAt: Date;
-  startTime: string;
-  endTime: string;
-}) {
-  // Map the zoned weekday (Sun=0..Sat=6) onto the clinic schedule's Monday=0
-  // convention so near-midnight bookings resolve to the correct day's hours.
-  const weekday = (getZonedWeekday(args.startAt) + 6) % 7;
-  const hours = await prisma.businessHours.findUnique({
-    where: {
-      businessId_weekday: {
-        businessId: args.businessId,
-        weekday,
-      },
-    },
-    select: {
-      isOpen: true,
-      startTime: true,
-      endTime: true,
-    },
-  });
-
-  const start = timeToMinutes(args.startTime);
-  const end = timeToMinutes(args.endTime);
-
-  // No configured row for this weekday means closed, not a guessed Mon-Fri
-  // 9-5 default — matches calendar-workspace.tsx, reports.ts, and the
-  // client-side businessHoursForDate in new-appointment-form.tsx.
-  if (!hours?.isOpen) {
-    return false;
-  }
-
-  return start >= timeToMinutes(hours.startTime) && end <= timeToMinutes(hours.endTime);
 }
 
 async function hydrateAppointment(appointmentId: string) {
@@ -182,12 +134,14 @@ async function hydrateAppointment(appointmentId: string) {
 export async function saveAppointmentAction(
   payload: SaveAppointmentPayload
 ): Promise<SaveAppointmentResult> {
-  // A crafted, non-string `id` (client-serialized arguments aren't
-  // type-checked at runtime) would otherwise reach Prisma as part of a
-  // `where` clause below — every other usage of `payload.id` in this
-  // function runs after this early return, so this one check protects all
-  // of them (Codex).
-  if (payload.id !== undefined && parseAppointmentId(payload.id) === null) {
+  // Ids come from the client: parse them before any query, or a crafted id
+  // would turn the compare-and-set update below into a filter over the whole
+  // workspace. The appointment id is checked before auth is even consulted, so
+  // a crafted one never costs a lookup. Empty id/staff keep meaning "new
+  // booking" / "unassigned".
+  const appointmentId = payload.id ? parseRecordId(payload.id) : undefined;
+
+  if (appointmentId === null) {
     return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
   }
 
@@ -201,6 +155,20 @@ export async function saveAppointmentAction(
   }
 
   const business = context.business;
+
+  const requestedStaffMemberId = payload.staffMemberId ? parseRecordId(payload.staffMemberId) : undefined;
+
+  if (requestedStaffMemberId === null) {
+    return { ok: false, error: STAFF_NOT_IN_WORKSPACE_ERROR };
+  }
+
+  payload = {
+    ...payload,
+    id: appointmentId,
+    clientId: parseRecordId(payload.clientId) ?? "",
+    staffMemberId: requestedStaffMemberId,
+  };
+
   const startAt = parseDateTime(payload.date, payload.startTime);
   const endAt = parseDateTime(payload.date, payload.endTime);
 
@@ -229,7 +197,7 @@ export async function saveAppointmentAction(
     }
   }
 
-  const insideBusinessHours = await isInsideBusinessHours({
+  const insideBusinessHours = await isInsideOperatingHours(prisma, {
     businessId: business.id,
     startAt,
     startTime: payload.startTime,
@@ -275,7 +243,7 @@ export async function saveAppointmentAction(
     if (!staff) {
       return {
         ok: false,
-        error: "The selected staff member does not belong to this clinic workspace.",
+        error: STAFF_NOT_IN_WORKSPACE_ERROR,
       };
     }
 
@@ -307,10 +275,33 @@ export async function saveAppointmentAction(
     // (not just the dedicated Cancel booking action) — the doctor's app
     // needs to hear about that path too, not just cancelAppointmentAction.
     let wasNewlyCancelled = false;
-    // Un-cancelling (CANCELLED -> any other status) clears cancelledAt — the
-    // appointment isn't cancelled anymore, so its cancellation timestamp
-    // shouldn't linger and be read as one on a later, different cancel.
+    // Un-cancelling (CANCELLED -> any other status) takes the slot back, so
+    // any waiting-list offer for it must be withdrawn, and cancelledAt is
+    // cleared — the appointment isn't cancelled anymore, so its cancellation
+    // timestamp shouldn't linger and be read as one on a later, different cancel.
     let wasReactivated = false;
+    // Editing a still-cancelled booking's client/time/staff/service: an open
+    // offer's text was frozen from the OLD details, but Book reads the row's
+    // current ones — so an accepted offer could book the client into a
+    // different time than the message promised. A client change matters too:
+    // reassigning the cancelled appointment to the very client who currently
+    // holds its open offer would leave that offer live for the client who,
+    // per the row's new data, is now the one who "cancelled" it —
+    // findMatchingWaitlistCandidates never offers a slot to the client who
+    // gave it up, and a stale offer left over from before the reassignment
+    // violates that the moment the edit lands (Codex #130). Re-offer with the
+    // saved details instead in every one of these cases.
+    let slotDetailsChangedWhileCancelled = false;
+    // The row's client, staff, service and window exactly as read below. Every flag
+    // above is derived from this read, which happens before the transaction, so the
+    // guarded write is tied to the same values (see the compare-and-set).
+    let readSlot: {
+      clientId: string;
+      staffMemberId: string | null;
+      title: string;
+      startAt: Date;
+      endAt: Date;
+    } | null = null;
 
     if (payload.id) {
       const existing = await prisma.appointment.findFirst({
@@ -332,12 +323,19 @@ export async function saveAppointmentAction(
       if (!existing) {
         return {
           ok: false,
-          error: "Appointment not found in this clinic workspace.",
+          error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR,
         };
       }
 
       previousClientId = existing.clientId;
       previousStaffMemberId = existing.staffMemberId;
+      readSlot = {
+        clientId: existing.clientId,
+        staffMemberId: existing.staffMemberId,
+        title: existing.title,
+        startAt: existing.startAt,
+        endAt: existing.endAt,
+      };
       // Same rule cancelAppointmentCore enforces for the dedicated Cancel
       // button (409 there) — a completed visit already happened, so flipping
       // it to CANCELLED would corrupt the completion-rate metric and the
@@ -383,6 +381,20 @@ export async function saveAppointmentAction(
       // real cancellation/reactivation the write is actually making).
       wasNewlyCancelled = payload.baselineStatus !== "cancelled" && newStatus === "CANCELLED";
       wasReactivated = payload.baselineStatus === "cancelled" && newStatus !== "CANCELLED";
+      slotDetailsChangedWhileCancelled =
+        existing.status === "CANCELLED" &&
+        newStatus === "CANCELLED" &&
+        (existing.clientId !== payload.clientId ||
+          existing.staffMemberId !== staffMemberId ||
+          existing.startAt.getTime() !== startAt.getTime() ||
+          // A duration-only edit (endAt moves, startAt doesn't) still changes
+          // the window the offer promises: Book derives its own duration from
+          // the saved end time, so a stale offer for the old, shorter window
+          // could let Book mark the entry FILLED before the booking form's
+          // own overlap check catches the now-longer slot conflicting with
+          // whatever follows it (Codex).
+          existing.endAt.getTime() !== endAt.getTime() ||
+          existing.title !== payload.service.trim());
       needsConflictCheck =
         existing.staffMemberId !== staffMemberId ||
         existing.startAt.getTime() !== startAt.getTime() ||
@@ -400,7 +412,15 @@ export async function saveAppointmentAction(
     // The appointment write, reminder reset, and last-visit refresh commit
     // together. Payment is intentionally NOT collected here — it's recorded
     // separately on the client's Payments tab, after the visit.
-    const txResult = await prisma.$transaction<
+    //
+    // Retried once if Postgres aborts it as a deadlock: this takes the staff
+    // member's scheduling advisory lock first and the appointment, client and
+    // offer rows after, while cancelAppointmentCore and the Skip / Declined
+    // paths take row locks first and the advisory lock inside offerFreedSlot
+    // — two of them racing on one staff member can form a lock cycle
+    // (Codex #130). A rolled-back attempt leaves nothing behind, and the
+    // closure re-derives `appointmentId` on every run.
+    const txResult = await retryOnWriteConflict(() => prisma.$transaction<
       { conflict: true; error: string } | { conflict: false }
     >(async (tx) => {
       // Only re-validate the slot when this save could newly occupy one.
@@ -451,17 +471,26 @@ export async function saveAppointmentAction(
         // dedicated cancel action, just keyed on the client's baseline
         // instead of an exclusion set (a save can legitimately move status
         // to any value, unlike a cancel which only ever moves to CANCELLED).
-        // Scope: this guards `status` only, not clientId/staffMemberId/
-        // title/startAt/endAt/notes — two concurrent saves that leave
-        // status untouched can still clobber each other's other fields.
-        // Closing that fully would be general optimistic-concurrency
-        // control for the whole edit form, a materially bigger feature;
-        // this fix targets the specific status-vs-completion-sweep race.
+        // The guard also holds the client, staff member, service and window the
+        // flags above were derived from (readSlot, read just before this
+        // transaction). Without it, a second save that read the original slot
+        // and then waited for a first save to commit would compute "nothing
+        // moved" from its stale read, overwrite the first save's slot, and skip
+        // the conflict check, the reminder reset and - for a cancelled booking -
+        // the withdraw and re-offer, leaving an open offer that promises the
+        // first save's details on a row that no longer has them (Codex #130).
+        // A save that loses this check is refused like a stale status: refresh,
+        // and the next attempt compares against the row as it now is.
+        // Not general optimistic-concurrency control for the whole edit form:
+        // the notes are still last-writer-wins, and the form's own baseline is
+        // only the status; this ties the derived flags to the row they were
+        // read from.
         const { count } = await tx.appointment.updateMany({
           where: {
             id: payload.id,
             businessId: business.id,
             status: toPrismaAppointmentStatus(payload.baselineStatus),
+            ...readSlot,
           },
           data: {
             clientId: payload.clientId,
@@ -508,6 +537,56 @@ export async function saveAppointmentAction(
         for (const clientId of affectedClientIds) {
           await refreshClientLastVisitAt(clientId, business.id, tx);
         }
+
+        // Cancelling from the Status dropdown frees the slot exactly like the
+        // dedicated Cancel action does, so it offers it to the waiting list
+        // the same way (Pro only, and the destination staff/time is actually
+        // free — both checked inside offerFreedSlot). Uses the row as just
+        // saved, so the offer, the Follow-ups row and Book's pre-fill all
+        // read the same time.
+        if (wasNewlyCancelled) {
+          await offerFreedSlot(tx, {
+            businessId: business.id,
+            cancelled: {
+              id: payload.id,
+              clientId: payload.clientId,
+              staffMemberId,
+              title: payload.service.trim(),
+              startAt,
+              endAt,
+            },
+          });
+        }
+
+        // Un-cancelled: the slot is taken again, so withdraw any open offer
+        // for it (draft expired, entry back to WAITING) — otherwise a later
+        // cancel would revive it beside a new offer for the same slot.
+        if (wasReactivated) {
+          await withdrawSlotOffers(tx, { businessId: business.id, appointmentId: payload.id });
+        }
+
+        // Still cancelled, but its client/time/staff/service changed under an
+        // open offer: withdraw the stale one and offer the saved details
+        // again, so the offer text, the Follow-ups row and Book's pre-fill
+        // all read the same (new) details — same ordering as the un-cancel
+        // branch above. offerFreedSlot itself verifies the edited staff/time
+        // is actually free before promising it (Codex #130) — the conflict
+        // check above is still correctly skipped for the CANCELLED
+        // destination itself, which never occupies a slot.
+        if (slotDetailsChangedWhileCancelled) {
+          await withdrawSlotOffers(tx, { businessId: business.id, appointmentId: payload.id });
+          await offerFreedSlot(tx, {
+            businessId: business.id,
+            cancelled: {
+              id: payload.id,
+              clientId: payload.clientId,
+              staffMemberId,
+              title: payload.service.trim(),
+              startAt,
+              endAt,
+            },
+          });
+        }
       } else {
         const created = await tx.appointment.create({
           data: {
@@ -526,8 +605,34 @@ export async function saveAppointmentAction(
         await refreshClientLastVisitAt(payload.clientId, business.id, tx);
       }
 
+      // This save just occupied a real slot (a new booking, or an edit that
+      // moved into one — the same conflict-check condition above covers
+      // both) at a staff+time that can still coincide with an appointment
+      // that's CANCELLED and holding an open waiting-list offer:
+      // hasSchedulingConflict deliberately excludes CANCELLED rows so
+      // booking over a freed slot is allowed, but that means the offer isn't
+      // automatically withdrawn the way un-cancelling that SAME appointment
+      // does. Left alone, staff could still send (or a patient still Book)
+      // an offer for a slot someone else has already taken (Codex #130).
+      if (newStatus !== "CANCELLED" && staffMemberId && (!payload.id || needsConflictCheck)) {
+        const overlapping = await tx.appointment.findMany({
+          where: {
+            businessId: business.id,
+            staffMemberId,
+            status: "CANCELLED",
+            id: appointmentId ? { not: appointmentId } : undefined,
+            startAt: { lt: endAt },
+            endAt: { gt: startAt },
+          },
+          select: { id: true },
+        });
+        for (const overlap of overlapping) {
+          await withdrawSlotOffers(tx, { businessId: business.id, appointmentId: overlap.id });
+        }
+      }
+
       return { conflict: false };
-    });
+    }));
 
     if (txResult.conflict) {
       return {
@@ -597,7 +702,8 @@ export async function saveAppointmentAction(
 export async function cancelAppointmentAction(
   rawAppointmentId: string
 ): Promise<CancelAppointmentResult> {
-  const appointmentId = parseAppointmentId(rawAppointmentId);
+  // A non-string id would cancel every open appointment in the workspace.
+  const appointmentId = parseRecordId(rawAppointmentId);
 
   if (!appointmentId) {
     return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
@@ -620,7 +726,7 @@ export async function cancelAppointmentAction(
       ok: false,
       error:
         outcome.status === 404
-          ? "Appointment not found in this clinic workspace."
+          ? APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR
           : outcome.error,
     };
   }
@@ -661,7 +767,7 @@ export async function recordAppointmentAttendanceAction(
   rawAppointmentId: string,
   attended: boolean
 ): Promise<RecordAttendanceResult> {
-  const appointmentId = parseAppointmentId(rawAppointmentId);
+  const appointmentId = parseRecordId(rawAppointmentId);
 
   if (!appointmentId) {
     return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
@@ -690,7 +796,7 @@ export async function recordAppointmentAttendanceAction(
       ok: false,
       error:
         outcome.status === 404
-          ? "Appointment not found in this clinic workspace."
+          ? APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR
           : outcome.error,
     };
   }
@@ -711,11 +817,12 @@ export async function recordAppointmentAttendanceAction(
 export async function getNoShowRiskAction(
   appointmentIds: string[]
 ): Promise<Record<string, NoShowRiskAssessment>> {
-  // Client-supplied, so keep only plain non-empty id strings — an object
-  // like `{ not: "" }` would otherwise become part of the Prisma `in:`
-  // filter below instead of being silently dropped (Codex).
+  // Client-supplied, so keep only plain id strings (see lib/record-id.ts) — an
+  // object like `{ not: "" }` would otherwise become part of the Prisma `in:`
+  // filter below instead of being silently dropped. Capped at the batch size
+  // the UI can ever ask for.
   const ids = Array.isArray(appointmentIds)
-    ? appointmentIds.flatMap((id) => parseAppointmentId(id) ?? [])
+    ? appointmentIds.slice(0, MAX_RISK_BATCH_SIZE).flatMap((id) => parseRecordId(id) ?? [])
     : [];
 
   if (ids.length === 0) {
@@ -760,7 +867,8 @@ export async function getNoShowRiskAction(
 export async function deleteAppointmentAction(
   rawAppointmentId: string
 ): Promise<DeleteAppointmentResult> {
-  const appointmentId = parseAppointmentId(rawAppointmentId);
+  // A non-string id would delete every appointment in the workspace.
+  const appointmentId = parseRecordId(rawAppointmentId);
 
   if (!appointmentId) {
     return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
@@ -783,7 +891,7 @@ export async function deleteAppointmentAction(
       ok: false,
       error:
         outcome.status === 404
-          ? "Appointment not found in this clinic workspace."
+          ? APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR
           : outcome.error,
     };
   }

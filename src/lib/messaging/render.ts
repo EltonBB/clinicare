@@ -6,7 +6,7 @@ import type { OutboundMessage } from "./types";
  * is a no-op in output.
  */
 export const DEFAULT_REMINDER_TEMPLATE =
-  "Hi {client_name}, this is a reminder for your appointment at {time} on {date}. Reply here if you need to reschedule.";
+  "Hi {client_name}, this is a reminder for your appointment at {time} on {date}. Reply 1 to confirm or 2 to cancel.";
 
 /**
  * Renders an appointment reminder body.

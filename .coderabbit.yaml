@@ -10,8 +10,15 @@ reviews:
   poem: false
   review_status: true
   collapse_walkthrough: true
+  # Disabled 2026-09-29 (owner decision): with auto_review on, CodeRabbit
+  # already reviewed every push on its own async schedule, so every manual
+  # "@coderabbitai review" comment we posted was a no-op ("does not
+  # re-review already reviewed commits... only applicable when automatic
+  # reviews are paused") — a false signal that our trigger step was doing
+  # something. Disabling it makes the manual trigger the real, single way
+  # a review fires, with a timestamp we can trust.
   auto_review:
-    enabled: true
+    enabled: false
     drafts: false
   path_filters:
     # Auto-generated dependency lockfiles — pure diff noise, no review value.
