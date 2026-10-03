@@ -234,12 +234,19 @@ export async function POST(request: Request) {
       // retry would record it again under a NEW messageId and the claim above
       // wouldn't stop the reply going out twice (Codex #130).
       if (event.providerMessageId && messageId && (result.recorded || clientId)) {
-        await applyInboundReplyIntent({
+        const intent = await applyInboundReplyIntent({
           businessId: event.businessId,
           clientId,
           body: event.body,
           messageId,
         });
+        // An earlier delivery of this message is still being handled: answer
+        // with a 5xx so the worker retries, in case that delivery then fails and
+        // releases it — a 200 would end the retries with the reply unapplied
+        // (Codex #130). Not logged as a failure; this overlap is expected.
+        if (!intent.applied && intent.reason === "in_progress") {
+          return NextResponse.json({ error: "Still processing." }, { status: 503 });
+        }
       }
       return NextResponse.json({ ok: true, recorded: result.recorded });
     }

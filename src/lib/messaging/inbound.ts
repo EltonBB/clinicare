@@ -185,7 +185,15 @@ export async function recordInboundMessage(
 export type ApplyReplyIntentResult =
   | {
       applied: false;
-      reason: "no_intent" | "no_client" | "no_match" | "ambiguous" | "already_confirmed" | "open_offer" | "already_handled";
+      reason:
+        | "no_intent"
+        | "no_client"
+        | "no_match"
+        | "ambiguous"
+        | "already_confirmed"
+        | "open_offer"
+        | "already_handled"
+        | "in_progress";
     }
   | { applied: true; intent: "confirm" | "cancel"; appointmentId: string };
 
@@ -208,7 +216,19 @@ export type ApplyReplyIntentResult =
  * keeps going server-side); a plain check-then-act would let the second
  * overlap the first and reply twice. A check that throws releases its claim,
  * so the retry the resulting 5xx triggers still gets to do the work.
+ *
+ * While the check runs, the claim holds a lease that ends in the future; once
+ * it finishes, the claim is set to the time it did. So a delivery that finds
+ * the message claimed can tell the two apart: a finished claim is
+ * "already_handled", but a running one is "in_progress", which the webhook
+ * answers with a 5xx so the worker keeps retrying — if the running check then
+ * fails and releases its claim, a later retry still does the work, instead of
+ * having been told with a 200 that it was done (Codex #130).
  */
+// Comfortably longer than one check can run: a few queries plus the
+// acknowledgement send, which the messaging adapter gives up on after 25s.
+const REPLY_INTENT_LEASE_MS = 2 * 60 * 1000;
+
 export async function applyInboundReplyIntent(args: {
   businessId: string;
   clientId: string | null;
@@ -227,18 +247,32 @@ export async function applyInboundReplyIntent(args: {
 
   const claim = await prisma.message.updateMany({
     where: { id: messageId, replyIntentHandledAt: null },
-    data: { replyIntentHandledAt: now },
+    data: { replyIntentHandledAt: new Date(now.getTime() + REPLY_INTENT_LEASE_MS) },
   });
   if (claim.count === 0) {
-    return { applied: false, reason: "already_handled" };
+    const claimed = await prisma.message.findUnique({
+      where: { id: messageId },
+      select: { replyIntentHandledAt: true },
+    });
+    // A running claim's lease ends at least a minute past any retry's `now`
+    // (the worker stops retrying well within that); a finished one holds a time
+    // at or before it. Halfway is the line, so a few seconds of clock difference
+    // between two server instances can't flip the answer. Released between the
+    // two reads (null): report it as running so the next retry claims it.
+    const handledAt = claimed?.replyIntentHandledAt;
+    return handledAt && handledAt.getTime() <= now.getTime() + REPLY_INTENT_LEASE_MS / 2
+      ? { applied: false, reason: "already_handled" }
+      : { applied: false, reason: "in_progress" };
   }
 
+  let result: ApplyReplyIntentResult;
   try {
-    return await applyInboundReplyIntentCore(args, now);
+    result = await applyInboundReplyIntentCore(args, now);
   } catch (error) {
-    // Best-effort release. If it fails the retry finds the message claimed and
-    // skips it: the patient's message is still in the Inbox for staff, which
-    // is the same outcome the original swallowed-error behavior had.
+    // Best-effort release. If it fails, retries find the lease still running
+    // until the worker gives up, and it then reads as handled: the patient's
+    // message is still in the Inbox for staff, which is the same outcome the
+    // original swallowed-error behavior had.
     await prisma.message
       .updateMany({ where: { id: messageId }, data: { replyIntentHandledAt: null } })
       .catch((releaseError) => {
@@ -248,6 +282,18 @@ export async function applyInboundReplyIntent(args: {
       });
     throw error;
   }
+
+  // Ends the lease: from here a retry is told the message is handled. Not
+  // fatal if it fails — the work is done, and once the lease runs out the
+  // claim reads as handled anyway.
+  await prisma.message
+    .updateMany({ where: { id: messageId }, data: { replyIntentHandledAt: now } })
+    .catch((finishError) => {
+      logger.error("A reply-intent check finished but its claim couldn't be marked done.", finishError, {
+        businessId: args.businessId,
+      });
+    });
+  return result;
 }
 
 async function applyInboundReplyIntentCore(

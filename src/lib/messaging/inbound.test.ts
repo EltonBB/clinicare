@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
-  const message = { findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn() };
+  const message = { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), updateMany: vi.fn() };
   const client = { findMany: vi.fn() };
   const conversation = { upsert: vi.fn() };
   const appointment = { findMany: vi.fn() };
@@ -483,12 +483,18 @@ describe("applyInboundReplyIntent", () => {
   // appointment the first attempt already confirmed and sends the patient the
   // "you're confirmed" message again.
   describe("per-message claim (a worker retry must not re-send a reply)", () => {
-    const CLAIM = { where: { id: "msg_1", replyIntentHandledAt: null }, data: { replyIntentHandledAt: NOW } };
+    const LEASE_END = new Date(NOW.getTime() + 2 * 60 * 1000);
+    const CLAIM = { where: { id: "msg_1", replyIntentHandledAt: null }, data: { replyIntentHandledAt: LEASE_END } };
+    const FINISH = { where: { id: "msg_1" }, data: { replyIntentHandledAt: NOW } };
     const RELEASE = { where: { id: "msg_1" }, data: { replyIntentHandledAt: null } };
     const args = { businessId: "biz_1", clientId: "client_1", body: "1", messageId: "msg_1", now: NOW };
-
-    it("skips everything, including the reply, when another delivery already claimed this message", async () => {
+    const claimedBy = (replyIntentHandledAt: Date | null) => {
       mocks.message.updateMany.mockResolvedValueOnce({ count: 0 });
+      mocks.message.findUnique.mockResolvedValueOnce({ replyIntentHandledAt });
+    };
+
+    it("skips everything, including the reply, when another delivery already handled this message", async () => {
+      claimedBy(new Date(NOW.getTime() - 5_000)); // finished 5s before this retry
 
       const result = await applyInboundReplyIntent(args);
 
@@ -497,6 +503,50 @@ describe("applyInboundReplyIntent", () => {
       expect(mocks.message.updateMany).toHaveBeenCalledWith(CLAIM);
       expect(mocks.appointment.findMany).not.toHaveBeenCalled();
       expect(mocks.sendMessage).not.toHaveBeenCalled();
+    });
+
+    // Codex #130: a retry that overlaps a still-running first delivery used to
+    // be told "already handled" (200), ending the worker's retries; if that
+    // first delivery then failed and released its claim, nothing ever applied
+    // the reply. It is now "in_progress", which the webhook answers with a 5xx.
+    it("reports a delivery that is still running as in progress, not handled, and does nothing itself", async () => {
+      claimedBy(new Date(NOW.getTime() + 2 * 60 * 1000 - 10_000)); // claimed 10s before this retry
+
+      const result = await applyInboundReplyIntent(args);
+
+      expect(result).toEqual({ applied: false, reason: "in_progress" });
+      expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+      expect(mocks.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it("tolerates a few seconds of clock difference between the delivery that finished and the retry", async () => {
+      claimedBy(new Date(NOW.getTime() + 3_000)); // the other instance's clock runs 3s ahead
+
+      expect(await applyInboundReplyIntent(args)).toEqual({ applied: false, reason: "already_handled" });
+    });
+
+    it("reports in progress when the claim was released between its two reads, so the next retry takes it", async () => {
+      claimedBy(null);
+
+      expect(await applyInboundReplyIntent(args)).toEqual({ applied: false, reason: "in_progress" });
+    });
+
+    it("marks the claim finished once the check completes, so later retries read it as handled", async () => {
+      mocks.appointment.findMany.mockResolvedValueOnce([{ ...REMINDED_UPCOMING, status: "CONFIRMED" }]);
+      mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });
+
+      await applyInboundReplyIntent(args);
+
+      expect(mocks.message.updateMany).toHaveBeenNthCalledWith(1, CLAIM);
+      expect(mocks.message.updateMany).toHaveBeenNthCalledWith(2, FINISH);
+    });
+
+    it("still returns the outcome when marking the claim finished fails — the work is already done", async () => {
+      mocks.appointment.findMany.mockResolvedValueOnce([{ ...REMINDED_UPCOMING, status: "CONFIRMED" }]);
+      mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });
+      mocks.message.updateMany.mockResolvedValueOnce({ count: 1 }).mockRejectedValueOnce(new Error("finish failed"));
+
+      expect(await applyInboundReplyIntent(args)).toEqual({ applied: false, reason: "already_confirmed" });
     });
 
     it("claims the message before doing anything else, then runs the check and keeps the claim", async () => {
@@ -516,8 +566,8 @@ describe("applyInboundReplyIntent", () => {
 
       expect(result).toEqual({ applied: true, intent: "confirm", appointmentId: "appt_1" });
       expect(order).toEqual(["claim", "lookup"]);
-      // one claim, no release: the message stays handled
-      expect(mocks.message.updateMany).toHaveBeenCalledTimes(1);
+      // claimed, then marked finished — never released: the message stays handled
+      expect(mocks.message.updateMany).not.toHaveBeenCalledWith(RELEASE);
     });
 
     it("keeps the claim whatever the non-throwing outcome, so an already-confirmed acknowledgement is only ever sent once", async () => {
@@ -527,7 +577,7 @@ describe("applyInboundReplyIntent", () => {
       const result = await applyInboundReplyIntent(args);
 
       expect(result).toEqual({ applied: false, reason: "already_confirmed" });
-      expect(mocks.message.updateMany).toHaveBeenCalledTimes(1);
+      expect(mocks.message.updateMany).not.toHaveBeenCalledWith(RELEASE);
     });
 
     it("releases the claim and rethrows when the check throws, so the retry can do the work", async () => {

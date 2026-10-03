@@ -97,7 +97,7 @@ beforeEach(() => {
   process.env.BAILEYS_BRIDGE_SECRET = BRIDGE_SECRET;
   delete process.env.BAILEYS_WEBHOOK_SECRET;
   mocks.recordInboundMessage.mockResolvedValue({ recorded: true, conversationId: "conv_1", clientId: "client_1", messageId: "msg_1" });
-  mocks.applyInboundReplyIntent.mockResolvedValue(undefined);
+  mocks.applyInboundReplyIntent.mockResolvedValue({ applied: false, reason: "no_match" });
   mocks.recordDeliveryStatus.mockResolvedValue(undefined);
   mocks.recordConnectionState.mockResolvedValue(undefined);
 });
@@ -174,6 +174,25 @@ describe("POST /api/webhooks/whatsapp/baileys — message events: reply-intent r
 
     expect(response.status).toBe(200);
     expect(mocks.applyInboundReplyIntent).not.toHaveBeenCalled();
+  });
+
+  // Codex #130: a 200 here would end the worker's retries while the earlier
+  // delivery may still fail and release the message, leaving the reply unapplied.
+  it("answers 503 (so the worker retries) while an earlier delivery of the message is still being handled", async () => {
+    mocks.recordInboundMessage.mockResolvedValue({ recorded: false, reason: "duplicate", clientId: "client_1", messageId: "msg_1" });
+    mocks.applyInboundReplyIntent.mockResolvedValue({ applied: false, reason: "in_progress" });
+
+    const response = await POST(legacy());
+
+    expect(response.status).toBe(503);
+    expect(mocks.logger.error).not.toHaveBeenCalled();
+  });
+
+  it("answers 200 once an earlier delivery has finished handling the message", async () => {
+    mocks.recordInboundMessage.mockResolvedValue({ recorded: false, reason: "duplicate", clientId: "client_1", messageId: "msg_1" });
+    mocks.applyInboundReplyIntent.mockResolvedValue({ applied: false, reason: "already_handled" });
+
+    expect((await POST(legacy())).status).toBe(200);
   });
 
   // Codex #130: with no provider id the message can't be deduplicated, so a
