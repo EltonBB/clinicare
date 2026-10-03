@@ -31,27 +31,25 @@ export const DEFAULT_CURRENCY: SupportedCurrency = "EUR";
 
 /**
  * Before a clinic could pick a currency, every amount was shown in US dollars.
- * `Business.currency` arrived with prisma/clinic-currency-migration.sql (applied
- * to the shared database on 2026-09-27), which gave every existing workspace the
- * euro default. A payment last written before that was entered under a "$"
- * label no workspace ever chose, so it must not stop its workspace correcting
- * the currency: counted, it left the owner of a workspace that really did bill
- * in dollars unable to undo the migration's default (Codex #130). Only a payment
- * recorded or edited from this instant on, under a currency the clinic could
- * see and set, locks the currency (see saveSettingsAction) - which is why the
- * test is on the payment's `updatedAt`. That correction can only happen once:
- * the change that makes it stamps the legacy payments' `updatedAt`, so from then
- * on they lock the currency like any other payment.
+ * `Business.currency` arrived with prisma/clinic-currency-migration.sql, which
+ * gave every existing workspace the euro default. A payment last written before
+ * the currency picker went live was entered under a "$" label no workspace ever
+ * chose, so it must not stop its workspace correcting the currency: counted, it
+ * left the owner of a workspace that really did bill in dollars unable to undo
+ * the migration's default (Codex #130). Only a payment recorded or edited from
+ * this instant on, under a currency the clinic could see and set, locks the
+ * currency (see saveSettingsAction) - which is why the test is on the payment's
+ * `updatedAt`. That correction can only happen once: the change that makes it
+ * stamps the legacy payments' `updatedAt`, so from then on they lock the
+ * currency like any other payment.
  *
- * PRE-MERGE STEP: the database column arrived on 2026-09-27, but production
- * kept showing dollars until the code with the currency picker went live, so
- * the real boundary is that go-live, not the migration (Codex #130). This value
- * is set to the merge time of the PR that ships the picker, in the last commit
- * before it merges. It must never be set ahead of the real go-live: a cutoff
- * in the future would leave the stamp above still "legacy", and the one-time
+ * The boundary is the picker's go-live - PR #130's merge, 2026-10-03 22:30 UTC -
+ * not the migration (applied 2026-09-27): production kept showing dollars until
+ * then (Codex #130). Never move it later than the real go-live: a cutoff in the
+ * future would leave the stamp above still "legacy", and the one-time
  * correction repeatable until the date passed.
  */
-export const CURRENCY_CHOOSABLE_FROM = new Date("2026-09-27T00:00:00.000Z");
+export const CURRENCY_CHOOSABLE_FROM = new Date("2026-10-03T22:30:00.000Z");
 
 export function isSupportedCurrency(code: unknown): code is SupportedCurrency {
   return SUPPORTED_CURRENCIES.some((currency) => currency.code === code);

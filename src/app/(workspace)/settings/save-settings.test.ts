@@ -205,7 +205,10 @@ describe("saveSettingsAction — currency", () => {
       );
 
     it("can still correct the currency", async () => {
-      paymentsWrittenAt("2026-08-15T10:00:00Z", "2026-09-26T23:59:59Z"); // recorded under the old "$" label
+      // Recorded under the old "$" label - including one written after the column
+      // migration (2026-09-27) but before the picker went live, while production
+      // still showed dollars (Codex #130).
+      paymentsWrittenAt("2026-08-15T10:00:00Z", "2026-09-26T23:59:59Z", "2026-10-01T09:00:00Z");
 
       const result = await saveSettingsAction(payload("USD"));
 
@@ -217,7 +220,7 @@ describe("saveSettingsAction — currency", () => {
     });
 
     it("is locked again by the first payment recorded under a currency it could see and set", async () => {
-      paymentsWrittenAt("2026-08-15T10:00:00Z", "2026-10-01T09:00:00Z");
+      paymentsWrittenAt("2026-08-15T10:00:00Z", "2026-10-10T09:00:00Z");
 
       const result = await saveSettingsAction(payload("USD"));
 
@@ -238,10 +241,10 @@ describe("saveSettingsAction — currency", () => {
     // currency now in force, so from then on it must count like any other. Its
     // `createdAt` stays old; it is the edit (`updatedAt`) that locks it.
     it("is locked by a legacy payment that has been edited since, even though it was created long before", async () => {
-      // One legacy payment, created in August and edited on 2026-10-01.
+      // One legacy payment, created in August and edited on 2026-10-10.
       mocks.tx.clientPayment.count.mockImplementation(
         async ({ where }: { where: { updatedAt?: { gte: Date }; createdAt?: { gte: Date } } }) => {
-          const payment = { createdAt: new Date("2026-08-15T10:00:00Z"), updatedAt: new Date("2026-10-01T09:00:00Z") };
+          const payment = { createdAt: new Date("2026-08-15T10:00:00Z"), updatedAt: new Date("2026-10-10T09:00:00Z") };
           const matchesCreated = !where.createdAt || payment.createdAt >= where.createdAt.gte;
           const matchesUpdated = !where.updatedAt || payment.updatedAt >= where.updatedAt.gte;
           return matchesCreated && matchesUpdated ? 1 : 0;

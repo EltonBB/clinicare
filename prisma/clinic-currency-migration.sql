@@ -11,9 +11,9 @@
 -- code that reads it. Note that existing workspaces will read as euro after this
 -- runs - including any demo/test workspace that was previously showing dollars.
 -- Change one in Settings > Business details. That works even when the workspace
--- already has payments, as long as none was recorded or edited after this
--- migration ran: the app's currency lock (saveSettingsAction) only counts
--- payments last written from CURRENCY_CHOOSABLE_FROM (src/lib/currency.ts) on,
+-- already has payments, as long as none was recorded or edited after the
+-- currency picker went live: the app's currency lock (saveSettingsAction) only
+-- counts payments last written from CURRENCY_CHOOSABLE_FROM (src/lib/currency.ts) on,
 -- because earlier ones were entered under the old "$" label rather than under a
 -- currency the clinic chose. That correction works once: saving it stamps those
 -- earlier payments, so they lock the currency from then on.
