@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   findPaymentReminderCandidates: vi.fn(),
   findThankYouCandidates: vi.fn(),
   expirePastSlotOffers: vi.fn(),
+  settleInterruptedFollowUpSends: vi.fn(),
   isProBusinessPlan: vi.fn(),
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
   getFollowUpCursor: vi.fn(),
@@ -19,6 +20,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }));
 vi.mock("@/lib/billing", () => ({ isProBusinessPlan: mocks.isProBusinessPlan }));
 vi.mock("@/lib/logger", () => ({ logger: mocks.logger }));
 vi.mock("@/lib/slot-offers", () => ({ expirePastSlotOffers: mocks.expirePastSlotOffers }));
+vi.mock("@/lib/follow-ups-data", () => ({ settleInterruptedFollowUpSends: mocks.settleInterruptedFollowUpSends }));
 vi.mock("@/lib/follow-up-cursor", () => ({
   getFollowUpCursor: mocks.getFollowUpCursor,
   setFollowUpCursor: mocks.setFollowUpCursor,
@@ -89,6 +91,7 @@ beforeEach(() => {
   mocks.findPaymentReminderCandidates.mockResolvedValue([]);
   mocks.findThankYouCandidates.mockResolvedValue([]);
   mocks.expirePastSlotOffers.mockResolvedValue({ expired: 0, released: 0, failed: 0 });
+  mocks.settleInterruptedFollowUpSends.mockResolvedValue(0);
   // Mirrors billing.ts: PRO and ADVANCED are Pro; TRIAL and BASIC are not.
   mocks.isProBusinessPlan.mockImplementation((plan: string) => plan === "PRO" || plan === "ADVANCED");
   mocks.getFollowUpCursor.mockResolvedValue(null);
@@ -353,6 +356,35 @@ describe("generateFollowUpDrafts — stale-draft sweep and totals", () => {
 
     expect(result).toMatchObject({ errors: 1, draftsExpired: 2 });
     expect(mocks.logger.error).toHaveBeenCalledTimes(1);
+  });
+
+  // Codex #130: a send cut off midway leaves its draft marked as being sent,
+  // hidden from the list — the hourly run settles it as sent.
+  it("settles interrupted follow-up sends on every run, before the slot-offer sweep", async () => {
+    const order: string[] = [];
+    mocks.settleInterruptedFollowUpSends.mockImplementation(async () => {
+      order.push("settle");
+      return 0;
+    });
+    mocks.expirePastSlotOffers.mockImplementation(async () => {
+      order.push("expire");
+      return { expired: 0, released: 0, failed: 0 };
+    });
+
+    await generateFollowUpDrafts(NOW);
+
+    expect(mocks.settleInterruptedFollowUpSends).toHaveBeenCalledWith(NOW);
+    expect(order).toEqual(["settle", "expire"]);
+  });
+
+  it("counts a failed settle step as an error and still runs both sweeps", async () => {
+    mocks.settleInterruptedFollowUpSends.mockRejectedValue(new Error("settle failed"));
+
+    const result = await generateFollowUpDrafts(NOW);
+
+    expect(result.errors).toBe(1);
+    expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(3);
+    expect(mocks.expirePastSlotOffers).toHaveBeenCalledTimes(1);
   });
 
   it("counts a failed slot-offer sweep as an error without losing the stale-draft count", async () => {

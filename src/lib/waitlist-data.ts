@@ -68,7 +68,7 @@ export async function listWaitingEntries(businessId: string, now: Date = new Dat
             ...APPOINTMENT_STAFF_AVAILABLE_WHERE,
           },
         },
-        select: { status: true },
+        select: { status: true, sentAt: true },
         orderBy: { createdAt: "desc" },
         take: 1,
       },
@@ -93,7 +93,9 @@ export async function listWaitingEntries(businessId: string, now: Date = new Dat
       preferredFrom: row.preferredFrom,
       preferredTo: row.preferredTo,
       notes: row.notes,
-      offer: draft ? (draft.status === "SENT" ? ("sent" as const) : ("pending" as const)) : null,
+      // "Sent" once the message actually left: an offer still on its way reads
+      // as pending, as the Follow-ups list treats it (DELIVERED_WHERE).
+      offer: draft ? (draft.status === "SENT" && draft.sentAt ? ("sent" as const) : ("pending" as const)) : null,
       createdAt: row.createdAt,
     };
   });

@@ -4,6 +4,7 @@ import { isProBusinessPlan } from "@/lib/billing";
 import { INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { withDeadline } from "@/lib/concurrency";
 import { getFollowUpCursor, setFollowUpCursor } from "@/lib/follow-up-cursor";
+import { settleInterruptedFollowUpSends } from "@/lib/follow-ups-data";
 import { lastAttemptedId, rotateForFairness } from "@/lib/reminder-fairness";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
@@ -373,6 +374,12 @@ export async function generateFollowUpDrafts(now: Date = new Date()): Promise<Fo
   } catch (error) {
     totals.errors += 1;
     logger.error("Expiring stale follow-up drafts failed.", error);
+  }
+  try {
+    await settleInterruptedFollowUpSends(now);
+  } catch (error) {
+    totals.errors += 1;
+    logger.error("Settling interrupted follow-up sends failed.", error);
   }
   try {
     const slotOffers = await expirePastSlotOffers(undefined, now, {

@@ -92,7 +92,35 @@ function stillHoldsWhere(now: Date): Prisma.FollowUpDraftWhereInput {
 // badge counts this same set, so its only link to the page never disappears
 // while a sent offer is waiting on staff.
 function listableWhere(now: Date): Prisma.FollowUpDraftWhereInput {
-  return { OR: [actionablePendingWhere(now), { status: "SENT", ...liveSlotOfferWhere(now) }] };
+  return { OR: [actionablePendingWhere(now), { status: "SENT", ...DELIVERED_WHERE, ...liveSlotOfferWhere(now) }] };
+}
+
+// Send claims a draft (-> SENT) before the message leaves and records `sentAt`
+// only once it has: a SENT draft with no `sentAt` is still being sent, and may
+// yet be put back to Pending. Book and Declined treat an offer as sent only
+// once it was delivered, so another staff member can't fill or re-offer a slot
+// while its offer is still on its way — a send that then failed would otherwise
+// put the draft back to Pending beside an entry already booked (Codex #130).
+// A send cut off midway (the server stopped) is settled by the hourly sweep
+// (settleInterruptedFollowUpSends).
+export const DELIVERED_WHERE = { sentAt: { not: null } } satisfies Prisma.FollowUpDraftWhereInput;
+
+// A send runs well under this (the messaging bridge gives up after 25s).
+const INTERRUPTED_SEND_AFTER_MS = 2 * 60 * 1000;
+
+/**
+ * Hourly: a draft still marked as being sent long after any send could have
+ * finished was cut off midway, so whether its message left is unknown. It is
+ * counted as sent — never sent twice — and so becomes visible again: a slot
+ * offer stuck in between would otherwise stay hidden, its slot blocked from
+ * being offered to anyone else, until the slot passed.
+ */
+export async function settleInterruptedFollowUpSends(now: Date): Promise<number> {
+  const { count } = await prisma.followUpDraft.updateMany({
+    where: { status: "SENT", sentAt: null, updatedAt: { lt: new Date(now.getTime() - INTERRUPTED_SEND_AFTER_MS) } },
+    data: { sentAt: now },
+  });
+  return count;
 }
 
 export async function getPendingFollowUpDraftCount(businessId: string, now: Date = new Date()): Promise<number> {
@@ -287,9 +315,11 @@ function flipDraftToSent(args: {
           NOT: { kind: "SLOT_OFFER", business: { plan: { in: nonProPlans() } } },
         },
         // The re-check changes nothing: it only needs the write's row lock.
+        // The claim leaves `sentAt` empty: it is set by markFollowUpDraftDelivered
+        // once the message has actually left (see DELIVERED_WHERE).
         data:
           stage === "claim"
-            ? { status: "SENT", sentAt: now, ...(editedBody ? { body: editedBody } : {}) }
+            ? { status: "SENT", sentAt: null, ...(editedBody ? { body: editedBody } : {}) }
             : { status: "SENT" },
       });
 
@@ -331,11 +361,23 @@ function flipDraftToSent(args: {
   );
 }
 
-/** Reverts a SENT draft back to PENDING — used when the send itself fails, so it can be retried. */
+/**
+ * Reverts a claimed draft back to PENDING — used when the send itself fails, so
+ * it can be retried. Only one still being sent (no `sentAt`): a delivered draft
+ * is never un-sent.
+ */
 export async function revertFollowUpDraftToPending(args: { id: string; businessId: string }): Promise<void> {
   await prisma.followUpDraft.updateMany({
-    where: { id: args.id, businessId: args.businessId, status: "SENT" },
-    data: { status: "PENDING", sentAt: null },
+    where: { id: args.id, businessId: args.businessId, status: "SENT", sentAt: null },
+    data: { status: "PENDING" },
+  });
+}
+
+/** Records that a claimed draft's message actually left — from now on it is sent (see DELIVERED_WHERE). */
+export async function markFollowUpDraftDelivered(args: { id: string; businessId: string; now?: Date }): Promise<void> {
+  await prisma.followUpDraft.updateMany({
+    where: { id: args.id, businessId: args.businessId, status: "SENT", sentAt: null },
+    data: { sentAt: args.now ?? new Date() },
   });
 }
 
@@ -427,7 +469,14 @@ export async function passSlotOffer(args: {
 
   return settleOffer(async (tx) => {
     const { count } = await tx.followUpDraft.updateMany({
-      where: { id, businessId, kind: "SLOT_OFFER", status: "SENT", waitlistEntry: { status: "OFFERED" } },
+      where: {
+        id,
+        businessId,
+        kind: "SLOT_OFFER",
+        status: "SENT",
+        ...DELIVERED_WHERE,
+        waitlistEntry: { status: "OFFERED" },
+      },
       data: { status: "DISMISSED" },
     });
 
@@ -476,7 +525,7 @@ export async function bookSlotOffer(args: { id: string; businessId: string; now?
 
   return settleOffer(async (tx) => {
     const { count: locked } = await tx.followUpDraft.updateMany({
-      where: { id, businessId, kind: "SLOT_OFFER", status: "SENT" },
+      where: { id, businessId, kind: "SLOT_OFFER", status: "SENT", ...DELIVERED_WHERE },
       data: { status: "SENT" },
     });
 

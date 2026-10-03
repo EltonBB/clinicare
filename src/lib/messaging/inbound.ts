@@ -228,6 +228,9 @@ export type ApplyReplyIntentResult =
 // Comfortably longer than one check can run: a few queries plus the
 // acknowledgement send, which the messaging adapter gives up on after 25s.
 const REPLY_INTENT_LEASE_MS = 2 * 60 * 1000;
+// Under the worker's 10s request timeout, so the waiting retry still answers.
+const IN_PROGRESS_WAIT_MS = 8_000;
+const IN_PROGRESS_POLL_MS = 500;
 
 export async function applyInboundReplyIntent(args: {
   businessId: string;
@@ -245,11 +248,23 @@ export async function applyInboundReplyIntent(args: {
     return applyInboundReplyIntentCore(args, now);
   }
 
-  const claim = await prisma.message.updateMany({
-    where: { id: messageId, replyIntentHandledAt: null },
-    data: { replyIntentHandledAt: new Date(now.getTime() + REPLY_INTENT_LEASE_MS) },
-  });
-  if (claim.count === 0) {
+  // A delivery that finds the message claimed by a check that is still running
+  // waits for it here, rather than answering at once: the worker's retries come
+  // 1, 2 and 4 seconds apart, so answering each one immediately would spend all
+  // of them in about 17 seconds — sooner than a check (whose acknowledgement
+  // send alone may take 25s) can fail and release its claim, leaving no retry
+  // to do the work (Codex #130). Waiting up to IN_PROGRESS_WAIT_MS per retry,
+  // inside the worker's 10s request timeout, stretches them to about 40s.
+  const waitUntil = Date.now() + IN_PROGRESS_WAIT_MS;
+  for (;;) {
+    const claim = await prisma.message.updateMany({
+      where: { id: messageId, replyIntentHandledAt: null },
+      data: { replyIntentHandledAt: new Date(now.getTime() + REPLY_INTENT_LEASE_MS) },
+    });
+    if (claim.count === 1) {
+      break;
+    }
+
     const claimed = await prisma.message.findUnique({
       where: { id: messageId },
       select: { replyIntentHandledAt: true },
@@ -257,12 +272,22 @@ export async function applyInboundReplyIntent(args: {
     // A running claim's lease ends at least a minute past any retry's `now`
     // (the worker stops retrying well within that); a finished one holds a time
     // at or before it. Halfway is the line, so a few seconds of clock difference
-    // between two server instances can't flip the answer. Released between the
-    // two reads (null): report it as running so the next retry claims it.
-    const handledAt = claimed?.replyIntentHandledAt;
-    return handledAt && handledAt.getTime() <= now.getTime() + REPLY_INTENT_LEASE_MS / 2
-      ? { applied: false, reason: "already_handled" }
-      : { applied: false, reason: "in_progress" };
+    // between two server instances can't flip the answer.
+    // A message deleted since (its conversation removed) has nothing left to act on.
+    if (!claimed) {
+      return { applied: false, reason: "already_handled" };
+    }
+    const handledAt = claimed.replyIntentHandledAt;
+    if (handledAt && handledAt.getTime() <= now.getTime() + REPLY_INTENT_LEASE_MS / 2) {
+      return { applied: false, reason: "already_handled" };
+    }
+    if (Date.now() >= waitUntil) {
+      return { applied: false, reason: "in_progress" };
+    }
+    // Released since the claim attempt (null): try to claim it again at once.
+    if (handledAt) {
+      await new Promise((resolve) => setTimeout(resolve, IN_PROGRESS_POLL_MS));
+    }
   }
 
   let result: ApplyReplyIntentResult;

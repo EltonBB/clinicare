@@ -12,7 +12,9 @@ import {
   ALREADY_HANDLED_ERROR,
   bookSlotOffer,
   confirmFollowUpDraftDispatch,
+  DELIVERED_WHERE,
   dismissFollowUpDraft,
+  markFollowUpDraftDelivered,
   markFollowUpDraftSent,
   passSlotOffer,
   revertFollowUpDraftToPending,
@@ -152,6 +154,13 @@ export async function sendFollowUpDraftAction(
     return { ok: false, error: failure ?? "Couldn't send this message. Try again." };
   }
 
+  // The message left: only now is the draft sent, and a slot offer open to Book
+  // and Declined (see DELIVERED_WHERE). Not fatal if it fails — the hourly sweep
+  // settles a draft left marked as being sent (settleInterruptedFollowUpSends).
+  await markFollowUpDraftDelivered({ id: draftId, businessId: business.id }).catch((error) => {
+    logger.error("Sent a follow-up but couldn't record it as delivered.", error, { businessId: business.id, draftId });
+  });
+
   // Best-effort Inbox mirror: the draft is already flipped to SENT and the
   // WhatsApp message already went out, so a failure here must not undo either.
   await mirrorOutboundToInbox({
@@ -212,7 +221,7 @@ export async function bookFollowUpSlotAction(rawDraftId: string): Promise<BookFo
   }
 
   const draft = await prisma.followUpDraft.findFirst({
-    where: { id: draftId, businessId: business.id, status: "SENT", ...liveSlotOfferWhere(new Date()) },
+    where: { id: draftId, businessId: business.id, status: "SENT", ...DELIVERED_WHERE, ...liveSlotOfferWhere(new Date()) },
     select: {
       clientId: true,
       appointment: { select: { title: true, staffMemberId: true, startAt: true, endAt: true } },

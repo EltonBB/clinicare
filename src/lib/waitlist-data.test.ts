@@ -118,7 +118,9 @@ describe("waitlist data layer", () => {
     mocks.waitlistEntry.findMany.mockResolvedValue([
       entryRow({ id: "wl_waiting" }),
       entryRow({ id: "wl_pending", status: "OFFERED", followUpDrafts: [{ status: "PENDING" }] }),
-      entryRow({ id: "wl_sent", status: "OFFERED", followUpDrafts: [{ status: "SENT" }] }),
+      entryRow({ id: "wl_sent", status: "OFFERED", followUpDrafts: [{ status: "SENT", sentAt: new Date() }] }),
+      // Codex #130: claimed by Send but its message hasn't left yet.
+      entryRow({ id: "wl_sending", status: "OFFERED", followUpDrafts: [{ status: "SENT", sentAt: null }] }),
     ]);
 
     const rows = await listWaitingEntries("biz_1");
@@ -127,6 +129,7 @@ describe("waitlist data layer", () => {
       ["wl_waiting", null],
       ["wl_pending", "pending"],
       ["wl_sent", "sent"],
+      ["wl_sending", "pending"],
     ]);
   });
 

@@ -31,8 +31,11 @@ import {
   dismissFollowUpDraft,
   getPendingFollowUpDraftCount,
   listPendingFollowUpDrafts,
+  markFollowUpDraftDelivered,
   markFollowUpDraftSent,
   passSlotOffer,
+  revertFollowUpDraftToPending,
+  settleInterruptedFollowUpSends,
   SLOT_OUTSIDE_HOURS_ERROR,
 } from "@/lib/follow-ups-data";
 import { MAX_MESSAGE_BODY_LENGTH, MESSAGE_TOO_LONG_ERROR } from "@/lib/messaging/limits";
@@ -153,6 +156,7 @@ function draftRow(overrides: Row = {}): Row {
     status: "PENDING",
     createdAt: new Date("2026-08-31T08:00:00.000Z"),
     body: "Draft message",
+    sentAt: null,
     clientId: "client_1",
     appointmentId: null,
     appointment: null,
@@ -642,6 +646,7 @@ describe("follow-ups data layer — which drafts are actionable", () => {
         id: "d_sent_offer",
         kind: "SLOT_OFFER",
         status: "SENT",
+        sentAt: NOW,
         waitlistEntry: { status: "OFFERED" },
         appointment: { status: "CANCELLED", startAt: FUTURE, staffMemberId: null },
       }),
@@ -660,6 +665,7 @@ describe("follow-ups data layer — which drafts are actionable", () => {
       draftRow({
         kind: "SLOT_OFFER",
         status: "SENT",
+        sentAt: NOW,
         waitlistEntry: { status: "OFFERED" },
         appointment: { status: "CANCELLED", startAt: FUTURE, staffMemberId: null },
       }),
@@ -673,11 +679,30 @@ describe("follow-ups data layer — which drafts are actionable", () => {
       draftRow({
         kind: "SLOT_OFFER",
         status: "SENT",
+        sentAt: NOW,
         waitlistEntry: { status: "OFFERED" },
         appointment: { status: "CANCELLED", startAt: PAST, staffMemberId: null },
       }),
     ]);
 
+    expect(await getPendingFollowUpDraftCount("biz_1", NOW)).toBe(0);
+  });
+
+  // Codex #130: Send marks a draft SENT before the message leaves. Until it has
+  // (sentAt set), the offer must not be listed as sent — Book or Declined on it
+  // could fill or re-offer the slot while its own send may still fail.
+  it("neither lists nor counts a slot offer that is still being sent", async () => {
+    serveDrafts([
+      draftRow({
+        kind: "SLOT_OFFER",
+        status: "SENT",
+        sentAt: null,
+        waitlistEntry: { status: "OFFERED" },
+        appointment: { status: "CANCELLED", startAt: FUTURE, staffMemberId: null },
+      }),
+    ]);
+
+    expect(await listedIds()).toEqual([]);
     expect(await getPendingFollowUpDraftCount("biz_1", NOW)).toBe(0);
   });
 
@@ -703,7 +728,7 @@ describe("follow-ups data layer — which drafts are actionable", () => {
       draft: { id: "d_1", body: "Draft message", clientId: "client_1", clientName: "Test Client", phone: "+38344000000" },
     });
     expect(mocks.tx.followUpDraft.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { status: "SENT", sentAt: NOW } })
+      expect.objectContaining({ data: { status: "SENT", sentAt: null } })
     );
 
     row.status = "SENT";
@@ -1204,7 +1229,14 @@ describe("passSlotOffer (Declined)", () => {
     expect(await passSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({ ok: true });
 
     expect(mocks.tx.followUpDraft.updateMany).toHaveBeenCalledWith({
-      where: { id: "d1", businessId: "biz_1", kind: "SLOT_OFFER", status: "SENT", waitlistEntry: { status: "OFFERED" } },
+      where: {
+        id: "d1",
+        businessId: "biz_1",
+        kind: "SLOT_OFFER",
+        status: "SENT",
+        sentAt: { not: null },
+        waitlistEntry: { status: "OFFERED" },
+      },
       data: { status: "DISMISSED" },
     });
     expect(mocks.tx.waitlistEntry.updateMany).toHaveBeenCalledWith({
@@ -1279,7 +1311,7 @@ describe("bookSlotOffer (Book)", () => {
     expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(1);
     // The guard is scalar, so it is re-checked against the row's latest version after the lock wait.
     expect(mocks.tx.followUpDraft.updateMany).toHaveBeenCalledWith({
-      where: { id: "d1", businessId: "biz_1", kind: "SLOT_OFFER", status: "SENT" },
+      where: { id: "d1", businessId: "biz_1", kind: "SLOT_OFFER", status: "SENT", sentAt: { not: null } },
       data: { status: "SENT" },
     });
     // The entry flip re-checks liveSlotOfferWhere (kind, its own OFFERED
@@ -1399,5 +1431,72 @@ describe("bookSlotOffer (Book)", () => {
     mocks.prisma.$transaction.mockRejectedValueOnce(failure);
 
     await expect(bookSlotOffer({ id: "d1", businessId: "biz_1" })).rejects.toBe(failure);
+  });
+});
+
+// Codex #130: Send claims a draft (SENT, no sentAt) before its message leaves.
+// Until the send has succeeded, nothing may treat the offer as delivered.
+describe("a follow-up whose message is still being sent", () => {
+  const offer = (overrides: Row = {}) =>
+    draftRow({
+      id: "d1",
+      kind: "SLOT_OFFER",
+      status: "SENT",
+      sentAt: null,
+      waitlistEntry: { status: "OFFERED" },
+      appointment: { status: "CANCELLED", startAt: FUTURE, staffMemberId: null },
+      ...overrides,
+    });
+
+  it("can't be booked or declined until it has been delivered", async () => {
+    serveDrafts([offer()]);
+
+    expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({
+      ok: false,
+      error: "This slot offer is no longer available.",
+    });
+    expect(await passSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({
+      ok: false,
+      error: "This slot offer is no longer available.",
+    });
+    expect(mocks.tx.waitlistEntry.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("can be booked once delivered", async () => {
+    serveDrafts([offer({ sentAt: NOW })]);
+
+    expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({ ok: true });
+  });
+
+  it("is put back to Pending on a failed send only while it is still being sent — a delivered one is never un-sent", async () => {
+    mocks.prisma.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
+
+    await revertFollowUpDraftToPending({ id: "d1", businessId: "biz_1" });
+
+    expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledWith({
+      where: { id: "d1", businessId: "biz_1", status: "SENT", sentAt: null },
+      data: { status: "PENDING" },
+    });
+  });
+
+  it("is recorded as delivered once its message left", async () => {
+    mocks.prisma.followUpDraft.updateMany.mockResolvedValue({ count: 1 });
+
+    await markFollowUpDraftDelivered({ id: "d1", businessId: "biz_1", now: NOW });
+
+    expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledWith({
+      where: { id: "d1", businessId: "biz_1", status: "SENT", sentAt: null },
+      data: { sentAt: NOW },
+    });
+  });
+
+  it("is settled as sent by the hourly run once no send could still be running (2 minutes)", async () => {
+    mocks.prisma.followUpDraft.updateMany.mockResolvedValue({ count: 3 });
+
+    expect(await settleInterruptedFollowUpSends(NOW)).toBe(3);
+    expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledWith({
+      where: { status: "SENT", sentAt: null, updatedAt: { lt: new Date(NOW.getTime() - 2 * 60 * 1000) } },
+      data: { sentAt: NOW },
+    });
   });
 });

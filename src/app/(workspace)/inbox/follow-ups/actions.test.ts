@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
   const markFollowUpDraftSent = vi.fn();
   const confirmFollowUpDraftDispatch = vi.fn();
   const revertFollowUpDraftToPending = vi.fn();
+  const markFollowUpDraftDelivered = vi.fn();
   const dismissFollowUpDraft = vi.fn();
   const passSlotOffer = vi.fn();
   const bookSlotOffer = vi.fn();
@@ -25,6 +26,7 @@ const mocks = vi.hoisted(() => {
     markFollowUpDraftSent,
     confirmFollowUpDraftDispatch,
     revertFollowUpDraftToPending,
+    markFollowUpDraftDelivered,
     dismissFollowUpDraft,
     passSlotOffer,
     bookSlotOffer,
@@ -51,6 +53,8 @@ vi.mock("@/lib/follow-ups-data", () => ({
   markFollowUpDraftSent: mocks.markFollowUpDraftSent,
   confirmFollowUpDraftDispatch: mocks.confirmFollowUpDraftDispatch,
   revertFollowUpDraftToPending: mocks.revertFollowUpDraftToPending,
+  markFollowUpDraftDelivered: mocks.markFollowUpDraftDelivered,
+  DELIVERED_WHERE: { sentAt: { not: null } },
   dismissFollowUpDraft: mocks.dismissFollowUpDraft,
   passSlotOffer: mocks.passSlotOffer,
   bookSlotOffer: mocks.bookSlotOffer,
@@ -109,6 +113,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.getAuthedBusiness.mockResolvedValue({ business: BUSINESS, user: {} });
   mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_1" });
+  mocks.markFollowUpDraftDelivered.mockResolvedValue(undefined);
   mocks.$transaction.mockImplementation(
     async (cb: (tx: unknown) => unknown) =>
       cb({ conversation: mocks.conversation, message: mocks.message })
@@ -146,6 +151,9 @@ describe("sendFollowUpDraftAction", () => {
       message: { kind: "freeform", body: "Hi Alex, quick note about your next visit." },
     });
     expect(mocks.revertFollowUpDraftToPending).not.toHaveBeenCalled();
+    // Codex #130: only now — the message left — is the draft recorded as sent,
+    // which is what opens a slot offer to Book and Declined.
+    expect(mocks.markFollowUpDraftDelivered).toHaveBeenCalledWith({ id: DRAFT_ID, businessId: BUSINESS.id });
     // Finding 3: a Message row is written for the sent draft — otherwise it's
     // invisible in the client's Inbox thread and undiscoverable by a later
     // delivery-status webhook.
@@ -163,6 +171,25 @@ describe("sendFollowUpDraftAction", () => {
     );
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/inbox/follow-ups");
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/inbox");
+  });
+
+  it("never records a draft as delivered when its send failed — it goes back to Pending instead", async () => {
+    draftIsLive({ id: DRAFT_ID, body: "Hi", clientId: "client_1", clientName: "Alex", phone: "+15550100" });
+    mocks.sendMessage.mockResolvedValue({ ok: false, reason: "provider_error", error: "x" });
+
+    expect((await sendFollowUpDraftAction(DRAFT_ID)).ok).toBe(false);
+    expect(mocks.markFollowUpDraftDelivered).not.toHaveBeenCalled();
+    expect(mocks.revertFollowUpDraftToPending).toHaveBeenCalledWith({ id: DRAFT_ID, businessId: BUSINESS.id });
+  });
+
+  it("still reports success when recording delivery fails — the message already left", async () => {
+    draftIsLive({ id: DRAFT_ID, body: "Hi", clientId: "client_1", clientName: "Alex", phone: "+15550100" });
+    mocks.sendMessage.mockResolvedValue({ ok: true, providerMessageId: "msg_1", status: "SENT", body: "Hi" });
+    mocks.conversation.upsert.mockResolvedValue({ id: "conv_1" });
+    mocks.markFollowUpDraftDelivered.mockRejectedValue(new Error("db blip"));
+
+    expect(await sendFollowUpDraftAction(DRAFT_ID)).toEqual({ ok: true });
+    expect(mocks.revertFollowUpDraftToPending).not.toHaveBeenCalled();
   });
 
   it("sends the edited body when an override is provided, instead of the stored draft body", async () => {
@@ -478,6 +505,8 @@ describe("bookFollowUpSlotAction", () => {
         businessId: BUSINESS.id,
         kind: "SLOT_OFFER",
         status: "SENT",
+        // Delivered, not merely claimed by a send still in flight (Codex #130).
+        sentAt: { not: null },
         waitlistEntry: { status: "OFFERED" },
         appointment: {
           status: "CANCELLED",

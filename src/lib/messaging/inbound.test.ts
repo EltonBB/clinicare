@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const message = { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), updateMany: vi.fn() };
@@ -60,6 +60,8 @@ beforeEach(() => {
   // Claiming a message for its reply-intent check succeeds (and releasing one does
   // too), unless a test says another delivery got there first.
   mocks.message.updateMany.mockResolvedValue({ count: 1 });
+  // Only the claim-lost path reads the message back; each such test says what it holds.
+  mocks.message.findUnique.mockReset();
   mocks.$transaction.mockImplementation(
     async (cb: (tx: unknown) => unknown) =>
       cb({ conversation: mocks.conversation, message: mocks.message })
@@ -509,14 +511,58 @@ describe("applyInboundReplyIntent", () => {
     // be told "already handled" (200), ending the worker's retries; if that
     // first delivery then failed and released its claim, nothing ever applied
     // the reply. It is now "in_progress", which the webhook answers with a 5xx.
-    it("reports a delivery that is still running as in progress, not handled, and does nothing itself", async () => {
-      claimedBy(new Date(NOW.getTime() + 2 * 60 * 1000 - 10_000)); // claimed 10s before this retry
+    // Codex #130 (again): answering each overlapping retry at once spent the
+    // worker's four attempts (1/2/4s apart) in ~17s — before a check whose
+    // acknowledgement send can take 25s could fail and release its claim. A
+    // retry now waits for the running check, up to 8s, before answering.
+    describe("a retry that finds the check still running", () => {
+      const RUNNING = new Date(NOW.getTime() + 2 * 60 * 1000 - 10_000); // claimed 10s before this retry
 
-      const result = await applyInboundReplyIntent(args);
+      beforeEach(() => vi.useFakeTimers());
+      afterEach(() => vi.useRealTimers());
 
-      expect(result).toEqual({ applied: false, reason: "in_progress" });
-      expect(mocks.appointment.findMany).not.toHaveBeenCalled();
-      expect(mocks.sendMessage).not.toHaveBeenCalled();
+      it("waits for it, then reports it in progress (not handled) without doing anything itself", async () => {
+        mocks.message.updateMany.mockResolvedValue({ count: 0 });
+        mocks.message.findUnique.mockResolvedValue({ replyIntentHandledAt: RUNNING });
+
+        const pending = applyInboundReplyIntent(args);
+        await vi.advanceTimersByTimeAsync(7_000);
+        let settled = false;
+        void pending.then(() => (settled = true));
+        await vi.advanceTimersByTimeAsync(0);
+        expect(settled).toBe(false); // still waiting inside its 8s
+
+        await vi.advanceTimersByTimeAsync(1_500);
+        expect(await pending).toEqual({ applied: false, reason: "in_progress" });
+        expect(mocks.message.findUnique.mock.calls.length).toBeGreaterThan(10); // polled while waiting
+        expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
+      });
+
+      it("does the work itself when the running check fails and releases its claim while it waits", async () => {
+        claimedBy(RUNNING); // then the next claim attempt succeeds (the default)
+        mocks.appointment.findMany.mockResolvedValueOnce([{ ...REMINDED_UPCOMING, status: "CONFIRMED" }]);
+        mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });
+
+        const pending = applyInboundReplyIntent(args);
+        await vi.advanceTimersByTimeAsync(500);
+
+        expect(await pending).toEqual({ applied: false, reason: "already_confirmed" });
+        expect(mocks.sendMessage).toHaveBeenCalledTimes(1);
+      });
+
+      it("reports it handled once the running check finishes while it waits", async () => {
+        mocks.message.updateMany.mockResolvedValue({ count: 0 });
+        mocks.message.findUnique
+          .mockResolvedValueOnce({ replyIntentHandledAt: RUNNING })
+          .mockResolvedValueOnce({ replyIntentHandledAt: new Date(NOW.getTime() - 10_000) });
+
+        const pending = applyInboundReplyIntent(args);
+        await vi.advanceTimersByTimeAsync(500);
+
+        expect(await pending).toEqual({ applied: false, reason: "already_handled" });
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
+      });
     });
 
     it("tolerates a few seconds of clock difference between the delivery that finished and the retry", async () => {
@@ -525,10 +571,21 @@ describe("applyInboundReplyIntent", () => {
       expect(await applyInboundReplyIntent(args)).toEqual({ applied: false, reason: "already_handled" });
     });
 
-    it("reports in progress when the claim was released between its two reads, so the next retry takes it", async () => {
+    it("claims it at once when the claim was released between its two reads, and does the work", async () => {
       claimedBy(null);
+      mocks.appointment.findMany.mockResolvedValueOnce([{ ...REMINDED_UPCOMING, status: "CONFIRMED" }]);
+      mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });
 
-      expect(await applyInboundReplyIntent(args)).toEqual({ applied: false, reason: "in_progress" });
+      expect(await applyInboundReplyIntent(args)).toEqual({ applied: false, reason: "already_confirmed" });
+      expect(mocks.message.updateMany).toHaveBeenNthCalledWith(2, CLAIM);
+    });
+
+    it("treats a message deleted since as handled — nothing left to act on", async () => {
+      mocks.message.updateMany.mockResolvedValueOnce({ count: 0 });
+      mocks.message.findUnique.mockResolvedValueOnce(null);
+
+      expect(await applyInboundReplyIntent(args)).toEqual({ applied: false, reason: "already_handled" });
+      expect(mocks.message.findUnique).toHaveBeenCalledTimes(1);
     });
 
     it("marks the claim finished once the check completes, so later retries read it as handled", async () => {
