@@ -6,6 +6,7 @@ import { MAX_MESSAGE_BODY_LENGTH, MESSAGE_TOO_LONG_ERROR } from "@/lib/messaging
 import { isSlotInsideOperatingHours } from "@/lib/operating-hours";
 import { prisma } from "@/lib/prisma";
 import { lockAppointmentShared, lockStaffMemberShared } from "@/lib/row-locks";
+import { acquireSchedulingLock, hasSchedulingConflict } from "@/lib/scheduling-conflicts";
 import type { FollowUpDraftRecord } from "@/lib/follow-ups";
 import { liveSlotOfferWhere, reofferFreedSlot, retryOnWriteConflict } from "@/lib/slot-offers";
 import { AVAILABLE_STAFF_WHERE } from "@/lib/staff-eligibility";
@@ -588,6 +589,26 @@ export async function bookSlotOffer(args: {
       if (!staffAvailable) {
         return { ok: false, error: OFFER_STAFF_UNAVAILABLE_ERROR };
       }
+    }
+
+    // And still be free. A booking saved into the same clinician and time (or a
+    // schedule block) would otherwise go unseen: the calendar save withdraws an
+    // overlapping offer, but only while its entry is OFFERED, so a Book that
+    // filled it first would leave the patient "booked" into a slot the booking
+    // form then refuses (Codex #130). The same scheduling lock and overlap check
+    // the save and offerFreedSlot use serialize the two; a refused Book leaves
+    // the entry OFFERED for the save to withdraw.
+    await acquireSchedulingLock(tx, appointment.staffMemberId);
+    const occupied = await hasSchedulingConflict(tx, {
+      businessId,
+      staffMemberId: appointment.staffMemberId,
+      startAt: appointment.startAt,
+      endAt: appointment.endAt,
+      excludeAppointmentId: offered.appointmentId,
+    });
+
+    if (occupied) {
+      return { ok: false, error: SLOT_OFFER_UNAVAILABLE_ERROR };
     }
 
     // The slot also has to still fit the clinic's working hours (see

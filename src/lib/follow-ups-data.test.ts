@@ -1315,9 +1315,16 @@ describe("bookSlotOffer (Book)", () => {
   };
   const BOOKED = { ok: true, slot: { clientId: "client_1", ...SLOT_DETAILS } };
 
+  // Book reads its own appointment by id; the overlap check asks for any OTHER
+  // appointment in the slot. Serve each its own answer.
+  const serveSlot = (slot: Record<string, unknown>, overlapping: Record<string, unknown> | null = null) =>
+    mocks.tx.appointment.findFirst.mockImplementation(async ({ where }: { where: { id?: unknown } }) =>
+      where.id === "appt_1" ? slot : overlapping
+    );
+
   beforeEach(() => {
     mocks.tx.followUpDraft.findFirst.mockResolvedValue({ clientId: "client_1", appointmentId: "appt_1" });
-    mocks.tx.appointment.findFirst.mockResolvedValue(SLOT_DETAILS);
+    serveSlot(SLOT_DETAILS);
     mocks.tx.staffMember.findFirst.mockResolvedValue({ id: "staff_1" });
   });
 
@@ -1375,8 +1382,9 @@ describe("bookSlotOffer (Book)", () => {
     expect(rawQueries()).toEqual([
       'SELECT 1 FROM "Appointment" WHERE "id" = ? FOR SHARE',
       'SELECT 1 FROM "StaffMember" WHERE "id" = ? FOR SHARE',
+      "SELECT pg_advisory_xact_lock(hashtext(?))",
     ]);
-    expect(mocks.tx.$executeRaw.mock.calls.map((call) => call[1])).toEqual(["appt_1", "staff_1"]);
+    expect(mocks.tx.$executeRaw.mock.calls.map((call) => call[1])).toEqual(["appt_1", "staff_1", "staff_1"]);
     const [appointmentLock, staffLock] = mocks.tx.$executeRaw.mock.invocationCallOrder;
     expect(appointmentLock).toBeLessThan(mocks.tx.appointment.findFirst.mock.invocationCallOrder[0]);
     expect(staffLock).toBeLessThan(mocks.tx.staffMember.findFirst.mock.invocationCallOrder[0]);
@@ -1404,7 +1412,7 @@ describe("bookSlotOffer (Book)", () => {
   });
 
   it("books an unassigned slot without locking or checking any clinician", async () => {
-    mocks.tx.appointment.findFirst.mockResolvedValue({ ...SLOT_DETAILS, staffMemberId: null });
+    serveSlot({ ...SLOT_DETAILS, staffMemberId: null });
 
     expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({
       ok: true,
@@ -1412,6 +1420,43 @@ describe("bookSlotOffer (Book)", () => {
     });
     expect(rawQueries()).toEqual(['SELECT 1 FROM "Appointment" WHERE "id" = ? FOR SHARE']);
     expect(mocks.tx.staffMember.findFirst).not.toHaveBeenCalled();
+  });
+
+  // Codex #130: a booking saved into the same clinician and time while Book
+  // runs used to go unseen — the save's withdrawal only matches an OFFERED
+  // entry, so a Book that filled it first left the patient "booked" into a slot
+  // the booking form then refuses.
+  it("takes the clinician's scheduling lock and refuses, leaving the entry OFFERED, when the slot has since been taken", async () => {
+    serveSlot(SLOT_DETAILS, { id: "appt_competing" });
+
+    expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({
+      ok: false,
+      error: "This slot offer is no longer available.",
+    });
+    // The overlap check: the same clinician, the same slot, any live booking but this one.
+    expect(mocks.tx.appointment.findFirst).toHaveBeenCalledWith({
+      where: {
+        businessId: "biz_1",
+        staffMemberId: "staff_1",
+        status: { not: "CANCELLED" },
+        id: { not: "appt_1" },
+        startAt: { lt: SLOT_DETAILS.endAt },
+        endAt: { gt: SLOT_DETAILS.startAt },
+      },
+      select: { id: true },
+    });
+    // Locked before it looks, so a save into the slot can't commit in between.
+    const schedulingLock = mocks.tx.$executeRaw.mock.invocationCallOrder[2];
+    expect(rawQueries()[2]).toBe("SELECT pg_advisory_xact_lock(hashtext(?))");
+    expect(schedulingLock).toBeLessThan(mocks.tx.appointment.findFirst.mock.invocationCallOrder[1]);
+    expect(mocks.tx.waitlistEntry.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("refuses when a schedule block now covers the slot", async () => {
+    mocks.tx.scheduleBlock.findFirst.mockResolvedValue({ id: "block_1" });
+
+    expect((await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).ok).toBe(false);
+    expect(mocks.tx.waitlistEntry.updateMany).not.toHaveBeenCalled();
   });
 
   it("refuses when the offer has lost its appointment (deleted since)", async () => {
@@ -1449,7 +1494,7 @@ describe("bookSlotOffer (Book)", () => {
     const SLOT = { startAt: FUTURE, endAt: new Date(FUTURE.getTime() + 30 * 60_000) };
 
     it("books a slot that still fits the hours, reading them after the draft lock and before the entry flip", async () => {
-      mocks.tx.appointment.findFirst.mockResolvedValue({ ...SLOT_DETAILS, ...SLOT });
+      serveSlot({ ...SLOT_DETAILS, ...SLOT });
 
       expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({
         ok: true,
@@ -1477,7 +1522,7 @@ describe("bookSlotOffer (Book)", () => {
       ["the clinic now opens after the slot starts", { isOpen: true, startTime: "12:00", endTime: "18:00" }],
       ["the clinic now closes before the slot ends", { isOpen: true, startTime: "07:00", endTime: "08:00" }],
     ])("refuses, leaving the entry OFFERED, when %s", async (_label, hours) => {
-      mocks.tx.appointment.findFirst.mockResolvedValue({ ...SLOT_DETAILS, ...SLOT });
+      serveSlot({ ...SLOT_DETAILS, ...SLOT });
       mocks.tx.businessHours.findUnique.mockResolvedValue(hours);
 
       expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({
