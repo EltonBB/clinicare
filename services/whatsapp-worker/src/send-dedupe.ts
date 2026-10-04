@@ -144,12 +144,33 @@ export function createSendDeduper(options: {
   // Attempts still running in this process, so a concurrent repeat waits for
   // the one attempt instead of reading its SENDING record as "unknown".
   const running = new Map<string, { fingerprint: string; outcome: Promise<SendOutcome> }>();
+  // Keys whose send definitely failed but whose record couldn't be dropped
+  // (a database error): left SENDING, a retry would read it as "unknown" and
+  // the caller would mark a message sent that never left (Codex #133). This
+  // process knows better, so a retry drops the record first. Only a database
+  // error AND a worker restart before the retry lose that knowledge — and then
+  // the record reads "unknown": a message possibly not sent, never one sent
+  // twice. Grows only on such errors, and shrinks as retries repair them.
+  const failedUnreleased = new Set<string>();
 
   async function attempt(
+    scope: string,
     record: { businessId: string; key: string },
     fingerprint: string,
     send: () => Promise<SendOutcome>
   ): Promise<SendOutcome> {
+    if (failedUnreleased.has(scope)) {
+      try {
+        await store.release(record);
+        failedUnreleased.delete(scope);
+      } catch (error) {
+        // Still can't drop it: refuse this one too (nothing is sent), so a
+        // later retry tries again.
+        onStoreError("send refused: a failed send's key still couldn't be released", error);
+        return { kind: "failed" };
+      }
+    }
+
     let existing: SendKeyRecord | null;
     try {
       existing = await store.reserve({
@@ -184,8 +205,12 @@ export function createSendDeduper(options: {
         await store.settle({ ...record, state: "UNKNOWN", providerMessageId: null });
       }
     } catch (error) {
-      // The record stays SENDING, which every repeat reads as "unknown": never a
-      // second message, at worst one a retry won't send after a real failure.
+      // The record stays SENDING, which a repeat reads as "unknown": for a send
+      // that went out (or may have), never a second message. A definite failure
+      // is remembered here instead, so this process's retry still really sends.
+      if (outcome.kind === "failed") {
+        failedUnreleased.add(scope);
+      }
       onStoreError("a send's outcome couldn't be recorded", error);
     }
     return outcome;
@@ -209,7 +234,7 @@ export function createSendDeduper(options: {
         return inFlight.fingerprint === fingerprint ? inFlight.outcome : Promise.resolve({ kind: "key_conflict" });
       }
 
-      const outcome = attempt({ businessId: request.businessId, key }, fingerprint, send).finally(() => {
+      const outcome = attempt(scope, { businessId: request.businessId, key }, fingerprint, send).finally(() => {
         running.delete(scope);
       });
       running.set(scope, { fingerprint, outcome });

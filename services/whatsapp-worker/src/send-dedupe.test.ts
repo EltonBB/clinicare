@@ -155,6 +155,55 @@ describe("createSendDeduper", () => {
     expect(await dedupe.run(REQUEST, async () => SENT)).toEqual({ kind: "unknown" });
   });
 
+  // Codex #133: a definite failure whose record couldn't be dropped stayed
+  // SENDING, so the caller's retry read "unknown" and marked an unsent message sent.
+  describe("a definite failure whose record couldn't be released", () => {
+    const failingRelease = () => {
+      const { store, rows } = memoryStore();
+      const release = store.release;
+      store.release = vi.fn(release).mockRejectedValueOnce(new Error("database down"));
+      return { store, rows };
+    };
+
+    it("still really sends on this process's retry, dropping the stale record first", async () => {
+      const { store, rows } = failingRelease();
+      const dedupe = deduper(store);
+      const send = vi
+        .fn<() => Promise<SendOutcome>>()
+        .mockResolvedValueOnce({ kind: "failed" })
+        .mockResolvedValueOnce(SENT);
+
+      expect(await dedupe.run(REQUEST, send)).toEqual({ kind: "failed" });
+      expect(rows.get("biz_1|follow-up:draft_1")?.state).toBe("SENDING");
+
+      expect(await dedupe.run(REQUEST, send)).toEqual(SENT);
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(rows.get("biz_1|follow-up:draft_1")?.state).toBe("SENT");
+    });
+
+    it("refuses the retry, sending nothing, while the record still can't be released", async () => {
+      const { store } = memoryStore();
+      store.release = vi.fn(async () => {
+        throw new Error("database down");
+      });
+      const dedupe = deduper(store);
+      const send = vi.fn<() => Promise<SendOutcome>>().mockResolvedValue({ kind: "failed" });
+
+      await dedupe.run(REQUEST, send);
+      expect(await dedupe.run(REQUEST, send)).toEqual({ kind: "failed" });
+      expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    it("after a worker restart, reads the stale record as unknown — never a second message", async () => {
+      const { store } = failingRelease();
+      await deduper(store).run(REQUEST, async () => ({ kind: "failed" }));
+
+      const send = vi.fn(async () => SENT);
+      expect(await deduper(store).run(REQUEST, send)).toEqual({ kind: "unknown" });
+      expect(send).not.toHaveBeenCalled();
+    });
+  });
+
   it("lets a concurrent repeat wait for the running attempt instead of sending in parallel", async () => {
     const dedupe = deduper();
     let finish: (outcome: SendOutcome) => void = () => {};
