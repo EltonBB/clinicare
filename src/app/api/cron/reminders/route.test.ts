@@ -93,7 +93,11 @@ describe("reminders cron route", () => {
    * release anything — releasing would risk evicting a DIFFERENT
    * invocation's real, still-held lock.
    */
-  it("recovers abandoned reply checks after the reminders, and a failure there doesn't fail the run", async () => {
+  // Codex #133: run after the reminders, recovery got only what they left of
+  // the deadline, and slow sends could starve it every hour until its 24-hour
+  // window closed. It now runs first, with its own small budget, and the
+  // reminders' budget is counted from the invocation's start.
+  it("recovers abandoned reply checks first, on a budget of its own, and a failure there doesn't fail the run", async () => {
     syncAppointmentRemindersJob.mockResolvedValue({
       processedBusinesses: 1,
       sent: 1,
@@ -101,19 +105,32 @@ describe("reminders cron route", () => {
       skippedBusinesses: 0,
       abandonedBusinesses: 0,
     });
-    recoverAbandonedReplyIntents.mockResolvedValueOnce({ recovered: 2 });
+    // Recovery takes 20s of the invocation (only the clock is faked).
+    vi.useFakeTimers({ toFake: ["Date"] });
+    recoverAbandonedReplyIntents.mockImplementationOnce(async () => {
+      vi.setSystemTime(Date.now() + 20_000);
+      return { recovered: 2 };
+    });
     const { GET } = await import("./route");
 
+    const before = Date.now();
     expect(await (await GET(request())).json()).toMatchObject({ ok: true, sent: 1, recoveredReplies: 2 });
-    // Bounded so it can't run the invocation past its hard deadline.
-    expect(recoverAbandonedReplyIntents).toHaveBeenCalledWith(expect.any(Date), expect.any(Number));
-    expect(recoverAbandonedReplyIntents.mock.calls[0][1]).toBeLessThan(Date.now() + 270_000);
-    expect(syncAppointmentRemindersJob.mock.invocationCallOrder[0]).toBeLessThan(
-      recoverAbandonedReplyIntents.mock.invocationCallOrder[0]
+    const after = Date.now() - 20_000;
+
+    expect(recoverAbandonedReplyIntents.mock.invocationCallOrder[0]).toBeLessThan(
+      syncAppointmentRemindersJob.mock.invocationCallOrder[0]
     );
+    const [, recoveryDeadline] = recoverAbandonedReplyIntents.mock.calls[0];
+    expect(recoveryDeadline).toBeGreaterThanOrEqual(before + 30_000);
+    expect(recoveryDeadline).toBeLessThanOrEqual(after + 30_000);
+    // The reminders' deadline: the invocation's start plus their budget (165s
+    // in this mock), not "now" after recovery has run.
+    expect(syncAppointmentRemindersJob.mock.calls[0][0]).toBe(recoveryDeadline - 30_000 + 165_000);
+    vi.useRealTimers();
 
     recoverAbandonedReplyIntents.mockRejectedValueOnce(new Error("sweep failed"));
     expect(await (await GET(request())).json()).toMatchObject({ ok: true, sent: 1, recoveredReplies: 0 });
+    expect(syncAppointmentRemindersJob).toHaveBeenCalledTimes(2);
   });
 
   it("still runs but releases nothing when the lock was fail-open (no token)", async () => {

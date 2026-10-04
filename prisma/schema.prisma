@@ -40,6 +40,7 @@ model Business {
   whatsappConnection     WhatsAppConnection?
   whatsappSession        WhatsAppSession?
   whatsappSessionKeys    WhatsAppSessionKey[]
+  whatsappSendKeys       WhatsAppSendKey[]
   analyticsSnapshots     AnalyticsSnapshot[]
   staffAccessCodes       StaffAccessCode[]
   staffDevices           StaffDevice[]
@@ -605,6 +606,28 @@ model WhatsAppSessionKey {
 
   @@unique([businessId, category, keyId])
   @@index([businessId, category])
+}
+
+// The WhatsApp worker's record of each keyed send (POST /send idempotencyKey), so
+// a repeat of a key is never delivered twice — even across a worker restart.
+// `state`: SENDING while an attempt runs (or if the worker died mid-send),
+// SENT once it left, UNKNOWN when it timed out and may have left; a definite
+// failure deletes the row so a retry really sends. `fingerprint` is an HMAC of
+// the recipient and text (keyed with the bridge secret) — never the text itself.
+// Written only by the worker (services/whatsapp-worker/src/send-key-store.ts);
+// rows expire after a week. Non-PHI.
+model WhatsAppSendKey {
+  businessId        String
+  business          Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  key               String
+  fingerprint       String
+  state             String
+  providerMessageId String?
+  expiresAt         DateTime
+  createdAt         DateTime @default(now())
+
+  @@id([businessId, key])
+  @@index([expiresAt])
 }
 
 model EmailVerificationReceipt {

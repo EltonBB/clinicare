@@ -221,8 +221,8 @@ export async function syncAppointmentRemindersForBusiness(
         })
         .catch((error) => {
           // Not recorded: the next run tries again with the same key, which the
-          // worker answers from its memory of this send instead of re-sending
-          // (for a couple of hours, and only if it hasn't restarted since).
+          // worker answers from its record of this send ("unknown" again)
+          // instead of re-sending.
           logger.error("Failed to record an uncertain reminder as sent.", error, {
             businessId,
             appointmentId: appointment.id,
@@ -330,9 +330,8 @@ export async function syncAppointmentRemindersForBusiness(
     } catch (error) {
       // Couldn't even record the SENT marker — count as failed. The next run
       // retries with the same idempotency key, which the worker answers by
-      // replaying this send rather than re-sending — unless it restarted in
-      // between: the minimal, irreducible at-least-once window, far rarer than a
-      // multi-write transaction failing.
+      // replaying this send from its record (kept a week) rather than
+      // re-sending.
       failed += 1;
       progress.failed += 1;
       logger.error("Failed to record sent reminder.", error, {

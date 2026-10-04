@@ -71,10 +71,12 @@ describe("BaileysWhatsAppAdapter", () => {
   });
 
   it("throws a generic error on a non-ok worker response", async () => {
-    mockFetch({ secretInternal: "worker stacktrace" }, { ok: false, status: 503 });
-    await expect(
-      adapter.send({ businessId: "b", to: "+14155550100", body: "x" })
-    ).rejects.toThrow(/worker rejected the send \(status 503\)/);
+    mockFetch({ secretInternal: "worker stacktrace", code: "send_failed" }, { ok: false, status: 502 });
+    const error = (await adapter
+      .send({ businessId: "b", to: "+14155550100", body: "x" })
+      .catch((caught: unknown) => caught)) as Error;
+    expect(error.message).toMatch(/worker rejected the send \(status 502\)/);
+    expect(error.message).not.toMatch(/stacktrace/);
   });
 
   it("rejects a malformed 200 response instead of recording a phantom send", async () => {
@@ -94,47 +96,80 @@ describe("BaileysWhatsAppAdapter", () => {
   });
 
   describe("tells an uncertain send from a definite failure", () => {
-    const send = () => adapter.send({ businessId: "b", to: "+14155550100", body: "x" });
-
-    it("the worker's 409 (its send timed out), its 422 (the key already carried a message) and a proxy's 504 are uncertain", async () => {
-      for (const status of [409, 422, 504]) {
-        mockFetch({ error: "Send outcome unknown." }, { ok: false, status });
-        await expect(send()).rejects.toBeInstanceOf(SendOutcomeUnknownError);
-      }
-    });
-
-    it("every other refusal — including an older worker's 502 — is a definite failure", async () => {
-      for (const status of [400, 401, 502, 503]) {
-        mockFetch({ error: "Send failed." }, { ok: false, status });
-        const error = await send().catch((caught: unknown) => caught);
-        expect(error).toBeInstanceOf(Error);
-        expect(error).not.toBeInstanceOf(SendOutcomeUnknownError);
-      }
-    });
-
-    it("an abort or dropped connection after the request went out is uncertain", async () => {
-      for (const failure of [
-        new DOMException("The operation was aborted due to timeout", "TimeoutError"),
-        Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } }),
-      ]) {
-        globalThis.fetch = vi.fn(async () => {
-          throw failure;
-        }) as unknown as typeof fetch;
-        await expect(send()).rejects.toBeInstanceOf(SendOutcomeUnknownError);
-      }
-    });
-
-    it("a connection that was never made is a definite failure", async () => {
-      globalThis.fetch = vi.fn(async () => {
-        throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } });
-      }) as unknown as typeof fetch;
-      const error = await send().catch((caught: unknown) => caught);
+    const unkeyed = () => adapter.send({ businessId: "b", to: "+14155550100", body: "x" });
+    const keyed = () => adapter.send({ businessId: "b", to: "+14155550100", body: "x", idempotencyKey: "follow-up:d1" });
+    const definite = async (attempt: () => Promise<unknown>) => {
+      const error = await attempt().catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(Error);
       expect(error).not.toBeInstanceOf(SendOutcomeUnknownError);
+    };
+    const throwing = (failure: unknown) => {
+      globalThis.fetch = vi.fn(async () => {
+        throw failure;
+      }) as unknown as typeof fetch;
+    };
+
+    it("the worker's 409 (its send timed out) and 422 (the key already carried a message) are uncertain", async () => {
+      for (const status of [409, 422]) {
+        for (const attempt of [unkeyed, keyed]) {
+          mockFetch({ error: "Send outcome unknown." }, { ok: false, status });
+          await expect(attempt()).rejects.toBeInstanceOf(SendOutcomeUnknownError);
+        }
+      }
     });
 
-    it("a malformed 200 is uncertain — the worker only answers 200 after sending", async () => {
-      mockFetch({ ok: true });
-      await expect(send()).rejects.toBeInstanceOf(SendOutcomeUnknownError);
+    it("the worker's own refusals — 400, 401, its coded 502 — are definite failures", async () => {
+      for (const [status, body] of [
+        [400, { error: "to must be a digits-only phone number." }],
+        [401, { error: "Unauthorized." }],
+        [502, { error: "Send failed.", code: "send_failed" }],
+      ] as const) {
+        for (const attempt of [unkeyed, keyed]) {
+          mockFetch(body, { ok: false, status });
+          await definite(attempt);
+        }
+      }
+    });
+
+    // Codex #133: a proxy's 5xx, an abort, a dropped connection or a garbled
+    // 200 can each follow a send that went out. Unkeyed (an Inbox reply), that
+    // may mean it was delivered; keyed, a retry is answered from the worker's
+    // durable record of the key, so it is a plain, retryable failure.
+    describe("an answer lost after the request may have reached the worker", () => {
+      const lostAnswers: Array<[string, () => void]> = [
+        ["a proxy's uncoded 502", () => mockFetch({ error: "Application failed to respond" }, { ok: false, status: 502 })],
+        ["a proxy's 503", () => mockFetch(null, { ok: false, status: 503 })],
+        ["a gateway timeout", () => mockFetch(null, { ok: false, status: 504 })],
+        ["an abort", () => throwing(new DOMException("The operation was aborted due to timeout", "TimeoutError"))],
+        ["a reset connection", () => throwing(Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } }))],
+        ["a malformed 200", () => mockFetch({ ok: true })],
+      ];
+
+      it.each(lostAnswers)("%s is uncertain for an unkeyed send", async (_label, arrange) => {
+        arrange();
+        await expect(unkeyed()).rejects.toBeInstanceOf(SendOutcomeUnknownError);
+      });
+
+      it.each(lostAnswers)("%s is a retryable failure for a keyed send", async (_label, arrange) => {
+        arrange();
+        await definite(keyed);
+      });
+    });
+
+    it("a connection that never carried the request is a definite failure", async () => {
+      for (const cause of [
+        { code: "ECONNREFUSED" },
+        { code: "ENETUNREACH" },
+        { code: "EHOSTUNREACH" },
+        { code: "UND_ERR_CONNECT_TIMEOUT" },
+        { code: "CERT_HAS_EXPIRED" },
+        { code: "ERR_TLS_CERT_ALTNAME_INVALID" },
+        // fetch can wrap the socket error twice.
+        { message: "connect failed", cause: { code: "ERR_SSL_WRONG_VERSION_NUMBER" } },
+      ]) {
+        throwing(Object.assign(new TypeError("fetch failed"), { cause }));
+        await definite(unkeyed);
+      }
     });
   });
 

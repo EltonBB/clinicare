@@ -36,10 +36,12 @@ const LOCK_NAME = "reminders";
 // the two can't silently drift apart if one is ever changed alone.
 const LOCK_TTL_SECONDS = Math.ceil(HARD_RESPONSE_DEADLINE_MS / 1_000) + 60;
 
-// The reply-recovery sweep starts no new check this close to the hard deadline:
-// one check can take ~35s (a short wait on a running claim plus the
-// acknowledgement send's own timeout).
-const REPLY_RECOVERY_MARGIN_MS = 45_000;
+// The reply-recovery sweep runs first, so slow reminder sends can't starve it
+// hour after hour until its 24-hour window passes (Codex #133). It starts no new
+// check after this long; one already started can take ~35s more (a short wait
+// on a running claim plus the acknowledgement send's own timeout). Usually there
+// is nothing to recover and it takes one query.
+const REPLY_RECOVERY_BUDGET_MS = 30_000;
 
 export async function GET(request: Request) {
   if (!isAuthorizedCronRequest(request)) {
@@ -70,8 +72,24 @@ export async function GET(request: Request) {
     const startedAt = Date.now();
     const outcome = await withDeadline(
       (async () => {
+        // Finish patient replies whose check was cut off by a crash (see
+        // recoverAbandonedReplyIntents). Best-effort: a fault here must not stop
+        // the reminders.
+        let recoveredReplies = 0;
+        try {
+          ({ recovered: recoveredReplies } = await recoverAbandonedReplyIntents(
+            new Date(),
+            startedAt + REPLY_RECOVERY_BUDGET_MS
+          ));
+        } catch (error) {
+          logger.error("Recovering abandoned reply checks failed.", error);
+        }
+
+        // Budgeted from the invocation's start, not from now: whatever the
+        // recovery above took comes out of the reminders' share (a business
+        // left over is retried next hour), never out of the hard deadline.
         const result = await syncAppointmentRemindersJob(
-          Date.now() + REMINDER_RUN_BUDGET_MS,
+          startedAt + REMINDER_RUN_BUDGET_MS,
           progress
         );
 
@@ -91,18 +109,6 @@ export async function GET(request: Request) {
           ({ closed: closedTimeEntries } = await autoCloseStaleTimeEntries());
         } catch (error) {
           logger.error("Auto-close stale time entries failed.", error);
-        }
-
-        // Finish patient replies whose check was cut off by a crash (see
-        // recoverAbandonedReplyIntents). Best-effort, like the sweep above.
-        let recoveredReplies = 0;
-        try {
-          ({ recovered: recoveredReplies } = await recoverAbandonedReplyIntents(
-            new Date(),
-            startedAt + HARD_RESPONSE_DEADLINE_MS - REPLY_RECOVERY_MARGIN_MS
-          ));
-        } catch (error) {
-          logger.error("Recovering abandoned reply checks failed.", error);
         }
 
         return { ...result, closedTimeEntries, recoveredReplies, timedOut: false as const };

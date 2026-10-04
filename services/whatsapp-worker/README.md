@@ -45,12 +45,16 @@ it names the `businessId` directly.
 
 All except `/health` require the `x-vela-bridge-secret` header.
 
-`/send` answers 200 when sent; 502 when nothing was sent (safe to retry); 409
-when the socket send timed out, so the message may have left. With an
-`idempotencyKey`, a repeat of the key within 2 hours never sends twice: a sent
-one is replayed (same 200), a timed-out one answers 409 again, a running one
-waits for the first attempt, and a different message under the same key gets
-422. Keys live in memory only (lost on restart); see `src/send-dedupe.ts`.
+`/send` answers 200 when sent; 502 with `code: "send_failed"` when nothing was
+sent (safe to retry); 409 when the socket send timed out, so the message may
+have left. With an `idempotencyKey`, a repeat of the key within a week never
+sends twice: a sent one is replayed (same 200), a timed-out one answers 409
+again, a running one waits for the first attempt, and a different message under
+the same key gets 422. Keys are recorded in Postgres (`WhatsAppSendKey`) before
+the message is sent, so this survives a restart: an attempt the worker never
+settled answers 409. See `src/send-dedupe.ts` and `src/send-key-store.ts`; the
+table comes from the app's `prisma/whatsapp-reliability-migration.sql`, which
+must be applied before this worker version runs.
 
 ## Run locally
 

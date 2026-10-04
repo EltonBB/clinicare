@@ -70,10 +70,11 @@ export type SendMessageInput = {
 };
 
 /**
- * `provider_error`: definitely not sent — safe to retry.
+ * `provider_error`: not sent, or sent under an idempotency key the provider
+ * remembers — either way safe to retry with the same key.
  * `delivery_uncertain`: the send may have reached the patient (the provider
- * timed out, or its answer was lost). Never retry it blindly — a retry could
- * deliver the message twice.
+ * timed out mid-send, or an unkeyed send's answer was lost). Never retry it
+ * blindly — a retry could deliver the message twice.
  */
 export type SendFailureReason =
   | "channel_unconfigured"
@@ -134,7 +135,8 @@ export interface ChannelAdapter {
 
 /**
  * Thrown by an adapter when it can't tell whether the message was delivered:
- * the provider timed out mid-send, or the request may have reached it but no
- * usable answer came back. The dispatcher maps it to `delivery_uncertain`.
+ * the provider says it timed out mid-send, or an unkeyed request may have
+ * reached it but no usable answer came back (a keyed one is safe to retry, so
+ * that is a plain failure). The dispatcher maps it to `delivery_uncertain`.
  */
 export class SendOutcomeUnknownError extends Error {}

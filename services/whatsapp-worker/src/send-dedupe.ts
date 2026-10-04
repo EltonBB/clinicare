@@ -1,26 +1,31 @@
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac } from "node:crypto";
 
 /**
- * Idempotent sends for POST /send. Kept free of Baileys/Express imports so it can
- * be unit-tested on its own (src/send-dedupe.test.ts, run by the app's Vitest).
+ * Idempotent sends for POST /send. Kept free of Baileys/Express/Prisma imports so
+ * it can be unit-tested on its own (src/send-dedupe.test.ts, run by the app's
+ * Vitest); the durable record lives behind {@link SendKeyStore}
+ * (src/send-key-store.ts).
  *
  * The app tags each logical message with an `idempotencyKey` (a follow-up draft
  * id, a reminder slot, an acknowledged inbound message). Within a workspace, a
  * repeat of a key never sends a second WhatsApp message:
  *   - sent    -> the first result is replayed (same providerMessageId);
- *   - unknown -> the socket send timed out, so the message may have left: every
- *                repeat is answered "unknown" again, never re-sent;
+ *   - unknown -> the socket send timed out, or the worker stopped mid-send, so
+ *                the message may have left: every repeat is answered "unknown"
+ *                again, never re-sent;
  *   - failed  -> nothing left (not connected, or the socket refused before
- *                writing): not remembered, so a retry really sends;
+ *                writing): the record is dropped, so a retry really sends;
  *   - running -> a concurrent repeat waits for the same attempt's outcome.
  * A key reused for a different recipient or text is refused (key_conflict) —
- * nothing is sent, and since a failed send is never remembered, the key's
- * earlier message was sent or may have been: the app treats it as uncertain.
+ * nothing is sent, and since a failed send is never kept, the key's earlier
+ * message was sent or may have been: the app treats it as uncertain.
  *
- * Memory only: nothing survives a restart, so a retry after a worker restart is
- * as unprotected as an unkeyed one. Entries hold no message text or phone number
- * — only a keyed HMAC fingerprint (the key is random per process) and the
- * provider message id.
+ * The record is written BEFORE the message is sent and kept in Postgres, so it
+ * survives a worker restart: an attempt the worker never got to settle reads as
+ * "unknown" afterwards (Codex #133). That is what lets the app retry a keyed
+ * send whose answer it never got. Records hold no message text or phone number
+ * — only an HMAC fingerprint (keyed with the bridge secret, so it stays stable
+ * across restarts) and the provider message id.
  */
 
 /** Marks a withTimeout rejection: the operation may still have completed. */
@@ -31,6 +36,12 @@ export const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9:_-]{1,128}$/;
 
 /** Stable code in the 409 body for a send whose outcome is unknown. */
 export const SEND_OUTCOME_UNKNOWN_CODE = "send_outcome_unknown";
+
+/**
+ * Stable code in the 502 body for a send that definitely did not go out. The app
+ * tells this worker answer apart from a proxy's 502, which proves nothing.
+ */
+export const SEND_FAILED_CODE = "send_failed";
 
 export type SentResult = { providerMessageId: string | null; status: "SENT" };
 
@@ -49,8 +60,8 @@ export function classifySendError(error: unknown): SendOutcome {
   return error instanceof TimeoutError ? { kind: "unknown" } : { kind: "failed" };
 }
 
-/** The HTTP answer for an outcome. 502 stays "definitely failed, safe to retry"
- * (what every app version already assumes); 409 is new and means "may have left". */
+/** The HTTP answer for an outcome. 502 + SEND_FAILED_CODE: definitely failed,
+ * safe to retry; 409: may have left; 422: key reused for a different message. */
 export function sendOutcomeResponse(outcome: SendOutcome): { status: number; body: unknown } {
   switch (outcome.kind) {
     case "sent":
@@ -66,15 +77,37 @@ export function sendOutcomeResponse(outcome: SendOutcome): { status: number; bod
         body: { error: "Idempotency key already used for a different message.", code: "idempotency_key_conflict" },
       };
     case "failed":
-      return { status: 502, body: { error: "Send failed." } };
+      return { status: 502, body: { error: "Send failed.", code: SEND_FAILED_CODE } };
   }
 }
 
-type Entry = {
+/** A key's durable record. SENDING: an attempt started and never settled. */
+export type SendKeyRecord = {
   fingerprint: string;
-  /** Infinity while the attempt is still running — never evicted then. */
-  expiresAt: number;
-  outcome: Promise<SendOutcome>;
+  state: "SENDING" | "SENT" | "UNKNOWN";
+  providerMessageId: string | null;
+};
+
+export type SendKeyStore = {
+  /**
+   * Claims the key for a new attempt (recorded SENDING until settled): null
+   * when claimed — no record, or only an expired one — else the live record.
+   */
+  reserve(input: {
+    businessId: string;
+    key: string;
+    fingerprint: string;
+    expiresAt: Date;
+    now: Date;
+  }): Promise<SendKeyRecord | null>;
+  settle(input: {
+    businessId: string;
+    key: string;
+    state: "SENT" | "UNKNOWN";
+    providerMessageId: string | null;
+  }): Promise<void>;
+  /** Drops the record of an attempt that definitely sent nothing. */
+  release(input: { businessId: string; key: string }): Promise<void>;
 };
 
 export type SendDeduper = {
@@ -82,76 +115,90 @@ export type SendDeduper = {
     request: { businessId: string; key?: string; to: string; body: string },
     send: () => Promise<SendOutcome>
   ): Promise<SendOutcome>;
-  size(): number;
 };
 
 export function createSendDeduper(options: {
+  store: SendKeyStore;
   ttlMs: number;
-  maxEntries: number;
+  /** Keys the fingerprint HMAC; must stay the same across restarts. */
+  fingerprintSecret: string;
+  onStoreError?: (message: string, error: unknown) => void;
   now?: () => number;
 }): SendDeduper {
-  const { ttlMs, maxEntries, now = Date.now } = options;
-  const entries = new Map<string, Entry>();
-  const secret = randomBytes(32);
+  const { store, ttlMs, fingerprintSecret, onStoreError = () => {}, now = Date.now } = options;
+  // Attempts still running in this process, so a concurrent repeat waits for
+  // the one attempt instead of reading its SENDING record as "unknown".
+  const running = new Map<string, { fingerprint: string; outcome: Promise<SendOutcome> }>();
 
-  function evict(): void {
-    const time = now();
-    for (const [scope, entry] of entries) {
-      if (entry.expiresAt <= time) entries.delete(scope);
+  async function attempt(
+    record: { businessId: string; key: string },
+    fingerprint: string,
+    send: () => Promise<SendOutcome>
+  ): Promise<SendOutcome> {
+    let existing: SendKeyRecord | null;
+    try {
+      existing = await store.reserve({
+        ...record,
+        fingerprint,
+        expiresAt: new Date(now() + ttlMs),
+        now: new Date(now()),
+      });
+    } catch (error) {
+      // Nothing was sent: refuse, so the caller retries once the record can be kept.
+      onStoreError("send refused: its key couldn't be recorded", error);
+      return { kind: "failed" };
     }
-    // Still over the cap: drop the oldest settled entries (Map keeps insertion order).
-    for (const [scope, entry] of entries) {
-      if (entries.size <= maxEntries) break;
-      if (entry.expiresAt !== Infinity) entries.delete(scope);
+
+    if (existing) {
+      if (existing.fingerprint !== fingerprint) return { kind: "key_conflict" };
+      if (existing.state === "SENT") {
+        return { kind: "sent", result: { providerMessageId: existing.providerMessageId, status: "SENT" } };
+      }
+      // UNKNOWN, or SENDING left behind by a worker that stopped mid-send.
+      return { kind: "unknown" };
     }
+
+    // An unexpected throw is treated as "may have left" — the safe side.
+    const outcome = await send().catch((): SendOutcome => ({ kind: "unknown" }));
+    try {
+      if (outcome.kind === "failed") {
+        await store.release(record);
+      } else if (outcome.kind === "sent") {
+        await store.settle({ ...record, state: "SENT", providerMessageId: outcome.result.providerMessageId });
+      } else {
+        await store.settle({ ...record, state: "UNKNOWN", providerMessageId: null });
+      }
+    } catch (error) {
+      // The record stays SENDING, which every repeat reads as "unknown": never a
+      // second message, at worst one a retry won't send after a real failure.
+      onStoreError("a send's outcome couldn't be recorded", error);
+    }
+    return outcome;
   }
 
   return {
     run(request, send) {
-      if (!request.key) {
+      const key = request.key;
+      if (!key) {
         return send();
       }
 
       // Scoped per workspace, so one tenant's key can never answer another's send.
-      const scope = JSON.stringify([request.businessId, request.key]);
-      const fingerprint = createHmac("sha256", secret)
+      const scope = JSON.stringify([request.businessId, key]);
+      const fingerprint = createHmac("sha256", fingerprintSecret)
         .update(JSON.stringify([request.to, request.body]))
         .digest("base64");
 
-      const existing = entries.get(scope);
-      if (existing && existing.expiresAt > now()) {
-        return existing.fingerprint === fingerprint
-          ? existing.outcome
-          : Promise.resolve({ kind: "key_conflict" });
+      const inFlight = running.get(scope);
+      if (inFlight) {
+        return inFlight.fingerprint === fingerprint ? inFlight.outcome : Promise.resolve({ kind: "key_conflict" });
       }
 
-      const entry: Entry = {
-        fingerprint,
-        expiresAt: Infinity,
-        // An unexpected throw is treated as "may have left" — the safe side.
-        outcome: Promise.resolve()
-          .then(send)
-          .catch((): SendOutcome => ({ kind: "unknown" })),
-      };
-      entries.delete(scope);
-      entries.set(scope, entry);
-      if (entries.size > maxEntries) {
-        evict();
-      }
-
-      // Registered before the caller awaits, so the entry is settled before any
-      // later request can read it.
-      void entry.outcome.then((outcome) => {
-        if (entries.get(scope) !== entry) return;
-        if (outcome.kind === "failed") {
-          entries.delete(scope);
-        } else {
-          entry.expiresAt = now() + ttlMs;
-        }
+      const outcome = attempt({ businessId: request.businessId, key }, fingerprint, send).finally(() => {
+        running.delete(scope);
       });
-
-      return entry.outcome;
+      running.set(scope, { fingerprint, outcome });
+      return outcome;
     },
-    size: () => entries.size,
   };
 }

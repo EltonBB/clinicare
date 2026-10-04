@@ -11,6 +11,7 @@ import {
   IDEMPOTENCY_KEY_PATTERN,
   sendOutcomeResponse,
 } from "./send-dedupe";
+import { createPrismaSendKeyStore } from "./send-key-store";
 import {
   bootstrapSessions,
   closeAllSessions,
@@ -26,14 +27,22 @@ import {
 const MAX_SEND_BODY = 8000;
 
 /**
- * Remembers keyed sends for 2 hours — longer than the app's hourly reminder
- * cron, so even a reminder whose "sent" marker failed to save is answered from
- * here on the next run instead of being sent again. Capped so memory stays
- * bounded (an entry is a fingerprint and a message id, not the message).
+ * Remembers keyed sends for a week, in Postgres (WhatsAppSendKey), so a retry —
+ * the next hourly reminder run, a follow-up staff send again days later, a
+ * request whose answer was lost — is answered from the record instead of being
+ * sent again, even after a worker restart. The table must exist first (the app's
+ * prisma/whatsapp-reliability-migration.sql): without it every keyed send is
+ * refused as not sent. Fingerprints are keyed with the bridge secret, so
+ * rotating it makes a repeat of a key from the past week read as a different
+ * message (422, which the app treats as possibly delivered) — never a duplicate.
  */
 const sendDeduper = createSendDeduper({
-  ttlMs: 2 * 60 * 60 * 1000,
-  maxEntries: 20_000,
+  store: createPrismaSendKeyStore(prisma, (error) =>
+    logger.warn({ error: scrubError(error) }, "expired send keys couldn't be swept")
+  ),
+  ttlMs: 7 * 24 * 60 * 60 * 1000,
+  fingerprintSecret: config.bridgeSecret,
+  onStoreError: (message, error) => logger.error({ error: scrubError(error) }, message),
 });
 
 function isAuthorized(headerValue: string | undefined): boolean {
