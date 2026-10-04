@@ -43,13 +43,13 @@ export const DEFAULT_CURRENCY: SupportedCurrency = "EUR";
  * stamps the legacy payments' `updatedAt`, so from then on they lock the
  * currency like any other payment.
  *
- * The boundary is the picker's go-live - PR #130's merge, 2026-10-03 22:30 UTC -
+ * The boundary is the picker's go-live - PR #130's merge, 2026-10-04 03:03 UTC -
  * not the migration (applied 2026-09-27): production kept showing dollars until
  * then (Codex #130). Never move it later than the real go-live: a cutoff in the
  * future would leave the stamp above still "legacy", and the one-time
  * correction repeatable until the date passed.
  */
-export const CURRENCY_CHOOSABLE_FROM = new Date("2026-10-03T22:30:00.000Z");
+export const CURRENCY_CHOOSABLE_FROM = new Date("2026-10-04T03:03:00.000Z");
 
 export function isSupportedCurrency(code: unknown): code is SupportedCurrency {
   return SUPPORTED_CURRENCIES.some((currency) => currency.code === code);
