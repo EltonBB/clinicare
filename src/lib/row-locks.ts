@@ -73,3 +73,18 @@ export async function lockClientExclusive(tx: Prisma.TransactionClient, clientId
 export async function lockAppointmentShared(tx: Prisma.TransactionClient, appointmentId: string): Promise<void> {
   await tx.$executeRaw`SELECT 1 FROM "Appointment" WHERE "id" = ${appointmentId} FOR SHARE`;
 }
+
+/**
+ * Holds one weekday's working hours still for the rest of a transaction: Book
+ * checks the freed slot still fits them after taking this, so a Settings save
+ * that changes that day's hours (an UPDATE of the row) either finished first,
+ * and is what Book checks, or waits until the Book commits (Codex #130). A day
+ * with no row is closed, and Book refuses it either way.
+ */
+export async function lockBusinessHoursShared(
+  tx: Prisma.TransactionClient,
+  businessId: string,
+  weekday: number
+): Promise<void> {
+  await tx.$executeRaw`SELECT 1 FROM "BusinessHours" WHERE "businessId" = ${businessId} AND "weekday" = ${weekday} FOR SHARE`;
+}

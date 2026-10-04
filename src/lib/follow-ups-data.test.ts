@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     waitlistEntry: { findMany: vi.fn(), updateMany: vi.fn() },
     appointment: { findFirst: vi.fn() },
     staffMember: { findFirst: vi.fn() },
+    client: { findFirst: vi.fn() },
     business: { findUniqueOrThrow: vi.fn() },
     scheduleBlock: { findFirst: vi.fn() },
     businessHours: { findUnique: vi.fn() },
@@ -1326,6 +1327,7 @@ describe("bookSlotOffer (Book)", () => {
     mocks.tx.followUpDraft.findFirst.mockResolvedValue({ clientId: "client_1", appointmentId: "appt_1" });
     serveSlot(SLOT_DETAILS);
     mocks.tx.staffMember.findFirst.mockResolvedValue({ id: "staff_1" });
+    mocks.tx.client.findFirst.mockResolvedValue({ id: "client_1" });
   });
 
   // The raw SQL each $executeRaw call ran, placeholders shown as "?".
@@ -1380,12 +1382,25 @@ describe("bookSlotOffer (Book)", () => {
     expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual(BOOKED);
 
     expect(rawQueries()).toEqual([
+      'SELECT 1 FROM "Client" WHERE "id" = ? FOR SHARE',
       'SELECT 1 FROM "Appointment" WHERE "id" = ? FOR SHARE',
       'SELECT 1 FROM "StaffMember" WHERE "id" = ? FOR SHARE',
       "SELECT pg_advisory_xact_lock(hashtext(?))",
+      'SELECT 1 FROM "BusinessHours" WHERE "businessId" = ? AND "weekday" = ? FOR SHARE',
     ]);
-    expect(mocks.tx.$executeRaw.mock.calls.map((call) => call[1])).toEqual(["appt_1", "staff_1", "staff_1"]);
-    const [appointmentLock, staffLock] = mocks.tx.$executeRaw.mock.invocationCallOrder;
+    expect(mocks.tx.$executeRaw.mock.calls.map((call) => call.slice(1))).toEqual([
+      ["client_1"],
+      ["appt_1"],
+      ["staff_1"],
+      ["staff_1"],
+      ["biz_1", 3], // FUTURE is a Thursday on the clinic's clock
+    ]);
+    // That day's hours are read only once their row is locked.
+    expect(mocks.tx.$executeRaw.mock.invocationCallOrder[4]).toBeLessThan(
+      mocks.tx.businessHours.findUnique.mock.invocationCallOrder[0]
+    );
+    const [clientLock, appointmentLock, staffLock] = mocks.tx.$executeRaw.mock.invocationCallOrder;
+    expect(clientLock).toBeLessThan(mocks.tx.client.findFirst.mock.invocationCallOrder[0]);
     expect(appointmentLock).toBeLessThan(mocks.tx.appointment.findFirst.mock.invocationCallOrder[0]);
     expect(staffLock).toBeLessThan(mocks.tx.staffMember.findFirst.mock.invocationCallOrder[0]);
     expect(mocks.tx.staffMember.findFirst.mock.invocationCallOrder[0]).toBeLessThan(
@@ -1418,7 +1433,11 @@ describe("bookSlotOffer (Book)", () => {
       ok: true,
       slot: { clientId: "client_1", ...SLOT_DETAILS, staffMemberId: null },
     });
-    expect(rawQueries()).toEqual(['SELECT 1 FROM "Appointment" WHERE "id" = ? FOR SHARE']);
+    expect(rawQueries()).toEqual([
+      'SELECT 1 FROM "Client" WHERE "id" = ? FOR SHARE',
+      'SELECT 1 FROM "Appointment" WHERE "id" = ? FOR SHARE',
+      'SELECT 1 FROM "BusinessHours" WHERE "businessId" = ? AND "weekday" = ? FOR SHARE',
+    ]);
     expect(mocks.tx.staffMember.findFirst).not.toHaveBeenCalled();
   });
 
@@ -1446,9 +1465,30 @@ describe("bookSlotOffer (Book)", () => {
       select: { id: true },
     });
     // Locked before it looks, so a save into the slot can't commit in between.
-    const schedulingLock = mocks.tx.$executeRaw.mock.invocationCallOrder[2];
-    expect(rawQueries()[2]).toBe("SELECT pg_advisory_xact_lock(hashtext(?))");
+    const schedulingLock = mocks.tx.$executeRaw.mock.invocationCallOrder[3];
+    expect(rawQueries()[3]).toBe("SELECT pg_advisory_xact_lock(hashtext(?))");
     expect(schedulingLock).toBeLessThan(mocks.tx.appointment.findFirst.mock.invocationCallOrder[1]);
+    expect(mocks.tx.waitlistEntry.updateMany).not.toHaveBeenCalled();
+  });
+
+  // Codex #130: archiving or deleting the patient while Book runs — read
+  // unlocked, Book could fill the entry for them (the archive's scan then
+  // misses it) and hand the booking form a client it drops.
+  it("share-locks the offered patient and refuses, leaving the entry OFFERED, when they're no longer bookable", async () => {
+    mocks.tx.client.findFirst.mockResolvedValue(null);
+
+    expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({
+      ok: false,
+      error: "This slot offer is no longer available.",
+    });
+    expect(rawQueries()[0]).toBe('SELECT 1 FROM "Client" WHERE "id" = ? FOR SHARE');
+    expect(mocks.tx.client.findFirst).toHaveBeenCalledWith({
+      where: { id: "client_1", businessId: "biz_1", isArchived: false, status: { notIn: ["INACTIVE", "ARCHIVED"] } },
+      select: { id: true },
+    });
+    expect(mocks.tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.tx.client.findFirst.mock.invocationCallOrder[0]
+    );
     expect(mocks.tx.waitlistEntry.updateMany).not.toHaveBeenCalled();
   });
 
@@ -1591,6 +1631,7 @@ describe("a follow-up whose message is still being sent", () => {
   it("can be booked once delivered", async () => {
     serveDrafts([offer({ sentAt: NOW })]);
     mocks.tx.followUpDraft.findFirst.mockResolvedValue({ clientId: "client_1", appointmentId: "appt_1" });
+    mocks.tx.client.findFirst.mockResolvedValue({ id: "client_1" });
     mocks.tx.appointment.findFirst.mockResolvedValue({ title: "Checkup", staffMemberId: null, startAt: FUTURE, endAt: FUTURE });
 
     expect((await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).ok).toBe(true);

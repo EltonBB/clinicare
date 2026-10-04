@@ -3,9 +3,9 @@ import { BusinessPlan, Prisma } from "@prisma/client";
 import { isProBusinessPlan } from "@/lib/billing";
 import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { MAX_MESSAGE_BODY_LENGTH, MESSAGE_TOO_LONG_ERROR } from "@/lib/messaging/limits";
-import { isSlotInsideOperatingHours } from "@/lib/operating-hours";
+import { isSlotInsideOperatingHours, operatingWeekday } from "@/lib/operating-hours";
 import { prisma } from "@/lib/prisma";
-import { lockAppointmentShared, lockStaffMemberShared } from "@/lib/row-locks";
+import { lockAppointmentShared, lockBusinessHoursShared, lockClientShared, lockStaffMemberShared } from "@/lib/row-locks";
 import { acquireSchedulingLock, hasSchedulingConflict } from "@/lib/scheduling-conflicts";
 import type { FollowUpDraftRecord } from "@/lib/follow-ups";
 import { liveSlotOfferWhere, reofferFreedSlot, retryOnWriteConflict } from "@/lib/slot-offers";
@@ -566,6 +566,23 @@ export async function bookSlotOffer(args: {
       return { ok: false, error: SLOT_OFFER_UNAVAILABLE_ERROR };
     }
 
+    // The patient being booked has to still be one the clinic can book, read
+    // under a share lock like the clinician below: archiving or deactivating
+    // them (an UPDATE of the row) or deleting them (which locks it first) then
+    // either finished first, and this refuses, or waits for this Book.
+    // Unlocked, Book could fill the entry for a patient being archived — the
+    // archive's scan then misses the FILLED entry — and hand the booking form a
+    // client it drops, defaulting to the first one in its picker (Codex #130).
+    await lockClientShared(tx, offered.clientId);
+    const client = await tx.client.findFirst({
+      where: { id: offered.clientId, businessId, ...ELIGIBLE_CLIENT_WHERE },
+      select: { id: true },
+    });
+
+    if (!client) {
+      return { ok: false, error: SLOT_OFFER_UNAVAILABLE_ERROR };
+    }
+
     await lockAppointmentShared(tx, offered.appointmentId);
     const appointment = await tx.appointment.findFirst({
       where: { id: offered.appointmentId, businessId },
@@ -615,6 +632,9 @@ export async function bookSlotOffer(args: {
     // markFollowUpDraftSent), checked before the entry is flipped, so a refused
     // Book leaves the entry OFFERED — it can still be declined and offered on —
     // instead of FILLED with a booking the calendar will not accept (Codex #130).
+    // That day's hours row is share-locked first, so hours changed in Settings
+    // meanwhile are either what this reads or wait for the Book.
+    await lockBusinessHoursShared(tx, businessId, operatingWeekday(appointment.startAt));
     if (!(await isSlotInsideOperatingHours(tx, { businessId, startAt: appointment.startAt, endAt: appointment.endAt }))) {
       return { ok: false, error: SLOT_OUTSIDE_HOURS_ERROR };
     }
