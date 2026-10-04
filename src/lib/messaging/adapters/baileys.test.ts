@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildConfiguredRegistry } from "../configure";
 import { sendMessage } from "../index";
+import { SendOutcomeUnknownError } from "../types";
 import { BaileysWhatsAppAdapter } from "./baileys";
 
 type FetchResponse = { ok: boolean; status: number; json: () => Promise<unknown> };
@@ -83,6 +84,58 @@ describe("BaileysWhatsAppAdapter", () => {
     await expect(
       adapter.send({ businessId: "b", to: "+14155550100", body: "x" })
     ).rejects.toThrow(/unexpected response/);
+  });
+
+  it("sends the idempotency key when one is given", async () => {
+    const fetchMock = mockFetch({ providerMessageId: "BAE_1", status: "SENT" });
+    await adapter.send({ businessId: "b", to: "+14155550100", body: "x", idempotencyKey: "follow-up:d1" });
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({ idempotencyKey: "follow-up:d1" });
+  });
+
+  describe("tells an uncertain send from a definite failure", () => {
+    const send = () => adapter.send({ businessId: "b", to: "+14155550100", body: "x" });
+
+    it("the worker's 409 (its send timed out), its 422 (the key already carried a message) and a proxy's 504 are uncertain", async () => {
+      for (const status of [409, 422, 504]) {
+        mockFetch({ error: "Send outcome unknown." }, { ok: false, status });
+        await expect(send()).rejects.toBeInstanceOf(SendOutcomeUnknownError);
+      }
+    });
+
+    it("every other refusal — including an older worker's 502 — is a definite failure", async () => {
+      for (const status of [400, 401, 502, 503]) {
+        mockFetch({ error: "Send failed." }, { ok: false, status });
+        const error = await send().catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(Error);
+        expect(error).not.toBeInstanceOf(SendOutcomeUnknownError);
+      }
+    });
+
+    it("an abort or dropped connection after the request went out is uncertain", async () => {
+      for (const failure of [
+        new DOMException("The operation was aborted due to timeout", "TimeoutError"),
+        Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } }),
+      ]) {
+        globalThis.fetch = vi.fn(async () => {
+          throw failure;
+        }) as unknown as typeof fetch;
+        await expect(send()).rejects.toBeInstanceOf(SendOutcomeUnknownError);
+      }
+    });
+
+    it("a connection that was never made is a definite failure", async () => {
+      globalThis.fetch = vi.fn(async () => {
+        throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } });
+      }) as unknown as typeof fetch;
+      const error = await send().catch((caught: unknown) => caught);
+      expect(error).not.toBeInstanceOf(SendOutcomeUnknownError);
+    });
+
+    it("a malformed 200 is uncertain — the worker only answers 200 after sending", async () => {
+      mockFetch({ ok: true });
+      await expect(send()).rejects.toBeInstanceOf(SendOutcomeUnknownError);
+    });
   });
 
   it("rejects an empty body before any network call", async () => {

@@ -21,9 +21,12 @@ import {
 import { parseRecordId } from "@/lib/record-id";
 import { formatZonedDateKey, formatZonedTime24, getZonedWallClockMinutesBetween } from "@/lib/time-zone";
 
-export type FollowUpDraftActionResult = { ok: boolean; error?: string };
+/** `notice`: handled, but staff should know something — see the uncertain send below. */
+export type FollowUpDraftActionResult = { ok: boolean; error?: string; notice?: string };
 
 const TRY_AGAIN_ERROR = "Something went wrong. Try again.";
+const FOLLOW_UP_DELIVERY_UNCERTAIN_NOTICE =
+  "We couldn't confirm a follow-up was delivered, so it was marked as sent. Check the patient's WhatsApp chat before contacting them again.";
 
 function getAuthedBusiness() {
   return getAuthedBusinessContext("Your session expired. Log in again to manage follow-ups.");
@@ -44,7 +47,9 @@ function revalidateFollowUpSurfaces() {
  * then sends it through the messaging seam. Any failure past the flip (the last
  * check refusing, no phone on file, the provider send failing, or a lookup/send
  * that throws) reverts the draft back to PENDING so it can be retried, rather
- * than leaving it stuck as SENT with nothing actually delivered.
+ * than leaving it stuck as SENT with nothing actually delivered — except a send
+ * whose delivery is uncertain, which may already be with the patient and is
+ * recorded as sent instead (never retried).
  *
  * `body` is an optional edited-text override — the row list lets staff edit
  * the draft before sending, so the flip and the send must use the text the
@@ -92,6 +97,8 @@ export async function sendFollowUpDraftAction(
   }
 
   let failure: string | null = null;
+  // The provider can't say whether the message left (see SendFailureReason).
+  let uncertain = false;
   let sent: {
     clientId: string;
     clientName: string | null;
@@ -123,10 +130,15 @@ export async function sendFollowUpDraftAction(
           businessId: business.id,
           to: phone,
           message: { kind: "freeform", body: editedBody && editedBody.length > 0 ? editedBody : draft.body },
+          // A draft is sent at most once, so its id names the message: a send of
+          // it that reaches the provider twice is still delivered only once.
+          idempotencyKey: `follow-up:${draftId}`,
         });
 
         if (result.ok) {
           sent = { clientId: draft.clientId, clientName: draft.clientName, phone, result };
+        } else if (result.reason === "delivery_uncertain") {
+          uncertain = true;
         } else {
           failure = "Couldn't send this message. Try again.";
         }
@@ -141,6 +153,25 @@ export async function sendFollowUpDraftAction(
       draftId,
     });
     failure = "Couldn't send this message. Try again.";
+  }
+
+  if (uncertain) {
+    // The message may already be with the patient, so the draft must not go back
+    // to Pending — a second Send could deliver it twice. It is recorded as sent
+    // (a slot offer opens to Book and Declined), and staff are told to check the
+    // chat. Nothing is mirrored to the Inbox: there is no confirmed message to
+    // show. If recording fails, the hourly sweep settles it the same way
+    // (settleInterruptedFollowUpSends).
+    await markFollowUpDraftDelivered({ id: draftId, businessId: business.id }).catch((error) => {
+      logger.error("A follow-up's delivery is uncertain and it couldn't be recorded as sent.", error, {
+        businessId: business.id,
+        draftId,
+      });
+    });
+    revalidateFollowUpSurfaces();
+    // ok: the draft is handled, so its row leaves the list; the notice is shown
+    // by the list itself, since this row won't be there to show it.
+    return { ok: true, notice: FOLLOW_UP_DELIVERY_UNCERTAIN_NOTICE };
   }
 
   if (!sent) {

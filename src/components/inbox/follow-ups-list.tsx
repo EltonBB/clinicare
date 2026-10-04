@@ -26,25 +26,42 @@ export function FollowUpsList({ items }: { items: FollowUpDraftItem[] }) {
   // offer drafts a fresh one for the next person on the waiting list, and a
   // sent slot offer comes back as a bookable row (see followUpRowKey).
   const [handledKeys, setHandledKeys] = useState<string[]>([]);
+  // A handled row can still leave something to say (a send whose delivery
+  // couldn't be confirmed); the row is gone by then, so the list says it.
+  const [notice, setNotice] = useState("");
   const drafts = visibleFollowUps(items, handledKeys);
+  const noticeLine = notice ? (
+    <p role="alert" className="mb-2 text-xs text-destructive">
+      {notice}
+    </p>
+  ) : null;
 
   if (drafts.length === 0) {
-    return <WorkspaceEmptyState icon={MessageSquareText} title="No follow-ups right now." />;
+    return (
+      <>
+        {noticeLine}
+        <WorkspaceEmptyState icon={MessageSquareText} title="No follow-ups right now." />
+      </>
+    );
   }
 
   return (
-    <div className="overflow-hidden rounded-(--radius-card) border border-border/80 bg-white shadow-(--shadow-card)">
-      {drafts.map((draft) => (
-        <FollowUpDraftRow
-          key={followUpRowKey(draft)}
-          draft={draft}
-          onHandled={() => {
-            setHandledKeys((current) => [...current, followUpRowKey(draft)]);
-            router.refresh();
-          }}
-        />
-      ))}
-    </div>
+    <>
+      {noticeLine}
+      <div className="overflow-hidden rounded-(--radius-card) border border-border/80 bg-white shadow-(--shadow-card)">
+        {drafts.map((draft) => (
+          <FollowUpDraftRow
+            key={followUpRowKey(draft)}
+            draft={draft}
+            onHandled={(handledNotice) => {
+              setNotice(handledNotice ?? "");
+              setHandledKeys((current) => [...current, followUpRowKey(draft)]);
+              router.refresh();
+            }}
+          />
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -53,7 +70,7 @@ function FollowUpDraftRow({
   onHandled,
 }: {
   draft: FollowUpDraftItem;
-  onHandled: () => void;
+  onHandled: (notice?: string) => void;
 }) {
   const router = useRouter();
   const [body, setBody] = useState(draft.body);
@@ -113,7 +130,7 @@ function FollowUpDraftRow({
     );
 
     if (result) {
-      onHandled();
+      onHandled(result.notice);
     }
   }
 

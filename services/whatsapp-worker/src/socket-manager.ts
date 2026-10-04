@@ -20,6 +20,7 @@ import qrcode from "qrcode-terminal";
 import { clearAuthState, usePostgresAuthState } from "./auth-state";
 import { postToApp } from "./bridge";
 import { logger, scrubError } from "./logger";
+import { TimeoutError, type SentResult } from "./send-dedupe";
 
 type SessionStatus = "connecting" | "qr" | "connected" | "disconnected";
 
@@ -59,9 +60,6 @@ const reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const sessionEpoch = new Map<string, number>();
 /** Set on graceful shutdown so no new socket is started after closeAllSessions. */
 let stopped = false;
-
-/** Marks a {@link withTimeout} rejection so callers can react to a hang. */
-class TimeoutError extends Error {}
 
 function clearStableTimer(businessId: string): void {
   const timer = stableTimers.get(businessId);
@@ -531,12 +529,16 @@ function withTimeout<T>(
   });
 }
 
-/** Sends a text message from a workspace's connected session. */
+/**
+ * Sends a text message from a workspace's connected session. A TimeoutError
+ * means the message may have left (see classifySendError); any other throw
+ * means it did not.
+ */
 export async function sendText(
   businessId: string,
   to: string,
   body: string
-): Promise<{ providerMessageId: string | null; status: "SENT" }> {
+): Promise<SentResult> {
   const session = sessions.get(businessId);
   if (!session || session.status !== "connected") {
     throw new Error("WhatsApp session is not connected.");

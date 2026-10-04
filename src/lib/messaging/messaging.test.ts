@@ -5,6 +5,8 @@ import {
   EchoAdapter,
   renderReminder,
   sendMessage,
+  SendOutcomeUnknownError,
+  type AdapterSendInput,
   type AdapterSendResult,
   type ChannelAdapter,
 } from "./index";
@@ -324,5 +326,43 @@ describe("sendMessage dispatch", () => {
       expect(result.error).not.toContain("provider exploded");
       expect(result.error).not.toContain("14155550100");
     }
+  });
+
+  it("reports a send whose outcome is unknown as delivery_uncertain, never as a retryable provider_error", async () => {
+    const uncertain: ChannelAdapter = {
+      channel: "WHATSAPP",
+      async send(): Promise<AdapterSendResult> {
+        throw new SendOutcomeUnknownError("worker timed out mid-send with +14155550100");
+      },
+    };
+    const result = await sendMessage(
+      { channel: "WHATSAPP", businessId: "biz_1", to: "+14155550100", message: { kind: "freeform", body: "Hi" } },
+      registryWith(uncertain)
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe("delivery_uncertain");
+      expect(result.error).not.toContain("14155550100");
+    }
+  });
+
+  it("passes a well-formed idempotency key to the adapter and drops a malformed one", async () => {
+    const seen: AdapterSendInput[] = [];
+    const recording: ChannelAdapter = {
+      channel: "WHATSAPP",
+      async send(input): Promise<AdapterSendResult> {
+        seen.push(input);
+        return { providerMessageId: "m", status: "SENT" };
+      },
+    };
+    const base = { channel: "WHATSAPP" as const, businessId: "biz_1", to: "+14155550100" };
+
+    await sendMessage({ ...base, message: { kind: "freeform", body: "Hi" }, idempotencyKey: "follow-up:d1" }, registryWith(recording));
+    // Sent unkeyed rather than refused: a malformed key is a bug, not a reason to drop the message.
+    await sendMessage({ ...base, message: { kind: "freeform", body: "Hi" }, idempotencyKey: "has a space" }, registryWith(recording));
+    await sendMessage({ ...base, message: { kind: "freeform", body: "Hi" } }, registryWith(recording));
+
+    expect(seen.map((input) => input.idempotencyKey)).toEqual(["follow-up:d1", undefined, undefined]);
   });
 });

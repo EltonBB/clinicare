@@ -6,6 +6,12 @@ import { BRIDGE_HEADER, config } from "./config";
 import { logger, scrubError } from "./logger";
 import { prisma } from "./prisma";
 import {
+  classifySendError,
+  createSendDeduper,
+  IDEMPOTENCY_KEY_PATTERN,
+  sendOutcomeResponse,
+} from "./send-dedupe";
+import {
   bootstrapSessions,
   closeAllSessions,
   forceRestartSession,
@@ -18,6 +24,17 @@ import {
  * (src/lib/messaging/index.ts). Reject — never truncate — so the app's stored
  * body always equals what was actually sent. */
 const MAX_SEND_BODY = 8000;
+
+/**
+ * Remembers keyed sends for 2 hours — longer than the app's hourly reminder
+ * cron, so even a reminder whose "sent" marker failed to save is answered from
+ * here on the next run instead of being sent again. Capped so memory stays
+ * bounded (an entry is a fingerprint and a message id, not the message).
+ */
+const sendDeduper = createSendDeduper({
+  ttlMs: 2 * 60 * 60 * 1000,
+  maxEntries: 20_000,
+});
 
 function isAuthorized(headerValue: string | undefined): boolean {
   if (!headerValue) {
@@ -99,13 +116,35 @@ app.post("/send", requireSecret, async (req, res) => {
     res.status(400).json({ error: "to must be a digits-only phone number." });
     return;
   }
-  try {
-    const result = await sendText(businessId, to, body);
-    res.json(result);
-  } catch (error) {
-    logger.error({ businessId, error: scrubError(error) }, "send failed");
-    res.status(502).json({ error: "Send failed." });
+  // Optional: a repeat of the same key never sends twice (see send-dedupe.ts).
+  // Absent means the request behaves exactly as before keys existed.
+  const rawKey: unknown = req.body?.idempotencyKey;
+  if (
+    rawKey !== undefined &&
+    rawKey !== null &&
+    (typeof rawKey !== "string" || !IDEMPOTENCY_KEY_PATTERN.test(rawKey))
+  ) {
+    res.status(400).json({ error: "idempotencyKey is invalid." });
+    return;
   }
+  const idempotencyKey = typeof rawKey === "string" ? rawKey : undefined;
+
+  const outcome = await sendDeduper.run(
+    { businessId, key: idempotencyKey, to, body },
+    async () => {
+      try {
+        return { kind: "sent", result: await sendText(businessId, to, body) };
+      } catch (error) {
+        logger.error({ businessId, error: scrubError(error) }, "send failed");
+        return classifySendError(error);
+      }
+    }
+  );
+  if (outcome.kind === "key_conflict") {
+    logger.warn({ businessId }, "send refused: idempotency key reused for a different message");
+  }
+  const response = sendOutcomeResponse(outcome);
+  res.status(response.status).json(response.body);
 });
 
 // Backstops: a stray rejection/exception must not silently drop every tenant's

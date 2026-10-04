@@ -28,13 +28,36 @@ export type WorkerPairRequest = {
   force?: boolean;
 };
 
-/** app → worker: POST {workerUrl}/send */
+/**
+ * app → worker: POST {workerUrl}/send
+ *
+ * Answers: 200 {@link WorkerSendResponse} (sent, or a replay of an earlier send
+ * with the same key); 409 {@link WORKER_SEND_OUTCOME_UNKNOWN_STATUS} — the socket
+ * send timed out, so the message may have left, and every repeat of the key is
+ * answered the same way, never re-sent; 422 {@link WORKER_SEND_KEY_CONFLICT_STATUS}
+ * — the key already carried a different message that was sent or may have been
+ * (this one is not sent); 400/502 — nothing sent, safe to retry.
+ * A worker from before keys existed ignores the key and answers 502 for a timeout
+ * as well.
+ */
 export type WorkerSendRequest = {
   businessId: string;
   /** Digits-only E.164, no "+" (Baileys JID form), e.g. "38344123456". */
   to: string;
   body: string;
+  /**
+   * One per logical message (IDEMPOTENCY_KEY_PATTERN in ./limits). The worker
+   * remembers it in memory for a while, per workspace, so a retry can't send the
+   * message twice. Omitted: no de-duplication.
+   */
+  idempotencyKey?: string;
 };
+
+/** The worker's answer when a send's outcome is unknown (it may have left). */
+export const WORKER_SEND_OUTCOME_UNKNOWN_STATUS = 409;
+
+/** The worker's answer when the key already carried a different message. */
+export const WORKER_SEND_KEY_CONFLICT_STATUS = 422;
 
 export type WorkerSendResponse = {
   providerMessageId: string | null;

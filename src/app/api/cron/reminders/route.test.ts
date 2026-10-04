@@ -4,6 +4,7 @@ const acquireCronLock = vi.fn();
 const releaseCronLock = vi.fn();
 const syncAppointmentRemindersJob = vi.fn();
 const autoCloseStaleTimeEntries = vi.fn();
+const recoverAbandonedReplyIntents = vi.fn();
 const isAuthorizedCronRequest = vi.fn();
 
 vi.mock("@/lib/cron-lock", () => ({ acquireCronLock, releaseCronLock }));
@@ -12,6 +13,7 @@ vi.mock("@/lib/logger", () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
 vi.mock("@/lib/staff-clock", () => ({ autoCloseStaleTimeEntries }));
+vi.mock("@/lib/messaging/inbound", () => ({ recoverAbandonedReplyIntents }));
 // Fully self-contained — NOT vi.importActual. reminders.ts imports lib/prisma,
 // which reads DATABASE_URL at module load time; CI has no .env, so pulling in
 // the real module here throws before a single test runs. createReminderRunProgress
@@ -41,6 +43,7 @@ describe("reminders cron route", () => {
     releaseCronLock.mockReset().mockResolvedValue(undefined);
     syncAppointmentRemindersJob.mockReset();
     autoCloseStaleTimeEntries.mockReset().mockResolvedValue({ closed: 0 });
+    recoverAbandonedReplyIntents.mockReset().mockResolvedValue({ recovered: 0 });
     // Every test defaults to an authorized request; the 401 test below is the
     // one exception. A vi.fn() here (not a plain arrow function) so that
     // exception is a plain mockReturnValueOnce, not a doMock/resetModules
@@ -90,6 +93,29 @@ describe("reminders cron route", () => {
    * release anything — releasing would risk evicting a DIFFERENT
    * invocation's real, still-held lock.
    */
+  it("recovers abandoned reply checks after the reminders, and a failure there doesn't fail the run", async () => {
+    syncAppointmentRemindersJob.mockResolvedValue({
+      processedBusinesses: 1,
+      sent: 1,
+      failed: 0,
+      skippedBusinesses: 0,
+      abandonedBusinesses: 0,
+    });
+    recoverAbandonedReplyIntents.mockResolvedValueOnce({ recovered: 2 });
+    const { GET } = await import("./route");
+
+    expect(await (await GET(request())).json()).toMatchObject({ ok: true, sent: 1, recoveredReplies: 2 });
+    // Bounded so it can't run the invocation past its hard deadline.
+    expect(recoverAbandonedReplyIntents).toHaveBeenCalledWith(expect.any(Date), expect.any(Number));
+    expect(recoverAbandonedReplyIntents.mock.calls[0][1]).toBeLessThan(Date.now() + 270_000);
+    expect(syncAppointmentRemindersJob.mock.invocationCallOrder[0]).toBeLessThan(
+      recoverAbandonedReplyIntents.mock.invocationCallOrder[0]
+    );
+
+    recoverAbandonedReplyIntents.mockRejectedValueOnce(new Error("sweep failed"));
+    expect(await (await GET(request())).json()).toMatchObject({ ok: true, sent: 1, recoveredReplies: 0 });
+  });
+
   it("still runs but releases nothing when the lock was fail-open (no token)", async () => {
     acquireCronLock.mockResolvedValue({ proceed: true, token: null });
     syncAppointmentRemindersJob.mockResolvedValue({

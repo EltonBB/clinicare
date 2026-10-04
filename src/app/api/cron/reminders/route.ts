@@ -4,6 +4,7 @@ import { withDeadline } from "@/lib/concurrency";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { logger } from "@/lib/logger";
+import { recoverAbandonedReplyIntents } from "@/lib/messaging/inbound";
 import { createReminderRunProgress, syncAppointmentRemindersJob } from "@/lib/reminders";
 import { HARD_RESPONSE_DEADLINE_MS, REMINDER_RUN_BUDGET_MS } from "@/lib/reminder-timing";
 import { autoCloseStaleTimeEntries } from "@/lib/staff-clock";
@@ -35,6 +36,11 @@ const LOCK_NAME = "reminders";
 // the two can't silently drift apart if one is ever changed alone.
 const LOCK_TTL_SECONDS = Math.ceil(HARD_RESPONSE_DEADLINE_MS / 1_000) + 60;
 
+// The reply-recovery sweep starts no new check this close to the hard deadline:
+// one check can take ~35s (a short wait on a running claim plus the
+// acknowledgement send's own timeout).
+const REPLY_RECOVERY_MARGIN_MS = 45_000;
+
 export async function GET(request: Request) {
   if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized cron request." }, { status: 401 });
@@ -61,6 +67,7 @@ export async function GET(request: Request) {
   let timedOut = false;
 
   try {
+    const startedAt = Date.now();
     const outcome = await withDeadline(
       (async () => {
         const result = await syncAppointmentRemindersJob(
@@ -86,7 +93,19 @@ export async function GET(request: Request) {
           logger.error("Auto-close stale time entries failed.", error);
         }
 
-        return { ...result, closedTimeEntries, timedOut: false as const };
+        // Finish patient replies whose check was cut off by a crash (see
+        // recoverAbandonedReplyIntents). Best-effort, like the sweep above.
+        let recoveredReplies = 0;
+        try {
+          ({ recovered: recoveredReplies } = await recoverAbandonedReplyIntents(
+            new Date(),
+            startedAt + HARD_RESPONSE_DEADLINE_MS - REPLY_RECOVERY_MARGIN_MS
+          ));
+        } catch (error) {
+          logger.error("Recovering abandoned reply checks failed.", error);
+        }
+
+        return { ...result, closedTimeEntries, recoveredReplies, timedOut: false as const };
       })(),
       HARD_RESPONSE_DEADLINE_MS,
       () => {
@@ -103,6 +122,7 @@ export async function GET(request: Request) {
           skippedBusinesses: progress.skipped,
           abandonedBusinesses: progress.abandoned,
           closedTimeEntries: 0,
+          recoveredReplies: 0,
           timedOut: true as const,
         };
       }

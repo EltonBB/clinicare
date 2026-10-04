@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
-  const message = { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), updateMany: vi.fn() };
+  const message = { findFirst: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn() };
   const client = { findMany: vi.fn() };
   const conversation = { upsert: vi.fn() };
   const appointment = { findMany: vi.fn() };
@@ -50,7 +50,7 @@ vi.mock("@/lib/messaging", () => ({
 
 vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 
-import { applyInboundReplyIntent, recordInboundMessage } from "./inbound";
+import { applyInboundReplyIntent, recordInboundMessage, recoverAbandonedReplyIntents } from "./inbound";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -226,6 +226,10 @@ describe("recordInboundMessage", () => {
 
 describe("applyInboundReplyIntent", () => {
   const NOW = new Date("2026-07-01T12:00:00Z");
+  // The check compares a matched visit's start with the real clock, so the
+  // clock is pinned to the replies' time.
+  beforeEach(() => vi.useFakeTimers({ now: NOW }));
+  afterEach(() => vi.useRealTimers());
   const REMINDED_UPCOMING = {
     id: "appt_1",
     startAt: new Date("2026-07-02T09:00:00Z"),
@@ -292,6 +296,34 @@ describe("applyInboundReplyIntent", () => {
     // Finding 2: the confirm branch now revalidates the calendar surfaces too
     // (the cancel branch already did).
     expect(mocks.revalidateCalendarSurfaces).toHaveBeenCalledWith(["client_1"], ["staff_1"]);
+  });
+
+  // Codex #130: a delivery the worker retries can reach the acknowledgement again (a
+  // confirm then takes the already-confirmed path); the patient's own message names it,
+  // so the second answer is a replay, not a second WhatsApp message.
+  it("keys the acknowledgement by the patient's message, and sends unkeyed without one", async () => {
+    for (let run = 0; run < 2; run += 1) {
+      mocks.appointment.findMany.mockResolvedValueOnce([{ ...REMINDED_UPCOMING, status: "CONFIRMED" }]);
+      mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });
+    }
+
+    await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "1", messageId: "msg_in_1", now: NOW });
+    expect(mocks.sendMessage).toHaveBeenLastCalledWith(expect.objectContaining({ idempotencyKey: "reply-ack:msg_in_1" }));
+
+    await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "1", now: NOW });
+    expect(mocks.sendMessage).toHaveBeenLastCalledWith(expect.not.objectContaining({ idempotencyKey: expect.anything() }));
+  });
+
+  it("doesn't mirror an acknowledgement whose delivery is uncertain, and still applies the confirm", async () => {
+    mocks.appointment.findMany.mockResolvedValueOnce([REMINDED_UPCOMING]);
+    mocks.confirmAppointmentCore.mockResolvedValueOnce({ ok: true, appointmentId: "appt_1", clientId: "client_1", staffMemberId: "staff_1", changed: true });
+    mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "delivery_uncertain", error: "x" });
+
+    const result = await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "1", now: NOW });
+
+    expect(result).toEqual({ applied: true, intent: "confirm", appointmentId: "appt_1" });
+    expect(mocks.sendMessage).toHaveBeenCalledTimes(1);
+    expect(mocks.message.create).not.toHaveBeenCalled();
   });
 
   it("acknowledges a 1 on an already-confirmed appointment without touching it", async () => {
@@ -457,6 +489,7 @@ describe("applyInboundReplyIntent", () => {
   });
 
   it("releases the message's claim and reports it in progress (so the worker retries) while the offer is being sent", async () => {
+    vi.useFakeTimers({ now: NOW });
     mocks.followUpDraft.findFirst.mockResolvedValueOnce({ sentAt: null });
 
     const result = await applyInboundReplyIntent({
@@ -469,10 +502,11 @@ describe("applyInboundReplyIntent", () => {
 
     expect(result).toEqual({ applied: false, reason: "in_progress" });
     expect(mocks.message.updateMany).toHaveBeenLastCalledWith({
-      where: { id: "msg_1" },
-      data: { replyIntentHandledAt: null },
+      where: { id: "msg_1", replyIntentLeaseUntil: new Date(NOW.getTime() + 2 * 60 * 1000) },
+      data: { replyIntentLeaseUntil: null },
     });
     expect(mocks.cancelAppointmentCore).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 
   it("ends the stand-down once the offer is no longer live (its slot passed, or the appointment is back on)", async () => {
@@ -522,14 +556,28 @@ describe("applyInboundReplyIntent", () => {
   // "you're confirmed" message again.
   describe("per-message claim (a worker retry must not re-send a reply)", () => {
     const LEASE_END = new Date(NOW.getTime() + 2 * 60 * 1000);
-    const CLAIM = { where: { id: "msg_1", replyIntentHandledAt: null }, data: { replyIntentHandledAt: LEASE_END } };
-    const FINISH = { where: { id: "msg_1" }, data: { replyIntentHandledAt: NOW } };
-    const RELEASE = { where: { id: "msg_1" }, data: { replyIntentHandledAt: null } };
-    const args = { businessId: "biz_1", clientId: "client_1", body: "1", messageId: "msg_1", now: NOW };
-    const claimedBy = (replyIntentHandledAt: Date | null) => {
-      mocks.message.updateMany.mockResolvedValueOnce({ count: 0 });
-      mocks.message.findUnique.mockResolvedValueOnce({ replyIntentHandledAt });
+    // Claimable when nobody has finished it and no lease is running: never
+    // leased, released, or leased by a check that died (Codex #130).
+    const CLAIM = {
+      where: {
+        id: "msg_1",
+        replyIntentHandledAt: null,
+        OR: [{ replyIntentLeaseUntil: null }, { replyIntentLeaseUntil: { lte: NOW } }],
+      },
+      data: { replyIntentLeaseUntil: LEASE_END },
     };
+    // Release and finish touch only this run's own lease.
+    const OWN_LEASE = { id: "msg_1", replyIntentLeaseUntil: LEASE_END };
+    const FINISH = { where: OWN_LEASE, data: { replyIntentHandledAt: NOW, replyIntentLeaseUntil: null } };
+    const RELEASE = { where: OWN_LEASE, data: { replyIntentLeaseUntil: null } };
+    const args = { businessId: "biz_1", clientId: "client_1", body: "1", messageId: "msg_1", now: NOW };
+    const claimedBy = (replyIntentHandledAt: Date | null, replyIntentLeaseUntil: Date | null = null) => {
+      mocks.message.updateMany.mockResolvedValueOnce({ count: 0 });
+      mocks.message.findUnique.mockResolvedValueOnce({ replyIntentHandledAt, replyIntentLeaseUntil });
+    };
+
+    beforeEach(() => vi.useFakeTimers({ now: NOW }));
+    afterEach(() => vi.useRealTimers());
 
     it("skips everything, including the reply, when another delivery already handled this message", async () => {
       claimedBy(new Date(NOW.getTime() - 5_000)); // finished 5s before this retry
@@ -554,12 +602,9 @@ describe("applyInboundReplyIntent", () => {
     describe("a retry that finds the check still running", () => {
       const RUNNING = new Date(NOW.getTime() + 2 * 60 * 1000 - 10_000); // claimed 10s before this retry
 
-      beforeEach(() => vi.useFakeTimers());
-      afterEach(() => vi.useRealTimers());
-
       it("waits for it, then reports it in progress (not handled) without doing anything itself", async () => {
         mocks.message.updateMany.mockResolvedValue({ count: 0 });
-        mocks.message.findUnique.mockResolvedValue({ replyIntentHandledAt: RUNNING });
+        mocks.message.findUnique.mockResolvedValue({ replyIntentHandledAt: null, replyIntentLeaseUntil: RUNNING });
 
         const pending = applyInboundReplyIntent(args);
         await vi.advanceTimersByTimeAsync(7_000);
@@ -576,7 +621,7 @@ describe("applyInboundReplyIntent", () => {
       });
 
       it("does the work itself when the running check fails and releases its claim while it waits", async () => {
-        claimedBy(RUNNING); // then the next claim attempt succeeds (the default)
+        claimedBy(null, RUNNING); // then the next claim attempt succeeds (the default)
         mocks.appointment.findMany.mockResolvedValueOnce([{ ...REMINDED_UPCOMING, status: "CONFIRMED" }]);
         mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });
 
@@ -590,8 +635,8 @@ describe("applyInboundReplyIntent", () => {
       it("reports it handled once the running check finishes while it waits", async () => {
         mocks.message.updateMany.mockResolvedValue({ count: 0 });
         mocks.message.findUnique
-          .mockResolvedValueOnce({ replyIntentHandledAt: RUNNING })
-          .mockResolvedValueOnce({ replyIntentHandledAt: new Date(NOW.getTime() - 10_000) });
+          .mockResolvedValueOnce({ replyIntentHandledAt: null, replyIntentLeaseUntil: RUNNING })
+          .mockResolvedValueOnce({ replyIntentHandledAt: new Date(NOW.getTime() + 300), replyIntentLeaseUntil: null });
 
         const pending = applyInboundReplyIntent(args);
         await vi.advanceTimersByTimeAsync(500);
@@ -601,14 +646,29 @@ describe("applyInboundReplyIntent", () => {
       });
     });
 
-    it("tolerates a few seconds of clock difference between the delivery that finished and the retry", async () => {
-      claimedBy(new Date(NOW.getTime() + 3_000)); // the other instance's clock runs 3s ahead
+    // Codex #130: a check whose instance died left its lease behind, and once
+    // that lease got close enough to the retry's clock it read as handled for
+    // good - the reply was never applied. "Handled" is now its own column, and
+    // a lease that has run out is claimed again.
+    it("reads it as handled from the handled mark alone, whatever its time", async () => {
+      claimedBy(new Date(NOW.getTime() + 60 * 60 * 1000)); // even an hour ahead (clock difference)
 
       expect(await applyInboundReplyIntent(args)).toEqual({ applied: false, reason: "already_handled" });
+      expect(mocks.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it("takes over a claim whose lease ran out without the check finishing, and does the work", async () => {
+      claimedBy(null, new Date(NOW.getTime() - 1)); // the check that held it died
+      mocks.appointment.findMany.mockResolvedValueOnce([{ ...REMINDED_UPCOMING, status: "CONFIRMED" }]);
+      mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });
+
+      expect(await applyInboundReplyIntent(args)).toEqual({ applied: false, reason: "already_confirmed" });
+      expect(mocks.message.updateMany).toHaveBeenNthCalledWith(2, CLAIM); // at once, no wait
+      expect(mocks.message.updateMany).toHaveBeenNthCalledWith(3, FINISH);
     });
 
     it("claims it at once when the claim was released between its two reads, and does the work", async () => {
-      claimedBy(null);
+      claimedBy(null, null);
       mocks.appointment.findMany.mockResolvedValueOnce([{ ...REMINDED_UPCOMING, status: "CONFIRMED" }]);
       mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });
 
@@ -710,5 +770,137 @@ describe("applyInboundReplyIntent", () => {
 
       expect(mocks.message.updateMany).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("recoverAbandonedReplyIntents", () => {
+  const NOW = new Date("2026-07-01T12:00:00Z");
+  const SENT_AT = new Date(NOW.getTime() - 60 * 60 * 1000); // the reply came in an hour ago
+  const abandoned = (id: string, overrides: Record<string, unknown> = {}) => ({
+    id,
+    clientId: "client_1",
+    body: "1",
+    sentAt: SENT_AT,
+    conversation: { businessId: "biz_1" },
+    ...overrides,
+  });
+
+  beforeEach(() => vi.useFakeTimers({ now: NOW }));
+  afterEach(() => vi.useRealTimers());
+
+  it("finds unfinished replies whose lease ran out in the last day, oldest first, a batch at a time", async () => {
+    mocks.message.findMany.mockResolvedValueOnce([]);
+
+    expect(await recoverAbandonedReplyIntents(NOW)).toEqual({ recovered: 0 });
+    expect(mocks.message.findMany).toHaveBeenCalledWith({
+      where: {
+        direction: "INBOUND",
+        replyIntentHandledAt: null,
+        replyIntentLeaseUntil: { lte: NOW, gt: new Date(NOW.getTime() - 24 * 60 * 60 * 1000) },
+      },
+      select: { id: true, clientId: true, body: true, sentAt: true, conversation: { select: { businessId: true } } },
+      orderBy: { replyIntentLeaseUntil: "asc" },
+      take: 20,
+    });
+  });
+
+  it("runs the reply check again for each, through the usual claim", async () => {
+    mocks.message.findMany.mockResolvedValueOnce([abandoned("msg_1")]);
+    mocks.appointment.findMany.mockResolvedValueOnce([
+      {
+        id: "appt_1",
+        startAt: new Date("2026-07-02T09:00:00Z"),
+        staffMemberId: "staff_1",
+        status: "PENDING",
+        client: { phone: "+38344123456", name: "Mira" },
+      },
+    ]);
+    mocks.confirmAppointmentCore.mockResolvedValueOnce({
+      ok: true,
+      appointmentId: "appt_1",
+      clientId: "client_1",
+      staffMemberId: "staff_1",
+      changed: true,
+    });
+    mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });
+
+    expect(await recoverAbandonedReplyIntents(NOW)).toEqual({ recovered: 1 });
+    expect(mocks.confirmAppointmentCore).toHaveBeenCalledWith({ id: "appt_1", businessId: "biz_1" });
+    expect(mocks.message.updateMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        id: "msg_1",
+        replyIntentHandledAt: null,
+        OR: [{ replyIntentLeaseUntil: null }, { replyIntentLeaseUntil: { lte: NOW } }],
+      },
+      data: { replyIntentLeaseUntil: new Date(NOW.getTime() + 2 * 60 * 1000) },
+    });
+    expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: "reply-ack:msg_1" }));
+  });
+
+  it("closes a claim with nothing left to act on (client or conversation deleted) without running the check", async () => {
+    mocks.message.findMany.mockResolvedValueOnce([
+      abandoned("msg_1", { clientId: null }),
+      abandoned("msg_2", { conversation: null }),
+    ]);
+
+    await recoverAbandonedReplyIntents(NOW);
+
+    for (const id of ["msg_1", "msg_2"]) {
+      expect(mocks.message.updateMany).toHaveBeenCalledWith({
+        where: { id, replyIntentHandledAt: null },
+        data: { replyIntentHandledAt: NOW, replyIntentLeaseUntil: null },
+      });
+    }
+    expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+  });
+
+  it("matches each reply as of when it was sent, not as of the sweep", async () => {
+    mocks.message.findMany.mockResolvedValueOnce([abandoned("msg_1", { body: "2" })]);
+    mocks.appointment.findMany.mockResolvedValueOnce([]);
+
+    await recoverAbandonedReplyIntents(NOW);
+
+    expect(mocks.appointment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ startAt: { gt: SENT_AT } }) })
+    );
+  });
+
+  // Matched as of the reply, a visit may have started since: an hour-old "2"
+  // must not cancel a visit that is already under way.
+  it("leaves alone a visit that has started since the reply was sent", async () => {
+    mocks.message.findMany.mockResolvedValueOnce([abandoned("msg_1", { body: "2" })]);
+    mocks.appointment.findMany.mockResolvedValueOnce([
+      {
+        id: "appt_1",
+        startAt: new Date(NOW.getTime() - 10 * 60 * 1000),
+        staffMemberId: "staff_1",
+        status: "CONFIRMED",
+        client: { phone: "+38344123456", name: "Mira" },
+      },
+    ]);
+
+    expect(await recoverAbandonedReplyIntents(NOW)).toEqual({ recovered: 1 });
+    expect(mocks.cancelAppointmentCore).not.toHaveBeenCalled();
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("starts no new check past its deadline", async () => {
+    mocks.message.findMany.mockResolvedValueOnce([abandoned("msg_1"), abandoned("msg_2")]);
+    mocks.appointment.findMany.mockImplementationOnce(async () => {
+      vi.setSystemTime(NOW.getTime() + 1_000);
+      return [];
+    });
+
+    await recoverAbandonedReplyIntents(NOW, NOW.getTime() + 500);
+
+    expect(mocks.appointment.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs a message it can't recover and carries on with the rest", async () => {
+    mocks.message.findMany.mockResolvedValueOnce([abandoned("msg_1"), abandoned("msg_2")]);
+    mocks.appointment.findMany.mockRejectedValueOnce(new Error("transient")).mockResolvedValueOnce([]);
+
+    expect(await recoverAbandonedReplyIntents(NOW)).toEqual({ recovered: 1 });
+    expect(mocks.appointment.findMany).toHaveBeenCalledTimes(2);
   });
 });

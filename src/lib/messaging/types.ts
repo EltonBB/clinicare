@@ -60,14 +60,28 @@ export type SendMessageInput = {
   /** Raw recipient address (phone or email); canonicalized by the seam. */
   to: string;
   message: OutboundMessage;
+  /**
+   * Optional, one per logical message (built from record ids — see
+   * IDEMPOTENCY_KEY_PATTERN in ./limits). A repeat of the same key is never
+   * delivered twice by the provider for as long as it remembers the key, so a
+   * caller that retries should always pass the same one.
+   */
+  idempotencyKey?: string;
 };
 
+/**
+ * `provider_error`: definitely not sent — safe to retry.
+ * `delivery_uncertain`: the send may have reached the patient (the provider
+ * timed out, or its answer was lost). Never retry it blindly — a retry could
+ * deliver the message twice.
+ */
 export type SendFailureReason =
   | "channel_unconfigured"
   | "invalid_recipient"
   | "empty_message"
   | "message_too_long"
-  | "provider_error";
+  | "provider_error"
+  | "delivery_uncertain";
 
 export type SendMessageResult =
   | {
@@ -97,6 +111,8 @@ export type AdapterSendInput = {
   body: string;
   /** Set only for template sends; the adapter resolves it provider-side. */
   template?: { id: string; variables: Record<string, string> };
+  /** Passed through from {@link SendMessageInput.idempotencyKey} (already validated). */
+  idempotencyKey?: string;
 };
 
 export type AdapterSendResult = {
@@ -108,8 +124,17 @@ export type AdapterSendResult = {
  * A channel adapter wraps exactly one provider and is the ONLY place a provider
  * SDK / HTTP call may live. Adapters throw on provider failure; the dispatcher
  * translates that into a generic, customer-safe {@link SendMessageResult}.
+ * An adapter throws {@link SendOutcomeUnknownError} — never a plain Error — when
+ * the message may have left anyway.
  */
 export interface ChannelAdapter {
   readonly channel: MessageChannel;
   send(input: AdapterSendInput): Promise<AdapterSendResult>;
 }
+
+/**
+ * Thrown by an adapter when it can't tell whether the message was delivered:
+ * the provider timed out mid-send, or the request may have reached it but no
+ * usable answer came back. The dispatcher maps it to `delivery_uncertain`.
+ */
+export class SendOutcomeUnknownError extends Error {}
