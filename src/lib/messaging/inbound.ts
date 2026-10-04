@@ -5,7 +5,6 @@ import {
   revalidateCalendarSurfaces,
 } from "@/lib/appointments-shared";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
-import { DELIVERED_WHERE } from "@/lib/follow-ups-data";
 import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
 import { mirrorOutboundToInbox } from "@/lib/messaging/inbox-mirror";
@@ -194,7 +193,8 @@ export type ApplyReplyIntentResult =
         | "already_confirmed"
         | "open_offer"
         | "already_handled"
-        | "in_progress";
+        | "in_progress"
+        | "offer_sending";
     }
   | { applied: true; intent: "confirm" | "cancel"; appointmentId: string };
 
@@ -309,6 +309,23 @@ export async function applyInboundReplyIntent(args: {
     throw error;
   }
 
+  // A slot offer to this client is still being sent, so the reply can't be
+  // routed yet (see applyInboundReplyIntentCore): release the claim and report
+  // it in progress, so the webhook answers 503 and the worker's retry, a few
+  // seconds on, takes it again once the send has settled. If it never settles
+  // within the retries, the message stays in the Inbox, unapplied rather than
+  // applied to the wrong visit.
+  if (!result.applied && result.reason === "offer_sending") {
+    await prisma.message
+      .updateMany({ where: { id: messageId }, data: { replyIntentHandledAt: null } })
+      .catch((releaseError) => {
+        logger.error("Couldn't release a reply-intent claim while an offer was being sent.", releaseError, {
+          businessId: args.businessId,
+        });
+      });
+    return { applied: false, reason: "in_progress" };
+  }
+
   // Ends the lease: from here a retry is told the message is handled. Not
   // fatal if it fails — the work is done, and once the lease runs out the
   // claim reads as handled anyway.
@@ -346,22 +363,28 @@ async function applyInboundReplyIntentCore(
   // previously also a 48-hour cutoff on top of this liveness check, which cut
   // in well before a genuinely still-open offer could ever go stale, letting
   // a late "2" fall through and cancel an unrelated appointment instead
-  // (Codex). Only an offer the patient has actually received counts: one still
-  // being sent can't be what they are answering, and if its send then fails
-  // (and it goes back to Pending) standing down here would have dropped this
-  // reply for good (Codex #130).
+  // (Codex).
+  //
+  // An offer whose send has no recorded delivery yet (sentAt empty) is still
+  // on its way — or it went out and recording that failed. Either way this
+  // can't tell yet whether the reply answers it: acting on the reminder could
+  // confirm or cancel the wrong visit, and standing down for good would drop a
+  // reply that, should the send fail and the offer go back to Pending, was
+  // meant for the reminder. So it is "offer_sending": the caller hands the
+  // message back for the worker to retry in a few seconds, by which time the
+  // send has settled (Codex #130). A delivered offer wins when there are both.
   const openOffer = await prisma.followUpDraft.findFirst({
     where: {
       businessId,
       clientId,
       status: "SENT",
-      ...DELIVERED_WHERE,
       ...liveSlotOfferWhere(now),
     },
-    select: { id: true },
+    select: { sentAt: true },
+    orderBy: { sentAt: { sort: "desc", nulls: "last" } },
   });
   if (openOffer) {
-    return { applied: false, reason: "open_offer" };
+    return { applied: false, reason: openOffer.sentAt ? "open_offer" : "offer_sending" };
   }
 
   // A reminder goes to pending and confirmed appointments alike and invites

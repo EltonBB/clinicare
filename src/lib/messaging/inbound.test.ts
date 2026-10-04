@@ -406,7 +406,7 @@ describe("applyInboundReplyIntent", () => {
     ["yes", "confirm"],
     ["2", "cancel"],
   ])("stands down on %j while the client has an open slot offer — nothing is confirmed or cancelled", async (body) => {
-    mocks.followUpDraft.findFirst.mockResolvedValueOnce({ id: "draft_offer" });
+    mocks.followUpDraft.findFirst.mockResolvedValueOnce({ sentAt: NOW }); // delivered
 
     const result = await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body, now: NOW });
 
@@ -423,8 +423,6 @@ describe("applyInboundReplyIntent", () => {
         clientId: "client_1",
         kind: "SLOT_OFFER",
         status: "SENT",
-        // Received by the patient, not still being sent (Codex #130).
-        sentAt: { not: null },
         waitlistEntry: { status: "OFFERED" },
         appointment: {
           status: "CANCELLED",
@@ -433,12 +431,48 @@ describe("applyInboundReplyIntent", () => {
         },
         client: { isArchived: false, status: { notIn: ["INACTIVE", "ARCHIVED"] } },
       },
-      select: { id: true },
+      // A delivered offer wins over one still being sent.
+      select: { sentAt: true },
+      orderBy: { sentAt: { sort: "desc", nulls: "last" } },
     });
     expect(mocks.appointment.findMany).not.toHaveBeenCalled();
     expect(mocks.confirmAppointmentCore).not.toHaveBeenCalled();
     expect(mocks.cancelAppointmentCore).not.toHaveBeenCalled();
     expect(mocks.sendMessage).not.toHaveBeenCalled();
+  });
+
+  // Codex #130: an offer with no recorded delivery is either still on its way
+  // or went out with its delivery write failed. Acting on the reminder could
+  // confirm or cancel the wrong visit; standing down for good could drop a
+  // reply meant for the reminder. So the reply is handed back for a retry.
+  it("neither acts nor stands down while an offer to the client is still being sent", async () => {
+    mocks.followUpDraft.findFirst.mockResolvedValueOnce({ sentAt: null });
+
+    const result = await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "yes", now: NOW });
+
+    expect(result).toEqual({ applied: false, reason: "offer_sending" });
+    expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+    expect(mocks.confirmAppointmentCore).not.toHaveBeenCalled();
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("releases the message's claim and reports it in progress (so the worker retries) while the offer is being sent", async () => {
+    mocks.followUpDraft.findFirst.mockResolvedValueOnce({ sentAt: null });
+
+    const result = await applyInboundReplyIntent({
+      businessId: "biz_1",
+      clientId: "client_1",
+      body: "2",
+      messageId: "msg_1",
+      now: NOW,
+    });
+
+    expect(result).toEqual({ applied: false, reason: "in_progress" });
+    expect(mocks.message.updateMany).toHaveBeenLastCalledWith({
+      where: { id: "msg_1" },
+      data: { replyIntentHandledAt: null },
+    });
+    expect(mocks.cancelAppointmentCore).not.toHaveBeenCalled();
   });
 
   it("ends the stand-down once the offer is no longer live (its slot passed, or the appointment is back on)", async () => {
