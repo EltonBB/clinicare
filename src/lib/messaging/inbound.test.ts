@@ -461,15 +461,23 @@ describe("applyInboundReplyIntent", () => {
       where: {
         businessId: "biz_1",
         clientId: "client_1",
-        kind: "SLOT_OFFER",
-        status: "SENT",
-        waitlistEntry: { status: "OFFERED" },
-        appointment: {
-          status: "CANCELLED",
-          startAt: { gt: NOW },
-          OR: [{ staffMemberId: null }, { staffMember: { isActive: true, status: { not: "INACTIVE" } } }],
-        },
-        client: { isArchived: false, status: { notIn: ["INACTIVE", "ARCHIVED"] } },
+        OR: [
+          {
+            kind: "SLOT_OFFER",
+            status: "SENT",
+            waitlistEntry: { status: "OFFERED" },
+            appointment: {
+              status: "CANCELLED",
+              startAt: { gt: NOW },
+              OR: [{ staffMemberId: null }, { staffMember: { isActive: true, status: { not: "INACTIVE" } } }],
+            },
+            client: { isArchived: false, status: { notIn: ["INACTIVE", "ARCHIVED"] } },
+            // Out (or on its way) by the time the patient wrote.
+            OR: [{ sentAt: { lte: NOW } }, { sentAt: null, updatedAt: { lte: NOW } }],
+          },
+          // Out by then and changed since, its slot ahead when they wrote.
+          { kind: "SLOT_OFFER", sentAt: { lte: NOW }, updatedAt: { gt: NOW }, appointment: { startAt: { gt: NOW } } },
+        ],
       },
       // A delivered offer wins over one still being sent.
       select: { sentAt: true },
@@ -529,7 +537,7 @@ describe("applyInboundReplyIntent", () => {
     const result = await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "2", now: NOW });
 
     const [{ where }] = mocks.followUpDraft.findFirst.mock.calls[0];
-    expect(where.appointment).toEqual({
+    expect(where.OR[0].appointment).toEqual({
       status: "CANCELLED",
       startAt: { gt: NOW },
       OR: [{ staffMemberId: null }, { staffMember: { isActive: true, status: { not: "INACTIVE" } } }],

@@ -522,12 +522,32 @@ async function applyInboundReplyIntentCore(
   // meant for the reminder. So it is "offer_sending": the caller hands the
   // message back for the worker to retry in a few seconds, by which time the
   // send has settled (Codex #130). A delivered offer wins when there are both.
+  //
+  // As of the reply, for one recovered late (recoverAbandonedReplyIntents):
+  // an offer only counts if it was sent, or had started sending, by the time
+  // the patient wrote — one staff sent afterwards can't be what they answered
+  // (Codex #133). And one that was out by then but has changed since (booked,
+  // declined, or expired after the reply) still counts, as long as its slot
+  // was ahead when they wrote: it was open then, so a "2" meant for it must
+  // not cancel the reminded visit instead. For a live reply `now` is the
+  // present, so neither changes anything.
   const openOffer = await prisma.followUpDraft.findFirst({
     where: {
       businessId,
       clientId,
-      status: "SENT",
-      ...liveSlotOfferWhere(now),
+      OR: [
+        {
+          status: "SENT",
+          ...liveSlotOfferWhere(now),
+          OR: [{ sentAt: { lte: now } }, { sentAt: null, updatedAt: { lte: now } }],
+        },
+        {
+          kind: "SLOT_OFFER",
+          sentAt: { lte: now },
+          updatedAt: { gt: now },
+          appointment: { startAt: { gt: now } },
+        },
+      ],
     },
     select: { sentAt: true },
     orderBy: { sentAt: { sort: "desc", nulls: "last" } },
