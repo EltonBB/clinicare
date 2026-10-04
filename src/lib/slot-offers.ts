@@ -6,6 +6,7 @@ import { ELIGIBLE_CLIENT_WHERE, INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eli
 import { isSlotInsideOperatingHours, operatingWeekday } from "@/lib/operating-hours";
 import { prisma } from "@/lib/prisma";
 import { retryOnWriteConflict } from "@/lib/prisma-retry";
+import { lockStaffMemberShared } from "@/lib/row-locks";
 import { acquireSchedulingLock, hasSchedulingConflict } from "@/lib/scheduling-conflicts";
 import { rankWaitlistMatches } from "@/lib/slot-fill-matching";
 import {
@@ -99,7 +100,18 @@ export async function offerFreedSlot(
   // offered at all — otherwise the hourly sweep retires the stale offer,
   // re-offers the slot here, and churns through the waiting list on every run
   // with a draft nobody can review or send (Codex #130).
+  //
+  // Share-locked BEFORE the read, so the answer holds until this offer commits.
+  // Making them Inactive (an UPDATE of the row) or deleting them (which locks
+  // the row first) then serializes with it: one already in progress is waited
+  // for and this read sees them unavailable; one that starts after waits for
+  // this offer, and its scan for their open offers finds this draft and retires
+  // it. Without the lock, a deactivation could finish its scan before this
+  // draft existed and leave it behind, its entry OFFERED and out of matching
+  // until the hourly sweep (Codex #130). See row-locks.ts.
   if (cancelled.staffMemberId) {
+    await lockStaffMemberShared(tx, cancelled.staffMemberId);
+
     const staffAvailable = await tx.staffMember.findFirst({
       where: { id: cancelled.staffMemberId, businessId, ...AVAILABLE_STAFF_WHERE },
       select: { id: true },

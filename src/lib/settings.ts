@@ -19,6 +19,7 @@ import { proAddedFeatures } from "@/lib/public-plans";
 // client bundle this module is part of. The server-side loader
 // (settings-server.ts) supplies the values, defaults included.
 import type { WorkflowSettingsValues } from "@/lib/workflow-generators";
+import { DEFAULT_REMINDER_TEMPLATE, effectiveReminderTemplate } from "@/lib/messaging/render";
 import {
   defaultBrandAccent,
   normalizeBrandHexColor,
@@ -26,8 +27,7 @@ import {
   type BrandAccentChoice,
 } from "@/lib/branding";
 
-export const defaultReminderTemplate =
-  "Hi {client_name}, this is a reminder for your appointment at {time} on {date}. Reply 1 to confirm or 2 to cancel.";
+export const defaultReminderTemplate = DEFAULT_REMINDER_TEMPLATE;
 
 // Matches saveSettingsSchema's z.string().max() in (workspace)/settings/actions.ts —
 // shared so the textarea can't accept input the server will reject as a whole
@@ -255,7 +255,9 @@ export function buildSettingsStateFromWorkspace({
   const accentPreset = resolveBrandAccentPreset(business.brandAccentColor);
   const savedCustomHex = normalizeBrandHexColor(business.brandAccentColor);
   const isCustomAccent = Boolean(savedCustomHex && accentPreset.id === "custom");
-  const reminderTemplate = reminderSettings?.template ?? defaultReminderTemplate;
+  // What patients actually receive, so a workspace still holding the old
+  // default sees (and saves) the current one, not text it no longer sends.
+  const reminderTemplate = effectiveReminderTemplate(reminderSettings?.template);
   const logoUrl = business.logoUrl ?? "";
   const logoDisplayUrl = resolvedLogoDisplayUrl ?? logoUrl;
 

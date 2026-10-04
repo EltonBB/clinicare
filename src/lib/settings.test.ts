@@ -3,6 +3,7 @@ import type { Business, BusinessHours } from "@prisma/client";
 
 import {
   buildSettingsStateFromWorkspace,
+  defaultReminderTemplate,
   buildWorkflowSavePayload,
   normalizeWorkingHoursFromDatabase,
   REBOOK_MONTH_OPTIONS,
@@ -114,6 +115,54 @@ describe("buildSettingsStateFromWorkspace — workflows", () => {
 
   it("flags a Basic workspace as not Pro", () => {
     expect(stateFor("BASIC").billing.isPro).toBe(false);
+  });
+});
+
+// Codex #130: Settings shows what patients actually receive, so a workspace
+// still holding the old default sees (and on save keeps) the current one.
+describe("buildSettingsStateFromWorkspace — reminder wording", () => {
+  const OLD_DEFAULT =
+    "Hi {client_name}, this is a reminder for your appointment at {time} on {date}. Reply here if you need to reschedule.";
+
+  function templateShownFor(template: string | null) {
+    return buildSettingsStateFromWorkspace({
+      business: {
+        id: "biz_1",
+        name: "Clinic",
+        businessType: "Clinic",
+        brandAccentColor: "cobalt",
+        logoUrl: null,
+        whatsappNumber: null,
+        whatsappEnabled: false,
+        plan: "PRO",
+        planStatus: "ACTIVE",
+      } as Business,
+      supportEmail: "owner@example.com",
+      ownerName: "Owner",
+      businessHours: [],
+      reminderSettings: template === null ? null : ({ template } as never),
+      workflows: {
+        rebookEnabled: false,
+        rebookAfterMonths: 6,
+        paymentReminderEnabled: true,
+        paymentReminderAfterDays: 3,
+        thankYouEnabled: true,
+        thankYouDelayHours: 2,
+      },
+      whatsappConnection: null,
+    }).reminders.template;
+  }
+
+  it("shows the current default in place of the old default", () => {
+    expect(templateShownFor(OLD_DEFAULT)).toBe(defaultReminderTemplate);
+  });
+
+  it("shows a clinic's own wording unchanged", () => {
+    expect(templateShownFor("Hi {client_name}, see you at {time}.")).toBe("Hi {client_name}, see you at {time}.");
+  });
+
+  it("shows the default when nothing is saved", () => {
+    expect(templateShownFor(null)).toBe(defaultReminderTemplate);
   });
 });
 

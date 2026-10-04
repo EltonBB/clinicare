@@ -55,6 +55,32 @@ describe("renderReminder (minimum-necessary)", () => {
     expect(body).toContain("3 PM");
     expect(body).toContain("Jun 24");
   });
+
+  // Codex #130: onboarding saved the default into each workspace, so a workspace
+  // created while the old wording was the default still holds it, and its
+  // patients would never learn they can reply 1 or 2.
+  it("sends the current default to a workspace still holding the old default, word for word", () => {
+    const body = renderReminder({
+      kind: "appointment_reminder",
+      recipientName: "Mira",
+      appointmentDate: "Jun 24",
+      appointmentTime: "3 PM",
+      template:
+        "  Hi {client_name}, this is a reminder for your appointment at {time} on {date}. Reply here if you need to reschedule. ",
+    });
+    expect(body).toBe("Hi Mira, this is a reminder for your appointment at 3 PM on Jun 24. Reply 1 to confirm or 2 to cancel.");
+  });
+
+  it("leaves a clinic's own wording alone, even when it mentions rescheduling", () => {
+    const body = renderReminder({
+      kind: "appointment_reminder",
+      recipientName: "Mira",
+      appointmentDate: "Jun 24",
+      appointmentTime: "3 PM",
+      template: "Hi {client_name}, see you at {time} on {date}. Reply here if you need to reschedule.",
+    });
+    expect(body).toBe("Hi Mira, see you at 3 PM on Jun 24. Reply here if you need to reschedule.");
+  });
 });
 
 describe("sendMessage dispatch", () => {

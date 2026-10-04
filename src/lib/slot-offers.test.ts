@@ -140,6 +140,11 @@ describe("slotOfferBody", () => {
   });
 });
 
+// The raw SQL each $executeRaw call ran, placeholders shown as "?".
+const rawQueries = () =>
+  mocks.tx.$executeRaw.mock.calls.map((call) => (call[0] as TemplateStringsArray).join("?"));
+const STAFF_SHARE_LOCK = 'SELECT 1 FROM "StaffMember" WHERE "id" = ? FOR SHARE';
+
 describe("offerFreedSlot", () => {
   it("offers a future slot to the best match: plan re-check, match read, flip and draft insert all on the transaction", async () => {
     mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_1", "2026-01-01")]);
@@ -192,11 +197,29 @@ describe("offerFreedSlot", () => {
     const offered = await offerFreedSlot(tx, { businessId: "biz_1", cancelled: CANCELLED, now: NOW });
 
     expect(offered).toBeNull();
-    // Refused up front: no scheduling lock, no match read, no flip, no draft.
-    expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
+    // Refused up front: only the staff row's share lock, no scheduling lock,
+    // no match read, no flip, no draft.
+    expect(rawQueries()).toEqual([STAFF_SHARE_LOCK]);
     expect(mocks.tx.waitlistEntry.findMany).not.toHaveBeenCalled();
     expect(mocks.tx.waitlistEntry.updateMany).not.toHaveBeenCalled();
     expect(mocks.tx.followUpDraft.createMany).not.toHaveBeenCalled();
+  });
+
+  // Codex #130: without the lock, making the staff member Inactive (or deleting
+  // them) could finish its scan for their open offers before this draft existed,
+  // leaving it behind with its entry OFFERED. The lock comes before the read, so
+  // the read sees a deactivation already in progress once it has committed.
+  it("share-locks the assigned staff member before checking they're still available", async () => {
+    mocks.tx.waitlistEntry.findMany.mockResolvedValue([candidateRow("wl_1", "2026-01-01")]);
+
+    await offerFreedSlot(tx, { businessId: "biz_1", cancelled: CANCELLED, now: NOW });
+
+    const [firstRaw] = mocks.tx.$executeRaw.mock.calls;
+    expect(rawQueries()[0]).toBe(STAFF_SHARE_LOCK);
+    expect(firstRaw[1]).toBe(CANCELLED.staffMemberId);
+    expect(mocks.tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.tx.staffMember.findFirst.mock.invocationCallOrder[0]
+    );
   });
 
   it("doesn't look up staff for a genuinely unassigned slot", async () => {
@@ -258,8 +281,9 @@ describe("offerFreedSlot", () => {
       const offered = await offerFreedSlot(tx, { businessId: "biz_1", cancelled: CANCELLED, now: NOW });
 
       expect(offered).toBeNull();
-      // Refused up front: no scheduling lock, no match read, no flip, no draft.
-      expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
+      // Refused up front: only the staff row's share lock, no scheduling lock,
+      // no match read, no flip, no draft.
+      expect(rawQueries()).toEqual([STAFF_SHARE_LOCK]);
       expect(mocks.tx.waitlistEntry.findMany).not.toHaveBeenCalled();
       expect(mocks.tx.waitlistEntry.updateMany).not.toHaveBeenCalled();
       expect(mocks.tx.followUpDraft.createMany).not.toHaveBeenCalled();
