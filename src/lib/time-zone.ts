@@ -99,12 +99,46 @@ export function zonedDateTimeToUtc(args: {
   return new Date(utcTimestamp);
 }
 
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+/**
+ * Whether year-month-day is a real calendar date: 2026-02-31 and 2026-13-01 are
+ * not. `Date.UTC` and `zonedDateTimeToUtc` quietly roll such a date over into a
+ * different, real one (2026-02-31 becomes March 3), so a value that is only
+ * checked for its `YYYY-MM-DD` shape would be saved as a different day than the
+ * one that was typed (Codex #130). Pure calendar arithmetic, no zone involved.
+ */
+export function isRealCalendarDate(year: number, month: number, day: number) {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return false;
+  }
+
+  if (month < 1 || month > 12 || day < 1) {
+    return false;
+  }
+
+  const leapYear = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  const daysInMonth = month === 2 && leapYear ? 29 : DAYS_IN_MONTH[month - 1];
+
+  return day <= daysInMonth;
+}
+
+/** A `YYYY-MM-DD` string that names a real calendar date (see isRealCalendarDate). */
+export function isRealDateKey(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+
+  return match !== null && isRealCalendarDate(Number(match[1]), Number(match[2]), Number(match[3]));
+}
+
 /**
  * Parse an operator's `YYYY-MM-DD` + `HH:mm` wall-clock entry as a time in the
  * app's zone and return the true UTC instant. Use this for any human-entered
  * date+time (appointments, shifts) instead of `new Date("...T...")`, which is
  * parsed in the server's local zone (UTC on Vercel) and silently shifts times.
- * Returns null on malformed input.
+ * Returns null on malformed input, including a date or time that has the right
+ * shape but cannot exist (2026-02-31, 25:00, 12:60) - those used to be rolled
+ * over into a different real moment. `24:00` is still read as midnight at the end
+ * of the day, as it always was.
  */
 export function parseZonedWallClock(
   date: string,
@@ -118,14 +152,19 @@ export function parseZonedWallClock(
     return null;
   }
 
-  const parsed = zonedDateTimeToUtc({
-    year: Number(dateMatch[1]),
-    month: Number(dateMatch[2]),
-    day: Number(dateMatch[3]),
-    hour: Number(timeMatch[1]),
-    minute: Number(timeMatch[2]),
-    timeZone,
-  });
+  const year = Number(dateMatch[1]);
+  const month = Number(dateMatch[2]);
+  const day = Number(dateMatch[3]);
+  const hour = Number(timeMatch[1]);
+  const minute = Number(timeMatch[2]);
+
+  const endOfDay = hour === 24 && minute === 0;
+
+  if (!isRealCalendarDate(year, month, day) || minute > 59 || (hour > 23 && !endOfDay)) {
+    return null;
+  }
+
+  const parsed = zonedDateTimeToUtc({ year, month, day, hour, minute, timeZone });
 
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
@@ -159,6 +198,26 @@ export function getZonedDayWindowFromParts(
     end: new Date(nextDayStart.getTime() - 1),
     parts: getZonedDateParts(start, timeZone),
   };
+}
+
+/**
+ * The true UTC bounds of a `YYYY-MM-DD` clinic-local date key, or null for
+ * anything that is not a real calendar date. Callers that delete or replace rows
+ * inside the window rely on this: an impossible key (2026-02-31) must not be
+ * rolled over into March 3 and wipe that day's rows instead (Codex #130).
+ */
+export function getZonedDayWindowFromDateKey(dateKey: string, timeZone = getAppTimeZone()) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey.trim());
+
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+
+  return isRealCalendarDate(year, month, day) ? getZonedDayWindowFromParts(year, month, day, timeZone) : null;
 }
 
 export function addZonedDays(
@@ -340,6 +399,27 @@ export function formatZonedTime24(date: Date, timeZone = getAppTimeZone()) {
   const minute = String(parts.minute).padStart(2, "0");
 
   return `${hour}:${minute}`;
+}
+
+/**
+ * How many minutes the clinic's wall clock advances from `start` to `end`: whole
+ * calendar days plus the difference in time of day, both read in the app zone.
+ * This is the length the booking form needs - it adds the length to the wall-clock
+ * start to get the end time - and it is NOT the elapsed time: across a daylight-
+ * saving change the two differ by the clock shift. A 01:30-03:30 slot on the
+ * spring-forward night (Europe/Budapest, 2026-03-29) lasts 60 minutes but runs 120
+ * on the wall clock; pre-filling the elapsed 60 makes the form derive 02:30, a
+ * time that does not exist that night, which resolves back to the start and is
+ * refused (Codex #130).
+ */
+export function getZonedWallClockMinutesBetween(start: Date, end: Date, timeZone = getAppTimeZone()) {
+  const from = getZonedDateParts(start, timeZone);
+  const to = getZonedDateParts(end, timeZone);
+  const days = Math.round(
+    (Date.UTC(to.year, to.month - 1, to.day) - Date.UTC(from.year, from.month - 1, from.day)) / 86_400_000
+  );
+
+  return days * 1440 + (to.hour * 60 + to.minute) - (from.hour * 60 + from.minute);
 }
 
 export function formatZonedShortDateTime(date: Date, timeZone = getAppTimeZone()) {

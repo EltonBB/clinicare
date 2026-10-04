@@ -21,9 +21,18 @@ Next.js app (Vercel)                    WhatsApp worker (this service)
                                           auth state ⇄ Postgres (WhatsAppSession*)
 ```
 
-Both directions authenticate with a single shared secret in the
-`x-vela-bridge-secret` header (constant-time compared). The worker is trusted
-infra inside the boundary, so it names the `businessId` directly.
+App → worker calls (`/pair`, `/status`, `/send`) authenticate with a shared
+secret (`BAILEYS_BRIDGE_SECRET`) in the `x-vela-bridge-secret` header
+(constant-time compared). Worker → app events (the inbound webhook) carry
+their own HMAC instead: `x-vela-webhook-timestamp` + `x-vela-webhook-signature`
+(`v1=` HMAC-SHA256 over `timestamp.rawBody`, five-minute window), keyed with a
+**separate** secret (`APP_WEBHOOK_SECRET` on the worker, `BAILEYS_WEBHOOK_SECRET`
+on the app) — the worker names the `businessId` of every event it posts, so a
+leaked bridge secret alone must not be enough to forge one. During rollout the
+worker still also sends the shared `x-vela-bridge-secret` header on webhook
+posts, and the app accepts it as a fallback only while `BAILEYS_WEBHOOK_SECRET`
+is unset (see `DEPLOY.md`). The worker is trusted infra inside the boundary, so
+it names the `businessId` directly.
 
 ## Endpoints
 
@@ -41,7 +50,7 @@ All except `/health` require the `x-vela-bridge-secret` header.
 ```bash
 cd services/whatsapp-worker
 npm install
-cp .env.example .env        # fill in BAILEYS_BRIDGE_SECRET, APP_WEBHOOK_URL, DATABASE_URL
+cp .env.example .env        # fill in BAILEYS_BRIDGE_SECRET, APP_WEBHOOK_URL, APP_WEBHOOK_SECRET, DATABASE_URL
 npm run typecheck           # tsc --noEmit
 npm run dev                 # tsx watch src/index.ts
 ```

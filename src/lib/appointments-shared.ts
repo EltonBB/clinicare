@@ -5,6 +5,8 @@ import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import { buildStaffPushPayload, sendStaffPush } from "@/lib/mobile/push";
 import { prisma } from "@/lib/prisma";
+import { retryOnWriteConflict } from "@/lib/prisma-retry";
+import { offerFreedSlot, withdrawSlotOffers } from "@/lib/slot-offers";
 
 /**
  * Appointment-mutation side effects shared by the web calendar actions and the
@@ -125,86 +127,12 @@ export type AppointmentMutationOutcome =
     }
   | { ok: false; status: 404 | 409; error: string };
 
-/**
- * Acquires a transaction-scoped Postgres advisory lock keyed on the staff
- * member, so two concurrent saves targeting the same staff member's schedule
- * serialize on this call instead of both racing hasSchedulingConflict's
- * check-then-write gap underneath them. Must be called (and awaited) BEFORE
- * hasSchedulingConflict, inside the same transaction — the lock only
- * protects work that happens after it's acquired. Released automatically
- * when the transaction ends, commit or rollback either way; no manual
- * unlock needed. A no-op when no staff member is assigned — an unassigned
- * booking has no per-staff schedule to serialize (the schedule-block half of
- * hasSchedulingConflict still applies to everyone regardless).
- *
- * This is the actual race-closing mechanism — without it, hasSchedulingConflict
- * alone only narrows the window (fewer statements between the check and the
- * write), it doesn't close it: Postgres's default READ COMMITTED isolation
- * lets two concurrent transactions each read "no conflict" from their own
- * pre-write snapshot before either commits. A DB-level exclusion constraint
- * would close it at the schema level instead; this closes it at the
- * application level without a migration.
- */
-export async function acquireSchedulingLock(
-  tx: Prisma.TransactionClient,
-  staffMemberId: string | null
-): Promise<void> {
-  if (!staffMemberId) {
-    return;
-  }
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${staffMemberId}))`;
-}
-
-export type SchedulingConflictCheck = {
-  businessId: string;
-  staffMemberId: string | null;
-  startAt: Date;
-  endAt: Date;
-  /** Exclude this appointment's own row — pass when editing, omit when creating. */
-  excludeAppointmentId?: string;
-};
-
-/**
- * True if the given window can't be booked as given: another active
- * appointment for the same staff member overlaps it, or it falls inside a
- * business-wide blocked-off period (ScheduleBlock has no staffMemberId, so
- * that half applies regardless of staff assignment). Callers must hold
- * acquireSchedulingLock first for this to actually be race-safe against a
- * concurrent caller checking the same staff member's schedule — see that
- * function's comment.
- */
-export async function hasSchedulingConflict(
-  tx: Prisma.TransactionClient,
-  { businessId, staffMemberId, startAt, endAt, excludeAppointmentId }: SchedulingConflictCheck
-): Promise<boolean> {
-  if (staffMemberId) {
-    const overlappingAppointment = await tx.appointment.findFirst({
-      where: {
-        businessId,
-        staffMemberId,
-        status: { not: "CANCELLED" },
-        ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
-        startAt: { lt: endAt },
-        endAt: { gt: startAt },
-      },
-      select: { id: true },
-    });
-
-    if (overlappingAppointment) {
-      return true;
-    }
-  }
-
-  const overlappingBlock = await tx.scheduleBlock.findFirst({
-    where: {
-      businessId,
-      startsAt: { lt: endAt },
-      endsAt: { gt: startAt },
-    },
-    select: { id: true },
-  });
-
-  return Boolean(overlappingBlock);
+/** The success outcome for one appointment row (`changed` false = an idempotent no-op). */
+function mutationDone(
+  row: { id: string; clientId: string; staffMemberId: string | null },
+  changed: boolean
+): AppointmentMutationOutcome {
+  return { ok: true, appointmentId: row.id, clientId: row.clientId, staffMemberId: row.staffMemberId, changed };
 }
 
 /**
@@ -241,7 +169,14 @@ export async function cancelAppointmentCore(where: {
   businessId: string;
   staffMemberId?: string;
 }): Promise<AppointmentMutationOutcome> {
-  return prisma.$transaction(async (tx) => {
+  // Retried once if Postgres aborts it as a deadlock: this transaction takes
+  // row locks (the appointment, then the client's last-visit refresh) before
+  // offerFreedSlot takes the staff member's scheduling advisory lock, while a
+  // booking or edit takes that advisory lock first and the same rows after —
+  // two of them racing on one staff member can form a lock cycle, and
+  // Postgres resolves it by aborting one side (Codex #130). Everything in the
+  // closure is rolled back with it and is safe to run again.
+  return retryOnWriteConflict(() => prisma.$transaction(async (tx) => {
     // Compare-and-set: the terminal-state guard is folded into the update's
     // WHERE clause so Postgres evaluates it against the row's current
     // committed state, not a possibly-stale earlier read. Without this, a
@@ -300,19 +235,15 @@ export async function cancelAppointmentCore(where: {
       }
 
       // existing.status === "CANCELLED": idempotent, nothing left to do.
-      return {
-        ok: true,
-        appointmentId: existing.id,
-        clientId: existing.clientId,
-        staffMemberId: existing.staffMemberId,
-        changed: false,
-      };
+      return mutationDone(existing, false);
     }
 
     // The guarded update applied — this call is the one that just cancelled it.
+    // title/startAt/endAt are pulled here too (rather than a second read) so
+    // the slot offer below reuses this row instead of re-fetching it.
     const cancelled = await tx.appointment.findFirstOrThrow({
       where: { id: where.id },
-      select: { id: true, clientId: true, staffMemberId: true, startAt: true },
+      select: { id: true, clientId: true, staffMemberId: true, title: true, startAt: true, endAt: true },
     });
 
     // Freezes the scheduled time as of this cancellation, for the same reason
@@ -330,14 +261,13 @@ export async function cancelAppointmentCore(where: {
     await tx.appointmentReminder.deleteMany({ where: { appointmentId: cancelled.id } });
     await refreshClientLastVisitAt(cancelled.clientId, where.businessId, tx);
 
-    return {
-      ok: true,
-      appointmentId: cancelled.id,
-      clientId: cancelled.clientId,
-      staffMemberId: cancelled.staffMemberId,
-      changed: true,
-    };
-  });
+    // A cancellation just freed a slot: offer it to the waiting list (Pro
+    // only — offerFreedSlot re-checks the plan inside this transaction, so no
+    // caller — web, mobile, or the reply-cancel path — can skip the gate).
+    await offerFreedSlot(tx, { businessId: where.businessId, cancelled });
+
+    return mutationDone(cancelled, true);
+  }));
 }
 
 /**
@@ -392,13 +322,7 @@ export async function recordAppointmentAttendanceCore(args: {
 
       if (existing.status === target) {
         // Already in the requested state: nothing to write, nothing to announce.
-        return {
-          ok: true,
-          appointmentId: existing.id,
-          clientId: existing.clientId,
-          staffMemberId: existing.staffMemberId,
-          changed: false,
-        };
+        return mutationDone(existing, false);
       }
 
       if (!attended && existing.status === "CANCELLED") {
@@ -420,13 +344,49 @@ export async function recordAppointmentAttendanceCore(args: {
 
     await refreshClientLastVisitAt(updated.clientId, businessId, tx);
 
-    return {
-      ok: true,
-      appointmentId: updated.id,
-      clientId: updated.clientId,
-      staffMemberId: updated.staffMemberId,
-      changed: true,
-    };
+    return mutationDone(updated, true);
+  });
+}
+
+/**
+ * Confirms a pending appointment via compare-and-set, same discipline as
+ * cancelAppointmentCore/recordAppointmentAttendanceCore: the allowed source
+ * state (PENDING) lives in the update's own WHERE clause. Used by the
+ * confirm-by-reply workflow — see lib/messaging/inbound.ts.
+ */
+export async function confirmAppointmentCore(where: {
+  id: string;
+  businessId: string;
+}): Promise<AppointmentMutationOutcome> {
+  return prisma.$transaction(async (tx) => {
+    const { count } = await tx.appointment.updateMany({
+      where: { ...where, status: "PENDING" },
+      data: { status: "CONFIRMED" },
+    });
+
+    if (count === 0) {
+      const existing = await tx.appointment.findFirst({
+        where,
+        select: { id: true, clientId: true, staffMemberId: true, status: true },
+      });
+
+      if (!existing) {
+        return { ok: false, status: 404, error: APPOINTMENT_NOT_FOUND_ERROR };
+      }
+
+      if (existing.status === "CONFIRMED") {
+        return mutationDone(existing, false);
+      }
+
+      return { ok: false, status: 409, error: APPOINTMENT_CONFLICT_ERROR };
+    }
+
+    const updated = await tx.appointment.findFirstOrThrow({
+      where: { id: where.id },
+      select: { id: true, clientId: true, staffMemberId: true },
+    });
+
+    return mutationDone(updated, true);
   });
 }
 
@@ -459,28 +419,49 @@ export async function deleteAppointmentCore(where: {
     return { ok: false, status: 404, error: APPOINTMENT_NOT_FOUND_ERROR };
   }
 
-  return prisma.$transaction(async (tx) => {
-    // Compare-and-set: scope the delete by the same `where` used to find the
-    // row above. If a concurrent request already deleted it between that
-    // read and this statement, `count` is 0 and this call becomes a no-op
-    // instead of throwing.
-    const { count } = await tx.appointment.deleteMany({ where });
+  try {
+    // Same deadlock retry as cancelAppointmentCore: withdrawing the offers
+    // takes draft and entry row locks, which a concurrent booking or Skip can
+    // hold in the opposite order.
+    return await retryOnWriteConflict(() => prisma.$transaction(async (tx) => {
+      // A deleted cancelled appointment's slot can no longer be booked, so
+      // withdraw any waiting-list offer for it now (draft expired, entry
+      // back to WAITING). Must run before the delete: the FK's SET NULL
+      // unlinks the drafts from the appointment as soon as the row goes.
+      await withdrawSlotOffers(tx, { businessId: where.businessId, appointmentId: where.id });
 
-    if (count === 0) {
+      // Compare-and-set: scope the delete by the same `where` used to find the
+      // row above. If a concurrent request already deleted it between that
+      // read and this statement, `count` is 0 — roll back (so the withdraw
+      // above doesn't stick for a delete that didn't happen) and report it
+      // as not found instead of throwing.
+      const { count } = await tx.appointment.deleteMany({ where });
+
+      if (count === 0) {
+        throw new NothingDeleted();
+      }
+
+      await refreshClientLastVisitAt(existing.clientId, where.businessId, tx);
+
+      return {
+        ok: true as const,
+        appointmentId: where.id,
+        clientId: existing.clientId,
+        staffMemberId: existing.staffMemberId,
+        changed: true,
+      };
+    }));
+  } catch (error) {
+    if (error instanceof NothingDeleted) {
       return { ok: false, status: 404, error: APPOINTMENT_NOT_FOUND_ERROR };
     }
-
-    await refreshClientLastVisitAt(existing.clientId, where.businessId, tx);
-
-    return {
-      ok: true,
-      appointmentId: where.id,
-      clientId: existing.clientId,
-      staffMemberId: existing.staffMemberId,
-      changed: true,
-    };
-  });
+    throw error;
+  }
 }
+
+// Rolls back deleteAppointmentCore's transaction when its guarded delete hit
+// nothing.
+class NothingDeleted extends Error {}
 
 // Invalidate the Router Cache for every surface an appointment mutation touches
 // (calendar grid, dashboard schedule/KPIs, the client's directory row + detail
@@ -498,6 +479,10 @@ export function revalidateCalendarSurfaces(
   // Staff directory derives today's appointment counts; each staff detail page
   // lists that member's appointments.
   revalidatePath("/staff");
+  // A cancel can draft a waiting-list slot offer (the Inbox's Follow-ups count
+  // + list), and every follow-up row names its linked appointment's time.
+  revalidatePath("/inbox");
+  revalidatePath("/inbox/follow-ups");
   // Dedup so a move that keeps the same client/staff doesn't revalidate twice.
   for (const clientId of new Set(clientIds)) {
     if (clientId) {

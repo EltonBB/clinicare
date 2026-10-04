@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseZonedWallClock } from "@/lib/time-zone";
 
@@ -26,9 +26,13 @@ const mocks = vi.hoisted(() => {
   const revalidateCalendarSurfaces = vi.fn();
   const recordAttendance = vi.fn();
   const getRiskAssessments = vi.fn();
+  const offerFreedSlot = vi.fn();
+  const withdrawSlotOffers = vi.fn();
   const cancelAppointmentCore = vi.fn();
   const deleteAppointmentCore = vi.fn();
   return {
+    offerFreedSlot,
+    withdrawSlotOffers,
     appointment,
     client,
     staffMember,
@@ -75,6 +79,11 @@ vi.mock("@/lib/no-show-risk-data", () => ({
   getNoShowRiskAssessments: mocks.getRiskAssessments,
 }));
 
+vi.mock("@/lib/slot-offers", () => ({
+  offerFreedSlot: mocks.offerFreedSlot,
+  withdrawSlotOffers: mocks.withdrawSlotOffers,
+}));
+
 vi.mock("@/lib/appointments-shared", async () => {
   // Real constant, mocked functions — so this suite always checks the
   // actual shared error string instead of a second hand-typed copy of it.
@@ -85,12 +94,6 @@ vi.mock("@/lib/appointments-shared", async () => {
     APPOINTMENT_ALREADY_NO_SHOW_ERROR: actual.APPOINTMENT_ALREADY_NO_SHOW_ERROR,
     APPOINTMENT_CONFLICT_ERROR: actual.APPOINTMENT_CONFLICT_ERROR,
     APPOINTMENT_TIME_CONFLICT_ERROR: actual.APPOINTMENT_TIME_CONFLICT_ERROR,
-    // Real implementations, not mocks — both take the (mocked) tx client as
-    // a plain argument rather than reaching for the top-level prisma import,
-    // so running the real query-construction logic here is what makes this
-    // suite's assertions on the exact `where` shape mean anything.
-    acquireSchedulingLock: actual.acquireSchedulingLock,
-    hasSchedulingConflict: actual.hasSchedulingConflict,
     APPOINTMENT_CANCELLED_NO_SHOW_ERROR: actual.APPOINTMENT_CANCELLED_NO_SHOW_ERROR,
     APPOINTMENT_NOT_STARTED_ERROR: actual.APPOINTMENT_NOT_STARTED_ERROR,
     NO_SHOW_PLAN_ERROR: actual.NO_SHOW_PLAN_ERROR,
@@ -102,6 +105,12 @@ vi.mock("@/lib/appointments-shared", async () => {
     revalidateCalendarSurfaces: mocks.revalidateCalendarSurfaces,
   };
 });
+
+// acquireSchedulingLock/hasSchedulingConflict now live in their own
+// dependency-free module (@/lib/scheduling-conflicts) — not mocked at all,
+// so the suite's assertions on the exact `where` shape run against the real
+// query-construction logic, same as before it moved out of
+// appointments-shared.ts (Codex #130).
 
 import {
   cancelAppointmentAction,
@@ -119,6 +128,8 @@ import {
   APPOINTMENT_CONFLICT_ERROR,
   APPOINTMENT_NOT_STARTED_ERROR,
   APPOINTMENT_TIME_CONFLICT_ERROR,
+  cancelAppointmentCore,
+  deleteAppointmentCore,
   NO_SHOW_PLAN_ERROR,
 } from "@/lib/appointments-shared";
 
@@ -131,6 +142,15 @@ const EXISTING = {
   startAt: new Date("2026-06-01T09:00:00Z"),
   endAt: new Date("2026-06-01T09:30:00Z"),
   status: "CONFIRMED" as const,
+};
+
+// The slot fields a save reads before its transaction; its guarded write must still match them.
+const READ_SLOT = {
+  clientId: EXISTING.clientId,
+  staffMemberId: EXISTING.staffMemberId,
+  title: EXISTING.title,
+  startAt: EXISTING.startAt,
+  endAt: EXISTING.endAt,
 };
 
 const PAYLOAD: SaveAppointmentPayload = {
@@ -160,6 +180,9 @@ beforeEach(() => {
   // No overlap by default — tests for the conflict-detection path itself
   // override these to a truthy row.
   mocks.scheduleBlock.findFirst.mockResolvedValue(null);
+  // No overlapping cancelled-with-a-live-offer appointment by default — the
+  // slot-offer-withdrawal tests below override this to a real row.
+  mocks.appointment.findMany.mockResolvedValue([]);
   mocks.$executeRaw.mockResolvedValue(undefined);
   mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) =>
     cb({
@@ -202,7 +225,7 @@ describe("saveAppointmentAction — concurrent-edit guard", () => {
     });
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "appt_1", businessId: "biz_1", status: "CONFIRMED" },
+        where: { id: "appt_1", businessId: "biz_1", status: "CONFIRMED", ...READ_SLOT },
       })
     );
     // Nothing downstream of the write should run for a refused save.
@@ -231,7 +254,7 @@ describe("saveAppointmentAction — concurrent-edit guard", () => {
     expect(result.ok).toBe(true);
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "appt_1", businessId: "biz_1", status: "CONFIRMED" },
+        where: { id: "appt_1", businessId: "biz_1", status: "CONFIRMED", ...READ_SLOT },
       })
     );
     // The edit page renders the status this save changes, so it is refreshed too.
@@ -240,6 +263,43 @@ describe("saveAppointmentAction — concurrent-edit guard", () => {
       [null, null],
       ["appt_1"]
     );
+  });
+
+  it("re-runs the save once when Postgres aborts its transaction as a deadlock", async () => {
+    mocks.appointment.updateMany.mockResolvedValue({ count: 1 });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      id: "appt_1",
+      clientId: "client_1",
+      staffMemberId: null,
+      startAt: EXISTING.startAt,
+      endAt: EXISTING.endAt,
+      notes: null,
+      status: "CONFIRMED",
+      client: { id: "client_1", name: "Mira" },
+      staffMember: null,
+    });
+    // The first attempt is the transaction Postgres picked as the deadlock
+    // victim (the save takes the scheduling advisory lock before the rows
+    // cancel and Skip lock first). Nothing in it survives; the retry runs the
+    // whole save again against a clean slate.
+    mocks.$transaction.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("deadlock detected", { code: "P2034", clientVersion: "test" })
+    );
+
+    const result = await saveAppointmentAction(PAYLOAD);
+
+    expect(result.ok).toBe(true);
+    expect(mocks.$transaction).toHaveBeenCalledTimes(2);
+    expect(mocks.appointment.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a failure that isn't a deadlock", async () => {
+    mocks.$transaction.mockRejectedValueOnce(new Error("connection reset"));
+
+    const result = await saveAppointmentAction(PAYLOAD);
+
+    expect(result.ok).toBe(false);
+    expect(mocks.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it("guards on the client's baseline status, not a status re-read at submit time", async () => {
@@ -259,7 +319,7 @@ describe("saveAppointmentAction — concurrent-edit guard", () => {
 
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "appt_1", businessId: "biz_1", status: "CONFIRMED" },
+        where: { id: "appt_1", businessId: "biz_1", status: "CONFIRMED", ...READ_SLOT },
       })
     );
     expect(result).toEqual({
@@ -300,7 +360,7 @@ describe("saveAppointmentAction — concurrent-edit guard", () => {
     expect(result.ok).toBe(true);
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "appt_1", businessId: "biz_1", status: "CONFIRMED" },
+        where: { id: "appt_1", businessId: "biz_1", status: "CONFIRMED", ...READ_SLOT },
         data: expect.objectContaining({ status: "CANCELLED" }),
       })
     );
@@ -458,6 +518,420 @@ describe("saveAppointmentAction — cancelledAt: an immutable timestamp, not the
     const call = mocks.appointment.updateMany.mock.calls[0][0];
     expect(call.data.cancelledAt).toBeUndefined();
     expect(call.data.cancelledScheduledStartAt).toBeUndefined();
+  });
+});
+
+describe("saveAppointmentAction — the guarded write holds the slot it read", () => {
+  // A save derives its flags (did the slot move, reset the reminders, withdraw
+  // and re-offer a cancelled booking's offer) from a read made before its
+  // transaction. If another save commits a different slot in between, those
+  // flags describe a row that is gone, so the write must refuse instead of
+  // overwriting it and skipping the follow-through - which would leave an open
+  // offer promising the other save's details on a row that no longer has them
+  // (Codex #130, round 22).
+  const READ_ROW = {
+    ...EXISTING,
+    businessId: "biz_1",
+    status: "CANCELLED" as const,
+    startAt: parseZonedWallClock("2026-06-01", "09:00"),
+    endAt: parseZonedWallClock("2026-06-01", "09:30"),
+  };
+  const UNCHANGED_CANCELLED_SAVE = { ...PAYLOAD, status: "cancelled" as const, baselineStatus: "cancelled" as const };
+
+  // Stands in for Postgres matching the update's WHERE against the row as it is now.
+  function currentRowIs(row: Record<string, unknown>) {
+    mocks.appointment.updateMany.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => ({
+      count: Object.entries(where).every(([field, wanted]) => {
+        const actual = row[field];
+        return wanted instanceof Date && actual instanceof Date ? wanted.getTime() === actual.getTime() : wanted === actual;
+      })
+        ? 1
+        : 0,
+    }));
+  }
+
+  beforeEach(() => {
+    mocks.appointment.findFirst.mockResolvedValue(READ_ROW);
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      ...READ_ROW,
+      client: { id: "client_1", name: "Mira" },
+      staffMember: null,
+    });
+  });
+
+  afterEach(() => {
+    mocks.appointment.updateMany.mockReset();
+  });
+
+  const CONCURRENT_CHANGES: Array<[string, Record<string, unknown>]> = [
+    ["client", { clientId: "client_2" }],
+    ["staff member", { staffMemberId: "staff_2" }],
+    ["service", { title: "Cleaning" }],
+    ["start time", { startAt: parseZonedWallClock("2026-06-01", "10:00") }],
+    ["end time", { endAt: parseZonedWallClock("2026-06-01", "10:30") }],
+  ];
+
+  it.each(CONCURRENT_CHANGES)(
+    "refuses to overwrite a still-cancelled booking whose %s another save just changed, and touches its offer not at all",
+    async (_label, change) => {
+      // The stale read says nothing moved (so no withdraw / re-offer is planned);
+      // the row, though, already carries the other save's value.
+      currentRowIs({ ...READ_ROW, ...change });
+
+      const result = await saveAppointmentAction(UNCHANGED_CANCELLED_SAVE);
+
+      expect(result).toEqual({ ok: false, error: APPOINTMENT_CONFLICT_ERROR });
+      expect(mocks.withdrawSlotOffers).not.toHaveBeenCalled();
+      expect(mocks.offerFreedSlot).not.toHaveBeenCalled();
+      expect(mocks.appointmentReminder.deleteMany).not.toHaveBeenCalled();
+      expect(mocks.refreshClientLastVisitAt).not.toHaveBeenCalled();
+      expect(mocks.notifyStaffOfAppointmentChange).not.toHaveBeenCalled();
+      expect(mocks.revalidateCalendarSurfaces).not.toHaveBeenCalled();
+    }
+  );
+
+  it("refuses a plain confirmed save the same way, so the conflict check and reminder reset it skipped are never silently dropped", async () => {
+    mocks.appointment.findFirst.mockResolvedValue({
+      ...EXISTING,
+      startAt: parseZonedWallClock("2026-06-01", "09:00"),
+      endAt: parseZonedWallClock("2026-06-01", "09:30"),
+    });
+    currentRowIs({
+      ...EXISTING,
+      businessId: "biz_1",
+      startAt: parseZonedWallClock("2026-06-01", "15:00"),
+      endAt: parseZonedWallClock("2026-06-01", "15:30"),
+    });
+
+    const result = await saveAppointmentAction(PAYLOAD);
+
+    expect(result).toEqual({ ok: false, error: APPOINTMENT_CONFLICT_ERROR });
+    expect(mocks.appointmentReminder.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.revalidateCalendarSurfaces).not.toHaveBeenCalled();
+  });
+
+  it("saves normally when the row is still exactly as the save read it", async () => {
+    currentRowIs(READ_ROW);
+
+    const result = await saveAppointmentAction(UNCHANGED_CANCELLED_SAVE);
+
+    expect(result.ok).toBe(true);
+    expect(mocks.appointment.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds the values it READ, not the ones being saved, so an edit that changes every one of them still goes through", async () => {
+    // The guard keeps the row's old client, staff member, service and window;
+    // the data written holds the new ones. Using the payload's values in the
+    // guard would make every real edit conflict with itself.
+    mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_2" });
+    mocks.client.findFirst.mockResolvedValue({ id: "client_2" });
+    mocks.appointment.findFirst.mockReset();
+    mocks.appointment.findFirst
+      .mockResolvedValueOnce({ ...EXISTING, staffMemberId: "staff_1" }) // the save's own read
+      .mockResolvedValueOnce(null); // the overlap check
+    mocks.appointment.findMany.mockResolvedValue([]);
+    currentRowIs({ ...EXISTING, businessId: "biz_1", staffMemberId: "staff_1" });
+
+    const result = await saveAppointmentAction({
+      ...PAYLOAD,
+      clientId: "client_2",
+      staffMemberId: "staff_2",
+      service: "Cleaning",
+      startTime: "11:00",
+      endTime: "11:45",
+    });
+
+    expect(result.ok).toBe(true);
+    const call = mocks.appointment.updateMany.mock.calls[0][0];
+    expect(call.where).toEqual({
+      id: "appt_1",
+      businessId: "biz_1",
+      status: "CONFIRMED",
+      ...READ_SLOT,
+      staffMemberId: "staff_1",
+    });
+    expect(call.data).toEqual(
+      expect.objectContaining({
+        clientId: "client_2",
+        staffMemberId: "staff_2",
+        title: "Cleaning",
+        startAt: parseZonedWallClock("2026-06-01", "11:00"),
+        endAt: parseZonedWallClock("2026-06-01", "11:45"),
+      })
+    );
+  });
+});
+
+describe("saveAppointmentAction — cancelling from the Status dropdown offers the slot", () => {
+  const CANCELLED_ROW = {
+    ...EXISTING,
+    client: { id: "client_1", name: "Mira" },
+    staffMember: null,
+    status: "CANCELLED",
+  };
+
+  beforeEach(() => {
+    mocks.appointment.updateMany.mockResolvedValue({ count: 1 });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue(CANCELLED_ROW);
+  });
+
+  it("offers the freed slot to the waiting list inside the save's own transaction", async () => {
+    const txClient = {
+      appointment: mocks.appointment,
+      appointmentReminder: mocks.appointmentReminder,
+      scheduleBlock: mocks.scheduleBlock,
+      $executeRaw: mocks.$executeRaw,
+    };
+    mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(txClient));
+
+    const result = await saveAppointmentAction({ ...PAYLOAD, status: "cancelled", baselineStatus: "confirmed" });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.offerFreedSlot).toHaveBeenCalledTimes(1);
+    expect(mocks.offerFreedSlot).toHaveBeenCalledWith(txClient, {
+      businessId: "biz_1",
+      cancelled: {
+        id: "appt_1",
+        clientId: "client_1",
+        staffMemberId: null,
+        title: "Checkup",
+        startAt: parseZonedWallClock("2026-06-01", "09:00"),
+        endAt: parseZonedWallClock("2026-06-01", "09:30"),
+      },
+    });
+  });
+
+  it("offers nothing when the appointment was already cancelled, or the save isn't a cancel", async () => {
+    // Same time/staff/title as PAYLOAD, so this is the "nothing about the slot
+    // changed" case, not the "still cancelled but details changed" case below.
+    mocks.appointment.findFirst.mockResolvedValueOnce({
+      ...EXISTING,
+      status: "CANCELLED",
+      startAt: parseZonedWallClock("2026-06-01", "09:00"),
+      endAt: parseZonedWallClock("2026-06-01", "09:30"),
+    });
+    await saveAppointmentAction({ ...PAYLOAD, status: "cancelled", baselineStatus: "cancelled" });
+
+    await saveAppointmentAction(PAYLOAD); // confirmed -> confirmed
+
+    expect(mocks.offerFreedSlot).not.toHaveBeenCalled();
+    expect(mocks.withdrawSlotOffers).not.toHaveBeenCalled();
+  });
+
+  it("offers nothing when the compare-and-set guard misses", async () => {
+    mocks.appointment.updateMany.mockResolvedValue({ count: 0 });
+
+    const result = await saveAppointmentAction({ ...PAYLOAD, status: "cancelled", baselineStatus: "confirmed" });
+
+    expect(result).toEqual({ ok: false, error: APPOINTMENT_CONFLICT_ERROR });
+    expect(mocks.offerFreedSlot).not.toHaveBeenCalled();
+  });
+});
+
+describe("saveAppointmentAction — un-cancelling withdraws the slot's offer", () => {
+  // Same staff/time as the payload, so the reactivation's conflict re-check
+  // finds nothing (no staff assigned -> only the schedule-block check runs).
+  const CANCELLED_EXISTING = {
+    ...EXISTING,
+    status: "CANCELLED" as const,
+    startAt: parseZonedWallClock("2026-06-01", "09:00"),
+    endAt: parseZonedWallClock("2026-06-01", "09:30"),
+  };
+
+  beforeEach(() => {
+    mocks.appointment.updateMany.mockResolvedValue({ count: 1 });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      ...EXISTING,
+      client: { id: "client_1", name: "Mira" },
+      staffMember: null,
+    });
+  });
+
+  it("withdraws any open offer for the appointment inside the save's own transaction", async () => {
+    const txClient = {
+      appointment: mocks.appointment,
+      appointmentReminder: mocks.appointmentReminder,
+      scheduleBlock: mocks.scheduleBlock,
+      $executeRaw: mocks.$executeRaw,
+    };
+    mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(txClient));
+    mocks.appointment.findFirst.mockResolvedValueOnce(CANCELLED_EXISTING);
+
+    const result = await saveAppointmentAction({ ...PAYLOAD, status: "confirmed", baselineStatus: "cancelled" });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.withdrawSlotOffers).toHaveBeenCalledWith(txClient, { businessId: "biz_1", appointmentId: "appt_1" });
+    expect(mocks.offerFreedSlot).not.toHaveBeenCalled();
+  });
+
+  it("withdraws nothing for a save that neither leaves CANCELLED nor fails its guard", async () => {
+    await saveAppointmentAction(PAYLOAD); // confirmed -> confirmed
+    await saveAppointmentAction({ ...PAYLOAD, status: "cancelled", baselineStatus: "confirmed" }); // a cancel
+
+    mocks.appointment.findFirst.mockResolvedValueOnce(CANCELLED_EXISTING);
+    mocks.appointment.updateMany.mockResolvedValue({ count: 0 }); // reactivation lost its CAS
+    await saveAppointmentAction({ ...PAYLOAD, status: "confirmed", baselineStatus: "cancelled" });
+
+    expect(mocks.withdrawSlotOffers).not.toHaveBeenCalled();
+  });
+
+  it("editing a still-cancelled booking's time withdraws the old offer and re-offers the new details, in that order", async () => {
+    const txClient = {
+      appointment: mocks.appointment,
+      appointmentReminder: mocks.appointmentReminder,
+      scheduleBlock: mocks.scheduleBlock,
+      $executeRaw: mocks.$executeRaw,
+    };
+    mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(txClient));
+    mocks.appointment.findFirst.mockResolvedValueOnce(CANCELLED_EXISTING);
+
+    const result = await saveAppointmentAction({
+      ...PAYLOAD,
+      status: "cancelled",
+      baselineStatus: "cancelled",
+      startTime: "14:00",
+      endTime: "14:30",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.withdrawSlotOffers).toHaveBeenCalledWith(txClient, { businessId: "biz_1", appointmentId: "appt_1" });
+    expect(mocks.offerFreedSlot).toHaveBeenCalledWith(txClient, {
+      businessId: "biz_1",
+      cancelled: {
+        id: "appt_1",
+        clientId: "client_1",
+        staffMemberId: null,
+        title: "Checkup",
+        startAt: parseZonedWallClock("2026-06-01", "14:00"),
+        endAt: parseZonedWallClock("2026-06-01", "14:30"),
+      },
+    });
+    const withdrawOrder = mocks.withdrawSlotOffers.mock.invocationCallOrder[0];
+    const offerOrder = mocks.offerFreedSlot.mock.invocationCallOrder[0];
+    expect(withdrawOrder).toBeLessThan(offerOrder);
+  });
+
+  // Codex #130 (round 8): a duration-only edit (endAt moves, startAt
+  // doesn't) still changes the window the offer promises — Book derives its
+  // own duration from the saved end time, so a stale offer for the old,
+  // shorter window could let Book mark the entry FILLED before the booking
+  // form's own overlap check catches the now-longer slot conflicting with
+  // whatever follows it.
+  it("editing only a still-cancelled booking's duration withdraws the old offer and re-offers the new window", async () => {
+    const txClient = {
+      appointment: mocks.appointment,
+      appointmentReminder: mocks.appointmentReminder,
+      scheduleBlock: mocks.scheduleBlock,
+      $executeRaw: mocks.$executeRaw,
+    };
+    mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(txClient));
+    mocks.appointment.findFirst.mockResolvedValueOnce(CANCELLED_EXISTING);
+
+    const result = await saveAppointmentAction({
+      ...PAYLOAD,
+      status: "cancelled",
+      baselineStatus: "cancelled",
+      endTime: "10:00", // was 09:30 — same start time, longer duration
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.withdrawSlotOffers).toHaveBeenCalledWith(txClient, { businessId: "biz_1", appointmentId: "appt_1" });
+    expect(mocks.offerFreedSlot).toHaveBeenCalledWith(txClient, {
+      businessId: "biz_1",
+      cancelled: {
+        id: "appt_1",
+        clientId: "client_1",
+        staffMemberId: null,
+        title: "Checkup",
+        startAt: parseZonedWallClock("2026-06-01", "09:00"),
+        endAt: parseZonedWallClock("2026-06-01", "10:00"),
+      },
+    });
+  });
+
+  it("saving a still-cancelled booking unchanged withdraws and offers nothing", async () => {
+    mocks.appointment.findFirst.mockResolvedValueOnce(CANCELLED_EXISTING);
+
+    await saveAppointmentAction({ ...PAYLOAD, status: "cancelled", baselineStatus: "cancelled" });
+
+    expect(mocks.withdrawSlotOffers).not.toHaveBeenCalled();
+    expect(mocks.offerFreedSlot).not.toHaveBeenCalled();
+  });
+
+  // Codex #130: reassigning a still-cancelled booking to the very client who
+  // currently holds its open offer left that offer live for the client who,
+  // per the row's new data, is now the one who "cancelled" it.
+  it("reassigning a still-cancelled booking's client (staff/time/title unchanged) withdraws and re-offers", async () => {
+    const txClient = {
+      appointment: mocks.appointment,
+      appointmentReminder: mocks.appointmentReminder,
+      scheduleBlock: mocks.scheduleBlock,
+      $executeRaw: mocks.$executeRaw,
+    };
+    mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(txClient));
+    mocks.appointment.findFirst.mockResolvedValueOnce(CANCELLED_EXISTING);
+
+    const result = await saveAppointmentAction({
+      ...PAYLOAD,
+      clientId: "client_2",
+      status: "cancelled",
+      baselineStatus: "cancelled",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.withdrawSlotOffers).toHaveBeenCalledWith(txClient, { businessId: "biz_1", appointmentId: "appt_1" });
+    expect(mocks.offerFreedSlot).toHaveBeenCalledWith(txClient, {
+      businessId: "biz_1",
+      cancelled: {
+        id: "appt_1",
+        clientId: "client_2",
+        staffMemberId: null,
+        title: "Checkup",
+        startAt: parseZonedWallClock("2026-06-01", "09:00"),
+        endAt: parseZonedWallClock("2026-06-01", "09:30"),
+      },
+    });
+  });
+
+  // Codex #130 (round 8): the availability check for the edited slot (lock +
+  // overlap query) now lives INSIDE offerFreedSlot itself, shared by every
+  // re-offer path — calendar/actions.ts no longer does its own check before
+  // calling it, so this test only confirms the call happens with the right
+  // (endAt-inclusive) window; offerFreedSlot's own conflict handling is
+  // covered directly in slot-offers.test.ts.
+  it("re-offers the edited still-cancelled slot's saved window", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_1" });
+    const txClient = {
+      appointment: mocks.appointment,
+      appointmentReminder: mocks.appointmentReminder,
+      scheduleBlock: mocks.scheduleBlock,
+      $executeRaw: mocks.$executeRaw,
+    };
+    mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(txClient));
+    mocks.appointment.findFirst.mockResolvedValueOnce({ ...CANCELLED_EXISTING, staffMemberId: "staff_1" });
+
+    const result = await saveAppointmentAction({
+      ...PAYLOAD,
+      staffMemberId: "staff_1",
+      status: "cancelled",
+      baselineStatus: "cancelled",
+      startTime: "14:00",
+      endTime: "14:30",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.withdrawSlotOffers).toHaveBeenCalledWith(txClient, { businessId: "biz_1", appointmentId: "appt_1" });
+    expect(mocks.offerFreedSlot).toHaveBeenCalledWith(txClient, {
+      businessId: "biz_1",
+      cancelled: {
+        id: "appt_1",
+        clientId: "client_1",
+        staffMemberId: "staff_1",
+        title: "Checkup",
+        startAt: parseZonedWallClock("2026-06-01", "14:00"),
+        endAt: parseZonedWallClock("2026-06-01", "14:30"),
+      },
+    });
   });
 });
 
@@ -711,6 +1185,63 @@ describe("saveAppointmentAction — time conflicts", () => {
 
     expect(result.ok).toBe(true);
     expect(mocks.appointment.create).toHaveBeenCalled();
+  });
+
+  // Codex #130: hasSchedulingConflict deliberately excludes CANCELLED rows
+  // (booking over a freed slot is allowed), but a CANCELLED appointment at
+  // that same staff+time can still be holding a live waiting-list offer —
+  // this new booking just filled the slot a different way, so that offer
+  // must be withdrawn the same way un-cancelling the SAME appointment
+  // already does, or staff/patients could still act on an offer for a slot
+  // that's no longer actually free.
+  it("withdraws a live slot offer on a different, still-cancelled appointment when a new booking takes its staff+time", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: "staff_1" });
+    mocks.appointment.findFirst.mockResolvedValue(null); // no active conflict
+    mocks.appointment.findMany.mockResolvedValue([{ id: "cancelled_appt_1" }]);
+    mocks.appointment.create.mockResolvedValue({ id: "new_appt" });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      id: "new_appt",
+      clientId: "client_1",
+      staffMemberId: "staff_1",
+      startAt: new Date("2026-06-01T10:00:00Z"),
+      endAt: new Date("2026-06-01T10:30:00Z"),
+      notes: null,
+      status: "CONFIRMED",
+      client: { id: "client_1", name: "Mira" },
+      staffMember: { id: "staff_1", name: "Dr. Lee" },
+    });
+
+    const result = await saveAppointmentAction(NEW_BOOKING);
+
+    expect(result.ok).toBe(true);
+    expect(mocks.appointment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          businessId: "biz_1",
+          staffMemberId: "staff_1",
+          status: "CANCELLED",
+          startAt: { lt: parseZonedWallClock("2026-06-01", "10:30") },
+          endAt: { gt: parseZonedWallClock("2026-06-01", "10:00") },
+        }),
+      })
+    );
+    expect(mocks.withdrawSlotOffers).toHaveBeenCalledWith(
+      expect.anything(),
+      { businessId: "biz_1", appointmentId: "cancelled_appt_1" }
+    );
+  });
+
+  it("does not look for an overlapping cancelled appointment when the save itself cancels", async () => {
+    mocks.appointment.updateMany.mockResolvedValue({ count: 1 });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      ...EXISTING,
+      client: { id: "client_1", name: "Mira" },
+      staffMember: null,
+    });
+
+    await saveAppointmentAction({ ...PAYLOAD, status: "cancelled", baselineStatus: "confirmed" });
+
+    expect(mocks.appointment.findMany).not.toHaveBeenCalled();
   });
 });
 
@@ -1068,6 +1599,21 @@ describe("getNoShowRiskAction", () => {
     );
   });
 
+  it("caps an oversized id batch to MAX_RISK_BATCH_SIZE (200) instead of querying an unbounded IN clause", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1", plan: "PRO" }, user: {} });
+    mocks.appointment.findMany.mockResolvedValue([]);
+    mocks.getRiskAssessments.mockResolvedValue(new Map());
+
+    const ids = Array.from({ length: 250 }, (_, i) => `a${i}`);
+    await getNoShowRiskAction(ids);
+
+    const call = mocks.appointment.findMany.mock.calls[0][0];
+    const queriedIds: string[] = call.where.id.in;
+    expect(queriedIds).toHaveLength(200);
+    expect(queriedIds).toEqual(ids.slice(0, 200));
+    expect(queriedIds).not.toContain("a200");
+  });
+
   // Client-serialized args aren't type-checked at runtime, so a crafted
   // `{ not: "" }` would otherwise become part of the Prisma `in:` filter
   // instead of matching only real ids (Codex).
@@ -1091,5 +1637,80 @@ describe("getNoShowRiskAction", () => {
 
     expect(await getNoShowRiskAction([{ not: "" } as unknown as string, "" as unknown as string])).toEqual({});
     expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+  });
+});
+
+// Server actions take client-serialized arguments: an object id like
+// `{ not: "" }` would reach Prisma's `where` as a filter over the whole
+// workspace (a delete or cancel of every appointment, an edit of every row).
+describe("appointment actions refuse a non-string id before touching the database", () => {
+  const CRAFTED_ID = { not: "" } as unknown as string;
+  const NOT_FOUND = { ok: false, error: "Appointment not found in this clinic workspace." };
+
+  function expectNoDatabaseCall() {
+    const models = [
+      mocks.appointment,
+      mocks.client,
+      mocks.staffMember,
+      mocks.businessHours,
+      mocks.appointmentReminder,
+      mocks.scheduleBlock,
+    ];
+    for (const fn of models.flatMap((model) => Object.values(model))) {
+      expect(fn).not.toHaveBeenCalled();
+    }
+    expect(mocks.$transaction).not.toHaveBeenCalled();
+    expect(mocks.revalidateCalendarSurfaces).not.toHaveBeenCalled();
+    expect(mocks.notifyStaffOfAppointmentChange).not.toHaveBeenCalled();
+  }
+
+  it("delete", async () => {
+    expect(await deleteAppointmentAction(CRAFTED_ID)).toEqual(NOT_FOUND);
+    expect(deleteAppointmentCore).not.toHaveBeenCalled();
+    expectNoDatabaseCall();
+  });
+
+  it("cancel", async () => {
+    expect(await cancelAppointmentAction(CRAFTED_ID)).toEqual(NOT_FOUND);
+    expect(cancelAppointmentCore).not.toHaveBeenCalled();
+    expectNoDatabaseCall();
+  });
+
+  it("record attendance", async () => {
+    expect(await recordAppointmentAttendanceAction(CRAFTED_ID, false)).toEqual(NOT_FOUND);
+    expect(mocks.recordAttendance).not.toHaveBeenCalled();
+    expectNoDatabaseCall();
+  });
+
+  it("save, when the edited appointment's id is crafted", async () => {
+    expect(await saveAppointmentAction({ ...PAYLOAD, id: CRAFTED_ID })).toEqual(NOT_FOUND);
+    expectNoDatabaseCall();
+  });
+
+  it("save, when the staff id is crafted", async () => {
+    expect(await saveAppointmentAction({ ...PAYLOAD, staffMemberId: CRAFTED_ID })).toEqual({
+      ok: false,
+      error: "The selected staff member does not belong to this clinic workspace.",
+    });
+    expectNoDatabaseCall();
+  });
+
+  it("save, when the client id is crafted (treated as no client chosen)", async () => {
+    expect(await saveAppointmentAction({ ...PAYLOAD, clientId: CRAFTED_ID })).toEqual({
+      ok: false,
+      error: "Choose a client and valid start/end time before saving.",
+    });
+    expectNoDatabaseCall();
+  });
+
+  it("risk lookup drops non-string ids and skips the query when none are left", async () => {
+    mocks.appointment.findMany.mockResolvedValue([]);
+    mocks.getRiskAssessments.mockResolvedValue(new Map());
+
+    expect(await getNoShowRiskAction([CRAFTED_ID])).toEqual({});
+    expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+
+    await getNoShowRiskAction([CRAFTED_ID, "a1"]);
+    expect(mocks.appointment.findMany.mock.calls[0][0].where.id).toEqual({ in: ["a1"] });
   });
 });

@@ -58,8 +58,6 @@ export type DashboardAnalyticsSummary = {
   averageDurationMinutes: number;
 };
 
-export type DashboardTrendTone = "up" | "down" | "neutral";
-
 export type DashboardVisitsDay = {
   key: string;
   label: string;
@@ -70,9 +68,6 @@ export type DashboardVisitsDay = {
 export type DashboardVisitsSummary = {
   days: DashboardVisitsDay[];
   lastSevenDays: number;
-  previousSevenDays: number;
-  deltaLabel: string | null;
-  deltaTone: DashboardTrendTone;
   lastThirtyDays: number;
   thisMonth: number;
   allTime: number;
@@ -80,10 +75,6 @@ export type DashboardVisitsSummary = {
 
 export type DashboardRevenueSummary = {
   monthToDateDisplay: string;
-  paidCountThisMonth: number;
-  outstandingDisplay: string;
-  hasOutstanding: boolean;
-  hasPayments: boolean;
 };
 
 export type DashboardConversationPreview = {
@@ -136,7 +127,6 @@ export type DashboardViewModel = {
 export type DashboardPaymentStatusGroup = {
   status: string;
   _sum: { amountCents: number | null };
-  _count: { _all: number };
 };
 
 /**
@@ -234,8 +224,6 @@ function toDashboardStatus(status: Appointment["status"]): DashboardAppointmentS
   return "confirmed";
 }
 
-const formatDashboardMoney = (cents: number) => formatCurrency(cents, { whole: true });
-
 // The calendar day `offset` days before `now` in the clinic's time zone. The
 // subtraction runs on the date parts in UTC, so it never depends on the
 // server's own zone, and a DST change can't push a 24-hour step onto the wrong
@@ -267,30 +255,19 @@ export function buildVisitsSummary(args: {
     timeZone: "UTC",
   });
   const days: DashboardVisitsDay[] = [];
-  let previousSevenDays = 0;
 
-  for (let offset = 13; offset >= 0; offset -= 1) {
+  for (let offset = 6; offset >= 0; offset -= 1) {
     const { key, date } = zonedDayBefore(now, timeZone, offset);
-    const count = countsByDay.get(key) ?? 0;
-
-    if (offset >= 7) {
-      previousSevenDays += count;
-      continue;
-    }
 
     days.push({
       key,
       label: weekdayFormatter.format(date),
-      count,
+      count: countsByDay.get(key) ?? 0,
       isToday: offset === 0,
     });
   }
 
   const lastSevenDays = days.reduce((sum, day) => sum + day.count, 0);
-  const deltaPercent =
-    previousSevenDays > 0
-      ? Math.round(((lastSevenDays - previousSevenDays) / previousSevenDays) * 100)
-      : null;
   // The buckets can reach back past 30 days (to the 1st of the month), so sum
   // exactly the last 30 day keys rather than every bucket.
   let lastThirtyDays = 0;
@@ -308,17 +285,6 @@ export function buildVisitsSummary(args: {
   return {
     days,
     lastSevenDays,
-    previousSevenDays,
-    deltaLabel:
-      deltaPercent === null
-        ? null
-        : `${deltaPercent >= 0 ? "+" : ""}${deltaPercent}% vs prior week`,
-    deltaTone:
-      deltaPercent === null || deltaPercent === 0
-        ? "neutral"
-        : deltaPercent > 0
-          ? "up"
-          : "down",
     lastThirtyDays,
     thisMonth,
     allTime,
@@ -326,33 +292,20 @@ export function buildVisitsSummary(args: {
 }
 
 export function buildRevenueSummary(
-  paymentGroups: DashboardPaymentStatusGroup[]
+  paymentGroups: DashboardPaymentStatusGroup[],
+  currency: string
 ): DashboardRevenueSummary {
+  // Compact tiles show whole amounts, in the clinic's own currency.
+  const formatDashboardMoney = (cents: number) => formatCurrency(cents, currency, { whole: true });
   let paidCents = 0;
-  let paidCountThisMonth = 0;
-  let outstandingCents = 0;
-  let totalCount = 0;
 
   for (const group of paymentGroups) {
-    const sum = group._sum.amountCents ?? 0;
-    const count = group._count._all;
-    totalCount += count;
-
     if (group.status === "Paid") {
-      paidCents += sum;
-      paidCountThisMonth += count;
-    } else if (group.status === "Unpaid" || group.status === "Partially Paid") {
-      outstandingCents += sum;
+      paidCents += group._sum.amountCents ?? 0;
     }
   }
 
-  return {
-    monthToDateDisplay: formatDashboardMoney(paidCents),
-    paidCountThisMonth,
-    outstandingDisplay: formatDashboardMoney(outstandingCents),
-    hasOutstanding: outstandingCents > 0,
-    hasPayments: totalCount > 0,
-  };
+  return { monthToDateDisplay: formatDashboardMoney(paidCents) };
 }
 
 function buildPlanSummary(
@@ -424,7 +377,7 @@ export function buildDashboardViewFromWorkspace(args: {
     now,
     timeZone,
   });
-  const revenueSummary = buildRevenueSummary(paymentGroups);
+  const revenueSummary = buildRevenueSummary(paymentGroups, business.currency);
   const conversationPreviews: DashboardConversationPreview[] = conversations.map(
     (conversation) => {
       const lastMessage = conversation.messages[0];

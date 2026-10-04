@@ -8,6 +8,7 @@ import {
   type AdapterSendResult,
   type ChannelAdapter,
 } from "./index";
+import { MAX_MESSAGE_BODY_LENGTH, MESSAGE_TOO_LONG_ERROR } from "./limits";
 
 function registryWith(...adapters: ChannelAdapter[]): ChannelRegistry {
   const registry = new ChannelRegistry();
@@ -53,6 +54,32 @@ describe("renderReminder (minimum-necessary)", () => {
     expect(body).toContain("Mira");
     expect(body).toContain("3 PM");
     expect(body).toContain("Jun 24");
+  });
+
+  // Codex #130: onboarding saved the default into each workspace, so a workspace
+  // created while the old wording was the default still holds it, and its
+  // patients would never learn they can reply 1 or 2.
+  it("sends the current default to a workspace still holding the old default, word for word", () => {
+    const body = renderReminder({
+      kind: "appointment_reminder",
+      recipientName: "Mira",
+      appointmentDate: "Jun 24",
+      appointmentTime: "3 PM",
+      template:
+        "  Hi {client_name}, this is a reminder for your appointment at {time} on {date}. Reply here if you need to reschedule. ",
+    });
+    expect(body).toBe("Hi Mira, this is a reminder for your appointment at 3 PM on Jun 24. Reply 1 to confirm or 2 to cancel.");
+  });
+
+  it("leaves a clinic's own wording alone, even when it mentions rescheduling", () => {
+    const body = renderReminder({
+      kind: "appointment_reminder",
+      recipientName: "Mira",
+      appointmentDate: "Jun 24",
+      appointmentTime: "3 PM",
+      template: "Hi {client_name}, see you at {time} on {date}. Reply here if you need to reschedule.",
+    });
+    expect(body).toBe("Hi Mira, see you at 3 PM on Jun 24. Reply here if you need to reschedule.");
   });
 });
 
@@ -194,6 +221,26 @@ describe("sendMessage dispatch", () => {
     if (!result.ok) expect(result.reason).toBe("message_too_long");
     // Never handed to the adapter — so nothing truncated is recorded as full.
     expect(echo.sent).toHaveLength(0);
+  });
+
+  // The follow-up send refuses an over-limit edited body up front with these same
+  // values (Codex #130), so the cap and its wording must be exactly the seam's own.
+  it("sends a body of exactly the shared cap and refuses one character more with the shared wording", async () => {
+    const echo = new EchoAdapter("WHATSAPP");
+    const send = (body: string) =>
+      sendMessage(
+        { channel: "WHATSAPP", businessId: "biz_1", to: "+14155550100", message: { kind: "freeform", body } },
+        registryWith(echo)
+      );
+
+    expect(MAX_MESSAGE_BODY_LENGTH).toBe(8000);
+    expect((await send("x".repeat(MAX_MESSAGE_BODY_LENGTH))).ok).toBe(true);
+    expect(await send("x".repeat(MAX_MESSAGE_BODY_LENGTH + 1))).toEqual({
+      ok: false,
+      reason: "message_too_long",
+      error: MESSAGE_TOO_LONG_ERROR,
+    });
+    expect(echo.sent).toHaveLength(1);
   });
 
   it("rejects an unusable phone recipient", async () => {

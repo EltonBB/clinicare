@@ -2,17 +2,19 @@
  * The wire contract between the Next.js app and the isolated WhatsApp worker.
  *
  * The worker holds the 24/7 Baileys socket (it cannot live on Vercel); the app
- * reaches it over HTTP. Both directions authenticate with a single shared
- * secret carried in {@link BAILEYS_BRIDGE_HEADER} and compared in constant time.
- * These types are the single source of truth for that bridge — the worker
- * mirrors them.
+ * reaches it over HTTP. app -> worker authenticates with the bridge secret
+ * carried in {@link BAILEYS_BRIDGE_HEADER} (compared in constant time).
+ * worker -> app events are signed with a separate secret instead (HMAC over the
+ * body plus a timestamp — see webhook-signature.ts), so leaking one secret can't
+ * forge the other direction. These types are the single source of truth for that
+ * bridge — the worker mirrors them.
  *
  * Provider/internal detail never crosses this boundary in a customer-visible
  * form: the worker returns neutral statuses, and the app maps them to our own
  * delivery-status vocabulary.
  */
 
-/** Header carrying the shared bridge secret in both directions. */
+/** Header carrying the bridge secret on app -> worker requests (and, until a deployment adopts signed webhooks, worker -> app). */
 export const BAILEYS_BRIDGE_HEADER = "x-vela-bridge-secret";
 
 /** app → worker: POST {workerUrl}/pair */

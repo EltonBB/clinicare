@@ -18,8 +18,21 @@ import {
   type ClientRecord,
   type SaveClientPayload,
 } from "@/lib/clients";
+import { normalizeCurrency } from "@/lib/currency";
 import { normalizeStorageReference } from "@/lib/media-storage";
 import { attemptStorageCleanup, recordPendingStorageCleanup } from "@/lib/media-storage-server";
+import { parseAmountToCents } from "@/lib/payment-amount";
+import { parseRecordId, recordIdSchema } from "@/lib/record-id";
+import { retryOnWriteConflict } from "@/lib/prisma-retry";
+import { reofferFreedSlots, retireWaitlistEntries, withdrawSlotOffersOnClientAppointments } from "@/lib/slot-offers";
+import { acquireBusinessFinancialLock } from "@/lib/business-financial-lock";
+import { lockClientExclusive } from "@/lib/row-locks";
+
+// Aborts addClientPaymentAction's transaction from inside its callback when
+// the amount fails to parse against the currency re-read under the
+// financial lock — thrown instead of returned so the transaction rolls back
+// nothing-committed, then caught right outside to produce the typed result.
+class InvalidPaymentAmountError extends Error {}
 
 export type SaveClientResult = {
   ok: boolean;
@@ -156,7 +169,7 @@ export type DeleteClientSubRecordPayload = {
 // unexpected value degrades to a safe default (bounding what reaches the DB)
 // instead of rejecting the whole save. Required-text emptiness is still checked
 // inside each action so its specific message is preserved.
-const idField = z.string().min(1);
+const idField = recordIdSchema;
 const text = (max: number) => z.string().max(max);
 const optionalText = (max: number) => z.string().max(max).optional();
 
@@ -299,6 +312,18 @@ function revalidateClientDirectory() {
   revalidatePath("/dashboard");
   // Reports' "New clients" KPI counts directory membership.
   revalidatePath("/reports");
+  // A client going Inactive/Archived (or back) changes whether their pending
+  // REBOOK draft is actionable (follow-ups-data.ts's actionablePendingWhere
+  // checks isArchived/status) — without this, a cached Follow-ups page or
+  // Inbox badge can keep showing a draft that's already unsendable until the
+  // cache evicts or a hard refresh (Codex #130).
+  revalidatePath("/inbox");
+  revalidatePath("/inbox/follow-ups");
+  // The same eligibility change also feeds listWaitingEntries (client:
+  // ELIGIBLE_CLIENT_WHERE), which the Calendar waiting-list panel reads —
+  // without this, that panel can keep showing an entry for a client who just
+  // went Inactive/Archived until the cache evicts (Codex).
+  revalidatePath("/calendar");
 }
 
 function revalidateClientDetail(clientId: string) {
@@ -310,6 +335,14 @@ function revalidatePaymentSurfaces() {
   // the client's own ledger is refreshed by respondWithClientRecord.
   revalidatePath("/dashboard");
   revalidatePath("/reports");
+  // A payment moving to/from Paid changes whether its PAYMENT follow-up draft
+  // is actionable (follow-ups-data.ts's actionablePendingWhere checks
+  // payment.status) — without this, a cached Follow-ups page or Inbox badge
+  // can keep showing a reminder for a bill that's already settled until the
+  // cache evicts or a hard refresh, and Send then just returns "already
+  // handled" (Codex #130).
+  revalidatePath("/inbox");
+  revalidatePath("/inbox/follow-ups");
 }
 
 // Every sub-record mutation returns the refreshed client AND must revalidate the
@@ -333,6 +366,8 @@ async function fetchClientRecord(businessId: string, clientId: string) {
       businessId,
     },
     include: {
+      // Every amount on the record is shown in the workspace's currency.
+      business: { select: { currency: true } },
       appointments: {
         select: {
           id: true,
@@ -497,7 +532,7 @@ async function fetchClientRecord(businessId: string, clientId: string) {
     },
   });
 
-  return buildClientRecord(client);
+  return buildClientRecord(client, client.business.currency);
 }
 
 async function requireOwnedClient(clientId: string) {
@@ -541,18 +576,6 @@ function parseOptionalDate(value: string | undefined) {
   const parsed = new Date(`${value}T00:00:00.000Z`);
 
   return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function parseAmountToCents(value: string) {
-  const normalized = Number(value.replace(/[^0-9.-]/g, ""));
-
-  // Reject negatives and absurd fat-finger amounts (> $1,000,000) so a typo
-  // can't write a huge value into the ledger and corrupt revenue reporting.
-  if (!Number.isFinite(normalized) || normalized < 0 || normalized > 1_000_000) {
-    return null;
-  }
-
-  return Math.round(normalized * 100);
 }
 
 export async function addClientGalleryItemAction(
@@ -678,6 +701,17 @@ export async function saveClientAction(
   }
 
   const business = context.business;
+
+  // An empty id means a new client; anything else must be a plain id string,
+  // never an object Prisma would read as a filter.
+  const existingClientId = payload.id ? parseRecordId(payload.id) : undefined;
+
+  if (existingClientId === null) {
+    return { ok: false, error: "Client not found in this clinic workspace." };
+  }
+
+  payload = { ...payload, id: existingClientId };
+
   const cleanedName = payload.name.trim();
   const cleanedPhone = normalizePhone(payload.phone);
   // Canonical digit key kept in lockstep with phone so inbox/webhook/reminder
@@ -744,12 +778,38 @@ export async function saveClientAction(
         };
       }
 
-      await prisma.client.update({
-        where: {
-          id: payload.id,
-        },
-        data,
-      });
+      // A client going Inactive/Archived stops being usable for the waiting
+      // list — ELIGIBLE_CLIENT_WHERE hides their entries from the panel and the
+      // cap and the matcher never picks them — but nothing changes those
+      // entries' own status, so reactivating the client later would silently
+      // bring them back, with no capacity check at that point. The status
+      // change and the retirement of their entries (offers dismissed, the freed
+      // slots offered on) therefore commit together or not at all: as separate
+      // writes, a failure between them left either a deactivated client with
+      // entries still active, or entries retired for a client who stayed
+      // eligible (Codex / CodeRabbit #130). Retried once on a deadlock, like
+      // every transaction that reaches the scheduling lock.
+      const savedClientId = existing.id;
+
+      if (data.status === "INACTIVE" || data.status === "ARCHIVED") {
+        await retryOnWriteConflict(() =>
+          prisma.$transaction(async (tx) => {
+            // Status first, so the re-offer below can never hand a freed slot
+            // to this client's own other entries.
+            await tx.client.update({ where: { id: savedClientId }, data });
+
+            const freed = await retireWaitlistEntries(tx, { businessId: business.id, clientId: savedClientId });
+            await reofferFreedSlots(tx, { businessId: business.id, appointmentIds: freed });
+          })
+        );
+      } else {
+        await prisma.client.update({
+          where: {
+            id: savedClientId,
+          },
+          data,
+        });
+      }
 
       if (normalizePhone(existing.phone) !== cleanedPhone) {
         await normalizeConversationsForBusiness(business.id);
@@ -910,15 +970,6 @@ export async function addClientPaymentAction(
     };
   }
 
-  const amountCents = parseAmountToCents(payload.amount);
-
-  if (amountCents === null) {
-    return {
-      ok: false,
-      error: "Enter a valid payment amount.",
-    };
-  }
-
   if (hasUnsafePublicUrl(payload.receiptUrl)) {
     return {
       ok: false,
@@ -926,21 +977,51 @@ export async function addClientPaymentAction(
     };
   }
 
-  await prisma.clientPayment.create({
-    data: {
-      businessId: context.business.id,
-      clientId: payload.clientId,
-      amountCents,
-      status: payload.status.trim() || "Unpaid",
-      description: payload.description.trim() || null,
-      invoiceNumber: payload.invoiceNumber?.trim() || null,
-      receiptNumber: payload.receiptNumber?.trim() || null,
-      paymentMethod: payload.paymentMethod?.trim() || null,
-      billingNote: payload.billingNote?.trim() || null,
-      receiptUrl: normalizeOptionalPublicUrl(payload.receiptUrl) || null,
-      paidAt: parseOptionalDate(payload.paidAt),
-    },
-  });
+  // Held for the rest of this transaction: closes the gap between this
+  // create and a concurrent currency change, which acquires the same lock
+  // before its own on-record check (Codex #131) — without it, a currency
+  // change reading "no payments yet" and this create could both proceed,
+  // and the new payment would be immediately mislabeled by the new currency.
+  // The amount is parsed AGAINST THE CURRENCY read fresh under this same
+  // lock, not the value read before it — otherwise a currency change that
+  // commits between that earlier read and the lock would still leave "€85"
+  // parsed as euros and immediately displayed as dollars (Codex #131).
+  try {
+    await prisma.$transaction(async (tx) => {
+      await acquireBusinessFinancialLock(tx, context.business.id);
+
+      const currentBusiness = await tx.business.findUniqueOrThrow({
+        where: { id: context.business.id },
+        select: { currency: true },
+      });
+      const amountCents = parseAmountToCents(payload.amount, normalizeCurrency(currentBusiness.currency));
+
+      if (amountCents === null) {
+        throw new InvalidPaymentAmountError();
+      }
+
+      await tx.clientPayment.create({
+        data: {
+          businessId: context.business.id,
+          clientId: payload.clientId,
+          amountCents,
+          status: payload.status.trim() || "Unpaid",
+          description: payload.description.trim() || null,
+          invoiceNumber: payload.invoiceNumber?.trim() || null,
+          receiptNumber: payload.receiptNumber?.trim() || null,
+          paymentMethod: payload.paymentMethod?.trim() || null,
+          billingNote: payload.billingNote?.trim() || null,
+          receiptUrl: normalizeOptionalPublicUrl(payload.receiptUrl) || null,
+          paidAt: parseOptionalDate(payload.paidAt),
+        },
+      });
+    });
+  } catch (error) {
+    if (error instanceof InvalidPaymentAmountError) {
+      return { ok: false, error: "Enter a valid payment amount." };
+    }
+    throw error;
+  }
 
   revalidatePaymentSurfaces();
 
@@ -1147,7 +1228,7 @@ export async function addClientFollowUpReminderAction(
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
-export async function deleteClientAction(clientId: string): Promise<DeleteClientResult> {
+export async function deleteClientAction(rawClientId: string): Promise<DeleteClientResult> {
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -1155,6 +1236,13 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
       ok: false,
       error: context.error,
     };
+  }
+
+  // A non-string id would delete every client in the workspace.
+  const clientId = parseRecordId(rawClientId);
+
+  if (!clientId) {
+    return { ok: false, error: "Client not found in this clinic workspace." };
   }
 
   const business = context.business;
@@ -1167,7 +1255,29 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
   // storage-cleanup outbox row is written in the SAME transaction as the
   // delete, so it exists if and only if this request actually won the race —
   // the loser's `count` is 0 and it returns before recording anything.
-  const result = await prisma.$transaction(async (tx) => {
+  //
+  // The client's waiting-list entries are retired in this same transaction,
+  // not before it. Deleting the client cascades their WaitlistEntry away — and
+  // with it, via that entry's own cascade, a live SLOT_OFFER draft — without
+  // ever releasing the freed appointment for re-offer: the next candidate
+  // would never be contacted and the hourly sweep can't recover it either
+  // (there is no draft left for it to find). Retiring them in a separate step
+  // beforehand left a window in which a cancellation could hand a WAITING
+  // entry of this client a new offer, and the delete then removed it (Codex
+  // #130). Retired and deleted together, any offer is dismissed and its slot
+  // offered on before the client is gone, or not at all. Retried once on a
+  // deadlock, like every transaction that reaches the scheduling lock.
+  const result = await retryOnWriteConflict(() => prisma.$transaction(async (tx) => {
+    // Lock the client row before anything else, the scan for waiting-list entries
+    // included. An entry being added for this client right now holds a share lock
+    // on the row until it commits; waiting for it means the scan below sees that
+    // entry and retires it. Without this, an add landing after the scan would be
+    // cascade-deleted unretired - along with any offer a cancellation had just
+    // made it - and the freed slot would never be offered to anyone else. An add
+    // that starts after this lock is turned away once the delete commits, the
+    // same as for a staff member (Codex #130).
+    await lockClientExclusive(tx, clientId);
+
     // Read the storage-bearing fields here, inside the transaction and
     // immediately before the delete, rather than beforehand: a document or
     // gallery item uploaded between an earlier read and this statement would
@@ -1189,6 +1299,14 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
       return { deleted: false as const };
     }
 
+    const freedAppointmentIds = await retireWaitlistEntries(tx, { businessId: business.id, clientId });
+
+    // The client's own appointments are cascade-deleted with them. One that was
+    // cancelled and offered to another waiting client would lose that offer's
+    // link (SET NULL) and strand the other client's entry as OFFERED, so any
+    // open offer on them is withdrawn first (Codex #130).
+    await withdrawSlotOffersOnClientAppointments(tx, { businessId: business.id, clientId });
+
     const { count } = await tx.client.deleteMany({
       where: {
         id: clientId,
@@ -1199,6 +1317,11 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
     if (count === 0) {
       return { deleted: false as const };
     }
+
+    // After the delete, so the departing client can never be handed a freed
+    // slot; inside the transaction, so an offer dismissed above is never left
+    // without its slot being offered on.
+    await reofferFreedSlots(tx, { businessId: business.id, appointmentIds: freedAppointmentIds });
 
     // Deleting the client cascades the DB rows, but the actual files in
     // storage don't clean themselves up — without this, patient documents
@@ -1214,7 +1337,7 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
     ]);
 
     return { deleted: true as const, pending };
-  });
+  }));
 
   if (!result.deleted) {
     return {
@@ -1245,9 +1368,16 @@ export async function deleteClientAction(clientId: string): Promise<DeleteClient
 // genuine not-found show the same message instead of drifting.
 const SUB_RECORD_NOT_FOUND_ERROR = "This record was not found in the patient file.";
 
+// Every sub-record delete parses its ids first: a non-string id reaching the
+// guarded deleteMany would delete every such record in the workspace.
+const deleteClientSubRecordSchema = z.object({ id: idField, clientId: idField });
+
 type OwnedSubRecordContext =
   | { error: string }
-  | { business: { id: string } };
+  // currency is only read by the payment actions (to validate a typed amount
+  // against the workspace's own currency) — every other sub-record action
+  // uses just the id, same as before.
+  | { business: { id: string; currency: string } };
 
 async function requireOwnedSubRecord(
   payload: DeleteClientSubRecordPayload,
@@ -1315,6 +1445,14 @@ export async function updateClientMedicationAction(
 export async function deleteClientMedicationAction(
   payload: DeleteClientSubRecordPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = deleteClientSubRecordSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedSubRecord(payload, (businessId) =>
     prisma.clientMedication.findFirst({
       where: { id: payload.id, clientId: payload.clientId, businessId },
@@ -1386,6 +1524,14 @@ export async function updateClientHealthItemAction(
 export async function deleteClientHealthItemAction(
   payload: DeleteClientSubRecordPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = deleteClientSubRecordSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedSubRecord(payload, (businessId) =>
     prisma.clientHealthItem.findFirst({
       where: { id: payload.id, clientId: payload.clientId, businessId },
@@ -1454,6 +1600,14 @@ export async function updateClientCareNoteAction(
 export async function deleteClientCareNoteAction(
   payload: DeleteClientSubRecordPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = deleteClientSubRecordSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedSubRecord(payload, (businessId) =>
     prisma.clientCareNote.findFirst({
       where: { id: payload.id, clientId: payload.clientId, businessId },
@@ -1524,6 +1678,14 @@ export async function updateClientTreatmentPlanItemAction(
 export async function deleteClientTreatmentPlanItemAction(
   payload: DeleteClientSubRecordPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = deleteClientSubRecordSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedSubRecord(payload, (businessId) =>
     prisma.clientTreatmentPlanItem.findFirst({
       where: { id: payload.id, clientId: payload.clientId, businessId },
@@ -1596,6 +1758,14 @@ export async function updateClientFollowUpReminderAction(
 export async function deleteClientFollowUpReminderAction(
   payload: DeleteClientSubRecordPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = deleteClientSubRecordSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedSubRecord(payload, (businessId) =>
     prisma.clientFollowUpReminder.findFirst({
       where: { id: payload.id, clientId: payload.clientId, businessId },
@@ -1644,30 +1814,52 @@ export async function updateClientPaymentAction(
     return { ok: false, error: context.error };
   }
 
-  const amountCents = parseAmountToCents(payload.amount);
-
-  if (amountCents === null) {
-    return { ok: false, error: "Enter a valid payment amount." };
-  }
-
   if (hasUnsafePublicUrl(payload.receiptUrl)) {
     return { ok: false, error: "Use a safe HTTPS receipt link." };
   }
 
-  await prisma.clientPayment.update({
-    where: { id: payload.id },
-    data: {
-      amountCents,
-      status: payload.status.trim() || "Unpaid",
-      description: payload.description.trim() || null,
-      invoiceNumber: payload.invoiceNumber?.trim() || null,
-      receiptNumber: payload.receiptNumber?.trim() || null,
-      paymentMethod: payload.paymentMethod?.trim() || null,
-      billingNote: payload.billingNote?.trim() || null,
-      receiptUrl: normalizeOptionalPublicUrl(payload.receiptUrl) || null,
-      paidAt: parseOptionalDate(payload.paidAt),
-    },
-  });
+  // Under the same financial lock a currency change takes, exactly as when a
+  // payment is recorded (addClientPaymentAction): the amount is parsed against
+  // the currency read fresh under the lock, not the snapshot taken when the
+  // request started, so an edit can't be typed under one currency and stored
+  // under another that a concurrent correction just switched to (Codex #130).
+  // Writing the row also bumps its `updatedAt`, which is what makes an edited
+  // legacy payment count toward the currency lock (see saveSettingsAction).
+  try {
+    await prisma.$transaction(async (tx) => {
+      await acquireBusinessFinancialLock(tx, context.business.id);
+
+      const currentBusiness = await tx.business.findUniqueOrThrow({
+        where: { id: context.business.id },
+        select: { currency: true },
+      });
+      const amountCents = parseAmountToCents(payload.amount, normalizeCurrency(currentBusiness.currency));
+
+      if (amountCents === null) {
+        throw new InvalidPaymentAmountError();
+      }
+
+      await tx.clientPayment.update({
+        where: { id: payload.id },
+        data: {
+          amountCents,
+          status: payload.status.trim() || "Unpaid",
+          description: payload.description.trim() || null,
+          invoiceNumber: payload.invoiceNumber?.trim() || null,
+          receiptNumber: payload.receiptNumber?.trim() || null,
+          paymentMethod: payload.paymentMethod?.trim() || null,
+          billingNote: payload.billingNote?.trim() || null,
+          receiptUrl: normalizeOptionalPublicUrl(payload.receiptUrl) || null,
+          paidAt: parseOptionalDate(payload.paidAt),
+        },
+      });
+    });
+  } catch (error) {
+    if (error instanceof InvalidPaymentAmountError) {
+      return { ok: false, error: "Enter a valid payment amount." };
+    }
+    throw error;
+  }
 
   revalidatePaymentSurfaces();
 
@@ -1677,6 +1869,14 @@ export async function updateClientPaymentAction(
 export async function deleteClientPaymentAction(
   payload: DeleteClientSubRecordPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = deleteClientSubRecordSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedSubRecord(payload, (businessId) =>
     prisma.clientPayment.findFirst({
       where: { id: payload.id, clientId: payload.clientId, businessId },
@@ -1751,6 +1951,14 @@ export async function updateClientDocumentAction(
 export async function deleteClientDocumentAction(
   payload: DeleteClientSubRecordPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = deleteClientSubRecordSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedClient(payload.clientId);
 
   if ("error" in context) {
@@ -1805,6 +2013,14 @@ export async function deleteClientDocumentAction(
 export async function deleteClientGalleryItemAction(
   payload: DeleteClientSubRecordPayload
 ): Promise<ClientRecordMutationResult> {
+  const parsed = deleteClientSubRecordSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
+  }
+
+  payload = parsed.data;
+
   const context = await requireOwnedClient(payload.clientId);
 
   if ("error" in context) {

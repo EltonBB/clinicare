@@ -13,6 +13,9 @@ model Business {
   ownerId                String                  @unique
   name                   String
   businessType           String
+  // ISO 4217 code every amount in this workspace is shown in (see lib/currency.ts
+  // for the supported list). Amounts themselves stay integer cents.
+  currency               String                  @default("EUR")
   logoUrl                String?
   // Orphaned 2026-06: the dashboard customizer was removed; no code reads or
   // writes this. Safe to drop in the next schema migration.
@@ -33,6 +36,7 @@ model Business {
   businessHours          BusinessHours[]
   conversations          Conversation[]
   reminderSettings       ReminderSettings?
+  workflowSettings       WorkflowSettings?
   whatsappConnection     WhatsAppConnection?
   whatsappSession        WhatsAppSession?
   whatsappSessionKeys    WhatsAppSessionKey[]
@@ -42,6 +46,8 @@ model Business {
   staffThreads           StaffThread[]
   staffNotifications     StaffNotification[]
   pendingStorageCleanups PendingStorageCleanup[]
+  followUpDrafts         FollowUpDraft[]
+  waitlistEntries        WaitlistEntry[]
 }
 
 model BusinessHours {
@@ -60,26 +66,27 @@ model BusinessHours {
 }
 
 model StaffMember {
-  id            String              @id @default(cuid())
-  businessId    String
-  business      Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  name          String
-  role          String
-  email         String?
-  phone         String?
-  profileNote   String?
-  status        StaffStatus         @default(ACTIVE)
-  isActive      Boolean             @default(true)
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-  appointments  Appointment[]
-  timeEntries   StaffTimeEntry[]
-  shifts        StaffShift[]
-  careNotes     ClientCareNote[]
-  accessCodes   StaffAccessCode[]
-  devices       StaffDevice[]
-  threads       StaffThread[]
-  notifications StaffNotification[]
+  id              String              @id @default(cuid())
+  businessId      String
+  business        Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name            String
+  role            String
+  email           String?
+  phone           String?
+  profileNote     String?
+  status          StaffStatus         @default(ACTIVE)
+  isActive        Boolean             @default(true)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  appointments    Appointment[]
+  timeEntries     StaffTimeEntry[]
+  shifts          StaffShift[]
+  careNotes       ClientCareNote[]
+  accessCodes     StaffAccessCode[]
+  devices         StaffDevice[]
+  threads         StaffThread[]
+  notifications   StaffNotification[]
+  waitlistEntries WaitlistEntry[]
 
   @@index([businessId])
 }
@@ -144,6 +151,8 @@ model Client {
   careNotes            ClientCareNote[]
   treatmentPlanItems   ClientTreatmentPlanItem[]
   followUpReminders    ClientFollowUpReminder[]
+  followUpDrafts       FollowUpDraft[]
+  waitlistEntries      WaitlistEntry[]
 
   @@unique([businessId, phone])
   @@index([businessId, isArchived])
@@ -190,23 +199,24 @@ model ClientDocument {
 }
 
 model ClientPayment {
-  id            String       @id @default(cuid())
-  businessId    String
-  clientId      String
-  client        Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  appointmentId String?
-  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
-  amountCents   Int
-  status        String
-  description   String?
-  invoiceNumber String?
-  receiptNumber String?
-  paymentMethod String?
-  billingNote   String?
-  receiptUrl    String?
-  paidAt        DateTime?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id             String          @id @default(cuid())
+  businessId     String
+  clientId       String
+  client         Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  appointmentId  String?
+  appointment    Appointment?    @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  amountCents    Int
+  status         String
+  description    String?
+  invoiceNumber  String?
+  receiptNumber  String?
+  paymentMethod  String?
+  billingNote    String?
+  receiptUrl     String?
+  paidAt         DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  followUpDrafts FollowUpDraft[]
 
   @@index([businessId, clientId, status])
   @@index([businessId, clientId, createdAt])
@@ -370,12 +380,68 @@ model Appointment {
   reminders          AppointmentReminder[]
   payments           ClientPayment[]
   treatmentPlanItems ClientTreatmentPlanItem[]
+  followUpDrafts     FollowUpDraft[]
 
   @@index([businessId, startAt])
   @@index([businessId, status, startAt])
   @@index([businessId, status, endAt])
   @@index([clientId, startAt])
   @@index([staffMemberId, status, startAt])
+}
+
+model FollowUpDraft {
+  id              String              @id @default(cuid())
+  businessId      String
+  business        Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  clientId        String
+  client          Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  kind            FollowUpDraftKind
+  body            String
+  status          FollowUpDraftStatus @default(PENDING)
+  appointmentId   String?
+  appointment     Appointment?        @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  waitlistEntryId String?
+  waitlistEntry   WaitlistEntry?      @relation(fields: [waitlistEntryId], references: [id], onDelete: SetNull)
+  paymentId       String?
+  payment         ClientPayment?      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  dedupeKey       String
+  expiresAt       DateTime?
+  sentAt          DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@unique([businessId, dedupeKey])
+  @@index([paymentId])
+  @@index([waitlistEntryId])
+  @@index([businessId, status, createdAt])
+  // Postgres doesn't index foreign keys on its own: without these, deleting a
+  // Client (cascade) or an Appointment (SET NULL) scans the whole table.
+  @@index([clientId])
+  @@index([appointmentId])
+}
+
+model WaitlistEntry {
+  id             String              @id @default(cuid())
+  businessId     String
+  business       Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  clientId       String
+  client         Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  service        String
+  staffMemberId  String?
+  staffMember    StaffMember?        @relation(fields: [staffMemberId], references: [id], onDelete: SetNull)
+  earliestDate   DateTime?
+  preferredDays  Int[]               @default([])
+  preferredFrom  String?
+  preferredTo    String?
+  notes          String?
+  status         WaitlistEntryStatus @default(WAITING)
+  followUpDrafts FollowUpDraft[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([businessId, status])
+  @@index([clientId])
+  @@index([staffMemberId])
 }
 
 model AppointmentReminder {
@@ -440,6 +506,16 @@ model Message {
   deliveryErrorCode  String?
   deliveryUpdatedAt  DateTime?
   sentAt             DateTime               @default(now())
+  // Claimed (compare-and-set from null) by applyInboundReplyIntent before it
+  // acts on this inbound message, and cleared again if that check throws. A
+  // worker redelivery of the same providerMessageSid finds it claimed and skips
+  // the check, so a retry can neither re-send a reply the first attempt already
+  // sent (the app replied but its 200 was lost in transit) nor overlap a first
+  // attempt that is still running (the worker aborts after 10s; the request
+  // does not) - up to MAX_ATTEMPTS duplicate "you're confirmed" messages to the
+  // patient otherwise (CodeRabbit #130). Null on an outbound row, or an inbound
+  // one nobody has acted on yet.
+  replyIntentHandledAt DateTime?
 
   @@index([conversationId, sentAt])
   @@index([clientId])
@@ -457,6 +533,19 @@ model ReminderSettings {
   secondReminderHours Int      @default(2)
   template            String?
   updatedAt           DateTime @updatedAt
+}
+
+model WorkflowSettings {
+  id                       String   @id @default(cuid())
+  businessId               String   @unique
+  business                 Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  rebookEnabled            Boolean  @default(false)
+  rebookAfterMonths        Int      @default(6)
+  paymentReminderEnabled   Boolean  @default(true)
+  paymentReminderAfterDays Int      @default(3)
+  thankYouEnabled          Boolean  @default(true)
+  thankYouDelayHours       Int      @default(2)
+  updatedAt                DateTime @updatedAt
 }
 
 model WhatsAppConnection {
@@ -551,6 +640,27 @@ enum AppointmentStatus {
   CANCELLED
   COMPLETED
   NO_SHOW
+}
+
+enum FollowUpDraftKind {
+  SLOT_OFFER
+  REBOOK
+  PAYMENT
+  THANK_YOU
+}
+
+enum FollowUpDraftStatus {
+  PENDING
+  SENT
+  DISMISSED
+  EXPIRED
+}
+
+enum WaitlistEntryStatus {
+  WAITING
+  OFFERED
+  FILLED
+  REMOVED
 }
 
 enum StaffStatus {

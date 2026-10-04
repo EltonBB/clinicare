@@ -21,6 +21,7 @@ import {
   ImageUp,
   MessageCircle,
   Palette,
+  Workflow,
 } from "lucide-react";
 
 import { updateOwnerProfileAction } from "@/app/(auth)/actions";
@@ -29,13 +30,16 @@ import {
   discardUnsavedLogoAction,
   getBaileysPairingStatusAction,
   saveSettingsAction,
+  saveWorkflowSettingsAction,
 } from "@/app/(workspace)/settings/actions";
 import { businessTypes } from "@/lib/constants";
+import { currencyLabel, SUPPORTED_CURRENCIES } from "@/lib/currency";
 import { brandAccentPresets, normalizeBrandHexColor } from "@/lib/branding";
 import { cn } from "@/lib/utils";
 import { isStorageReference } from "@/lib/media-storage";
 import { safeUploadErrorMessage, uploadWorkspaceImage } from "@/lib/media-storage-client";
 import {
+  buildWorkflowSavePayload,
   phaseLabelMap,
   REMINDER_TEMPLATE_MAX_LENGTH,
   timeOptions,
@@ -48,6 +52,8 @@ import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Toggle, ToggleRow } from "@/components/settings/settings-toggle";
+import { WorkflowsSection } from "@/components/settings/workflows-section";
 import {
   WorkspaceHeader,
   WorkspacePage,
@@ -106,6 +112,7 @@ type SettingsSectionId =
   | "appearance"
   | "hours"
   | "reminders"
+  | "workflows"
   | "whatsapp"
   | "billing";
 
@@ -119,6 +126,7 @@ const settingsNav: Array<{
   { id: "appearance", icon: Palette, title: "Appearance", subtitle: "Workspace accent color" },
   { id: "hours", icon: Clock3, title: "Working hours", subtitle: "Booking availability" },
   { id: "reminders", icon: BellRing, title: "Reminders", subtitle: "Send times and message" },
+  { id: "workflows", icon: Workflow, title: "Workflows", subtitle: "Follow-up drafts and timing" },
   { id: "whatsapp", icon: MessageCircle, title: "WhatsApp", subtitle: "Pairing and connection" },
   { id: "billing", icon: CreditCard, title: "Billing", subtitle: "Plan and checkout" },
 ];
@@ -135,45 +143,21 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Toggle({
-  checked,
-  onPressedChange,
-}: {
-  checked: boolean;
-  onPressedChange: (checked: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={checked}
-      onClick={() => onPressedChange(!checked)}
-      className={cn(
-        "relative inline-flex h-6 w-10 shrink-0 rounded-full shadow-[inset_0_1px_3px_rgba(20,32,51,0.12)] transition-colors duration-(--duration-base)",
-        checked ? "bg-primary" : "bg-border"
-      )}
-    >
-      <span
-        className={cn(
-          "absolute top-1 size-4 rounded-full bg-white transition-transform",
-          checked ? "translate-x-5" : "translate-x-1"
-        )}
-      />
-    </button>
-  );
-}
-
 function NativeSelect({
   value,
   options,
   onChange,
   className,
   ariaLabel,
+  getLabel,
 }: {
   value: string;
   options: string[];
   onChange: (value: string) => void;
   className?: string;
   ariaLabel?: string;
+  /** Text shown for an option; defaults to the option's own value. */
+  getLabel?: (option: string) => string;
 }) {
   return (
     <select
@@ -187,7 +171,7 @@ function NativeSelect({
     >
       {options.map((option) => (
         <option key={option} value={option}>
-          {option}
+          {getLabel ? getLabel(option) : option}
         </option>
       ))}
     </select>
@@ -469,11 +453,32 @@ export function SettingsWorkspace({
         });
       }
 
+      // Workflows save through their own action (it re-checks the plan
+      // server-side) — only when they changed, and before the main settings
+      // save so a failure here stops the save before anything else is written.
+      // If the main save then fails, the persisted workflow values are already
+      // reflected in savedState, so they don't show as unsaved edits.
+      if (JSON.stringify(state.workflows) !== JSON.stringify(savedState.workflows)) {
+        const workflowResult = await saveWorkflowSettingsAction(
+          buildWorkflowSavePayload(state.workflows, state.billing.isPro)
+        );
+
+        if (!workflowResult.ok || !workflowResult.workflows) {
+          setErrorMessage(workflowResult.error ?? "We couldn't save your workflow settings.");
+          setMessage("");
+          return;
+        }
+
+        const persistedWorkflows = workflowResult.workflows;
+        setSavedState((current) => ({ ...current, workflows: persistedWorkflows }));
+      }
+
       // Submit only the editable subset — derived/display fields stay server-owned.
       const payload: SaveSettingsPayload = {
         business: {
           businessName: state.business.businessName,
           businessType: state.business.businessType,
+          currency: state.business.currency,
           ownerName: submittedAccount.fullName,
           logoUrl: state.business.logoUrl,
         },
@@ -1001,7 +1006,7 @@ export function SettingsWorkspace({
                     className="h-10 rounded-(--radius-card) bg-white"
                   />
                 </div>
-                <div className="space-y-1.5 md:col-span-2">
+                <div className="space-y-1.5">
                   <FieldLabel>Business type</FieldLabel>
                   <NativeSelect
                     value={state.business.businessType}
@@ -1012,6 +1017,24 @@ export function SettingsWorkspace({
                         business: {
                           ...current.business,
                           businessType: value as SettingsState["business"]["businessType"],
+                        },
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Currency</FieldLabel>
+                  <NativeSelect
+                    value={state.business.currency}
+                    options={SUPPORTED_CURRENCIES.map((currency) => currency.code)}
+                    getLabel={currencyLabel}
+                    ariaLabel="Currency"
+                    onChange={(value) =>
+                      setState((current) => ({
+                        ...current,
+                        business: {
+                          ...current.business,
+                          currency: value as SettingsState["business"]["currency"],
                         },
                       }))
                     }
@@ -1256,6 +1279,7 @@ export function SettingsWorkspace({
                       <Toggle
                         checked={item.enabled}
                         onPressedChange={(checked) => updateDay(day, { enabled: checked })}
+                        ariaLabel={weekdayLabels[day]}
                       />
                       <p className="text-sm font-medium text-foreground">{weekdayLabels[day]}</p>
                     </div>
@@ -1293,79 +1317,49 @@ export function SettingsWorkspace({
             active={activeSection === "reminders"}
           >
             <div className="divide-y divide-border/65">
-              <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <Toggle
-                    checked={state.reminders.twentyFourHour}
-                    onPressedChange={(checked) =>
-                      setState((current) => ({
-                        ...current,
-                        reminders: {
-                          ...current.reminders,
-                          twentyFourHour: checked,
-                        },
-                      }))
-                    }
-                  />
-                  <p className="text-sm font-medium text-foreground">First reminder</p>
-                </div>
-                {state.reminders.twentyFourHour ? (
-                  <div className="pl-[52px] sm:pl-0">
-                    <HourSelect
-                      value={state.reminders.firstReminderHours}
-                      onChange={(value) =>
-                        setState((current) => ({
-                          ...current,
-                          reminders: {
-                            ...current.reminders,
-                            firstReminderHours: value,
-                          },
-                        }))
-                      }
-                      ariaLabel="First reminder send time"
-                    />
-                  </div>
-                ) : (
-                  <span className="pl-[52px] text-xs text-muted-foreground sm:pl-0">Off</span>
-                )}
-              </div>
+              <ToggleRow
+                label="First reminder"
+                enabled={state.reminders.twentyFourHour}
+                onEnabledChange={(checked) =>
+                  setState((current) => ({
+                    ...current,
+                    reminders: { ...current.reminders, twentyFourHour: checked },
+                  }))
+                }
+              >
+                <HourSelect
+                  value={state.reminders.firstReminderHours}
+                  onChange={(value) =>
+                    setState((current) => ({
+                      ...current,
+                      reminders: { ...current.reminders, firstReminderHours: value },
+                    }))
+                  }
+                  ariaLabel="First reminder send time"
+                />
+              </ToggleRow>
 
-              <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <Toggle
-                    checked={state.reminders.twoHour}
-                    onPressedChange={(checked) =>
-                      setState((current) => ({
-                        ...current,
-                        reminders: {
-                          ...current.reminders,
-                          twoHour: checked,
-                        },
-                      }))
-                    }
-                  />
-                  <p className="text-sm font-medium text-foreground">Second reminder</p>
-                </div>
-                {state.reminders.twoHour ? (
-                  <div className="pl-[52px] sm:pl-0">
-                    <HourSelect
-                      value={state.reminders.secondReminderHours}
-                      onChange={(value) =>
-                        setState((current) => ({
-                          ...current,
-                          reminders: {
-                            ...current.reminders,
-                            secondReminderHours: value,
-                          },
-                        }))
-                      }
-                      ariaLabel="Second reminder send time"
-                    />
-                  </div>
-                ) : (
-                  <span className="pl-[52px] text-xs text-muted-foreground sm:pl-0">Off</span>
-                )}
-              </div>
+              <ToggleRow
+                label="Second reminder"
+                enabled={state.reminders.twoHour}
+                onEnabledChange={(checked) =>
+                  setState((current) => ({
+                    ...current,
+                    reminders: { ...current.reminders, twoHour: checked },
+                  }))
+                }
+              >
+                <HourSelect
+                  value={state.reminders.secondReminderHours}
+                  onChange={(value) =>
+                    setState((current) => ({
+                      ...current,
+                      reminders: { ...current.reminders, secondReminderHours: value },
+                    }))
+                  }
+                  ariaLabel="Second reminder send time"
+                />
+              </ToggleRow>
 
               <div className="space-y-1.5 pt-3.5">
                 <FieldLabel>Message template</FieldLabel>
@@ -1389,6 +1383,24 @@ export function SettingsWorkspace({
                 </p>
               </div>
             </div>
+          </SectionCard>
+
+          <SectionCard
+            id="workflows"
+            title="Workflows"
+            description="Suggested follow-up messages appear in Inbox › Follow-ups for you to review and send."
+            active={activeSection === "workflows"}
+          >
+            <WorkflowsSection
+              workflows={state.workflows}
+              isPro={state.billing.isPro}
+              onChange={(patch) =>
+                setState((current) => ({
+                  ...current,
+                  workflows: { ...current.workflows, ...patch },
+                }))
+              }
+            />
           </SectionCard>
 
           <SectionCard

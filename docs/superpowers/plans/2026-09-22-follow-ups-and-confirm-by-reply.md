@@ -69,7 +69,7 @@ Say exactly: "PR 3 needs one additive schema change: a new `FollowUpDraft` table
 
 - [ ] **Step 2: Record the deploy order**
 
-Same as PR 1: apply the SQL before the code that reads/writes `FollowUpDraft` deploys (the confirm-by-reply path does not depend on this table at all — only the Follow-ups page and its actions do, so a delayed migration only breaks that one page, not reminders/confirm/cancel).
+Same as PR 1: apply the SQL before the code that reads/writes `FollowUpDraft` deploys (the confirm-by-reply path does not depend on this table at all — only the Follow-ups page, its actions, and the Inbox page's follow-ups count read/write it). **Correction (final whole-branch review, PR 3 fix round):** the Inbox page (`src/app/(workspace)/inbox/page.tsx`) also reads `FollowUpDraft` to show the pending follow-ups count, so a delayed migration is not scoped to the Follow-ups page alone. That read is now wrapped in a try/catch that degrades to a count of 0 on failure, so a missing table degrades the Inbox's follow-ups count to 0 instead of crashing the page — but it is no longer accurate to say a delayed migration "only breaks that one page".
 
 ---
 
