@@ -423,6 +423,8 @@ describe("applyInboundReplyIntent", () => {
         clientId: "client_1",
         kind: "SLOT_OFFER",
         status: "SENT",
+        // Received by the patient, not still being sent (Codex #130).
+        sentAt: { not: null },
         waitlistEntry: { status: "OFFERED" },
         appointment: {
           status: "CANCELLED",

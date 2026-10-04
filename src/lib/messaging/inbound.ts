@@ -5,6 +5,7 @@ import {
   revalidateCalendarSurfaces,
 } from "@/lib/appointments-shared";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
+import { DELIVERED_WHERE } from "@/lib/follow-ups-data";
 import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
 import { mirrorOutboundToInbox } from "@/lib/messaging/inbox-mirror";
@@ -345,12 +346,16 @@ async function applyInboundReplyIntentCore(
   // previously also a 48-hour cutoff on top of this liveness check, which cut
   // in well before a genuinely still-open offer could ever go stale, letting
   // a late "2" fall through and cancel an unrelated appointment instead
-  // (Codex).
+  // (Codex). Only an offer the patient has actually received counts: one still
+  // being sent can't be what they are answering, and if its send then fails
+  // (and it goes back to Pending) standing down here would have dropped this
+  // reply for good (Codex #130).
   const openOffer = await prisma.followUpDraft.findFirst({
     where: {
       businessId,
       clientId,
       status: "SENT",
+      ...DELIVERED_WHERE,
       ...liveSlotOfferWhere(now),
     },
     select: { id: true },
