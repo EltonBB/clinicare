@@ -263,6 +263,7 @@ export async function applyInboundReplyIntent(args: {
   // inside the worker's 10s request timeout, stretches them to about 40s.
   const waitUntil = Date.now() + IN_PROGRESS_WAIT_MS;
   let lease: Date;
+  let claimedAt: Date;
   for (;;) {
     const attemptAt = new Date();
     const leaseUntil = new Date(attemptAt.getTime() + REPLY_INTENT_LEASE_MS);
@@ -276,6 +277,7 @@ export async function applyInboundReplyIntent(args: {
     });
     if (claim.count === 1) {
       lease = leaseUntil;
+      claimedAt = attemptAt;
       break;
     }
 
@@ -338,8 +340,13 @@ export async function applyInboundReplyIntent(args: {
   // the work done (the visit already confirmed or cancelled) and only finishes
   // the claim — its acknowledgement, if it got that far, is keyed to this
   // message, so it isn't sent twice.
+  // Stamped with the time the check started, not finished — what the old
+  // single-column code stamped too — so a finished mark never looks like one of
+  // the old leases prisma/whatsapp-reliability-migration.sql converts (those lie
+  // 100-200s after the message arrived; a live check starts within about a
+  // minute of it).
   await prisma.message
-    .updateMany({ where: ownLease, data: { replyIntentHandledAt: new Date(), replyIntentLeaseUntil: null } })
+    .updateMany({ where: ownLease, data: { replyIntentHandledAt: claimedAt, replyIntentLeaseUntil: null } })
     .catch((finishError) => {
       logger.error("A reply-intent check finished but its claim couldn't be marked done.", finishError, {
         businessId: args.businessId,

@@ -20,7 +20,7 @@ import qrcode from "qrcode-terminal";
 import { clearAuthState, usePostgresAuthState } from "./auth-state";
 import { postToApp } from "./bridge";
 import { logger, scrubError } from "./logger";
-import { TimeoutError, type SentResult } from "./send-dedupe";
+import { SessionNotConnectedError, TimeoutError, type SentResult } from "./send-dedupe";
 
 type SessionStatus = "connecting" | "qr" | "connected" | "disconnected";
 
@@ -530,9 +530,9 @@ function withTimeout<T>(
 }
 
 /**
- * Sends a text message from a workspace's connected session. A TimeoutError
- * means the message may have left (see classifySendError); any other throw
- * means it did not.
+ * Sends a text message from a workspace's connected session. Whether a throw
+ * means the message may have left is classifySendError's call: only a missing
+ * session or a socket already closed before the write proves it didn't.
  */
 export async function sendText(
   businessId: string,
@@ -541,7 +541,7 @@ export async function sendText(
 ): Promise<SentResult> {
   const session = sessions.get(businessId);
   if (!session || session.status !== "connected") {
-    throw new Error("WhatsApp session is not connected.");
+    throw new SessionNotConnectedError("WhatsApp session is not connected.");
   }
   const jid = `${to}@s.whatsapp.net`;
   try {

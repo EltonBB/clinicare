@@ -1,7 +1,8 @@
 -- WhatsApp reliability: reply-intent lease + the worker's keyed-send record
 -- =============================================================================
--- Apply BEFORE deploying the app and the worker that use it. Additive and
--- safe to re-run: every step checks first, and nothing existing is dropped.
+-- Apply BEFORE deploying the app and the worker that use it, and run it ONCE
+-- MORE after the new app is live (see step 1). Additive and safe to re-run:
+-- every step checks first, and nothing existing is dropped.
 --
 -- 1. Message."replyIntentLeaseUntil"
 --    applyInboundReplyIntent used to keep both its lease and its "handled" mark
@@ -13,26 +14,26 @@
 --    "handled" mark is reclaimed by a late worker retry or the hourly recovery
 --    sweep (recoverAbandonedReplyIntents, run by the reminders cron).
 --
---    Leases the old code left behind are moved into the new column, once, as
---    the column is added (Codex #133). They are recognisable by their distance
---    from the message's own "sentAt" (set when it was recorded): a check starts
---    within about a minute of that (the worker's retries end by then), so a
---    finished check's mark lies 0-60s after "sentAt" and an old lease (its
---    start + 120s) lies 120-180s after it. Anything 100-200s after is treated
---    as a lease; the sweep then only picks up those from the last 24 hours.
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = current_schema() AND table_name = 'Message' AND column_name = 'replyIntentLeaseUntil'
-  ) THEN
-    ALTER TABLE "Message" ADD COLUMN "replyIntentLeaseUntil" TIMESTAMP(3);
-    UPDATE "Message"
-    SET "replyIntentLeaseUntil" = "replyIntentHandledAt", "replyIntentHandledAt" = NULL
-    WHERE "direction" = 'INBOUND'
-      AND "replyIntentHandledAt" - "sentAt" BETWEEN INTERVAL '100 seconds' AND INTERVAL '200 seconds';
-  END IF;
-END $$;
+--    Leases the old code left behind are moved into the new column (Codex
+--    #133). They are recognisable by their distance from the message's own
+--    "sentAt" (set when it was recorded): a check starts within about a minute
+--    of that (the worker's retries end by then), and both the old code and the
+--    new one mark a finished check with the time it STARTED, so a finished mark
+--    lies 0-60s after "sentAt", while an old lease (its start + 120s) lies
+--    120-180s after it. Rows 100-200s after, with no new-style lease, are
+--    converted; the sweep then picks up those from the last 24 hours.
+--    The old app keeps serving between this migration and the deploy, and can
+--    leave such a lease behind in that window - so run this file once more
+--    after the new app is live. A row the new code finished can only match if
+--    the hourly sweep happened to claim it 100-200s after it arrived; it is
+--    then checked once more, which changes nothing (the visit is already
+--    confirmed or cancelled, and the acknowledgement's key replays).
+ALTER TABLE "Message" ADD COLUMN IF NOT EXISTS "replyIntentLeaseUntil" TIMESTAMP(3);
+UPDATE "Message"
+SET "replyIntentLeaseUntil" = "replyIntentHandledAt", "replyIntentHandledAt" = NULL
+WHERE "direction" = 'INBOUND'
+  AND "replyIntentLeaseUntil" IS NULL
+  AND "replyIntentHandledAt" - "sentAt" BETWEEN INTERVAL '100 seconds' AND INTERVAL '200 seconds';
 CREATE INDEX IF NOT EXISTS "Message_replyIntentLeaseUntil_idx" ON "Message"("replyIntentLeaseUntil");
 
 -- 2. Appointment."reminderGeneration"

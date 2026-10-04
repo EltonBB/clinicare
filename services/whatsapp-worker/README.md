@@ -46,8 +46,9 @@ it names the `businessId` directly.
 All except `/health` require the `x-vela-bridge-secret` header.
 
 `/send` answers 200 when sent; 502 with `code: "send_failed"` when nothing was
-sent (safe to retry); 409 when the socket send timed out, so the message may
-have left. With an `idempotencyKey`, a repeat of the key within a week never
+sent (no connected session, or the socket was already closed — safe to retry);
+409 when the message may have left (a timeout, or any other error from the
+send, which may come after the frame was written). With an `idempotencyKey`, a repeat of the key within a week never
 sends twice: a sent one is replayed (same 200), a timed-out one answers 409
 again, a running one waits for the first attempt, and a different message under
 the same key gets 422. Keys are recorded in Postgres (`WhatsAppSendKey`) before

@@ -13,8 +13,9 @@ import { createHmac } from "node:crypto";
  *   - unknown -> the socket send timed out, or the worker stopped mid-send, so
  *                the message may have left: every repeat is answered "unknown"
  *                again, never re-sent;
- *   - failed  -> nothing left (not connected, or the socket refused before
- *                writing): the record is dropped, so a retry really sends;
+ *   - failed  -> nothing left (no connected session, or the socket was
+ *                already closed before a byte was written): the record is
+ *                dropped, so a retry really sends;
  *   - running -> a concurrent repeat waits for the same attempt's outcome.
  * A key reused for a different recipient or text is refused (key_conflict) —
  * nothing is sent, and since a failed send is never kept, the key's earlier
@@ -30,6 +31,9 @@ import { createHmac } from "node:crypto";
 
 /** Marks a withTimeout rejection: the operation may still have completed. */
 export class TimeoutError extends Error {}
+
+/** Thrown by sendText when the workspace has no connected session — before Baileys is called. */
+export class SessionNotConnectedError extends Error {}
 
 /** Mirrors the app's IDEMPOTENCY_KEY_PATTERN (src/lib/messaging/limits.ts). */
 export const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9:_-]{1,128}$/;
@@ -52,12 +56,23 @@ export type SendOutcome =
   | { kind: "key_conflict" };
 
 /**
- * Classifies a sendText failure. Only a timeout is uncertain: Baileys' own
- * errors (connection closed, device/prekey lookups) are thrown before the frame
- * is written, and nothing after the write throws — so they mean "not sent".
+ * Classifies a sendText failure. Only failures known to come before the
+ * message frame is written mean "not sent": no connected session, or Baileys'
+ * own check that the socket is open — its "Connection Closed" (status 428),
+ * raised by sendRawMessage before it encodes a byte, or by a device/prekey
+ * query that runs before the message is relayed. Anything else may come after
+ * bytes left: a timeout, or a transport error from the write itself (Baileys
+ * awaits the socket write's callback), so it is "unknown" (Codex #133).
  */
 export function classifySendError(error: unknown): SendOutcome {
-  return error instanceof TimeoutError ? { kind: "unknown" } : { kind: "failed" };
+  return error instanceof SessionNotConnectedError || isBaileysConnectionClosed(error)
+    ? { kind: "failed" }
+    : { kind: "unknown" };
+}
+
+function isBaileysConnectionClosed(error: unknown): boolean {
+  const boom = error as { isBoom?: unknown; message?: unknown; output?: { statusCode?: unknown } } | null;
+  return boom?.isBoom === true && boom.message === "Connection Closed" && boom.output?.statusCode === 428;
 }
 
 /** The HTTP answer for an outcome. 502 + SEND_FAILED_CODE: definitely failed,

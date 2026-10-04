@@ -32,8 +32,9 @@ export type WorkerPairRequest = {
  * app → worker: POST {workerUrl}/send
  *
  * Answers: 200 {@link WorkerSendResponse} (sent, or a replay of an earlier send
- * with the same key); 409 {@link WORKER_SEND_OUTCOME_UNKNOWN_STATUS} — the socket
- * send timed out (or the worker stopped mid-send), so the message may have left,
+ * with the same key); 409 {@link WORKER_SEND_OUTCOME_UNKNOWN_STATUS} — the send
+ * failed in a way that may follow the write (a timeout, a transport error), or
+ * the worker stopped mid-send, so the message may have left,
  * and every repeat of the key is answered the same way, never re-sent; 422
  * {@link WORKER_SEND_KEY_CONFLICT_STATUS} — the key already carried a different
  * message that was sent or may have been (this one is not sent); 400, or 502

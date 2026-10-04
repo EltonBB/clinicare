@@ -695,6 +695,21 @@ describe("applyInboundReplyIntent", () => {
       expect(mocks.message.updateMany).toHaveBeenNthCalledWith(2, FINISH);
     });
 
+    // Codex #133: the migration recognises the old code's leases by lying
+    // 100-200s after the message arrived, so a finished mark must not — it is
+    // the time the check started, however long the check took.
+    it("stamps a finished claim with the time its check started, not finished", async () => {
+      mocks.appointment.findMany.mockImplementationOnce(async () => {
+        vi.setSystemTime(NOW.getTime() + 150_000); // a slow check
+        return [{ ...REMINDED_UPCOMING, status: "CONFIRMED" }];
+      });
+      mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });
+
+      await applyInboundReplyIntent(args);
+
+      expect(mocks.message.updateMany).toHaveBeenNthCalledWith(2, FINISH);
+    });
+
     it("still returns the outcome when marking the claim finished fails — the work is already done", async () => {
       mocks.appointment.findMany.mockResolvedValueOnce([{ ...REMINDED_UPCOMING, status: "CONFIRMED" }]);
       mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });

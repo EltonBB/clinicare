@@ -6,6 +6,7 @@ import {
   IDEMPOTENCY_KEY_PATTERN,
   sendOutcomeResponse,
   TimeoutError,
+  SessionNotConnectedError,
   type SendKeyRecord,
   type SendKeyStore,
   type SendOutcome,
@@ -226,9 +227,27 @@ describe("createSendDeduper", () => {
 });
 
 describe("classifySendError", () => {
-  it("only a timeout is uncertain", () => {
+  // Baileys' Boom shape, as its sendRawMessage raises it before writing.
+  const boom = (message: string, statusCode: number) =>
+    Object.assign(new Error(message), { isBoom: true, output: { statusCode } });
+
+  it("is a definite failure only when nothing can have been written", () => {
+    expect(classifySendError(new SessionNotConnectedError("WhatsApp session is not connected."))).toEqual({
+      kind: "failed",
+    });
+    expect(classifySendError(boom("Connection Closed", 428))).toEqual({ kind: "failed" });
+  });
+
+  // Codex #133: Baileys awaits the socket write's callback, so a transport
+  // error from the write can follow bytes that already left.
+  it("treats a timeout, a transport error or anything unrecognised as unknown", () => {
     expect(classifySendError(new TimeoutError("timed out"))).toEqual({ kind: "unknown" });
-    expect(classifySendError(new Error("WhatsApp session is not connected."))).toEqual({ kind: "failed" });
+    expect(classifySendError(Object.assign(new Error("write ECONNRESET"), { code: "ECONNRESET" }))).toEqual({
+      kind: "unknown",
+    });
+    expect(classifySendError(boom("Timed Out", 408))).toEqual({ kind: "unknown" });
+    expect(classifySendError(boom("Connection Closed", 500))).toEqual({ kind: "unknown" });
+    expect(classifySendError(new Error("WhatsApp session is not connected."))).toEqual({ kind: "unknown" });
   });
 });
 
