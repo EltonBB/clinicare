@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
-  const message = { findFirst: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn() };
+  const message = {
+    findFirst: vi.fn(),
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    groupBy: vi.fn(),
+    create: vi.fn(),
+    updateMany: vi.fn(),
+  };
   const client = { findMany: vi.fn() };
   const conversation = { upsert: vi.fn(), findMany: vi.fn() };
   const appointment = { findMany: vi.fn() };
@@ -804,51 +811,86 @@ describe("recoverAbandonedReplyIntents", () => {
     sentAt: SENT_AT,
     ...overrides,
   });
-  // The abandoned replies of each workspace, oldest first.
-  const serve = (byWorkspace: Record<string, Array<ReturnType<typeof abandoned>>>) => {
-    mocks.conversation.findMany.mockResolvedValue(Object.keys(byWorkspace).sort().map((businessId) => ({ businessId })));
+  // The abandoned replies of each workspace, oldest first, behind one
+  // conversation each; `oldest` sets a workspace's oldest lease (default: all
+  // the same, so ties go by id).
+  const serve = (
+    byWorkspace: Record<string, Array<ReturnType<typeof abandoned>>>,
+    oldest: Record<string, Date> = {}
+  ) => {
+    const workspaces = Object.keys(byWorkspace);
+    mocks.message.groupBy.mockResolvedValue(
+      workspaces.map((businessId) => ({
+        conversationId: `conv_${businessId}`,
+        _min: { replyIntentLeaseUntil: oldest[businessId] ?? new Date(NOW.getTime() - 60 * 60 * 1000) },
+      }))
+    );
+    mocks.conversation.findMany.mockResolvedValue(
+      workspaces.map((businessId) => ({ id: `conv_${businessId}`, businessId }))
+    );
     mocks.message.findMany.mockImplementation(
       async ({ where }: { where: { conversation: { businessId: string } } }) =>
         byWorkspace[where.conversation.businessId] ?? []
     );
   };
+  const claims = () =>
+    mocks.message.updateMany.mock.calls
+      .map(([args]) => args as { where: { id: string; OR?: unknown } })
+      .filter((args) => args.where.OR)
+      .map((args) => args.where.id);
 
   beforeEach(() => vi.useFakeTimers({ now: NOW }));
   afterEach(() => vi.useRealTimers());
 
-  it("finds the workspaces with unfinished replies whose lease ran out in the last day, then each one's oldest", async () => {
+  it("finds each workspace's oldest abandoned lease from the last day, then that workspace's replies, oldest first", async () => {
     serve({ biz_1: [] });
 
     expect(await recoverAbandonedReplyIntents(NOW)).toEqual({ recovered: 0 });
+    expect(mocks.message.groupBy).toHaveBeenCalledWith({
+      by: ["conversationId"],
+      where: ABANDONED_WHERE,
+      _min: { replyIntentLeaseUntil: true },
+    });
     expect(mocks.conversation.findMany).toHaveBeenCalledWith({
-      where: { messages: { some: ABANDONED_WHERE } },
-      select: { businessId: true },
-      distinct: ["businessId"],
-      orderBy: { businessId: "asc" },
+      where: { id: { in: ["conv_biz_1"] } },
+      select: { id: true, businessId: true },
     });
     expect(mocks.message.findMany).toHaveBeenCalledWith({
       where: { ...ABANDONED_WHERE, conversation: { businessId: "biz_1" } },
       select: { id: true, clientId: true, body: true, sentAt: true },
       orderBy: { replyIntentLeaseUntil: "asc" },
-      take: 20,
+      take: 50,
     });
   });
 
-  it("does nothing more when no workspace has anything to recover", async () => {
-    serve({});
+  it("does nothing more when nothing is abandoned (or only replies with no conversation)", async () => {
+    mocks.message.groupBy.mockResolvedValue([
+      { conversationId: null, _min: { replyIntentLeaseUntil: new Date(NOW.getTime() - 1000) } },
+    ]);
 
     expect(await recoverAbandonedReplyIntents(NOW)).toEqual({ recovered: 0 });
+    expect(mocks.conversation.findMany).not.toHaveBeenCalled();
     expect(mocks.message.findMany).not.toHaveBeenCalled();
   });
 
   // Codex #133: oldest-first across every workspace let one backlog fill each
-  // batch while another workspace's replies aged out of the window.
-  describe("workspaces take turns", () => {
-    const order = () => mocks.message.updateMany.mock.calls.map(([args]) => (args as { where: { id: string } }).where.id);
-
+  // batch while another workspace's replies aged out of the window, and one
+  // stalled acknowledgement at a time could leave most workspaces unreached.
+  describe("nearest the cutoff first, workspaces side by side", () => {
     beforeEach(() => {
       // No reminded visit to act on: each check just claims and finishes.
       mocks.appointment.findMany.mockResolvedValue([]);
+    });
+
+    it("starts with the workspace whose oldest abandoned reply is oldest", async () => {
+      serve(
+        { biz_a: [abandoned("a1")], biz_b: [abandoned("b1")] },
+        { biz_a: new Date(NOW.getTime() - 60_000), biz_b: new Date(NOW.getTime() - 20 * 60 * 60 * 1000) }
+      );
+
+      await recoverAbandonedReplyIntents(NOW);
+
+      expect(claims()[0]).toBe("b1");
     });
 
     it("deals the batch round-robin across workspaces, oldest first within each", async () => {
@@ -856,38 +898,50 @@ describe("recoverAbandonedReplyIntents", () => {
         biz_a: [abandoned("a1"), abandoned("a2"), abandoned("a3")],
         biz_b: [abandoned("b1")],
       });
-      // An hour whose turn leads with the first workspace.
-      vi.setSystemTime(new Date("2026-07-01T00:00:00Z"));
 
-      await recoverAbandonedReplyIntents(new Date("2026-07-01T00:00:00Z"));
+      await recoverAbandonedReplyIntents(NOW);
 
-      // Each check claims (1st write) then finishes (2nd write).
-      expect(order().filter((_, index) => index % 2 === 0)).toEqual(["a1", "b1", "a2", "a3"]);
+      expect(claims().filter((id) => id.startsWith("a"))).toEqual(["a1", "a2", "a3"]);
+      expect(claims()).toContain("b1");
     });
 
-    it("caps the batch at 20, so one workspace's backlog can't take a turn from the others", async () => {
+    it("caps the batch at 50, so one workspace's backlog can't take a turn from the others", async () => {
       serve({
-        biz_a: Array.from({ length: 20 }, (_, index) => abandoned(`a${index}`)),
-        biz_b: Array.from({ length: 20 }, (_, index) => abandoned(`b${index}`)),
+        biz_a: Array.from({ length: 50 }, (_, index) => abandoned(`a${index}`)),
+        biz_b: Array.from({ length: 50 }, (_, index) => abandoned(`b${index}`)),
         biz_c: [abandoned("c1")],
       });
 
       await recoverAbandonedReplyIntents(NOW);
 
       // Rounds of three, then of two: the cap cuts the last round short.
-      const claimed = order().filter((_, index) => index % 2 === 0);
-      expect(claimed).toHaveLength(20);
-      expect(claimed).toContain("c1");
+      expect(claims()).toHaveLength(50);
+      expect(claims()).toContain("c1");
     });
 
-    it("lets a different workspace lead each hour", async () => {
+    it("runs workspaces in parallel, so one stalled check doesn't hold the others back", async () => {
       serve({ biz_a: [abandoned("a1")], biz_b: [abandoned("b1")] });
-      const oddHour = new Date("2026-07-01T01:00:00Z");
-      vi.setSystemTime(oddHour);
+      let release: (value: unknown[]) => void = () => {};
+      mocks.appointment.findMany.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
 
-      await recoverAbandonedReplyIntents(oddHour);
+      const run = recoverAbandonedReplyIntents(NOW);
+      await vi.waitFor(() => expect(claims()).toEqual(["a1", "b1"]));
+      release([]);
+      await run;
+    });
 
-      expect(order()[0]).toBe("b1");
+    it("keeps each workspace's own replies in order, one after another", async () => {
+      serve({ biz_a: [abandoned("a1"), abandoned("a2")] });
+      let release: (value: unknown[]) => void = () => {};
+      mocks.appointment.findMany.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
+
+      const run = recoverAbandonedReplyIntents(NOW);
+      await vi.waitFor(() => expect(claims()).toEqual(["a1"]));
+      await Promise.resolve();
+      expect(claims()).toEqual(["a1"]); // a2 waits for a1
+      release([]);
+      await run;
+      expect(claims()).toEqual(["a1", "a2"]);
     });
   });
 

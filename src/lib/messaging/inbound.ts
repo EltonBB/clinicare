@@ -4,6 +4,7 @@ import {
   notifyStaffOfAppointmentChange,
   revalidateCalendarSurfaces,
 } from "@/lib/appointments-shared";
+import { mapWithConcurrency } from "@/lib/concurrency";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
@@ -358,9 +359,13 @@ export async function applyInboundReplyIntent(args: {
 // A reply older than this is left to staff: whatever visit it answered has
 // most likely come and gone, and the patient has had no answer for a day.
 const REPLY_INTENT_RECOVERY_WINDOW_MS = 24 * 60 * 60 * 1000;
-// Each check may wait on an acknowledgement send, so one run takes only a few.
-const REPLY_INTENT_RECOVERY_BATCH = 20;
-const HOUR_MS = 60 * 60 * 1000;
+// At most this many replies per run, from this many workspaces at once. A check
+// usually takes a moment; during a WhatsApp outage its acknowledgement can stall
+// for the send's 25s timeout, and a run starts none after its 30s budget, so
+// even then about two rounds go through: some 20 replies an hour, ~480 a day,
+// far more than a pilot's crashed checks could leave behind (Codex #133).
+const REPLY_INTENT_RECOVERY_BATCH = 50;
+const REPLY_INTENT_RECOVERY_CONCURRENCY = 10;
 
 /**
  * Runs the reply check again for inbound messages whose claim was abandoned:
@@ -377,12 +382,13 @@ const HOUR_MS = 60 * 60 * 1000;
  * other visit as the only match — one the patient never meant (e.g. a "2"
  * that was ambiguous between today and next week would cancel next week's).
  *
- * Workspaces take turns (Codex #133). Oldest-first across the whole system
- * would let one workspace's backlog fill every batch while another's replies
- * aged out of the window — and during a worker outage, when each check waits on
- * a stalled acknowledgement, a run gets through only a couple. So the batch is
- * dealt round-robin, oldest first within each workspace, and a different
- * workspace leads each hour, so one a slow run never reached is served next.
+ * Nearest the cutoff first, and side by side (Codex #133). Oldest-first across
+ * the whole system let one workspace's backlog fill every batch while another's
+ * replies aged out of the window, and one at a time a stalled acknowledgement
+ * held up everything behind it. So the workspace whose oldest abandoned reply
+ * is oldest goes first, the batch is dealt round-robin from there (oldest
+ * first within each workspace), and workspaces run in parallel — each one's
+ * own replies still in order, since a patient's later reply should win.
  */
 export async function recoverAbandonedReplyIntents(
   now = new Date(),
@@ -394,68 +400,91 @@ export async function recoverAbandonedReplyIntents(
     replyIntentLeaseUntil: { lte: now, gt: new Date(now.getTime() - REPLY_INTENT_RECOVERY_WINDOW_MS) },
   } satisfies Prisma.MessageWhereInput;
 
-  const workspaces = (
-    await prisma.conversation.findMany({
-      where: { messages: { some: abandonedWhere } },
-      select: { businessId: true },
-      distinct: ["businessId"],
-      orderBy: { businessId: "asc" },
-    })
-  ).map((workspace) => workspace.businessId);
-  if (workspaces.length === 0) {
+  // Each workspace's oldest abandoned lease: per conversation, then rolled up.
+  const byConversation = await prisma.message.groupBy({
+    by: ["conversationId"],
+    where: abandonedWhere,
+    _min: { replyIntentLeaseUntil: true },
+  });
+  const conversationIds = byConversation.flatMap((group) => (group.conversationId ? [group.conversationId] : []));
+  if (conversationIds.length === 0) {
     return { recovered: 0 };
   }
-  const lead = Math.floor(now.getTime() / HOUR_MS) % workspaces.length;
-  const inTurn = [...workspaces.slice(lead), ...workspaces.slice(0, lead)].slice(0, REPLY_INTENT_RECOVERY_BATCH);
+  const owners = await prisma.conversation.findMany({
+    where: { id: { in: conversationIds } },
+    select: { id: true, businessId: true },
+  });
+  const ownerOf = new Map(owners.map((conversation) => [conversation.id, conversation.businessId]));
+  const oldestLease = new Map<string, number>();
+  for (const group of byConversation) {
+    const businessId = group.conversationId ? ownerOf.get(group.conversationId) : undefined;
+    const lease = group._min.replyIntentLeaseUntil?.getTime();
+    if (businessId && lease !== undefined) {
+      oldestLease.set(businessId, Math.min(oldestLease.get(businessId) ?? lease, lease));
+    }
+  }
+  const inTurn = [...oldestLease.entries()]
+    .sort(([idA, a], [idB, b]) => a - b || idA.localeCompare(idB))
+    .slice(0, REPLY_INTENT_RECOVERY_BATCH)
+    .map(([businessId]) => businessId);
 
   const queues = await Promise.all(
-    inTurn.map(async (businessId) =>
-      (
-        await prisma.message.findMany({
-          where: { ...abandonedWhere, conversation: { businessId } },
-          select: { id: true, clientId: true, body: true, sentAt: true },
-          orderBy: { replyIntentLeaseUntil: "asc" },
-          take: REPLY_INTENT_RECOVERY_BATCH,
-        })
-      ).map((message) => ({ ...message, businessId }))
+    inTurn.map((businessId) =>
+      prisma.message.findMany({
+        where: { ...abandonedWhere, conversation: { businessId } },
+        select: { id: true, clientId: true, body: true, sentAt: true },
+        orderBy: { replyIntentLeaseUntil: "asc" },
+        take: REPLY_INTENT_RECOVERY_BATCH,
+      })
     )
   );
-  const abandoned: Array<(typeof queues)[number][number]> = [];
-  for (let round = 0; abandoned.length < REPLY_INTENT_RECOVERY_BATCH; round += 1) {
-    const dealt = queues.flatMap((queue) => (queue[round] ? [queue[round]] : []));
-    if (dealt.length === 0) break;
-    abandoned.push(...dealt.slice(0, REPLY_INTENT_RECOVERY_BATCH - abandoned.length));
+  // Dealt round-robin, so each workspace gets a fair share of the batch.
+  const shares: Array<Awaited<(typeof queues)[number]>> = inTurn.map(() => []);
+  let dealt = 0;
+  for (let round = 0; dealt < REPLY_INTENT_RECOVERY_BATCH; round += 1) {
+    let any = false;
+    for (let index = 0; index < queues.length && dealt < REPLY_INTENT_RECOVERY_BATCH; index += 1) {
+      const message = queues[index][round];
+      if (message) {
+        shares[index].push(message);
+        dealt += 1;
+        any = true;
+      }
+    }
+    if (!any) break;
   }
 
   let recovered = 0;
-  for (const message of abandoned) {
-    if (Date.now() >= deadline) {
-      break;
-    }
-    try {
-      // The client was deleted since (clientId set null): nothing left to act
-      // on, so the claim is simply closed.
-      if (!message.clientId) {
-        await prisma.message.updateMany({
-          where: { id: message.id, replyIntentHandledAt: null },
-          data: { replyIntentHandledAt: now, replyIntentLeaseUntil: null },
+  await mapWithConcurrency(inTurn, REPLY_INTENT_RECOVERY_CONCURRENCY, async (businessId, index) => {
+    for (const message of shares[index]) {
+      if (Date.now() >= deadline) {
+        return;
+      }
+      try {
+        // The client was deleted since (clientId set null): nothing left to act
+        // on, so the claim is simply closed.
+        if (!message.clientId) {
+          await prisma.message.updateMany({
+            where: { id: message.id, replyIntentHandledAt: null },
+            data: { replyIntentHandledAt: now, replyIntentLeaseUntil: null },
+          });
+          continue;
+        }
+        const result = await applyInboundReplyIntent({
+          businessId,
+          clientId: message.clientId,
+          body: message.body,
+          messageId: message.id,
+          now: message.sentAt,
         });
-        continue;
+        if (result.applied || result.reason !== "in_progress") {
+          recovered += 1;
+        }
+      } catch (error) {
+        logger.error("Couldn't recover an abandoned reply-intent check.", error, { messageId: message.id });
       }
-      const result = await applyInboundReplyIntent({
-        businessId: message.businessId,
-        clientId: message.clientId,
-        body: message.body,
-        messageId: message.id,
-        now: message.sentAt,
-      });
-      if (result.applied || result.reason !== "in_progress") {
-        recovered += 1;
-      }
-    } catch (error) {
-      logger.error("Couldn't recover an abandoned reply-intent check.", error, { messageId: message.id });
     }
-  }
+  });
   return { recovered };
 }
 
