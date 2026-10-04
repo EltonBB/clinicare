@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     followUpDraft: { updateMany: vi.fn(), findFirstOrThrow: vi.fn(), findFirst: vi.fn(), createMany: vi.fn() },
     waitlistEntry: { findMany: vi.fn(), updateMany: vi.fn() },
     appointment: { findFirst: vi.fn() },
+    staffMember: { findFirst: vi.fn() },
     business: { findUniqueOrThrow: vi.fn() },
     scheduleBlock: { findFirst: vi.fn() },
     businessHours: { findUnique: vi.fn() },
@@ -33,6 +34,7 @@ import {
   listPendingFollowUpDrafts,
   markFollowUpDraftDelivered,
   markFollowUpDraftSent,
+  OFFER_STAFF_UNAVAILABLE_ERROR,
   passSlotOffer,
   revertFollowUpDraftToPending,
   settleInterruptedFollowUpSends,
@@ -1305,8 +1307,25 @@ describe("passSlotOffer (Declined)", () => {
 });
 
 describe("bookSlotOffer (Book)", () => {
+  const SLOT_DETAILS = {
+    title: "Checkup",
+    staffMemberId: "staff_1",
+    startAt: FUTURE,
+    endAt: new Date(FUTURE.getTime() + 30 * 60_000),
+  };
+  const BOOKED = { ok: true, slot: { clientId: "client_1", ...SLOT_DETAILS } };
+
+  beforeEach(() => {
+    mocks.tx.followUpDraft.findFirst.mockResolvedValue({ clientId: "client_1", appointmentId: "appt_1" });
+    mocks.tx.appointment.findFirst.mockResolvedValue(SLOT_DETAILS);
+    mocks.tx.staffMember.findFirst.mockResolvedValue({ id: "staff_1" });
+  });
+
+  // The raw SQL each $executeRaw call ran, placeholders shown as "?".
+  const rawQueries = () => mocks.tx.$executeRaw.mock.calls.map((call) => (call[0] as TemplateStringsArray).join("?"));
+
   it("locks the draft row first (a value-preserving guarded write), then flips the entry pinned to that draft still being SENT and still live — in one transaction", async () => {
-    expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({ ok: true });
+    expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual(BOOKED);
 
     expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(1);
     // The guard is scalar, so it is re-checked against the row's latest version after the lock wait.
@@ -1346,6 +1365,65 @@ describe("bookSlotOffer (Book)", () => {
     );
   });
 
+  // Codex #130: read outside the transaction, the slot details went stale — an
+  // edit of the cancelled booking or a deactivation of its clinician landing in
+  // between let Book fill the entry from an old snapshot and hand the booking
+  // form an old slot or an unavailable clinician.
+  it("locks the appointment and then its clinician before reading them, and returns exactly what it booked", async () => {
+    expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual(BOOKED);
+
+    expect(rawQueries()).toEqual([
+      'SELECT 1 FROM "Appointment" WHERE "id" = ? FOR SHARE',
+      'SELECT 1 FROM "StaffMember" WHERE "id" = ? FOR SHARE',
+    ]);
+    expect(mocks.tx.$executeRaw.mock.calls.map((call) => call[1])).toEqual(["appt_1", "staff_1"]);
+    const [appointmentLock, staffLock] = mocks.tx.$executeRaw.mock.invocationCallOrder;
+    expect(appointmentLock).toBeLessThan(mocks.tx.appointment.findFirst.mock.invocationCallOrder[0]);
+    expect(staffLock).toBeLessThan(mocks.tx.staffMember.findFirst.mock.invocationCallOrder[0]);
+    expect(mocks.tx.staffMember.findFirst.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.tx.waitlistEntry.updateMany.mock.invocationCallOrder[0]
+    );
+    expect(mocks.tx.appointment.findFirst).toHaveBeenCalledWith({
+      where: { id: "appt_1", businessId: "biz_1" },
+      select: { title: true, staffMemberId: true, startAt: true, endAt: true },
+    });
+  });
+
+  it("refuses, leaving the entry OFFERED, when the offer's clinician is no longer available", async () => {
+    mocks.tx.staffMember.findFirst.mockResolvedValue(null);
+
+    expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({
+      ok: false,
+      error: OFFER_STAFF_UNAVAILABLE_ERROR,
+    });
+    expect(mocks.tx.staffMember.findFirst).toHaveBeenCalledWith({
+      where: { id: "staff_1", businessId: "biz_1", isActive: true, status: { not: "INACTIVE" } },
+      select: { id: true },
+    });
+    expect(mocks.tx.waitlistEntry.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("books an unassigned slot without locking or checking any clinician", async () => {
+    mocks.tx.appointment.findFirst.mockResolvedValue({ ...SLOT_DETAILS, staffMemberId: null });
+
+    expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({
+      ok: true,
+      slot: { clientId: "client_1", ...SLOT_DETAILS, staffMemberId: null },
+    });
+    expect(rawQueries()).toEqual(['SELECT 1 FROM "Appointment" WHERE "id" = ? FOR SHARE']);
+    expect(mocks.tx.staffMember.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("refuses when the offer has lost its appointment (deleted since)", async () => {
+    mocks.tx.followUpDraft.findFirst.mockResolvedValue({ clientId: "client_1", appointmentId: null });
+
+    expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({
+      ok: false,
+      error: "This slot offer is no longer available.",
+    });
+    expect(mocks.tx.waitlistEntry.updateMany).not.toHaveBeenCalled();
+  });
+
   it("refuses without touching the entry when the draft was declined, skipped, expired or isn't a SENT slot offer any more", async () => {
     mocks.tx.followUpDraft.updateMany.mockResolvedValue({ count: 0 });
 
@@ -1371,13 +1449,16 @@ describe("bookSlotOffer (Book)", () => {
     const SLOT = { startAt: FUTURE, endAt: new Date(FUTURE.getTime() + 30 * 60_000) };
 
     it("books a slot that still fits the hours, reading them after the draft lock and before the entry flip", async () => {
-      mocks.tx.followUpDraft.findFirst.mockResolvedValue({ appointment: SLOT });
+      mocks.tx.appointment.findFirst.mockResolvedValue({ ...SLOT_DETAILS, ...SLOT });
 
-      expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({ ok: true });
+      expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({
+        ok: true,
+        slot: { clientId: "client_1", ...SLOT_DETAILS, ...SLOT },
+      });
 
       expect(mocks.tx.followUpDraft.findFirst).toHaveBeenCalledWith({
         where: { id: "d1", businessId: "biz_1" },
-        select: { appointment: { select: { startAt: true, endAt: true } } },
+        select: { clientId: true, appointmentId: true },
       });
       expect(mocks.tx.businessHours.findUnique).toHaveBeenCalledWith({
         where: { businessId_weekday: { businessId: "biz_1", weekday: 3 } },
@@ -1396,7 +1477,7 @@ describe("bookSlotOffer (Book)", () => {
       ["the clinic now opens after the slot starts", { isOpen: true, startTime: "12:00", endTime: "18:00" }],
       ["the clinic now closes before the slot ends", { isOpen: true, startTime: "07:00", endTime: "08:00" }],
     ])("refuses, leaving the entry OFFERED, when %s", async (_label, hours) => {
-      mocks.tx.followUpDraft.findFirst.mockResolvedValue({ appointment: SLOT });
+      mocks.tx.appointment.findFirst.mockResolvedValue({ ...SLOT_DETAILS, ...SLOT });
       mocks.tx.businessHours.findUnique.mockResolvedValue(hours);
 
       expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({
@@ -1422,7 +1503,7 @@ describe("bookSlotOffer (Book)", () => {
       new Prisma.PrismaClientKnownRequestError("deadlock", { code: "P2034", clientVersion: "test" })
     );
 
-    expect(await bookSlotOffer({ id: "d1", businessId: "biz_1" })).toEqual({ ok: true });
+    expect(await bookSlotOffer({ id: "d1", businessId: "biz_1" })).toEqual(BOOKED);
     expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(2);
   });
 
@@ -1464,8 +1545,10 @@ describe("a follow-up whose message is still being sent", () => {
 
   it("can be booked once delivered", async () => {
     serveDrafts([offer({ sentAt: NOW })]);
+    mocks.tx.followUpDraft.findFirst.mockResolvedValue({ clientId: "client_1", appointmentId: "appt_1" });
+    mocks.tx.appointment.findFirst.mockResolvedValue({ title: "Checkup", staffMemberId: null, startAt: FUTURE, endAt: FUTURE });
 
-    expect(await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).toEqual({ ok: true });
+    expect((await bookSlotOffer({ id: "d1", businessId: "biz_1", now: NOW })).ok).toBe(true);
   });
 
   it("is put back to Pending on a failed send only while it is still being sent — a delivered one is never un-sent", async () => {

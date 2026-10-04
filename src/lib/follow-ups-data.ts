@@ -5,8 +5,10 @@ import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { MAX_MESSAGE_BODY_LENGTH, MESSAGE_TOO_LONG_ERROR } from "@/lib/messaging/limits";
 import { isSlotInsideOperatingHours } from "@/lib/operating-hours";
 import { prisma } from "@/lib/prisma";
+import { lockAppointmentShared, lockStaffMemberShared } from "@/lib/row-locks";
 import type { FollowUpDraftRecord } from "@/lib/follow-ups";
 import { liveSlotOfferWhere, reofferFreedSlot, retryOnWriteConflict } from "@/lib/slot-offers";
+import { AVAILABLE_STAFF_WHERE } from "@/lib/staff-eligibility";
 import { rebookedAppointmentWhere, workflowEnabledWhere } from "@/lib/workflow-generators";
 
 // "Pro"/"not Pro" as billing.ts defines it — the same derivation as the
@@ -172,6 +174,8 @@ type MarkDraftSentResult = { ok: true; draft: SentFollowUpDraft } | { ok: false;
 
 export const ALREADY_HANDLED_ERROR = "This follow-up was already handled.";
 export const SLOT_OFFER_UNAVAILABLE_ERROR = "This slot offer is no longer available.";
+export const OFFER_STAFF_UNAVAILABLE_ERROR =
+  "The staff member for this slot is no longer available. Book it manually from Calendar instead.";
 export const SLOT_OUTSIDE_HOURS_ERROR =
   "This slot is outside your working hours now. Update your working hours in Settings, or skip or decline the offer.";
 
@@ -392,10 +396,10 @@ class OfferAlreadySettled extends Error {}
  * transaction back, so nothing it wrote survives, and the caller gets the
  * plain "already handled" result instead.
  */
-async function settleOffer(
-  run: (tx: Prisma.TransactionClient) => Promise<DraftMutationResult>,
+async function settleOffer<Result extends DraftMutationResult>(
+  run: (tx: Prisma.TransactionClient) => Promise<Result | { ok: false; error: string }>,
   lostRaceError: string
-): Promise<DraftMutationResult> {
+): Promise<Result | { ok: false; error: string }> {
   try {
     return await retryOnWriteConflict(() => prisma.$transaction(run));
   } catch (error) {
@@ -499,6 +503,15 @@ export async function passSlotOffer(args: {
   }, SLOT_OFFER_UNAVAILABLE_ERROR);
 }
 
+/** What Book booked, read under its locks — the booking link is built from this. */
+export type BookedSlot = {
+  clientId: string;
+  title: string;
+  staffMemberId: string | null;
+  startAt: Date;
+  endAt: Date;
+};
+
 /**
  * Book: staff commit to booking a patient into the slot they were offered —
  * the SENT offer's entry goes OFFERED -> FILLED (the draft stays SENT).
@@ -509,21 +522,31 @@ export async function passSlotOffer(args: {
  * it and lets them queue behind this; the guard is scalar (id, kind, status),
  * so it is re-checked against the row's latest version once the lock is won,
  * and a draft skipped, declined or expired in the meantime refuses the Book.
+ *
+ * The slot it books is read here too, under locks, and returned: the freed
+ * appointment's row is share-locked before its date, time, service and
+ * clinician are read, and that clinician's row before they are checked as still
+ * available. An edit of the cancelled booking or a deactivation of the
+ * clinician therefore either finished first, and is what this reads (and
+ * refuses or books against), or waits until this commits. Read outside the
+ * transaction, as the caller once did, those details went stale: Book could
+ * fill the entry from an old snapshot, leaving the edit or the deactivation
+ * unable to retire it, and hand the booking form an old slot or an unavailable
+ * clinician (Codex #130). The caller builds the booking link from what this
+ * returns.
+ *
  * Only then is the entry flipped, pinned to that draft still being SENT and,
  * via `liveSlotOfferWhere`, to the same offer still being live — the
  * appointment still cancelled and ahead, the waiting client still eligible.
- * The caller's own read of `liveSlotOfferWhere` happens outside this
- * transaction (building the booking-form URL needs the appointment's
- * details), so it's stale by the time this runs; re-checking it here, inside
- * the same atomic write that flips OFFERED -> FILLED, is what actually closes
- * that window — a slot reactivated or filled through another path since the
- * read now fails the flip instead of silently marking the entry FILLED with
- * nothing booked and no way back onto the list (Codex).
  */
-export async function bookSlotOffer(args: { id: string; businessId: string; now?: Date }): Promise<DraftMutationResult> {
+export async function bookSlotOffer(args: {
+  id: string;
+  businessId: string;
+  now?: Date;
+}): Promise<{ ok: true; slot: BookedSlot } | { ok: false; error: string }> {
   const { id, businessId, now = new Date() } = args;
 
-  return settleOffer(async (tx) => {
+  return settleOffer<{ ok: true; slot: BookedSlot }>(async (tx) => {
     const { count: locked } = await tx.followUpDraft.updateMany({
       where: { id, businessId, kind: "SLOT_OFFER", status: "SENT", ...DELIVERED_WHERE },
       data: { status: "SENT" },
@@ -533,17 +556,45 @@ export async function bookSlotOffer(args: { id: string; businessId: string; now?
       return { ok: false, error: SLOT_OFFER_UNAVAILABLE_ERROR };
     }
 
-    // The slot also has to still fit the clinic's working hours (see
-    // markFollowUpDraftSent): checked once the draft is locked and before the
-    // entry is flipped, so a refused Book leaves the entry OFFERED — it can still
-    // be declined and offered on — instead of FILLED with a booking the calendar
-    // will not accept (Codex #130).
     const offered = await tx.followUpDraft.findFirst({
       where: { id, businessId },
-      select: { appointment: { select: { startAt: true, endAt: true } } },
+      select: { clientId: true, appointmentId: true },
     });
 
-    if (offered?.appointment && !(await isSlotInsideOperatingHours(tx, { businessId, ...offered.appointment }))) {
+    if (!offered?.appointmentId) {
+      return { ok: false, error: SLOT_OFFER_UNAVAILABLE_ERROR };
+    }
+
+    await lockAppointmentShared(tx, offered.appointmentId);
+    const appointment = await tx.appointment.findFirst({
+      where: { id: offered.appointmentId, businessId },
+      select: { title: true, staffMemberId: true, startAt: true, endAt: true },
+    });
+
+    if (!appointment) {
+      return { ok: false, error: SLOT_OFFER_UNAVAILABLE_ERROR };
+    }
+
+    // The booking form falls back to its first clinician when the one it is
+    // given is unavailable, which would quietly book someone the offer was not
+    // about - so refuse, leaving the draft and entry as they are (Codex #130).
+    if (appointment.staffMemberId) {
+      await lockStaffMemberShared(tx, appointment.staffMemberId);
+      const staffAvailable = await tx.staffMember.findFirst({
+        where: { id: appointment.staffMemberId, businessId, ...AVAILABLE_STAFF_WHERE },
+        select: { id: true },
+      });
+
+      if (!staffAvailable) {
+        return { ok: false, error: OFFER_STAFF_UNAVAILABLE_ERROR };
+      }
+    }
+
+    // The slot also has to still fit the clinic's working hours (see
+    // markFollowUpDraftSent), checked before the entry is flipped, so a refused
+    // Book leaves the entry OFFERED — it can still be declined and offered on —
+    // instead of FILLED with a booking the calendar will not accept (Codex #130).
+    if (!(await isSlotInsideOperatingHours(tx, { businessId, startAt: appointment.startAt, endAt: appointment.endAt }))) {
       return { ok: false, error: SLOT_OUTSIDE_HOURS_ERROR };
     }
 
@@ -558,6 +609,8 @@ export async function bookSlotOffer(args: { id: string; businessId: string; now?
 
     // Removed, booked by someone else, or the offer stopped being live
     // (reactivated, or the client since archived/deactivated) since it was read.
-    return count === 0 ? { ok: false, error: SLOT_OFFER_UNAVAILABLE_ERROR } : { ok: true };
+    return count === 0
+      ? { ok: false, error: SLOT_OFFER_UNAVAILABLE_ERROR }
+      : { ok: true, slot: { clientId: offered.clientId, ...appointment } };
   }, SLOT_OFFER_UNAVAILABLE_ERROR);
 }

@@ -62,3 +62,14 @@ export async function lockStaffMemberExclusive(tx: Prisma.TransactionClient, sta
 export async function lockClientExclusive(tx: Prisma.TransactionClient, clientId: string): Promise<void> {
   await tx.$executeRaw`SELECT 1 FROM "Client" WHERE "id" = ${clientId} FOR NO KEY UPDATE`;
 }
+
+/**
+ * Holds a freed (cancelled) appointment's slot details still for the rest of a
+ * transaction: Book reads the date, time, service and clinician it builds the
+ * booking from after taking this, so an edit of that cancelled booking (an
+ * UPDATE of the row) either finished first and is read, or waits until the Book
+ * commits (Codex #130). A share lock, so two readers don't block each other.
+ */
+export async function lockAppointmentShared(tx: Prisma.TransactionClient, appointmentId: string): Promise<void> {
+  await tx.$executeRaw`SELECT 1 FROM "Appointment" WHERE "id" = ${appointmentId} FOR SHARE`;
+}

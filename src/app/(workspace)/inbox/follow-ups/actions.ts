@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 
-import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
@@ -12,7 +11,6 @@ import {
   ALREADY_HANDLED_ERROR,
   bookSlotOffer,
   confirmFollowUpDraftDispatch,
-  DELIVERED_WHERE,
   dismissFollowUpDraft,
   markFollowUpDraftDelivered,
   markFollowUpDraftSent,
@@ -21,15 +19,11 @@ import {
   SLOT_OFFER_UNAVAILABLE_ERROR,
 } from "@/lib/follow-ups-data";
 import { parseRecordId } from "@/lib/record-id";
-import { liveSlotOfferWhere } from "@/lib/slot-offers";
-import { AVAILABLE_STAFF_WHERE } from "@/lib/staff-eligibility";
 import { formatZonedDateKey, formatZonedTime24, getZonedWallClockMinutesBetween } from "@/lib/time-zone";
 
 export type FollowUpDraftActionResult = { ok: boolean; error?: string };
 
 const TRY_AGAIN_ERROR = "Something went wrong. Try again.";
-const OFFER_STAFF_UNAVAILABLE_ERROR =
-  "The staff member for this slot is no longer available. Book it manually from Calendar instead.";
 
 function getAuthedBusiness() {
   return getAuthedBusinessContext("Your session expired. Log in again to manage follow-ups.");
@@ -220,41 +214,29 @@ export async function bookFollowUpSlotAction(rawDraftId: string): Promise<BookFo
     return { ok: false, error: SLOT_OFFER_UNAVAILABLE_ERROR };
   }
 
-  const draft = await prisma.followUpDraft.findFirst({
-    where: { id: draftId, businessId: business.id, status: "SENT", ...DELIVERED_WHERE, ...liveSlotOfferWhere(new Date()) },
-    select: {
-      clientId: true,
-      appointment: { select: { title: true, staffMemberId: true, startAt: true, endAt: true } },
-    },
-  });
-
-  if (!draft?.appointment) {
-    return { ok: false, error: SLOT_OFFER_UNAVAILABLE_ERROR };
+  // Book re-checks the offer and reads the slot under its locks, in the same
+  // transaction that marks the entry FILLED, so the link below is built from
+  // exactly what was booked - never a snapshot an edit or a deactivation made
+  // stale in between (Codex #130). It refuses (leaving draft and entry as they
+  // are) when the offer is gone, its clinician is no longer available, or the
+  // slot no longer fits the clinic's hours.
+  let booked;
+  try {
+    booked = await bookSlotOffer({ id: draftId, businessId: business.id });
+  } catch (error) {
+    // Already retried once on a write conflict (see retryOnWriteConflict).
+    logger.error("Couldn't book a slot offer.", error, { businessId: business.id, draftId });
+    return { ok: false, error: TRY_AGAIN_ERROR };
   }
 
-  const { title, staffMemberId, startAt, endAt } = draft.appointment;
-
-  // A staff member on the freed appointment can have since gone inactive.
-  // The booking form falls back to its own first-in-list staff member
-  // whenever no id is preselected — indistinguishable from a genuinely
-  // unassigned offer — so silently dropping an invalidated id here would
-  // have the form quietly assign the slot to whichever clinician happens to
-  // be first, not the one the offer was actually about. Refuse instead: the
-  // draft and entry are untouched, so staff can retry once the staffing is
-  // sorted out (Codex #130).
-  if (staffMemberId) {
-    const staffStillAvailable = await prisma.staffMember.findFirst({
-      where: { id: staffMemberId, businessId: business.id, ...AVAILABLE_STAFF_WHERE },
-      select: { id: true },
-    });
-
-    if (!staffStillAvailable) {
-      return { ok: false, error: OFFER_STAFF_UNAVAILABLE_ERROR };
-    }
+  if (!booked.ok) {
+    return booked;
   }
+
+  const { clientId, title, staffMemberId, startAt, endAt } = booked.slot;
 
   const params = new URLSearchParams({
-    client: draft.clientId,
+    client: clientId,
     service: title,
     date: formatZonedDateKey(startAt),
     time: formatZonedTime24(startAt),
@@ -278,20 +260,6 @@ export async function bookFollowUpSlotAction(rawDraftId: string): Promise<BookFo
   const durationMinutes = getZonedWallClockMinutesBetween(startAt, endAt);
   if (durationMinutes > 0) {
     params.set("duration", String(durationMinutes));
-  }
-
-  let booked;
-  try {
-    booked = await bookSlotOffer({ id: draftId, businessId: business.id });
-  } catch (error) {
-    // Already retried once on a write conflict (see retryOnWriteConflict).
-    logger.error("Couldn't book a slot offer.", error, { businessId: business.id, draftId });
-    return { ok: false, error: TRY_AGAIN_ERROR };
-  }
-
-  if (!booked.ok) {
-    // Declined, skipped, removed, or booked by someone else since the read above.
-    return booked;
   }
 
   revalidateFollowUpSurfaces();

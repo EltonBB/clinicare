@@ -474,22 +474,30 @@ describe("dismissFollowUpDraftAction", () => {
 });
 
 describe("bookFollowUpSlotAction", () => {
-  it("returns a booking url pre-filled with the freed slot's clinic-zone date and time, and flips the entry to FILLED", async () => {
-    process.env.APP_TIME_ZONE = "Europe/Budapest";
-    mocks.followUpDraft.findFirst.mockResolvedValue({
-      clientId: "client_1",
-      // 22:30 UTC on Oct 4 is 00:30 on Oct 5 in Budapest (CEST) — a raw-UTC
-      // date/time would land on the wrong day. A 45-minute slot (not the
-      // form's 60-minute default) so the preserved-duration assertion below
-      // actually distinguishes the fix from the old behavior.
-      appointment: {
-        title: "Follow-up visit",
-        staffMemberId: "staff_1",
-        startAt: new Date("2026-10-04T22:30:00.000Z"),
-        endAt: new Date("2026-10-04T23:15:00.000Z"),
+  // What bookSlotOffer read under its locks and booked (Codex #130).
+  const booked = (slot: { title?: string; staffMemberId?: string | null; startAt: string; endAt: string }) =>
+    mocks.bookSlotOffer.mockResolvedValue({
+      ok: true,
+      slot: {
+        clientId: "client_1",
+        title: slot.title ?? "Checkup",
+        staffMemberId: slot.staffMemberId ?? null,
+        startAt: new Date(slot.startAt),
+        endAt: new Date(slot.endAt),
       },
     });
-    mocks.bookSlotOffer.mockResolvedValue({ ok: true });
+
+  it("returns a booking url built from exactly what Book booked, in the clinic's zone, and revalidates", async () => {
+    process.env.APP_TIME_ZONE = "Europe/Budapest";
+    // 22:30 UTC on Oct 4 is 00:30 on Oct 5 in Budapest (CEST) — a raw-UTC
+    // date/time would land on the wrong day. A 45-minute slot (not the form's
+    // 60-minute default) so the preserved-duration assertion is meaningful.
+    booked({
+      title: "Follow-up visit",
+      staffMemberId: "staff_1",
+      startAt: "2026-10-04T22:30:00.000Z",
+      endAt: "2026-10-04T23:15:00.000Z",
+    });
 
     const result = await bookFollowUpSlotAction(DRAFT_ID);
 
@@ -498,35 +506,11 @@ describe("bookFollowUpSlotAction", () => {
       bookingUrl:
         "/calendar/new?client=client_1&service=Follow-up+visit&date=2026-10-05&time=00%3A30&staffMemberId=staff_1&duration=45",
     });
-    // Only a live sent offer: entry still OFFERED, slot still cancelled and ahead.
-    expect(mocks.followUpDraft.findFirst).toHaveBeenCalledWith({
-      where: expect.objectContaining({
-        id: DRAFT_ID,
-        businessId: BUSINESS.id,
-        kind: "SLOT_OFFER",
-        status: "SENT",
-        // Delivered, not merely claimed by a send still in flight (Codex #130).
-        sentAt: { not: null },
-        waitlistEntry: { status: "OFFERED" },
-        appointment: {
-          status: "CANCELLED",
-          startAt: { gt: expect.any(Date) },
-          OR: [{ staffMemberId: null }, { staffMember: { isActive: true, status: { not: "INACTIVE" } } }],
-        },
-      }),
-      select: {
-        clientId: true,
-        appointment: { select: { title: true, staffMemberId: true, startAt: true, endAt: true } },
-      },
-    });
-    // The entry flip (draft row locked first, entry second) lives in the data layer.
     expect(mocks.bookSlotOffer).toHaveBeenCalledWith({ id: DRAFT_ID, businessId: BUSINESS.id });
-    // The offer's staff member is re-checked before ever building the booking
-    // URL or touching the entry (Codex #130).
-    expect(mocks.staffMember.findFirst).toHaveBeenCalledWith({
-      where: { id: "staff_1", businessId: BUSINESS.id, isActive: true, status: { not: "INACTIVE" } },
-      select: { id: true },
-    });
+    // Codex #130: no separate read of the draft, slot or clinician outside
+    // Book's transaction — those went stale before the entry was filled.
+    expect(mocks.followUpDraft.findFirst).not.toHaveBeenCalled();
+    expect(mocks.staffMember.findFirst).not.toHaveBeenCalled();
     expectFollowUpSurfacesRevalidated();
   });
 
@@ -547,16 +531,7 @@ describe("bookFollowUpSlotAction", () => {
     ],
   ])("pre-fills the wall-clock length of a slot across the %s", async (_label, slot, expected) => {
     process.env.APP_TIME_ZONE = "Europe/Budapest";
-    mocks.followUpDraft.findFirst.mockResolvedValue({
-      clientId: "client_1",
-      appointment: {
-        title: "Night clinic",
-        staffMemberId: null,
-        startAt: new Date(slot.startAt),
-        endAt: new Date(slot.endAt),
-      },
-    });
-    mocks.bookSlotOffer.mockResolvedValue({ ok: true });
+    booked({ title: "Night clinic", ...slot });
 
     const result = await bookFollowUpSlotAction(DRAFT_ID);
 
@@ -575,87 +550,36 @@ describe("bookFollowUpSlotAction", () => {
     expect(parseZonedWallClock(expected.date, endTime)?.toISOString()).toBe(slot.endAt);
   });
 
-  it("passes an explicit empty staffMemberId when the freed slot had nobody assigned, without checking any staff member", async () => {
+  it("passes an explicit empty staffMemberId when the freed slot had nobody assigned", async () => {
     process.env.APP_TIME_ZONE = "Europe/Budapest";
-    mocks.followUpDraft.findFirst.mockResolvedValue({
-      clientId: "client_1",
-      appointment: {
-        title: "Checkup",
-        staffMemberId: null,
-        startAt: new Date("2026-10-05T07:00:00.000Z"),
-        endAt: new Date("2026-10-05T07:30:00.000Z"),
-      },
-    });
-    mocks.bookSlotOffer.mockResolvedValue({ ok: true });
-
-    const result = await bookFollowUpSlotAction(DRAFT_ID);
+    booked({ startAt: "2026-10-05T07:00:00.000Z", endAt: "2026-10-05T07:30:00.000Z" });
 
     // An empty staffMemberId (not an absent one) so the booking form's own
     // "nothing preselected" default (its first staff member) can never
     // silently override a genuinely unassigned offer (Codex #130).
-    expect(result).toEqual({
+    expect(await bookFollowUpSlotAction(DRAFT_ID)).toEqual({
       ok: true,
       bookingUrl: "/calendar/new?client=client_1&service=Checkup&date=2026-10-05&time=09%3A00&staffMemberId=&duration=30",
     });
-    expect(mocks.staffMember.findFirst).not.toHaveBeenCalled();
   });
 
-  it("refuses to book, without touching the entry, when the offer's staff member has since gone inactive or was removed (Codex #130)", async () => {
-    mocks.followUpDraft.findFirst.mockResolvedValue({
-      clientId: "client_1",
-      appointment: {
-        title: "Checkup",
-        staffMemberId: "staff_gone",
-        startAt: new Date("2026-10-05T07:00:00.000Z"),
-        endAt: new Date("2026-10-05T07:30:00.000Z"),
-      },
-    });
-    mocks.staffMember.findFirst.mockResolvedValue(null);
+  it.each([
+    ["the offer is gone (declined, removed, or booked since)", "This slot offer is no longer available."],
+    [
+      "the offer's clinician is no longer available",
+      "The staff member for this slot is no longer available. Book it manually from Calendar instead.",
+    ],
+  ])("passes Book's refusal through, revalidating nothing, when %s", async (_label, error) => {
+    mocks.bookSlotOffer.mockResolvedValue({ ok: false, error });
 
-    const result = await bookFollowUpSlotAction(DRAFT_ID);
-
-    expect(result).toEqual({
-      ok: false,
-      error: "The staff member for this slot is no longer available. Book it manually from Calendar instead.",
-    });
-    // Never flips the entry, never revalidates — the offer is left exactly as
-    // it was so staff can retry once the staffing is sorted out.
-    expect(mocks.bookSlotOffer).not.toHaveBeenCalled();
-    expect(mocks.revalidatePath).not.toHaveBeenCalled();
-  });
-
-  it("refuses when the entry was declined, removed, or booked since the read", async () => {
-    mocks.followUpDraft.findFirst.mockResolvedValue({
-      clientId: "client_1",
-      appointment: { title: "Checkup", staffMemberId: null, startAt: new Date("2026-10-05T07:00:00.000Z"), endAt: new Date("2026-10-05T07:30:00.000Z") },
-    });
-    mocks.bookSlotOffer.mockResolvedValue({ ok: false, error: "This slot offer is no longer available." });
-
-    expect(await bookFollowUpSlotAction(DRAFT_ID)).toEqual({
-      ok: false,
-      error: "This slot offer is no longer available.",
-    });
+    expect(await bookFollowUpSlotAction(DRAFT_ID)).toEqual({ ok: false, error });
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
   it("turns an unexpected failure (a conflict that survived its retry) into a plain retry message, revalidating nothing", async () => {
-    mocks.followUpDraft.findFirst.mockResolvedValue({
-      clientId: "client_1",
-      appointment: { title: "Checkup", staffMemberId: null, startAt: new Date("2026-10-05T07:00:00.000Z"), endAt: new Date("2026-10-05T07:30:00.000Z") },
-    });
     mocks.bookSlotOffer.mockRejectedValue(new Error("deadlock detected"));
 
     expect(await bookFollowUpSlotAction(DRAFT_ID)).toEqual({ ok: false, error: "Something went wrong. Try again." });
-    expect(mocks.revalidatePath).not.toHaveBeenCalled();
-  });
-
-  it("returns a plain error and never touches the waitlist entry when the draft isn't a bookable slot offer", async () => {
-    mocks.followUpDraft.findFirst.mockResolvedValue(null);
-
-    const result = await bookFollowUpSlotAction(DRAFT_ID);
-
-    expect(result).toEqual({ ok: false, error: "This slot offer is no longer available." });
-    expect(mocks.bookSlotOffer).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
@@ -668,7 +592,7 @@ describe("bookFollowUpSlotAction", () => {
       ok: false,
       error: "Your session expired. Log in again to manage follow-ups.",
     });
-    expect(mocks.followUpDraft.findFirst).not.toHaveBeenCalled();
+    expect(mocks.bookSlotOffer).not.toHaveBeenCalled();
   });
 });
 
