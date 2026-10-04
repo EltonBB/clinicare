@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const message = { findFirst: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn() };
   const client = { findMany: vi.fn() };
-  const conversation = { upsert: vi.fn() };
+  const conversation = { upsert: vi.fn(), findMany: vi.fn() };
   const appointment = { findMany: vi.fn() };
   const followUpDraft = { findFirst: vi.fn() };
   const $transaction = vi.fn();
@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     message: mocks.message,
+    conversation: mocks.conversation,
     client: mocks.client,
     appointment: mocks.appointment,
     followUpDraft: mocks.followUpDraft,
@@ -776,36 +777,107 @@ describe("applyInboundReplyIntent", () => {
 describe("recoverAbandonedReplyIntents", () => {
   const NOW = new Date("2026-07-01T12:00:00Z");
   const SENT_AT = new Date(NOW.getTime() - 60 * 60 * 1000); // the reply came in an hour ago
+  const ABANDONED_WHERE = {
+    direction: "INBOUND",
+    replyIntentHandledAt: null,
+    replyIntentLeaseUntil: { lte: NOW, gt: new Date(NOW.getTime() - 24 * 60 * 60 * 1000) },
+  };
   const abandoned = (id: string, overrides: Record<string, unknown> = {}) => ({
     id,
     clientId: "client_1",
     body: "1",
     sentAt: SENT_AT,
-    conversation: { businessId: "biz_1" },
     ...overrides,
   });
+  // The abandoned replies of each workspace, oldest first.
+  const serve = (byWorkspace: Record<string, Array<ReturnType<typeof abandoned>>>) => {
+    mocks.conversation.findMany.mockResolvedValue(Object.keys(byWorkspace).sort().map((businessId) => ({ businessId })));
+    mocks.message.findMany.mockImplementation(
+      async ({ where }: { where: { conversation: { businessId: string } } }) =>
+        byWorkspace[where.conversation.businessId] ?? []
+    );
+  };
 
   beforeEach(() => vi.useFakeTimers({ now: NOW }));
   afterEach(() => vi.useRealTimers());
 
-  it("finds unfinished replies whose lease ran out in the last day, oldest first, a batch at a time", async () => {
-    mocks.message.findMany.mockResolvedValueOnce([]);
+  it("finds the workspaces with unfinished replies whose lease ran out in the last day, then each one's oldest", async () => {
+    serve({ biz_1: [] });
 
     expect(await recoverAbandonedReplyIntents(NOW)).toEqual({ recovered: 0 });
+    expect(mocks.conversation.findMany).toHaveBeenCalledWith({
+      where: { messages: { some: ABANDONED_WHERE } },
+      select: { businessId: true },
+      distinct: ["businessId"],
+      orderBy: { businessId: "asc" },
+    });
     expect(mocks.message.findMany).toHaveBeenCalledWith({
-      where: {
-        direction: "INBOUND",
-        replyIntentHandledAt: null,
-        replyIntentLeaseUntil: { lte: NOW, gt: new Date(NOW.getTime() - 24 * 60 * 60 * 1000) },
-      },
-      select: { id: true, clientId: true, body: true, sentAt: true, conversation: { select: { businessId: true } } },
+      where: { ...ABANDONED_WHERE, conversation: { businessId: "biz_1" } },
+      select: { id: true, clientId: true, body: true, sentAt: true },
       orderBy: { replyIntentLeaseUntil: "asc" },
       take: 20,
     });
   });
 
+  it("does nothing more when no workspace has anything to recover", async () => {
+    serve({});
+
+    expect(await recoverAbandonedReplyIntents(NOW)).toEqual({ recovered: 0 });
+    expect(mocks.message.findMany).not.toHaveBeenCalled();
+  });
+
+  // Codex #133: oldest-first across every workspace let one backlog fill each
+  // batch while another workspace's replies aged out of the window.
+  describe("workspaces take turns", () => {
+    const order = () => mocks.message.updateMany.mock.calls.map(([args]) => (args as { where: { id: string } }).where.id);
+
+    beforeEach(() => {
+      // No reminded visit to act on: each check just claims and finishes.
+      mocks.appointment.findMany.mockResolvedValue([]);
+    });
+
+    it("deals the batch round-robin across workspaces, oldest first within each", async () => {
+      serve({
+        biz_a: [abandoned("a1"), abandoned("a2"), abandoned("a3")],
+        biz_b: [abandoned("b1")],
+      });
+      // An hour whose turn leads with the first workspace.
+      vi.setSystemTime(new Date("2026-07-01T00:00:00Z"));
+
+      await recoverAbandonedReplyIntents(new Date("2026-07-01T00:00:00Z"));
+
+      // Each check claims (1st write) then finishes (2nd write).
+      expect(order().filter((_, index) => index % 2 === 0)).toEqual(["a1", "b1", "a2", "a3"]);
+    });
+
+    it("caps the batch at 20, so one workspace's backlog can't take a turn from the others", async () => {
+      serve({
+        biz_a: Array.from({ length: 20 }, (_, index) => abandoned(`a${index}`)),
+        biz_b: Array.from({ length: 20 }, (_, index) => abandoned(`b${index}`)),
+        biz_c: [abandoned("c1")],
+      });
+
+      await recoverAbandonedReplyIntents(NOW);
+
+      // Rounds of three, then of two: the cap cuts the last round short.
+      const claimed = order().filter((_, index) => index % 2 === 0);
+      expect(claimed).toHaveLength(20);
+      expect(claimed).toContain("c1");
+    });
+
+    it("lets a different workspace lead each hour", async () => {
+      serve({ biz_a: [abandoned("a1")], biz_b: [abandoned("b1")] });
+      const oddHour = new Date("2026-07-01T01:00:00Z");
+      vi.setSystemTime(oddHour);
+
+      await recoverAbandonedReplyIntents(oddHour);
+
+      expect(order()[0]).toBe("b1");
+    });
+  });
+
   it("runs the reply check again for each, through the usual claim", async () => {
-    mocks.message.findMany.mockResolvedValueOnce([abandoned("msg_1")]);
+    serve({ biz_1: [abandoned("msg_1")] });
     mocks.appointment.findMany.mockResolvedValueOnce([
       {
         id: "appt_1",
@@ -837,25 +909,20 @@ describe("recoverAbandonedReplyIntents", () => {
     expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: "reply-ack:msg_1" }));
   });
 
-  it("closes a claim with nothing left to act on (client or conversation deleted) without running the check", async () => {
-    mocks.message.findMany.mockResolvedValueOnce([
-      abandoned("msg_1", { clientId: null }),
-      abandoned("msg_2", { conversation: null }),
-    ]);
+  it("closes a claim with nothing left to act on (client deleted) without running the check", async () => {
+    serve({ biz_1: [abandoned("msg_1", { clientId: null })] });
 
     await recoverAbandonedReplyIntents(NOW);
 
-    for (const id of ["msg_1", "msg_2"]) {
-      expect(mocks.message.updateMany).toHaveBeenCalledWith({
-        where: { id, replyIntentHandledAt: null },
-        data: { replyIntentHandledAt: NOW, replyIntentLeaseUntil: null },
-      });
-    }
+    expect(mocks.message.updateMany).toHaveBeenCalledWith({
+      where: { id: "msg_1", replyIntentHandledAt: null },
+      data: { replyIntentHandledAt: NOW, replyIntentLeaseUntil: null },
+    });
     expect(mocks.appointment.findMany).not.toHaveBeenCalled();
   });
 
   it("matches each reply as of when it was sent, not as of the sweep", async () => {
-    mocks.message.findMany.mockResolvedValueOnce([abandoned("msg_1", { body: "2" })]);
+    serve({ biz_1: [abandoned("msg_1", { body: "2" })] });
     mocks.appointment.findMany.mockResolvedValueOnce([]);
 
     await recoverAbandonedReplyIntents(NOW);
@@ -865,10 +932,28 @@ describe("recoverAbandonedReplyIntents", () => {
     );
   });
 
+  // Codex #133: recovered late, a reply could otherwise match a booking staff
+  // made after it (a manual cancel-and-rebook) and cancel that one instead.
+  it("only matches bookings that existed, and had been reminded, when the reply was sent", async () => {
+    serve({ biz_1: [abandoned("msg_1", { body: "2" })] });
+    mocks.appointment.findMany.mockResolvedValueOnce([]);
+
+    await recoverAbandonedReplyIntents(NOW);
+
+    expect(mocks.appointment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          createdAt: { lte: SENT_AT },
+          reminders: { some: { status: "SENT", sentAt: { lte: SENT_AT } } },
+        }),
+      })
+    );
+  });
+
   // Matched as of the reply, a visit may have started since: an hour-old "2"
   // must not cancel a visit that is already under way.
   it("leaves alone a visit that has started since the reply was sent", async () => {
-    mocks.message.findMany.mockResolvedValueOnce([abandoned("msg_1", { body: "2" })]);
+    serve({ biz_1: [abandoned("msg_1", { body: "2" })] });
     mocks.appointment.findMany.mockResolvedValueOnce([
       {
         id: "appt_1",
@@ -885,7 +970,7 @@ describe("recoverAbandonedReplyIntents", () => {
   });
 
   it("starts no new check past its deadline", async () => {
-    mocks.message.findMany.mockResolvedValueOnce([abandoned("msg_1"), abandoned("msg_2")]);
+    serve({ biz_1: [abandoned("msg_1"), abandoned("msg_2")] });
     mocks.appointment.findMany.mockImplementationOnce(async () => {
       vi.setSystemTime(NOW.getTime() + 1_000);
       return [];
@@ -897,7 +982,7 @@ describe("recoverAbandonedReplyIntents", () => {
   });
 
   it("logs a message it can't recover and carries on with the rest", async () => {
-    mocks.message.findMany.mockResolvedValueOnce([abandoned("msg_1"), abandoned("msg_2")]);
+    serve({ biz_1: [abandoned("msg_1"), abandoned("msg_2")] });
     mocks.appointment.findMany.mockRejectedValueOnce(new Error("transient")).mockResolvedValueOnce([]);
 
     expect(await recoverAbandonedReplyIntents(NOW)).toEqual({ recovered: 1 });

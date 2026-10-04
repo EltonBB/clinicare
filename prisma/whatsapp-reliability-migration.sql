@@ -35,7 +35,14 @@ BEGIN
 END $$;
 CREATE INDEX IF NOT EXISTS "Message_replyIntentLeaseUntil_idx" ON "Message"("replyIntentLeaseUntil");
 
--- 2. "WhatsAppSendKey"
+-- 2. Appointment."reminderGeneration"
+--    Goes up by one whenever a booking's reminders are reset, and is part of
+--    each reminder's send idempotency key, so a reminder owed again after a
+--    reset (a changed client, staff member, service, length or status, or a
+--    cancel) is a new message rather than a repeat of the old one (Codex #133).
+ALTER TABLE "Appointment" ADD COLUMN IF NOT EXISTS "reminderGeneration" INTEGER NOT NULL DEFAULT 0;
+
+-- 3. "WhatsAppSendKey"
 --    The worker's record of each keyed send (POST /send idempotencyKey), so a
 --    repeat of a key is answered from the record - replayed if it was sent,
 --    "outcome unknown" if it may have been - and never sent twice, even after a

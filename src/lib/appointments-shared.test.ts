@@ -174,9 +174,10 @@ describe("cancelAppointmentCore", () => {
     // Freezes the schedule as of this cancellation — RECORD.startAt, not
     // whatever startAt might read as later if this booking is edited while
     // still cancelled.
+    // ...and starts a new reminder generation alongside clearing the reminders.
     expect(mocks.appointment.update).toHaveBeenCalledWith({
       where: { id: "appt_1" },
-      data: { cancelledScheduledStartAt: RECORD.startAt },
+      data: { cancelledScheduledStartAt: RECORD.startAt, reminderGeneration: { increment: 1 } },
     });
     expect(mocks.appointmentReminder.deleteMany).toHaveBeenCalledWith({
       where: { appointmentId: "appt_1" },

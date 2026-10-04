@@ -378,6 +378,12 @@ model Appointment {
   // late-cancellation signal must compare against the schedule that was
   // actually true at the cancel, not whatever startAt reads back as later.
   cancelledScheduledStartAt DateTime?
+  // Goes up by one whenever this booking's reminders are reset (a save that
+  // changes who, when, what or its status; a cancel), and is part of each
+  // reminder's send idempotency key, so a reminder owed again after a reset is
+  // a new message to the WhatsApp worker rather than a repeat of the old one
+  // (Codex #133).
+  reminderGeneration Int                       @default(0)
   reminders          AppointmentReminder[]
   payments           ClientPayment[]
   treatmentPlanItems ClientTreatmentPlanItem[]

@@ -24,9 +24,10 @@ vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: 
 
 import { createReminderRunProgress, syncAppointmentRemindersForBusiness } from "./reminders";
 
-function appointmentIn(hours: number, id: string) {
+function appointmentIn(hours: number, id: string, reminderGeneration = 0) {
   return {
     id,
+    reminderGeneration,
     startAt: new Date(Date.now() + hours * 60 * 60 * 1000),
     client: { id: `client_${id}`, name: "Mira", phone: "+38344123456" },
     staffMember: { name: "Dr. Leka" },
@@ -48,15 +49,18 @@ beforeEach(() => {
 });
 
 describe("syncAppointmentRemindersForBusiness", () => {
-  it("keys each send by appointment, reminder slot and booking time", async () => {
-    const appointment = appointmentIn(1, "appt_1");
+  // Codex #133: an edit that resets a booking's reminders without moving it (a
+  // new client, say) owes a new reminder — under the old key the worker would
+  // replay or refuse it, so the generation is part of the key.
+  it("keys each send by appointment, reminder slot, booking time and reminder generation", async () => {
+    const appointment = appointmentIn(1, "appt_1", 3);
     mocks.appointment.findMany.mockResolvedValue([appointment]);
     mocks.sendMessage.mockResolvedValue({ ok: true, providerMessageId: "m", status: "SENT", body: "Hi" });
 
     await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
 
     expect(mocks.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ idempotencyKey: `reminder:appt_1:TWO_HOUR:${appointment.startAt.getTime()}` })
+      expect.objectContaining({ idempotencyKey: `reminder:appt_1:TWO_HOUR:${appointment.startAt.getTime()}:3` })
     );
   });
 

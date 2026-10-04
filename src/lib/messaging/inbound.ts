@@ -13,7 +13,7 @@ import { classifyReplyIntent } from "@/lib/reply-intent";
 import { liveSlotOfferWhere } from "@/lib/slot-offers";
 import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 
-import type { AppointmentStatus } from "@prisma/client";
+import type { AppointmentStatus, Prisma } from "@prisma/client";
 
 import type { MessageDeliveryStatus } from "./types";
 
@@ -353,6 +353,7 @@ export async function applyInboundReplyIntent(args: {
 const REPLY_INTENT_RECOVERY_WINDOW_MS = 24 * 60 * 60 * 1000;
 // Each check may wait on an acknowledgement send, so one run takes only a few.
 const REPLY_INTENT_RECOVERY_BATCH = 20;
+const HOUR_MS = 60 * 60 * 1000;
 
 /**
  * Runs the reply check again for inbound messages whose claim was abandoned:
@@ -368,21 +369,56 @@ const REPLY_INTENT_RECOVERY_BATCH = 20;
  * an hour later a visit that was then upcoming may have passed, leaving one
  * other visit as the only match — one the patient never meant (e.g. a "2"
  * that was ambiguous between today and next week would cancel next week's).
+ *
+ * Workspaces take turns (Codex #133). Oldest-first across the whole system
+ * would let one workspace's backlog fill every batch while another's replies
+ * aged out of the window — and during a worker outage, when each check waits on
+ * a stalled acknowledgement, a run gets through only a couple. So the batch is
+ * dealt round-robin, oldest first within each workspace, and a different
+ * workspace leads each hour, so one a slow run never reached is served next.
  */
 export async function recoverAbandonedReplyIntents(
   now = new Date(),
   deadline = Number.POSITIVE_INFINITY
 ): Promise<{ recovered: number }> {
-  const abandoned = await prisma.message.findMany({
-    where: {
-      direction: "INBOUND",
-      replyIntentHandledAt: null,
-      replyIntentLeaseUntil: { lte: now, gt: new Date(now.getTime() - REPLY_INTENT_RECOVERY_WINDOW_MS) },
-    },
-    select: { id: true, clientId: true, body: true, sentAt: true, conversation: { select: { businessId: true } } },
-    orderBy: { replyIntentLeaseUntil: "asc" },
-    take: REPLY_INTENT_RECOVERY_BATCH,
-  });
+  const abandonedWhere = {
+    direction: "INBOUND",
+    replyIntentHandledAt: null,
+    replyIntentLeaseUntil: { lte: now, gt: new Date(now.getTime() - REPLY_INTENT_RECOVERY_WINDOW_MS) },
+  } satisfies Prisma.MessageWhereInput;
+
+  const workspaces = (
+    await prisma.conversation.findMany({
+      where: { messages: { some: abandonedWhere } },
+      select: { businessId: true },
+      distinct: ["businessId"],
+      orderBy: { businessId: "asc" },
+    })
+  ).map((workspace) => workspace.businessId);
+  if (workspaces.length === 0) {
+    return { recovered: 0 };
+  }
+  const lead = Math.floor(now.getTime() / HOUR_MS) % workspaces.length;
+  const inTurn = [...workspaces.slice(lead), ...workspaces.slice(0, lead)].slice(0, REPLY_INTENT_RECOVERY_BATCH);
+
+  const queues = await Promise.all(
+    inTurn.map(async (businessId) =>
+      (
+        await prisma.message.findMany({
+          where: { ...abandonedWhere, conversation: { businessId } },
+          select: { id: true, clientId: true, body: true, sentAt: true },
+          orderBy: { replyIntentLeaseUntil: "asc" },
+          take: REPLY_INTENT_RECOVERY_BATCH,
+        })
+      ).map((message) => ({ ...message, businessId }))
+    )
+  );
+  const abandoned: Array<(typeof queues)[number][number]> = [];
+  for (let round = 0; abandoned.length < REPLY_INTENT_RECOVERY_BATCH; round += 1) {
+    const dealt = queues.flatMap((queue) => (queue[round] ? [queue[round]] : []));
+    if (dealt.length === 0) break;
+    abandoned.push(...dealt.slice(0, REPLY_INTENT_RECOVERY_BATCH - abandoned.length));
+  }
 
   let recovered = 0;
   for (const message of abandoned) {
@@ -390,9 +426,9 @@ export async function recoverAbandonedReplyIntents(
       break;
     }
     try {
-      // The client was deleted since (clientId set null), or the conversation
-      // was: nothing left to act on, so the claim is simply closed.
-      if (!message.clientId || !message.conversation) {
+      // The client was deleted since (clientId set null): nothing left to act
+      // on, so the claim is simply closed.
+      if (!message.clientId) {
         await prisma.message.updateMany({
           where: { id: message.id, replyIntentHandledAt: null },
           data: { replyIntentHandledAt: now, replyIntentLeaseUntil: null },
@@ -400,7 +436,7 @@ export async function recoverAbandonedReplyIntents(
         continue;
       }
       const result = await applyInboundReplyIntent({
-        businessId: message.conversation.businessId,
+        businessId: message.businessId,
         clientId: message.clientId,
         body: message.body,
         messageId: message.id,
@@ -477,7 +513,11 @@ async function applyInboundReplyIntentCore(
       clientId,
       status: { in: candidateStatuses },
       startAt: { gt: now },
-      reminders: { some: { status: "SENT" } },
+      // As of the reply: a recovered one (recoverAbandonedReplyIntents) is
+      // checked later, by when staff may have rebooked the patient — a booking
+      // made, or reminded, after the reply can't be what it answers (Codex #133).
+      createdAt: { lte: now },
+      reminders: { some: { status: "SENT", sentAt: { lte: now } } },
     },
     select: { id: true, startAt: true, status: true, client: { select: { phone: true, name: true } } },
   });

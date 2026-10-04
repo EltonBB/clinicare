@@ -190,12 +190,14 @@ export async function syncAppointmentRemindersForBusiness(
         staffName: appointment.staffMember?.name ?? business.name,
         template,
       },
-      // One key per reminder of this booking time: a run that reaches the
-      // provider twice for it (an overlapping run, or a retry after the SENT
-      // marker below failed to save) is still delivered once. The start time is
-      // part of it because a rescheduled visit's reminders are cleared and owed
-      // again.
-      idempotencyKey: `reminder:${appointment.id}:${reminderType}:${appointment.startAt.getTime()}`,
+      // One key per reminder of this booking as it now stands: a run that
+      // reaches the provider twice for it (an overlapping run, or a retry after
+      // the SENT marker below failed to save) is still delivered once. Every
+      // edit that clears the booking's reminders (a new time, client, staff
+      // member, service, length or status; a cancel) moves reminderGeneration
+      // on, so a reminder owed again after one is a new message, not a repeat
+      // the worker would replay or refuse (Codex #133).
+      idempotencyKey: `reminder:${appointment.id}:${reminderType}:${appointment.startAt.getTime()}:${appointment.reminderGeneration}`,
     });
 
     if (!result.ok && result.reason === "delivery_uncertain") {
