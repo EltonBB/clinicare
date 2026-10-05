@@ -1,7 +1,7 @@
 import { proto } from "baileys";
 import type { PrismaClient } from "@prisma/client";
 
-/** Expired copies are swept at most this often (each remember may trigger it). */
+/** How often expired copies are deleted, whether or not anything is sent. */
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 /** The newest copies also kept in memory, for a request that beats the write. */
 const RECENT_LIMIT = 500;
@@ -18,9 +18,13 @@ export type SentMessageStore = {
  * ignores the request and the patient sees "Waiting for this message" for good.
  * Copies live in WhatsAppSentMessage (the app's migration creates it) so a
  * worker restart — a deploy is exactly when keys get out of step — doesn't
- * lose them, and are swept once they pass `ttlMs`. The newest are also kept in
- * memory from the moment `remember` is called, so a request that arrives while
- * the write is still running is answered too (Codex #134).
+ * lose them. The newest are also kept in memory from the moment `remember` is
+ * called, so a request that arrives while the write is still running is
+ * answered too (Codex #134).
+ *
+ * A copy is patient-facing text, so `ttlMs` is a hard limit (Codex #134): an
+ * expired copy is never handed back, and an hourly timer deletes expired ones
+ * from memory and the table whether or not anything is being sent.
  */
 export function createPrismaSentMessageStore(
   prisma: Pick<PrismaClient, "whatsAppSentMessage">,
@@ -30,28 +34,28 @@ export function createPrismaSentMessageStore(
     now?: () => Date;
   }
 ): SentMessageStore {
-  let lastSweep = 0;
-  const recent = new Map<string, proto.IMessage>();
+  const recent = new Map<string, { message: proto.IMessage; expiresAt: number }>();
 
-  function sweepExpired(at: Date): void {
-    if (at.getTime() - lastSweep < SWEEP_INTERVAL_MS) return;
-    lastSweep = at.getTime();
-    void prisma.whatsAppSentMessage.deleteMany({ where: { expiresAt: { lte: at } } }).catch(onSweepError);
-  }
+  setInterval(() => {
+    const at = now();
+    for (const [key, kept] of recent) {
+      if (kept.expiresAt <= at.getTime()) recent.delete(key);
+    }
+    prisma.whatsAppSentMessage.deleteMany({ where: { expiresAt: { lte: at } } }).catch(onSweepError);
+  }, SWEEP_INTERVAL_MS).unref();
 
   return {
     async remember(businessId, messageId, message) {
-      recent.set(`${businessId}:${messageId}`, message);
+      const expiresAt = new Date(now().getTime() + ttlMs);
+      recent.set(`${businessId}:${messageId}`, { message, expiresAt: expiresAt.getTime() });
       if (recent.size > RECENT_LIMIT) recent.delete(recent.keys().next().value!);
-      const at = now();
-      sweepExpired(at);
       await prisma.whatsAppSentMessage.createMany({
         data: [
           {
             businessId,
             messageId,
             content: new Uint8Array(proto.Message.encode(message).finish()),
-            expiresAt: new Date(at.getTime() + ttlMs),
+            expiresAt,
           },
         ],
         skipDuplicates: true,
@@ -59,13 +63,14 @@ export function createPrismaSentMessageStore(
     },
 
     async get(businessId, messageId) {
+      const at = now();
       const kept = recent.get(`${businessId}:${messageId}`);
-      if (kept) return kept;
+      if (kept) return kept.expiresAt > at.getTime() ? kept.message : undefined;
       const row = await prisma.whatsAppSentMessage.findUnique({
         where: { businessId_messageId: { businessId, messageId } },
-        select: { content: true },
+        select: { content: true, expiresAt: true },
       });
-      return row ? proto.Message.decode(row.content) : undefined;
+      return row && row.expiresAt > at ? proto.Message.decode(row.content) : undefined;
     },
   };
 }

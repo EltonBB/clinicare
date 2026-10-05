@@ -75,7 +75,9 @@ either sends. The new instance answers `/health` straight away but connects
 nothing until the old one releases the lease on shutdown (or it runs out, 30s
 after the last renewal); an instance that can't renew in time exits, and its
 restart waits like any other. Until it holds the lease, `/status` reports
-`connecting`, `/send` answers `send_failed` and `/pair` does nothing. Both tables
+`connecting`, `/send` answers `send_failed`, and a `/pair` is held and runs as
+soon as it does. Copies of sent messages are a hard week: never handed back
+once expired, and deleted hourly whether or not anything is sent. Both tables
 come from the app's `prisma/whatsapp-resend-and-lease-migration.sql`, applied
 before this worker version runs.
 

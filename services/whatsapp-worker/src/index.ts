@@ -17,10 +17,9 @@ import { createPrismaSendKeyStore } from "./send-key-store";
 import {
   bootstrapSessions,
   closeAllSessions,
-  forceRestartSession,
   getStatus,
+  pairSession,
   sendText,
-  startSession,
 } from "./socket-manager";
 import { createPrismaLeaseStore, createWorkerLease } from "./worker-lease";
 
@@ -102,13 +101,7 @@ app.post("/pair", requireSecret, async (req, res) => {
     return;
   }
   try {
-    if (force) {
-      // "Link a different device": drop the current session + creds and start a
-      // fresh QR even if a session is already connected.
-      await forceRestartSession(businessId);
-    } else {
-      await startSession(businessId);
-    }
+    await pairSession(businessId, force);
     res.json({ ok: true, ...getStatus(businessId) });
   } catch (error) {
     logger.error({ businessId, error: scrubError(error) }, "pair failed");

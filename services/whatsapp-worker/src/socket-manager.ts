@@ -69,6 +69,13 @@ const sessionEpoch = new Map<string, number>();
  * the account or after closeAllSessions.
  */
 let active = false;
+/**
+ * Pairing requests that arrived before this instance held the lease (a deploy's
+ * new instance is reachable a few seconds before it may connect), run once it
+ * does: Settings only polls /status after its one /pair, so a dropped request
+ * would never show a QR (Codex #134). `true` = a forced re-link.
+ */
+const pendingPairs = new Map<string, boolean>();
 
 /** Sent messages, kept for a week to answer a phone's resend request. */
 const sentMessages = createPrismaSentMessageStore(prisma, {
@@ -124,7 +131,8 @@ export function getStatus(businessId: string): {
     // evidence beyond the in-flight-startSession gap above).
     //
     // `!active` covers a fourth: a freshly deployed instance waiting for the old
-    // one to let go of the lease starts nothing until it does, a few seconds.
+    // one to let go of the lease starts nothing until it does, a few seconds —
+    // a pairing asked for meanwhile is held in pendingPairs and runs then.
     return {
       status:
         !active || reconnectTimers.has(businessId) || starting.has(businessId) || restarting.has(businessId)
@@ -653,7 +661,7 @@ export function closeAllSessions(): void {
  */
 export async function forceRestartSession(businessId: string): Promise<void> {
   // Not while another instance may still hold the account: wiping its creds
-  // would unlink it mid-use. The app keeps polling and can ask again.
+  // would unlink it mid-use. (pairSession holds a request until the lease is.)
   if (!active) {
     return;
   }
@@ -697,7 +705,12 @@ export async function bootstrapSessions(
   businessIds: string[]
 ): Promise<void> {
   active = true;
+  const pairs = new Map(pendingPairs);
+  pendingPairs.clear();
   for (const businessId of businessIds) {
+    if (pairs.has(businessId)) {
+      continue; // its held pairing below starts it
+    }
     try {
       await startSession(businessId);
     } catch (error) {
@@ -706,5 +719,31 @@ export async function bootstrapSessions(
         "Failed to bootstrap session"
       );
     }
+  }
+  for (const [businessId, force] of pairs) {
+    try {
+      await pairSession(businessId, force);
+    } catch (error) {
+      logger.error({ businessId, error: scrubError(error) }, "Held pairing failed");
+    }
+  }
+}
+
+/**
+ * POST /pair: start a workspace's session, or with `force` drop it and its
+ * creds for a fresh QR ("link a different device"). Before this instance holds
+ * the lease the request is held and runs once it does.
+ */
+export async function pairSession(businessId: string, force: boolean): Promise<void> {
+  if (!active) {
+    // Held pairings only run if this instance takes the lease; one shutting
+    // down never does, so they simply go with it.
+    pendingPairs.set(businessId, force || pendingPairs.get(businessId) === true);
+    return;
+  }
+  if (force) {
+    await forceRestartSession(businessId);
+  } else {
+    await startSession(businessId);
   }
 }
