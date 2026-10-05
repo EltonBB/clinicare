@@ -71,11 +71,17 @@ export function createWorkerLease({
   let renewTimer: ReturnType<typeof setTimeout> | undefined;
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
+  // The latest claim's database work, so release can wait for it: a renewal
+  // landing after the release would recreate the lease for an instance that is
+  // going away, and the next one would wait it out (Codex #134).
+  let claiming: Promise<unknown> = Promise.resolve();
 
   async function claim(): Promise<boolean> {
     const at = now();
     const expiresAt = new Date(at.getTime() + ttlMs);
-    if (!(await store.claim({ holder, expiresAt, now: at }))) return false;
+    const attempt = store.claim({ holder, expiresAt, now: at });
+    claiming = attempt.catch(() => undefined);
+    if (!(await attempt)) return false;
     heldUntil = expiresAt.getTime();
     return true;
   }
@@ -98,6 +104,7 @@ export function createWorkerLease({
 
   function scheduleRenew(): void {
     renewTimer = setTimeout(async () => {
+      if (stopped) return;
       let held: boolean | undefined;
       try {
         held = await claim();
@@ -118,6 +125,9 @@ export function createWorkerLease({
   return {
     async acquire() {
       for (;;) {
+        // Released while still waiting: stop trying (a claim already made is
+        // undone by the caller's release, which waits for it).
+        if (stopped) return;
         try {
           // A claim that came back too late to be worth anything is retried.
           if ((await claim()) && heldUntil - safetyMs > now().getTime()) break;
@@ -126,12 +136,14 @@ export function createWorkerLease({
         }
         await new Promise((resolve) => setTimeout(resolve, retryEveryMs));
       }
+      if (stopped) return;
       armDeadline();
       scheduleRenew();
     },
 
     async release() {
       stop();
+      await claiming;
       await store.release(holder);
     },
   };

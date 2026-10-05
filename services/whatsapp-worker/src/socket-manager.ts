@@ -78,9 +78,40 @@ let active = false;
 const pendingPairs = new Map<string, boolean>();
 /** Saved sessions bootstrapSessions hasn't reached yet (it starts them in turn). */
 const awaitingBootstrap = new Set<string>();
-/** Sends still running, so shutdown can wait for them before giving up the lease. */
-let sendsInFlight = 0;
-let onSendsSettled: (() => void) | undefined;
+/**
+ * Work still running against the WhatsApp account — sends, pairings (a forced
+ * one wipes the stored creds), creds and logout writes — so shutdown can wait
+ * for it before giving up the lease: the next instance must not connect, or
+ * load creds, while this one may still send or rewrite them (Codex #134).
+ */
+let accountWorkInFlight = 0;
+let onAccountWorkSettled: (() => void) | undefined;
+
+async function trackAccountWork<T>(work: () => Promise<T>): Promise<T> {
+  accountWorkInFlight += 1;
+  try {
+    return await work();
+  } finally {
+    accountWorkInFlight -= 1;
+    if (accountWorkInFlight === 0) onAccountWorkSettled?.();
+  }
+}
+
+/**
+ * Resolves true once no account work is running (at once if none is), or false
+ * after `timeoutMs`. Shutdown waits on it before releasing the lease.
+ */
+export function accountWorkSettled(timeoutMs: number): Promise<boolean> {
+  if (accountWorkInFlight === 0) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), timeoutMs);
+    onAccountWorkSettled = () => {
+      clearTimeout(timer);
+      onAccountWorkSettled = undefined;
+      resolve(true);
+    };
+  });
+}
 
 /** Sent messages, kept for a week to answer a phone's resend request. */
 const sentMessages = createPrismaSentMessageStore(prisma, {
@@ -261,7 +292,7 @@ export async function startSession(businessId: string): Promise<void> {
 
     // Persist creds — a DB blip here must never crash the (multi-tenant) process.
     sock.ev.on("creds.update", () => {
-      saveCreds().catch((error) => {
+      trackAccountWork(saveCreds).catch((error) => {
         logger.error(
           { businessId, error: scrubError(error) },
           "Failed to persist WhatsApp creds"
@@ -375,7 +406,7 @@ function handleConnectionUpdate(
       // next pair immediately log out again, an invisible re-pair loop.
       reconnectAttempts.delete(businessId);
       clearReconnectTimer(businessId);
-      clearAuthState(businessId).catch((error) => {
+      trackAccountWork(() => clearAuthState(businessId)).catch((error) => {
         logger.error(
           { businessId, error: scrubError(error) },
           "Failed to clear auth state after logout"
@@ -589,7 +620,11 @@ function withTimeout<T>(
  * means the message may have left is classifySendError's call: only a missing
  * session or a socket already closed before the write proves it didn't.
  */
-export async function sendText(
+export function sendText(businessId: string, to: string, body: string): Promise<SentResult> {
+  return trackAccountWork(() => sendTextNow(businessId, to, body));
+}
+
+async function sendTextNow(
   businessId: string,
   to: string,
   body: string
@@ -599,7 +634,6 @@ export async function sendText(
     throw new SessionNotConnectedError("WhatsApp session is not connected.");
   }
   const jid = `${to}@s.whatsapp.net`;
-  sendsInFlight += 1;
   try {
     // Bound the send so a dead-but-not-yet-closed socket can't hang the request.
     const sent = await withTimeout(
@@ -638,28 +672,7 @@ export async function sendText(
       scheduleReconnect(businessId);
     }
     throw error;
-  } finally {
-    sendsInFlight -= 1;
-    if (sendsInFlight === 0) onSendsSettled?.();
   }
-}
-
-/**
- * Resolves true once no send is running (at once if none is), or false after
- * `timeoutMs`. Shutdown waits on it before releasing the lease: a send still
- * running holds a socket — and may still be writing the account's keys — that
- * the next instance must not overlap (Codex #134).
- */
-export function sendsSettled(timeoutMs: number): Promise<boolean> {
-  if (sendsInFlight === 0) return Promise.resolve(true);
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(false), timeoutMs);
-    onSendsSettled = () => {
-      clearTimeout(timer);
-      onSendsSettled = undefined;
-      resolve(true);
-    };
-  });
 }
 
 /** End every live socket and cancel all timers (called on graceful shutdown). */
@@ -759,7 +772,7 @@ export async function bootstrapSessions(
     }
     awaitingBootstrap.delete(businessId);
     try {
-      await startSession(businessId);
+      await trackAccountWork(() => startSession(businessId));
     } catch (error) {
       logger.error(
         { businessId, error: scrubError(error) },
@@ -781,9 +794,5 @@ export async function pairSession(businessId: string, force: boolean): Promise<v
     pendingPairs.set(businessId, force || pendingPairs.get(businessId) === true);
     return;
   }
-  if (force) {
-    await forceRestartSession(businessId);
-  } else {
-    await startSession(businessId);
-  }
+  await trackAccountWork(() => (force ? forceRestartSession(businessId) : startSession(businessId)));
 }

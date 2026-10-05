@@ -172,6 +172,41 @@ describe("createWorkerLease", () => {
     expect(onLost).not.toHaveBeenCalled();
   });
 
+  // Codex #134: a renewal that lands after the release would recreate the lease.
+  it("waits for a renewal still in the database before releasing", async () => {
+    const l = lease();
+    await l.acquire();
+    let finish!: (held: boolean) => void;
+    claim.mockReturnValueOnce(new Promise<boolean>((resolve) => (finish = resolve)));
+    await vi.advanceTimersByTimeAsync(10_000); // the renewal starts and hangs
+
+    const released = l.release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.release).not.toHaveBeenCalled();
+
+    finish(true);
+    await released;
+    expect(store.release).toHaveBeenCalledWith("me");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(claim).toHaveBeenCalledTimes(2);
+    expect(onLost).not.toHaveBeenCalled();
+  });
+
+  it("stops waiting for the lease once released, and never renews it", async () => {
+    claim.mockResolvedValue(false);
+    const l = lease();
+    const acquired = l.acquire();
+    await vi.advanceTimersByTimeAsync(2_000);
+    await l.release();
+    await vi.advanceTimersByTimeAsync(2_000);
+    await acquired;
+
+    const calls = claim.mock.calls.length;
+    claim.mockResolvedValue(true);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(claim).toHaveBeenCalledTimes(calls);
+  });
+
   it("stops renewing and lets go of the lease on release", async () => {
     const l = lease();
     await l.acquire();

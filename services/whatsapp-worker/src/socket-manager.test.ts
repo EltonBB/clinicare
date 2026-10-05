@@ -95,7 +95,7 @@ describe("pairing before this instance holds the lease (Codex #134)", () => {
   });
 });
 
-describe("sendsSettled: shutdown waits for running sends (Codex #134)", () => {
+describe("accountWorkSettled: shutdown waits for running account work (Codex #134)", () => {
   async function connected() {
     const manager = await load();
     const sendMessage = vi.fn();
@@ -112,7 +112,7 @@ describe("sendsSettled: shutdown waits for running sends (Codex #134)", () => {
 
   it("is settled at once with nothing running", async () => {
     const { manager } = await connected();
-    await expect(manager.sendsSettled(1_000)).resolves.toBe(true);
+    await expect(manager.accountWorkSettled(1_000)).resolves.toBe(true);
   });
 
   it("waits for a send still running when the sockets are closed", async () => {
@@ -123,7 +123,7 @@ describe("sendsSettled: shutdown waits for running sends (Codex #134)", () => {
     const send = manager.sendText("biz_1", "38344123456", "Hi").catch(() => undefined);
     manager.closeAllSessions();
     let settled: boolean | undefined;
-    void manager.sendsSettled(60_000).then((value) => (settled = value));
+    void manager.accountWorkSettled(60_000).then((value) => (settled = value));
     await Promise.resolve();
     expect(settled).toBeUndefined();
 
@@ -139,11 +139,32 @@ describe("sendsSettled: shutdown waits for running sends (Codex #134)", () => {
       sendMessage.mockReturnValue(new Promise(() => {}));
       void manager.sendText("biz_1", "38344123456", "Hi").catch(() => undefined);
 
-      const settled = manager.sendsSettled(8_000);
+      const settled = manager.accountWorkSettled(8_000);
       await vi.advanceTimersByTimeAsync(8_000);
       await expect(settled).resolves.toBe(false);
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("accountWorkSettled covers pairings too (Codex #134)", () => {
+  it("waits for a forced re-link still wiping the stored creds", async () => {
+    const manager = await load();
+    await manager.bootstrapSessions([]);
+    let finishWipe!: () => void;
+    clearAuthState.mockReturnValueOnce(new Promise<void>((resolve) => (finishWipe = resolve)));
+
+    const pairing = manager.pairSession("biz_1", true);
+    manager.closeAllSessions();
+    let settled: boolean | undefined;
+    void manager.accountWorkSettled(60_000).then((value) => (settled = value));
+    await Promise.resolve();
+    expect(settled).toBeUndefined();
+
+    finishWipe();
+    await pairing;
+    await vi.waitFor(() => expect(settled).toBe(true));
+    expect(makeWASocket).not.toHaveBeenCalled(); // shutdown began: no socket after the wipe
   });
 });

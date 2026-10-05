@@ -73,7 +73,7 @@ runs; two sockets on one account knock each other off (WhatsApp's 440,
 "replaced") and both move its encryption keys on, so phones can't decrypt what
 either sends. The new instance answers `/health` straight away but connects
 nothing until the old one releases the lease on shutdown — after its sockets are
-ended and any send still running has finished (up to 8s) — or the lease runs
+ended and any send, pairing or creds write still running has finished (up to 8s) — or the lease runs
 out, 30s after the last renewal; an instance that can't renew in time exits, and its
 restart waits like any other. Until it holds the lease, `/status` reports
 `connecting`, `/send` answers `send_failed`, and a `/pair` is held and runs as
