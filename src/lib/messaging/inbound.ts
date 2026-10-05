@@ -195,7 +195,8 @@ export type ApplyReplyIntentResult =
         | "open_offer"
         | "already_handled"
         | "in_progress"
-        | "offer_sending";
+        | "offer_sending"
+        | "changed_since_reply";
     }
   | { applied: true; intent: "confirm" | "cancel"; appointmentId: string };
 
@@ -245,6 +246,8 @@ export async function applyInboundReplyIntent(args: {
   body: string;
   messageId?: string | null;
   now?: Date;
+  /** Checked late by recoverAbandonedReplyIntents, as of `now` (when the patient wrote). */
+  recovered?: boolean;
 }): Promise<ApplyReplyIntentResult> {
   const { messageId, now = new Date() } = args;
 
@@ -337,17 +340,16 @@ export async function applyInboundReplyIntent(args: {
   }
 
   // From here a retry is told the message is handled. Not fatal if it fails:
-  // the lease runs out and the recovery sweep runs the check again, which finds
-  // the work done (the visit already confirmed or cancelled) and only finishes
-  // the claim — its acknowledgement, if it got that far, is keyed to this
-  // message, so it isn't sent twice.
-  // Stamped with the time the check started, not finished — what the old
-  // single-column code stamped too — so a finished mark never looks like one of
-  // the old leases prisma/whatsapp-reliability-migration.sql converts (those lie
-  // 100-200s after the message arrived; a live check starts within about a
-  // minute of it).
+  // the lease runs out and the recovery sweep runs the check again, which sees
+  // the patient's booking changed since the reply (by this check's own effect,
+  // if it applied one) and leaves it for staff without acting again.
+  // Stamped with the time the check started, as the old single-column code
+  // did. The lease is left in place: every row the new code finishes keeps one,
+  // so the post-deploy rerun of prisma/whatsapp-reliability-migration.sql —
+  // which converts only rows with no lease, i.e. ones the old code wrote — can
+  // never turn a finished check back into an expired lease (Codex #133).
   await prisma.message
-    .updateMany({ where: ownLease, data: { replyIntentHandledAt: claimedAt, replyIntentLeaseUntil: null } })
+    .updateMany({ where: ownLease, data: { replyIntentHandledAt: claimedAt } })
     .catch((finishError) => {
       logger.error("A reply-intent check finished but its claim couldn't be marked done.", finishError, {
         businessId: args.businessId,
@@ -466,7 +468,8 @@ export async function recoverAbandonedReplyIntents(
         if (!message.clientId) {
           await prisma.message.updateMany({
             where: { id: message.id, replyIntentHandledAt: null },
-            data: { replyIntentHandledAt: now, replyIntentLeaseUntil: null },
+            // Lease kept as the new code's mark (see the finish above).
+            data: { replyIntentHandledAt: now },
           });
           continue;
         }
@@ -476,6 +479,7 @@ export async function recoverAbandonedReplyIntents(
           body: message.body,
           messageId: message.id,
           now: message.sentAt,
+          recovered: true,
         });
         if (result.applied || result.reason !== "in_progress") {
           recovered += 1;
@@ -489,7 +493,7 @@ export async function recoverAbandonedReplyIntents(
 }
 
 async function applyInboundReplyIntentCore(
-  args: { businessId: string; clientId: string | null; body: string; messageId?: string | null },
+  args: { businessId: string; clientId: string | null; body: string; messageId?: string | null; recovered?: boolean },
   now: Date
 ): Promise<ApplyReplyIntentResult> {
   const { businessId, clientId, body, messageId } = args;
@@ -562,6 +566,24 @@ async function applyInboundReplyIntentCore(
   });
   if (openOffer) {
     return { applied: false, reason: openOffer.sentAt ? "open_offer" : "offer_sending" };
+  }
+
+  // Checked late, the reply only acts if the patient's bookings are as they
+  // were when they wrote. The candidates are filtered as of then (created and
+  // reminded by then, starting after), but their status, time and reminders are
+  // read as they are now: had staff cancelled, moved or reset one of two visits
+  // a "2" was ambiguous between, the other would now look like the only match
+  // (Codex #133). So if any booking of theirs that existed then has changed
+  // since, the reply is left for staff — it is already in the Inbox. That
+  // includes the reply's own effect, when the check that died had applied it.
+  if (args.recovered) {
+    const changedSince = await prisma.appointment.findFirst({
+      where: { businessId, clientId, createdAt: { lte: now }, updatedAt: { gt: now } },
+      select: { id: true },
+    });
+    if (changedSince) {
+      return { applied: false, reason: "changed_since_reply" };
+    }
   }
 
   // A reminder goes to pending and confirmed appointments alike and invites

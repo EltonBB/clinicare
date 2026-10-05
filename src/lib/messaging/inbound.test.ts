@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => {
   };
   const client = { findMany: vi.fn() };
   const conversation = { upsert: vi.fn(), findMany: vi.fn() };
-  const appointment = { findMany: vi.fn() };
+  const appointment = { findMany: vi.fn(), findFirst: vi.fn() };
   const followUpDraft = { findFirst: vi.fn() };
   const $transaction = vi.fn();
   const confirmAppointmentCore = vi.fn();
@@ -65,6 +65,8 @@ beforeEach(() => {
   // No open slot offer by default — the reply-intent tests below run the
   // normal confirm/cancel path unless a test opens one.
   mocks.followUpDraft.findFirst.mockResolvedValue(null);
+  // Nothing about the patient's bookings has changed since a recovered reply.
+  mocks.appointment.findFirst.mockResolvedValue(null);
   // Claiming a message for its reply-intent check succeeds (and releasing one does
   // too), unless a test says another delivery got there first.
   mocks.message.updateMany.mockResolvedValue({ count: 1 });
@@ -556,6 +558,14 @@ describe("applyInboundReplyIntent", () => {
     expect(result).toEqual({ applied: true, intent: "cancel", appointmentId: "appt_1" });
   });
 
+  it("never asks whether bookings changed for a live reply — only a recovered one is checked as of the past", async () => {
+    mocks.appointment.findMany.mockResolvedValueOnce([]);
+
+    await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "2", now: NOW });
+
+    expect(mocks.appointment.findFirst).not.toHaveBeenCalled();
+  });
+
   it("keeps the normal confirm path when the client has no open slot offer", async () => {
     mocks.appointment.findMany.mockResolvedValueOnce([REMINDED_UPCOMING]);
     mocks.confirmAppointmentCore.mockResolvedValueOnce({ ok: true, appointmentId: "appt_1", clientId: "client_1", staffMemberId: "staff_1", changed: true });
@@ -595,7 +605,9 @@ describe("applyInboundReplyIntent", () => {
     };
     // Release and finish touch only this run's own lease.
     const OWN_LEASE = { id: "msg_1", replyIntentLeaseUntil: LEASE_END };
-    const FINISH = { where: OWN_LEASE, data: { replyIntentHandledAt: NOW, replyIntentLeaseUntil: null } };
+    // Finished, the lease stays: the new code's mark, which the migration's
+    // post-deploy rerun leaves alone (Codex #133).
+    const FINISH = { where: OWN_LEASE, data: { replyIntentHandledAt: NOW } };
     const RELEASE = { where: OWN_LEASE, data: { replyIntentLeaseUntil: null } };
     const args = { businessId: "biz_1", clientId: "client_1", body: "1", messageId: "msg_1", now: NOW };
     const claimedBy = (replyIntentHandledAt: Date | null, replyIntentLeaseUntil: Date | null = null) => {
@@ -1004,7 +1016,7 @@ describe("recoverAbandonedReplyIntents", () => {
 
     expect(mocks.message.updateMany).toHaveBeenCalledWith({
       where: { id: "msg_1", replyIntentHandledAt: null },
-      data: { replyIntentHandledAt: NOW, replyIntentLeaseUntil: null },
+      data: { replyIntentHandledAt: NOW },
     });
     expect(mocks.appointment.findMany).not.toHaveBeenCalled();
   });
@@ -1036,6 +1048,28 @@ describe("recoverAbandonedReplyIntents", () => {
         }),
       })
     );
+  });
+
+  // Codex #133: matched as of the reply, the candidates still carry today's
+  // status, time and reminders — a "2" that was ambiguous between two visits,
+  // one of which staff since cancelled or moved, would land on the other.
+  it("leaves the reply for staff when any of the patient's bookings has changed since they wrote", async () => {
+    serve({ biz_1: [abandoned("msg_1", { body: "2" })] });
+    mocks.appointment.findFirst.mockResolvedValueOnce({ id: "appt_2" });
+
+    expect(await recoverAbandonedReplyIntents(NOW)).toEqual({ recovered: 1 });
+    expect(mocks.appointment.findFirst).toHaveBeenCalledWith({
+      where: { businessId: "biz_1", clientId: "client_1", createdAt: { lte: SENT_AT }, updatedAt: { gt: SENT_AT } },
+      select: { id: true },
+    });
+    expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+    expect(mocks.cancelAppointmentCore).not.toHaveBeenCalled();
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+    // Finished, not released: it isn't picked up again.
+    expect(mocks.message.updateMany).toHaveBeenLastCalledWith({
+      where: { id: "msg_1", replyIntentLeaseUntil: new Date(NOW.getTime() + 2 * 60 * 1000) },
+      data: { replyIntentHandledAt: NOW },
+    });
   });
 
   // Matched as of the reply, a visit may have started since: an hour-old "2"

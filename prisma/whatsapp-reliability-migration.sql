@@ -17,17 +17,17 @@
 --    Leases the old code left behind are moved into the new column (Codex
 --    #133). They are recognisable by their distance from the message's own
 --    "sentAt" (set when it was recorded): a check starts within about a minute
---    of that (the worker's retries end by then), and both the old code and the
---    new one mark a finished check with the time it STARTED, so a finished mark
---    lies 0-60s after "sentAt", while an old lease (its start + 120s) lies
---    120-180s after it. Rows 100-200s after, with no new-style lease, are
---    converted; the sweep then picks up those from the last 24 hours.
+--    of that (the worker's retries end by then), and the old code marked a
+--    finished check with the time it STARTED, so its finished marks lie 0-60s
+--    after "sentAt", while an old lease (its start + 120s) lies 120-180s after
+--    it. Rows 100-200s after with no "replyIntentLeaseUntil" are converted; the
+--    sweep then picks up those from the last 24 hours.
 --    The old app keeps serving between this migration and the deploy, and can
 --    leave such a lease behind in that window - so run this file once more
---    after the new app is live. A row the new code finished can only match if
---    the hourly sweep happened to claim it 100-200s after it arrived; it is
---    then checked once more, which changes nothing (the visit is already
---    confirmed or cancelled, and the acknowledgement's key replays).
+--    after the new app is live. That rerun can't touch the new code's own
+--    work: every row the new code claims keeps a "replyIntentLeaseUntil",
+--    finished or not (only a released claim clears it, and that leaves no
+--    handled mark), so "no lease" means the old code wrote it (Codex #133).
 ALTER TABLE "Message" ADD COLUMN IF NOT EXISTS "replyIntentLeaseUntil" TIMESTAMP(3);
 UPDATE "Message"
 SET "replyIntentLeaseUntil" = "replyIntentHandledAt", "replyIntentHandledAt" = NULL
