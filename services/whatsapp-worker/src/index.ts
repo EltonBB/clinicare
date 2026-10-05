@@ -59,6 +59,7 @@ const workerLease = createWorkerLease({
   ttlMs: 30_000,
   renewEveryMs: 10_000,
   retryEveryMs: 2_000,
+  safetyMs: 5_000,
   onLost: () => {
     logger.error("Worker lease lost - stopping so only one instance holds WhatsApp");
     shutdown("lease lost", 1);

@@ -39,9 +39,11 @@ export function createPrismaLeaseStore(prisma: Pick<PrismaClient, "whatsAppWorke
  * on one account knock each other off (WhatsApp's 440, "replaced") and both
  * move its encryption keys on, so the patient's phone can't decrypt what
  * either sends. The new instance waits in {@link acquire} until the old one
- * releases on shutdown (or its lease runs out), then keeps renewing; if it
- * can't show it still holds the lease before it would run out, `onLost` fires
- * so it stops before anyone else can take over.
+ * releases on shutdown (or its lease runs out), then keeps renewing. `onLost`
+ * fires `safetyMs` before the lease could run out unless a renewal has moved it
+ * on — on a timer of its own, so a database call that stalls can't keep this
+ * instance connected past its lease (Codex #134) — or as soon as another
+ * instance is found holding it.
  */
 export function createWorkerLease({
   store,
@@ -49,6 +51,7 @@ export function createWorkerLease({
   ttlMs,
   renewEveryMs,
   retryEveryMs,
+  safetyMs,
   onLost,
   onError = () => {},
   now = () => new Date(),
@@ -58,13 +61,16 @@ export function createWorkerLease({
   ttlMs: number;
   renewEveryMs: number;
   retryEveryMs: number;
+  safetyMs: number;
   onLost: () => void;
   onError?: (error: unknown) => void;
   now?: () => Date;
 }): { acquire(): Promise<void>; release(): Promise<void> } {
+  // Counted from before each claim's call, so a slow call only shortens it.
   let heldUntil = 0;
   let renewTimer: ReturnType<typeof setTimeout> | undefined;
-  let released = false;
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  let stopped = false;
 
   async function claim(): Promise<boolean> {
     const at = now();
@@ -74,24 +80,38 @@ export function createWorkerLease({
     return true;
   }
 
+  function stop(): void {
+    stopped = true;
+    clearTimeout(renewTimer);
+    clearTimeout(deadlineTimer);
+  }
+
+  function lose(): void {
+    stop();
+    onLost();
+  }
+
+  function armDeadline(): void {
+    clearTimeout(deadlineTimer);
+    deadlineTimer = setTimeout(lose, heldUntil - safetyMs - now().getTime());
+  }
+
   function scheduleRenew(): void {
     renewTimer = setTimeout(async () => {
-      if (released) return;
-      let held: boolean;
+      let held: boolean | undefined;
       try {
         held = await claim();
       } catch (error) {
+        // Unknown whether it was renewed: the deadline stays where it was.
         onError(error);
-        // Can't tell whether it was renewed. Keep trying only while the next
-        // attempt still lands before the lease could run out.
-        held = now().getTime() + renewEveryMs < heldUntil;
       }
-      if (released) return;
-      if (held) {
-        scheduleRenew();
-      } else {
-        onLost();
+      if (stopped) return;
+      if (held === false) {
+        lose();
+        return;
       }
+      if (held) armDeadline();
+      scheduleRenew();
     }, renewEveryMs);
   }
 
@@ -99,18 +119,19 @@ export function createWorkerLease({
     async acquire() {
       for (;;) {
         try {
-          if (await claim()) break;
+          // A claim that came back too late to be worth anything is retried.
+          if ((await claim()) && heldUntil - safetyMs > now().getTime()) break;
         } catch (error) {
           onError(error);
         }
         await new Promise((resolve) => setTimeout(resolve, retryEveryMs));
       }
+      armDeadline();
       scheduleRenew();
     },
 
     async release() {
-      released = true;
-      clearTimeout(renewTimer);
+      stop();
       await store.release(holder);
     },
   };

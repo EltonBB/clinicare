@@ -53,6 +53,28 @@ describe("createPrismaSentMessageStore", () => {
     expect(found?.extendedTextMessage?.text).toBe("Hi Ana, see you at 10:00.");
   });
 
+  // Codex #134: a resend request can arrive before the write has finished.
+  it("answers from memory while the write is still running", async () => {
+    table.createMany.mockReturnValue(new Promise(() => {}));
+    table.findUnique.mockResolvedValue(null);
+    const s = store();
+    void s.remember("biz_1", "BAE_1", MESSAGE);
+
+    expect((await s.get("biz_1", "BAE_1"))?.extendedTextMessage?.text).toBe("Hi Ana, see you at 10:00.");
+    expect(await s.get("biz_2", "BAE_1")).toBeUndefined();
+    expect(table.findUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps only the newest 500 in memory; older ones come from the table", async () => {
+    const s = store();
+    for (let i = 0; i <= 500; i += 1) await s.remember("biz_1", `BAE_${i}`, MESSAGE);
+    table.findUnique.mockResolvedValue(null);
+
+    expect(await s.get("biz_1", "BAE_0")).toBeUndefined();
+    expect(await s.get("biz_1", "BAE_1")).toBeDefined();
+    expect(table.findUnique).toHaveBeenCalledTimes(1);
+  });
+
   it("has nothing for a message it never kept", async () => {
     table.findUnique.mockResolvedValue(null);
     expect(await store().get("biz_1", "BAE_X")).toBeUndefined();

@@ -57,6 +57,7 @@ describe("createWorkerLease", () => {
       ttlMs: 30_000,
       renewEveryMs: 10_000,
       retryEveryMs: 2_000,
+      safetyMs: 5_000,
       onLost,
     });
   }
@@ -114,14 +115,54 @@ describe("createWorkerLease", () => {
     expect(claim).toHaveBeenCalledTimes(2);
   });
 
-  it("rides out a database blip, but stops before the lease could run out unrenewed", async () => {
+  it("rides out a database blip, but stops 5s before the lease could run out unrenewed", async () => {
     await lease().acquire(); // held until 19:00:30
     claim.mockRejectedValue(new Error("db down"));
 
-    await vi.advanceTimersByTimeAsync(10_000); // 19:00:10: next try at :20 still lands in time
+    await vi.advanceTimersByTimeAsync(24_999);
     expect(onLost).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(10_000); // 19:00:20: next try at :30 would be too late
+    await vi.advanceTimersByTimeAsync(1);
     expect(onLost).toHaveBeenCalledTimes(1);
+  });
+
+  // Codex #134: a stalled renewal must not keep the sockets up past the lease.
+  it("stops on time while a renewal is still stuck in the database", async () => {
+    await lease().acquire(); // held until 19:00:30
+    let finish!: (held: boolean) => void;
+    claim.mockReturnValueOnce(new Promise<boolean>((resolve) => (finish = resolve)));
+
+    await vi.advanceTimersByTimeAsync(25_000);
+    expect(onLost).toHaveBeenCalledTimes(1);
+
+    finish(true); // the late renewal changes nothing
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(onLost).toHaveBeenCalledTimes(1);
+    expect(claim).toHaveBeenCalledTimes(2);
+  });
+
+  it("counts a slow renewal's lease from before the call", async () => {
+    await lease().acquire(); // held until 19:00:30
+    // The renewal at :10 takes 12s: its lease runs to :40, so the deadline moves to :35.
+    claim.mockImplementationOnce(() => new Promise((resolve) => setTimeout(() => resolve(true), 12_000)));
+    claim.mockRejectedValue(new Error("db down"));
+
+    await vi.advanceTimersByTimeAsync(34_999);
+    expect(onLost).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(onLost).toHaveBeenCalledTimes(1);
+  });
+
+  it("doesn't count a lease whose claim came back too late to use", async () => {
+    // The first claim takes 26s: its lease (to :30) has under 5s left.
+    claim.mockImplementationOnce(() => new Promise((resolve) => setTimeout(() => resolve(true), 26_000)));
+    let acquired = false;
+    void lease().acquire().then(() => (acquired = true));
+
+    await vi.advanceTimersByTimeAsync(26_000);
+    expect(acquired).toBe(false);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(acquired).toBe(true);
+    expect(claim).toHaveBeenCalledTimes(2);
   });
 
   it("renewing after a blip pushes the deadline out again", async () => {

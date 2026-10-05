@@ -47,6 +47,8 @@ const reconnectAttempts = new Map<string, number>();
 
 const MAX_RECONNECT_ATTEMPTS = 10;
 const SEND_TIMEOUT_MS = 20_000;
+/** How long a send waits for its resend copy to be stored before answering. */
+const KEEP_COPY_TIMEOUT_MS = 5_000;
 const STABLE_CONNECTION_MS = 15_000;
 const VERSION_FETCH_TIMEOUT_MS = 10_000;
 /** Pending "connection has been stable, reset the backoff" timers per business. */
@@ -588,11 +590,18 @@ export async function sendText(
     );
     const providerMessageId = sent?.key?.id ?? null;
     if (providerMessageId && sent?.message) {
-      // Not awaited: the message has gone, and failing to keep a copy must not
-      // turn a send into an error. A resend request needs seconds to arrive.
-      sentMessages.remember(businessId, providerMessageId, sent.message).catch((error) => {
+      // Stored before answering, so a worker that stops right after this send
+      // still has the copy (Codex #134) — but briefly, and a failure is only
+      // logged: the message has gone, and that must not read as unsent.
+      try {
+        await withTimeout(
+          sentMessages.remember(businessId, providerMessageId, sent.message),
+          KEEP_COPY_TIMEOUT_MS,
+          "Keeping a copy of a sent message timed out."
+        );
+      } catch (error) {
         logger.error({ businessId, error: scrubError(error) }, "Couldn't keep a copy of a sent message");
-      });
+      }
     }
     return { providerMessageId, status: "SENT" };
   } catch (error) {
