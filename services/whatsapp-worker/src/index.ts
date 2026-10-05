@@ -17,7 +17,6 @@ import { createPrismaSendKeyStore } from "./send-key-store";
 import {
   bootstrapSessions,
   closeAllSessions,
-  accountWorkSettled,
   getStatus,
   pairSession,
   sendText,
@@ -48,21 +47,34 @@ const sendDeduper = createSendDeduper({
   onStoreError: (message, error) => logger.error({ error: scrubError(error) }, message),
 });
 
+/** Graceful shutdown's hard limit: the process is gone by then, whatever runs. */
+const SHUTDOWN_FORCE_EXIT_MS = 10_000;
+const LEASE_TTL_MS = 30_000;
+const LEASE_RENEW_EVERY_MS = 10_000;
+
 /**
  * Only the instance holding this lease connects to WhatsApp (see
- * worker-lease.ts): a deploy's new instance waits for the old one to let go.
- * Losing it stops the process; Railway restarts it and it waits again.
+ * worker-lease.ts). It is never handed over, only left to run out: shutdown
+ * stops renewing, and the process force-exits within SHUTDOWN_FORCE_EXIT_MS,
+ * while the lease still has at least LEASE_TTL_MS - LEASE_RENEW_EVERY_MS left
+ * (20s), so a deploy's new instance can only connect once nothing of the old
+ * one is running — about 20-30s of a deploy without WhatsApp, in exchange for
+ * never two instances on one account (Codex #134). Losing the lease exits at
+ * once; Railway restarts the process and it waits like any other.
  */
 const workerLease = createWorkerLease({
   store: createPrismaLeaseStore(prisma),
   holder: randomUUID(),
-  ttlMs: 30_000,
-  renewEveryMs: 10_000,
+  ttlMs: LEASE_TTL_MS,
+  renewEveryMs: LEASE_RENEW_EVERY_MS,
   retryEveryMs: 2_000,
   safetyMs: 5_000,
   onLost: () => {
-    logger.error("Worker lease lost - stopping so only one instance holds WhatsApp");
-    shutdown("lease lost", 1);
+    // No graceful wind-down: only 5s remain before another instance may take
+    // the lease, and exiting is the one stop that ends every socket and every
+    // piece of work in flight at once.
+    logger.error("Worker lease lost - exiting so only one instance holds WhatsApp");
+    process.exit(1);
   },
   onError: (error) => logger.warn({ error: scrubError(error) }, "Worker lease check failed"),
 });
@@ -195,28 +207,17 @@ function shutdown(signal: string, exitCode = 0): void {
   }
   shuttingDown = true;
   logger.info({ signal }, "Shutting down");
+  // Stop renewing: the lease runs out after this process is gone (see above).
+  workerLease.stop();
   // No new sends from here (they find no session), and the sockets are ended.
   closeAllSessions();
-  // Let the next instance connect once any send, pairing or creds write still
-  // running has finished. Work that doesn't finish in time keeps the lease
-  // until it runs out (30s after its last renewal) rather than overlap the
-  // next instance (Codex #134).
-  const released = accountWorkSettled(8_000)
-    .then((settled) => {
-      if (!settled) {
-        logger.warn("WhatsApp work was still running at shutdown; leaving the worker lease to run out");
-        return;
-      }
-      return workerLease.release();
-    })
-    .catch((error) => {
-      logger.warn({ error: scrubError(error) }, "Worker lease couldn't be released; it runs out in 30s");
-    });
   server.close(() => {
-    void released.finally(() => prisma.$disconnect()).finally(() => process.exit(exitCode));
+    void prisma.$disconnect().finally(() => process.exit(exitCode));
   });
-  // Force-exit if a graceful close hangs (e.g. an open socket).
-  setTimeout(() => process.exit(exitCode), 10_000).unref();
+  // Force-exit if a graceful close hangs (e.g. an open socket). This bound —
+  // and the lease's own deadline, still armed after stop() — is what keeps the
+  // process from outliving its lease.
+  setTimeout(() => process.exit(exitCode), SHUTDOWN_FORCE_EXIT_MS).unref();
 }
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
@@ -230,7 +231,6 @@ void workerLease
   .acquire()
   .then(async () => {
     if (shuttingDown) {
-      await workerLease.release();
       return;
     }
     logger.info("Worker lease held - connecting WhatsApp sessions");
@@ -243,8 +243,8 @@ void workerLease
           return [];
         }
       );
-    // A shutdown during that read has already released the lease: connecting
-    // now would overlap the next instance.
+    // Shutdown began during that read: the process is on its way out, and
+    // must not connect anything on the way.
     if (shuttingDown) {
       return;
     }

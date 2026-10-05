@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPrismaLeaseStore, createWorkerLease, type LeaseStore } from "./worker-lease";
 
 describe("createPrismaLeaseStore", () => {
-  const table = { createMany: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn() };
+  const table = { createMany: vi.fn(), updateMany: vi.fn() };
   const store = createPrismaLeaseStore({ whatsAppWorkerLease: table } as unknown as Parameters<
     typeof createPrismaLeaseStore
   >[0]);
@@ -39,10 +39,6 @@ describe("createPrismaLeaseStore", () => {
     expect(await store.claim({ holder: "a", expiresAt: UNTIL, now: NOW })).toBe(false);
   });
 
-  it("releases only its own lease", async () => {
-    await store.release("a");
-    expect(table.deleteMany).toHaveBeenCalledWith({ where: { id: "whatsapp-worker", holder: "a" } });
-  });
 });
 
 describe("createWorkerLease", () => {
@@ -67,7 +63,7 @@ describe("createWorkerLease", () => {
     vi.setSystemTime(new Date("2026-10-05T19:00:00Z"));
     claim = vi.fn().mockResolvedValue(true);
     onLost = vi.fn();
-    store = { claim, release: vi.fn().mockResolvedValue(undefined) };
+    store = { claim };
   });
 
   afterEach(() => {
@@ -172,32 +168,12 @@ describe("createWorkerLease", () => {
     expect(onLost).not.toHaveBeenCalled();
   });
 
-  // Codex #134: a renewal that lands after the release would recreate the lease.
-  it("waits for a renewal still in the database before releasing", async () => {
-    const l = lease();
-    await l.acquire();
-    let finish!: (held: boolean) => void;
-    claim.mockReturnValueOnce(new Promise<boolean>((resolve) => (finish = resolve)));
-    await vi.advanceTimersByTimeAsync(10_000); // the renewal starts and hangs
-
-    const released = l.release();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(store.release).not.toHaveBeenCalled();
-
-    finish(true);
-    await released;
-    expect(store.release).toHaveBeenCalledWith("me");
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(claim).toHaveBeenCalledTimes(2);
-    expect(onLost).not.toHaveBeenCalled();
-  });
-
-  it("stops waiting for the lease once released, and never renews it", async () => {
+  it("stops waiting for the lease once stopped, and never renews it", async () => {
     claim.mockResolvedValue(false);
     const l = lease();
     const acquired = l.acquire();
     await vi.advanceTimersByTimeAsync(2_000);
-    await l.release();
+    l.stop();
     await vi.advanceTimersByTimeAsync(2_000);
     await acquired;
 
@@ -207,13 +183,22 @@ describe("createWorkerLease", () => {
     expect(claim).toHaveBeenCalledTimes(calls);
   });
 
-  it("stops renewing and lets go of the lease on release", async () => {
+  // Codex #134: the lease is never handed over, only left to run out, and the
+  // deadline still ends the process before it does.
+  it("stops renewing on stop, even with a renewal in flight, but keeps the deadline", async () => {
     const l = lease();
-    await l.acquire();
-    await l.release();
-    expect(store.release).toHaveBeenCalledWith("me");
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(claim).toHaveBeenCalledTimes(1);
+    await l.acquire(); // held until 19:00:30
+    let finish!: (held: boolean) => void;
+    claim.mockReturnValueOnce(new Promise<boolean>((resolve) => (finish = resolve)));
+    await vi.advanceTimersByTimeAsync(10_000); // a renewal starts and hangs
+
+    l.stop();
+    finish(true); // lands after stop: renews nothing, moves no deadline
+    await vi.advanceTimersByTimeAsync(14_999);
     expect(onLost).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1); // 19:00:25
+    expect(onLost).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(claim).toHaveBeenCalledTimes(2);
   });
 });

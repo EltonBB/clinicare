@@ -3,7 +3,6 @@ import type { PrismaClient } from "@prisma/client";
 export type LeaseStore = {
   /** Takes or renews the lease for `holder`; false while another holds it. */
   claim(args: { holder: string; expiresAt: Date; now: Date }): Promise<boolean>;
-  release(holder: string): Promise<void>;
 };
 
 /** The one WhatsAppWorkerLease row (the app's migration creates the table). */
@@ -26,10 +25,6 @@ export function createPrismaLeaseStore(prisma: Pick<PrismaClient, "whatsAppWorke
       });
       return taken.count === 1;
     },
-
-    async release(holder) {
-      await prisma.whatsAppWorkerLease.deleteMany({ where: { id, holder } });
-    },
   };
 }
 
@@ -38,12 +33,20 @@ export function createPrismaLeaseStore(prisma: Pick<PrismaClient, "whatsAppWorke
  * A deploy starts the new instance while the old one still runs; two sockets
  * on one account knock each other off (WhatsApp's 440, "replaced") and both
  * move its encryption keys on, so the patient's phone can't decrypt what
- * either sends. The new instance waits in {@link acquire} until the old one
- * releases on shutdown (or its lease runs out), then keeps renewing. `onLost`
- * fires `safetyMs` before the lease could run out unless a renewal has moved it
- * on — on a timer of its own, so a database call that stalls can't keep this
- * instance connected past its lease (Codex #134) — or as soon as another
- * instance is found holding it.
+ * either sends.
+ *
+ * The lease is never handed over, only left to run out: on shutdown the holder
+ * just stops renewing (`stop`), and the process is gone before the lease
+ * expires — by its own force-exit (see index.ts), or by `onLost`, whose
+ * deadline stays armed after `stop` for exactly that. So the next instance, waiting in {@link acquire},
+ * can only connect once nothing of the old one is left running — no list of
+ * in-flight work to get exactly right (Codex #134, after several rounds of
+ * draining sends, pairings and key writes each turned up another).
+ *
+ * While running, `onLost` fires `safetyMs` before the lease could run out
+ * unless a renewal has moved it on — on a timer of its own, so a database call
+ * that stalls can't keep this instance connected past its lease — or as soon
+ * as another instance is found holding it. The caller must stop at once.
  */
 export function createWorkerLease({
   store,
@@ -65,35 +68,29 @@ export function createWorkerLease({
   onLost: () => void;
   onError?: (error: unknown) => void;
   now?: () => Date;
-}): { acquire(): Promise<void>; release(): Promise<void> } {
+}): { acquire(): Promise<void>; /** Stops renewing; the deadline stays armed. */ stop(): void } {
   // Counted from before each claim's call, so a slow call only shortens it.
   let heldUntil = 0;
   let renewTimer: ReturnType<typeof setTimeout> | undefined;
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
-  // The latest claim's database work, so release can wait for it: a renewal
-  // landing after the release would recreate the lease for an instance that is
-  // going away, and the next one would wait it out (Codex #134).
-  let claiming: Promise<unknown> = Promise.resolve();
 
   async function claim(): Promise<boolean> {
     const at = now();
     const expiresAt = new Date(at.getTime() + ttlMs);
-    const attempt = store.claim({ holder, expiresAt, now: at });
-    claiming = attempt.catch(() => undefined);
-    if (!(await attempt)) return false;
+    if (!(await store.claim({ holder, expiresAt, now: at }))) return false;
     heldUntil = expiresAt.getTime();
     return true;
   }
 
-  function stop(): void {
+  function stopRenewing(): void {
     stopped = true;
     clearTimeout(renewTimer);
-    clearTimeout(deadlineTimer);
   }
 
   function lose(): void {
-    stop();
+    stopRenewing();
+    clearTimeout(deadlineTimer);
     onLost();
   }
 
@@ -125,8 +122,6 @@ export function createWorkerLease({
   return {
     async acquire() {
       for (;;) {
-        // Released while still waiting: stop trying (a claim already made is
-        // undone by the caller's release, which waits for it).
         if (stopped) return;
         try {
           // A claim that came back too late to be worth anything is retried.
@@ -141,10 +136,6 @@ export function createWorkerLease({
       scheduleRenew();
     },
 
-    async release() {
-      stop();
-      await claiming;
-      await store.release(holder);
-    },
+    stop: stopRenewing,
   };
 }

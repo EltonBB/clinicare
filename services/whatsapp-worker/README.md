@@ -72,10 +72,14 @@ Only the instance holding the `WhatsAppWorkerLease` row connects to WhatsApp
 runs; two sockets on one account knock each other off (WhatsApp's 440,
 "replaced") and both move its encryption keys on, so phones can't decrypt what
 either sends. The new instance answers `/health` straight away but connects
-nothing until the old one releases the lease on shutdown — after its sockets are
-ended and any send, pairing, Signal-key or creds write still running has finished (up to 8s) — or the lease runs
-out, 30s after the last renewal; an instance that can't renew in time exits, and its
-restart waits like any other. Until it holds the lease, `/status` reports
+nothing until the lease runs out. It is never handed over: on shutdown the old
+instance stops renewing and force-exits within 10s, while the lease still has
+at least 20s left (30s TTL, renewed every 10s), so by the time anyone else can
+take it nothing of the old instance is running — no in-flight send, pairing or
+key write to account for. A deploy is therefore about 20-30s without WhatsApp
+(sends answer `send_failed`; inbound messages wait on WhatsApp's side). An
+instance that can't renew in time exits at once, and its restart waits like any
+other. Until it holds the lease, `/status` reports
 `connecting`, `/send` answers `send_failed`, and a `/pair` is held and runs as
 soon as it does. Copies of sent messages are a hard week: never handed back
 once expired, and deleted hourly whether or not anything is sent. Both tables
