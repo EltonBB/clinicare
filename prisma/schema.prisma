@@ -414,6 +414,13 @@ model FollowUpDraft {
   dedupeKey       String
   expiresAt       DateTime?
   sentAt          DateTime?
+  // When the current send was claimed (PENDING -> SENT, sentAt still empty);
+  // cleared if that send fails and the draft goes back to PENDING. Unlike
+  // sentAt and updatedAt, recording the delivery doesn't move it, so a patient
+  // reply checked later can tell an offer that was already on its way when they
+  // wrote from one sent afterwards (Codex #133). Empty on drafts claimed before
+  // it existed.
+  sendStartedAt   DateTime?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 

@@ -43,7 +43,15 @@ CREATE INDEX IF NOT EXISTS "Message_replyIntentLeaseUntil_idx" ON "Message"("rep
 --    cancel) is a new message rather than a repeat of the old one (Codex #133).
 ALTER TABLE "Appointment" ADD COLUMN IF NOT EXISTS "reminderGeneration" INTEGER NOT NULL DEFAULT 0;
 
--- 3. "WhatsAppSendKey"
+-- 3. FollowUpDraft."sendStartedAt"
+--    When a follow-up's current send was claimed; cleared if that send fails.
+--    Recording the delivery doesn't move it (unlike "sentAt" and "updatedAt"),
+--    so a patient reply checked later can tell a slot offer that was already
+--    on its way when they wrote from one sent afterwards (Codex #133). Older
+--    drafts keep it empty and are judged by "sentAt", as before.
+ALTER TABLE "FollowUpDraft" ADD COLUMN IF NOT EXISTS "sendStartedAt" TIMESTAMP(3);
+
+-- 4. "WhatsAppSendKey"
 --    The worker's record of each keyed send (POST /send idempotencyKey), so a
 --    repeat of a key is answered from the record - replayed if it was sent,
 --    "outcome unknown" if it may have been - and never sent twice, even after a

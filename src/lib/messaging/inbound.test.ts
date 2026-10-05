@@ -472,11 +472,22 @@ describe("applyInboundReplyIntent", () => {
               OR: [{ staffMemberId: null }, { staffMember: { isActive: true, status: { not: "INACTIVE" } } }],
             },
             client: { isArchived: false, status: { notIn: ["INACTIVE", "ARCHIVED"] } },
-            // Out (or on its way) by the time the patient wrote.
-            OR: [{ sentAt: { lte: NOW } }, { sentAt: null, updatedAt: { lte: NOW } }],
+            // On its way by the time the patient wrote (older drafts: by sentAt,
+            // or for one still being sent, by updatedAt).
+            OR: [
+              { sendStartedAt: { lte: NOW } },
+              { sendStartedAt: null, sentAt: { lte: NOW } },
+              { sendStartedAt: null, sentAt: null, updatedAt: { lte: NOW } },
+            ],
           },
-          // Out by then and changed since, its slot ahead when they wrote.
-          { kind: "SLOT_OFFER", sentAt: { lte: NOW }, updatedAt: { gt: NOW }, appointment: { startAt: { gt: NOW } } },
+          // On its way by then and changed since (delivered included), its
+          // slot ahead when they wrote.
+          {
+            kind: "SLOT_OFFER",
+            updatedAt: { gt: NOW },
+            appointment: { startAt: { gt: NOW } },
+            OR: [{ sendStartedAt: { lte: NOW } }, { sendStartedAt: null, sentAt: { lte: NOW } }],
+          },
         ],
       },
       // A delivered offer wins over one still being sent.

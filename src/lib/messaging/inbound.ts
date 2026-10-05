@@ -524,13 +524,17 @@ async function applyInboundReplyIntentCore(
   // send has settled (Codex #130). A delivered offer wins when there are both.
   //
   // As of the reply, for one recovered late (recoverAbandonedReplyIntents):
-  // an offer only counts if it was sent, or had started sending, by the time
-  // the patient wrote — one staff sent afterwards can't be what they answered
-  // (Codex #133). And one that was out by then but has changed since (booked,
-  // declined, or expired after the reply) still counts, as long as its slot
-  // was ahead when they wrote: it was open then, so a "2" meant for it must
-  // not cancel the reminded visit instead. For a live reply `now` is the
-  // present, so neither changes anything.
+  // an offer only counts if its send had begun by the time the patient wrote
+  // (sendStartedAt, which recording the delivery doesn't move) — one staff sent
+  // afterwards can't be what they answered (Codex #133). And one already on
+  // its way by then but changed since (delivered, booked, declined or expired
+  // after the reply) still counts, as long as its slot was ahead when they
+  // wrote: it was open then, so a "2" meant for it must not cancel the
+  // reminded visit instead. A send that failed was reverted with its start
+  // cleared, so it never counts — the patient never got it. Drafts claimed
+  // before sendStartedAt existed fall back to sentAt, or for one still being
+  // sent, to updatedAt. For a live reply `now` is the present, so none of this
+  // changes anything.
   const openOffer = await prisma.followUpDraft.findFirst({
     where: {
       businessId,
@@ -539,13 +543,17 @@ async function applyInboundReplyIntentCore(
         {
           status: "SENT",
           ...liveSlotOfferWhere(now),
-          OR: [{ sentAt: { lte: now } }, { sentAt: null, updatedAt: { lte: now } }],
+          OR: [
+            { sendStartedAt: { lte: now } },
+            { sendStartedAt: null, sentAt: { lte: now } },
+            { sendStartedAt: null, sentAt: null, updatedAt: { lte: now } },
+          ],
         },
         {
           kind: "SLOT_OFFER",
-          sentAt: { lte: now },
           updatedAt: { gt: now },
           appointment: { startAt: { gt: now } },
+          OR: [{ sendStartedAt: { lte: now } }, { sendStartedAt: null, sentAt: { lte: now } }],
         },
       ],
     },
