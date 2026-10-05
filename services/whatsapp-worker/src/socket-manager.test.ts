@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const makeWASocket = vi.fn(() => ({ ev: { on: vi.fn() }, end: vi.fn() }));
 const clearAuthState = vi.fn().mockResolvedValue(undefined);
+const usePostgresAuthState = vi.fn();
 
 vi.mock("baileys", () => ({
   default: makeWASocket,
@@ -15,7 +16,7 @@ vi.mock("baileys", () => ({
   proto: { WebMessageInfo: { Status: {} }, Message: { encode: vi.fn(), decode: vi.fn() } },
 }));
 vi.mock("./auth-state", () => ({
-  usePostgresAuthState: vi.fn().mockResolvedValue({ state: { creds: {}, keys: {} }, saveCreds: vi.fn() }),
+  usePostgresAuthState,
   clearAuthState,
 }));
 vi.mock("./bridge", () => ({ postToApp: vi.fn() }));
@@ -31,6 +32,7 @@ async function load() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  usePostgresAuthState.mockResolvedValue({ state: { creds: {}, keys: {} }, saveCreds: vi.fn() });
 });
 
 describe("pairing before this instance holds the lease (Codex #134)", () => {
@@ -55,6 +57,23 @@ describe("pairing before this instance holds the lease (Codex #134)", () => {
 
     expect(clearAuthState).toHaveBeenCalledWith("biz_1");
     expect(makeWASocket).toHaveBeenCalledTimes(1);
+  });
+
+  // Codex #134: Settings stops polling on "disconnected", so a held pairing must
+  // read "connecting" until its own start begins.
+  it("keeps every held pairing and saved session 'connecting' until its own start", async () => {
+    const manager = await load();
+    await manager.pairSession("biz_a", false);
+    await manager.pairSession("biz_b", false);
+    usePostgresAuthState.mockReturnValueOnce(new Promise(() => {})); // biz_a's start hangs
+
+    void manager.bootstrapSessions(["biz_saved"]);
+    await Promise.resolve();
+
+    expect(manager.getStatus("biz_a").status).toBe("connecting");
+    expect(manager.getStatus("biz_b").status).toBe("connecting");
+    expect(manager.getStatus("biz_saved").status).toBe("connecting");
+    expect(manager.getStatus("biz_unknown").status).toBe("disconnected");
   });
 
   it("starts nothing once shutdown has begun", async () => {

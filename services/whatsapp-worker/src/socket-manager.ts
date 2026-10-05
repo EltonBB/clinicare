@@ -76,6 +76,8 @@ let active = false;
  * would never show a QR (Codex #134). `true` = a forced re-link.
  */
 const pendingPairs = new Map<string, boolean>();
+/** Saved sessions bootstrapSessions hasn't reached yet (it starts them in turn). */
+const awaitingBootstrap = new Set<string>();
 /** Sends still running, so shutdown can wait for them before giving up the lease. */
 let sendsInFlight = 0;
 let onSendsSettled: (() => void) | undefined;
@@ -138,7 +140,12 @@ export function getStatus(businessId: string): {
     // a pairing asked for meanwhile is held in pendingPairs and runs then.
     return {
       status:
-        !active || reconnectTimers.has(businessId) || starting.has(businessId) || restarting.has(businessId)
+        !active ||
+        pendingPairs.has(businessId) ||
+        awaitingBootstrap.has(businessId) ||
+        reconnectTimers.has(businessId) ||
+        starting.has(businessId) ||
+        restarting.has(businessId)
           ? "connecting"
           : "disconnected",
     };
@@ -730,12 +737,27 @@ export async function bootstrapSessions(
   businessIds: string[]
 ): Promise<void> {
   active = true;
-  const pairs = new Map(pendingPairs);
-  pendingPairs.clear();
+  // Held pairings first: someone is waiting on Settings for their QR. Each
+  // stays in pendingPairs (so getStatus keeps saying "connecting") until its
+  // own start begins, which marks `starting`/`restarting` before any await
+  // (Codex #134).
+  const held = new Set(pendingPairs.keys());
   for (const businessId of businessIds) {
-    if (pairs.has(businessId)) {
-      continue; // its held pairing below starts it
+    if (!held.has(businessId)) awaitingBootstrap.add(businessId);
+  }
+  for (const [businessId, force] of [...pendingPairs]) {
+    pendingPairs.delete(businessId);
+    try {
+      await pairSession(businessId, force);
+    } catch (error) {
+      logger.error({ businessId, error: scrubError(error) }, "Held pairing failed");
     }
+  }
+  for (const businessId of businessIds) {
+    if (held.has(businessId)) {
+      continue; // its held pairing above started it
+    }
+    awaitingBootstrap.delete(businessId);
     try {
       await startSession(businessId);
     } catch (error) {
@@ -743,13 +765,6 @@ export async function bootstrapSessions(
         { businessId, error: scrubError(error) },
         "Failed to bootstrap session"
       );
-    }
-  }
-  for (const [businessId, force] of pairs) {
-    try {
-      await pairSession(businessId, force);
-    } catch (error) {
-      logger.error({ businessId, error: scrubError(error) }, "Held pairing failed");
     }
   }
 }
