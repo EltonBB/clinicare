@@ -4,7 +4,6 @@ import {
   notifyStaffOfAppointmentChange,
   revalidateCalendarSurfaces,
 } from "@/lib/appointments-shared";
-import { mapWithConcurrency } from "@/lib/concurrency";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
@@ -195,8 +194,7 @@ export type ApplyReplyIntentResult =
         | "open_offer"
         | "already_handled"
         | "in_progress"
-        | "offer_sending"
-        | "changed_since_reply";
+        | "offer_sending";
     }
   | { applied: true; intent: "confirm" | "cancel"; appointmentId: string };
 
@@ -229,9 +227,10 @@ export type ApplyReplyIntentResult =
  * instead of having been told with a 200 that it was done (Codex #130).
  *
  * A lease that runs out was abandoned (the instance running the check died
- * before it could finish or release), so it can be claimed again: by a late
- * retry, or by recoverAbandonedReplyIntents, which the hourly reminders cron
- * runs for the leases no retry came back for (Codex #130).
+ * before it could finish or release): a late retry can claim it again, and the
+ * ones no retry came back for are handed to staff by
+ * handOffAbandonedReplyIntents, which the hourly reminders cron runs (Codex
+ * #130, #133).
  */
 // Comfortably longer than one check can run: a few queries plus the
 // acknowledgement send, which the messaging adapter gives up on after 25s.
@@ -246,8 +245,6 @@ export async function applyInboundReplyIntent(args: {
   body: string;
   messageId?: string | null;
   now?: Date;
-  /** Checked late by recoverAbandonedReplyIntents, as of `now` (when the patient wrote). */
-  recovered?: boolean;
 }): Promise<ApplyReplyIntentResult> {
   const { messageId, now = new Date() } = args;
 
@@ -311,7 +308,7 @@ export async function applyInboundReplyIntent(args: {
     result = await applyInboundReplyIntentCore(args, now);
   } catch (error) {
     // Best-effort release. If it fails, the lease simply runs out, and the
-    // hourly recovery sweep picks the message up from there.
+    // hourly sweep hands the message to staff (handOffAbandonedReplyIntents).
     await prisma.message
       .updateMany({ where: ownLease, data: { replyIntentLeaseUntil: null } })
       .catch((releaseError) => {
@@ -340,9 +337,8 @@ export async function applyInboundReplyIntent(args: {
   }
 
   // From here a retry is told the message is handled. Not fatal if it fails:
-  // the lease runs out and the recovery sweep runs the check again, which sees
-  // the patient's booking changed since the reply (by this check's own effect,
-  // if it applied one) and leaves it for staff without acting again.
+  // the lease runs out and the hourly sweep hands the message to staff, which
+  // at worst flags a reply that was already dealt with.
   // Stamped with the time the check started, as the old single-column code
   // did. The lease is left in place: every row the new code finishes keeps one,
   // so the post-deploy rerun of prisma/whatsapp-reliability-migration.sql —
@@ -358,142 +354,67 @@ export async function applyInboundReplyIntent(args: {
   return result;
 }
 
-// A reply older than this is left to staff: whatever visit it answered has
-// most likely come and gone, and the patient has had no answer for a day.
-const REPLY_INTENT_RECOVERY_WINDOW_MS = 24 * 60 * 60 * 1000;
-// At most this many replies per run, from this many workspaces at once. A check
-// usually takes a moment; during a WhatsApp outage its acknowledgement can stall
-// for the send's 25s timeout, and a run starts none after its 30s budget, so
-// even then about two rounds go through: some 20 replies an hour, ~480 a day,
-// far more than a pilot's crashed checks could leave behind (Codex #133).
-const REPLY_INTENT_RECOVERY_BATCH = 50;
-const REPLY_INTENT_RECOVERY_CONCURRENCY = 10;
+// Abandoned claims handed to staff per run; each is two quick writes.
+const ABANDONED_REPLY_BATCH = 200;
 
 /**
- * Runs the reply check again for inbound messages whose claim was abandoned:
- * the instance checking it died after claiming it and before finishing or
- * releasing, and no worker retry came back once the lease ran out (they stop
- * within a minute; the lease is two). Without this the patient's confirm or
- * cancel would never be applied (Codex #130). Each message is claimed through
- * applyInboundReplyIntent as usual, so a late worker retry and this sweep can't
- * both act on it. Run hourly by the reminders cron; best-effort per message,
- * and it starts no new one past `deadline` (epoch ms).
+ * Hands to staff the inbound replies whose reply check was abandoned: the
+ * instance checking it died after claiming it and before finishing or releasing
+ * it, and no worker retry came back once its lease ran out (they stop within a
+ * minute; the lease is two). Left alone, the claim would sit there and the
+ * patient's confirm or cancel would go unapplied without anyone knowing
+ * (Codex #130).
  *
- * Each reply is matched as of when the patient sent it, not as of this sweep:
- * an hour later a visit that was then upcoming may have passed, leaving one
- * other visit as the only match — one the patient never meant (e.g. a "2"
- * that was ambiguous between today and next week would cancel next week's).
- *
- * Nearest the cutoff first, and side by side (Codex #133). Oldest-first across
- * the whole system let one workspace's backlog fill every batch while another's
- * replies aged out of the window, and one at a time a stalled acknowledgement
- * held up everything behind it. So the workspace whose oldest abandoned reply
- * is oldest goes first, the batch is dealt round-robin from there (oldest
- * first within each workspace), and workspaces run in parallel — each one's
- * own replies still in order, since a patient's later reply should win.
+ * It is not applied automatically this late. By now staff may have cancelled,
+ * moved, deleted or rebooked the patient's visits, sent them a slot offer, or
+ * the patient may have written again — and a reply matched against today's
+ * bookings can land on a visit they never meant. Nothing records what the
+ * patient was looking at when they wrote, and each guard for one of those
+ * cases left another open (Codex #133). So the claim is closed and the
+ * conversation is marked unread: the reply — already in the Inbox, with no
+ * acknowledgement after it — comes back to staff, who can see what it meant.
+ * A late worker retry and this sweep can't both act on a message: each takes
+ * it with the same compare-and-set. Run hourly by the reminders cron.
  */
-export async function recoverAbandonedReplyIntents(
-  now = new Date(),
-  deadline = Number.POSITIVE_INFINITY
-): Promise<{ recovered: number }> {
-  const abandonedWhere = {
-    direction: "INBOUND",
-    replyIntentHandledAt: null,
-    replyIntentLeaseUntil: { lte: now, gt: new Date(now.getTime() - REPLY_INTENT_RECOVERY_WINDOW_MS) },
-  } satisfies Prisma.MessageWhereInput;
-
-  // Each workspace's oldest abandoned lease: per conversation, then rolled up.
-  const byConversation = await prisma.message.groupBy({
-    by: ["conversationId"],
-    where: abandonedWhere,
-    _min: { replyIntentLeaseUntil: true },
+export async function handOffAbandonedReplyIntents(now = new Date()): Promise<{ handedOff: number }> {
+  const abandoned = await prisma.message.findMany({
+    where: { direction: "INBOUND", replyIntentHandledAt: null, replyIntentLeaseUntil: { lte: now } },
+    select: { id: true, conversationId: true },
+    orderBy: { replyIntentLeaseUntil: "asc" },
+    take: ABANDONED_REPLY_BATCH,
   });
-  const conversationIds = byConversation.flatMap((group) => (group.conversationId ? [group.conversationId] : []));
-  if (conversationIds.length === 0) {
-    return { recovered: 0 };
-  }
-  const owners = await prisma.conversation.findMany({
-    where: { id: { in: conversationIds } },
-    select: { id: true, businessId: true },
-  });
-  const ownerOf = new Map(owners.map((conversation) => [conversation.id, conversation.businessId]));
-  const oldestLease = new Map<string, number>();
-  for (const group of byConversation) {
-    const businessId = group.conversationId ? ownerOf.get(group.conversationId) : undefined;
-    const lease = group._min.replyIntentLeaseUntil?.getTime();
-    if (businessId && lease !== undefined) {
-      oldestLease.set(businessId, Math.min(oldestLease.get(businessId) ?? lease, lease));
-    }
-  }
-  const inTurn = [...oldestLease.entries()]
-    .sort(([idA, a], [idB, b]) => a - b || idA.localeCompare(idB))
-    .slice(0, REPLY_INTENT_RECOVERY_BATCH)
-    .map(([businessId]) => businessId);
 
-  const queues = await Promise.all(
-    inTurn.map((businessId) =>
-      prisma.message.findMany({
-        where: { ...abandonedWhere, conversation: { businessId } },
-        select: { id: true, clientId: true, body: true, sentAt: true },
-        orderBy: { replyIntentLeaseUntil: "asc" },
-        take: REPLY_INTENT_RECOVERY_BATCH,
-      })
-    )
-  );
-  // Dealt round-robin, so each workspace gets a fair share of the batch.
-  const shares: Array<Awaited<(typeof queues)[number]>> = inTurn.map(() => []);
-  let dealt = 0;
-  for (let round = 0; dealt < REPLY_INTENT_RECOVERY_BATCH; round += 1) {
-    let any = false;
-    for (let index = 0; index < queues.length && dealt < REPLY_INTENT_RECOVERY_BATCH; index += 1) {
-      const message = queues[index][round];
-      if (message) {
-        shares[index].push(message);
-        dealt += 1;
-        any = true;
-      }
-    }
-    if (!any) break;
-  }
-
-  let recovered = 0;
-  await mapWithConcurrency(inTurn, REPLY_INTENT_RECOVERY_CONCURRENCY, async (businessId, index) => {
-    for (const message of shares[index]) {
-      if (Date.now() >= deadline) {
-        return;
-      }
-      try {
-        // The client was deleted since (clientId set null): nothing left to act
-        // on, so the claim is simply closed.
-        if (!message.clientId) {
-          await prisma.message.updateMany({
-            where: { id: message.id, replyIntentHandledAt: null },
-            // Lease kept as the new code's mark (see the finish above).
-            data: { replyIntentHandledAt: now },
-          });
-          continue;
-        }
-        const result = await applyInboundReplyIntent({
-          businessId,
-          clientId: message.clientId,
-          body: message.body,
-          messageId: message.id,
-          now: message.sentAt,
-          recovered: true,
+  let handedOff = 0;
+  for (const message of abandoned) {
+    try {
+      const closed = await prisma.$transaction(async (tx) => {
+        const { count } = await tx.message.updateMany({
+          where: { id: message.id, replyIntentHandledAt: null, replyIntentLeaseUntil: { lte: now } },
+          // The lease stays, as on every row the new code finishes (see the
+          // finish in applyInboundReplyIntent).
+          data: { replyIntentHandledAt: now },
         });
-        if (result.applied || result.reason !== "in_progress") {
-          recovered += 1;
+        if (count === 1 && message.conversationId) {
+          await tx.conversation.updateMany({
+            where: { id: message.conversationId, unreadCount: 0 },
+            data: { unreadCount: 1 },
+          });
         }
-      } catch (error) {
-        logger.error("Couldn't recover an abandoned reply-intent check.", error, { messageId: message.id });
+        return count === 1;
+      });
+      if (closed) {
+        handedOff += 1;
+        logger.warn("Handed an abandoned reply check to staff.", { messageId: message.id });
       }
+    } catch (error) {
+      logger.error("Couldn't hand an abandoned reply check to staff.", error, { messageId: message.id });
     }
-  });
-  return { recovered };
+  }
+  return { handedOff };
 }
 
 async function applyInboundReplyIntentCore(
-  args: { businessId: string; clientId: string | null; body: string; messageId?: string | null; recovered?: boolean },
+  args: { businessId: string; clientId: string | null; body: string; messageId?: string | null },
   now: Date
 ): Promise<ApplyReplyIntentResult> {
   const { businessId, clientId, body, messageId } = args;
@@ -526,71 +447,18 @@ async function applyInboundReplyIntentCore(
   // meant for the reminder. So it is "offer_sending": the caller hands the
   // message back for the worker to retry in a few seconds, by which time the
   // send has settled (Codex #130). A delivered offer wins when there are both.
-  //
-  // As of the reply, for one recovered late (recoverAbandonedReplyIntents):
-  // an offer only counts if its send had begun by the time the patient wrote
-  // (sendStartedAt, which recording the delivery doesn't move) — one staff sent
-  // afterwards can't be what they answered (Codex #133). And one already on
-  // its way by then but changed since (delivered, booked, declined or expired
-  // after the reply) still counts, as long as its slot was ahead when they
-  // wrote: it was open then, so a "2" meant for it must not cancel the
-  // reminded visit instead. A send that failed was reverted with its start
-  // cleared, so it never counts — the patient never got it. Drafts claimed
-  // without sendStartedAt (before it existed, or by the old app while a deploy
-  // switches over) fall back to sentAt, or for one still being sent, to
-  // updatedAt; and one of those drafted before the reply but delivered after
-  // it may have been on its way when the patient wrote, with no way to tell —
-  // so it counts too, and the reply is left for staff (Codex #133). For a
-  // live reply `now` is the present, so none of this changes anything.
   const openOffer = await prisma.followUpDraft.findFirst({
     where: {
       businessId,
       clientId,
-      OR: [
-        {
-          status: "SENT",
-          ...liveSlotOfferWhere(now),
-          OR: [
-            { sendStartedAt: { lte: now } },
-            { sendStartedAt: null, sentAt: { lte: now } },
-            { sendStartedAt: null, sentAt: null, updatedAt: { lte: now } },
-          ],
-        },
-        {
-          kind: "SLOT_OFFER",
-          updatedAt: { gt: now },
-          appointment: { startAt: { gt: now } },
-          OR: [
-            { sendStartedAt: { lte: now } },
-            { sendStartedAt: null, sentAt: { lte: now } },
-            { sendStartedAt: null, createdAt: { lte: now }, sentAt: { gt: now } },
-          ],
-        },
-      ],
+      status: "SENT",
+      ...liveSlotOfferWhere(now),
     },
     select: { sentAt: true },
     orderBy: { sentAt: { sort: "desc", nulls: "last" } },
   });
   if (openOffer) {
     return { applied: false, reason: openOffer.sentAt ? "open_offer" : "offer_sending" };
-  }
-
-  // Checked late, the reply only acts if the patient's bookings are as they
-  // were when they wrote. The candidates are filtered as of then (created and
-  // reminded by then, starting after), but their status, time and reminders are
-  // read as they are now: had staff cancelled, moved or reset one of two visits
-  // a "2" was ambiguous between, the other would now look like the only match
-  // (Codex #133). So if any booking of theirs that existed then has changed
-  // since, the reply is left for staff — it is already in the Inbox. That
-  // includes the reply's own effect, when the check that died had applied it.
-  if (args.recovered) {
-    const changedSince = await prisma.appointment.findFirst({
-      where: { businessId, clientId, createdAt: { lte: now }, updatedAt: { gt: now } },
-      select: { id: true },
-    });
-    if (changedSince) {
-      return { applied: false, reason: "changed_since_reply" };
-    }
   }
 
   // A reminder goes to pending and confirmed appointments alike and invites
@@ -606,11 +474,7 @@ async function applyInboundReplyIntentCore(
       clientId,
       status: { in: candidateStatuses },
       startAt: { gt: now },
-      // As of the reply: a recovered one (recoverAbandonedReplyIntents) is
-      // checked later, by when staff may have rebooked the patient — a booking
-      // made, or reminded, after the reply can't be what it answers (Codex #133).
-      createdAt: { lte: now },
-      reminders: { some: { status: "SENT", sentAt: { lte: now } } },
+      reminders: { some: { status: "SENT" } },
     },
     select: { id: true, startAt: true, status: true, client: { select: { phone: true, name: true } } },
   });
@@ -627,11 +491,6 @@ async function applyInboundReplyIntentCore(
   }
 
   const appointment = candidates[0];
-  // A reply recovered late (recoverAbandonedReplyIntents) is matched as of when
-  // it was sent; a visit that has started since is left alone.
-  if (appointment.startAt.getTime() <= Date.now()) {
-    return { applied: false, reason: "no_match" };
-  }
   const phone = appointment.client.phone;
 
   // Answers the patient and mirrors the answer into the client's Inbox thread.

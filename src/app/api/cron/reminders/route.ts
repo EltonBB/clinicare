@@ -4,7 +4,7 @@ import { withDeadline } from "@/lib/concurrency";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { logger } from "@/lib/logger";
-import { recoverAbandonedReplyIntents } from "@/lib/messaging/inbound";
+import { handOffAbandonedReplyIntents } from "@/lib/messaging/inbound";
 import { createReminderRunProgress, syncAppointmentRemindersJob } from "@/lib/reminders";
 import { HARD_RESPONSE_DEADLINE_MS, REMINDER_RUN_BUDGET_MS } from "@/lib/reminder-timing";
 import { autoCloseStaleTimeEntries } from "@/lib/staff-clock";
@@ -36,12 +36,6 @@ const LOCK_NAME = "reminders";
 // the two can't silently drift apart if one is ever changed alone.
 const LOCK_TTL_SECONDS = Math.ceil(HARD_RESPONSE_DEADLINE_MS / 1_000) + 60;
 
-// The reply-recovery sweep runs first, so slow reminder sends can't starve it
-// hour after hour until its 24-hour window passes (Codex #133). It starts no new
-// check after this long; one already started can take ~35s more (a short wait
-// on a running claim plus the acknowledgement send's own timeout). Usually there
-// is nothing to recover and it takes one query.
-const REPLY_RECOVERY_BUDGET_MS = 30_000;
 
 export async function GET(request: Request) {
   if (!isAuthorizedCronRequest(request)) {
@@ -72,21 +66,19 @@ export async function GET(request: Request) {
     const startedAt = Date.now();
     const outcome = await withDeadline(
       (async () => {
-        // Finish patient replies whose check was cut off by a crash (see
-        // recoverAbandonedReplyIntents). Best-effort: a fault here must not stop
-        // the reminders.
-        let recoveredReplies = 0;
+        // Hand to staff the patient replies whose check was cut off by a crash
+        // (see handOffAbandonedReplyIntents) — first, so slow reminder sends
+        // can never crowd it out. Best-effort: a fault here must not stop the
+        // reminders.
+        let handedOffReplies = 0;
         try {
-          ({ recovered: recoveredReplies } = await recoverAbandonedReplyIntents(
-            new Date(),
-            startedAt + REPLY_RECOVERY_BUDGET_MS
-          ));
+          ({ handedOff: handedOffReplies } = await handOffAbandonedReplyIntents());
         } catch (error) {
-          logger.error("Recovering abandoned reply checks failed.", error);
+          logger.error("Handing abandoned reply checks to staff failed.", error);
         }
 
         // Budgeted from the invocation's start, not from now: whatever the
-        // recovery above took comes out of the reminders' share (a business
+        // hand-off above took comes out of the reminders' share (a business
         // left over is retried next hour), never out of the hard deadline.
         const result = await syncAppointmentRemindersJob(
           startedAt + REMINDER_RUN_BUDGET_MS,
@@ -111,7 +103,7 @@ export async function GET(request: Request) {
           logger.error("Auto-close stale time entries failed.", error);
         }
 
-        return { ...result, closedTimeEntries, recoveredReplies, timedOut: false as const };
+        return { ...result, closedTimeEntries, handedOffReplies, timedOut: false as const };
       })(),
       HARD_RESPONSE_DEADLINE_MS,
       () => {
@@ -128,7 +120,7 @@ export async function GET(request: Request) {
           skippedBusinesses: progress.skipped,
           abandonedBusinesses: progress.abandoned,
           closedTimeEntries: 0,
-          recoveredReplies: 0,
+          handedOffReplies: 0,
           timedOut: true as const,
         };
       }

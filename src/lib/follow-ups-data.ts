@@ -321,11 +321,10 @@ function flipDraftToSent(args: {
         },
         // The re-check changes nothing: it only needs the write's row lock.
         // The claim leaves `sentAt` empty: it is set by markFollowUpDraftDelivered
-        // once the message has actually left (see DELIVERED_WHERE). It stamps
-        // when this send began (see FollowUpDraft.sendStartedAt).
+        // once the message has actually left (see DELIVERED_WHERE).
         data:
           stage === "claim"
-            ? { status: "SENT", sentAt: null, sendStartedAt: now, ...(editedBody ? { body: editedBody } : {}) }
+            ? { status: "SENT", sentAt: null, ...(editedBody ? { body: editedBody } : {}) }
             : { status: "SENT" },
       });
 
@@ -375,8 +374,7 @@ function flipDraftToSent(args: {
 export async function revertFollowUpDraftToPending(args: { id: string; businessId: string }): Promise<void> {
   await prisma.followUpDraft.updateMany({
     where: { id: args.id, businessId: args.businessId, status: "SENT", sentAt: null },
-    // That send never happened, so it no longer counts as begun.
-    data: { status: "PENDING", sendStartedAt: null },
+    data: { status: "PENDING" },
   });
 }
 

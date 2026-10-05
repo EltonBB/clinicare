@@ -53,7 +53,9 @@ sends twice: a sent one is replayed (same 200), a timed-out one answers 409
 again, a running one waits for the first attempt, and a different message under
 the same key gets 422. Keys are recorded in Postgres (`WhatsAppSendKey`) before
 the message is sent, so this survives a restart: an attempt the worker never
-settled answers 409. See `src/send-dedupe.ts` and `src/send-key-store.ts`; the
+settled answers 409. Every `/send` answer carries `x-vela-send-keys: durable`, which
+tells the app it may retry a keyed send whose answer it lost. See
+`src/send-dedupe.ts` and `src/send-key-store.ts`; the
 table comes from the app's `prisma/whatsapp-reliability-migration.sql`, which
 must be applied before this worker version runs.
 

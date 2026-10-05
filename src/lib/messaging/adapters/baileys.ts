@@ -4,6 +4,8 @@ import {
   BAILEYS_BRIDGE_HEADER,
   WORKER_SEND_FAILED_CODE,
   WORKER_SEND_KEY_CONFLICT_STATUS,
+  WORKER_SEND_KEYS_DURABLE,
+  WORKER_SEND_KEYS_HEADER,
   WORKER_SEND_OUTCOME_UNKNOWN_STATUS,
   type WorkerSendRequest,
   type WorkerSendResponse,
@@ -94,9 +96,29 @@ function mapWorkerStatus(
 export class BaileysWhatsAppAdapter implements ChannelAdapter {
   readonly channel: MessageChannel = "WHATSAPP";
 
+  // Whether the worker has shown, on an answer this process got from it, that it
+  // keeps a durable record of each key. Until then a keyed send whose answer is
+  // lost is reported as possibly delivered, as an unkeyed one is: a worker from
+  // before keys existed ignores the key, so a retry could send it twice — the
+  // case while a deploy reaches the app before the worker (Codex #133).
+  private workerKeepsSendKeys = false;
+
   constructor(
     private readonly config: { workerUrl: string; secret: string }
   ) {}
+
+  /**
+   * Learns from an answer the worker itself gave: its header says it keeps
+   * keys; a valid 200 without it comes from a worker that doesn't. A proxy's
+   * own error page says nothing either way, so it changes nothing.
+   */
+  private noteWorkerAnswer(response: Response, workerAnswered: boolean): void {
+    if (response.headers?.get(WORKER_SEND_KEYS_HEADER) === WORKER_SEND_KEYS_DURABLE) {
+      this.workerKeepsSendKeys = true;
+    } else if (workerAnswered) {
+      this.workerKeepsSendKeys = false;
+    }
+  }
 
   async send(input: AdapterSendInput): Promise<AdapterSendResult> {
     // Baileys JIDs use a digits-only E.164 local part (no "+"). Strip every
@@ -121,13 +143,13 @@ export class BaileysWhatsAppAdapter implements ChannelAdapter {
 
     // The request may have reached the worker but its answer was lost or
     // garbled on the way back (an abort, a dropped connection, a proxy's own
-    // 5xx, a malformed 200). A keyed send is safe to retry: the worker keeps a
-    // durable record of every key and answers a repeat from it — replayed if it
-    // went out, "unknown" if it may have — so this is a plain, retryable
-    // failure. An unkeyed send (an Inbox reply) has no such record, so it is
-    // reported as possibly delivered (Codex #133).
+    // 5xx, a malformed 200). A keyed send to a worker known to keep durable key
+    // records is safe to retry: a repeat is answered from the record — replayed
+    // if it went out, "unknown" if it may have — so this is a plain, retryable
+    // failure. Otherwise (an unkeyed Inbox reply, or a worker not yet seen to
+    // keep keys) it is reported as possibly delivered (Codex #133).
     const answerLost = (message: string, cause?: unknown): Error =>
-      input.idempotencyKey
+      input.idempotencyKey && this.workerKeepsSendKeys
         ? new Error(`${message} A retry with the same key is answered from the worker's record.`, { cause })
         : new SendOutcomeUnknownError(message, { cause });
 
@@ -155,6 +177,8 @@ export class BaileysWhatsAppAdapter implements ChannelAdapter {
       // An abort or a dropped connection after the request went out.
       throw answerLost("WhatsApp worker didn't answer the send.", error);
     }
+
+    this.noteWorkerAnswer(response, false);
 
     if (!response.ok) {
       // 409: the worker's own "may have left" answer. 422: this key already
@@ -186,6 +210,9 @@ export class BaileysWhatsAppAdapter implements ChannelAdapter {
 
     const raw: unknown = await response.json().catch(() => null);
     const parsed = workerSendResponseSchema.safeParse(raw);
+    if (parsed.success) {
+      this.noteWorkerAnswer(response, true);
+    }
     if (!parsed.success) {
       // A malformed 200 (proxy error page, shape drift, a body cut off midway)
       // must not be recorded as a phantom "sent" message — but the worker only

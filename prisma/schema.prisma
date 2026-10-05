@@ -414,13 +414,6 @@ model FollowUpDraft {
   dedupeKey       String
   expiresAt       DateTime?
   sentAt          DateTime?
-  // When the current send was claimed (PENDING -> SENT, sentAt still empty);
-  // cleared if that send fails and the draft goes back to PENDING. Unlike
-  // sentAt and updatedAt, recording the delivery doesn't move it, so a patient
-  // reply checked later can tell an offer that was already on its way when they
-  // wrote from one sent afterwards (Codex #133). Empty on drafts claimed before
-  // it existed.
-  sendStartedAt   DateTime?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
@@ -523,15 +516,17 @@ model Message {
   // applyInboundReplyIntent acts on an inbound confirm/cancel reply at most
   // once. It first claims the message: a compare-and-set of replyIntentLeaseUntil
   // from null (or from a lease that has run out) to a time two minutes ahead.
-  // A finished check sets replyIntentHandledAt and clears the lease; a check
-  // that throws only clears the lease. A worker redelivery of the same
+  // A finished check sets replyIntentHandledAt (the lease stays); a check that
+  // throws clears the lease. A worker redelivery of the same
   // providerMessageSid that finds the message handled skips it, and one that
   // finds it leased is told it's still in progress, so a retry can neither
   // re-send a reply the first attempt already sent nor overlap a first attempt
   // that is still running (CodeRabbit #130). A lease that runs out was
-  // abandoned by a crashed check: a late retry or the hourly recovery sweep
-  // (recoverAbandonedReplyIntents) claims it again (Codex #130). Both null on
-  // an outbound row, or an inbound one nobody has acted on yet.
+  // abandoned by a crashed check: a late retry can claim it again, and the
+  // hourly sweep (handOffAbandonedReplyIntents) hands the rest to staff
+  // (Codex #130, #133). A finished check keeps its lease — the new code's mark,
+  // which the migration's legacy conversion skips. Both null on an outbound
+  // row, or an inbound one nobody has acted on yet.
   replyIntentHandledAt  DateTime?
   replyIntentLeaseUntil DateTime?
 

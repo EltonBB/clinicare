@@ -38,6 +38,14 @@ export class SessionNotConnectedError extends Error {}
 /** Mirrors the app's IDEMPOTENCY_KEY_PATTERN (src/lib/messaging/limits.ts). */
 export const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9:_-]{1,128}$/;
 
+/**
+ * Sent on every /send answer: this worker keeps a durable record of each key,
+ * so the app may retry a keyed send whose answer it lost. MUST mirror the app's
+ * WORKER_SEND_KEYS_HEADER / WORKER_SEND_KEYS_DURABLE (src/lib/messaging/baileys-contract.ts).
+ */
+export const SEND_KEYS_HEADER = "x-vela-send-keys";
+export const SEND_KEYS_DURABLE = "durable";
+
 /** Stable code in the 409 body for a send whose outcome is unknown. */
 export const SEND_OUTCOME_UNKNOWN_CODE = "send_outcome_unknown";
 

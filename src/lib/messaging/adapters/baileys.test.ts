@@ -5,13 +5,14 @@ import { sendMessage } from "../index";
 import { SendOutcomeUnknownError } from "../types";
 import { BaileysWhatsAppAdapter } from "./baileys";
 
-type FetchResponse = { ok: boolean; status: number; json: () => Promise<unknown> };
+type FetchResponse = { ok: boolean; status: number; headers: Headers; json: () => Promise<unknown> };
 
-function mockFetch(body: unknown, { ok = true, status = 200 } = {}) {
+function mockFetch(body: unknown, { ok = true, status = 200, headers = {} as Record<string, string> } = {}) {
   const fn = vi.fn(
     async (): Promise<FetchResponse> => ({
       ok,
       status,
+      headers: new Headers(headers),
       json: async () => body,
     })
   );
@@ -150,9 +151,47 @@ describe("BaileysWhatsAppAdapter", () => {
         await expect(unkeyed()).rejects.toBeInstanceOf(SendOutcomeUnknownError);
       });
 
-      it.each(lostAnswers)("%s is a retryable failure for a keyed send", async (_label, arrange) => {
+      // A worker that has said it keeps its keys answers a retry from its record.
+      const learned = async () => {
+        const fresh = new BaileysWhatsAppAdapter({ workerUrl: "https://worker.test/", secret: "s3cret" });
+        mockFetch({ providerMessageId: "BAE_0", status: "SENT" }, { headers: { "x-vela-send-keys": "durable" } });
+        await fresh.send({ businessId: "b", to: "+14155550100", body: "x", idempotencyKey: "follow-up:d0" });
+        return fresh;
+      };
+      const keyedTo = (target: BaileysWhatsAppAdapter) => () =>
+        target.send({ businessId: "b", to: "+14155550100", body: "x", idempotencyKey: "follow-up:d1" });
+
+      it.each(lostAnswers)("%s is a retryable failure for a keyed send to a worker that keeps its keys", async (_label, arrange) => {
+        const target = await learned();
         arrange();
-        await definite(keyed);
+        await definite(keyedTo(target));
+      });
+
+      // Codex #133: a worker from before keys existed ignores the key, so its
+      // lost answer can't be retried safely — the case while a deploy reaches
+      // the app before the worker.
+      it.each(lostAnswers)("%s is uncertain for a keyed send until the worker has shown it keeps keys", async (_label, arrange) => {
+        const fresh = new BaileysWhatsAppAdapter({ workerUrl: "https://worker.test/", secret: "s3cret" });
+        arrange();
+        await expect(keyedTo(fresh)()).rejects.toBeInstanceOf(SendOutcomeUnknownError);
+      });
+
+      it("forgets it once the worker answers without the header (an older worker back in place)", async () => {
+        const target = await learned();
+        mockFetch({ providerMessageId: "BAE_2", status: "SENT" });
+        await keyedTo(target)();
+
+        mockFetch(null, { ok: false, status: 504 });
+        await expect(keyedTo(target)()).rejects.toBeInstanceOf(SendOutcomeUnknownError);
+      });
+
+      it("isn't talked out of it by a proxy's own error page", async () => {
+        const target = await learned();
+        mockFetch({ error: "Application failed to respond" }, { ok: false, status: 502 });
+        await definite(keyedTo(target));
+
+        mockFetch(null, { ok: false, status: 504 });
+        await definite(keyedTo(target));
       });
     });
 

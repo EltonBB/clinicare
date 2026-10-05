@@ -11,8 +11,9 @@
 --    mid-run left that future time behind, and later deliveries read it as
 --    handled for good - the patient's confirm/cancel was never applied
 --    (Codex #130). The lease now has its own column; an expired lease with no
---    "handled" mark is reclaimed by a late worker retry or the hourly recovery
---    sweep (recoverAbandonedReplyIntents, run by the reminders cron).
+--    "handled" mark can be reclaimed by a late worker retry, and the hourly
+--    sweep (handOffAbandonedReplyIntents, run by the reminders cron) hands the
+--    rest to staff by marking the conversation unread (Codex #133).
 --
 --    Leases the old code left behind are moved into the new column (Codex
 --    #133). They are recognisable by their distance from the message's own
@@ -21,7 +22,7 @@
 --    finished check with the time it STARTED, so its finished marks lie 0-60s
 --    after "sentAt", while an old lease (its start + 120s) lies 120-180s after
 --    it. Rows 100-200s after with no "replyIntentLeaseUntil" are converted; the
---    sweep then picks up those from the last 24 hours.
+--    sweep then hands them to staff.
 --    The old app keeps serving between this migration and the deploy, and can
 --    leave such a lease behind in that window - so run this file once more
 --    after the new app is live. That rerun can't touch the new code's own
@@ -43,15 +44,7 @@ CREATE INDEX IF NOT EXISTS "Message_replyIntentLeaseUntil_idx" ON "Message"("rep
 --    cancel) is a new message rather than a repeat of the old one (Codex #133).
 ALTER TABLE "Appointment" ADD COLUMN IF NOT EXISTS "reminderGeneration" INTEGER NOT NULL DEFAULT 0;
 
--- 3. FollowUpDraft."sendStartedAt"
---    When a follow-up's current send was claimed; cleared if that send fails.
---    Recording the delivery doesn't move it (unlike "sentAt" and "updatedAt"),
---    so a patient reply checked later can tell a slot offer that was already
---    on its way when they wrote from one sent afterwards (Codex #133). Older
---    drafts keep it empty and are judged by "sentAt", as before.
-ALTER TABLE "FollowUpDraft" ADD COLUMN IF NOT EXISTS "sendStartedAt" TIMESTAMP(3);
-
--- 4. "WhatsAppSendKey"
+-- 3. "WhatsAppSendKey"
 --    The worker's record of each keyed send (POST /send idempotencyKey), so a
 --    repeat of a key is answered from the record - replayed if it was sent,
 --    "outcome unknown" if it may have been - and never sent twice, even after a

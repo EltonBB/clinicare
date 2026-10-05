@@ -4,7 +4,7 @@ const acquireCronLock = vi.fn();
 const releaseCronLock = vi.fn();
 const syncAppointmentRemindersJob = vi.fn();
 const autoCloseStaleTimeEntries = vi.fn();
-const recoverAbandonedReplyIntents = vi.fn();
+const handOffAbandonedReplyIntents = vi.fn();
 const isAuthorizedCronRequest = vi.fn();
 
 vi.mock("@/lib/cron-lock", () => ({ acquireCronLock, releaseCronLock }));
@@ -13,7 +13,7 @@ vi.mock("@/lib/logger", () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
 vi.mock("@/lib/staff-clock", () => ({ autoCloseStaleTimeEntries }));
-vi.mock("@/lib/messaging/inbound", () => ({ recoverAbandonedReplyIntents }));
+vi.mock("@/lib/messaging/inbound", () => ({ handOffAbandonedReplyIntents }));
 // Fully self-contained — NOT vi.importActual. reminders.ts imports lib/prisma,
 // which reads DATABASE_URL at module load time; CI has no .env, so pulling in
 // the real module here throws before a single test runs. createReminderRunProgress
@@ -43,7 +43,7 @@ describe("reminders cron route", () => {
     releaseCronLock.mockReset().mockResolvedValue(undefined);
     syncAppointmentRemindersJob.mockReset();
     autoCloseStaleTimeEntries.mockReset().mockResolvedValue({ closed: 0 });
-    recoverAbandonedReplyIntents.mockReset().mockResolvedValue({ recovered: 0 });
+    handOffAbandonedReplyIntents.mockReset().mockResolvedValue({ handedOff: 0 });
     // Every test defaults to an authorized request; the 401 test below is the
     // one exception. A vi.fn() here (not a plain arrow function) so that
     // exception is a plain mockReturnValueOnce, not a doMock/resetModules
@@ -93,11 +93,9 @@ describe("reminders cron route", () => {
    * release anything — releasing would risk evicting a DIFFERENT
    * invocation's real, still-held lock.
    */
-  // Codex #133: run after the reminders, recovery got only what they left of
-  // the deadline, and slow sends could starve it every hour until its 24-hour
-  // window closed. It now runs first, with its own small budget, and the
-  // reminders' budget is counted from the invocation's start.
-  it("recovers abandoned reply checks first, on a budget of its own, and a failure there doesn't fail the run", async () => {
+  // Codex #133: run after the reminders, the sweep could be crowded out by slow
+  // sends, so it runs first; the reminders' budget counts from the start.
+  it("hands abandoned reply checks to staff first, and a failure there doesn't fail the run", async () => {
     syncAppointmentRemindersJob.mockResolvedValue({
       processedBusinesses: 1,
       sent: 1,
@@ -105,31 +103,28 @@ describe("reminders cron route", () => {
       skippedBusinesses: 0,
       abandonedBusinesses: 0,
     });
-    // Recovery takes 20s of the invocation (only the clock is faked).
+    // The hand-off takes 20s of the invocation (only the clock is faked).
     vi.useFakeTimers({ toFake: ["Date"] });
-    recoverAbandonedReplyIntents.mockImplementationOnce(async () => {
+    handOffAbandonedReplyIntents.mockImplementationOnce(async () => {
       vi.setSystemTime(Date.now() + 20_000);
-      return { recovered: 2 };
+      return { handedOff: 2 };
     });
     const { GET } = await import("./route");
 
     const before = Date.now();
-    expect(await (await GET(request())).json()).toMatchObject({ ok: true, sent: 1, recoveredReplies: 2 });
-    const after = Date.now() - 20_000;
+    expect(await (await GET(request())).json()).toMatchObject({ ok: true, sent: 1, handedOffReplies: 2 });
 
-    expect(recoverAbandonedReplyIntents.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(handOffAbandonedReplyIntents.mock.invocationCallOrder[0]).toBeLessThan(
       syncAppointmentRemindersJob.mock.invocationCallOrder[0]
     );
-    const [, recoveryDeadline] = recoverAbandonedReplyIntents.mock.calls[0];
-    expect(recoveryDeadline).toBeGreaterThanOrEqual(before + 30_000);
-    expect(recoveryDeadline).toBeLessThanOrEqual(after + 30_000);
     // The reminders' deadline: the invocation's start plus their budget (165s
-    // in this mock), not "now" after recovery has run.
-    expect(syncAppointmentRemindersJob.mock.calls[0][0]).toBe(recoveryDeadline - 30_000 + 165_000);
+    // in this mock), not "now" after the hand-off has run.
+    expect(syncAppointmentRemindersJob.mock.calls[0][0]).toBeLessThanOrEqual(before + 165_000);
+    expect(syncAppointmentRemindersJob.mock.calls[0][0]).toBeGreaterThanOrEqual(before + 165_000 - 1_000);
     vi.useRealTimers();
 
-    recoverAbandonedReplyIntents.mockRejectedValueOnce(new Error("sweep failed"));
-    expect(await (await GET(request())).json()).toMatchObject({ ok: true, sent: 1, recoveredReplies: 0 });
+    handOffAbandonedReplyIntents.mockRejectedValueOnce(new Error("sweep failed"));
+    expect(await (await GET(request())).json()).toMatchObject({ ok: true, sent: 1, handedOffReplies: 0 });
     expect(syncAppointmentRemindersJob).toHaveBeenCalledTimes(2);
   });
 

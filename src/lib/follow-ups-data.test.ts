@@ -731,8 +731,7 @@ describe("follow-ups data layer — which drafts are actionable", () => {
       draft: { id: "d_1", body: "Draft message", clientId: "client_1", clientName: "Test Client", phone: "+38344000000" },
     });
     expect(mocks.tx.followUpDraft.updateMany).toHaveBeenCalledWith(
-      // Stamps when this send began; recording its delivery later won't move it (Codex #133).
-      expect.objectContaining({ data: { status: "SENT", sentAt: null, sendStartedAt: NOW } })
+      expect.objectContaining({ data: { status: "SENT", sentAt: null } })
     );
 
     row.status = "SENT";
@@ -1645,8 +1644,7 @@ describe("a follow-up whose message is still being sent", () => {
 
     expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledWith({
       where: { id: "d1", businessId: "biz_1", status: "SENT", sentAt: null },
-      // The send never happened, so it no longer counts as begun.
-      data: { status: "PENDING", sendStartedAt: null },
+      data: { status: "PENDING" },
     });
   });
 

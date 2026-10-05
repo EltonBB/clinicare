@@ -65,6 +65,15 @@ export const WORKER_SEND_KEY_CONFLICT_STATUS = 422;
 /** `code` in the worker's own 502 body: the send definitely did not go out. */
 export const WORKER_SEND_FAILED_CODE = "send_failed";
 
+/**
+ * Header on every /send answer from a worker that keeps a durable record of
+ * each idempotency key ({@link WORKER_SEND_KEYS_DURABLE}). A worker from before
+ * keys existed doesn't send it — and ignores the key — so a lost answer from it
+ * can't be retried safely (Codex #133). Mirrored in the worker's send-dedupe.ts.
+ */
+export const WORKER_SEND_KEYS_HEADER = "x-vela-send-keys";
+export const WORKER_SEND_KEYS_DURABLE = "durable";
+
 export type WorkerSendResponse = {
   providerMessageId: string | null;
   status: "QUEUED" | "SENT" | "FAILED";

@@ -9,6 +9,8 @@ import {
   classifySendError,
   createSendDeduper,
   IDEMPOTENCY_KEY_PATTERN,
+  SEND_KEYS_DURABLE,
+  SEND_KEYS_HEADER,
   sendOutcomeResponse,
 } from "./send-dedupe";
 import { createPrismaSendKeyStore } from "./send-key-store";
@@ -104,6 +106,8 @@ app.get("/status", requireSecret, (req, res) => {
 });
 
 app.post("/send", requireSecret, async (req, res) => {
+  // Every answer, refusals included, tells the app this worker keeps its keys.
+  res.setHeader(SEND_KEYS_HEADER, SEND_KEYS_DURABLE);
   const businessId = String(req.body?.businessId ?? "").trim();
   const to = String(req.body?.to ?? "").trim();
   const body = String(req.body?.body ?? "").trim();
