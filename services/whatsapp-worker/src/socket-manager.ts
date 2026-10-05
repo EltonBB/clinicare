@@ -80,7 +80,7 @@ const pendingPairs = new Map<string, boolean>();
 const awaitingBootstrap = new Set<string>();
 /**
  * Work still running against the WhatsApp account — sends, pairings (a forced
- * one wipes the stored creds), creds and logout writes — so shutdown can wait
+ * one wipes the stored creds), Signal-key, creds and logout writes — so shutdown can wait
  * for it before giving up the lease: the next instance must not connect, or
  * load creds, while this one may still send or rewrite them (Codex #134).
  */
@@ -270,7 +270,13 @@ export async function startSession(businessId: string): Promise<void> {
       ...(version ? { version } : {}),
       auth: {
         creds: state.creds,
-        keys: makeCacheableSignalKeyStore(state.keys, waLogger),
+        // Signal-key writes count as account work too: shutdown must not hand
+        // the lease over while one is still committing, or the next instance
+        // loads keys this one is about to replace (Codex #134).
+        keys: makeCacheableSignalKeyStore(
+          { ...state.keys, set: (data) => trackAccountWork(async () => state.keys.set(data)) },
+          waLogger
+        ),
       },
       logger: waLogger,
       markOnlineOnConnect: false,

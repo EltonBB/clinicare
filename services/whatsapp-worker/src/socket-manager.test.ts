@@ -168,3 +168,26 @@ describe("accountWorkSettled covers pairings too (Codex #134)", () => {
     expect(makeWASocket).not.toHaveBeenCalled(); // shutdown began: no socket after the wipe
   });
 });
+
+describe("accountWorkSettled covers Signal-key writes (Codex #134)", () => {
+  it("waits for a key write still committing when the sockets are closed", async () => {
+    const manager = await load();
+    let finishWrite!: () => void;
+    const set = vi.fn(() => new Promise<void>((resolve) => (finishWrite = resolve)));
+    usePostgresAuthState.mockResolvedValueOnce({ state: { creds: {}, keys: { get: vi.fn(), set } }, saveCreds: vi.fn() });
+    await manager.bootstrapSessions(["biz_1"]);
+    const { auth } = (makeWASocket.mock.calls[0] as unknown as [{ auth: { keys: { set(data: unknown): Promise<void> } } }])[0];
+
+    const write = auth.keys.set({ session: { "38344123456.0": new Uint8Array([1]) } });
+    manager.closeAllSessions();
+    let settled: boolean | undefined;
+    void manager.accountWorkSettled(60_000).then((value) => (settled = value));
+    await Promise.resolve();
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(settled).toBeUndefined();
+
+    finishWrite();
+    await write;
+    await vi.waitFor(() => expect(settled).toBe(true));
+  });
+});
