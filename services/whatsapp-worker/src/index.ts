@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 
 import express, { type RequestHandler } from "express";
 
@@ -22,6 +22,7 @@ import {
   sendText,
   startSession,
 } from "./socket-manager";
+import { createPrismaLeaseStore, createWorkerLease } from "./worker-lease";
 
 /** Max send-body length. MUST mirror the app seam's cap
  * (src/lib/messaging/index.ts). Reject — never truncate — so the app's stored
@@ -45,6 +46,24 @@ const sendDeduper = createSendDeduper({
   ttlMs: 7 * 24 * 60 * 60 * 1000,
   fingerprintSecret: config.bridgeSecret,
   onStoreError: (message, error) => logger.error({ error: scrubError(error) }, message),
+});
+
+/**
+ * Only the instance holding this lease connects to WhatsApp (see
+ * worker-lease.ts): a deploy's new instance waits for the old one to let go.
+ * Losing it stops the process; Railway restarts it and it waits again.
+ */
+const workerLease = createWorkerLease({
+  store: createPrismaLeaseStore(prisma),
+  holder: randomUUID(),
+  ttlMs: 30_000,
+  renewEveryMs: 10_000,
+  retryEveryMs: 2_000,
+  onLost: () => {
+    logger.error("Worker lease lost - stopping so only one instance holds WhatsApp");
+    shutdown("lease lost", 1);
+  },
+  onError: (error) => logger.warn({ error: scrubError(error) }, "Worker lease check failed"),
 });
 
 function isAuthorized(headerValue: string | undefined): boolean {
@@ -175,30 +194,55 @@ const server = app.listen(config.port, () => {
 });
 
 let shuttingDown = false;
-function shutdown(signal: string): void {
+function shutdown(signal: string, exitCode = 0): void {
   if (shuttingDown) {
     return;
   }
   shuttingDown = true;
   logger.info({ signal }, "Shutting down");
   closeAllSessions();
+  // The sockets are closed: let the next instance connect right away.
+  const released = workerLease.release().catch((error) => {
+    logger.warn({ error: scrubError(error) }, "Worker lease couldn't be released; it runs out in 30s");
+  });
   server.close(() => {
-    void prisma.$disconnect().finally(() => process.exit(0));
+    void released.finally(() => prisma.$disconnect()).finally(() => process.exit(exitCode));
   });
   // Force-exit if a graceful close hangs (e.g. an open socket).
-  setTimeout(() => process.exit(0), 10_000).unref();
+  setTimeout(() => process.exit(exitCode), 10_000).unref();
 }
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
 
-// Best-effort: reconnect every workspace that already has saved creds. A DB
-// outage must not stop the HTTP bridge from coming up.
-prisma.whatsAppSession
-  .findMany({ select: { businessId: true } })
-  .then((rows) => bootstrapSessions(rows.map((row) => row.businessId)))
+// Once this instance holds the lease (the HTTP bridge is already up, so the
+// platform sees it healthy and stops the old one), reconnect every workspace
+// that already has saved creds. A DB outage must not keep sessions off for
+// good: pairing still works, it just starts from no reconnected sessions.
+logger.info("Waiting for the worker lease");
+void workerLease
+  .acquire()
+  .then(async () => {
+    if (shuttingDown) {
+      await workerLease.release();
+      return;
+    }
+    logger.info("Worker lease held - connecting WhatsApp sessions");
+    const businessIds = await prisma.whatsAppSession
+      .findMany({ select: { businessId: true } })
+      .then(
+        (rows) => rows.map((row) => row.businessId),
+        (error) => {
+          logger.error({ error: scrubError(error) }, "Session bootstrap skipped (database unavailable)");
+          return [];
+        }
+      );
+    // A shutdown during that read has already released the lease: connecting
+    // now would overlap the next instance.
+    if (shuttingDown) {
+      return;
+    }
+    await bootstrapSessions(businessIds);
+  })
   .catch((error) => {
-    logger.error(
-      { error: scrubError(error) },
-      "Session bootstrap skipped (database unavailable)"
-    );
+    logger.error({ error: scrubError(error) }, "Session bootstrap failed");
   });

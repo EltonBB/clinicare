@@ -13,7 +13,7 @@ import { classifyReplyIntent } from "@/lib/reply-intent";
 import { liveSlotOfferWhere } from "@/lib/slot-offers";
 import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 
-import type { AppointmentStatus, Prisma } from "@prisma/client";
+import type { AppointmentStatus } from "@prisma/client";
 
 import type { MessageDeliveryStatus } from "./types";
 

@@ -59,6 +59,26 @@ tells the app it may retry a keyed send whose answer it lost. See
 table comes from the app's `prisma/whatsapp-reliability-migration.sql`, which
 must be applied before this worker version runs.
 
+A copy of each sent message is kept for a week (`WhatsAppSentMessage`,
+`src/sent-message-store.ts`) and handed to Baileys as `getMessage`: when the
+recipient's phone can't decrypt a message it asks for it again, and without the
+copy that request was ignored and the patient saw "Waiting for this message"
+for good.
+
+## One instance at a time
+
+Only the instance holding the `WhatsAppWorkerLease` row connects to WhatsApp
+(`src/worker-lease.ts`). A deploy starts the new instance while the old one still
+runs; two sockets on one account knock each other off (WhatsApp's 440,
+"replaced") and both move its encryption keys on, so phones can't decrypt what
+either sends. The new instance answers `/health` straight away but connects
+nothing until the old one releases the lease on shutdown (or it runs out, 30s
+after the last renewal); an instance that can't renew in time exits, and its
+restart waits like any other. Until it holds the lease, `/status` reports
+`connecting`, `/send` answers `send_failed` and `/pair` does nothing. Both tables
+come from the app's `prisma/whatsapp-resend-and-lease-migration.sql`, applied
+before this worker version runs.
+
 ## Run locally
 
 ```bash
@@ -80,9 +100,10 @@ its env plus `BAILEYS_WORKER_URL=http://localhost:8081`:
 
 ## Database
 
-The worker reads/writes only its own `WhatsAppSession` and `WhatsAppSessionKey`
-tables (non-PHI WhatsApp link credentials). It is **self-contained**: it carries
-a minimal `prisma/schema.prisma` (just those two models, mirroring the app's at
+The worker reads/writes only its own tables: `WhatsAppSession` and
+`WhatsAppSessionKey` (non-PHI WhatsApp link credentials), `WhatsAppSendKey`,
+`WhatsAppSentMessage` and `WhatsAppWorkerLease`. It is **self-contained**: it carries
+a minimal `prisma/schema.prisma` (just those models, mirroring the app's at
 the repo root — keep field names in sync) and generates its own `@prisma/client`
 on install via `postinstall`. The tables themselves are created and owned by the
 app's migration.
