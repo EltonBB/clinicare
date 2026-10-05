@@ -76,6 +76,9 @@ let active = false;
  * would never show a QR (Codex #134). `true` = a forced re-link.
  */
 const pendingPairs = new Map<string, boolean>();
+/** Sends still running, so shutdown can wait for them before giving up the lease. */
+let sendsInFlight = 0;
+let onSendsSettled: (() => void) | undefined;
 
 /** Sent messages, kept for a week to answer a phone's resend request. */
 const sentMessages = createPrismaSentMessageStore(prisma, {
@@ -589,6 +592,7 @@ export async function sendText(
     throw new SessionNotConnectedError("WhatsApp session is not connected.");
   }
   const jid = `${to}@s.whatsapp.net`;
+  sendsInFlight += 1;
   try {
     // Bound the send so a dead-but-not-yet-closed socket can't hang the request.
     const sent = await withTimeout(
@@ -627,7 +631,28 @@ export async function sendText(
       scheduleReconnect(businessId);
     }
     throw error;
+  } finally {
+    sendsInFlight -= 1;
+    if (sendsInFlight === 0) onSendsSettled?.();
   }
+}
+
+/**
+ * Resolves true once no send is running (at once if none is), or false after
+ * `timeoutMs`. Shutdown waits on it before releasing the lease: a send still
+ * running holds a socket — and may still be writing the account's keys — that
+ * the next instance must not overlap (Codex #134).
+ */
+export function sendsSettled(timeoutMs: number): Promise<boolean> {
+  if (sendsInFlight === 0) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), timeoutMs);
+    onSendsSettled = () => {
+      clearTimeout(timer);
+      onSendsSettled = undefined;
+      resolve(true);
+    };
+  });
 }
 
 /** End every live socket and cancel all timers (called on graceful shutdown). */

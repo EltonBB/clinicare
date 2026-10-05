@@ -19,6 +19,7 @@ import {
   closeAllSessions,
   getStatus,
   pairSession,
+  sendsSettled,
   sendText,
 } from "./socket-manager";
 import { createPrismaLeaseStore, createWorkerLease } from "./worker-lease";
@@ -194,11 +195,22 @@ function shutdown(signal: string, exitCode = 0): void {
   }
   shuttingDown = true;
   logger.info({ signal }, "Shutting down");
+  // No new sends from here (they find no session), and the sockets are ended.
   closeAllSessions();
-  // The sockets are closed: let the next instance connect right away.
-  const released = workerLease.release().catch((error) => {
-    logger.warn({ error: scrubError(error) }, "Worker lease couldn't be released; it runs out in 30s");
-  });
+  // Let the next instance connect once any send still running has finished.
+  // One that doesn't finish in time keeps the lease until it runs out (30s
+  // after its last renewal) rather than overlap the next instance (Codex #134).
+  const released = sendsSettled(8_000)
+    .then((settled) => {
+      if (!settled) {
+        logger.warn("A send was still running at shutdown; leaving the worker lease to run out");
+        return;
+      }
+      return workerLease.release();
+    })
+    .catch((error) => {
+      logger.warn({ error: scrubError(error) }, "Worker lease couldn't be released; it runs out in 30s");
+    });
   server.close(() => {
     void released.finally(() => prisma.$disconnect()).finally(() => process.exit(exitCode));
   });
