@@ -596,31 +596,20 @@ export async function sendText(
     throw new SessionNotConnectedError("WhatsApp session is not connected.");
   }
   const jid = `${to}@s.whatsapp.net`;
+  const sending = session.sock.sendMessage(jid, { text: body });
   try {
     // Bound the send so a dead-but-not-yet-closed socket can't hang the request.
-    const sent = await withTimeout(
-      session.sock.sendMessage(jid, { text: body }),
-      SEND_TIMEOUT_MS,
-      "WhatsApp send timed out."
-    );
-    const providerMessageId = sent?.key?.id ?? null;
-    if (providerMessageId && sent?.message) {
-      // Stored before answering, so a worker that stops right after this send
-      // still has the copy (Codex #134) — but briefly, and a failure is only
-      // logged: the message has gone, and that must not read as unsent.
-      try {
-        await withTimeout(
-          sentMessages.remember(businessId, providerMessageId, sent.message),
-          KEEP_COPY_TIMEOUT_MS,
-          "Keeping a copy of a sent message timed out."
-        );
-      } catch (error) {
-        logger.error({ businessId, error: scrubError(error) }, "Couldn't keep a copy of a sent message");
-      }
-    }
-    return { providerMessageId, status: "SENT" };
+    const sent = await withTimeout(sending, SEND_TIMEOUT_MS, "WhatsApp send timed out.");
+    // Stored before answering, so a worker that stops right after this send
+    // still has the copy (Codex #134).
+    await keepCopy(businessId, sent);
+    return { providerMessageId: sent?.key?.id ?? null, status: "SENT" };
   } catch (error) {
     if (error instanceof TimeoutError) {
+      // A timed-out send may still go out (it's reported as possibly
+      // delivered): keep its copy if it does, so a resend request for it can
+      // be answered too (Codex #134).
+      sending.then((late) => keepCopy(businessId, late)).catch(() => {});
       // A timeout means the socket is almost certainly dead-but-not-closed —
       // tear it down and reconnect so it stops accepting sends, instead of
       // hanging every future request for the full timeout. (The close handler
@@ -634,6 +623,24 @@ export async function sendText(
       scheduleReconnect(businessId);
     }
     throw error;
+  }
+}
+
+/**
+ * Keeps a sent message's copy for resend requests — briefly, and a failure is
+ * only logged: the message has gone, and that must not read as unsent.
+ */
+async function keepCopy(businessId: string, sent: WAMessage | undefined): Promise<void> {
+  const messageId = sent?.key?.id;
+  if (!messageId || !sent?.message) return;
+  try {
+    await withTimeout(
+      sentMessages.remember(businessId, messageId, sent.message),
+      KEEP_COPY_TIMEOUT_MS,
+      "Keeping a copy of a sent message timed out."
+    );
+  } catch (error) {
+    logger.error({ businessId, error: scrubError(error) }, "Couldn't keep a copy of a sent message");
   }
 }
 

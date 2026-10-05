@@ -21,7 +21,8 @@ vi.mock("./auth-state", () => ({
 }));
 vi.mock("./bridge", () => ({ postToApp: vi.fn() }));
 vi.mock("./prisma", () => ({ prisma: {} }));
-vi.mock("./sent-message-store", () => ({ createPrismaSentMessageStore: vi.fn(() => ({})) }));
+const remember = vi.fn().mockResolvedValue(undefined);
+vi.mock("./sent-message-store", () => ({ createPrismaSentMessageStore: vi.fn(() => ({ remember })) }));
 
 // Module state (the lease flag, held pairings) is per import: start fresh each test.
 async function load() {
@@ -91,5 +92,53 @@ describe("pairing before this instance holds the lease (Codex #134)", () => {
 
     await manager.pairSession("biz_1", false);
     expect(makeWASocket).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("sendText keeps resend copies", () => {
+  async function connected() {
+    const manager = await load();
+    const sendMessage = vi.fn();
+    const handlers = new Map<string, (update: unknown) => void>();
+    makeWASocket.mockImplementationOnce(() => ({
+      ev: { on: vi.fn((event: string, handler: (update: unknown) => void) => handlers.set(event, handler)) },
+      end: vi.fn(),
+      sendMessage,
+    }));
+    await manager.bootstrapSessions(["biz_1"]);
+    handlers.get("connection.update")!({ connection: "open" });
+    return { manager, sendMessage };
+  }
+  const SENT = { key: { id: "BAE_1" }, message: { conversation: "Hi" } };
+
+  it("keeps the copy before answering", async () => {
+    const { manager, sendMessage } = await connected();
+    sendMessage.mockResolvedValue(SENT);
+
+    await expect(manager.sendText("biz_1", "38344123456", "Hi")).resolves.toEqual({
+      providerMessageId: "BAE_1",
+      status: "SENT",
+    });
+    expect(remember).toHaveBeenCalledWith("biz_1", "BAE_1", SENT.message);
+  });
+
+  // Codex #134: a timed-out send is possibly delivered, so it needs a copy too.
+  it("keeps the copy of a send that goes out after it timed out", async () => {
+    vi.useFakeTimers();
+    try {
+      const { manager, sendMessage } = await connected();
+      sendMessage.mockReturnValue(new Promise((resolve) => setTimeout(() => resolve(SENT), 25_000)));
+
+      const result = manager.sendText("biz_1", "38344123456", "Hi");
+      const failed = expect(result).rejects.toThrow("timed out");
+      await vi.advanceTimersByTimeAsync(20_000);
+      await failed;
+      expect(remember).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(remember).toHaveBeenCalledWith("biz_1", "BAE_1", SENT.message);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
