@@ -41,6 +41,7 @@ model Business {
   whatsappSession        WhatsAppSession?
   whatsappSessionKeys    WhatsAppSessionKey[]
   whatsappSendKeys       WhatsAppSendKey[]
+  whatsappSentMessages   WhatsAppSentMessage[]
   analyticsSnapshots     AnalyticsSnapshot[]
   staffAccessCodes       StaffAccessCode[]
   staffDevices           StaffDevice[]
@@ -636,6 +637,33 @@ model WhatsAppSendKey {
 
   @@id([businessId, key])
   @@index([expiresAt])
+}
+
+// A copy of each message the worker sent, kept for a week so it can send it
+// again when the recipient's phone couldn't decrypt it and asks for a resend
+// (otherwise the patient sees "Waiting for this message" for good). `content`
+// is the encoded WhatsApp message - the same minimum-necessary text the app
+// keeps on Message. Written only by the worker
+// (services/whatsapp-worker/src/sent-message-store.ts).
+model WhatsAppSentMessage {
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  messageId  String
+  content    Bytes
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@id([businessId, messageId])
+  @@index([expiresAt])
+}
+
+// Which worker instance may hold WhatsApp connections. One row; a deploy's new
+// instance waits until the old one lets go, so two never run one account at
+// once (services/whatsapp-worker/src/worker-lease.ts). Non-PHI.
+model WhatsAppWorkerLease {
+  id        String   @id
+  holder    String
+  expiresAt DateTime
 }
 
 model EmailVerificationReceipt {

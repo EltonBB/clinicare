@@ -20,7 +20,9 @@ import qrcode from "qrcode-terminal";
 import { clearAuthState, usePostgresAuthState } from "./auth-state";
 import { postToApp } from "./bridge";
 import { logger, scrubError } from "./logger";
+import { prisma } from "./prisma";
 import { SessionNotConnectedError, TimeoutError, type SentResult } from "./send-dedupe";
+import { createPrismaSentMessageStore } from "./sent-message-store";
 
 type SessionStatus = "connecting" | "qr" | "connected" | "disconnected";
 
@@ -45,6 +47,8 @@ const reconnectAttempts = new Map<string, number>();
 
 const MAX_RECONNECT_ATTEMPTS = 10;
 const SEND_TIMEOUT_MS = 20_000;
+/** How long a send waits for its resend copy to be stored before answering. */
+const KEEP_COPY_TIMEOUT_MS = 5_000;
 const STABLE_CONNECTION_MS = 15_000;
 const VERSION_FETCH_TIMEOUT_MS = 10_000;
 /** Pending "connection has been stable, reset the backoff" timers per business. */
@@ -58,8 +62,28 @@ const reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
  * the old session back up.
  */
 const sessionEpoch = new Map<string, number>();
-/** Set on graceful shutdown so no new socket is started after closeAllSessions. */
-let stopped = false;
+/**
+ * Whether this instance may hold sockets: off until bootstrapSessions (which
+ * runs once the worker lease is held — see worker-lease.ts) and off again on
+ * graceful shutdown, so no socket is started while another instance may hold
+ * the account or after closeAllSessions.
+ */
+let active = false;
+/**
+ * Pairing requests that arrived before this instance held the lease (a deploy's
+ * new instance is reachable a few seconds before it may connect), run once it
+ * does: Settings only polls /status after its one /pair, so a dropped request
+ * would never show a QR (Codex #134). `true` = a forced re-link.
+ */
+const pendingPairs = new Map<string, boolean>();
+/** Saved sessions bootstrapSessions hasn't reached yet (it starts them in turn). */
+const awaitingBootstrap = new Set<string>();
+
+/** Sent messages, kept for a week to answer a phone's resend request. */
+const sentMessages = createPrismaSentMessageStore(prisma, {
+  ttlMs: 7 * 24 * 60 * 60 * 1000,
+  onSweepError: (error) => logger.warn({ error: scrubError(error) }, "expired sent messages couldn't be swept"),
+});
 
 function clearStableTimer(businessId: string): void {
   const timer = stableTimers.get(businessId);
@@ -107,9 +131,18 @@ export function getStatus(businessId: string): {
     // report "disconnected" mid-wipe, and the reconciliation above would
     // hide the fresh QR the worker produces moments later (Codex P2, fresh
     // evidence beyond the in-flight-startSession gap above).
+    //
+    // `!active` covers a fourth: a freshly deployed instance waiting for the old
+    // one to let go of the lease starts nothing until it does, a few seconds —
+    // a pairing asked for meanwhile is held in pendingPairs and runs then.
     return {
       status:
-        reconnectTimers.has(businessId) || starting.has(businessId) || restarting.has(businessId)
+        !active ||
+        pendingPairs.has(businessId) ||
+        awaitingBootstrap.has(businessId) ||
+        reconnectTimers.has(businessId) ||
+        starting.has(businessId) ||
+        restarting.has(businessId)
           ? "connecting"
           : "disconnected",
     };
@@ -126,9 +159,9 @@ export function getStatus(businessId: string): {
  * by the `connection.update` QR string; the app polls {@link getStatus} for it.
  */
 export async function startSession(businessId: string): Promise<void> {
-  // No new sockets once shutdown has begun (a pending reconnect could fire
-  // during the graceful-close window).
-  if (stopped) {
+  // No sockets before this instance holds the lease, nor once shutdown has
+  // begun (a pending reconnect could fire during the graceful-close window).
+  if (!active) {
     return;
   }
   const current = sessions.get(businessId);
@@ -188,6 +221,11 @@ export async function startSession(businessId: string): Promise<void> {
       starting.delete(businessId);
       return await startSession(businessId);
     }
+    // Shutdown began while we were loading: the process is on its way out and
+    // its lease is running out, so it must not connect anything now.
+    if (!active) {
+      return;
+    }
 
     // Pin Baileys' own logger to warn — at debug/trace it logs JIDs (phone
     // numbers), which must never reach our logs (HIPAA). Independent of the
@@ -202,6 +240,18 @@ export async function startSession(businessId: string): Promise<void> {
       },
       logger: waLogger,
       markOnlineOnConnect: false,
+      // Lets Baileys send a message again when the recipient's phone couldn't
+      // decrypt it and asks for a resend; without it the request is ignored and
+      // the patient sees "Waiting for this message" for good.
+      getMessage: async (key) => {
+        if (!key.id) return undefined;
+        try {
+          return await sentMessages.get(businessId, key.id);
+        } catch (error) {
+          logger.error({ businessId, error: scrubError(error) }, "Couldn't load a sent message to resend");
+          return undefined;
+        }
+      },
     });
 
     sessions.set(businessId, { sock, status: "connecting" });
@@ -340,7 +390,7 @@ function handleConnectionUpdate(
 
 /** Reconnect with capped exponential backoff + jitter (no tight loop). */
 function scheduleReconnect(businessId: string): void {
-  if (stopped) {
+  if (!active) {
     return;
   }
   const attempts = (reconnectAttempts.get(businessId) ?? 0) + 1;
@@ -367,7 +417,7 @@ function scheduleReconnect(businessId: string): void {
   clearReconnectTimer(businessId);
   const timer = setTimeout(() => {
     reconnectTimers.delete(businessId);
-    if (stopped) {
+    if (!active) {
       return;
     }
     startSession(businessId).catch((error) => {
@@ -393,6 +443,8 @@ async function handleReceipts(
     if (!status) {
       continue;
     }
+    // Record ids only. Shows whether WhatsApp's receipts reach the worker at all.
+    logger.info({ businessId, providerMessageId: key.id, status }, "WhatsApp receipt");
     await postToApp({
       type: "status",
       businessId,
@@ -544,16 +596,20 @@ export async function sendText(
     throw new SessionNotConnectedError("WhatsApp session is not connected.");
   }
   const jid = `${to}@s.whatsapp.net`;
+  const sending = session.sock.sendMessage(jid, { text: body });
   try {
     // Bound the send so a dead-but-not-yet-closed socket can't hang the request.
-    const sent = await withTimeout(
-      session.sock.sendMessage(jid, { text: body }),
-      SEND_TIMEOUT_MS,
-      "WhatsApp send timed out."
-    );
+    const sent = await withTimeout(sending, SEND_TIMEOUT_MS, "WhatsApp send timed out.");
+    // Stored before answering, so a worker that stops right after this send
+    // still has the copy (Codex #134).
+    await keepCopy(businessId, sent);
     return { providerMessageId: sent?.key?.id ?? null, status: "SENT" };
   } catch (error) {
     if (error instanceof TimeoutError) {
+      // A timed-out send may still go out (it's reported as possibly
+      // delivered): keep its copy if it does, so a resend request for it can
+      // be answered too (Codex #134).
+      sending.then((late) => keepCopy(businessId, late)).catch(() => {});
       // A timeout means the socket is almost certainly dead-but-not-closed —
       // tear it down and reconnect so it stops accepting sends, instead of
       // hanging every future request for the full timeout. (The close handler
@@ -570,11 +626,29 @@ export async function sendText(
   }
 }
 
+/**
+ * Keeps a sent message's copy for resend requests — briefly, and a failure is
+ * only logged: the message has gone, and that must not read as unsent.
+ */
+async function keepCopy(businessId: string, sent: WAMessage | undefined): Promise<void> {
+  const messageId = sent?.key?.id;
+  if (!messageId || !sent?.message) return;
+  try {
+    await withTimeout(
+      sentMessages.remember(businessId, messageId, sent.message),
+      KEEP_COPY_TIMEOUT_MS,
+      "Keeping a copy of a sent message timed out."
+    );
+  } catch (error) {
+    logger.error({ businessId, error: scrubError(error) }, "Couldn't keep a copy of a sent message");
+  }
+}
+
 /** End every live socket and cancel all timers (called on graceful shutdown). */
 export function closeAllSessions(): void {
   // Block any further starts/reconnects, then cancel pending timers so a
   // reconnect can't spawn a new socket during the shutdown drain window.
-  stopped = true;
+  active = false;
   for (const timer of reconnectTimers.values()) {
     clearTimeout(timer);
   }
@@ -600,6 +674,11 @@ export function closeAllSessions(): void {
  * produce a new QR.
  */
 export async function forceRestartSession(businessId: string): Promise<void> {
+  // Not while another instance may still hold the account: wiping its creds
+  // would unlink it mid-use. (pairSession holds a request until the lease is.)
+  if (!active) {
+    return;
+  }
   // Reserve this slot for getStatus() before any teardown — the old session
   // is about to be removed and creds wiped (including an awaited DB call)
   // well before startSession itself ever sets `starting`, so without this
@@ -632,11 +711,35 @@ export async function forceRestartSession(businessId: string): Promise<void> {
   }
 }
 
-/** Best-effort reconnect of every workspace that already has saved creds. */
+/**
+ * Best-effort reconnect of every workspace that already has saved creds. Call
+ * only once this instance holds the worker lease: it is what lets sockets start.
+ */
 export async function bootstrapSessions(
   businessIds: string[]
 ): Promise<void> {
+  active = true;
+  // Held pairings first: someone is waiting on Settings for their QR. Each
+  // stays in pendingPairs (so getStatus keeps saying "connecting") until its
+  // own start begins, which marks `starting`/`restarting` before any await
+  // (Codex #134).
+  const held = new Set(pendingPairs.keys());
   for (const businessId of businessIds) {
+    if (!held.has(businessId)) awaitingBootstrap.add(businessId);
+  }
+  for (const [businessId, force] of [...pendingPairs]) {
+    pendingPairs.delete(businessId);
+    try {
+      await pairSession(businessId, force);
+    } catch (error) {
+      logger.error({ businessId, error: scrubError(error) }, "Held pairing failed");
+    }
+  }
+  for (const businessId of businessIds) {
+    if (held.has(businessId)) {
+      continue; // its held pairing above started it
+    }
+    awaitingBootstrap.delete(businessId);
     try {
       await startSession(businessId);
     } catch (error) {
@@ -645,5 +748,24 @@ export async function bootstrapSessions(
         "Failed to bootstrap session"
       );
     }
+  }
+}
+
+/**
+ * POST /pair: start a workspace's session, or with `force` drop it and its
+ * creds for a fresh QR ("link a different device"). Before this instance holds
+ * the lease the request is held and runs once it does.
+ */
+export async function pairSession(businessId: string, force: boolean): Promise<void> {
+  if (!active) {
+    // Held pairings only run if this instance takes the lease; one shutting
+    // down never does, so they simply go with it.
+    pendingPairs.set(businessId, force || pendingPairs.get(businessId) === true);
+    return;
+  }
+  if (force) {
+    await forceRestartSession(businessId);
+  } else {
+    await startSession(businessId);
   }
 }
