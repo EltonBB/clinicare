@@ -512,6 +512,9 @@ export async function saveAppointmentAction(
             // write), and it must not be re-derived from startAt later, once
             // a further edit while still cancelled has changed it.
             cancelledScheduledStartAt: wasNewlyCancelled ? startAt : wasReactivated ? null : undefined,
+            // The reminders are reset below: a new generation, so the ones owed
+            // again are new sends, not repeats (see Appointment.reminderGeneration).
+            reminderGeneration: shouldResetReminders ? { increment: 1 } : undefined,
           },
         });
 

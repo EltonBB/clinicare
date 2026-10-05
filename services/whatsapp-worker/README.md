@@ -41,9 +41,23 @@ it names the `businessId` directly.
 | GET | `/health` | — | Liveness (no auth) |
 | POST | `/pair` | `{ businessId }` | Start a session; QR arrives async via `/status` |
 | GET | `/status` | `?businessId=` | `{ status, qr? }` — poll for the QR / connection |
-| POST | `/send` | `{ businessId, to, body }` | Send text; `to` is digits-only E.164 |
+| POST | `/send` | `{ businessId, to, body, idempotencyKey? }` | Send text; `to` is digits-only E.164 |
 
 All except `/health` require the `x-vela-bridge-secret` header.
+
+`/send` answers 200 when sent; 502 with `code: "send_failed"` when nothing was
+sent (no connected session, or the socket was already closed — safe to retry);
+409 when the message may have left (a timeout, or any other error from the
+send, which may come after the frame was written). With an `idempotencyKey`, a repeat of the key within a week never
+sends twice: a sent one is replayed (same 200), a timed-out one answers 409
+again, a running one waits for the first attempt, and a different message under
+the same key gets 422. Keys are recorded in Postgres (`WhatsAppSendKey`) before
+the message is sent, so this survives a restart: an attempt the worker never
+settled answers 409. Every `/send` answer carries `x-vela-send-keys: durable`, which
+tells the app it may retry a keyed send whose answer it lost. See
+`src/send-dedupe.ts` and `src/send-key-store.ts`; the
+table comes from the app's `prisma/whatsapp-reliability-migration.sql`, which
+must be applied before this worker version runs.
 
 ## Run locally
 

@@ -13,7 +13,7 @@ import { classifyReplyIntent } from "@/lib/reply-intent";
 import { liveSlotOfferWhere } from "@/lib/slot-offers";
 import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 
-import type { AppointmentStatus } from "@prisma/client";
+import type { AppointmentStatus, Prisma } from "@prisma/client";
 
 import type { MessageDeliveryStatus } from "./types";
 
@@ -208,7 +208,7 @@ export type ApplyReplyIntentResult =
  * `messageId` is optional so every existing direct call/test keeps working
  * unchanged; the webhook route (its only real caller) always passes it. When
  * given, this is a thin wrapper that lets each inbound message be acted on
- * once: it claims the message with a compare-and-set on replyIntentHandledAt
+ * once: it claims the message with a compare-and-set on replyIntentLeaseUntil
  * before doing anything, and a delivery that finds it already claimed returns
  * without touching the appointment or sending a reply. That covers both
  * shapes of a worker retry — one that arrives after the first attempt fully
@@ -218,13 +218,19 @@ export type ApplyReplyIntentResult =
  * overlap the first and reply twice. A check that throws releases its claim,
  * so the retry the resulting 5xx triggers still gets to do the work.
  *
- * While the check runs, the claim holds a lease that ends in the future; once
- * it finishes, the claim is set to the time it did. So a delivery that finds
- * the message claimed can tell the two apart: a finished claim is
- * "already_handled", but a running one is "in_progress", which the webhook
- * answers with a 5xx so the worker keeps retrying — if the running check then
- * fails and releases its claim, a later retry still does the work, instead of
- * having been told with a 200 that it was done (Codex #130).
+ * While the check runs, the claim is a lease (replyIntentLeaseUntil, a time in
+ * the future); once it finishes, replyIntentHandledAt records that it did. So a
+ * delivery that finds the message claimed can tell the two apart: a finished
+ * claim is "already_handled", but a running one is "in_progress", which the
+ * webhook answers with a 5xx so the worker keeps retrying — if the running
+ * check then fails and releases its claim, a later retry still does the work,
+ * instead of having been told with a 200 that it was done (Codex #130).
+ *
+ * A lease that runs out was abandoned (the instance running the check died
+ * before it could finish or release): a late retry can claim it again, and the
+ * ones no retry came back for are handed to staff by
+ * handOffAbandonedReplyIntents, which the hourly reminders cron runs (Codex
+ * #130, #133).
  */
 // Comfortably longer than one check can run: a few queries plus the
 // acknowledgement send, which the messaging adapter gives up on after 25s.
@@ -257,50 +263,54 @@ export async function applyInboundReplyIntent(args: {
   // to do the work (Codex #130). Waiting up to IN_PROGRESS_WAIT_MS per retry,
   // inside the worker's 10s request timeout, stretches them to about 40s.
   const waitUntil = Date.now() + IN_PROGRESS_WAIT_MS;
+  let lease: Date;
+  let claimedAt: Date;
   for (;;) {
+    const attemptAt = new Date();
+    const leaseUntil = new Date(attemptAt.getTime() + REPLY_INTENT_LEASE_MS);
     const claim = await prisma.message.updateMany({
-      where: { id: messageId, replyIntentHandledAt: null },
-      data: { replyIntentHandledAt: new Date(now.getTime() + REPLY_INTENT_LEASE_MS) },
+      where: {
+        id: messageId,
+        replyIntentHandledAt: null,
+        OR: [{ replyIntentLeaseUntil: null }, { replyIntentLeaseUntil: { lte: attemptAt } }],
+      },
+      data: { replyIntentLeaseUntil: leaseUntil },
     });
     if (claim.count === 1) {
+      lease = leaseUntil;
+      claimedAt = attemptAt;
       break;
     }
 
     const claimed = await prisma.message.findUnique({
       where: { id: messageId },
-      select: { replyIntentHandledAt: true },
+      select: { replyIntentHandledAt: true, replyIntentLeaseUntil: true },
     });
-    // A running claim's lease ends at least a minute past any retry's `now`
-    // (the worker stops retrying well within that); a finished one holds a time
-    // at or before it. Halfway is the line, so a few seconds of clock difference
-    // between two server instances can't flip the answer.
     // A message deleted since (its conversation removed) has nothing left to act on.
-    if (!claimed) {
-      return { applied: false, reason: "already_handled" };
-    }
-    const handledAt = claimed.replyIntentHandledAt;
-    if (handledAt && handledAt.getTime() <= now.getTime() + REPLY_INTENT_LEASE_MS / 2) {
+    if (!claimed || claimed.replyIntentHandledAt) {
       return { applied: false, reason: "already_handled" };
     }
     if (Date.now() >= waitUntil) {
       return { applied: false, reason: "in_progress" };
     }
-    // Released since the claim attempt (null): try to claim it again at once.
-    if (handledAt) {
+    // Released or run out since the claim attempt: try to claim it again at once.
+    if (claimed.replyIntentLeaseUntil && claimed.replyIntentLeaseUntil > new Date()) {
       await new Promise((resolve) => setTimeout(resolve, IN_PROGRESS_POLL_MS));
     }
   }
+
+  // Release and finish only touch this run's own lease: if it ran out and
+  // another run took the message over, that run owns it now.
+  const ownLease = { id: messageId, replyIntentLeaseUntil: lease };
 
   let result: ApplyReplyIntentResult;
   try {
     result = await applyInboundReplyIntentCore(args, now);
   } catch (error) {
-    // Best-effort release. If it fails, retries find the lease still running
-    // until the worker gives up, and it then reads as handled: the patient's
-    // message is still in the Inbox for staff, which is the same outcome the
-    // original swallowed-error behavior had.
+    // Best-effort release. If it fails, the lease simply runs out, and the
+    // hourly sweep hands the message to staff (handOffAbandonedReplyIntents).
     await prisma.message
-      .updateMany({ where: { id: messageId }, data: { replyIntentHandledAt: null } })
+      .updateMany({ where: ownLease, data: { replyIntentLeaseUntil: null } })
       .catch((releaseError) => {
         logger.error("A reply-intent check failed and its claim couldn't be released.", releaseError, {
           businessId: args.businessId,
@@ -317,7 +327,7 @@ export async function applyInboundReplyIntent(args: {
   // applied to the wrong visit.
   if (!result.applied && result.reason === "offer_sending") {
     await prisma.message
-      .updateMany({ where: { id: messageId }, data: { replyIntentHandledAt: null } })
+      .updateMany({ where: ownLease, data: { replyIntentLeaseUntil: null } })
       .catch((releaseError) => {
         logger.error("Couldn't release a reply-intent claim while an offer was being sent.", releaseError, {
           businessId: args.businessId,
@@ -326,11 +336,16 @@ export async function applyInboundReplyIntent(args: {
     return { applied: false, reason: "in_progress" };
   }
 
-  // Ends the lease: from here a retry is told the message is handled. Not
-  // fatal if it fails — the work is done, and once the lease runs out the
-  // claim reads as handled anyway.
+  // From here a retry is told the message is handled. Not fatal if it fails:
+  // the lease runs out and the hourly sweep hands the message to staff, which
+  // at worst flags a reply that was already dealt with.
+  // Stamped with the time the check started, as the old single-column code
+  // did. The lease is left in place: every row the new code finishes keeps one,
+  // so the post-deploy rerun of prisma/whatsapp-reliability-migration.sql —
+  // which converts only rows with no lease, i.e. ones the old code wrote — can
+  // never turn a finished check back into an expired lease (Codex #133).
   await prisma.message
-    .updateMany({ where: { id: messageId }, data: { replyIntentHandledAt: now } })
+    .updateMany({ where: ownLease, data: { replyIntentHandledAt: claimedAt } })
     .catch((finishError) => {
       logger.error("A reply-intent check finished but its claim couldn't be marked done.", finishError, {
         businessId: args.businessId,
@@ -339,11 +354,70 @@ export async function applyInboundReplyIntent(args: {
   return result;
 }
 
+// Abandoned claims handed to staff per run; each is two quick writes.
+const ABANDONED_REPLY_BATCH = 200;
+
+/**
+ * Hands to staff the inbound replies whose reply check was abandoned: the
+ * instance checking it died after claiming it and before finishing or releasing
+ * it, and no worker retry came back once its lease ran out (they stop within a
+ * minute; the lease is two). Left alone, the claim would sit there and the
+ * patient's confirm or cancel would go unapplied without anyone knowing
+ * (Codex #130).
+ *
+ * It is not applied automatically this late. By now staff may have cancelled,
+ * moved, deleted or rebooked the patient's visits, sent them a slot offer, or
+ * the patient may have written again — and a reply matched against today's
+ * bookings can land on a visit they never meant. Nothing records what the
+ * patient was looking at when they wrote, and each guard for one of those
+ * cases left another open (Codex #133). So the claim is closed and the
+ * conversation is marked unread: the reply — already in the Inbox, with no
+ * acknowledgement after it — comes back to staff, who can see what it meant.
+ * A late worker retry and this sweep can't both act on a message: each takes
+ * it with the same compare-and-set. Run hourly by the reminders cron.
+ */
+export async function handOffAbandonedReplyIntents(now = new Date()): Promise<{ handedOff: number }> {
+  const abandoned = await prisma.message.findMany({
+    where: { direction: "INBOUND", replyIntentHandledAt: null, replyIntentLeaseUntil: { lte: now } },
+    select: { id: true, conversationId: true },
+    orderBy: { replyIntentLeaseUntil: "asc" },
+    take: ABANDONED_REPLY_BATCH,
+  });
+
+  let handedOff = 0;
+  for (const message of abandoned) {
+    try {
+      const closed = await prisma.$transaction(async (tx) => {
+        const { count } = await tx.message.updateMany({
+          where: { id: message.id, replyIntentHandledAt: null, replyIntentLeaseUntil: { lte: now } },
+          // The lease stays, as on every row the new code finishes (see the
+          // finish in applyInboundReplyIntent).
+          data: { replyIntentHandledAt: now },
+        });
+        if (count === 1 && message.conversationId) {
+          await tx.conversation.updateMany({
+            where: { id: message.conversationId, unreadCount: 0 },
+            data: { unreadCount: 1 },
+          });
+        }
+        return count === 1;
+      });
+      if (closed) {
+        handedOff += 1;
+        logger.warn("Handed an abandoned reply check to staff.", { messageId: message.id });
+      }
+    } catch (error) {
+      logger.error("Couldn't hand an abandoned reply check to staff.", error, { messageId: message.id });
+    }
+  }
+  return { handedOff };
+}
+
 async function applyInboundReplyIntentCore(
-  args: { businessId: string; clientId: string | null; body: string },
+  args: { businessId: string; clientId: string | null; body: string; messageId?: string | null },
   now: Date
 ): Promise<ApplyReplyIntentResult> {
-  const { businessId, clientId, body } = args;
+  const { businessId, clientId, body, messageId } = args;
 
   const intent = classifyReplyIntent(body);
   if (!intent) {
@@ -420,6 +494,13 @@ async function applyInboundReplyIntentCore(
   const phone = appointment.client.phone;
 
   // Answers the patient and mirrors the answer into the client's Inbox thread.
+  // Keyed by the patient's message: a delivery the worker retries (after a check
+  // that failed past this point released its claim) runs this again, and a
+  // confirm then takes the already-confirmed path and answers once more — the
+  // key makes that second answer a replay, not a second message. Unkeyed only
+  // when there is no stored message to name it. Any failure, uncertain included,
+  // is left as it is: nothing retries an acknowledgement on its own, and an
+  // uncertain one isn't mirrored since there's no confirmed message to show.
   const reply = async (repliedClientId: string) => {
     if (!phone) return;
     const time = formatZonedTime(appointment.startAt);
@@ -435,6 +516,7 @@ async function applyInboundReplyIntentCore(
             ? `You're confirmed for ${time} on ${date}. See you then!`
             : `Your appointment on ${date} at ${time} has been cancelled.`,
       },
+      ...(messageId ? { idempotencyKey: `reply-ack:${messageId}` } : {}),
     });
     if (result.ok) {
       await mirrorOutboundToInbox({

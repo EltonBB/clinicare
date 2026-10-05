@@ -190,7 +190,56 @@ export async function syncAppointmentRemindersForBusiness(
         staffName: appointment.staffMember?.name ?? business.name,
         template,
       },
+      // One key per reminder of this booking as it now stands: a run that
+      // reaches the provider twice for it (an overlapping run, or a retry after
+      // the SENT marker below failed to save) is still delivered once. Every
+      // edit that clears the booking's reminders (a new time, client, staff
+      // member, service, length or status; a cancel) moves reminderGeneration
+      // on, so a reminder owed again after one is a new message, not a repeat
+      // the worker would replay or refuse (Codex #133).
+      idempotencyKey: `reminder:${appointment.id}:${reminderType}:${appointment.startAt.getTime()}:${appointment.reminderGeneration}`,
     });
+
+    if (!result.ok && result.reason === "delivery_uncertain") {
+      // The reminder may already be with the patient. Record it as SENT so no
+      // later run sends it again: a possibly-missed reminder (each visit gets up
+      // to two) is the lesser harm than a duplicate, and staff can still see the
+      // failure in the logs. Counted as failed (not confirmed), not mirrored to
+      // the Inbox (nothing confirmed to show), and it trips the breaker like a
+      // provider error, since it means the link stalled.
+      failed += 1;
+      progress.failed += 1;
+      consecutiveProviderErrors += 1;
+      logger.error("Reminder delivery uncertain — recorded as sent so it isn't sent twice.", undefined, {
+        businessId,
+        appointmentId: appointment.id,
+        reminderType,
+      });
+      await prisma.appointmentReminder
+        .upsert({
+          where: { appointmentId_type: { appointmentId: appointment.id, type: reminderType } },
+          create: { appointmentId: appointment.id, type: reminderType, status: "SENT" },
+          update: { status: "SENT", sentAt: new Date() },
+        })
+        .catch((error) => {
+          // Not recorded: the next run tries again with the same key, which the
+          // worker answers from its record of this send ("unknown" again)
+          // instead of re-sending.
+          logger.error("Failed to record an uncertain reminder as sent.", error, {
+            businessId,
+            appointmentId: appointment.id,
+            reminderType,
+          });
+        });
+      if (consecutiveProviderErrors >= MAX_CONSECUTIVE_PROVIDER_ERRORS) {
+        logger.warn(
+          "Stopping reminder run early — WhatsApp worker appears unavailable.",
+          { businessId, attempted: sent + failed }
+        );
+        break;
+      }
+      continue;
+    }
 
     if (!result.ok) {
       failed += 1;
@@ -281,9 +330,10 @@ export async function syncAppointmentRemindersForBusiness(
       progress.sent += 1;
       consecutiveProviderErrors = 0;
     } catch (error) {
-      // Couldn't even record the SENT marker — count as failed. It may re-send
-      // on the next run: the minimal, irreducible at-least-once window, far
-      // rarer than a multi-write transaction failing.
+      // Couldn't even record the SENT marker — count as failed. The next run
+      // retries with the same idempotency key, which the worker answers by
+      // replaying this send from its record (kept a week) rather than
+      // re-sending.
       failed += 1;
       progress.failed += 1;
       logger.error("Failed to record sent reminder.", error, {

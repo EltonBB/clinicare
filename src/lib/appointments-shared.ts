@@ -252,9 +252,11 @@ export async function cancelAppointmentCore(where: {
     // no-show risk scorer's late-cancellation signal needs to compare against
     // the time that was actually true when the cancel happened, not whatever
     // startAt happens to hold when it's read back later (Codex).
+    // The reminders are cleared below: a new generation, so the ones owed after
+    // a re-confirm are new sends, not repeats (see Appointment.reminderGeneration).
     await tx.appointment.update({
       where: { id: cancelled.id },
-      data: { cancelledScheduledStartAt: cancelled.startAt },
+      data: { cancelledScheduledStartAt: cancelled.startAt, reminderGeneration: { increment: 1 } },
     });
 
     // Clear any pending reminder rows so a later re-confirm starts clean.

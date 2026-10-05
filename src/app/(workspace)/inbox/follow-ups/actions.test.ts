@@ -149,6 +149,9 @@ describe("sendFollowUpDraftAction", () => {
       businessId: BUSINESS.id,
       to: "+15550100",
       message: { kind: "freeform", body: "Hi Alex, quick note about your next visit." },
+      // The draft names the message, so a send that reaches the provider twice
+      // is still delivered once.
+      idempotencyKey: `follow-up:${DRAFT_ID}`,
     });
     expect(mocks.revertFollowUpDraftToPending).not.toHaveBeenCalled();
     // Codex #130: only now — the message left — is the draft recorded as sent,
@@ -180,6 +183,37 @@ describe("sendFollowUpDraftAction", () => {
     expect((await sendFollowUpDraftAction(DRAFT_ID)).ok).toBe(false);
     expect(mocks.markFollowUpDraftDelivered).not.toHaveBeenCalled();
     expect(mocks.revertFollowUpDraftToPending).toHaveBeenCalledWith({ id: DRAFT_ID, businessId: BUSINESS.id });
+  });
+
+  // Codex #130: a send whose outcome is unknown may already be with the patient. Putting
+  // the draft back to Pending would let a second Send deliver it twice.
+  describe("when delivery is uncertain", () => {
+    beforeEach(() => {
+      draftIsLive({ id: DRAFT_ID, body: "Hi", clientId: "client_1", clientName: "Alex", phone: "+15550100" });
+      mocks.sendMessage.mockResolvedValue({ ok: false, reason: "delivery_uncertain", error: "x" });
+    });
+
+    it("records the draft as sent instead of reverting it, and tells staff to check the chat", async () => {
+      const result = await sendFollowUpDraftAction(DRAFT_ID);
+
+      expect(result).toEqual({
+        ok: true,
+        notice:
+          "We couldn't confirm a follow-up was delivered, so it was marked as sent. Check the patient's WhatsApp chat before contacting them again.",
+      });
+      expect(mocks.revertFollowUpDraftToPending).not.toHaveBeenCalled();
+      expect(mocks.markFollowUpDraftDelivered).toHaveBeenCalledWith({ id: DRAFT_ID, businessId: BUSINESS.id });
+      // Nothing confirmed to show in the client's thread.
+      expect(mocks.message.create).not.toHaveBeenCalled();
+      expectFollowUpSurfacesRevalidated();
+    });
+
+    it("still never reverts when recording it as sent fails — the hourly sweep settles it", async () => {
+      mocks.markFollowUpDraftDelivered.mockRejectedValue(new Error("db blip"));
+
+      expect((await sendFollowUpDraftAction(DRAFT_ID)).ok).toBe(true);
+      expect(mocks.revertFollowUpDraftToPending).not.toHaveBeenCalled();
+    });
   });
 
   it("still reports success when recording delivery fails — the message already left", async () => {

@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
-  const message = { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), updateMany: vi.fn() };
+  const message = {
+    findFirst: vi.fn(),
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    updateMany: vi.fn(),
+  };
   const client = { findMany: vi.fn() };
-  const conversation = { upsert: vi.fn() };
+  const conversation = { upsert: vi.fn(), updateMany: vi.fn() };
   const appointment = { findMany: vi.fn() };
   const followUpDraft = { findFirst: vi.fn() };
   const $transaction = vi.fn();
@@ -30,6 +36,7 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     message: mocks.message,
+    conversation: mocks.conversation,
     client: mocks.client,
     appointment: mocks.appointment,
     followUpDraft: mocks.followUpDraft,
@@ -50,7 +57,7 @@ vi.mock("@/lib/messaging", () => ({
 
 vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 
-import { applyInboundReplyIntent, recordInboundMessage } from "./inbound";
+import { applyInboundReplyIntent, handOffAbandonedReplyIntents, recordInboundMessage } from "./inbound";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -226,6 +233,10 @@ describe("recordInboundMessage", () => {
 
 describe("applyInboundReplyIntent", () => {
   const NOW = new Date("2026-07-01T12:00:00Z");
+  // The check compares a matched visit's start with the real clock, so the
+  // clock is pinned to the replies' time.
+  beforeEach(() => vi.useFakeTimers({ now: NOW }));
+  afterEach(() => vi.useRealTimers());
   const REMINDED_UPCOMING = {
     id: "appt_1",
     startAt: new Date("2026-07-02T09:00:00Z"),
@@ -292,6 +303,34 @@ describe("applyInboundReplyIntent", () => {
     // Finding 2: the confirm branch now revalidates the calendar surfaces too
     // (the cancel branch already did).
     expect(mocks.revalidateCalendarSurfaces).toHaveBeenCalledWith(["client_1"], ["staff_1"]);
+  });
+
+  // Codex #130: a delivery the worker retries can reach the acknowledgement again (a
+  // confirm then takes the already-confirmed path); the patient's own message names it,
+  // so the second answer is a replay, not a second WhatsApp message.
+  it("keys the acknowledgement by the patient's message, and sends unkeyed without one", async () => {
+    for (let run = 0; run < 2; run += 1) {
+      mocks.appointment.findMany.mockResolvedValueOnce([{ ...REMINDED_UPCOMING, status: "CONFIRMED" }]);
+      mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });
+    }
+
+    await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "1", messageId: "msg_in_1", now: NOW });
+    expect(mocks.sendMessage).toHaveBeenLastCalledWith(expect.objectContaining({ idempotencyKey: "reply-ack:msg_in_1" }));
+
+    await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "1", now: NOW });
+    expect(mocks.sendMessage).toHaveBeenLastCalledWith(expect.not.objectContaining({ idempotencyKey: expect.anything() }));
+  });
+
+  it("doesn't mirror an acknowledgement whose delivery is uncertain, and still applies the confirm", async () => {
+    mocks.appointment.findMany.mockResolvedValueOnce([REMINDED_UPCOMING]);
+    mocks.confirmAppointmentCore.mockResolvedValueOnce({ ok: true, appointmentId: "appt_1", clientId: "client_1", staffMemberId: "staff_1", changed: true });
+    mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "delivery_uncertain", error: "x" });
+
+    const result = await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "1", now: NOW });
+
+    expect(result).toEqual({ applied: true, intent: "confirm", appointmentId: "appt_1" });
+    expect(mocks.sendMessage).toHaveBeenCalledTimes(1);
+    expect(mocks.message.create).not.toHaveBeenCalled();
   });
 
   it("acknowledges a 1 on an already-confirmed appointment without touching it", async () => {
@@ -457,6 +496,7 @@ describe("applyInboundReplyIntent", () => {
   });
 
   it("releases the message's claim and reports it in progress (so the worker retries) while the offer is being sent", async () => {
+    vi.useFakeTimers({ now: NOW });
     mocks.followUpDraft.findFirst.mockResolvedValueOnce({ sentAt: null });
 
     const result = await applyInboundReplyIntent({
@@ -469,10 +509,11 @@ describe("applyInboundReplyIntent", () => {
 
     expect(result).toEqual({ applied: false, reason: "in_progress" });
     expect(mocks.message.updateMany).toHaveBeenLastCalledWith({
-      where: { id: "msg_1" },
-      data: { replyIntentHandledAt: null },
+      where: { id: "msg_1", replyIntentLeaseUntil: new Date(NOW.getTime() + 2 * 60 * 1000) },
+      data: { replyIntentLeaseUntil: null },
     });
     expect(mocks.cancelAppointmentCore).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 
   it("ends the stand-down once the offer is no longer live (its slot passed, or the appointment is back on)", async () => {
@@ -522,14 +563,30 @@ describe("applyInboundReplyIntent", () => {
   // "you're confirmed" message again.
   describe("per-message claim (a worker retry must not re-send a reply)", () => {
     const LEASE_END = new Date(NOW.getTime() + 2 * 60 * 1000);
-    const CLAIM = { where: { id: "msg_1", replyIntentHandledAt: null }, data: { replyIntentHandledAt: LEASE_END } };
-    const FINISH = { where: { id: "msg_1" }, data: { replyIntentHandledAt: NOW } };
-    const RELEASE = { where: { id: "msg_1" }, data: { replyIntentHandledAt: null } };
-    const args = { businessId: "biz_1", clientId: "client_1", body: "1", messageId: "msg_1", now: NOW };
-    const claimedBy = (replyIntentHandledAt: Date | null) => {
-      mocks.message.updateMany.mockResolvedValueOnce({ count: 0 });
-      mocks.message.findUnique.mockResolvedValueOnce({ replyIntentHandledAt });
+    // Claimable when nobody has finished it and no lease is running: never
+    // leased, released, or leased by a check that died (Codex #130).
+    const CLAIM = {
+      where: {
+        id: "msg_1",
+        replyIntentHandledAt: null,
+        OR: [{ replyIntentLeaseUntil: null }, { replyIntentLeaseUntil: { lte: NOW } }],
+      },
+      data: { replyIntentLeaseUntil: LEASE_END },
     };
+    // Release and finish touch only this run's own lease.
+    const OWN_LEASE = { id: "msg_1", replyIntentLeaseUntil: LEASE_END };
+    // Finished, the lease stays: the new code's mark, which the migration's
+    // post-deploy rerun leaves alone (Codex #133).
+    const FINISH = { where: OWN_LEASE, data: { replyIntentHandledAt: NOW } };
+    const RELEASE = { where: OWN_LEASE, data: { replyIntentLeaseUntil: null } };
+    const args = { businessId: "biz_1", clientId: "client_1", body: "1", messageId: "msg_1", now: NOW };
+    const claimedBy = (replyIntentHandledAt: Date | null, replyIntentLeaseUntil: Date | null = null) => {
+      mocks.message.updateMany.mockResolvedValueOnce({ count: 0 });
+      mocks.message.findUnique.mockResolvedValueOnce({ replyIntentHandledAt, replyIntentLeaseUntil });
+    };
+
+    beforeEach(() => vi.useFakeTimers({ now: NOW }));
+    afterEach(() => vi.useRealTimers());
 
     it("skips everything, including the reply, when another delivery already handled this message", async () => {
       claimedBy(new Date(NOW.getTime() - 5_000)); // finished 5s before this retry
@@ -554,12 +611,9 @@ describe("applyInboundReplyIntent", () => {
     describe("a retry that finds the check still running", () => {
       const RUNNING = new Date(NOW.getTime() + 2 * 60 * 1000 - 10_000); // claimed 10s before this retry
 
-      beforeEach(() => vi.useFakeTimers());
-      afterEach(() => vi.useRealTimers());
-
       it("waits for it, then reports it in progress (not handled) without doing anything itself", async () => {
         mocks.message.updateMany.mockResolvedValue({ count: 0 });
-        mocks.message.findUnique.mockResolvedValue({ replyIntentHandledAt: RUNNING });
+        mocks.message.findUnique.mockResolvedValue({ replyIntentHandledAt: null, replyIntentLeaseUntil: RUNNING });
 
         const pending = applyInboundReplyIntent(args);
         await vi.advanceTimersByTimeAsync(7_000);
@@ -576,7 +630,7 @@ describe("applyInboundReplyIntent", () => {
       });
 
       it("does the work itself when the running check fails and releases its claim while it waits", async () => {
-        claimedBy(RUNNING); // then the next claim attempt succeeds (the default)
+        claimedBy(null, RUNNING); // then the next claim attempt succeeds (the default)
         mocks.appointment.findMany.mockResolvedValueOnce([{ ...REMINDED_UPCOMING, status: "CONFIRMED" }]);
         mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });
 
@@ -590,8 +644,8 @@ describe("applyInboundReplyIntent", () => {
       it("reports it handled once the running check finishes while it waits", async () => {
         mocks.message.updateMany.mockResolvedValue({ count: 0 });
         mocks.message.findUnique
-          .mockResolvedValueOnce({ replyIntentHandledAt: RUNNING })
-          .mockResolvedValueOnce({ replyIntentHandledAt: new Date(NOW.getTime() - 10_000) });
+          .mockResolvedValueOnce({ replyIntentHandledAt: null, replyIntentLeaseUntil: RUNNING })
+          .mockResolvedValueOnce({ replyIntentHandledAt: new Date(NOW.getTime() + 300), replyIntentLeaseUntil: null });
 
         const pending = applyInboundReplyIntent(args);
         await vi.advanceTimersByTimeAsync(500);
@@ -601,14 +655,29 @@ describe("applyInboundReplyIntent", () => {
       });
     });
 
-    it("tolerates a few seconds of clock difference between the delivery that finished and the retry", async () => {
-      claimedBy(new Date(NOW.getTime() + 3_000)); // the other instance's clock runs 3s ahead
+    // Codex #130: a check whose instance died left its lease behind, and once
+    // that lease got close enough to the retry's clock it read as handled for
+    // good - the reply was never applied. "Handled" is now its own column, and
+    // a lease that has run out is claimed again.
+    it("reads it as handled from the handled mark alone, whatever its time", async () => {
+      claimedBy(new Date(NOW.getTime() + 60 * 60 * 1000)); // even an hour ahead (clock difference)
 
       expect(await applyInboundReplyIntent(args)).toEqual({ applied: false, reason: "already_handled" });
+      expect(mocks.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it("takes over a claim whose lease ran out without the check finishing, and does the work", async () => {
+      claimedBy(null, new Date(NOW.getTime() - 1)); // the check that held it died
+      mocks.appointment.findMany.mockResolvedValueOnce([{ ...REMINDED_UPCOMING, status: "CONFIRMED" }]);
+      mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });
+
+      expect(await applyInboundReplyIntent(args)).toEqual({ applied: false, reason: "already_confirmed" });
+      expect(mocks.message.updateMany).toHaveBeenNthCalledWith(2, CLAIM); // at once, no wait
+      expect(mocks.message.updateMany).toHaveBeenNthCalledWith(3, FINISH);
     });
 
     it("claims it at once when the claim was released between its two reads, and does the work", async () => {
-      claimedBy(null);
+      claimedBy(null, null);
       mocks.appointment.findMany.mockResolvedValueOnce([{ ...REMINDED_UPCOMING, status: "CONFIRMED" }]);
       mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });
 
@@ -631,6 +700,21 @@ describe("applyInboundReplyIntent", () => {
       await applyInboundReplyIntent(args);
 
       expect(mocks.message.updateMany).toHaveBeenNthCalledWith(1, CLAIM);
+      expect(mocks.message.updateMany).toHaveBeenNthCalledWith(2, FINISH);
+    });
+
+    // Codex #133: the migration recognises the old code's leases by lying
+    // 100-200s after the message arrived, so a finished mark must not — it is
+    // the time the check started, however long the check took.
+    it("stamps a finished claim with the time its check started, not finished", async () => {
+      mocks.appointment.findMany.mockImplementationOnce(async () => {
+        vi.setSystemTime(NOW.getTime() + 150_000); // a slow check
+        return [{ ...REMINDED_UPCOMING, status: "CONFIRMED" }];
+      });
+      mocks.sendMessage.mockResolvedValueOnce({ ok: false, reason: "provider_error", error: "x" });
+
+      await applyInboundReplyIntent(args);
+
       expect(mocks.message.updateMany).toHaveBeenNthCalledWith(2, FINISH);
     });
 
@@ -710,5 +794,78 @@ describe("applyInboundReplyIntent", () => {
 
       expect(mocks.message.updateMany).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("handOffAbandonedReplyIntents", () => {
+  const NOW = new Date("2026-07-01T12:00:00Z");
+  const CLOSE = (id: string) => ({
+    where: { id, replyIntentHandledAt: null, replyIntentLeaseUntil: { lte: NOW } },
+    data: { replyIntentHandledAt: NOW },
+  });
+
+  it("finds unfinished replies whose lease ran out, oldest first, a batch at a time", async () => {
+    mocks.message.findMany.mockResolvedValueOnce([]);
+
+    expect(await handOffAbandonedReplyIntents(NOW)).toEqual({ handedOff: 0 });
+    expect(mocks.message.findMany).toHaveBeenCalledWith({
+      where: { direction: "INBOUND", replyIntentHandledAt: null, replyIntentLeaseUntil: { lte: NOW } },
+      select: { id: true, conversationId: true },
+      orderBy: { replyIntentLeaseUntil: "asc" },
+      take: 200,
+    });
+  });
+
+  // Codex #133: applied this late, a reply could land on a visit the patient
+  // never meant (one since cancelled, moved, deleted or rebooked; an offer sent
+  // since; a later correction). So it is handed to staff instead.
+  it("closes each claim and marks its conversation unread, never acting on the reply", async () => {
+    mocks.message.findMany.mockResolvedValueOnce([
+      { id: "msg_1", conversationId: "conv_1" },
+      { id: "msg_2", conversationId: "conv_2" },
+    ]);
+    mocks.conversation.updateMany.mockResolvedValue({ count: 1 });
+
+    expect(await handOffAbandonedReplyIntents(NOW)).toEqual({ handedOff: 2 });
+    expect(mocks.message.updateMany).toHaveBeenCalledWith(CLOSE("msg_1"));
+    expect(mocks.message.updateMany).toHaveBeenCalledWith(CLOSE("msg_2"));
+    expect(mocks.conversation.updateMany).toHaveBeenCalledWith({
+      where: { id: "conv_1", unreadCount: 0 },
+      data: { unreadCount: 1 },
+    });
+    // The lease is kept (the new code's mark), and nothing is confirmed,
+    // cancelled or sent.
+    expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+    expect(mocks.confirmAppointmentCore).not.toHaveBeenCalled();
+    expect(mocks.cancelAppointmentCore).not.toHaveBeenCalled();
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("leaves the conversation alone when a late retry claimed the message first", async () => {
+    mocks.message.findMany.mockResolvedValueOnce([{ id: "msg_1", conversationId: "conv_1" }]);
+    mocks.message.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    expect(await handOffAbandonedReplyIntents(NOW)).toEqual({ handedOff: 0 });
+    expect(mocks.conversation.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("closes a claim with no conversation without touching any", async () => {
+    mocks.message.findMany.mockResolvedValueOnce([{ id: "msg_1", conversationId: null }]);
+
+    expect(await handOffAbandonedReplyIntents(NOW)).toEqual({ handedOff: 1 });
+    expect(mocks.message.updateMany).toHaveBeenCalledWith(CLOSE("msg_1"));
+    expect(mocks.conversation.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("logs a message it can't hand off and carries on with the rest", async () => {
+    mocks.message.findMany.mockResolvedValueOnce([
+      { id: "msg_1", conversationId: "conv_1" },
+      { id: "msg_2", conversationId: "conv_2" },
+    ]);
+    mocks.message.updateMany.mockRejectedValueOnce(new Error("transient")).mockResolvedValueOnce({ count: 1 });
+    mocks.conversation.updateMany.mockResolvedValue({ count: 1 });
+
+    expect(await handOffAbandonedReplyIntents(NOW)).toEqual({ handedOff: 1 });
+    expect(mocks.message.updateMany).toHaveBeenLastCalledWith(CLOSE("msg_2"));
   });
 });

@@ -12,3 +12,10 @@
 export const MAX_MESSAGE_BODY_LENGTH = 8000;
 
 export const MESSAGE_TOO_LONG_ERROR = "The message is too long to send.";
+
+/**
+ * Shape of a send's idempotency key. MUST mirror the worker's pattern
+ * (`services/whatsapp-worker/src/send-dedupe.ts`), which refuses anything else.
+ * Build keys from record ids only — never a phone number or message text.
+ */
+export const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9:_-]{1,128}$/;

@@ -28,13 +28,51 @@ export type WorkerPairRequest = {
   force?: boolean;
 };
 
-/** app → worker: POST {workerUrl}/send */
+/**
+ * app → worker: POST {workerUrl}/send
+ *
+ * Answers: 200 {@link WorkerSendResponse} (sent, or a replay of an earlier send
+ * with the same key); 409 {@link WORKER_SEND_OUTCOME_UNKNOWN_STATUS} — the send
+ * failed in a way that may follow the write (a timeout, a transport error), or
+ * the worker stopped mid-send, so the message may have left,
+ * and every repeat of the key is answered the same way, never re-sent; 422
+ * {@link WORKER_SEND_KEY_CONFLICT_STATUS} — the key already carried a different
+ * message that was sent or may have been (this one is not sent); 400, or 502
+ * with code {@link WORKER_SEND_FAILED_CODE} — nothing sent, safe to retry. Any
+ * other 5xx comes from something in between and proves nothing.
+ * A worker from before keys existed ignores the key and answers an uncoded 502
+ * for every failure, a timeout included.
+ */
 export type WorkerSendRequest = {
   businessId: string;
   /** Digits-only E.164, no "+" (Baileys JID form), e.g. "38344123456". */
   to: string;
   body: string;
+  /**
+   * One per logical message (IDEMPOTENCY_KEY_PATTERN in ./limits). The worker
+   * keeps a record of it for a week, per workspace and in the database, so a
+   * retry can't send the message twice. Omitted: no de-duplication.
+   */
+  idempotencyKey?: string;
 };
+
+/** The worker's answer when a send's outcome is unknown (it may have left). */
+export const WORKER_SEND_OUTCOME_UNKNOWN_STATUS = 409;
+
+/** The worker's answer when the key already carried a different message. */
+export const WORKER_SEND_KEY_CONFLICT_STATUS = 422;
+
+/** `code` in the worker's own 502 body: the send definitely did not go out. */
+export const WORKER_SEND_FAILED_CODE = "send_failed";
+
+/**
+ * Header on every /send answer from a worker that keeps a durable record of
+ * each idempotency key ({@link WORKER_SEND_KEYS_DURABLE}). A worker from before
+ * keys existed doesn't send it — and ignores the key — so a lost answer from it
+ * can't be retried safely (Codex #133). Mirrored in the worker's send-dedupe.ts.
+ */
+export const WORKER_SEND_KEYS_HEADER = "x-vela-send-keys";
+export const WORKER_SEND_KEYS_DURABLE = "durable";
 
 export type WorkerSendResponse = {
   providerMessageId: string | null;

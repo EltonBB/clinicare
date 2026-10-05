@@ -6,6 +6,15 @@ import { BRIDGE_HEADER, config } from "./config";
 import { logger, scrubError } from "./logger";
 import { prisma } from "./prisma";
 import {
+  classifySendError,
+  createSendDeduper,
+  IDEMPOTENCY_KEY_PATTERN,
+  SEND_KEYS_DURABLE,
+  SEND_KEYS_HEADER,
+  sendOutcomeResponse,
+} from "./send-dedupe";
+import { createPrismaSendKeyStore } from "./send-key-store";
+import {
   bootstrapSessions,
   closeAllSessions,
   forceRestartSession,
@@ -18,6 +27,25 @@ import {
  * (src/lib/messaging/index.ts). Reject — never truncate — so the app's stored
  * body always equals what was actually sent. */
 const MAX_SEND_BODY = 8000;
+
+/**
+ * Remembers keyed sends for a week, in Postgres (WhatsAppSendKey), so a retry —
+ * the next hourly reminder run, a follow-up staff send again days later, a
+ * request whose answer was lost — is answered from the record instead of being
+ * sent again, even after a worker restart. The table must exist first (the app's
+ * prisma/whatsapp-reliability-migration.sql): without it every keyed send is
+ * refused as not sent. Fingerprints are keyed with the bridge secret, so
+ * rotating it makes a repeat of a key from the past week read as a different
+ * message (422, which the app treats as possibly delivered) — never a duplicate.
+ */
+const sendDeduper = createSendDeduper({
+  store: createPrismaSendKeyStore(prisma, (error) =>
+    logger.warn({ error: scrubError(error) }, "expired send keys couldn't be swept")
+  ),
+  ttlMs: 7 * 24 * 60 * 60 * 1000,
+  fingerprintSecret: config.bridgeSecret,
+  onStoreError: (message, error) => logger.error({ error: scrubError(error) }, message),
+});
 
 function isAuthorized(headerValue: string | undefined): boolean {
   if (!headerValue) {
@@ -78,6 +106,8 @@ app.get("/status", requireSecret, (req, res) => {
 });
 
 app.post("/send", requireSecret, async (req, res) => {
+  // Every answer, refusals included, tells the app this worker keeps its keys.
+  res.setHeader(SEND_KEYS_HEADER, SEND_KEYS_DURABLE);
   const businessId = String(req.body?.businessId ?? "").trim();
   const to = String(req.body?.to ?? "").trim();
   const body = String(req.body?.body ?? "").trim();
@@ -99,13 +129,35 @@ app.post("/send", requireSecret, async (req, res) => {
     res.status(400).json({ error: "to must be a digits-only phone number." });
     return;
   }
-  try {
-    const result = await sendText(businessId, to, body);
-    res.json(result);
-  } catch (error) {
-    logger.error({ businessId, error: scrubError(error) }, "send failed");
-    res.status(502).json({ error: "Send failed." });
+  // Optional: a repeat of the same key never sends twice (see send-dedupe.ts).
+  // Absent means the request behaves exactly as before keys existed.
+  const rawKey: unknown = req.body?.idempotencyKey;
+  if (
+    rawKey !== undefined &&
+    rawKey !== null &&
+    (typeof rawKey !== "string" || !IDEMPOTENCY_KEY_PATTERN.test(rawKey))
+  ) {
+    res.status(400).json({ error: "idempotencyKey is invalid." });
+    return;
   }
+  const idempotencyKey = typeof rawKey === "string" ? rawKey : undefined;
+
+  const outcome = await sendDeduper.run(
+    { businessId, key: idempotencyKey, to, body },
+    async () => {
+      try {
+        return { kind: "sent", result: await sendText(businessId, to, body) };
+      } catch (error) {
+        logger.error({ businessId, error: scrubError(error) }, "send failed");
+        return classifySendError(error);
+      }
+    }
+  );
+  if (outcome.kind === "key_conflict") {
+    logger.warn({ businessId }, "send refused: idempotency key reused for a different message");
+  }
+  const response = sendOutcomeResponse(outcome);
+  res.status(response.status).json(response.body);
 });
 
 // Backstops: a stray rejection/exception must not silently drop every tenant's

@@ -57,6 +57,8 @@ export type ConvertConversationToClientResult = {
 };
 
 const CONVERSATION_NOT_FOUND_ERROR = "Conversation not found in this clinic workspace.";
+const INBOX_DELIVERY_UNCERTAIN_ERROR =
+  "We couldn't confirm this message was delivered. It may have reached the patient, so check the WhatsApp chat before sending it again.";
 
 function getAuthedBusiness() {
   return getAuthedBusinessContext(
@@ -301,6 +303,11 @@ export async function sendInboxMessageAction(
   // All outbound WhatsApp flows through the messaging seam, which routes to the
   // active provider (Baileys), renders/validates the payload, never throws, and
   // returns the exact body it sent for storage.
+  //
+  // Deliberately unkeyed (no idempotencyKey): a manual reply has no record id
+  // of its own, and a per-compose key would hold an uncertain send for hours,
+  // so staff who checked the chat and saw it never arrived couldn't send it
+  // again. Instead an uncertain send says so (below), and the person decides.
   const result = await sendMessage({
     channel: "WHATSAPP",
     businessId: context.business.id,
@@ -317,8 +324,9 @@ export async function sendInboxMessageAction(
     // Only a genuine provider/connection failure flags the clinic's shared
     // connection as errored. A bad recipient or empty body is a per-message
     // problem — marking the whole connection ERRORED for it would wrongly
-    // signal the WhatsApp link is down and churn the Settings status.
-    if (result.reason === "provider_error") {
+    // signal the WhatsApp link is down and churn the Settings status. An
+    // uncertain send counts: it means the link stalled mid-send.
+    if (result.reason === "provider_error" || result.reason === "delivery_uncertain") {
       await prisma.whatsAppConnection.update({
         where: { businessId: context.business.id },
         data: { status: "ERRORED", lastSyncedAt: new Date() },
@@ -326,12 +334,15 @@ export async function sendInboxMessageAction(
     }
     return {
       ok: false,
-      // Surface the specific, customer-safe copy for a too-long message; keep the
-      // generic line for genuine provider/connection failures.
+      // Surface the specific, customer-safe copy for a too-long message and for
+      // a send that may have gone out anyway (so it isn't simply sent again);
+      // keep the generic line for genuine provider/connection failures.
       error:
         result.reason === "message_too_long"
           ? result.error
-          : "We couldn't send the WhatsApp message.",
+          : result.reason === "delivery_uncertain"
+            ? INBOX_DELIVERY_UNCERTAIN_ERROR
+            : "We couldn't send the WhatsApp message.",
     };
   }
 

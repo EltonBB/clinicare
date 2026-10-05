@@ -40,6 +40,7 @@ model Business {
   whatsappConnection     WhatsAppConnection?
   whatsappSession        WhatsAppSession?
   whatsappSessionKeys    WhatsAppSessionKey[]
+  whatsappSendKeys       WhatsAppSendKey[]
   analyticsSnapshots     AnalyticsSnapshot[]
   staffAccessCodes       StaffAccessCode[]
   staffDevices           StaffDevice[]
@@ -377,6 +378,12 @@ model Appointment {
   // late-cancellation signal must compare against the schedule that was
   // actually true at the cancel, not whatever startAt reads back as later.
   cancelledScheduledStartAt DateTime?
+  // Goes up by one whenever this booking's reminders are reset (a save that
+  // changes who, when, what or its status; a cancel), and is part of each
+  // reminder's send idempotency key, so a reminder owed again after a reset is
+  // a new message to the WhatsApp worker rather than a repeat of the old one
+  // (Codex #133).
+  reminderGeneration Int                       @default(0)
   reminders          AppointmentReminder[]
   payments           ClientPayment[]
   treatmentPlanItems ClientTreatmentPlanItem[]
@@ -506,19 +513,26 @@ model Message {
   deliveryErrorCode  String?
   deliveryUpdatedAt  DateTime?
   sentAt             DateTime               @default(now())
-  // Claimed (compare-and-set from null) by applyInboundReplyIntent before it
-  // acts on this inbound message, and cleared again if that check throws. A
-  // worker redelivery of the same providerMessageSid finds it claimed and skips
-  // the check, so a retry can neither re-send a reply the first attempt already
-  // sent (the app replied but its 200 was lost in transit) nor overlap a first
-  // attempt that is still running (the worker aborts after 10s; the request
-  // does not) - up to MAX_ATTEMPTS duplicate "you're confirmed" messages to the
-  // patient otherwise (CodeRabbit #130). Null on an outbound row, or an inbound
-  // one nobody has acted on yet.
-  replyIntentHandledAt DateTime?
+  // applyInboundReplyIntent acts on an inbound confirm/cancel reply at most
+  // once. It first claims the message: a compare-and-set of replyIntentLeaseUntil
+  // from null (or from a lease that has run out) to a time two minutes ahead.
+  // A finished check sets replyIntentHandledAt (the lease stays); a check that
+  // throws clears the lease. A worker redelivery of the same
+  // providerMessageSid that finds the message handled skips it, and one that
+  // finds it leased is told it's still in progress, so a retry can neither
+  // re-send a reply the first attempt already sent nor overlap a first attempt
+  // that is still running (CodeRabbit #130). A lease that runs out was
+  // abandoned by a crashed check: a late retry can claim it again, and the
+  // hourly sweep (handOffAbandonedReplyIntents) hands the rest to staff
+  // (Codex #130, #133). A finished check keeps its lease — the new code's mark,
+  // which the migration's legacy conversion skips. Both null on an outbound
+  // row, or an inbound one nobody has acted on yet.
+  replyIntentHandledAt  DateTime?
+  replyIntentLeaseUntil DateTime?
 
   @@index([conversationId, sentAt])
   @@index([clientId])
+  @@index([replyIntentLeaseUntil])
 }
 
 model ReminderSettings {
@@ -600,6 +614,28 @@ model WhatsAppSessionKey {
 
   @@unique([businessId, category, keyId])
   @@index([businessId, category])
+}
+
+// The WhatsApp worker's record of each keyed send (POST /send idempotencyKey), so
+// a repeat of a key is never delivered twice — even across a worker restart.
+// `state`: SENDING while an attempt runs (or if the worker died mid-send),
+// SENT once it left, UNKNOWN when it timed out and may have left; a definite
+// failure deletes the row so a retry really sends. `fingerprint` is an HMAC of
+// the recipient and text (keyed with the bridge secret) — never the text itself.
+// Written only by the worker (services/whatsapp-worker/src/send-key-store.ts);
+// rows expire after a week. Non-PHI.
+model WhatsAppSendKey {
+  businessId        String
+  business          Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  key               String
+  fingerprint       String
+  state             String
+  providerMessageId String?
+  expiresAt         DateTime
+  createdAt         DateTime @default(now())
+
+  @@id([businessId, key])
+  @@index([expiresAt])
 }
 
 model EmailVerificationReceipt {

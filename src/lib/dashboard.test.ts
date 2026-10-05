@@ -170,6 +170,7 @@ describe("buildDashboardViewFromWorkspace — no-show risk", () => {
     updatedAt: now,
     cancelledAt: null,
     cancelledScheduledStartAt: null,
+    reminderGeneration: 0,
     client: { name: "Ava Patient" },
     staffMember: { name: "Dr. One" },
   };

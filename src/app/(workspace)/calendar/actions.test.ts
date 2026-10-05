@@ -519,6 +519,40 @@ describe("saveAppointmentAction — cancelledAt: an immutable timestamp, not the
     expect(call.data.cancelledAt).toBeUndefined();
     expect(call.data.cancelledScheduledStartAt).toBeUndefined();
   });
+
+  it("leaves the reminder generation alone when the save changes nothing reminders depend on", async () => {
+    const startAt = parseZonedWallClock("2026-06-01", "09:00");
+    const endAt = parseZonedWallClock("2026-06-01", "09:30");
+    mocks.appointment.findFirst.mockResolvedValue({ ...EXISTING, startAt, endAt });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      ...EXISTING,
+      startAt,
+      endAt,
+      client: { id: "client_1", name: "Mira" },
+      staffMember: null,
+    });
+
+    await saveAppointmentAction({ ...PAYLOAD, notes: "bring the referral" });
+
+    expect(mocks.appointmentReminder.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.appointment.updateMany.mock.calls[0][0].data.reminderGeneration).toBeUndefined();
+  });
+
+  // Codex #133: a reset that doesn't move the booking (here, a new service)
+  // still owes a new reminder, so it starts a new generation in the same write.
+  it("starts a new reminder generation whenever the save resets the reminders", async () => {
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({
+      ...EXISTING,
+      title: "Cleaning",
+      client: { id: "client_1", name: "Mira" },
+      staffMember: null,
+    });
+
+    await saveAppointmentAction({ ...PAYLOAD, service: "Cleaning" });
+
+    expect(mocks.appointmentReminder.deleteMany).toHaveBeenCalledWith({ where: { appointmentId: "appt_1" } });
+    expect(mocks.appointment.updateMany.mock.calls[0][0].data.reminderGeneration).toEqual({ increment: 1 });
+  });
 });
 
 describe("saveAppointmentAction — the guarded write holds the slot it read", () => {
