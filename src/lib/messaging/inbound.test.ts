@@ -483,12 +483,18 @@ describe("applyInboundReplyIntent", () => {
             ],
           },
           // On its way by then and changed since (delivered included), its
-          // slot ahead when they wrote.
+          // slot ahead when they wrote. A draft claimed without a send start
+          // (the old app, mid-deploy), drafted before the reply and delivered
+          // after it, may have been on its way — so it counts too.
           {
             kind: "SLOT_OFFER",
             updatedAt: { gt: NOW },
             appointment: { startAt: { gt: NOW } },
-            OR: [{ sendStartedAt: { lte: NOW } }, { sendStartedAt: null, sentAt: { lte: NOW } }],
+            OR: [
+              { sendStartedAt: { lte: NOW } },
+              { sendStartedAt: null, sentAt: { lte: NOW } },
+              { sendStartedAt: null, createdAt: { lte: NOW }, sentAt: { gt: NOW } },
+            ],
           },
         ],
       },

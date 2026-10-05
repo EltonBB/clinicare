@@ -536,9 +536,12 @@ async function applyInboundReplyIntentCore(
   // wrote: it was open then, so a "2" meant for it must not cancel the
   // reminded visit instead. A send that failed was reverted with its start
   // cleared, so it never counts — the patient never got it. Drafts claimed
-  // before sendStartedAt existed fall back to sentAt, or for one still being
-  // sent, to updatedAt. For a live reply `now` is the present, so none of this
-  // changes anything.
+  // without sendStartedAt (before it existed, or by the old app while a deploy
+  // switches over) fall back to sentAt, or for one still being sent, to
+  // updatedAt; and one of those drafted before the reply but delivered after
+  // it may have been on its way when the patient wrote, with no way to tell —
+  // so it counts too, and the reply is left for staff (Codex #133). For a
+  // live reply `now` is the present, so none of this changes anything.
   const openOffer = await prisma.followUpDraft.findFirst({
     where: {
       businessId,
@@ -557,7 +560,11 @@ async function applyInboundReplyIntentCore(
           kind: "SLOT_OFFER",
           updatedAt: { gt: now },
           appointment: { startAt: { gt: now } },
-          OR: [{ sendStartedAt: { lte: now } }, { sendStartedAt: null, sentAt: { lte: now } }],
+          OR: [
+            { sendStartedAt: { lte: now } },
+            { sendStartedAt: null, sentAt: { lte: now } },
+            { sendStartedAt: null, createdAt: { lte: now }, sentAt: { gt: now } },
+          ],
         },
       ],
     },
