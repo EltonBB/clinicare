@@ -22,6 +22,7 @@ import {
   clientIpFromHeaders,
   type RateLimitRule,
 } from "@/lib/rate-limit";
+import { ACTION_RATE_LIMIT_ERROR, isWithinActionBudget } from "@/lib/business";
 import { createClient } from "@/utils/supabase/server";
 
 type FormValues = {
@@ -170,6 +171,7 @@ const EMAIL_SEND_RATE_LIMIT: RateLimitRule = { limit: 5, windowMs: 60_000 };
 // leaves room for double-clicks and retries while stopping token-probe loops
 // from draining the auth provider's verify quota for everyone else.
 const CONFIRM_ATTEMPT_RATE_LIMIT: RateLimitRule = { limit: 10, windowMs: 60_000 };
+const OWNER_REAUTH_RATE_LIMIT: RateLimitRule = { limit: 5, windowMs: 15 * 60_000 };
 
 async function isWithinRateLimit(action: string, rule: RateLimitRule) {
   const ip = clientIpFromHeaders(await headers());
@@ -634,6 +636,11 @@ export async function updateOwnerProfileAction(
     };
   }
 
+  // Signed in, so the same per-user budget as every other action (Codex #140).
+  if (!(await isWithinActionBudget(user.id))) {
+    return { error: ACTION_RATE_LIMIT_ERROR, values };
+  }
+
   const currentMetadata = sanitizeAuthMetadataForSession(user.user_metadata);
   const metadataPatch = {
     ...currentMetadata,
@@ -651,6 +658,13 @@ export async function updateOwnerProfileAction(
   // a borrowed/hijacked session can't silently set new credentials. Done before
   // any mutation, so a wrong current password changes nothing.
   if (passwordChanged) {
+    // Each attempt checks a guess at the current password, so a borrowed or
+    // stolen session could otherwise use this form to guess it: a few tries
+    // per quarter hour per account (2026-10-06 QA).
+    if (!(await checkRateLimit(`owner-reauth:${user.id}`, OWNER_REAUTH_RATE_LIMIT)).allowed) {
+      return { error: TOO_MANY_ATTEMPTS_MESSAGE, values };
+    }
+
     const { error: reauthError } = await supabase.auth.signInWithPassword({
       email: user.email ?? "",
       password: parsed.data.currentPassword?.trim() ?? "",

@@ -504,7 +504,10 @@ export async function saveWorkflowSettingsAction(
 export async function discardUnsavedLogoAction(uploadedLogoUrl: string): Promise<void> {
   const user = await getCurrentUser();
 
-  if (!user || !(await isWithinActionBudget(user.id))) {
+  // Not budgeted: the logo is already uploaded by the time this runs, and
+  // skipping it would orphan the file for good (Codex #140). It only ever
+  // deletes this user's own unsaved upload.
+  if (!user) {
     return;
   }
 
