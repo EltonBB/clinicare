@@ -1,17 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
-  const conversation = { findMany: vi.fn(), aggregate: vi.fn() };
-  return { conversation };
+  const conversation = { findMany: vi.fn(), aggregate: vi.fn(), update: vi.fn(), deleteMany: vi.fn() };
+  const client = { findMany: vi.fn() };
+  const message = { updateMany: vi.fn() };
+  const $transaction = vi.fn(async (run: (tx: unknown) => Promise<unknown>) => run({ conversation, message }));
+  return { conversation, client, message, $transaction };
 });
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     conversation: mocks.conversation,
+    client: mocks.client,
+    message: mocks.message,
+    $transaction: mocks.$transaction,
   },
 }));
 
-import { fetchInboxConversations } from "./inbox-server";
+import { fetchInboxConversations, normalizeConversationsForBusiness } from "./inbox-server";
 
 const BUSINESS_ID = "biz_1";
 
@@ -152,5 +158,64 @@ describe("fetchInboxConversations", () => {
     const { totalUnreadCount } = await fetchInboxConversations(BUSINESS_ID);
 
     expect(totalUnreadCount).toBe(7);
+  });
+});
+
+describe("normalizeConversationsForBusiness", () => {
+  const PHONE = "+38344123456";
+  const KEY = "38344123456";
+  const row = (id: string, overrides: Record<string, unknown> = {}) => ({
+    id,
+    phoneNumber: PHONE,
+    phoneKey: KEY,
+    contactName: "Ana Krasniqi",
+    unreadCount: 0,
+    updatedAt: new Date("2026-10-01T10:00:00Z"),
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    mocks.client.findMany.mockResolvedValue([{ id: "client_1", name: "Ana Krasniqi", phone: PHONE }]);
+  });
+
+  // 2026-10-06 QA: this runs over the whole Inbox on every client phone save.
+  it("writes nothing when every conversation is already normal", async () => {
+    mocks.conversation.findMany.mockResolvedValue([
+      row("conv_1"),
+      row("conv_2", { phoneNumber: "+38344999888", phoneKey: "38344999888", contactName: "+38344999888" }),
+    ]);
+
+    await normalizeConversationsForBusiness(BUSINESS_ID);
+
+    expect(mocks.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("still renames a conversation after its client", async () => {
+    mocks.conversation.findMany.mockResolvedValue([row("conv_1", { contactName: "Old name" })]);
+
+    await normalizeConversationsForBusiness(BUSINESS_ID);
+
+    expect(mocks.conversation.update).toHaveBeenCalledWith({
+      where: { id: "conv_1" },
+      data: { phoneNumber: PHONE, phoneKey: KEY, contactName: "Ana Krasniqi", unreadCount: 0 },
+    });
+  });
+
+  it("still merges duplicates of one number into one conversation", async () => {
+    mocks.conversation.findMany.mockResolvedValue([
+      row("conv_1", { unreadCount: 2 }),
+      row("conv_old", { phoneNumber: "38344123456", phoneKey: null, unreadCount: 1 }),
+    ]);
+
+    await normalizeConversationsForBusiness(BUSINESS_ID);
+
+    expect(mocks.message.updateMany).toHaveBeenCalledWith({
+      where: { conversationId: { in: ["conv_old"] } },
+      data: { conversationId: "conv_1" },
+    });
+    expect(mocks.conversation.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ["conv_old"] } } });
+    expect(mocks.conversation.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "conv_1" }, data: expect.objectContaining({ unreadCount: 3 }) })
+    );
   });
 });
