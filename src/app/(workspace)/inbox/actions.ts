@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { allowManualSend, MANUAL_SEND_LIMIT_ERROR } from "@/lib/messaging/send-limits";
 import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { logger } from "@/lib/logger";
@@ -298,6 +299,10 @@ export async function sendInboxMessageAction(
       error:
         "WhatsApp is not connected for this clinic yet. Complete the clinic connection in Settings first.",
     };
+  }
+
+  if (!(await allowManualSend(context.business.id))) {
+    return { ok: false, error: MANUAL_SEND_LIMIT_ERROR };
   }
 
   // All outbound WhatsApp flows through the messaging seam, which routes to the

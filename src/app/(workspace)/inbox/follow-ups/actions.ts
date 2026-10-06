@@ -6,6 +6,7 @@ import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
 import { mirrorOutboundToInbox } from "@/lib/messaging/inbox-mirror";
+import { allowManualSend, MANUAL_SEND_LIMIT_ERROR } from "@/lib/messaging/send-limits";
 import type { SendMessageResult } from "@/lib/messaging/types";
 import {
   ALREADY_HANDLED_ERROR,
@@ -84,6 +85,11 @@ export async function sendFollowUpDraftAction(
 
   if (body !== undefined && !editedBody) {
     return { ok: false, error: "Write a message before sending." };
+  }
+
+  // Before the draft is touched, so a refused send leaves it as it was.
+  if (!(await allowManualSend(business.id))) {
+    return { ok: false, error: MANUAL_SEND_LIMIT_ERROR };
   }
 
   const flip = await markFollowUpDraftSent({
