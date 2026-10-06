@@ -20,6 +20,16 @@ const MANUAL_SEND_LIMITS: RateLimitRule[] = [
 const REPLY_ACK_LIMIT: RateLimitRule = { limit: 3, windowMs: 60 * 60_000 };
 
 /**
+ * And per clinic: many patients answering one reminder run each get their own
+ * per-patient budget, so without a shared cap a busy hour could still make the
+ * number send a burst (Codex #136). Same shape as the staff budget.
+ */
+const CLINIC_REPLY_ACK_LIMITS: RateLimitRule[] = [
+  { limit: 20, windowMs: 60_000 },
+  { limit: 200, windowMs: 60 * 60_000 },
+];
+
+/**
  * Null while the clinic is within its staff-send budget; otherwise the message
  * to show, naming the wait the blocking rule actually imposes — once the hourly
  * budget is spent, "wait a minute" would be wrong (Codex #136).
@@ -38,5 +48,13 @@ export async function manualSendRefusal(businessId: string): Promise<string | nu
 }
 
 export async function allowReplyAck(businessId: string, clientId: string): Promise<boolean> {
-  return (await checkRateLimit(`whatsapp-reply-ack:${businessId}:${clientId}`, REPLY_ACK_LIMIT)).allowed;
+  if (!(await checkRateLimit(`whatsapp-reply-ack:${businessId}:${clientId}`, REPLY_ACK_LIMIT)).allowed) {
+    return false;
+  }
+  for (const rule of CLINIC_REPLY_ACK_LIMITS) {
+    if (!(await checkRateLimit(`whatsapp-reply-ack:${rule.windowMs}:${businessId}`, rule)).allowed) {
+      return false;
+    }
+  }
+  return true;
 }

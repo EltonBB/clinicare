@@ -46,4 +46,17 @@ describe("allowReplyAck", () => {
     checkRateLimit.mockResolvedValueOnce(refused);
     await expect(allowReplyAck("biz_1", "client_1")).resolves.toBe(false);
   });
+
+  // Codex #136: many patients answering one reminder run share a clinic budget.
+  it("also holds the clinic to a per-minute and per-hour budget across patients", async () => {
+    await expect(allowReplyAck("biz_1", "client_1")).resolves.toBe(true);
+    expect(checkRateLimit).toHaveBeenCalledWith("whatsapp-reply-ack:60000:biz_1", { limit: 20, windowMs: 60_000 });
+    expect(checkRateLimit).toHaveBeenCalledWith("whatsapp-reply-ack:3600000:biz_1", {
+      limit: 200,
+      windowMs: 3_600_000,
+    });
+
+    checkRateLimit.mockResolvedValueOnce(allowed).mockResolvedValueOnce(refused);
+    await expect(allowReplyAck("biz_1", "client_2")).resolves.toBe(false);
+  });
 });
