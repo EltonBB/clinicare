@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const checkRateLimit = vi.fn();
 vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: (...args: unknown[]) => checkRateLimit(...args) }));
 
-import { allowManualSend, allowReplyAck } from "./send-limits";
+import { allowReplyAck, manualSendRefusal } from "./send-limits";
 
 const allowed = { allowed: true, remaining: 1, retryAfterSeconds: 0 };
 const refused = { allowed: false, remaining: 0, retryAfterSeconds: 30 };
@@ -12,19 +12,26 @@ beforeEach(() => {
   checkRateLimit.mockReset().mockResolvedValue(allowed);
 });
 
-describe("allowManualSend", () => {
+describe("manualSendRefusal", () => {
   it("checks a per-minute and a per-hour budget for the clinic", async () => {
-    await expect(allowManualSend("biz_1")).resolves.toBe(true);
+    await expect(manualSendRefusal("biz_1")).resolves.toBeNull();
     expect(checkRateLimit).toHaveBeenCalledWith("whatsapp-manual:60000:biz_1", { limit: 20, windowMs: 60_000 });
     expect(checkRateLimit).toHaveBeenCalledWith("whatsapp-manual:3600000:biz_1", { limit: 200, windowMs: 3_600_000 });
   });
 
-  it.each([
-    ["minute", [refused]],
-    ["hour", [allowed, refused]],
-  ])("refuses once the %s budget is spent", async (_label, results) => {
-    for (const result of results) checkRateLimit.mockResolvedValueOnce(result);
-    await expect(allowManualSend("biz_1")).resolves.toBe(false);
+  it("names a one-minute wait when the minute budget is spent", async () => {
+    checkRateLimit.mockResolvedValueOnce(refused);
+    await expect(manualSendRefusal("biz_1")).resolves.toBe(
+      "You've sent a lot of messages in a short time. Wait a minute, then send again."
+    );
+  });
+
+  // Codex #136: the hourly budget's wait is not "a minute".
+  it("names the hourly wait when the hour budget is spent", async () => {
+    checkRateLimit.mockResolvedValueOnce(allowed).mockResolvedValueOnce({ ...refused, retryAfterSeconds: 1_501 });
+    await expect(manualSendRefusal("biz_1")).resolves.toBe(
+      "You've sent a lot of messages in a short time. Wait about 26 minutes, then send again."
+    );
   });
 });
 

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { allowManualSend, MANUAL_SEND_LIMIT_ERROR } from "@/lib/messaging/send-limits";
+import { manualSendRefusal } from "@/lib/messaging/send-limits";
 import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { logger } from "@/lib/logger";
@@ -301,8 +301,9 @@ export async function sendInboxMessageAction(
     };
   }
 
-  if (!(await allowManualSend(context.business.id))) {
-    return { ok: false, error: MANUAL_SEND_LIMIT_ERROR };
+  const sendRefusal = await manualSendRefusal(context.business.id);
+  if (sendRefusal) {
+    return { ok: false, error: sendRefusal };
   }
 
   // All outbound WhatsApp flows through the messaging seam, which routes to the

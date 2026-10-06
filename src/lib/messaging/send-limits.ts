@@ -19,15 +19,22 @@ const MANUAL_SEND_LIMITS: RateLimitRule[] = [
  */
 const REPLY_ACK_LIMIT: RateLimitRule = { limit: 3, windowMs: 60 * 60_000 };
 
-export const MANUAL_SEND_LIMIT_ERROR =
-  "You're sending messages very quickly. Wait a minute, then send again.";
-
-export async function allowManualSend(businessId: string): Promise<boolean> {
+/**
+ * Null while the clinic is within its staff-send budget; otherwise the message
+ * to show, naming the wait the blocking rule actually imposes — once the hourly
+ * budget is spent, "wait a minute" would be wrong (Codex #136).
+ */
+export async function manualSendRefusal(businessId: string): Promise<string | null> {
   for (const rule of MANUAL_SEND_LIMITS) {
     const result = await checkRateLimit(`whatsapp-manual:${rule.windowMs}:${businessId}`, rule);
-    if (!result.allowed) return false;
+    if (!result.allowed) {
+      const minutes = Math.max(1, Math.ceil(result.retryAfterSeconds / 60));
+      return `You've sent a lot of messages in a short time. Wait ${
+        minutes === 1 ? "a minute" : `about ${minutes} minutes`
+      }, then send again.`;
+    }
   }
-  return true;
+  return null;
 }
 
 export async function allowReplyAck(businessId: string, clientId: string): Promise<boolean> {
