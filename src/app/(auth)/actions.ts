@@ -480,6 +480,12 @@ export async function resetPasswordAction(
     };
   }
 
+  // A recovery session is still a signed-in user: the password write spends
+  // the same per-user budget as every other signed-in action (Codex #140).
+  if (!(await isWithinActionBudget(user.id))) {
+    return { error: ACTION_RATE_LIMIT_ERROR, values };
+  }
+
   const { error } = await supabase.auth.updateUser({
     password: parsed.data.password,
   });
