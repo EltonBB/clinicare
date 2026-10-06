@@ -926,7 +926,8 @@ export async function loadCalendarMonthAction(monthKey: string): Promise<LoadCal
   );
 
   if ("error" in context) {
-    return { ok: false, error: context.error, sessionExpired: true };
+    // Over the action budget is not an expired session: waiting fixes it.
+    return { ok: false, error: context.error, sessionExpired: !("throttled" in context) };
   }
 
   if (!isValidMonthKey(monthKey)) {

@@ -24,7 +24,7 @@ describe("getAuthedBusiness action budget", () => {
   it("refuses a user over the budget before touching the workspace", async () => {
     mocks.checkRateLimit.mockResolvedValue({ allowed: false, remaining: 0, retryAfterSeconds: 20 });
 
-    await expect(getAuthedBusiness()).resolves.toEqual({ error: ACTION_RATE_LIMIT_ERROR });
+    await expect(getAuthedBusiness()).resolves.toEqual({ error: ACTION_RATE_LIMIT_ERROR, throttled: true });
     expect(mocks.checkRateLimit).toHaveBeenCalledWith("actions:user_1", { limit: 300, windowMs: 60_000 });
     expect(mocks.businessFindFirst).not.toHaveBeenCalled();
   });

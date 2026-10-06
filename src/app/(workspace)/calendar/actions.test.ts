@@ -1291,6 +1291,16 @@ describe("loadCalendarMonthAction", () => {
     mocks.loadCalendarMonth.mockResolvedValue(MONTH);
   });
 
+  // Codex #140: over the action budget, waiting fixes it; signing in again doesn't.
+  it("doesn't call an over-budget request an expired session", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ error: "Too many requests right now.", throttled: true });
+
+    const result = await loadCalendarMonthAction("2026-09");
+
+    expect(result).toEqual({ ok: false, error: "Too many requests right now.", sessionExpired: false });
+    expect(mocks.loadCalendarMonth).not.toHaveBeenCalled();
+  });
+
   it("refuses an expired session without touching the database", async () => {
     mocks.getAuthedBusiness.mockResolvedValue({ error: "Your session expired." });
 

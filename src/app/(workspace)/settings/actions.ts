@@ -152,6 +152,12 @@ export async function getSettingsDataAction(): Promise<SettingsState> {
     missingBusinessRedirect: "/onboarding",
   });
 
+  // Each load also schedules a WhatsApp status sync, so it spends the same
+  // budget as the rest (Codex #140). The dialog shows "try again in a moment".
+  if (!(await isWithinActionBudget(user.id))) {
+    throw new Error(ACTION_RATE_LIMIT_ERROR);
+  }
+
   // Keep the WhatsApp status fresh for the next load, exactly like the
   // /settings route does — without delaying this response.
   after(async () => {

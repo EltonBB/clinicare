@@ -18,7 +18,9 @@ export type WorkspaceContext = {
  * (expired session) or the resolved workspace. Discriminate with `"error" in result`.
  */
 export type AuthedBusinessResult =
-  | { error: string }
+  // `throttled` tells an over-budget request apart from a signed-out one, so a
+  // caller never sends a valid session to "log in again" (Codex #140).
+  | { error: string; throttled?: true }
   | { business: Business; user: SupabaseUser };
 
 export const getCurrentBusiness = cache(async function getCurrentBusiness(
@@ -98,7 +100,7 @@ export async function getAuthedBusiness(
   }
 
   if (!(await isWithinActionBudget(user.id))) {
-    return { error: ACTION_RATE_LIMIT_ERROR } as const;
+    return { error: ACTION_RATE_LIMIT_ERROR, throttled: true } as const;
   }
 
   const business = await requireCurrentBusiness(user, {
