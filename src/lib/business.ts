@@ -6,6 +6,7 @@ import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 import { getCurrentUser, requireCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit, type RateLimitRule } from "@/lib/rate-limit";
 
 export type WorkspaceContext = {
   user: SupabaseUser;
@@ -70,6 +71,18 @@ export async function requireCurrentWorkspace(
   return getCurrentWorkspaceContext(user, options);
 }
 
+// Every server action a signed-in person can call, per user: far above what
+// anyone clicking reaches, low enough that a script hammering an action is cut
+// off instead of running up writes, storage and provider calls (2026-10-06 QA).
+const ACTION_RATE_LIMIT: RateLimitRule = { limit: 300, windowMs: 60_000 };
+
+export const ACTION_RATE_LIMIT_ERROR = "Too many requests right now. Wait a moment and try again.";
+
+/** Whether this user is still within the per-user server-action budget. */
+export async function isWithinActionBudget(userId: string): Promise<boolean> {
+  return (await checkRateLimit(`actions:${userId}`, ACTION_RATE_LIMIT)).allowed;
+}
+
 /**
  * Non-redirecting auth gate for server actions. Unlike {@link requireCurrentWorkspace}
  * (which redirects), this returns a typed error so the action can surface a
@@ -82,6 +95,10 @@ export async function getAuthedBusiness(
 
   if (!user) {
     return { error: sessionExpiredMessage } as const;
+  }
+
+  if (!(await isWithinActionBudget(user.id))) {
+    return { error: ACTION_RATE_LIMIT_ERROR } as const;
   }
 
   const business = await requireCurrentBusiness(user, {

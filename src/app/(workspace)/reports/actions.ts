@@ -10,7 +10,7 @@ import {
   allPeriodsRateLimited,
   analyticsSnapshotsCacheKey,
 } from "@/lib/analytics-snapshot-cache";
-import { requireCurrentWorkspace } from "@/lib/business";
+import { ACTION_RATE_LIMIT_ERROR, isWithinActionBudget, requireCurrentWorkspace } from "@/lib/business";
 import { invalidateCacheVersioned } from "@/lib/cache";
 import { logger } from "@/lib/logger";
 
@@ -21,9 +21,13 @@ export type RefreshAnalyticsInsightsResult = {
 };
 
 export async function refreshAnalyticsInsightsAction(): Promise<RefreshAnalyticsInsightsResult> {
-  const { business } = await requireCurrentWorkspace("/reports", {
+  const { business, user } = await requireCurrentWorkspace("/reports", {
     missingBusinessRedirect: "/onboarding",
   });
+
+  if (!(await isWithinActionBudget(user.id))) {
+    return { ok: false, message: ACTION_RATE_LIMIT_ERROR, results: [] };
+  }
 
   const results = await generateAnalyticsSnapshotsForBusiness(business.id);
 
