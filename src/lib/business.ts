@@ -89,9 +89,15 @@ export async function isWithinActionBudget(userId: string): Promise<boolean> {
  * Non-redirecting auth gate for server actions. Unlike {@link requireCurrentWorkspace}
  * (which redirects), this returns a typed error so the action can surface a
  * friendly message. Single choke point for the planned audit-logging hook.
+ *
+ * `actionBudget: false` is only for a small, repeat-safe acknowledgement
+ * (marking something read or seen) whose page fires it once and moves on:
+ * refusing it would quietly bring the unread marker back, with nothing to
+ * retry it (Codex #140).
  */
 export async function getAuthedBusiness(
-  sessionExpiredMessage = "Your session expired. Log in again to continue."
+  sessionExpiredMessage = "Your session expired. Log in again to continue.",
+  { actionBudget = true }: { actionBudget?: boolean } = {}
 ): Promise<AuthedBusinessResult> {
   const user = await getCurrentUser();
 
@@ -99,7 +105,7 @@ export async function getAuthedBusiness(
     return { error: sessionExpiredMessage } as const;
   }
 
-  if (!(await isWithinActionBudget(user.id))) {
+  if (actionBudget && !(await isWithinActionBudget(user.id))) {
     return { error: ACTION_RATE_LIMIT_ERROR, throttled: true } as const;
   }
 

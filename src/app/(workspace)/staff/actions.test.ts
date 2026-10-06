@@ -64,6 +64,8 @@ import {
   checkOutStaffAction,
   deleteStaffAction,
   generateMobileAccessCodeAction,
+  markStaffCheckInsSeenAction,
+  markStaffThreadReadAction,
   saveStaffAction,
 } from "./actions";
 
@@ -553,6 +555,21 @@ describe("generateMobileAccessCodeAction", () => {
       ok: false,
       error: "Mobile access can't be issued to an inactive staff member.",
     });
+  });
+});
+
+// Codex #140: the pages fire these once and never retry, so a refusal over the
+// per-user action budget would quietly bring the unread marker back.
+describe("read/seen acknowledgements skip the action budget", () => {
+  it.each([
+    ["staff thread read", markStaffThreadReadAction],
+    ["staff check-ins seen", markStaffCheckInsSeenAction],
+  ])("%s", async (_name, action) => {
+    mocks.staffMember.findFirst.mockResolvedValue(null);
+
+    await action(STAFF_ID);
+
+    expect(mocks.getAuthedBusiness).toHaveBeenCalledWith(undefined, { actionBudget: false });
   });
 });
 
