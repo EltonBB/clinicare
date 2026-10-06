@@ -82,7 +82,10 @@ export type SendFailureReason =
   | "empty_message"
   | "message_too_long"
   | "provider_error"
-  | "delivery_uncertain";
+  | "delivery_uncertain"
+  // The clinic's number reached its sending ceiling: nothing was sent, and the
+  // same send can go out once the window has moved on.
+  | "rate_limited";
 
 export type SendMessageResult =
   | {

@@ -9,6 +9,7 @@ import {
 } from "./limits";
 import { ChannelRegistry } from "./registry";
 import { renderReminder } from "./render";
+import { clinicSendRefusal } from "./send-limits";
 import {
   SendOutcomeUnknownError,
   type AdapterSendInput,
@@ -136,6 +137,19 @@ export async function sendMessage(
         channel: input.channel,
         kind: input.message.kind,
       });
+    }
+  }
+
+  // One ceiling for everything the clinic's number sends (send-limits.ts).
+  if (input.channel === "WHATSAPP") {
+    const refusal = await clinicSendRefusal(input.businessId);
+    if (refusal) {
+      logger.warn("Outbound message held back: the clinic reached its sending ceiling.", {
+        businessId: input.businessId,
+        channel: input.channel,
+        kind: input.message.kind,
+      });
+      return { ok: false, reason: "rate_limited", error: refusal };
     }
   }
 

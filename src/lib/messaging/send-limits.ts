@@ -1,9 +1,16 @@
 import { checkRateLimit, type RateLimitRule } from "@/lib/rate-limit";
 
 // The clinic's WhatsApp is linked through Baileys, not the official API: a
-// burst of sends from one number is exactly what gets it flagged or banned, and
-// nothing else caps how fast these paths can send. Reminders are left out —
-// they run once an hour, already capped by their own circuit breaker.
+// burst of sends from one number is exactly what gets it flagged or banned.
+// Every WhatsApp send — reminders, staff sends, automatic answers — shares one
+// clinic-wide ceiling (CLINIC_SEND_LIMITS, checked by sendMessage itself, Codex
+// #136); the narrower per-flow budgets below sit inside it.
+
+/** All WhatsApp sends from one clinic's number, whatever sent them. */
+const CLINIC_SEND_LIMITS: RateLimitRule[] = [
+  { limit: 30, windowMs: 60_000 },
+  { limit: 300, windowMs: 60 * 60_000 },
+];
 
 /** Staff-initiated sends (Inbox replies, follow-ups), per clinic. */
 const MANUAL_SEND_LIMITS: RateLimitRule[] = [
@@ -29,22 +36,36 @@ const CLINIC_REPLY_ACK_LIMITS: RateLimitRule[] = [
   { limit: 200, windowMs: 60 * 60_000 },
 ];
 
-/**
- * Null while the clinic is within its staff-send budget; otherwise the message
- * to show, naming the wait the blocking rule actually imposes — once the hourly
- * budget is spent, "wait a minute" would be wrong (Codex #136).
- */
-export async function manualSendRefusal(businessId: string): Promise<string | null> {
-  for (const rule of MANUAL_SEND_LIMITS) {
-    const result = await checkRateLimit(`whatsapp-manual:${rule.windowMs}:${businessId}`, rule);
-    if (!result.allowed) {
-      const minutes = Math.max(1, Math.ceil(result.retryAfterSeconds / 60));
-      return `You've sent a lot of messages in a short time. Wait ${
-        minutes === 1 ? "a minute" : `about ${minutes} minutes`
-      }, then send again.`;
-    }
+/** The message naming the wait a blocking rule actually imposes (Codex #136). */
+function sendWaitMessage(retryAfterSeconds: number): string {
+  const minutes = Math.max(1, Math.ceil(retryAfterSeconds / 60));
+  return `You've sent a lot of messages in a short time. Wait ${
+    minutes === 1 ? "a minute" : `about ${minutes} minutes`
+  }, then send again.`;
+}
+
+async function firstRefusal(prefix: string, businessId: string, rules: RateLimitRule[]) {
+  for (const rule of rules) {
+    const result = await checkRateLimit(`${prefix}:${rule.windowMs}:${businessId}`, rule);
+    if (!result.allowed) return sendWaitMessage(result.retryAfterSeconds);
   }
   return null;
+}
+
+/**
+ * Null while the clinic is within its staff-send budget; otherwise the message
+ * to show, naming the wait the blocking rule actually imposes.
+ */
+export function manualSendRefusal(businessId: string): Promise<string | null> {
+  return firstRefusal("whatsapp-manual", businessId, MANUAL_SEND_LIMITS);
+}
+
+/**
+ * Null while the clinic's number is within its overall ceiling; otherwise the
+ * message to show. Checked by sendMessage for every WhatsApp send.
+ */
+export function clinicSendRefusal(businessId: string): Promise<string | null> {
+  return firstRefusal("whatsapp-all", businessId, CLINIC_SEND_LIMITS);
 }
 
 export async function allowReplyAck(businessId: string, clientId: string): Promise<boolean> {

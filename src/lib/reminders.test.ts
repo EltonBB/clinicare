@@ -95,6 +95,18 @@ describe("syncAppointmentRemindersForBusiness", () => {
     );
   });
 
+  // Codex #136: at the clinic's sending ceiling nothing went out, so nothing is
+  // recorded and the rest of the run waits for the next hour.
+  it("stops the run at the clinic's sending ceiling without recording anything", async () => {
+    mocks.appointment.findMany.mockResolvedValue([appointmentIn(1, "appt_1"), appointmentIn(1.2, "appt_2")]);
+    mocks.sendMessage.mockResolvedValue({ ok: false, reason: "rate_limited", error: "x" });
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    expect(mocks.sendMessage).toHaveBeenCalledTimes(1);
+    expect(mocks.appointmentReminder.upsert).not.toHaveBeenCalled();
+  });
+
   it("counts uncertain sends toward the breaker that stops a run against a stalled link", async () => {
     mocks.appointment.findMany.mockResolvedValue([
       appointmentIn(1, "appt_1"),

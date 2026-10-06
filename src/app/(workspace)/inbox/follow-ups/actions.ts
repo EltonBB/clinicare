@@ -146,6 +146,8 @@ export async function sendFollowUpDraftAction(
           sent = { clientId: draft.clientId, clientName: draft.clientName, phone, result };
         } else if (result.reason === "delivery_uncertain") {
           uncertain = true;
+        } else if (result.reason === "rate_limited") {
+          failure = result.error;
         } else {
           failure = "Couldn't send this message. Try again.";
         }

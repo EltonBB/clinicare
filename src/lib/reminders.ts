@@ -200,6 +200,18 @@ export async function syncAppointmentRemindersForBusiness(
       idempotencyKey: `reminder:${appointment.id}:${reminderType}:${appointment.startAt.getTime()}:${appointment.reminderGeneration}`,
     });
 
+    if (!result.ok && result.reason === "rate_limited") {
+      // The clinic's number reached its sending ceiling: nothing went out.
+      // Stop this clinic's run without recording a failure; every reminder
+      // still due (its window stays open until the visit) goes on the next
+      // hourly run.
+      logger.warn("Stopping reminder run early — the clinic reached its sending ceiling.", {
+        businessId,
+        attempted: sent + failed,
+      });
+      break;
+    }
+
     if (!result.ok && result.reason === "delivery_uncertain") {
       // The reminder may already be with the patient. Record it as SENT so no
       // later run sends it again: a possibly-missed reminder (each visit gets up

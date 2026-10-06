@@ -344,7 +344,7 @@ export async function sendInboxMessageAction(
       // a send that may have gone out anyway (so it isn't simply sent again);
       // keep the generic line for genuine provider/connection failures.
       error:
-        result.reason === "message_too_long"
+        result.reason === "message_too_long" || result.reason === "rate_limited"
           ? result.error
           : result.reason === "delivery_uncertain"
             ? INBOX_DELIVERY_UNCERTAIN_ERROR
