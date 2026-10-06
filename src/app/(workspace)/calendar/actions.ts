@@ -835,6 +835,12 @@ export async function getNoShowRiskAction(
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
+    // Over the action budget, reject rather than answer "no risk": the calendar
+    // forgets the ids it asked for when this rejects, so it asks again later,
+    // instead of leaving the Pro risk markers missing until a reload (Codex #140).
+    if ("throttled" in context) {
+      throw new Error(context.error);
+    }
     return {};
   }
 

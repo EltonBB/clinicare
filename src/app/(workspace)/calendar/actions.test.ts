@@ -1619,6 +1619,20 @@ describe("deleteAppointmentAction", () => {
 });
 
 describe("getNoShowRiskAction", () => {
+  // Codex #140: rejecting lets the calendar forget the ids and ask again later.
+  it("rejects an over-budget request instead of answering 'no risk'", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ error: "Too many requests right now.", throttled: true });
+
+    await expect(getNoShowRiskAction(["a1"])).rejects.toThrow("Too many requests right now.");
+    expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+  });
+
+  it("still answers nothing for a signed-out request", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ error: "Your session expired." });
+
+    expect(await getNoShowRiskAction(["a1"])).toEqual({});
+  });
+
   it("returns nothing for a workspace that isn't on Pro, without querying", async () => {
     mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1", plan: "BASIC" }, user: {} });
 
