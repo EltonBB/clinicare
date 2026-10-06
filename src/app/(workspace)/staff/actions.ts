@@ -5,11 +5,13 @@ import { revalidatePath } from "next/cache";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { closeOpenTimeEntryIfPresent, openTimeEntryIfAbsent } from "@/lib/mobile/clock";
 import { prisma } from "@/lib/prisma";
+import { retryOnWriteConflict } from "@/lib/prisma-retry";
+import { lockStaffMemberExclusive } from "@/lib/row-locks";
 import {
   formatZonedTime,
   getAppTimeZone,
   getZonedDayWindow,
-  getZonedDayWindowFromParts,
+  getZonedDayWindowFromDateKey,
   parseZonedWallClock,
 } from "@/lib/time-zone";
 import {
@@ -21,6 +23,7 @@ import {
   type StaffRecord,
 } from "@/lib/staff";
 import { logger } from "@/lib/logger";
+import { parseRecordId } from "@/lib/record-id";
 import {
   markAdminThreadRead,
   postAdminThreadMessage,
@@ -31,6 +34,12 @@ import {
   hashAccessCode,
   isStaffMemberActive,
 } from "@/lib/staff-auth";
+import {
+  findStaffAssignedOpenOfferAppointments,
+  reofferFreedSlots,
+  retireSlotOffersForAppointments,
+  retireWaitlistEntries,
+} from "@/lib/slot-offers";
 
 export type SaveStaffResult = {
   ok: boolean;
@@ -64,6 +73,8 @@ function staffShiftCutoff() {
 function parseDateTime(date: string, time: string) {
   return parseZonedWallClock(date, time);
 }
+
+const STAFF_NOT_FOUND_ERROR = "Staff member not found in this workspace.";
 
 function getAuthedBusiness() {
   return getAuthedBusinessContext(
@@ -151,31 +162,22 @@ function revalidateStaffSurfaces(staffId?: string | null) {
 // "Staff today" card, Reports' active-staff / top-provider / load highlights,
 // and the clients directory's "last provider" column all derive from the member
 // list. (Mirrors how the calendar helper fans out across the same triangle.)
+// The Inbox too: a slot offer is live only while the staff member of the
+// appointment it frees is still available (liveSlotOfferWhere), so marking
+// someone Inactive or removing them changes the Follow-ups list and the Inbox's
+// follow-up count (Codex #130).
 function revalidateStaffRosterSurfaces(staffId?: string | null) {
   revalidateStaffSurfaces(staffId);
   revalidatePath("/dashboard");
   revalidatePath("/calendar");
   revalidatePath("/reports");
   revalidatePath("/clients");
+  revalidatePath("/inbox");
+  revalidatePath("/inbox/follow-ups");
 }
 
 function isValidTime(value: string) {
   return /^\d{2}:\d{2}$/.test(value);
-}
-
-// Zoned day window (true UTC instants) for a `YYYY-MM-DD` clinic-local date key.
-function zonedDateKeyWindow(dateKey: string, timeZone: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey.trim());
-  if (!match) {
-    return null;
-  }
-
-  return getZonedDayWindowFromParts(
-    Number(match[1]),
-    Number(match[2]),
-    Number(match[3]),
-    timeZone
-  );
 }
 
 async function replaceWeeklySchedule(args: {
@@ -217,7 +219,7 @@ async function replaceWeeklySchedule(args: {
         .filter((date): date is string => /^\d{4}-\d{2}-\d{2}$/.test((date ?? "").trim()))
     )
   )
-    .map((dateKey) => zonedDateKeyWindow(dateKey, timeZone))
+    .map((dateKey) => getZonedDayWindowFromDateKey(dateKey, timeZone))
     .filter((window): window is NonNullable<typeof window> => window !== null);
 
   const operations = [
@@ -262,6 +264,17 @@ export async function saveStaffAction(payload: SaveStaffPayload): Promise<SaveSt
   }
 
   const business = context.business;
+
+  // An empty id means a new staff member; anything else must be a plain id
+  // string, never an object Prisma would read as a filter.
+  const existingStaffId = payload.id ? parseRecordId(payload.id) : undefined;
+
+  if (existingStaffId === null) {
+    return { ok: false, error: STAFF_NOT_FOUND_ERROR };
+  }
+
+  payload = { ...payload, id: existingStaffId };
+
   const name = payload.name.trim();
 
   if (!name) {
@@ -299,16 +312,56 @@ export async function saveStaffAction(payload: SaveStaffPayload): Promise<SaveSt
       if (!existing) {
         return {
           ok: false,
-          error: "Staff member not found in this workspace.",
+          error: STAFF_NOT_FOUND_ERROR,
         };
       }
 
-      await prisma.staffMember.update({
-        where: {
-          id: payload.id,
-        },
-        data,
-      });
+      const memberId = existing.id;
+
+      if (data.status === "INACTIVE") {
+        // An entry pinned to this person can never be offered a slot once they
+        // are Inactive (offerFreedSlot refuses their slots), yet it would keep
+        // showing on the waiting list and counting against its cap until
+        // someone removed it by hand — and reactivating them later would
+        // quietly bring it back with no capacity check. So the status change
+        // and the retirement of their pinned entries (offers dismissed, the
+        // freed slots offered on) commit together, as when they are deleted
+        // (Codex #130). Status first, so the re-offer sees them as unavailable.
+        // Retried once on a deadlock, like every transaction that reaches the
+        // scheduling lock.
+        await retryOnWriteConflict(() =>
+          prisma.$transaction(async (tx) => {
+            await tx.staffMember.update({ where: { id: memberId }, data });
+
+            const freed = await retireWaitlistEntries(tx, { businessId: business.id, staffMemberId: memberId });
+
+            // An offer for one of THEIR freed slots, held by an entry that isn't
+            // pinned to them, went stale the moment they became Inactive (Book
+            // refuses it), yet its entry stayed OFFERED — out of matching, so that
+            // client couldn't be offered another clinician's freed slot until the
+            // hourly sweep released it. Withdraw those offers here and put their
+            // entries back to waiting, as the delete path does; the slots
+            // themselves can't be offered on while their clinician is Inactive
+            // (offerFreedSlot skips them) (Codex #130).
+            await retireSlotOffersForAppointments(tx, {
+              businessId: business.id,
+              appointmentIds: await findStaffAssignedOpenOfferAppointments(tx, {
+                businessId: business.id,
+                staffMemberId: memberId,
+              }),
+            });
+
+            await reofferFreedSlots(tx, { businessId: business.id, appointmentIds: freed });
+          })
+        );
+      } else {
+        await prisma.staffMember.update({
+          where: {
+            id: memberId,
+          },
+          data,
+        });
+      }
     } else {
       const created = await prisma.staffMember.create({
         data: {
@@ -344,7 +397,7 @@ export async function saveStaffAction(payload: SaveStaffPayload): Promise<SaveSt
   }
 }
 
-export async function deleteStaffAction(staffId: string): Promise<DeleteStaffResult> {
+export async function deleteStaffAction(rawStaffId: string): Promise<DeleteStaffResult> {
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -352,6 +405,13 @@ export async function deleteStaffAction(staffId: string): Promise<DeleteStaffRes
       ok: false,
       error: context.error,
     };
+  }
+
+  // A non-string id would delete every staff member in the workspace.
+  const staffId = parseRecordId(rawStaffId);
+
+  if (!staffId) {
+    return { ok: false, error: STAFF_NOT_FOUND_ERROR };
   }
 
   const business = context.business;
@@ -368,26 +428,80 @@ export async function deleteStaffAction(staffId: string): Promise<DeleteStaffRes
   if (!existing) {
     return {
       ok: false,
-      error: "Staff member not found in this workspace.",
+      error: STAFF_NOT_FOUND_ERROR,
     };
   }
 
-  // Compare-and-set: scope the delete by the same id+businessId used to find
-  // the row above. If a concurrent request already deleted it, `count` is 0
-  // and this call becomes a typed not-found instead of `.delete` throwing
-  // Prisma's P2025 for a row that's already gone — mirrors
-  // deleteAppointmentCore's fix (src/lib/appointments-shared.ts).
-  const { count } = await prisma.staffMember.deleteMany({
-    where: {
-      id: staffId,
+  // Retried once on a deadlock: retiring offers takes draft and entry row
+  // locks, and re-offering a slot takes the staff scheduling advisory lock,
+  // in the opposite order from a booking.
+  const count = await retryOnWriteConflict(() => prisma.$transaction(async (tx) => {
+    // Lock the staff row before anything is scanned. A waiting-list entry added
+    // for this person right now holds a share lock on it until it commits; this
+    // waits for that, so the pinned-entry scan below sees the new entry and
+    // retires it, instead of missing it and letting the delete's SET NULL turn it
+    // into an "any staff" entry. An add that starts after this lock is turned
+    // away once the delete commits (Codex #130).
+    await lockStaffMemberExclusive(tx, staffId);
+
+    // Read BEFORE the delete: the FK's SET NULL clears staffMemberId on
+    // every one of this staff member's appointments the instant the row is
+    // gone, so this exact filter would match nothing afterward.
+    const staleAppointmentIds = await findStaffAssignedOpenOfferAppointments(tx, {
       businessId: business.id,
-    },
-  });
+      staffMemberId: staffId,
+    });
+
+    // Waiting-list entries pinned to this person: the FK's SET NULL would turn
+    // each one into "no staff preference", which the matcher accepts for any
+    // slot — clients who asked for this clinician would start receiving
+    // automatic offers for unrelated ones, with nobody having reviewed the
+    // changed preference. Retire them instead (offers dismissed). Their freed
+    // slots are offered on below, once the staff row is gone (Codex #130).
+    const pinnedFreedAppointmentIds = await retireWaitlistEntries(tx, {
+      businessId: business.id,
+      staffMemberId: staffId,
+    });
+
+    // Compare-and-set: scope the delete by the same id+businessId used to
+    // find the row above. If a concurrent request already deleted it,
+    // `count` is 0 and this call becomes a typed not-found instead of
+    // `.delete` throwing Prisma's P2025 for a row that's already gone —
+    // mirrors deleteAppointmentCore's fix (src/lib/appointments-shared.ts).
+    const { count: deleted } = await tx.staffMember.deleteMany({
+      where: {
+        id: staffId,
+        businessId: business.id,
+      },
+    });
+
+    if (deleted === 0) {
+      return 0;
+    }
+
+    // Their cancelled appointments now read as genuinely unassigned
+    // (staffMemberId cleared above) — the same as any other freed slot with
+    // no staff, so liveSlotOfferWhere's unassigned branch would otherwise
+    // read the now-stale staff-specific offer as a fresh open one (Codex
+    // #130). Withdraw each and re-offer the freed slot to the next real
+    // candidate before this transaction commits.
+    await retireSlotOffersForAppointments(tx, {
+      businessId: business.id,
+      appointmentIds: [
+        ...new Set([
+          ...staleAppointmentIds,
+          ...pinnedFreedAppointmentIds.flatMap((appointmentId) => (appointmentId ? [appointmentId] : [])),
+        ]),
+      ],
+    });
+
+    return deleted;
+  }));
 
   if (count === 0) {
     return {
       ok: false,
-      error: "Staff member not found in this workspace.",
+      error: STAFF_NOT_FOUND_ERROR,
     };
   }
 
@@ -399,7 +513,7 @@ export async function deleteStaffAction(staffId: string): Promise<DeleteStaffRes
   };
 }
 
-export async function checkInStaffAction(staffId: string): Promise<StaffClockResult> {
+export async function checkInStaffAction(rawStaffId: string): Promise<StaffClockResult> {
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -407,6 +521,12 @@ export async function checkInStaffAction(staffId: string): Promise<StaffClockRes
       ok: false,
       error: context.error,
     };
+  }
+
+  const staffId = parseRecordId(rawStaffId);
+
+  if (!staffId) {
+    return { ok: false, error: STAFF_NOT_FOUND_ERROR };
   }
 
   const business = context.business;
@@ -442,7 +562,7 @@ export async function checkInStaffAction(staffId: string): Promise<StaffClockRes
   if (!staff) {
     return {
       ok: false,
-      error: "Staff member not found in this workspace.",
+      error: STAFF_NOT_FOUND_ERROR,
     };
   }
 
@@ -479,7 +599,7 @@ export async function checkInStaffAction(staffId: string): Promise<StaffClockRes
   };
 }
 
-export async function checkOutStaffAction(staffId: string): Promise<StaffClockResult> {
+export async function checkOutStaffAction(rawStaffId: string): Promise<StaffClockResult> {
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -487,6 +607,13 @@ export async function checkOutStaffAction(staffId: string): Promise<StaffClockRe
       ok: false,
       error: context.error,
     };
+  }
+
+  // A non-string id would check out every checked-in staff member.
+  const staffId = parseRecordId(rawStaffId);
+
+  if (!staffId) {
+    return { ok: false, error: STAFF_NOT_FOUND_ERROR };
   }
 
   const business = context.business;
@@ -516,8 +643,9 @@ export type MobileAccessResult = {
   code?: string;
 };
 
-async function requireOwnedStaff(staffId: unknown) {
-  if (typeof staffId !== "string" || !staffId.trim()) {
+async function requireOwnedStaff(rawStaffId: unknown) {
+  const staffId = parseRecordId(rawStaffId);
+  if (!staffId) {
     return { error: "Staff member not found." } as const;
   }
   const context = await getAuthedBusinessContext();

@@ -5,9 +5,12 @@ import {
   EchoAdapter,
   renderReminder,
   sendMessage,
+  SendOutcomeUnknownError,
+  type AdapterSendInput,
   type AdapterSendResult,
   type ChannelAdapter,
 } from "./index";
+import { MAX_MESSAGE_BODY_LENGTH, MESSAGE_TOO_LONG_ERROR } from "./limits";
 
 function registryWith(...adapters: ChannelAdapter[]): ChannelRegistry {
   const registry = new ChannelRegistry();
@@ -53,6 +56,32 @@ describe("renderReminder (minimum-necessary)", () => {
     expect(body).toContain("Mira");
     expect(body).toContain("3 PM");
     expect(body).toContain("Jun 24");
+  });
+
+  // Codex #130: onboarding saved the default into each workspace, so a workspace
+  // created while the old wording was the default still holds it, and its
+  // patients would never learn they can reply 1 or 2.
+  it("sends the current default to a workspace still holding the old default, word for word", () => {
+    const body = renderReminder({
+      kind: "appointment_reminder",
+      recipientName: "Mira",
+      appointmentDate: "Jun 24",
+      appointmentTime: "3 PM",
+      template:
+        "  Hi {client_name}, this is a reminder for your appointment at {time} on {date}. Reply here if you need to reschedule. ",
+    });
+    expect(body).toBe("Hi Mira, this is a reminder for your appointment at 3 PM on Jun 24. Reply 1 to confirm or 2 to cancel.");
+  });
+
+  it("leaves a clinic's own wording alone, even when it mentions rescheduling", () => {
+    const body = renderReminder({
+      kind: "appointment_reminder",
+      recipientName: "Mira",
+      appointmentDate: "Jun 24",
+      appointmentTime: "3 PM",
+      template: "Hi {client_name}, see you at {time} on {date}. Reply here if you need to reschedule.",
+    });
+    expect(body).toBe("Hi Mira, see you at 3 PM on Jun 24. Reply here if you need to reschedule.");
   });
 });
 
@@ -196,6 +225,26 @@ describe("sendMessage dispatch", () => {
     expect(echo.sent).toHaveLength(0);
   });
 
+  // The follow-up send refuses an over-limit edited body up front with these same
+  // values (Codex #130), so the cap and its wording must be exactly the seam's own.
+  it("sends a body of exactly the shared cap and refuses one character more with the shared wording", async () => {
+    const echo = new EchoAdapter("WHATSAPP");
+    const send = (body: string) =>
+      sendMessage(
+        { channel: "WHATSAPP", businessId: "biz_1", to: "+14155550100", message: { kind: "freeform", body } },
+        registryWith(echo)
+      );
+
+    expect(MAX_MESSAGE_BODY_LENGTH).toBe(8000);
+    expect((await send("x".repeat(MAX_MESSAGE_BODY_LENGTH))).ok).toBe(true);
+    expect(await send("x".repeat(MAX_MESSAGE_BODY_LENGTH + 1))).toEqual({
+      ok: false,
+      reason: "message_too_long",
+      error: MESSAGE_TOO_LONG_ERROR,
+    });
+    expect(echo.sent).toHaveLength(1);
+  });
+
   it("rejects an unusable phone recipient", async () => {
     const result = await sendMessage(
       {
@@ -277,5 +326,43 @@ describe("sendMessage dispatch", () => {
       expect(result.error).not.toContain("provider exploded");
       expect(result.error).not.toContain("14155550100");
     }
+  });
+
+  it("reports a send whose outcome is unknown as delivery_uncertain, never as a retryable provider_error", async () => {
+    const uncertain: ChannelAdapter = {
+      channel: "WHATSAPP",
+      async send(): Promise<AdapterSendResult> {
+        throw new SendOutcomeUnknownError("worker timed out mid-send with +14155550100");
+      },
+    };
+    const result = await sendMessage(
+      { channel: "WHATSAPP", businessId: "biz_1", to: "+14155550100", message: { kind: "freeform", body: "Hi" } },
+      registryWith(uncertain)
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe("delivery_uncertain");
+      expect(result.error).not.toContain("14155550100");
+    }
+  });
+
+  it("passes a well-formed idempotency key to the adapter and drops a malformed one", async () => {
+    const seen: AdapterSendInput[] = [];
+    const recording: ChannelAdapter = {
+      channel: "WHATSAPP",
+      async send(input): Promise<AdapterSendResult> {
+        seen.push(input);
+        return { providerMessageId: "m", status: "SENT" };
+      },
+    };
+    const base = { channel: "WHATSAPP" as const, businessId: "biz_1", to: "+14155550100" };
+
+    await sendMessage({ ...base, message: { kind: "freeform", body: "Hi" }, idempotencyKey: "follow-up:d1" }, registryWith(recording));
+    // Sent unkeyed rather than refused: a malformed key is a bug, not a reason to drop the message.
+    await sendMessage({ ...base, message: { kind: "freeform", body: "Hi" }, idempotencyKey: "has a space" }, registryWith(recording));
+    await sendMessage({ ...base, message: { kind: "freeform", body: "Hi" } }, registryWith(recording));
+
+    expect(seen.map((input) => input.idempotencyKey)).toEqual(["follow-up:d1", undefined, undefined]);
   });
 });

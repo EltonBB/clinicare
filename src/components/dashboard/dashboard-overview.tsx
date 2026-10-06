@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowUpRight, CalendarPlus2, UsersRound } from "lucide-react";
 
+import { NoShowRiskBadge } from "@/components/calendar/no-show-risk-badge";
 import { DashboardMessagesCard } from "@/components/dashboard/dashboard-messages-card";
 import { useWorkspaceUnreadCount } from "@/components/layout/workspace-live-context";
 import { KpiValue } from "@/components/workspace/kpi-value";
@@ -22,6 +23,7 @@ const statusDotStyles: Record<DashboardAppointmentStatus, string> = {
   completed: "bg-emerald-500",
   pending: "bg-amber-500",
   cancelled: "bg-destructive",
+  "no-show": "bg-violet-500",
 };
 
 const statusTextStyles: Record<DashboardAppointmentStatus, string> = {
@@ -29,6 +31,7 @@ const statusTextStyles: Record<DashboardAppointmentStatus, string> = {
   completed: "text-emerald-600",
   pending: "text-amber-600",
   cancelled: "text-destructive",
+  "no-show": "text-violet-600",
 };
 
 const solidButtonClasses = cn(
@@ -293,6 +296,12 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                 <span className="shrink-0 rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold leading-4 text-primary-foreground">
                   {view.nextAppointment.time}
                 </span>
+                {view.nextAppointment.risk?.level === "high" ? (
+                  <NoShowRiskBadge
+                    risk={view.nextAppointment.risk}
+                    expiresAtIso={view.nextAppointment.startAtIso}
+                  />
+                ) : null}
               </div>
             </Link>
           ) : null}
@@ -343,6 +352,9 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                   >
                     {appointment.status}
                   </span>
+                  {appointment.risk?.level === "high" ? (
+                    <NoShowRiskBadge risk={appointment.risk} expiresAtIso={appointment.startAtIso} />
+                  ) : null}
                 </Link>
               ))}
             </div>

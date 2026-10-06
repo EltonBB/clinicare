@@ -14,6 +14,7 @@ import type {
 } from "@prisma/client";
 import { format } from "date-fns";
 
+import { appointmentStatusKey } from "@/lib/appointment-status";
 import { resolveMediaDisplayUrls } from "@/lib/media-storage-server";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
@@ -169,19 +170,16 @@ export type ClientRecord = {
   careNotes: ClientCareNoteEntry[];
   treatmentPlanItems: ClientTreatmentPlanEntry[];
   followUpReminders: ClientFollowUpReminderEntry[];
-  appointmentStats: {
-    completed: number;
-    cancelled: number;
-    pending: number;
-    upcoming: number;
-    noShows: number;
-  };
   paymentStats: {
-    totalPaidCents: number;
     unpaidBalanceCents: number;
     totalPaidDisplay: string;
     unpaidBalanceDisplay: string;
-    paymentStatus: string;
+    /** Sum over the full payment ledger (billed = every status), not just the capped display list. */
+    totalBilledDisplay: string;
+    /** Row count over that same full ledger — payments.length is capped and undercounts past the display list's take limit. */
+    totalCount: number;
+    /** Same, scoped to Paid entries only. */
+    totalPaidCount: number;
   };
   gallery: Array<{
     id: string;
@@ -338,7 +336,7 @@ function buildHistory(client: ClientWithRelations): ClientHistoryEntry[] {
       id: appointment.id,
       date: format(appointment.startAt, "MMM d, yyyy"),
       title: appointment.title,
-      detail: `Appointment ${appointment.status.toLowerCase()} in the clinic workspace.`,
+      detail: `Appointment ${appointmentStatusKey(appointment.status)} in the clinic workspace.`,
     }));
   }
 
@@ -360,8 +358,6 @@ function buildMessages(client: ClientWithRelations): ClientMessageEntry[] {
     timestamp: format(message.sentAt, "h:mm a"),
   }));
 }
-
-const formatMoney = (cents: number) => formatCurrency(cents);
 
 function formatFileSize(bytes: number | null) {
   if (!bytes || bytes <= 0) {
@@ -423,12 +419,12 @@ async function buildDocuments(client: ClientWithRelations): Promise<ClientDocume
   });
 }
 
-function buildPayments(client: ClientWithRelations): ClientPaymentEntry[] {
+function buildPayments(client: ClientWithRelations, currency: string): ClientPaymentEntry[] {
   return client.payments.map((payment) => ({
     id: payment.id,
     appointmentId: payment.appointmentId ?? "",
     amountCents: payment.amountCents,
-    amountDisplay: formatMoney(payment.amountCents),
+    amountDisplay: formatCurrency(payment.amountCents, currency),
     amountInput: (payment.amountCents / 100).toFixed(2),
     status: payment.status,
     description: payment.description ?? "",
@@ -492,7 +488,7 @@ function buildFollowUpReminders(
   }));
 }
 
-function buildTimeline(client: ClientWithRelations): ClientTimelineEntry[] {
+function buildTimeline(client: ClientWithRelations, currency: string): ClientTimelineEntry[] {
   const entries: ClientTimelineEntry[] = [
     ...client.appointments.map((appointment) => ({
       id: `appointment-${appointment.id}`,
@@ -501,14 +497,14 @@ function buildTimeline(client: ClientWithRelations): ClientTimelineEntry[] {
       sortKey: appointment.startAt.getTime(),
       title: appointment.title,
       detail: appointment.notes?.trim() || "Appointment",
-      status: appointment.status.toLowerCase(),
+      status: appointmentStatusKey(appointment.status),
     })),
     ...client.payments.map((payment) => ({
       id: `payment-${payment.id}`,
       kind: "payment" as const,
       date: format(payment.paidAt ?? payment.createdAt, "MMM d, yyyy"),
       sortKey: (payment.paidAt ?? payment.createdAt).getTime(),
-      title: `${formatMoney(payment.amountCents)} ${payment.status.toLowerCase()}`,
+      title: `${formatCurrency(payment.amountCents, currency)} ${payment.status.toLowerCase()}`,
       detail: payment.description?.trim() || "Payment record",
       status: payment.status.toLowerCase(),
     })),
@@ -541,59 +537,47 @@ function buildTimeline(client: ClientWithRelations): ClientTimelineEntry[] {
   return entries.sort((a, b) => b.sortKey - a.sortKey).slice(0, 14);
 }
 
-export async function buildClientRecord(client: ClientWithRelations): Promise<ClientRecord> {
-  const now = new Date();
-
-  // The appointments/payments arrays on `client` are display lists capped at
-  // take:25/take:60 (ordered most-recent-first) — fine for rendering history,
-  // but a patient with more visits/invoices than that would silently undercount
-  // completed/cancelled/pending and understate money totals. Aggregate those
-  // over the FULL history in the DB instead, unbounded by the display take limit.
-  const [appointmentCountsByStatus, upcomingCount, paymentSumsByStatus, galleryUrlMap] =
-    await Promise.all([
-      prisma.appointment.groupBy({
-        by: ["status"],
-        where: { businessId: client.businessId, clientId: client.id },
-        _count: true,
-      }),
-      prisma.appointment.count({
-        where: {
-          businessId: client.businessId,
-          clientId: client.id,
-          startAt: { gte: now },
-          status: { in: ["PENDING", "CONFIRMED"] },
-        },
-      }),
-      prisma.clientPayment.groupBy({
-        by: ["status"],
-        where: { businessId: client.businessId, clientId: client.id },
-        _sum: { amountCents: true },
-      }),
-      // Batch-sign gallery images once (one request per bucket) instead of a
-      // round-trip per item; independent of the aggregates above, so it runs
-      // alongside them rather than after.
-      resolveMediaDisplayUrls(client.galleryItems.map((item) => item.imageUrl)),
-    ]);
-
-  const appointmentCount = (status: AppointmentStatus) =>
-    appointmentCountsByStatus.find((row) => row.status === status)?._count ?? 0;
-  const completed = appointmentCount("COMPLETED");
-  const cancelled = appointmentCount("CANCELLED");
-  const pending = appointmentCount("PENDING");
-  const upcoming = upcomingCount;
+/**
+ * `currency` is the workspace's (`Business.currency`): every amount on the record
+ * is formatted in it. It is a required argument so no caller can forget it.
+ */
+export async function buildClientRecord(
+  client: ClientWithRelations,
+  currency: string
+): Promise<ClientRecord> {
+  // The payments array on `client` is a display list capped at take:60
+  // (most-recent-first) — fine for rendering history, but a patient with more
+  // invoices than that would understate the paid/unpaid totals. Sum those over
+  // the FULL history in the DB instead, unbounded by the display take limit.
+  const [paymentSumsByStatus, galleryUrlMap] = await Promise.all([
+    prisma.clientPayment.groupBy({
+      by: ["status"],
+      where: { businessId: client.businessId, clientId: client.id },
+      _sum: { amountCents: true },
+      _count: true,
+    }),
+    // Batch-sign gallery images once (one request per bucket) instead of a
+    // round-trip per item; independent of the sums above, so it runs alongside
+    // them rather than after.
+    resolveMediaDisplayUrls(client.galleryItems.map((item) => item.imageUrl)),
+  ]);
 
   const paymentSum = (status: string) =>
     paymentSumsByStatus.find((row) => row.status === status)?._sum.amountCents ?? 0;
+  const paymentCount = (status: string) =>
+    paymentSumsByStatus.find((row) => row.status === status)?._count ?? 0;
   const totalPaidCents = paymentSum("Paid");
+  const totalPaidCount = paymentCount("Paid");
   const unpaidBalanceCents = paymentSum("Unpaid") + paymentSum("Partially Paid");
-  const paymentStatus =
-    unpaidBalanceCents > 0
-      ? totalPaidCents > 0
-        ? "Partially Paid"
-        : "Unpaid"
-      : totalPaidCents > 0
-        ? "Paid"
-        : "No payments yet";
+  // Billed must come from the same unbounded source as paid/unpaid above — a
+  // client with more than 60 payments would otherwise show billed < paid +
+  // unpaid, since `client.payments` is the capped take:60 display list
+  // (CodeRabbit).
+  const totalBilledCents = paymentSumsByStatus.reduce((sum, row) => sum + (row._sum.amountCents ?? 0), 0);
+  // Same reasoning applies to the ledger-entry count shown beside it — a
+  // client with more than 60 payments would otherwise show a "60 ledger
+  // entries" caption next to a full-history total (Codex #131).
+  const totalPaymentCount = paymentSumsByStatus.reduce((sum, row) => sum + row._count, 0);
 
   return {
     id: client.id,
@@ -629,29 +613,23 @@ export async function buildClientRecord(client: ClientWithRelations): Promise<Cl
       tags: client.tags,
     },
     history: buildHistory(client),
-    timeline: buildTimeline(client),
+    timeline: buildTimeline(client, currency),
     appointments: buildAppointments(client),
     medications: buildMedications(client),
     documents: await buildDocuments(client),
-    payments: buildPayments(client),
+    payments: buildPayments(client, currency),
     messages: buildMessages(client),
     healthItems: buildHealthItems(client),
     careNotes: buildCareNotes(client),
     treatmentPlanItems: buildTreatmentPlanItems(client),
     followUpReminders: buildFollowUpReminders(client),
-    appointmentStats: {
-      completed,
-      cancelled,
-      pending,
-      upcoming,
-      noShows: 0,
-    },
     paymentStats: {
-      totalPaidCents,
       unpaidBalanceCents,
-      totalPaidDisplay: formatMoney(totalPaidCents),
-      unpaidBalanceDisplay: formatMoney(unpaidBalanceCents),
-      paymentStatus,
+      totalPaidDisplay: formatCurrency(totalPaidCents, currency),
+      unpaidBalanceDisplay: formatCurrency(unpaidBalanceCents, currency),
+      totalBilledDisplay: formatCurrency(totalBilledCents, currency),
+      totalCount: totalPaymentCount,
+      totalPaidCount,
     },
     gallery: client.galleryItems.map((item) => ({
       id: item.id,

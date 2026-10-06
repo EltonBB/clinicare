@@ -23,6 +23,7 @@ const comparison: [string, string, string][] = [
   ["Operational reports", "Basic", "Advanced"],
   ["AI-assisted insights", "Limited", "Full"],
   ["Staff activity & utilization", "—", "Included"],
+  ["No-show tracking", "—", "Included"],
   ["Setup support", "Standard", "Priority"],
 ];
 

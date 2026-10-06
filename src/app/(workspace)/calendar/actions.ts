@@ -3,29 +3,36 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { retryOnWriteConflict } from "@/lib/prisma-retry";
 import { getAuthedBusiness as getAuthedBusinessContext, toBusinessIdentity } from "@/lib/business";
 import { loadCalendarMonth, type CalendarMonthData } from "@/lib/calendar-data";
 import { isValidMonthKey } from "@/lib/calendar-range";
 import {
-  acquireSchedulingLock,
   APPOINTMENT_ALREADY_COMPLETED_ERROR,
+  APPOINTMENT_ALREADY_NO_SHOW_ERROR,
+  APPOINTMENT_CANCELLED_NO_SHOW_ERROR,
   APPOINTMENT_CONFLICT_ERROR,
+  APPOINTMENT_NOT_STARTED_ERROR,
   APPOINTMENT_TIME_CONFLICT_ERROR,
   cancelAppointmentCore,
   deleteAppointmentCore,
-  hasSchedulingConflict,
+  NO_SHOW_PLAN_ERROR,
   notifyStaffOfAppointmentChange,
+  recordAppointmentAttendanceCore,
   refreshClientLastVisitAt,
   revalidateCalendarSurfaces,
 } from "@/lib/appointments-shared";
+import { isProBusinessPlan } from "@/lib/billing";
+import { getNoShowRiskAssessments } from "@/lib/no-show-risk-data";
+import { isInsideOperatingHours } from "@/lib/operating-hours";
+import { MAX_RISK_BATCH_SIZE, type NoShowRiskAssessment } from "@/lib/no-show-risk";
+import { parseRecordId } from "@/lib/record-id";
+import { acquireSchedulingLock, hasSchedulingConflict } from "@/lib/scheduling-conflicts";
+import { offerFreedSlot, withdrawSlotOffers } from "@/lib/slot-offers";
+import { formatZonedDateKey, formatZonedTime24, parseZonedWallClock } from "@/lib/time-zone";
 import {
-  formatZonedDateKey,
-  formatZonedTime24,
-  getZonedWeekday,
-  parseZonedWallClock,
-} from "@/lib/time-zone";
-import {
-  timeToMinutes,
+  toCalendarStatus,
+  toCalendarTone,
   toPrismaAppointmentStatus,
   type CalendarAppointment,
   type CalendarAppointmentStatus,
@@ -70,6 +77,9 @@ export type DeleteAppointmentResult = {
   appointmentId?: string;
 };
 
+const APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR = "Appointment not found in this clinic workspace.";
+const STAFF_NOT_IN_WORKSPACE_ERROR = "The selected staff member does not belong to this clinic workspace.";
+
 function getAuthedBusiness() {
   return getAuthedBusinessContext(
     "Your session expired. Log in again to manage appointments."
@@ -80,42 +90,6 @@ function getAuthedBusiness() {
 // the true UTC instant (shared helper — see lib/time-zone.ts).
 function parseDateTime(date: string, time: string) {
   return parseZonedWallClock(date, time);
-}
-
-async function isInsideBusinessHours(args: {
-  businessId: string;
-  startAt: Date;
-  startTime: string;
-  endTime: string;
-}) {
-  // Map the zoned weekday (Sun=0..Sat=6) onto the clinic schedule's Monday=0
-  // convention so near-midnight bookings resolve to the correct day's hours.
-  const weekday = (getZonedWeekday(args.startAt) + 6) % 7;
-  const hours = await prisma.businessHours.findUnique({
-    where: {
-      businessId_weekday: {
-        businessId: args.businessId,
-        weekday,
-      },
-    },
-    select: {
-      isOpen: true,
-      startTime: true,
-      endTime: true,
-    },
-  });
-
-  const start = timeToMinutes(args.startTime);
-  const end = timeToMinutes(args.endTime);
-
-  // No configured row for this weekday means closed, not a guessed Mon-Fri
-  // 9-5 default — matches calendar-workspace.tsx, reports.ts, and the
-  // client-side businessHoursForDate in new-appointment-form.tsx.
-  if (!hours?.isOpen) {
-    return false;
-  }
-
-  return start >= timeToMinutes(hours.startTime) && end <= timeToMinutes(hours.endTime);
 }
 
 async function hydrateAppointment(appointmentId: string) {
@@ -139,14 +113,7 @@ async function hydrateAppointment(appointmentId: string) {
     },
   });
 
-  const status =
-    appointment.status === "CANCELLED"
-      ? "cancelled"
-      : appointment.status === "COMPLETED"
-        ? "completed"
-      : appointment.status === "PENDING"
-        ? "pending"
-        : "confirmed";
+  const status = toCalendarStatus(appointment.status);
 
   return {
     id: appointment.id,
@@ -160,18 +127,24 @@ async function hydrateAppointment(appointmentId: string) {
     endTime: formatZonedTime24(appointment.endAt),
     notes: appointment.notes ?? "",
     status,
-    tone:
-      status === "confirmed" || status === "completed"
-        ? "primary"
-        : status === "pending"
-          ? "secondary"
-          : "muted",
+    tone: toCalendarTone(appointment.status),
   } satisfies CalendarAppointment;
 }
 
 export async function saveAppointmentAction(
   payload: SaveAppointmentPayload
 ): Promise<SaveAppointmentResult> {
+  // Ids come from the client: parse them before any query, or a crafted id
+  // would turn the compare-and-set update below into a filter over the whole
+  // workspace. The appointment id is checked before auth is even consulted, so
+  // a crafted one never costs a lookup. Empty id/staff keep meaning "new
+  // booking" / "unassigned".
+  const appointmentId = payload.id ? parseRecordId(payload.id) : undefined;
+
+  if (appointmentId === null) {
+    return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
+  }
+
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -182,6 +155,20 @@ export async function saveAppointmentAction(
   }
 
   const business = context.business;
+
+  const requestedStaffMemberId = payload.staffMemberId ? parseRecordId(payload.staffMemberId) : undefined;
+
+  if (requestedStaffMemberId === null) {
+    return { ok: false, error: STAFF_NOT_IN_WORKSPACE_ERROR };
+  }
+
+  payload = {
+    ...payload,
+    id: appointmentId,
+    clientId: parseRecordId(payload.clientId) ?? "",
+    staffMemberId: requestedStaffMemberId,
+  };
+
   const startAt = parseDateTime(payload.date, payload.startTime);
   const endAt = parseDateTime(payload.date, payload.endTime);
 
@@ -192,7 +179,25 @@ export async function saveAppointmentAction(
     };
   }
 
-  const insideBusinessHours = await isInsideBusinessHours({
+  // No-show is a Pro feature. Setting it needs Pro; an existing no-show on a
+  // workspace that has since dropped to Basic can still be edited as long as its
+  // status isn't being changed. Only an EXISTING row can be exempt: baselineStatus
+  // comes from the request body, and on a new booking (no id) nothing anchors it —
+  // on an edit, the compare-and-set against the live status keeps a forged value
+  // harmless. It can only be recorded once the time has come.
+  if (payload.status === "no-show") {
+    const keepingAnExistingNoShow = Boolean(payload.id) && payload.baselineStatus === "no-show";
+
+    if (!keepingAnExistingNoShow && !isProBusinessPlan(business.plan)) {
+      return { ok: false, error: NO_SHOW_PLAN_ERROR };
+    }
+
+    if (startAt.getTime() > Date.now()) {
+      return { ok: false, error: APPOINTMENT_NOT_STARTED_ERROR };
+    }
+  }
+
+  const insideBusinessHours = await isInsideOperatingHours(prisma, {
     businessId: business.id,
     startAt,
     startTime: payload.startTime,
@@ -238,7 +243,7 @@ export async function saveAppointmentAction(
     if (!staff) {
       return {
         ok: false,
-        error: "The selected staff member does not belong to this clinic workspace.",
+        error: STAFF_NOT_IN_WORKSPACE_ERROR,
       };
     }
 
@@ -270,6 +275,33 @@ export async function saveAppointmentAction(
     // (not just the dedicated Cancel booking action) — the doctor's app
     // needs to hear about that path too, not just cancelAppointmentAction.
     let wasNewlyCancelled = false;
+    // Un-cancelling (CANCELLED -> any other status) takes the slot back, so
+    // any waiting-list offer for it must be withdrawn, and cancelledAt is
+    // cleared — the appointment isn't cancelled anymore, so its cancellation
+    // timestamp shouldn't linger and be read as one on a later, different cancel.
+    let wasReactivated = false;
+    // Editing a still-cancelled booking's client/time/staff/service: an open
+    // offer's text was frozen from the OLD details, but Book reads the row's
+    // current ones — so an accepted offer could book the client into a
+    // different time than the message promised. A client change matters too:
+    // reassigning the cancelled appointment to the very client who currently
+    // holds its open offer would leave that offer live for the client who,
+    // per the row's new data, is now the one who "cancelled" it —
+    // findMatchingWaitlistCandidates never offers a slot to the client who
+    // gave it up, and a stale offer left over from before the reassignment
+    // violates that the moment the edit lands (Codex #130). Re-offer with the
+    // saved details instead in every one of these cases.
+    let slotDetailsChangedWhileCancelled = false;
+    // The row's client, staff, service and window exactly as read below. Every flag
+    // above is derived from this read, which happens before the transaction, so the
+    // guarded write is tied to the same values (see the compare-and-set).
+    let readSlot: {
+      clientId: string;
+      staffMemberId: string | null;
+      title: string;
+      startAt: Date;
+      endAt: Date;
+    } | null = null;
 
     if (payload.id) {
       const existing = await prisma.appointment.findFirst({
@@ -291,12 +323,19 @@ export async function saveAppointmentAction(
       if (!existing) {
         return {
           ok: false,
-          error: "Appointment not found in this clinic workspace.",
+          error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR,
         };
       }
 
       previousClientId = existing.clientId;
       previousStaffMemberId = existing.staffMemberId;
+      readSlot = {
+        clientId: existing.clientId,
+        staffMemberId: existing.staffMemberId,
+        title: existing.title,
+        startAt: existing.startAt,
+        endAt: existing.endAt,
+      };
       // Same rule cancelAppointmentCore enforces for the dedicated Cancel
       // button (409 there) — a completed visit already happened, so flipping
       // it to CANCELLED would corrupt the completion-rate metric and the
@@ -312,7 +351,50 @@ export async function saveAppointmentAction(
         };
       }
 
-      wasNewlyCancelled = existing.status !== "CANCELLED" && newStatus === "CANCELLED";
+      // A recorded no-show is just as final for the Cancel path: relabelling
+      // it CANCELLED would drop it from the no-show count and rate. Undoing a
+      // no-show is "Mark as attended" (or picking another non-cancelled status).
+      if (existing.status === "NO_SHOW" && newStatus === "CANCELLED") {
+        return {
+          ok: false,
+          error: APPOINTMENT_ALREADY_NO_SHOW_ERROR,
+        };
+      }
+
+      // Same rule recordAppointmentAttendanceCore enforces for the quick
+      // action: a cancelled booking never happened, so relabelling it as a
+      // no-show through the Status dropdown would inflate the no-show count.
+      if (existing.status === "CANCELLED" && newStatus === "NO_SHOW") {
+        return {
+          ok: false,
+          error: APPOINTMENT_CANCELLED_NO_SHOW_ERROR,
+        };
+      }
+
+      // Derived from payload.baselineStatus, the same source of truth the
+      // compare-and-set guard below actually matches against — not a fresh
+      // re-read of existing.status. If the guard doesn't match reality, the
+      // write below never applies (count === 0, early conflict return), so
+      // these flags — used after the write succeeds — never fire on a stale
+      // basis (CodeRabbit: existing.status alone could reflect a change that
+      // landed between this read and the guarded write, misclassifying a
+      // real cancellation/reactivation the write is actually making).
+      wasNewlyCancelled = payload.baselineStatus !== "cancelled" && newStatus === "CANCELLED";
+      wasReactivated = payload.baselineStatus === "cancelled" && newStatus !== "CANCELLED";
+      slotDetailsChangedWhileCancelled =
+        existing.status === "CANCELLED" &&
+        newStatus === "CANCELLED" &&
+        (existing.clientId !== payload.clientId ||
+          existing.staffMemberId !== staffMemberId ||
+          existing.startAt.getTime() !== startAt.getTime() ||
+          // A duration-only edit (endAt moves, startAt doesn't) still changes
+          // the window the offer promises: Book derives its own duration from
+          // the saved end time, so a stale offer for the old, shorter window
+          // could let Book mark the entry FILLED before the booking form's
+          // own overlap check catches the now-longer slot conflicting with
+          // whatever follows it (Codex).
+          existing.endAt.getTime() !== endAt.getTime() ||
+          existing.title !== payload.service.trim());
       needsConflictCheck =
         existing.staffMemberId !== staffMemberId ||
         existing.startAt.getTime() !== startAt.getTime() ||
@@ -330,7 +412,15 @@ export async function saveAppointmentAction(
     // The appointment write, reminder reset, and last-visit refresh commit
     // together. Payment is intentionally NOT collected here — it's recorded
     // separately on the client's Payments tab, after the visit.
-    const txResult = await prisma.$transaction<
+    //
+    // Retried once if Postgres aborts it as a deadlock: this takes the staff
+    // member's scheduling advisory lock first and the appointment, client and
+    // offer rows after, while cancelAppointmentCore and the Skip / Declined
+    // paths take row locks first and the advisory lock inside offerFreedSlot
+    // — two of them racing on one staff member can form a lock cycle
+    // (Codex #130). A rolled-back attempt leaves nothing behind, and the
+    // closure re-derives `appointmentId` on every run.
+    const txResult = await retryOnWriteConflict(() => prisma.$transaction<
       { conflict: true; error: string } | { conflict: false }
     >(async (tx) => {
       // Only re-validate the slot when this save could newly occupy one.
@@ -381,17 +471,26 @@ export async function saveAppointmentAction(
         // dedicated cancel action, just keyed on the client's baseline
         // instead of an exclusion set (a save can legitimately move status
         // to any value, unlike a cancel which only ever moves to CANCELLED).
-        // Scope: this guards `status` only, not clientId/staffMemberId/
-        // title/startAt/endAt/notes — two concurrent saves that leave
-        // status untouched can still clobber each other's other fields.
-        // Closing that fully would be general optimistic-concurrency
-        // control for the whole edit form, a materially bigger feature;
-        // this fix targets the specific status-vs-completion-sweep race.
+        // The guard also holds the client, staff member, service and window the
+        // flags above were derived from (readSlot, read just before this
+        // transaction). Without it, a second save that read the original slot
+        // and then waited for a first save to commit would compute "nothing
+        // moved" from its stale read, overwrite the first save's slot, and skip
+        // the conflict check, the reminder reset and - for a cancelled booking -
+        // the withdraw and re-offer, leaving an open offer that promises the
+        // first save's details on a row that no longer has them (Codex #130).
+        // A save that loses this check is refused like a stale status: refresh,
+        // and the next attempt compares against the row as it now is.
+        // Not general optimistic-concurrency control for the whole edit form:
+        // the notes are still last-writer-wins, and the form's own baseline is
+        // only the status; this ties the derived flags to the row they were
+        // read from.
         const { count } = await tx.appointment.updateMany({
           where: {
             id: payload.id,
             businessId: business.id,
             status: toPrismaAppointmentStatus(payload.baselineStatus),
+            ...readSlot,
           },
           data: {
             clientId: payload.clientId,
@@ -401,6 +500,21 @@ export async function saveAppointmentAction(
             endAt,
             notes: payload.notes.trim() || null,
             status: newStatus,
+            // Set only on the transition into CANCELLED, cleared only on the
+            // transition out — omitted (undefined) otherwise, so an edit that
+            // doesn't touch cancellation status leaves the real cancel time
+            // alone. See appointments-shared.ts's cancelAppointmentCore for
+            // why this can't just be the auto-managed updatedAt.
+            cancelledAt: wasNewlyCancelled ? new Date() : wasReactivated ? null : undefined,
+            // Same immutable-snapshot rule as cancelledAt: this save's own
+            // startAt is what the row's schedule actually is as of this
+            // cancellation (this save may cancel and reschedule in the same
+            // write), and it must not be re-derived from startAt later, once
+            // a further edit while still cancelled has changed it.
+            cancelledScheduledStartAt: wasNewlyCancelled ? startAt : wasReactivated ? null : undefined,
+            // The reminders are reset below: a new generation, so the ones owed
+            // again are new sends, not repeats (see Appointment.reminderGeneration).
+            reminderGeneration: shouldResetReminders ? { increment: 1 } : undefined,
           },
         });
 
@@ -426,6 +540,56 @@ export async function saveAppointmentAction(
         for (const clientId of affectedClientIds) {
           await refreshClientLastVisitAt(clientId, business.id, tx);
         }
+
+        // Cancelling from the Status dropdown frees the slot exactly like the
+        // dedicated Cancel action does, so it offers it to the waiting list
+        // the same way (Pro only, and the destination staff/time is actually
+        // free — both checked inside offerFreedSlot). Uses the row as just
+        // saved, so the offer, the Follow-ups row and Book's pre-fill all
+        // read the same time.
+        if (wasNewlyCancelled) {
+          await offerFreedSlot(tx, {
+            businessId: business.id,
+            cancelled: {
+              id: payload.id,
+              clientId: payload.clientId,
+              staffMemberId,
+              title: payload.service.trim(),
+              startAt,
+              endAt,
+            },
+          });
+        }
+
+        // Un-cancelled: the slot is taken again, so withdraw any open offer
+        // for it (draft expired, entry back to WAITING) — otherwise a later
+        // cancel would revive it beside a new offer for the same slot.
+        if (wasReactivated) {
+          await withdrawSlotOffers(tx, { businessId: business.id, appointmentId: payload.id });
+        }
+
+        // Still cancelled, but its client/time/staff/service changed under an
+        // open offer: withdraw the stale one and offer the saved details
+        // again, so the offer text, the Follow-ups row and Book's pre-fill
+        // all read the same (new) details — same ordering as the un-cancel
+        // branch above. offerFreedSlot itself verifies the edited staff/time
+        // is actually free before promising it (Codex #130) — the conflict
+        // check above is still correctly skipped for the CANCELLED
+        // destination itself, which never occupies a slot.
+        if (slotDetailsChangedWhileCancelled) {
+          await withdrawSlotOffers(tx, { businessId: business.id, appointmentId: payload.id });
+          await offerFreedSlot(tx, {
+            businessId: business.id,
+            cancelled: {
+              id: payload.id,
+              clientId: payload.clientId,
+              staffMemberId,
+              title: payload.service.trim(),
+              startAt,
+              endAt,
+            },
+          });
+        }
       } else {
         const created = await tx.appointment.create({
           data: {
@@ -444,8 +608,34 @@ export async function saveAppointmentAction(
         await refreshClientLastVisitAt(payload.clientId, business.id, tx);
       }
 
+      // This save just occupied a real slot (a new booking, or an edit that
+      // moved into one — the same conflict-check condition above covers
+      // both) at a staff+time that can still coincide with an appointment
+      // that's CANCELLED and holding an open waiting-list offer:
+      // hasSchedulingConflict deliberately excludes CANCELLED rows so
+      // booking over a freed slot is allowed, but that means the offer isn't
+      // automatically withdrawn the way un-cancelling that SAME appointment
+      // does. Left alone, staff could still send (or a patient still Book)
+      // an offer for a slot someone else has already taken (Codex #130).
+      if (newStatus !== "CANCELLED" && staffMemberId && (!payload.id || needsConflictCheck)) {
+        const overlapping = await tx.appointment.findMany({
+          where: {
+            businessId: business.id,
+            staffMemberId,
+            status: "CANCELLED",
+            id: appointmentId ? { not: appointmentId } : undefined,
+            startAt: { lt: endAt },
+            endAt: { gt: startAt },
+          },
+          select: { id: true },
+        });
+        for (const overlap of overlapping) {
+          await withdrawSlotOffers(tx, { businessId: business.id, appointmentId: overlap.id });
+        }
+      }
+
       return { conflict: false };
-    });
+    }));
 
     if (txResult.conflict) {
       return {
@@ -456,7 +646,8 @@ export async function saveAppointmentAction(
 
     revalidateCalendarSurfaces(
       [payload.clientId, previousClientId],
-      [staffMemberId, previousStaffMemberId]
+      [staffMemberId, previousStaffMemberId],
+      [appointmentId]
     );
 
     if (wasNewlyCancelled) {
@@ -512,8 +703,15 @@ export async function saveAppointmentAction(
 }
 
 export async function cancelAppointmentAction(
-  appointmentId: string
+  rawAppointmentId: string
 ): Promise<CancelAppointmentResult> {
+  // A non-string id would cancel every open appointment in the workspace.
+  const appointmentId = parseRecordId(rawAppointmentId);
+
+  if (!appointmentId) {
+    return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
+  }
+
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -531,12 +729,12 @@ export async function cancelAppointmentAction(
       ok: false,
       error:
         outcome.status === 404
-          ? "Appointment not found in this clinic workspace."
+          ? APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR
           : outcome.error,
     };
   }
 
-  revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId]);
+  revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId], [outcome.appointmentId]);
 
   if (outcome.changed) {
     await notifyStaffOfAppointmentChange(business.id, outcome.staffMemberId, outcome.appointmentId);
@@ -548,9 +746,137 @@ export async function cancelAppointmentAction(
   };
 }
 
+export type RecordAttendanceResult = {
+  ok: boolean;
+  error?: string;
+  /** The appointment's new status, so the calendar can update in place. */
+  status?: CalendarAppointmentStatus;
+  /**
+   * The client this appointment actually belongs to server-side — not
+   * necessarily the caller's locally-cached copy, which can be stale if
+   * another tab reassigned the appointment to a different client after this
+   * one loaded it. The caller invalidates that client's other cached risk
+   * scores with this, not its own stale value (Codex).
+   */
+  clientId?: string;
+};
+
+/**
+ * Quick "did they come?" correction from the calendar popover. Lighter than the
+ * full edit save — no business-hours or conflict re-validation, because only the
+ * status changes. Pro only; the plan is re-checked here, not just in the UI.
+ */
+export async function recordAppointmentAttendanceAction(
+  rawAppointmentId: string,
+  attended: boolean
+): Promise<RecordAttendanceResult> {
+  const appointmentId = parseRecordId(rawAppointmentId);
+
+  if (!appointmentId) {
+    return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
+  }
+
+  const context = await getAuthedBusiness();
+
+  if ("error" in context) {
+    return { ok: false, error: context.error };
+  }
+
+  const business = context.business;
+
+  if (!isProBusinessPlan(business.plan)) {
+    return { ok: false, error: NO_SHOW_PLAN_ERROR };
+  }
+
+  const outcome = await recordAppointmentAttendanceCore({
+    id: appointmentId,
+    businessId: business.id,
+    attended,
+  });
+
+  if (!outcome.ok) {
+    return {
+      ok: false,
+      error:
+        outcome.status === 404
+          ? APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR
+          : outcome.error,
+    };
+  }
+
+  if (outcome.changed) {
+    revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId], [outcome.appointmentId]);
+  }
+
+  return { ok: true, status: attended ? "completed" : "no-show", clientId: outcome.clientId };
+}
+
+/**
+ * Batched risk lookup for whatever's currently on screen (a quick-view
+ * popover, one Day-view column). Pro only — a Basic workspace gets an empty
+ * object, not an error, so the UI can call this unconditionally and just get
+ * nothing back to render.
+ */
+export async function getNoShowRiskAction(
+  appointmentIds: string[]
+): Promise<Record<string, NoShowRiskAssessment>> {
+  // Client-supplied, so keep only plain id strings (see lib/record-id.ts) — an
+  // object like `{ not: "" }` would otherwise become part of the Prisma `in:`
+  // filter below instead of being silently dropped. Capped at the batch size
+  // the UI can ever ask for.
+  const ids = Array.isArray(appointmentIds)
+    ? appointmentIds.slice(0, MAX_RISK_BATCH_SIZE).flatMap((id) => parseRecordId(id) ?? [])
+    : [];
+
+  if (ids.length === 0) {
+    return {};
+  }
+
+  const context = await getAuthedBusiness();
+
+  if ("error" in context) {
+    return {};
+  }
+
+  const business = context.business;
+
+  if (!isProBusinessPlan(business.plan)) {
+    return {};
+  }
+
+  const rows = await prisma.appointment.findMany({
+    where: {
+      id: { in: ids },
+      businessId: business.id,
+      status: { in: ["PENDING", "CONFIRMED"] },
+    },
+    select: { id: true, clientId: true, startAt: true, createdAt: true, status: true },
+  });
+
+  const assessments = await getNoShowRiskAssessments({
+    businessId: business.id,
+    appointments: rows.map((row) => ({
+      id: row.id,
+      clientId: row.clientId,
+      startAt: row.startAt,
+      createdAt: row.createdAt,
+      status: row.status as "PENDING" | "CONFIRMED",
+    })),
+  });
+
+  return Object.fromEntries(assessments);
+}
+
 export async function deleteAppointmentAction(
-  appointmentId: string
+  rawAppointmentId: string
 ): Promise<DeleteAppointmentResult> {
+  // A non-string id would delete every appointment in the workspace.
+  const appointmentId = parseRecordId(rawAppointmentId);
+
+  if (!appointmentId) {
+    return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
+  }
+
   const context = await getAuthedBusiness();
 
   if ("error" in context) {
@@ -568,12 +894,12 @@ export async function deleteAppointmentAction(
       ok: false,
       error:
         outcome.status === 404
-          ? "Appointment not found in this clinic workspace."
+          ? APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR
           : outcome.error,
     };
   }
 
-  revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId]);
+  revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId], [outcome.appointmentId]);
 
   // No deep link — the row is gone, unlike a cancel which keeps it (status only).
   await notifyStaffOfAppointmentChange(business.id, outcome.staffMemberId, null);

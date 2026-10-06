@@ -1,0 +1,148 @@
+import { describe, expect, it } from "vitest";
+import { scoreNoShowRisk, type NoShowRiskPastVisit } from "@/lib/no-show-risk";
+
+const BASE_APPT = { startAt: new Date("2026-07-10T09:00:00Z"), createdAt: new Date("2026-07-05T09:00:00Z"), status: "CONFIRMED" as const, reminderSent: false };
+
+function visit(
+  status: NoShowRiskPastVisit["status"],
+  startAt: string,
+  cancelledAt: string | null = startAt,
+  cancelledScheduledStartAt: string | null = startAt
+): NoShowRiskPastVisit {
+  return {
+    status,
+    startAt: new Date(startAt),
+    cancelledAt: cancelledAt === null ? null : new Date(cancelledAt),
+    cancelledScheduledStartAt: cancelledScheduledStartAt === null ? null : new Date(cancelledScheduledStartAt),
+  };
+}
+
+describe("scoreNoShowRisk", () => {
+  it("says 'not enough history' with fewer than 2 past visits", () => {
+    expect(scoreNoShowRisk([], BASE_APPT)).toEqual({
+      level: "low",
+      reasons: ["Not enough visit history yet"],
+      insufficientHistory: true,
+    });
+    expect(scoreNoShowRisk([visit("COMPLETED", "2026-06-01T09:00:00Z")], BASE_APPT)).toMatchObject({
+      insufficientHistory: true,
+    });
+  });
+
+  it("is low with a clean history and no other signals", () => {
+    const history = [visit("COMPLETED", "2026-06-01T09:00:00Z"), visit("COMPLETED", "2026-05-01T09:00:00Z")];
+    expect(scoreNoShowRisk(history, BASE_APPT)).toEqual({ level: "low", reasons: [], insufficientHistory: false });
+  });
+
+  it("is high when a recent visit was a no-show", () => {
+    const history = [visit("NO_SHOW", "2026-06-01T09:00:00Z"), visit("COMPLETED", "2026-05-01T09:00:00Z")];
+    const result = scoreNoShowRisk(history, BASE_APPT);
+    expect(result.level).toBe("high");
+    expect(result.reasons[0]).toBe("Missed a recent appointment");
+  });
+
+  it("ignores a no-show outside the last 5 finalized visits", () => {
+    const old = visit("NO_SHOW", "2020-01-01T09:00:00Z");
+    const recentClean = Array.from({ length: 5 }, (_, i) => visit("COMPLETED", `2026-0${i + 1}-01T09:00:00Z`));
+    expect(scoreNoShowRisk([old, ...recentClean], BASE_APPT).level).toBe("low");
+  });
+
+  it("ranks recency by the frozen cancelledScheduledStartAt for a CANCELLED visit, not its mutable startAt (CodeRabbit #129)", () => {
+    // A still-cancelled booking whose startAt was later dragged far into the
+    // future (its real, original schedule — frozen in cancelledScheduledStartAt
+    // — was actually the oldest visit here). Sorting by raw startAt would rank
+    // it #1 and push the real no-show below it out of the 5-visit window,
+    // hiding "Missed a recent appointment" entirely; sorting by the frozen
+    // schedule correctly ranks it last instead.
+    const movedFarOut = visit("CANCELLED", "2030-01-01T09:00:00Z", "2023-12-31T08:00:00Z", "2024-01-01T09:00:00Z");
+    const realNoShow = visit("NO_SHOW", "2026-06-01T09:00:00Z");
+    const fourNewerClean = Array.from({ length: 4 }, (_, i) => visit("COMPLETED", `2026-${String(i + 7).padStart(2, "0")}-01T09:00:00Z`));
+    const result = scoreNoShowRisk([movedFarOut, realNoShow, ...fourNewerClean], BASE_APPT);
+    expect(result.level).toBe("high");
+    expect(result.reasons).toContain("Missed a recent appointment");
+  });
+
+  it("is medium for a same-day (late) cancellation, but not for an early one", () => {
+    const late = [
+      visit("CANCELLED", "2026-06-01T09:00:00Z", "2026-06-01T02:00:00Z"), // cancelled 7h before start
+      visit("COMPLETED", "2026-05-01T09:00:00Z"),
+    ];
+    expect(scoreNoShowRisk(late, BASE_APPT)).toMatchObject({ level: "medium", reasons: ["Cancelled last-minute recently"] });
+
+    const early = [
+      visit("CANCELLED", "2026-06-01T09:00:00Z", "2026-05-20T09:00:00Z"), // cancelled 12 days before
+      visit("COMPLETED", "2026-05-01T09:00:00Z"),
+    ];
+    expect(scoreNoShowRisk(early, BASE_APPT)).toMatchObject({ level: "low", reasons: [] });
+  });
+
+  // cancelAppointmentCore has no startAt guard, so a CONFIRMED/PENDING visit
+  // can be cancelled after its own scheduled start — that's at least as late
+  // as a last-minute-before-start cancel and must still count (Codex #129).
+  it("counts a cancellation made after the visit's scheduled start as late, not as 'early' from the negative gap", () => {
+    const cancelledAfterStart = [
+      visit("CANCELLED", "2026-06-01T09:00:00Z", "2026-06-01T10:00:00Z"), // cancelled 1h AFTER its own start
+      visit("COMPLETED", "2026-05-01T09:00:00Z"),
+    ];
+    expect(scoreNoShowRisk(cancelledAfterStart, BASE_APPT)).toMatchObject({
+      level: "medium",
+      reasons: ["Cancelled last-minute recently"],
+    });
+  });
+
+  it("gives no late-cancel signal from a null cancelledAt (a row cancelled before the column existed) — never falls back to updatedAt (Codex #129)", () => {
+    const noTimestamp = [
+      visit("CANCELLED", "2026-06-01T09:00:00Z", null),
+      visit("COMPLETED", "2026-05-01T09:00:00Z"),
+    ];
+    expect(scoreNoShowRisk(noTimestamp, BASE_APPT)).toMatchObject({ level: "low", reasons: [] });
+  });
+
+  it("judges lateness against the schedule frozen at cancellation, not startAt — which can move afterward (editing a still-cancelled booking's time is supported) (Codex #129)", () => {
+    // Cancelled 12 days ahead of its original 2026-06-01 time (not late) —
+    // if the still-cancelled booking is later rescheduled to 2026-06-20,
+    // recomputing lateness from the NEW startAt would wrongly read this as
+    // "cancelled 12 days before 2026-06-20", nowhere near the real gap.
+    const movedAfterEarlyCancel = [
+      visit("CANCELLED", "2026-06-20T09:00:00Z", "2026-05-20T09:00:00Z", "2026-06-01T09:00:00Z"),
+      visit("COMPLETED", "2026-05-01T09:00:00Z"),
+    ];
+    expect(scoreNoShowRisk(movedAfterEarlyCancel, BASE_APPT)).toMatchObject({ level: "low", reasons: [] });
+
+    // Cancelled 3h before its original time (genuinely late) — moving the
+    // still-cancelled booking's startAt further out must not erase that.
+    const movedAfterLateCancel = [
+      visit("CANCELLED", "2026-06-20T09:00:00Z", "2026-06-01T06:00:00Z", "2026-06-01T09:00:00Z"),
+      visit("COMPLETED", "2026-05-01T09:00:00Z"),
+    ];
+    expect(scoreNoShowRisk(movedAfterLateCancel, BASE_APPT)).toMatchObject({
+      level: "medium",
+      reasons: ["Cancelled last-minute recently"],
+    });
+  });
+
+  it("is medium for an unconfirmed reminder on a still-pending appointment", () => {
+    const history = [visit("COMPLETED", "2026-06-01T09:00:00Z"), visit("COMPLETED", "2026-05-01T09:00:00Z")];
+    const pending = { ...BASE_APPT, status: "PENDING" as const, reminderSent: true };
+    expect(scoreNoShowRisk(history, pending)).toMatchObject({ level: "medium", reasons: ["Hasn't confirmed the reminder"] });
+
+    const confirmed = { ...BASE_APPT, status: "CONFIRMED" as const, reminderSent: true };
+    expect(scoreNoShowRisk(history, confirmed).reasons).not.toContain("Hasn't confirmed the reminder");
+  });
+
+  it("is low-scoring for a long lead time alone, but still names it as a reason", () => {
+    const history = [visit("COMPLETED", "2026-06-01T09:00:00Z"), visit("COMPLETED", "2026-05-01T09:00:00Z")];
+    const farOut = { ...BASE_APPT, startAt: new Date("2026-08-15T09:00:00Z"), createdAt: new Date("2026-07-01T09:00:00Z") };
+    const result = scoreNoShowRisk(history, farOut);
+    expect(result.level).toBe("low");
+    expect(result.reasons).toContain("Booked far in advance");
+  });
+
+  it("stacks signals and orders reasons by weight, most important first", () => {
+    const history = [visit("NO_SHOW", "2026-06-01T09:00:00Z"), visit("COMPLETED", "2026-05-01T09:00:00Z")];
+    const pending = { ...BASE_APPT, status: "PENDING" as const, reminderSent: true };
+    const result = scoreNoShowRisk(history, pending);
+    expect(result.level).toBe("high");
+    expect(result.reasons).toEqual(["Missed a recent appointment", "Hasn't confirmed the reminder"]);
+  });
+});

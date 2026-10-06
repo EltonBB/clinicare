@@ -13,6 +13,9 @@ model Business {
   ownerId                String                  @unique
   name                   String
   businessType           String
+  // ISO 4217 code every amount in this workspace is shown in (see lib/currency.ts
+  // for the supported list). Amounts themselves stay integer cents.
+  currency               String                  @default("EUR")
   logoUrl                String?
   // Orphaned 2026-06: the dashboard customizer was removed; no code reads or
   // writes this. Safe to drop in the next schema migration.
@@ -33,15 +36,20 @@ model Business {
   businessHours          BusinessHours[]
   conversations          Conversation[]
   reminderSettings       ReminderSettings?
+  workflowSettings       WorkflowSettings?
   whatsappConnection     WhatsAppConnection?
   whatsappSession        WhatsAppSession?
   whatsappSessionKeys    WhatsAppSessionKey[]
+  whatsappSendKeys       WhatsAppSendKey[]
+  whatsappSentMessages   WhatsAppSentMessage[]
   analyticsSnapshots     AnalyticsSnapshot[]
   staffAccessCodes       StaffAccessCode[]
   staffDevices           StaffDevice[]
   staffThreads           StaffThread[]
   staffNotifications     StaffNotification[]
   pendingStorageCleanups PendingStorageCleanup[]
+  followUpDrafts         FollowUpDraft[]
+  waitlistEntries        WaitlistEntry[]
 }
 
 model BusinessHours {
@@ -60,26 +68,27 @@ model BusinessHours {
 }
 
 model StaffMember {
-  id            String              @id @default(cuid())
-  businessId    String
-  business      Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  name          String
-  role          String
-  email         String?
-  phone         String?
-  profileNote   String?
-  status        StaffStatus         @default(ACTIVE)
-  isActive      Boolean             @default(true)
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-  appointments  Appointment[]
-  timeEntries   StaffTimeEntry[]
-  shifts        StaffShift[]
-  careNotes     ClientCareNote[]
-  accessCodes   StaffAccessCode[]
-  devices       StaffDevice[]
-  threads       StaffThread[]
-  notifications StaffNotification[]
+  id              String              @id @default(cuid())
+  businessId      String
+  business        Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name            String
+  role            String
+  email           String?
+  phone           String?
+  profileNote     String?
+  status          StaffStatus         @default(ACTIVE)
+  isActive        Boolean             @default(true)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  appointments    Appointment[]
+  timeEntries     StaffTimeEntry[]
+  shifts          StaffShift[]
+  careNotes       ClientCareNote[]
+  accessCodes     StaffAccessCode[]
+  devices         StaffDevice[]
+  threads         StaffThread[]
+  notifications   StaffNotification[]
+  waitlistEntries WaitlistEntry[]
 
   @@index([businessId])
 }
@@ -144,6 +153,8 @@ model Client {
   careNotes            ClientCareNote[]
   treatmentPlanItems   ClientTreatmentPlanItem[]
   followUpReminders    ClientFollowUpReminder[]
+  followUpDrafts       FollowUpDraft[]
+  waitlistEntries      WaitlistEntry[]
 
   @@unique([businessId, phone])
   @@index([businessId, isArchived])
@@ -190,23 +201,24 @@ model ClientDocument {
 }
 
 model ClientPayment {
-  id            String       @id @default(cuid())
-  businessId    String
-  clientId      String
-  client        Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  appointmentId String?
-  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
-  amountCents   Int
-  status        String
-  description   String?
-  invoiceNumber String?
-  receiptNumber String?
-  paymentMethod String?
-  billingNote   String?
-  receiptUrl    String?
-  paidAt        DateTime?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id             String          @id @default(cuid())
+  businessId     String
+  clientId       String
+  client         Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  appointmentId  String?
+  appointment    Appointment?    @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  amountCents    Int
+  status         String
+  description    String?
+  invoiceNumber  String?
+  receiptNumber  String?
+  paymentMethod  String?
+  billingNote    String?
+  receiptUrl     String?
+  paidAt         DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  followUpDrafts FollowUpDraft[]
 
   @@index([businessId, clientId, status])
   @@index([businessId, clientId, createdAt])
@@ -353,15 +365,91 @@ model Appointment {
   notes              String?
   createdAt          DateTime                  @default(now())
   updatedAt          DateTime                  @updatedAt
+  // Set exactly once, the moment a row is cancelled, and cleared on
+  // un-cancel — never touched by any other edit. Auto-managed `updatedAt`
+  // is NOT a substitute: it moves on every field edit (including editing a
+  // still-cancelled booking's notes/time/staff/service), so the no-show risk
+  // scorer's late-cancellation signal needs its own, immutable timestamp.
+  // Nullable so pre-migration historical rows simply carry no late-cancel
+  // signal instead of a wrong one.
+  cancelledAt        DateTime?
+  // The row's `startAt` as of that same cancellation — frozen alongside
+  // cancelledAt for the same reason: `startAt` itself can change afterward
+  // (editing a still-cancelled booking's time is a supported flow), and the
+  // late-cancellation signal must compare against the schedule that was
+  // actually true at the cancel, not whatever startAt reads back as later.
+  cancelledScheduledStartAt DateTime?
+  // Goes up by one whenever this booking's reminders are reset (a save that
+  // changes who, when, what or its status; a cancel), and is part of each
+  // reminder's send idempotency key, so a reminder owed again after a reset is
+  // a new message to the WhatsApp worker rather than a repeat of the old one
+  // (Codex #133).
+  reminderGeneration Int                       @default(0)
   reminders          AppointmentReminder[]
   payments           ClientPayment[]
   treatmentPlanItems ClientTreatmentPlanItem[]
+  followUpDrafts     FollowUpDraft[]
 
   @@index([businessId, startAt])
   @@index([businessId, status, startAt])
   @@index([businessId, status, endAt])
   @@index([clientId, startAt])
   @@index([staffMemberId, status, startAt])
+}
+
+model FollowUpDraft {
+  id              String              @id @default(cuid())
+  businessId      String
+  business        Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  clientId        String
+  client          Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  kind            FollowUpDraftKind
+  body            String
+  status          FollowUpDraftStatus @default(PENDING)
+  appointmentId   String?
+  appointment     Appointment?        @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  waitlistEntryId String?
+  waitlistEntry   WaitlistEntry?      @relation(fields: [waitlistEntryId], references: [id], onDelete: SetNull)
+  paymentId       String?
+  payment         ClientPayment?      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  dedupeKey       String
+  expiresAt       DateTime?
+  sentAt          DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@unique([businessId, dedupeKey])
+  @@index([paymentId])
+  @@index([waitlistEntryId])
+  @@index([businessId, status, createdAt])
+  // Postgres doesn't index foreign keys on its own: without these, deleting a
+  // Client (cascade) or an Appointment (SET NULL) scans the whole table.
+  @@index([clientId])
+  @@index([appointmentId])
+}
+
+model WaitlistEntry {
+  id             String              @id @default(cuid())
+  businessId     String
+  business       Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  clientId       String
+  client         Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  service        String
+  staffMemberId  String?
+  staffMember    StaffMember?        @relation(fields: [staffMemberId], references: [id], onDelete: SetNull)
+  earliestDate   DateTime?
+  preferredDays  Int[]               @default([])
+  preferredFrom  String?
+  preferredTo    String?
+  notes          String?
+  status         WaitlistEntryStatus @default(WAITING)
+  followUpDrafts FollowUpDraft[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([businessId, status])
+  @@index([clientId])
+  @@index([staffMemberId])
 }
 
 model AppointmentReminder {
@@ -426,9 +514,26 @@ model Message {
   deliveryErrorCode  String?
   deliveryUpdatedAt  DateTime?
   sentAt             DateTime               @default(now())
+  // applyInboundReplyIntent acts on an inbound confirm/cancel reply at most
+  // once. It first claims the message: a compare-and-set of replyIntentLeaseUntil
+  // from null (or from a lease that has run out) to a time two minutes ahead.
+  // A finished check sets replyIntentHandledAt (the lease stays); a check that
+  // throws clears the lease. A worker redelivery of the same
+  // providerMessageSid that finds the message handled skips it, and one that
+  // finds it leased is told it's still in progress, so a retry can neither
+  // re-send a reply the first attempt already sent nor overlap a first attempt
+  // that is still running (CodeRabbit #130). A lease that runs out was
+  // abandoned by a crashed check: a late retry can claim it again, and the
+  // hourly sweep (handOffAbandonedReplyIntents) hands the rest to staff
+  // (Codex #130, #133). A finished check keeps its lease — the new code's mark,
+  // which the migration's legacy conversion skips. Both null on an outbound
+  // row, or an inbound one nobody has acted on yet.
+  replyIntentHandledAt  DateTime?
+  replyIntentLeaseUntil DateTime?
 
   @@index([conversationId, sentAt])
   @@index([clientId])
+  @@index([replyIntentLeaseUntil])
 }
 
 model ReminderSettings {
@@ -443,6 +548,19 @@ model ReminderSettings {
   secondReminderHours Int      @default(2)
   template            String?
   updatedAt           DateTime @updatedAt
+}
+
+model WorkflowSettings {
+  id                       String   @id @default(cuid())
+  businessId               String   @unique
+  business                 Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  rebookEnabled            Boolean  @default(false)
+  rebookAfterMonths        Int      @default(6)
+  paymentReminderEnabled   Boolean  @default(true)
+  paymentReminderAfterDays Int      @default(3)
+  thankYouEnabled          Boolean  @default(true)
+  thankYouDelayHours       Int      @default(2)
+  updatedAt                DateTime @updatedAt
 }
 
 model WhatsAppConnection {
@@ -499,6 +617,55 @@ model WhatsAppSessionKey {
   @@index([businessId, category])
 }
 
+// The WhatsApp worker's record of each keyed send (POST /send idempotencyKey), so
+// a repeat of a key is never delivered twice — even across a worker restart.
+// `state`: SENDING while an attempt runs (or if the worker died mid-send),
+// SENT once it left, UNKNOWN when it timed out and may have left; a definite
+// failure deletes the row so a retry really sends. `fingerprint` is an HMAC of
+// the recipient and text (keyed with the bridge secret) — never the text itself.
+// Written only by the worker (services/whatsapp-worker/src/send-key-store.ts);
+// rows expire after a week. Non-PHI.
+model WhatsAppSendKey {
+  businessId        String
+  business          Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  key               String
+  fingerprint       String
+  state             String
+  providerMessageId String?
+  expiresAt         DateTime
+  createdAt         DateTime @default(now())
+
+  @@id([businessId, key])
+  @@index([expiresAt])
+}
+
+// A copy of each message the worker sent, kept for a week so it can send it
+// again when the recipient's phone couldn't decrypt it and asks for a resend
+// (otherwise the patient sees "Waiting for this message" for good). `content`
+// is the encoded WhatsApp message - the same minimum-necessary text the app
+// keeps on Message. Written only by the worker
+// (services/whatsapp-worker/src/sent-message-store.ts).
+model WhatsAppSentMessage {
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  messageId  String
+  content    Bytes
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@id([businessId, messageId])
+  @@index([expiresAt])
+}
+
+// Which worker instance may hold WhatsApp connections. One row; a deploy's new
+// instance waits until the old one lets go, so two never run one account at
+// once (services/whatsapp-worker/src/worker-lease.ts). Non-PHI.
+model WhatsAppWorkerLease {
+  id        String   @id
+  holder    String
+  expiresAt DateTime
+}
+
 model EmailVerificationReceipt {
   ticket     String    @id
   email      String?
@@ -536,6 +703,28 @@ enum AppointmentStatus {
   PENDING
   CANCELLED
   COMPLETED
+  NO_SHOW
+}
+
+enum FollowUpDraftKind {
+  SLOT_OFFER
+  REBOOK
+  PAYMENT
+  THANK_YOU
+}
+
+enum FollowUpDraftStatus {
+  PENDING
+  SENT
+  DISMISSED
+  EXPIRED
+}
+
+enum WaitlistEntryStatus {
+  WAITING
+  OFFERED
+  FILLED
+  REMOVED
 }
 
 enum StaffStatus {

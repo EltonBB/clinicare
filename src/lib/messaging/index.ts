@@ -2,21 +2,19 @@ import { normalizePhone } from "@/lib/inbox";
 import { logger } from "@/lib/logger";
 
 import { getMessagingRegistry } from "./configure";
+import {
+  IDEMPOTENCY_KEY_PATTERN,
+  MAX_MESSAGE_BODY_LENGTH,
+  MESSAGE_TOO_LONG_ERROR,
+} from "./limits";
 import { ChannelRegistry } from "./registry";
 import { renderReminder } from "./render";
-
-/**
- * Maximum send-body length. MUST mirror the worker's cap
- * (`services/whatsapp-worker/src/index.ts`). The seam rejects an over-limit body
- * here so the stored message body always equals what the worker actually sends —
- * never a truncated send recorded as the full text.
- */
-const MAX_MESSAGE_BODY = 8000;
-import type {
-  AdapterSendInput,
-  MessageChannel,
-  SendMessageInput,
-  SendMessageResult,
+import {
+  SendOutcomeUnknownError,
+  type AdapterSendInput,
+  type MessageChannel,
+  type SendMessageInput,
+  type SendMessageResult,
 } from "./types";
 
 /**
@@ -119,12 +117,26 @@ export async function sendMessage(
     }
   }
 
-  if (adapterInput.body.length > MAX_MESSAGE_BODY) {
+  if (adapterInput.body.length > MAX_MESSAGE_BODY_LENGTH) {
     return {
       ok: false,
       reason: "message_too_long",
-      error: "The message is too long to send.",
+      error: MESSAGE_TOO_LONG_ERROR,
     };
+  }
+
+  if (input.idempotencyKey !== undefined) {
+    if (IDEMPOTENCY_KEY_PATTERN.test(input.idempotencyKey)) {
+      adapterInput.idempotencyKey = input.idempotencyKey;
+    } else {
+      // A provider would refuse the whole send over a malformed key, so send it
+      // unkeyed (exactly as before keys existed) and flag the bug.
+      logger.warn("Outbound message idempotency key is malformed; sending without it.", {
+        businessId: input.businessId,
+        channel: input.channel,
+        kind: input.message.kind,
+      });
+    }
   }
 
   try {
@@ -136,17 +148,28 @@ export async function sendMessage(
       body: adapterInput.body,
     };
   } catch (error) {
+    const uncertain = error instanceof SendOutcomeUnknownError;
     // Record-id-only, provider-neutral: never log PHI or a provider name.
-    logger.error("Outbound message send failed.", error, {
-      businessId: input.businessId,
-      channel: input.channel,
-      kind: input.message.kind,
-    });
-    return {
-      ok: false,
-      reason: "provider_error",
-      error: "We couldn't send the message. Please try again.",
-    };
+    logger.error(
+      uncertain ? "Outbound message delivery is uncertain." : "Outbound message send failed.",
+      error,
+      {
+        businessId: input.businessId,
+        channel: input.channel,
+        kind: input.message.kind,
+      }
+    );
+    return uncertain
+      ? {
+          ok: false,
+          reason: "delivery_uncertain",
+          error: "We couldn't confirm the message was delivered. It may have reached the recipient.",
+        }
+      : {
+          ok: false,
+          reason: "provider_error",
+          error: "We couldn't send the message. Please try again.",
+        };
   }
 }
 
@@ -158,6 +181,7 @@ export {
 export { DEFAULT_REMINDER_TEMPLATE, renderReminder } from "./render";
 export { EchoAdapter } from "./adapters/echo";
 export { BaileysWhatsAppAdapter } from "./adapters/baileys";
+export { SendOutcomeUnknownError } from "./types";
 export {
   BAILEYS_BRIDGE_HEADER,
   type WorkerInboundEvent,

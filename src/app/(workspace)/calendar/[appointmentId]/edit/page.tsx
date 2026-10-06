@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { NewAppointmentForm } from "@/components/calendar/new-appointment-form";
 import { CreatePageShell } from "@/components/workspace/create-page-shell";
+import { isProBusinessPlan } from "@/lib/billing";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { buildCalendarViewFromRecords } from "@/lib/calendar";
 import { prisma } from "@/lib/prisma";
@@ -118,6 +119,7 @@ export default async function EditAppointmentPage({
         ownerName={ownerName}
         initialDate={initialAppointment.date}
         initialAppointment={initialAppointment}
+        canRecordNoShows={isProBusinessPlan(business.plan)}
       />
     </CreatePageShell>
   );

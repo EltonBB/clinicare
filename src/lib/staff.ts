@@ -1,5 +1,6 @@
 import type { Appointment, StaffMember, StaffShift, StaffTimeEntry } from "@prisma/client";
 
+import { appointmentStatusKey } from "@/lib/appointment-status";
 import {
   formatZonedDateKey,
   formatZonedDayName,
@@ -32,14 +33,12 @@ export type StaffDirectoryItem = {
   status: StaffStatus;
   isCheckedIn: boolean;
   weeklyHours: number;
-  appointmentsToday: number;
   completionRate: number;
   shiftLabel: string;
   nextShift: string;
   canClock: boolean;
   clockLabel: string;
   clockDisabledReason: string;
-  completedThisMonth: number;
   // Unread messages from this staff member in the staff↔admin thread — e.g. a
   // mobile-side cancellation notice. Separate from StaffDirectoryCounts (which
   // is purely appointment-derived) since it comes from a different table and
@@ -127,15 +126,11 @@ type StaffDirectoryWithRelations = StaffMember & {
 
 /** Per-staff appointment counts for the directory, computed in the DB at scale. */
 export type StaffDirectoryCounts = {
-  appointmentsToday: number;
   completionRate: number;
-  completedThisMonth: number;
 };
 
 const EMPTY_STAFF_COUNTS: StaffDirectoryCounts = {
-  appointmentsToday: 0,
   completionRate: 0,
-  completedThisMonth: 0,
 };
 
 /**
@@ -147,17 +142,7 @@ const EMPTY_STAFF_COUNTS: StaffDirectoryCounts = {
 function computeStaffDirectoryCounts(
   appointments: Array<Pick<Appointment, "startAt" | "status">>
 ): StaffDirectoryCounts {
-  const todayKey = formatZonedDateKey();
-
-  return {
-    appointmentsToday: appointments.filter(
-      (appointment) => formatZonedDateKey(appointment.startAt) === todayKey
-    ).length,
-    completionRate: calculateCompletionRate(appointments),
-    completedThisMonth: appointments.filter(
-      (appointment) => appointment.status === "COMPLETED" && isThisMonth(appointment.startAt)
-    ).length,
-  };
+  return { completionRate: calculateCompletionRate(appointments) };
 }
 
 function normalizeStaffStatus(value: StaffMember["status"]): StaffStatus {
@@ -199,11 +184,6 @@ function calculateWeeklyHours(entries: Pick<StaffTimeEntry, "checkedInAt" | "che
   }, 0);
 
   return Number((minutes / 60).toFixed(1));
-}
-
-function isThisMonth(date: Date) {
-  // Compare the zoned YYYY-MM prefixes so month boundaries follow the clinic zone.
-  return formatZonedDateKey(date).slice(0, 7) === formatZonedDateKey().slice(0, 7);
 }
 
 function formatShift(startsAt?: Date, endsAt?: Date) {
@@ -349,9 +329,12 @@ export function findActiveShiftWindow(
   );
 }
 
-function calculateCompletionRate(appointments: Pick<Appointment, "status">[]) {
+export function calculateCompletionRate(appointments: Pick<Appointment, "status">[]) {
   const finalized = appointments.filter(
-    (appointment) => appointment.status === "COMPLETED" || appointment.status === "CANCELLED"
+    (appointment) =>
+      appointment.status === "COMPLETED" ||
+      appointment.status === "CANCELLED" ||
+      appointment.status === "NO_SHOW"
   );
 
   if (finalized.length === 0) {
@@ -396,14 +379,12 @@ export function buildStaffDirectoryRecord(
     status: normalizedStatus,
     isCheckedIn,
     weeklyHours: calculateWeeklyHours(member.timeEntries),
-    appointmentsToday: counts.appointmentsToday,
     completionRate: counts.completionRate,
     shiftLabel: todayShift ? formatShift(todayShift.startsAt, todayShift.endsAt) : "",
     nextShift: nextShiftLabel(member.shifts),
     canClock: clock.canClock,
     clockLabel: clock.clockLabel,
     clockDisabledReason: clock.clockDisabledReason,
-    completedThisMonth: counts.completedThisMonth,
     unreadMessages,
     hasUnseenCheckIn,
   };
@@ -431,7 +412,7 @@ export function buildStaffRecord(member: StaffWithRelations): StaffRecord {
         title: appointment.title,
         clientName: appointment.client.name,
         time: formatZonedTime(appointment.startAt),
-        status: appointment.status,
+        status: appointmentStatusKey(appointment.status),
       })),
     recentAppointments: completedAppointments.slice(0, 5).map((appointment) => ({
       id: appointment.id,

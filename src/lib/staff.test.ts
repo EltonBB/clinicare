@@ -4,6 +4,7 @@ import {
   CHECK_IN_EARLY_GRACE_MS,
   buildStaffDirectoryRecord,
   buildStaffViewFromRecords,
+  calculateCompletionRate,
   completedAppointmentCutoff,
   findActiveShiftWindow,
 } from "@/lib/staff";
@@ -171,5 +172,22 @@ describe("completedAppointmentCutoff", () => {
     vi.setSystemTime(new Date("2026-06-01T00:30:00.000Z"));
 
     expect(completedAppointmentCutoff().toISOString()).toBe("2026-05-31T22:00:00.000Z");
+  });
+});
+
+describe("calculateCompletionRate", () => {
+  it("counts a no-show as a finalized visit that was not completed", () => {
+    expect(
+      calculateCompletionRate([
+        { status: "COMPLETED" },
+        { status: "COMPLETED" },
+        { status: "NO_SHOW" },
+        { status: "CANCELLED" },
+      ])
+    ).toBe(50);
+  });
+
+  it("ignores visits that are not finalized yet", () => {
+    expect(calculateCompletionRate([{ status: "CONFIRMED" }, { status: "PENDING" }])).toBe(0);
   });
 });

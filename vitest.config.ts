@@ -12,6 +12,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    // The WhatsApp worker's pure modules (no Baileys/Express imports) are tested here too.
+    include: ["src/**/*.test.ts", "services/whatsapp-worker/src/**/*.test.ts"],
   },
 });

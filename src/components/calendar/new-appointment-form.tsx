@@ -43,7 +43,11 @@ type NewAppointmentFormProps = {
   initialClientId?: string;
   initialDate: string;
   initialStartTime?: string;
+  initialService?: string;
+  initialStaffMemberId?: string;
+  initialDuration?: number;
   initialAppointment?: CalendarAppointment;
+  canRecordNoShows?: boolean;
 };
 
 const statusOptions: CalendarAppointmentStatus[] = [
@@ -51,6 +55,7 @@ const statusOptions: CalendarAppointmentStatus[] = [
   "pending",
   "cancelled",
   "completed",
+  "no-show",
 ];
 
 function minutesToTime(minutes: number) {
@@ -84,7 +89,11 @@ export function NewAppointmentForm({
   initialClientId,
   initialDate,
   initialStartTime,
+  initialService,
+  initialStaffMemberId,
+  initialDuration,
   initialAppointment,
+  canRecordNoShows = false,
 }: NewAppointmentFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -94,7 +103,7 @@ export function NewAppointmentForm({
     initialAppointment?.clientId ?? initialClientId ?? clients[0]?.id ?? ""
   );
   const [staffMemberId, setStaffMemberId] = useState(
-    initialAppointment?.staffMemberId ?? staffMembers[0]?.id ?? ""
+    initialAppointment?.staffMemberId ?? initialStaffMemberId ?? staffMembers[0]?.id ?? ""
   );
   const [date, setDate] = useState(initialAppointment?.date ?? initialDate);
   const [startTime, setStartTime] = useState(
@@ -106,8 +115,17 @@ export function NewAppointmentForm({
     : 0;
   // Every positive saved length is kept exactly (a short remainder before
   // closing can be under 15 minutes); only a corrupt zero/negative range falls
-  // back to one 15-minute slot.
-  const savedDuration = initialAppointment ? (savedMinutes > 0 ? savedMinutes : 15) : null;
+  // back to one 15-minute slot. A fresh booking pre-filled from a freed
+  // waiting-list slot (initialDuration) is treated the same way, so a
+  // non-15-minute opening (e.g. 20 or 40 minutes) survives instead of
+  // silently rounding to the 60-minute default (Codex).
+  const savedDuration = initialAppointment
+    ? savedMinutes > 0
+      ? savedMinutes
+      : 15
+    : initialDuration && initialDuration > 0
+      ? initialDuration
+      : null;
   const [duration, setDuration] = useState(savedDuration ?? 60);
   const [status, setStatus] = useState<CalendarAppointmentStatus>(
     initialAppointment?.status ?? "confirmed"
@@ -119,15 +137,19 @@ export function NewAppointmentForm({
     initialAppointment?.status ?? "confirmed"
   );
   const isEditing = Boolean(initialAppointment);
-  // A completed visit already happened — offering "Cancelled" here would let
-  // someone pick an option the server refuses outright (see
-  // saveAppointmentAction's matching guard). Other corrections away from
-  // completed stay available. No useMemo: baselineStatus is frozen at mount
-  // (no setter), so this can never recompute to a different value anyway.
-  const editStatusOptions =
-    baselineStatus === "completed"
-      ? statusOptions.filter((option) => option !== "cancelled")
-      : statusOptions;
+  // "Cancelled" isn't offered on a completed or no-show visit (the server
+  // refuses it — a no-show is undone with "Mark as attended"), and
+  // "No-show" is a Pro option that isn't offered on a cancelled visit either
+  // (the server refuses cancelled -> no-show) — but a visit that is already a
+  // no-show keeps it listed so the dropdown never shows a blank. No useMemo:
+  // baselineStatus is frozen at mount, so this can never recompute to a
+  // different value anyway.
+  const editStatusOptions = statusOptions.filter(
+    (option) =>
+      (option !== "cancelled" || (baselineStatus !== "completed" && baselineStatus !== "no-show")) &&
+      (option !== "no-show" || canRecordNoShows || baselineStatus === "no-show") &&
+      (option !== "no-show" || baselineStatus !== "cancelled")
+  );
   const selectedHours = useMemo(
     () => businessHoursForDate(date, businessHours),
     [businessHours, date]
@@ -163,7 +185,10 @@ export function NewAppointmentForm({
   // date and start are unchanged — then even if the clinic's hours shrank past
   // it, an unrelated edit (notes, status) must not silently shorten it; the
   // server refuses it with a clear message instead. A moved booking whose length
-  // no longer fits only gets lengths that do.
+  // no longer fits only gets lengths that do. A fresh booking pre-filled from a
+  // freed slot (initialDuration, no initialAppointment) falls into the same
+  // "still fits" branch — keepsSavedSlot is always false with nothing to keep
+  // the date/start unchanged from.
   const keepsSavedSlot =
     initialAppointment !== undefined &&
     date === initialAppointment.date &&
@@ -292,7 +317,7 @@ export function NewAppointmentForm({
             <Input
               name="service"
               required
-              defaultValue={initialAppointment?.service}
+              defaultValue={initialAppointment?.service ?? initialService}
               className={fieldInputClass}
             />
           </FormField>
@@ -369,7 +394,12 @@ export function NewAppointmentForm({
           <>
             <DestructiveTextButton
               onClick={() => setConfirmingAction("cancel")}
-              disabled={isPending || status === "cancelled" || baselineStatus === "completed"}
+              disabled={
+                isPending ||
+                status === "cancelled" ||
+                baselineStatus === "completed" ||
+                baselineStatus === "no-show"
+              }
             >
               Cancel booking
             </DestructiveTextButton>
