@@ -51,13 +51,14 @@ async function firstRefusal(
   businessId: string,
   rules: RateLimitRule[]
 ): Promise<SendRefusal | null> {
+  // Every rule is checked: with the minute and the hour both spent, the wait
+  // to name is the longer one, not the first refusal's (Codex #136).
+  let retryAfterSeconds = 0;
   for (const rule of rules) {
     const result = await checkRateLimit(`${prefix}:${rule.windowMs}:${businessId}`, rule);
-    if (!result.allowed) {
-      return { error: sendWaitMessage(result.retryAfterSeconds), retryAfterSeconds: result.retryAfterSeconds };
-    }
+    if (!result.allowed) retryAfterSeconds = Math.max(retryAfterSeconds, result.retryAfterSeconds);
   }
-  return null;
+  return retryAfterSeconds > 0 ? { error: sendWaitMessage(retryAfterSeconds), retryAfterSeconds } : null;
 }
 
 /**

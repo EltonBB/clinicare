@@ -20,9 +20,11 @@
  *
  * ~25s (WORKER_SEND_TIMEOUT_MS in the Baileys adapter) doubled for the
  * provider-error breaker's 2-consecutive-failure cap, plus headroom for the
- * database work around each send.
+ * database work around each send — and room for one full wait on the
+ * clinic's per-minute sending window plus RATE_LIMIT_WAIT_HEADROOM_MS, so a
+ * clinic that fills that window in this run still sends past it (Codex #136).
  */
-export const PER_BUSINESS_TIMEOUT_MS = 90_000;
+export const PER_BUSINESS_TIMEOUT_MS = 120_000;
 
 /**
  * Room a business keeps after waiting out the clinic's per-minute sending

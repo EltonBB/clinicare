@@ -107,6 +107,30 @@ describe("syncAppointmentRemindersForBusiness", () => {
     expect(mocks.appointmentReminder.upsert).not.toHaveBeenCalled();
   });
 
+  // Codex #136: when this run filled the window itself, about a minute has gone
+  // by (sends plus the wait), and the wait must still be taken.
+  it("waits out a full minute window the run filled itself", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.appointment.findMany.mockResolvedValue([appointmentIn(1, "appt_1"), appointmentIn(1.2, "appt_2")]);
+      mocks.sendMessage
+        .mockImplementationOnce(async () => {
+          vi.setSystemTime(Date.now() + 25_000);
+          return { ok: true, providerMessageId: "m", status: "SENT", body: "Hi" };
+        })
+        .mockResolvedValueOnce({ ok: false, reason: "rate_limited", error: "x", retryAfterSeconds: 36 })
+        .mockResolvedValueOnce({ ok: true, providerMessageId: "m", status: "SENT", body: "Hi" });
+
+      const run = syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+      await vi.advanceTimersByTimeAsync(36_000);
+      await run;
+
+      expect(mocks.sendMessage).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // Codex #136: a full minute window is waited out, not deferred an hour, so a
   // visit starting before the next run still gets its reminder.
   it("waits out a full minute window, then sends the reminder", async () => {

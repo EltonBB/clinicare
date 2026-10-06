@@ -26,6 +26,14 @@ describe("manualSendRefusal", () => {
     );
   });
 
+  // Codex #136: with both spent, the wait named is the hour's, not the minute's.
+  it("names the longer wait when the minute and hour budgets are both spent", async () => {
+    checkRateLimit.mockResolvedValueOnce(refused).mockResolvedValueOnce({ ...refused, retryAfterSeconds: 1_501 });
+    await expect(manualSendRefusal("biz_1")).resolves.toBe(
+      "You've sent a lot of messages in a short time. Wait about 26 minutes, then send again."
+    );
+  });
+
   // Codex #136: the hourly budget's wait is not "a minute".
   it("names the hourly wait when the hour budget is spent", async () => {
     checkRateLimit.mockResolvedValueOnce(allowed).mockResolvedValueOnce({ ...refused, retryAfterSeconds: 1_501 });
