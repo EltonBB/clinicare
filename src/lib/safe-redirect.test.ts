@@ -19,6 +19,11 @@ describe("safeRedirectPath", () => {
     "/\n/evil.com",
     "/\r\n/evil.com",
     "/\t\\evil.com",
+    // Dot segments that resolve to "//evil.com" (Codex #135).
+    "/..//evil.com",
+    "/%2e%2e//evil.com",
+    "/a/..//evil.com",
+    "/.//evil.com",
     "https://evil.com",
     "javascript:alert(1)",
     "evil.com",
