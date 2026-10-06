@@ -40,9 +40,14 @@ describe("sendMessage clinic ceiling", () => {
 
   it("holds the send back, sending nothing, once the clinic is at its ceiling", async () => {
     const { registry, send } = whatsapp();
-    clinicSendRefusal.mockResolvedValue(WAIT);
+    clinicSendRefusal.mockResolvedValue({ error: WAIT, retryAfterSeconds: 42 });
 
-    await expect(sendMessage(INPUT, registry)).resolves.toEqual({ ok: false, reason: "rate_limited", error: WAIT });
+    await expect(sendMessage(INPUT, registry)).resolves.toEqual({
+      ok: false,
+      reason: "rate_limited",
+      error: WAIT,
+      retryAfterSeconds: 42,
+    });
     expect(send).not.toHaveBeenCalled();
   });
 

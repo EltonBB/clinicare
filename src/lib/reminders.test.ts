@@ -97,14 +97,39 @@ describe("syncAppointmentRemindersForBusiness", () => {
 
   // Codex #136: at the clinic's sending ceiling nothing went out, so nothing is
   // recorded and the rest of the run waits for the next hour.
-  it("stops the run at the clinic's sending ceiling without recording anything", async () => {
+  it("stops the run at the clinic's hourly ceiling without recording anything", async () => {
     mocks.appointment.findMany.mockResolvedValue([appointmentIn(1, "appt_1"), appointmentIn(1.2, "appt_2")]);
-    mocks.sendMessage.mockResolvedValue({ ok: false, reason: "rate_limited", error: "x" });
+    mocks.sendMessage.mockResolvedValue({ ok: false, reason: "rate_limited", error: "x", retryAfterSeconds: 1_500 });
 
     await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
 
     expect(mocks.sendMessage).toHaveBeenCalledTimes(1);
     expect(mocks.appointmentReminder.upsert).not.toHaveBeenCalled();
+  });
+
+  // Codex #136: a full minute window is waited out, not deferred an hour, so a
+  // visit starting before the next run still gets its reminder.
+  it("waits out a full minute window, then sends the reminder", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.appointment.findMany.mockResolvedValue([appointmentIn(1, "appt_1")]);
+      mocks.sendMessage
+        .mockResolvedValueOnce({ ok: false, reason: "rate_limited", error: "x", retryAfterSeconds: 40 })
+        .mockResolvedValueOnce({ ok: true, providerMessageId: "m", status: "SENT", body: "Hi" });
+
+      const run = syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+      await vi.advanceTimersByTimeAsync(39_000);
+      expect(mocks.sendMessage).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await run;
+
+      expect(mocks.sendMessage).toHaveBeenCalledTimes(2);
+      expect(mocks.appointmentReminder.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ create: expect.objectContaining({ status: "SENT" }) })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("counts uncertain sends toward the breaker that stops a run against a stalled link", async () => {

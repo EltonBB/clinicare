@@ -44,10 +44,18 @@ function sendWaitMessage(retryAfterSeconds: number): string {
   }, then send again.`;
 }
 
-async function firstRefusal(prefix: string, businessId: string, rules: RateLimitRule[]) {
+export type SendRefusal = { error: string; retryAfterSeconds: number };
+
+async function firstRefusal(
+  prefix: string,
+  businessId: string,
+  rules: RateLimitRule[]
+): Promise<SendRefusal | null> {
   for (const rule of rules) {
     const result = await checkRateLimit(`${prefix}:${rule.windowMs}:${businessId}`, rule);
-    if (!result.allowed) return sendWaitMessage(result.retryAfterSeconds);
+    if (!result.allowed) {
+      return { error: sendWaitMessage(result.retryAfterSeconds), retryAfterSeconds: result.retryAfterSeconds };
+    }
   }
   return null;
 }
@@ -56,15 +64,16 @@ async function firstRefusal(prefix: string, businessId: string, rules: RateLimit
  * Null while the clinic is within its staff-send budget; otherwise the message
  * to show, naming the wait the blocking rule actually imposes.
  */
-export function manualSendRefusal(businessId: string): Promise<string | null> {
-  return firstRefusal("whatsapp-manual", businessId, MANUAL_SEND_LIMITS);
+export async function manualSendRefusal(businessId: string): Promise<string | null> {
+  return (await firstRefusal("whatsapp-manual", businessId, MANUAL_SEND_LIMITS))?.error ?? null;
 }
 
 /**
  * Null while the clinic's number is within its overall ceiling; otherwise the
- * message to show. Checked by sendMessage for every WhatsApp send.
+ * message to show and how long until a send fits again. Checked by sendMessage
+ * for every WhatsApp send.
  */
-export function clinicSendRefusal(businessId: string): Promise<string | null> {
+export function clinicSendRefusal(businessId: string): Promise<SendRefusal | null> {
   return firstRefusal("whatsapp-all", businessId, CLINIC_SEND_LIMITS);
 }
 

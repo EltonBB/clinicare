@@ -149,7 +149,12 @@ export async function sendMessage(
         channel: input.channel,
         kind: input.message.kind,
       });
-      return { ok: false, reason: "rate_limited", error: refusal };
+      return {
+        ok: false,
+        reason: "rate_limited",
+        error: refusal.error,
+        retryAfterSeconds: refusal.retryAfterSeconds,
+      };
     }
   }
 

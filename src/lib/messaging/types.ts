@@ -104,6 +104,8 @@ export type SendMessageResult =
       reason: SendFailureReason;
       /** Customer-safe, provider-neutral copy. Never carries provider/PHI. */
       error: string;
+      /** Set for "rate_limited": seconds until the clinic's ceiling lets a send through. */
+      retryAfterSeconds?: number;
     };
 
 /** Resolved, provider-ready payload handed to an adapter. */

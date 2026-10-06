@@ -322,11 +322,14 @@ export async function sendInboxMessageAction(
   });
 
   if (!result.ok) {
-    logger.error("WhatsApp outbound send failed.", undefined, {
-      businessId: context.business.id,
-      conversationId,
-      reason: result.reason,
-    });
+    // The clinic's sending ceiling refusing a send is the limiter working, not
+    // a fault: a warning, not an error report (Codex #136).
+    const failureContext = { businessId: context.business.id, conversationId, reason: result.reason };
+    if (result.reason === "rate_limited") {
+      logger.warn("WhatsApp outbound send held back by the clinic's sending ceiling.", failureContext);
+    } else {
+      logger.error("WhatsApp outbound send failed.", undefined, failureContext);
+    }
     // Only a genuine provider/connection failure flags the clinic's shared
     // connection as errored. A bad recipient or empty body is a per-message
     // problem — marking the whole connection ERRORED for it would wrongly
