@@ -643,7 +643,7 @@ export type MobileAccessResult = {
   code?: string;
 };
 
-async function requireOwnedStaff(rawStaffId: unknown, options?: { actionBudget?: boolean }) {
+async function requireOwnedStaff(rawStaffId: unknown, options?: { budget?: "actions" | "background" }) {
   const staffId = parseRecordId(rawStaffId);
   if (!staffId) {
     return { error: "Staff member not found." } as const;
@@ -775,8 +775,8 @@ export async function sendStaffMessageAction(
 }
 
 export async function markStaffThreadReadAction(staffId: string): Promise<StaffMessageResult> {
-  // An acknowledgement the tab fires once and never retries: not budgeted.
-  const owned = await requireOwnedStaff(staffId, { actionBudget: false });
+  // An acknowledgement the tab fires once and never retries: background allowance.
+  const owned = await requireOwnedStaff(staffId, { budget: "background" });
   if ("error" in owned) {
     return { ok: false, error: owned.error };
   }
@@ -804,8 +804,8 @@ export async function markStaffThreadReadAction(staffId: string): Promise<StaffM
  * instance (same tradeoff as the bell's per-category visible-list cap).
  */
 export async function markStaffCheckInsSeenAction(staffId: string): Promise<StaffMessageResult> {
-  // An acknowledgement the page fires once and never retries: not budgeted.
-  const owned = await requireOwnedStaff(staffId, { actionBudget: false });
+  // An acknowledgement the page fires once and never retries: background allowance.
+  const owned = await requireOwnedStaff(staffId, { budget: "background" });
   if ("error" in owned) {
     return { ok: false, error: owned.error };
   }

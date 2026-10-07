@@ -29,15 +29,30 @@ describe("getAuthedBusiness action budget", () => {
     expect(mocks.businessFindFirst).not.toHaveBeenCalled();
   });
 
-  // Codex #140: a read/seen acknowledgement is fired once and never retried.
-  it("lets an acknowledgement through without spending the budget", async () => {
-    mocks.checkRateLimit.mockResolvedValue({ allowed: false, remaining: 0, retryAfterSeconds: 20 });
+  // Codex #140: a read/seen acknowledgement is fired once and never retried, so
+  // it spends its own allowance (still capped) rather than the shared budget.
+  it("checks an acknowledgement against the background allowance only", async () => {
+    mocks.checkRateLimit.mockImplementation(async (key: string) => ({
+      allowed: key.startsWith("background-actions:"),
+      remaining: 0,
+      retryAfterSeconds: 20,
+    }));
     mocks.businessFindFirst.mockResolvedValue({ id: "biz_1" });
 
-    const result = await getAuthedBusiness(undefined, { actionBudget: false });
+    const result = await getAuthedBusiness(undefined, { budget: "background" });
 
     expect(result).not.toHaveProperty("error");
-    expect(mocks.checkRateLimit).not.toHaveBeenCalled();
+    expect(mocks.checkRateLimit).toHaveBeenCalledWith("background-actions:user_1", { limit: 120, windowMs: 60_000 });
+    expect(mocks.checkRateLimit).not.toHaveBeenCalledWith("actions:user_1", expect.anything());
+  });
+
+  it("refuses an acknowledgement once the background allowance is spent", async () => {
+    mocks.checkRateLimit.mockResolvedValue({ allowed: false, remaining: 0, retryAfterSeconds: 20 });
+
+    await expect(getAuthedBusiness(undefined, { budget: "background" })).resolves.toEqual({
+      error: ACTION_RATE_LIMIT_ERROR,
+      throttled: true,
+    });
   });
 
   it("doesn't spend budget on a signed-out request", async () => {

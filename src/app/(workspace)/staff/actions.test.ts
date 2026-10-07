@@ -562,7 +562,7 @@ describe("generateMobileAccessCodeAction", () => {
 
 // Codex #140: the pages fire these once and never retry, so a refusal over the
 // per-user action budget would quietly bring the unread marker back.
-describe("read/seen acknowledgements skip the action budget", () => {
+describe("read/seen acknowledgements spend the background allowance", () => {
   it.each([
     ["staff thread read", markStaffThreadReadAction],
     ["staff check-ins seen", markStaffCheckInsSeenAction],
@@ -571,7 +571,7 @@ describe("read/seen acknowledgements skip the action budget", () => {
 
     await action(STAFF_ID);
 
-    expect(mocks.getAuthedBusiness).toHaveBeenCalledWith(undefined, { actionBudget: false });
+    expect(mocks.getAuthedBusiness).toHaveBeenCalledWith(undefined, { budget: "background" });
   });
 });
 

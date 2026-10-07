@@ -134,12 +134,12 @@ describe("inbox actions refuse a non-string conversation id before touching the 
 // Codex #140: opening a conversation marks it read once; a refusal over the
 // per-user action budget would leave the unread count to come back.
 describe("markConversationReadAction", () => {
-  it("skips the action budget", async () => {
+  it("spends the background allowance, not the shared action budget", async () => {
     mocks.conversation.findFirst.mockResolvedValue(null);
 
     await markConversationReadAction(CONVERSATION_ID);
 
-    expect(mocks.getAuthedBusiness).toHaveBeenCalledWith(expect.any(String), { actionBudget: false });
+    expect(mocks.getAuthedBusiness).toHaveBeenCalledWith(expect.any(String), { budget: "background" });
   });
 });
 

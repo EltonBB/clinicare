@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import {
   ACTION_RATE_LIMIT_ERROR,
   isWithinActionBudget,
+  isWithinBackgroundBudget,
   requireCurrentBusiness,
   requireCurrentWorkspace,
 } from "@/lib/business";
@@ -504,10 +505,11 @@ export async function saveWorkflowSettingsAction(
 export async function discardUnsavedLogoAction(uploadedLogoUrl: string): Promise<void> {
   const user = await getCurrentUser();
 
-  // Not budgeted: the logo is already uploaded by the time this runs, and
-  // skipping it would orphan the file for good (Codex #140). It only ever
-  // deletes this user's own unsaved upload.
-  if (!user) {
+  // Off the shared budget: the logo is already uploaded by the time this runs,
+  // and skipping it would orphan the file for good. It spends the separate
+  // background allowance instead, so it is still capped (Codex #140). It only
+  // ever deletes this user's own unsaved upload.
+  if (!user || !(await isWithinBackgroundBudget(user.id))) {
     return;
   }
 

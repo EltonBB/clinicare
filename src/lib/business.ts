@@ -85,19 +85,29 @@ export async function isWithinActionBudget(userId: string): Promise<boolean> {
   return (await checkRateLimit(`actions:${userId}`, ACTION_RATE_LIMIT)).allowed;
 }
 
+// Calls a page fires on its own and never retries: marking something read or
+// seen, cleaning up a discarded upload. Refusing one leaves an unread marker or
+// an orphaned file behind, so they don't share the budget above, but they get
+// their own cap so a script still can't call them without limit (Codex #140).
+const BACKGROUND_ACTION_RATE_LIMIT: RateLimitRule = { limit: 120, windowMs: 60_000 };
+
+/** Whether this user is still within the per-user background-call allowance. */
+export async function isWithinBackgroundBudget(userId: string): Promise<boolean> {
+  return (await checkRateLimit(`background-actions:${userId}`, BACKGROUND_ACTION_RATE_LIMIT)).allowed;
+}
+
 /**
  * Non-redirecting auth gate for server actions. Unlike {@link requireCurrentWorkspace}
  * (which redirects), this returns a typed error so the action can surface a
  * friendly message. Single choke point for the planned audit-logging hook.
  *
- * `actionBudget: false` is only for a small, repeat-safe acknowledgement
- * (marking something read or seen) whose page fires it once and moves on:
- * refusing it would quietly bring the unread marker back, with nothing to
- * retry it (Codex #140).
+ * `budget: "background"` is only for a small, repeat-safe acknowledgement
+ * (marking something read or seen) whose page fires it once and moves on: it
+ * spends the separate background allowance instead of the shared budget.
  */
 export async function getAuthedBusiness(
   sessionExpiredMessage = "Your session expired. Log in again to continue.",
-  { actionBudget = true }: { actionBudget?: boolean } = {}
+  { budget = "actions" }: { budget?: "actions" | "background" } = {}
 ): Promise<AuthedBusinessResult> {
   const user = await getCurrentUser();
 
@@ -105,7 +115,8 @@ export async function getAuthedBusiness(
     return { error: sessionExpiredMessage } as const;
   }
 
-  if (actionBudget && !(await isWithinActionBudget(user.id))) {
+  const withinBudget = budget === "background" ? isWithinBackgroundBudget : isWithinActionBudget;
+  if (!(await withinBudget(user.id))) {
     return { error: ACTION_RATE_LIMIT_ERROR, throttled: true } as const;
   }
 
