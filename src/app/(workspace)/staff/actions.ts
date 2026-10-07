@@ -844,6 +844,12 @@ export type RecentCheckIn = {
 export async function getRecentStaffCheckInsAction(): Promise<RecentCheckIn[]> {
   const context = await getAuthedBusinessContext();
   if ("error" in context) {
+    // Over the action budget, reject rather than answer "nothing recent": the
+    // toaster would take an empty first answer as its baseline and later show
+    // every check-in from the last 10 minutes as new (Codex #140).
+    if ("throttled" in context) {
+      throw new Error(context.error);
+    }
     return [];
   }
 
@@ -886,6 +892,11 @@ export type RecentStaffMessage = {
 export async function getRecentStaffMessagesAction(): Promise<RecentStaffMessage[]> {
   const context = await getAuthedBusinessContext();
   if ("error" in context) {
+    // Same as getRecentStaffCheckInsAction: a throttled poll must not become
+    // the toaster's baseline (Codex #140).
+    if ("throttled" in context) {
+      throw new Error(context.error);
+    }
     return [];
   }
 

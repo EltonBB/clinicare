@@ -64,6 +64,8 @@ import {
   checkOutStaffAction,
   deleteStaffAction,
   generateMobileAccessCodeAction,
+  getRecentStaffCheckInsAction,
+  getRecentStaffMessagesAction,
   markStaffCheckInsSeenAction,
   markStaffThreadReadAction,
   saveStaffAction,
@@ -570,6 +572,21 @@ describe("read/seen acknowledgements skip the action budget", () => {
     await action(STAFF_ID);
 
     expect(mocks.getAuthedBusiness).toHaveBeenCalledWith(undefined, { actionBudget: false });
+  });
+});
+
+// Codex #140: the dashboard toaster takes its first answer as the baseline of
+// what it has already seen, so an over-budget poll must reject, not answer [].
+describe("toaster polls reject an over-budget request", () => {
+  it.each([
+    ["recent check-ins", getRecentStaffCheckInsAction],
+    ["recent staff messages", getRecentStaffMessagesAction],
+  ])("%s", async (_name, action) => {
+    mocks.getAuthedBusiness.mockResolvedValue({ error: "Too many requests right now.", throttled: true });
+    await expect(action()).rejects.toThrow("Too many requests right now.");
+
+    mocks.getAuthedBusiness.mockResolvedValue({ error: "Your session expired." });
+    await expect(action()).resolves.toEqual([]);
   });
 });
 
