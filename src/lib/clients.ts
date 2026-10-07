@@ -387,20 +387,6 @@ function buildAppointments(client: ClientWithRelations): ClientAppointmentEntry[
   return client.appointments.map(toAppointmentEntry);
 }
 
-// "Next" means still to come: an old booking nobody marked completed or
-// cancelled is still PENDING, and showing it as the next visit is wrong (QA
-// 2026-10-07). Picked here, where the real start time is known, rather than
-// from the display list's formatted dates.
-function buildNextAppointment(client: ClientWithRelations, now: Date): ClientAppointmentEntry | null {
-  const next = client.appointments
-    .filter(
-      (appointment) =>
-        (appointment.status === "PENDING" || appointment.status === "CONFIRMED") &&
-        appointment.startAt.getTime() > now.getTime()
-    )
-    .sort((a, b) => a.startAt.getTime() - b.startAt.getTime())[0];
-  return next ? toAppointmentEntry(next) : null;
-}
 
 function buildMedications(client: ClientWithRelations): ClientMedicationEntry[] {
   return client.medications.map((medication) => ({
@@ -571,7 +557,7 @@ export async function buildClientRecord(
   // (most-recent-first) — fine for rendering history, but a patient with more
   // invoices than that would understate the paid/unpaid totals. Sum those over
   // the FULL history in the DB instead, unbounded by the display take limit.
-  const [paymentSumsByStatus, galleryUrlMap] = await Promise.all([
+  const [paymentSumsByStatus, galleryUrlMap, nextAppointment] = await Promise.all([
     prisma.clientPayment.groupBy({
       by: ["status"],
       where: { businessId: client.businessId, clientId: client.id },
@@ -582,6 +568,20 @@ export async function buildClientRecord(
     // round-trip per item; independent of the sums above, so it runs alongside
     // them rather than after.
     resolveMediaDisplayUrls(client.galleryItems.map((item) => item.imageUrl)),
+    // "Next" means still to come: an old booking nobody marked completed or
+    // cancelled stays PENDING and must not read as the next visit (QA
+    // 2026-10-07). Its own query, not the capped display list, which holds the
+    // latest bookings first and can leave the soonest one out (Codex #142).
+    prisma.appointment.findFirst({
+      where: {
+        businessId: client.businessId,
+        clientId: client.id,
+        status: { in: ["PENDING", "CONFIRMED"] },
+        startAt: { gt: now },
+      },
+      orderBy: { startAt: "asc" },
+      select: { id: true, title: true, startAt: true, status: true, notes: true },
+    }),
   ]);
 
   const paymentSum = (status: string) =>
@@ -637,7 +637,7 @@ export async function buildClientRecord(
     history: buildHistory(client),
     timeline: buildTimeline(client, currency),
     appointments: buildAppointments(client),
-    nextAppointment: buildNextAppointment(client, now),
+    nextAppointment: nextAppointment ? toAppointmentEntry(nextAppointment) : null,
     medications: buildMedications(client),
     documents: await buildDocuments(client),
     payments: buildPayments(client, currency),

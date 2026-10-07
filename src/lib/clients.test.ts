@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   prisma: {
     clientPayment: { groupBy: vi.fn() },
+    appointment: { findFirst: vi.fn() },
   },
   resolveMediaDisplayUrls: vi.fn(),
 }));
@@ -166,32 +167,36 @@ describe("buildClientRecord — money in the clinic's currency", () => {
 // PENDING, and was shown as the client's "Next appointment".
 describe("buildClientRecord next appointment", () => {
   const NOW = new Date("2026-10-07T12:00:00.000Z");
-  const visit = (id: string, startAt: string, status: "PENDING" | "CONFIRMED" | "CANCELLED" | "COMPLETED") => ({
-    id,
-    title: `Visit ${id}`,
-    startAt: new Date(startAt),
-    status,
-    notes: null,
+
+  it("asks the database for the soonest future pending or confirmed visit", async () => {
+    mocks.prisma.appointment.findFirst.mockResolvedValue({
+      id: "appt_next",
+      title: "Check-up",
+      startAt: new Date("2026-10-09T09:00:00.000Z"),
+      status: "PENDING",
+      notes: null,
+    });
+
+    const record = await buildClientRecord(clientFixture(), "EUR", NOW);
+
+    // Codex #142: queried on its own, not picked from the capped display list.
+    expect(mocks.prisma.appointment.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          businessId: "biz_1",
+          clientId: "client_1",
+          status: { in: ["PENDING", "CONFIRMED"] },
+          startAt: { gt: NOW },
+        },
+        orderBy: { startAt: "asc" },
+      })
+    );
+    expect(record.nextAppointment).toMatchObject({ id: "appt_next", title: "Check-up", status: "PENDING" });
   });
 
-  it("picks the soonest future pending or confirmed visit, never a past one", async () => {
-    const client = clientFixture();
-    client.appointments = [
-      visit("future_later", "2026-11-20T09:00:00.000Z", "CONFIRMED"),
-      visit("future_cancelled", "2026-10-08T09:00:00.000Z", "CANCELLED"),
-      visit("future_soonest", "2026-10-09T09:00:00.000Z", "PENDING"),
-      visit("past_pending", "2026-07-09T09:00:00.000Z", "PENDING"),
-    ];
+  it("has no next appointment when nothing is still to come", async () => {
+    mocks.prisma.appointment.findFirst.mockResolvedValue(null);
 
-    const record = await buildClientRecord(client, "EUR", NOW);
-
-    expect(record.nextAppointment?.id).toBe("future_soonest");
-  });
-
-  it("has no next appointment when only past bookings are still pending", async () => {
-    const client = clientFixture();
-    client.appointments = [visit("past_pending", "2026-07-09T09:00:00.000Z", "PENDING")];
-
-    expect((await buildClientRecord(client, "EUR", NOW)).nextAppointment).toBeNull();
+    expect((await buildClientRecord(clientFixture(), "EUR", NOW)).nextAppointment).toBeNull();
   });
 });
