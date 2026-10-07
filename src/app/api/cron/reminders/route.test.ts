@@ -27,7 +27,7 @@ vi.mock("@/lib/reminders", () => ({
     failed: 0,
     abandoned: 0,
   }),
-  REMINDER_RUN_BUDGET_MS: 165_000,
+  REMINDER_RUN_BUDGET_MS: 135_000,
   HARD_RESPONSE_DEADLINE_MS: 270_000,
 }));
 
@@ -117,10 +117,10 @@ describe("reminders cron route", () => {
     expect(handOffAbandonedReplyIntents.mock.invocationCallOrder[0]).toBeLessThan(
       syncAppointmentRemindersJob.mock.invocationCallOrder[0]
     );
-    // The reminders' deadline: the invocation's start plus their budget (165s
+    // The reminders' deadline: the invocation's start plus their budget (135s
     // in this mock), not "now" after the hand-off has run.
-    expect(syncAppointmentRemindersJob.mock.calls[0][0]).toBeLessThanOrEqual(before + 165_000);
-    expect(syncAppointmentRemindersJob.mock.calls[0][0]).toBeGreaterThanOrEqual(before + 165_000 - 1_000);
+    expect(syncAppointmentRemindersJob.mock.calls[0][0]).toBeLessThanOrEqual(before + 135_000);
+    expect(syncAppointmentRemindersJob.mock.calls[0][0]).toBeGreaterThanOrEqual(before + 135_000 - 1_000);
     vi.useRealTimers();
 
     handOffAbandonedReplyIntents.mockRejectedValueOnce(new Error("sweep failed"));

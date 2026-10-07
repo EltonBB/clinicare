@@ -54,6 +54,8 @@ function contentSecurityPolicy() {
 }
 
 const nextConfig: NextConfig = {
+  // Don't announce the framework on every response (2026-10-06 QA).
+  poweredByHeader: false,
   // Lets the dev server's own LAN address request its HMR/chunk assets —
   // otherwise Next blocks them as cross-origin and every client chunk
   // fails-then-retries on first load, stalling hydration for several

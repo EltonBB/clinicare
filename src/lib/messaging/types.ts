@@ -82,7 +82,10 @@ export type SendFailureReason =
   | "empty_message"
   | "message_too_long"
   | "provider_error"
-  | "delivery_uncertain";
+  | "delivery_uncertain"
+  // The clinic's number reached its sending ceiling: nothing was sent, and the
+  // same send can go out once the window has moved on.
+  | "rate_limited";
 
 export type SendMessageResult =
   | {
@@ -101,6 +104,8 @@ export type SendMessageResult =
       reason: SendFailureReason;
       /** Customer-safe, provider-neutral copy. Never carries provider/PHI. */
       error: string;
+      /** Set for "rate_limited": seconds until the clinic's ceiling lets a send through. */
+      retryAfterSeconds?: number;
     };
 
 /** Resolved, provider-ready payload handed to an adapter. */

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { manualSendRefusal } from "@/lib/messaging/send-limits";
 import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { logger } from "@/lib/logger";
@@ -302,6 +303,11 @@ export async function sendInboxMessageAction(
     };
   }
 
+  const sendRefusal = await manualSendRefusal(context.business.id);
+  if (sendRefusal) {
+    return { ok: false, error: sendRefusal };
+  }
+
   // All outbound WhatsApp flows through the messaging seam, which routes to the
   // active provider (Baileys), renders/validates the payload, never throws, and
   // returns the exact body it sent for storage.
@@ -318,11 +324,14 @@ export async function sendInboxMessageAction(
   });
 
   if (!result.ok) {
-    logger.error("WhatsApp outbound send failed.", undefined, {
-      businessId: context.business.id,
-      conversationId,
-      reason: result.reason,
-    });
+    // The clinic's sending ceiling refusing a send is the limiter working, not
+    // a fault: a warning, not an error report (Codex #136).
+    const failureContext = { businessId: context.business.id, conversationId, reason: result.reason };
+    if (result.reason === "rate_limited") {
+      logger.warn("WhatsApp outbound send held back by the clinic's sending ceiling.", failureContext);
+    } else {
+      logger.error("WhatsApp outbound send failed.", undefined, failureContext);
+    }
     // Only a genuine provider/connection failure flags the clinic's shared
     // connection as errored. A bad recipient or empty body is a per-message
     // problem — marking the whole connection ERRORED for it would wrongly
@@ -340,7 +349,7 @@ export async function sendInboxMessageAction(
       // a send that may have gone out anyway (so it isn't simply sent again);
       // keep the generic line for genuine provider/connection failures.
       error:
-        result.reason === "message_too_long"
+        result.reason === "message_too_long" || result.reason === "rate_limited"
           ? result.error
           : result.reason === "delivery_uncertain"
             ? INBOX_DELIVERY_UNCERTAIN_ERROR

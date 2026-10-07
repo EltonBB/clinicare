@@ -23,6 +23,7 @@ import {
   type RateLimitRule,
 } from "@/lib/rate-limit";
 import { ACTION_RATE_LIMIT_ERROR, isWithinActionBudget } from "@/lib/business";
+import { safeRedirectPath } from "@/lib/safe-redirect";
 import { createClient } from "@/utils/supabase/server";
 
 type FormValues = {
@@ -145,16 +146,6 @@ const resetPasswordSchema = z
       });
     }
   });
-
-function sanitizeNextPath(next?: string) {
-  // Same-origin absolute paths only. Reject protocol-relative targets — both
-  // "//evil.com" and the "/\evil.com" backslash variant some browsers normalize.
-  if (!next || !next.startsWith("/") || next[1] === "/" || next[1] === "\\") {
-    return "/dashboard";
-  }
-
-  return next;
-}
 
 const EMAIL_RATE_LIMIT_MESSAGE =
   "We're sending a lot of emails right now. Please wait a minute and try again.";
@@ -309,7 +300,7 @@ export async function loginAction(
     );
   }
 
-  redirect(sanitizeNextPath(parsed.data.next));
+  redirect(safeRedirectPath(parsed.data.next));
 }
 
 export async function resendConfirmationAction(

@@ -20,9 +20,20 @@
  *
  * ~25s (WORKER_SEND_TIMEOUT_MS in the Baileys adapter) doubled for the
  * provider-error breaker's 2-consecutive-failure cap, plus headroom for the
- * database work around each send.
+ * database work around each send — and room for one full wait on the
+ * clinic's per-minute sending window plus RATE_LIMIT_WAIT_HEADROOM_MS, so a
+ * clinic that fills that window in this run still sends past it (Codex #136).
  */
-export const PER_BUSINESS_TIMEOUT_MS = 90_000;
+export const PER_BUSINESS_TIMEOUT_MS = 120_000;
+
+/**
+ * Room a business keeps after waiting out the clinic's per-minute sending
+ * window (Codex #136): the reminder sent after the wait can still take a full
+ * worker timeout (~25s) plus the write after it, and has to finish inside
+ * PER_BUSINESS_TIMEOUT_MS. A wait that would eat into this is not taken; the
+ * rest of that clinic's reminders go on the next hourly run instead.
+ */
+export const RATE_LIMIT_WAIT_HEADROOM_MS = 30_000;
 
 /**
  * Hard response deadline for the cron route (the whole reminders job PLUS

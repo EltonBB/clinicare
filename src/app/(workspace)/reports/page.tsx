@@ -10,10 +10,21 @@ import {
 import { getCachedVersioned } from "@/lib/cache";
 import { prisma } from "@/lib/prisma";
 import { getReportWorkspaceData } from "@/lib/report-data";
-import { getZonedDayWindowFromParts } from "@/lib/time-zone";
+import { addZonedDays, getZonedDayWindowFromParts } from "@/lib/time-zone";
 import { logger } from "@/lib/logger";
 
 export const maxDuration = 60;
+
+// A custom range covers at most its last two years: the page loads every
+// appointment and message in the range (and the same-length period before it),
+// so ?from=1900-01-01 would otherwise read a clinic's whole history twice.
+const MAX_CUSTOM_RANGE_DAYS = 731;
+
+type DateParts = { year: number; month: number; day: number };
+
+function partsValue({ year, month, day }: DateParts) {
+  return Date.UTC(year, month - 1, day);
+}
 
 function parseDateParam(value?: string) {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -52,11 +63,9 @@ export default async function ReportsPage({
   let selectedRange: { start: Date; end: Date } | undefined;
 
   if (selectedFrom && selectedTo) {
-    const start = getZonedDayWindowFromParts(
-      selectedFrom.year,
-      selectedFrom.month,
-      selectedFrom.day
-    ).start;
+    const earliestFrom = addZonedDays(selectedTo, -(MAX_CUSTOM_RANGE_DAYS - 1));
+    const from = partsValue(selectedFrom) < partsValue(earliestFrom) ? earliestFrom : selectedFrom;
+    const start = getZonedDayWindowFromParts(from.year, from.month, from.day).start;
     const end = getZonedDayWindowFromParts(
       selectedTo.year,
       selectedTo.month,

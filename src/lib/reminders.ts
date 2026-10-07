@@ -8,7 +8,11 @@ import { prisma } from "@/lib/prisma";
 import { getReminderCursor, setReminderCursor } from "@/lib/reminder-cursor";
 import { lastAttemptedId, rotateForFairness } from "@/lib/reminder-fairness";
 import { reminderTypeForAppointment } from "@/lib/reminder-schedule";
-import { PER_BUSINESS_TIMEOUT_MS, REMINDER_RUN_BUDGET_MS } from "@/lib/reminder-timing";
+import {
+  PER_BUSINESS_TIMEOUT_MS,
+  RATE_LIMIT_WAIT_HEADROOM_MS,
+  REMINDER_RUN_BUDGET_MS,
+} from "@/lib/reminder-timing";
 import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 
 type ReminderSyncResult = {
@@ -178,7 +182,7 @@ export async function syncAppointmentRemindersForBusiness(
     // Outbound reminders flow through the messaging seam, which renders a HIPAA
     // minimum-necessary body (name + appointment time only — never the
     // service/treatment) and routes to the active WhatsApp provider.
-    const result = await sendMessage({
+    const send = () => sendMessage({
       channel: "WHATSAPP",
       businessId,
       to: clientPhone,
@@ -199,6 +203,32 @@ export async function syncAppointmentRemindersForBusiness(
       // the worker would replay or refuse (Codex #133).
       idempotencyKey: `reminder:${appointment.id}:${reminderType}:${appointment.startAt.getTime()}:${appointment.reminderGeneration}`,
     });
+
+    let result = await send();
+    // The clinic's number is at its sending ceiling, so nothing went out. A
+    // full minute window clears within a minute: wait it out and send, as long
+    // as this business still has room to finish (RATE_LIMIT_WAIT_HEADROOM_MS).
+    // Otherwise the next hourly run would be too late for a visit starting
+    // before it (Codex #136).
+    while (!result.ok && result.reason === "rate_limited") {
+      const waitMs = Math.max(1, result.retryAfterSeconds ?? Infinity) * 1_000;
+      const elapsedMs = Date.now() - now.getTime();
+      if (elapsedMs + waitMs + RATE_LIMIT_WAIT_HEADROOM_MS > PER_BUSINESS_TIMEOUT_MS) break;
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      result = await send();
+    }
+
+    if (!result.ok && result.reason === "rate_limited") {
+      // Still refused (the hourly ceiling, or a wait that wouldn't fit): stop
+      // this clinic's run without recording a failure. Reminders go soonest
+      // visit first, so what's left is the latest-starting, and the next
+      // hourly run picks up whatever is still inside its reminder window.
+      logger.warn("Stopping reminder run early — the clinic reached its sending ceiling.", {
+        businessId,
+        attempted: sent + failed,
+      });
+      break;
+    }
 
     if (!result.ok && result.reason === "delivery_uncertain") {
       // The reminder may already be with the patient. Record it as SENT so no

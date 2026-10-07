@@ -289,6 +289,7 @@ export async function normalizeConversationsForBusiness(businessId: string) {
       select: {
         id: true,
         phoneNumber: true,
+        phoneKey: true,
         contactName: true,
         unreadCount: true,
         updatedAt: true,
@@ -298,6 +299,16 @@ export async function normalizeConversationsForBusiness(businessId: string) {
       },
     }),
   ]);
+
+  // One lookup per phone key instead of scanning every client for every
+  // conversation (the first client with a key wins, as the scan did).
+  const clientByKey = new Map<string, (typeof clients)[number]>();
+  for (const client of clients) {
+    const key = phoneLookupKey(client.phone);
+    if (key && !clientByKey.has(key)) {
+      clientByKey.set(key, client);
+    }
+  }
 
   const grouped = new Map<string, typeof conversations>();
 
@@ -316,9 +327,7 @@ export async function normalizeConversationsForBusiness(businessId: string) {
 
   for (const [lookupKey, group] of grouped) {
     try {
-      const matchingClient = clients.find(
-        (client) => phoneLookupKey(client.phone) === lookupKey
-      );
+      const matchingClient = clientByKey.get(lookupKey);
       const canonicalPhone =
         normalizePhone(matchingClient?.phone ?? "") ||
         normalizePhone(group[0]?.phoneNumber ?? "");
@@ -334,6 +343,21 @@ export async function normalizeConversationsForBusiness(businessId: string) {
       const duplicateIds = group
         .filter((conversation) => conversation.id !== preferredConversation.id)
         .map((conversation) => conversation.id);
+      const contactName =
+        matchingClient?.name ?? preferredConversation.contactName ?? canonicalPhone;
+
+      // Already normal: nothing to merge or rewrite. This runs on every client
+      // save that touches a phone number, across the clinic's whole Inbox, so
+      // writing every conversation each time made one save cost one
+      // transaction per conversation (2026-10-06 QA).
+      if (
+        duplicateIds.length === 0 &&
+        preferredConversation.phoneNumber === canonicalPhone &&
+        preferredConversation.phoneKey === lookupKey &&
+        preferredConversation.contactName === contactName
+      ) {
+        continue;
+      }
 
       await prisma.$transaction(async (tx) => {
         if (duplicateIds.length > 0) {
@@ -364,10 +388,7 @@ export async function normalizeConversationsForBusiness(businessId: string) {
           data: {
             phoneNumber: canonicalPhone,
             phoneKey: lookupKey,
-            contactName:
-              matchingClient?.name ??
-              preferredConversation.contactName ??
-              canonicalPhone,
+            contactName,
             unreadCount: group.reduce(
               (total, conversation) => total + conversation.unreadCount,
               0

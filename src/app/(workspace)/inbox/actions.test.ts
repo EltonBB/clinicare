@@ -8,7 +8,9 @@ const mocks = vi.hoisted(() => {
   const sendMessage = vi.fn();
   const syncWhatsAppConnectionForBusiness = vi.fn();
   const $transaction = vi.fn();
+  const logger = { error: vi.fn(), warn: vi.fn(), info: vi.fn() };
   return {
+    logger,
     conversation,
     client,
     whatsAppConnection,
@@ -39,6 +41,8 @@ vi.mock("@/lib/business", () => ({
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+
+vi.mock("@/lib/logger", () => ({ logger: mocks.logger }));
 
 import {
   convertConversationToClientAction,
@@ -173,5 +177,17 @@ describe("sendInboxMessageAction", () => {
       ok: false,
       error: "We couldn't send the WhatsApp message.",
     });
+    expect(mocks.logger.error).toHaveBeenCalled();
+  });
+
+  // Codex #136: the clinic's ceiling refusing a send is the limiter working, not
+  // a fault, so it shows the wait and stays out of error reporting.
+  it("shows the wait for a send held back by the clinic's ceiling, as a warning", async () => {
+    mocks.sendMessage.mockResolvedValue({ ok: false, reason: "rate_limited", error: "Wait a minute.", retryAfterSeconds: 30 });
+
+    expect(await sendInboxMessageAction(CONVERSATION_ID, "Hello")).toEqual({ ok: false, error: "Wait a minute." });
+    expect(mocks.logger.error).not.toHaveBeenCalled();
+    expect(mocks.logger.warn).toHaveBeenCalled();
+    expect(mocks.whatsAppConnection.update).not.toHaveBeenCalled();
   });
 });
