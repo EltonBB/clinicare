@@ -161,3 +161,37 @@ describe("buildClientRecord — money in the clinic's currency", () => {
     expect(record.paymentStats.totalPaidCount).toBe(40);
   });
 });
+
+// QA 2026-10-07: an old booking nobody marked completed or cancelled stays
+// PENDING, and was shown as the client's "Next appointment".
+describe("buildClientRecord next appointment", () => {
+  const NOW = new Date("2026-10-07T12:00:00.000Z");
+  const visit = (id: string, startAt: string, status: "PENDING" | "CONFIRMED" | "CANCELLED" | "COMPLETED") => ({
+    id,
+    title: `Visit ${id}`,
+    startAt: new Date(startAt),
+    status,
+    notes: null,
+  });
+
+  it("picks the soonest future pending or confirmed visit, never a past one", async () => {
+    const client = clientFixture();
+    client.appointments = [
+      visit("future_later", "2026-11-20T09:00:00.000Z", "CONFIRMED"),
+      visit("future_cancelled", "2026-10-08T09:00:00.000Z", "CANCELLED"),
+      visit("future_soonest", "2026-10-09T09:00:00.000Z", "PENDING"),
+      visit("past_pending", "2026-07-09T09:00:00.000Z", "PENDING"),
+    ];
+
+    const record = await buildClientRecord(client, "EUR", NOW);
+
+    expect(record.nextAppointment?.id).toBe("future_soonest");
+  });
+
+  it("has no next appointment when only past bookings are still pending", async () => {
+    const client = clientFixture();
+    client.appointments = [visit("past_pending", "2026-07-09T09:00:00.000Z", "PENDING")];
+
+    expect((await buildClientRecord(client, "EUR", NOW)).nextAppointment).toBeNull();
+  });
+});

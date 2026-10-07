@@ -162,6 +162,8 @@ export type ClientRecord = {
   history: ClientHistoryEntry[];
   timeline: ClientTimelineEntry[];
   appointments: ClientAppointmentEntry[];
+  /** The soonest pending or confirmed visit that hasn't started yet, if any. */
+  nextAppointment: ClientAppointmentEntry | null;
   medications: ClientMedicationEntry[];
   documents: ClientDocumentEntry[];
   payments: ClientPaymentEntry[];
@@ -371,14 +373,33 @@ function formatFileSize(bytes: number | null) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function buildAppointments(client: ClientWithRelations): ClientAppointmentEntry[] {
-  return client.appointments.map((appointment) => ({
+function toAppointmentEntry(appointment: ClientWithRelations["appointments"][number]): ClientAppointmentEntry {
+  return {
     id: appointment.id,
     date: format(appointment.startAt, "MMM d, yyyy"),
     title: appointment.title,
     status: appointment.status,
     notes: appointment.notes ?? "",
-  }));
+  };
+}
+
+function buildAppointments(client: ClientWithRelations): ClientAppointmentEntry[] {
+  return client.appointments.map(toAppointmentEntry);
+}
+
+// "Next" means still to come: an old booking nobody marked completed or
+// cancelled is still PENDING, and showing it as the next visit is wrong (QA
+// 2026-10-07). Picked here, where the real start time is known, rather than
+// from the display list's formatted dates.
+function buildNextAppointment(client: ClientWithRelations, now: Date): ClientAppointmentEntry | null {
+  const next = client.appointments
+    .filter(
+      (appointment) =>
+        (appointment.status === "PENDING" || appointment.status === "CONFIRMED") &&
+        appointment.startAt.getTime() > now.getTime()
+    )
+    .sort((a, b) => a.startAt.getTime() - b.startAt.getTime())[0];
+  return next ? toAppointmentEntry(next) : null;
 }
 
 function buildMedications(client: ClientWithRelations): ClientMedicationEntry[] {
@@ -543,7 +564,8 @@ function buildTimeline(client: ClientWithRelations, currency: string): ClientTim
  */
 export async function buildClientRecord(
   client: ClientWithRelations,
-  currency: string
+  currency: string,
+  now: Date = new Date()
 ): Promise<ClientRecord> {
   // The payments array on `client` is a display list capped at take:60
   // (most-recent-first) — fine for rendering history, but a patient with more
@@ -615,6 +637,7 @@ export async function buildClientRecord(
     history: buildHistory(client),
     timeline: buildTimeline(client, currency),
     appointments: buildAppointments(client),
+    nextAppointment: buildNextAppointment(client, now),
     medications: buildMedications(client),
     documents: await buildDocuments(client),
     payments: buildPayments(client, currency),
