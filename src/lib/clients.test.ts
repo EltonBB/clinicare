@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   prisma: {
     clientPayment: { groupBy: vi.fn() },
+    appointment: { findFirst: vi.fn() },
   },
   resolveMediaDisplayUrls: vi.fn(),
 }));
@@ -159,5 +160,43 @@ describe("buildClientRecord — money in the clinic's currency", () => {
     // full-history counts above.
     expect(record.paymentStats.totalCount).toBe(65);
     expect(record.paymentStats.totalPaidCount).toBe(40);
+  });
+});
+
+// QA 2026-10-07: an old booking nobody marked completed or cancelled stays
+// PENDING, and was shown as the client's "Next appointment".
+describe("buildClientRecord next appointment", () => {
+  const NOW = new Date("2026-10-07T12:00:00.000Z");
+
+  it("asks the database for the soonest future pending or confirmed visit", async () => {
+    mocks.prisma.appointment.findFirst.mockResolvedValue({
+      id: "appt_next",
+      title: "Check-up",
+      startAt: new Date("2026-10-09T09:00:00.000Z"),
+      status: "PENDING",
+      notes: null,
+    });
+
+    const record = await buildClientRecord(clientFixture(), "EUR", NOW);
+
+    // Codex #142: queried on its own, not picked from the capped display list.
+    expect(mocks.prisma.appointment.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          businessId: "biz_1",
+          clientId: "client_1",
+          status: { in: ["PENDING", "CONFIRMED"] },
+          startAt: { gt: NOW },
+        },
+        orderBy: { startAt: "asc" },
+      })
+    );
+    expect(record.nextAppointment).toMatchObject({ id: "appt_next", title: "Check-up", status: "PENDING" });
+  });
+
+  it("has no next appointment when nothing is still to come", async () => {
+    mocks.prisma.appointment.findFirst.mockResolvedValue(null);
+
+    expect((await buildClientRecord(clientFixture(), "EUR", NOW)).nextAppointment).toBeNull();
   });
 });

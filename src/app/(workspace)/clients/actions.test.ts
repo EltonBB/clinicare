@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => {
   const clientDocument = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientGalleryItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const business = { findUniqueOrThrow: vi.fn() };
-  const appointment = { groupBy: vi.fn(), count: vi.fn() };
+  const appointment = { groupBy: vi.fn(), count: vi.fn(), findFirst: vi.fn(async () => null) };
   const waitlistEntry = { findMany: vi.fn() };
   const $transaction = vi.fn();
   const $executeRaw = vi.fn();
