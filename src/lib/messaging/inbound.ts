@@ -15,6 +15,7 @@ import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 
 import type { AppointmentStatus } from "@prisma/client";
 
+import { allowReplyAck } from "./send-limits";
 import type { MessageDeliveryStatus } from "./types";
 
 export type InboundMessage = {
@@ -503,6 +504,9 @@ async function applyInboundReplyIntentCore(
   // uncertain one isn't mirrored since there's no confirmed message to show.
   const reply = async (repliedClientId: string) => {
     if (!phone) return;
+    // A patient (or an auto-replier) sending "1" over and over gets a few
+    // answers an hour, not one per message. The reply itself is still applied.
+    if (!(await allowReplyAck(businessId, repliedClientId))) return;
     const time = formatZonedTime(appointment.startAt);
     const date = formatZonedFullDate(appointment.startAt);
     const result = await sendMessage({

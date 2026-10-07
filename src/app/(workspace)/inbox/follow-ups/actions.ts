@@ -6,6 +6,7 @@ import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
 import { mirrorOutboundToInbox } from "@/lib/messaging/inbox-mirror";
+import { manualSendRefusal } from "@/lib/messaging/send-limits";
 import type { SendMessageResult } from "@/lib/messaging/types";
 import {
   ALREADY_HANDLED_ERROR,
@@ -86,6 +87,12 @@ export async function sendFollowUpDraftAction(
     return { ok: false, error: "Write a message before sending." };
   }
 
+  // Before the draft is touched, so a refused send leaves it as it was.
+  const sendRefusal = await manualSendRefusal(business.id);
+  if (sendRefusal) {
+    return { ok: false, error: sendRefusal };
+  }
+
   const flip = await markFollowUpDraftSent({
     id: draftId,
     businessId: business.id,
@@ -139,6 +146,8 @@ export async function sendFollowUpDraftAction(
           sent = { clientId: draft.clientId, clientName: draft.clientName, phone, result };
         } else if (result.reason === "delivery_uncertain") {
           uncertain = true;
+        } else if (result.reason === "rate_limited") {
+          failure = result.error;
         } else {
           failure = "Couldn't send this message. Try again.";
         }

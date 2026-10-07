@@ -56,11 +56,15 @@ vi.mock("@/lib/messaging", () => ({
 }));
 
 vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
+const allowReplyAck = vi.hoisted(() => vi.fn());
+vi.mock("./send-limits", () => ({ allowReplyAck }));
 
 import { applyInboundReplyIntent, handOffAbandonedReplyIntents, recordInboundMessage } from "./inbound";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Automatic answers are within the per-patient budget unless a test says not.
+  allowReplyAck.mockResolvedValue(true);
   // No open slot offer by default — the reply-intent tests below run the
   // normal confirm/cancel path unless a test opens one.
   mocks.followUpDraft.findFirst.mockResolvedValue(null);
@@ -361,6 +365,19 @@ describe("applyInboundReplyIntent", () => {
         message: expect.objectContaining({ body: expect.stringContaining("You're confirmed for") }),
       })
     );
+  });
+
+  // An auto-replier looping with the clinic number must not get one answer per "1".
+  it("applies the reply but sends no answer once the patient's answer budget is spent", async () => {
+    mocks.appointment.findMany.mockResolvedValueOnce([{ ...REMINDED_UPCOMING, status: "CONFIRMED" }]);
+    allowReplyAck.mockResolvedValueOnce(false);
+
+    const result = await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "1", now: NOW });
+
+    expect(result).toEqual({ applied: false, reason: "already_confirmed" });
+    expect(allowReplyAck).toHaveBeenCalledWith("biz_1", "client_1");
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+    expect(mocks.message.create).not.toHaveBeenCalled();
   });
 
   it("with one pending and one confirmed visit, a 1 confirms the pending one", async () => {
