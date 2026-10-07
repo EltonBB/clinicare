@@ -11,6 +11,7 @@ import {
   formatZonedTime,
   getAppTimeZone,
 } from "@/lib/time-zone";
+import { conversationDisplayName } from "@/lib/inbox";
 
 export type DashboardAppointmentStatus =
   | "confirmed"
@@ -152,6 +153,9 @@ export type DashboardAppointmentAggregates = {
 export type DashboardConversationRow = {
   id: string;
   contactName: string;
+  phoneNumber: string;
+  /** Name of the client this number belongs to, when there is one. */
+  linkedClientName?: string | null;
   unreadCount: number;
   updatedAt: Date;
   messages: Array<{ body: string; sentAt: Date }>;
@@ -385,7 +389,13 @@ export function buildDashboardViewFromWorkspace(args: {
 
       return {
         id: conversation.id,
-        contactName: conversation.contactName,
+        // Named the way the Inbox names it (QA 2026-10-07: the card showed the
+        // patient's own WhatsApp profile name instead of the clinic's record).
+        contactName: conversationDisplayName(
+          conversation.contactName,
+          conversation.phoneNumber,
+          conversation.linkedClientName
+        ),
         snippet: lastMessage?.body ?? "No messages yet",
         timeLabel:
           formatZonedDateKey(lastActivity, timeZone) === todayKey
