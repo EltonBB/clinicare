@@ -214,6 +214,35 @@ describe("buildDashboardViewFromWorkspace — no-show risk", () => {
     expect(view.appointments[0]?.risk).toBeUndefined();
   });
 
+  // QA 2026-10-07: the Messages card showed the patient's WhatsApp profile
+  // name, while the Inbox showed the clinic's client record for the same chat.
+  it("names a message preview the way the Inbox does", () => {
+    const row = (id: string, contactName: string, linkedClientName: string | null) => ({
+      id,
+      contactName,
+      phoneNumber: "+38344123456",
+      linkedClientName,
+      unreadCount: 0,
+      updatedAt: now,
+      messages: [{ body: "Hello", sentAt: now }],
+    });
+    const view = buildDashboardViewFromWorkspace({
+      ...BASE_ARGS,
+      appointments: [],
+      conversations: [
+        row("linked", "Xhevahire", "Filan Fistek"),
+        row("profile", "Eriki", null),
+        row("number", "+383 44 123 456", null),
+      ],
+    });
+
+    expect(view.conversationPreviews.map((preview) => preview.contactName)).toEqual([
+      "Filan Fistek",
+      "Eriki",
+      "Unregistered contact",
+    ]);
+  });
+
   it("shows the revenue tiles in the clinic's own currency", () => {
     const paymentGroups = [group("Paid", 10000), group("Unpaid", 2500)];
 

@@ -7,6 +7,7 @@ import { isProBusinessPlan } from "@/lib/billing";
 import { buildDashboardViewFromWorkspace } from "@/lib/dashboard";
 import { getDashboardAppointmentAggregates } from "@/lib/dashboard-data";
 import { getNoShowRiskAssessments } from "@/lib/no-show-risk-data";
+import { phoneLookupKey } from "@/lib/inbox";
 import { subDays } from "date-fns";
 import {
   getAppTimeZone,
@@ -206,6 +207,7 @@ export default async function DashboardPage() {
         select: {
           id: true,
           contactName: true,
+          phoneNumber: true,
           unreadCount: true,
           updatedAt: true,
           messages: {
@@ -272,6 +274,28 @@ export default async function DashboardPage() {
   // The risk badges are an extra on top of the schedule: a failed lookup (say a
   // database that hasn't had the NO_SHOW migration applied yet) must not take the
   // whole dashboard down, so it degrades to no badges — like every sibling query here.
+  // The Messages card names each conversation the way the Inbox does: by the
+  // client the number belongs to (most recently updated first, as the Inbox
+  // picks). Started before the risk lookup so the two run together.
+  const conversationRows =
+    conversationsResult.status === "fulfilled" ? conversationsResult.value : [];
+  const conversationPhoneKeys = [
+    ...new Set(conversationRows.map((row) => phoneLookupKey(row.phoneNumber)).filter(Boolean)),
+  ];
+  const linkedClientsPromise =
+    conversationPhoneKeys.length > 0
+      ? prisma.client
+          .findMany({
+            where: { businessId: business.id, phoneKey: { in: conversationPhoneKeys } },
+            select: { name: true, phoneKey: true },
+            orderBy: { updatedAt: "desc" },
+          })
+          .catch((error) => {
+            console.error("Dashboard conversation client lookup failed", error);
+            return [];
+          })
+      : Promise.resolve([]);
+
   let noShowRisk: Awaited<ReturnType<typeof getNoShowRiskAssessments>> | undefined;
   if (isProBusinessPlan(business.plan) && upcomingForRisk.length > 0) {
     try {
@@ -316,8 +340,16 @@ export default async function DashboardPage() {
         };
   const paymentGroups =
     paymentsResult.status === "fulfilled" ? paymentsResult.value : [];
-  const conversations =
-    conversationsResult.status === "fulfilled" ? conversationsResult.value : [];
+  const clientNameByPhoneKey = new Map<string, string>();
+  for (const client of await linkedClientsPromise) {
+    if (client.phoneKey && !clientNameByPhoneKey.has(client.phoneKey)) {
+      clientNameByPhoneKey.set(client.phoneKey, client.name);
+    }
+  }
+  const conversations = conversationRows.map((row) => ({
+    ...row,
+    linkedClientName: clientNameByPhoneKey.get(phoneLookupKey(row.phoneNumber)) ?? null,
+  }));
   const staffMembers =
     staffMembersResult.status === "fulfilled" ? staffMembersResult.value : [];
   const allTimeVisitCount =
