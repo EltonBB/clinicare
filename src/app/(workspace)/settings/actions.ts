@@ -5,7 +5,14 @@ import { after } from "next/server";
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
-import { requireCurrentBusiness, requireCurrentWorkspace } from "@/lib/business";
+import {
+  ACTION_RATE_LIMIT_ERROR,
+  isWithinActionBudget,
+  isWithinBackgroundBudget,
+  requireCurrentBusiness,
+  requireCurrentWorkspace,
+} from "@/lib/business";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { getCurrentUser, updateCurrentUserMetadata } from "@/lib/auth";
 import { sanitizeAuthMetadataForSession } from "@/lib/auth-metadata";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
@@ -146,6 +153,12 @@ export async function getSettingsDataAction(): Promise<SettingsState> {
     missingBusinessRedirect: "/onboarding",
   });
 
+  // Each load also schedules a WhatsApp status sync, so it spends the same
+  // budget as the rest (Codex #140). The dialog shows "try again in a moment".
+  if (!(await isWithinActionBudget(user.id))) {
+    throw new Error(ACTION_RATE_LIMIT_ERROR);
+  }
+
   // Keep the WhatsApp status fresh for the next load, exactly like the
   // /settings route does — without delaying this response.
   after(async () => {
@@ -169,6 +182,10 @@ export async function saveSettingsAction(
       ok: false,
       error: "Your session expired. Log in again to update settings.",
     };
+  }
+
+  if (!(await isWithinActionBudget(user.id))) {
+    return { ok: false, error: ACTION_RATE_LIMIT_ERROR };
   }
 
   const validation = saveSettingsSchema.safeParse(payload);
@@ -427,6 +444,10 @@ export async function saveWorkflowSettingsAction(
     };
   }
 
+  if (!(await isWithinActionBudget(user.id))) {
+    return { ok: false, error: ACTION_RATE_LIMIT_ERROR };
+  }
+
   const validation = workflowSettingsSchema.safeParse(payload);
   if (!validation.success) {
     return { ok: false, error: "Some workflow settings aren't valid." };
@@ -484,7 +505,11 @@ export async function saveWorkflowSettingsAction(
 export async function discardUnsavedLogoAction(uploadedLogoUrl: string): Promise<void> {
   const user = await getCurrentUser();
 
-  if (!user) {
+  // Off the shared budget: the logo is already uploaded by the time this runs,
+  // and skipping it would orphan the file for good. It spends the separate
+  // background allowance instead, so it is still capped (Codex #140). It only
+  // ever deletes this user's own unsaved upload.
+  if (!user || !(await isWithinBackgroundBudget(user.id))) {
     return;
   }
 
@@ -582,9 +607,19 @@ export async function connectBaileysWhatsAppAction(options?: {
     };
   }
 
+  if (!(await isWithinActionBudget(user.id))) {
+    return { ok: false, error: ACTION_RATE_LIMIT_ERROR };
+  }
+
   const business = await requireCurrentBusiness(user, {
     missingBusinessRedirect: "/onboarding",
   });
+
+  // Each call restarts pairing on the worker, and a forced one wipes the
+  // stored link: a few a minute per clinic is plenty for a person.
+  if (!(await checkRateLimit(`whatsapp-pair:${business.id}`, { limit: 5, windowMs: 60_000 })).allowed) {
+    return { ok: false, error: "Wait a minute before trying to connect WhatsApp again." };
+  }
 
   if (!isBaileysWorkerConfigured()) {
     return {
@@ -719,6 +754,10 @@ export async function getBaileysPairingStatusAction(): Promise<BaileysPairingRes
       ok: false,
       error: "Your session expired. Log in again to check WhatsApp.",
     };
+  }
+
+  if (!(await isWithinActionBudget(user.id))) {
+    return { ok: false, error: ACTION_RATE_LIMIT_ERROR };
   }
 
   const business = await requireCurrentBusiness(user, {

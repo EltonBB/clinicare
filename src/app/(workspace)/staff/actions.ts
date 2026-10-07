@@ -643,12 +643,12 @@ export type MobileAccessResult = {
   code?: string;
 };
 
-async function requireOwnedStaff(rawStaffId: unknown) {
+async function requireOwnedStaff(rawStaffId: unknown, options?: { budget?: "actions" | "background" }) {
   const staffId = parseRecordId(rawStaffId);
   if (!staffId) {
     return { error: "Staff member not found." } as const;
   }
-  const context = await getAuthedBusinessContext();
+  const context = await getAuthedBusinessContext(undefined, options);
   if ("error" in context) {
     return { error: context.error } as const;
   }
@@ -775,7 +775,8 @@ export async function sendStaffMessageAction(
 }
 
 export async function markStaffThreadReadAction(staffId: string): Promise<StaffMessageResult> {
-  const owned = await requireOwnedStaff(staffId);
+  // An acknowledgement the tab fires once and never retries: background allowance.
+  const owned = await requireOwnedStaff(staffId, { budget: "background" });
   if ("error" in owned) {
     return { ok: false, error: owned.error };
   }
@@ -803,7 +804,8 @@ export async function markStaffThreadReadAction(staffId: string): Promise<StaffM
  * instance (same tradeoff as the bell's per-category visible-list cap).
  */
 export async function markStaffCheckInsSeenAction(staffId: string): Promise<StaffMessageResult> {
-  const owned = await requireOwnedStaff(staffId);
+  // An acknowledgement the page fires once and never retries: background allowance.
+  const owned = await requireOwnedStaff(staffId, { budget: "background" });
   if ("error" in owned) {
     return { ok: false, error: owned.error };
   }
@@ -842,6 +844,12 @@ export type RecentCheckIn = {
 export async function getRecentStaffCheckInsAction(): Promise<RecentCheckIn[]> {
   const context = await getAuthedBusinessContext();
   if ("error" in context) {
+    // Over the action budget, reject rather than answer "nothing recent": the
+    // toaster would take an empty first answer as its baseline and later show
+    // every check-in from the last 10 minutes as new (Codex #140).
+    if ("throttled" in context) {
+      throw new Error(context.error);
+    }
     return [];
   }
 
@@ -884,6 +892,11 @@ export type RecentStaffMessage = {
 export async function getRecentStaffMessagesAction(): Promise<RecentStaffMessage[]> {
   const context = await getAuthedBusinessContext();
   if ("error" in context) {
+    // Same as getRecentStaffCheckInsAction: a throttled poll must not become
+    // the toaster's baseline (Codex #140).
+    if ("throttled" in context) {
+      throw new Error(context.error);
+    }
     return [];
   }
 

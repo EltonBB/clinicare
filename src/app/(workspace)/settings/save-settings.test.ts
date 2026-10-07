@@ -28,6 +28,9 @@ vi.mock("@/lib/auth", () => ({
   updateCurrentUserMetadata: mocks.updateCurrentUserMetadata,
 }));
 vi.mock("@/lib/business", () => ({
+  isWithinActionBudget: vi.fn(async () => true),
+  isWithinBackgroundBudget: vi.fn(async () => true),
+  ACTION_RATE_LIMIT_ERROR: "Too many requests right now. Wait a moment and try again.",
   requireCurrentBusiness: mocks.requireCurrentBusiness,
   requireCurrentWorkspace: vi.fn(),
 }));

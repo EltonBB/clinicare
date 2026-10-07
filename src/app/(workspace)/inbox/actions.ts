@@ -61,9 +61,10 @@ const CONVERSATION_NOT_FOUND_ERROR = "Conversation not found in this clinic work
 const INBOX_DELIVERY_UNCERTAIN_ERROR =
   "We couldn't confirm this message was delivered. It may have reached the patient, so check the WhatsApp chat before sending it again.";
 
-function getAuthedBusiness() {
+function getAuthedBusiness(options?: { budget?: "actions" | "background" }) {
   return getAuthedBusinessContext(
-    "Your session expired. Log in again to manage the inbox."
+    "Your session expired. Log in again to manage the inbox.",
+    options
   );
 }
 
@@ -177,7 +178,8 @@ export async function hydrateConversationAction(
 export async function markConversationReadAction(
   rawConversationId: string
 ): Promise<MarkConversationReadResult> {
-  const context = await getAuthedBusiness();
+  // An acknowledgement opening a conversation fires once: background allowance.
+  const context = await getAuthedBusiness({ budget: "background" });
 
   if ("error" in context) {
     return {

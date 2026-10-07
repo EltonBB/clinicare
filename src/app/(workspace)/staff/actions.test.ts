@@ -64,6 +64,10 @@ import {
   checkOutStaffAction,
   deleteStaffAction,
   generateMobileAccessCodeAction,
+  getRecentStaffCheckInsAction,
+  getRecentStaffMessagesAction,
+  markStaffCheckInsSeenAction,
+  markStaffThreadReadAction,
   saveStaffAction,
 } from "./actions";
 
@@ -553,6 +557,36 @@ describe("generateMobileAccessCodeAction", () => {
       ok: false,
       error: "Mobile access can't be issued to an inactive staff member.",
     });
+  });
+});
+
+// Codex #140: the pages fire these once and never retry, so a refusal over the
+// per-user action budget would quietly bring the unread marker back.
+describe("read/seen acknowledgements spend the background allowance", () => {
+  it.each([
+    ["staff thread read", markStaffThreadReadAction],
+    ["staff check-ins seen", markStaffCheckInsSeenAction],
+  ])("%s", async (_name, action) => {
+    mocks.staffMember.findFirst.mockResolvedValue(null);
+
+    await action(STAFF_ID);
+
+    expect(mocks.getAuthedBusiness).toHaveBeenCalledWith(undefined, { budget: "background" });
+  });
+});
+
+// Codex #140: the dashboard toaster takes its first answer as the baseline of
+// what it has already seen, so an over-budget poll must reject, not answer [].
+describe("toaster polls reject an over-budget request", () => {
+  it.each([
+    ["recent check-ins", getRecentStaffCheckInsAction],
+    ["recent staff messages", getRecentStaffMessagesAction],
+  ])("%s", async (_name, action) => {
+    mocks.getAuthedBusiness.mockResolvedValue({ error: "Too many requests right now.", throttled: true });
+    await expect(action()).rejects.toThrow("Too many requests right now.");
+
+    mocks.getAuthedBusiness.mockResolvedValue({ error: "Your session expired." });
+    await expect(action()).resolves.toEqual([]);
   });
 });
 

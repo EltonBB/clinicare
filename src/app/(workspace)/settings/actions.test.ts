@@ -18,6 +18,9 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 vi.mock("@/lib/business", () => ({
+  isWithinActionBudget: vi.fn(async () => true),
+  isWithinBackgroundBudget: vi.fn(async () => true),
+  ACTION_RATE_LIMIT_ERROR: "Too many requests right now. Wait a moment and try again.",
   requireCurrentBusiness: mocks.requireCurrentBusiness,
   requireCurrentWorkspace: vi.fn(),
 }));
@@ -53,7 +56,9 @@ import { buildWorkflowSavePayload, REBOOK_PLAN_ERROR } from "@/lib/settings";
 import { WORKFLOW_SETTINGS_SELECT } from "@/lib/settings-server";
 import type { WorkflowSettingsValues } from "@/lib/workflow-generators";
 
-import { saveWorkflowSettingsAction } from "./actions";
+import * as business from "@/lib/business";
+
+import { discardUnsavedLogoAction, getSettingsDataAction, saveWorkflowSettingsAction } from "./actions";
 
 const PRO_BUSINESS = { id: "biz_1", plan: "PRO" as const };
 const BASIC_BUSINESS = { id: "biz_1", plan: "BASIC" as const };
@@ -223,5 +228,40 @@ describe("saveWorkflowSettingsAction — validation", () => {
     expect(result.error).toBeTruthy();
     expect(mocks.workflowSettings.upsert).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+});
+
+// Codex #140: loading settings also schedules a WhatsApp sync, so it spends the
+// shared per-user budget like every other action.
+describe("getSettingsDataAction budget", () => {
+  it("refuses an over-budget load before doing any work", async () => {
+    vi.mocked(business.requireCurrentWorkspace).mockResolvedValueOnce({
+      user: { id: "user_1" },
+      business: { id: "biz_1" },
+    } as never);
+    vi.mocked(business.isWithinActionBudget).mockResolvedValueOnce(false);
+
+    await expect(getSettingsDataAction()).rejects.toThrow(business.ACTION_RATE_LIMIT_ERROR);
+  });
+});
+
+// Codex #140: discarding an unsaved logo is off the shared budget (refusing it
+// would orphan the upload) but still capped by the background allowance.
+describe("discardUnsavedLogoAction background allowance", () => {
+  it("does nothing once the background allowance is spent", async () => {
+    vi.mocked(business.isWithinBackgroundBudget).mockResolvedValueOnce(false);
+
+    await discardUnsavedLogoAction("clinic-media/owner_1/logos/x.png");
+
+    expect(business.isWithinBackgroundBudget).toHaveBeenCalledWith("user_1");
+    expect(mocks.requireCurrentBusiness).not.toHaveBeenCalled();
+  });
+
+  it("doesn't spend the shared action budget", async () => {
+    mocks.requireCurrentBusiness.mockResolvedValue({ ...PRO_BUSINESS, logoUrl: null, ownerId: "owner_1" });
+
+    await discardUnsavedLogoAction("not-a-storage-reference");
+
+    expect(business.isWithinActionBudget).not.toHaveBeenCalled();
   });
 });

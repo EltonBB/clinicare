@@ -15,6 +15,7 @@ import {
   type OnboardingState,
 } from "@/lib/onboarding";
 import { getCurrentUser, updateCurrentUserMetadata } from "@/lib/auth";
+import { ACTION_RATE_LIMIT_ERROR, isWithinActionBudget } from "@/lib/business";
 
 export type SaveOnboardingStateResult = {
   ok: boolean;
@@ -237,6 +238,10 @@ export async function saveOnboardingStateAction(
       ok: false,
       error: "Your session expired. Log in again to continue onboarding.",
     };
+  }
+
+  if (!(await isWithinActionBudget(user.id))) {
+    return { ok: false, error: ACTION_RATE_LIMIT_ERROR };
   }
 
   const normalizedState = normalizeOnboardingState(nextState);

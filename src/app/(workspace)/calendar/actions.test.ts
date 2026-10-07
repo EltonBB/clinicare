@@ -1291,6 +1291,16 @@ describe("loadCalendarMonthAction", () => {
     mocks.loadCalendarMonth.mockResolvedValue(MONTH);
   });
 
+  // Codex #140: over the action budget, waiting fixes it; signing in again doesn't.
+  it("doesn't call an over-budget request an expired session", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ error: "Too many requests right now.", throttled: true });
+
+    const result = await loadCalendarMonthAction("2026-09");
+
+    expect(result).toEqual({ ok: false, error: "Too many requests right now.", sessionExpired: false });
+    expect(mocks.loadCalendarMonth).not.toHaveBeenCalled();
+  });
+
   it("refuses an expired session without touching the database", async () => {
     mocks.getAuthedBusiness.mockResolvedValue({ error: "Your session expired." });
 
@@ -1609,6 +1619,20 @@ describe("deleteAppointmentAction", () => {
 });
 
 describe("getNoShowRiskAction", () => {
+  // Codex #140: rejecting lets the calendar forget the ids and ask again later.
+  it("rejects an over-budget request instead of answering 'no risk'", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ error: "Too many requests right now.", throttled: true });
+
+    await expect(getNoShowRiskAction(["a1"])).rejects.toThrow("Too many requests right now.");
+    expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+  });
+
+  it("still answers nothing for a signed-out request", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ error: "Your session expired." });
+
+    expect(await getNoShowRiskAction(["a1"])).toEqual({});
+  });
+
   it("returns nothing for a workspace that isn't on Pro, without querying", async () => {
     mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1", plan: "BASIC" }, user: {} });
 
