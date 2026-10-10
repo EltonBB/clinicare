@@ -162,7 +162,7 @@ describe("requireStaffContext", () => {
 
     const result = await requireStaffContext(req());
 
-    expect(result).toMatchObject({ status: 429 });
+    expect(result).toMatchObject({ status: 429, retryAfterSeconds: 12 });
     expect(mocks.staffDevice.findUnique).not.toHaveBeenCalled();
   });
 

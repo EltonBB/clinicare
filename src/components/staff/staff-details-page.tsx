@@ -64,14 +64,8 @@ export function StaffDetailsPage({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [selectedTab, setSelectedTab] = useState<string>(initialTab);
-  // Local mirror of adminThread.unreadForAdmin: the prop is an SSR snapshot
-  // that never changes after mount, but opening the Messages tab marks it
-  // read server-side — without this, the dot would stay lit for the rest of
-  // this page's client session even while the admin is looking at the read
-  // messages. Zeroed here (not just server-side) for instant feedback.
-  const [unreadForAdmin, setUnreadForAdmin] = useState(
-    initialTab === "messages" ? 0 : adminThread.unreadForAdmin
-  );
+  // Only an acknowledged server response can clear the unread indicator.
+  const [unreadForAdmin, setUnreadForAdmin] = useState(adminThread.unreadForAdmin);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -84,9 +78,6 @@ export function StaffDetailsPage({
 
   function handleTabChange(value: string) {
     setSelectedTab(value);
-    if (value === "messages") {
-      setUnreadForAdmin(0);
-    }
   }
 
   function toggleClock() {
@@ -406,6 +397,7 @@ export function StaffDetailsPage({
 
         <TabsContent value="messages">
           <StaffMessagesTab
+            onUnreadCountChange={setUnreadForAdmin}
             staffId={staff.id}
             staffName={staff.name}
             initial={adminThread}

@@ -1,6 +1,6 @@
 # Project Status: Vela / Clinicare
 
-Last updated: 2026-09-01
+Last updated: 2026-10-10
 
 ## Product Overview
 
@@ -10,7 +10,7 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Technical Stack
 
-- Next.js 16.2.6 App Router with React 19.
+- Next.js 16.3.8 App Router with React 19.
 - TypeScript, Tailwind CSS 4, shadcn-style UI components, Radix primitives, Lucide icons.
 - Prisma with PostgreSQL via Supabase.
 - Supabase Auth for email/password authentication and email confirmation.
@@ -19,6 +19,8 @@ The core product direction is customer-first: clinics should not need to underst
 - OpenAI-backed analytics snapshots with rule-based fallback when AI is unavailable.
 
 ## Completed Features
+
+- **Mobile API QA integration (2026-10-10, local review candidate on `codex/mobile-qa-integration`).** Carries exact snapshot read receipts, Serializable enrollment, bounded mobile bodies, Retry-After/private caching, active-device push filtering, dependency repairs, and seven hook repairs onto current main (`bbe2524`) while preserving newer no-show/waitlist workflows and web UI. Root and worker TypeScript, full lint, production build, 1,679 tests across 93 suites, 5 receipt regressions, 24 fresh PostgreSQL cases and 15 actual HTTP cases passed; independent review and simplification checks found no further issues. The initial worker dependency failure was resolved by the user's successful manual installation; no test expectations were weakened. Candidate is not pushed or deployed; repository review, real-clinic and physical-device acceptance remain pending. Details and boundaries: `qa/INTEGRATION-QA-2026-10-10.md` and `qa/evidence/`.
 
 - **No-show status (Pro) (2026-09-22, uncommitted; PR 1 of the no-show/workflow series, spec + plans in `docs/superpowers`).** Adds a `NO_SHOW` appointment status, a "Mark as no-show/attended" action in the calendar quick view, and a No-show rate in Reports. **The schema change (`prisma/no-show-status-migration.sql`, `ALTER TYPE "AppointmentStatus" ADD VALUE IF NOT EXISTS 'NO_SHOW'`) has been applied to the database** (owner go-ahead given, 2026-09-22) — live-verified end to end (mark/undo, `lastVisitAt` recompute, Reports rate, dashboard totals, Basic-plan gating) on both the Pro test workspace and a fresh Basic signup. The code itself is still uncommitted.
 

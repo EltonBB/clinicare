@@ -47,6 +47,51 @@ describe("checkRateLimit (in-memory fallback)", () => {
     expect((await checkRateLimit(key, rule)).remaining).toBe(1);
     expect((await checkRateLimit(key, rule)).remaining).toBe(0);
   });
+
+  it("bounds active keys without evicting or resetting an existing caller's budget", async () => {
+    const buckets = global.rateLimitBuckets!;
+    buckets.clear();
+    const resetAt = Date.now() + 60_000;
+    for (let i = 0; i < 10_000; i++) buckets.set(`capacity-${i}`, { count: 1, resetAt });
+    try {
+      const rejected = await checkRateLimit("new-at-capacity", { limit: 2, windowMs: 60_000 });
+      expect(rejected.allowed).toBe(false);
+      expect(rejected.retryAfterSeconds).toBeGreaterThanOrEqual(59);
+      expect(buckets.size).toBe(10_000);
+      expect((await checkRateLimit("capacity-0", { limit: 2, windowMs: 60_000 })).allowed).toBe(true);
+      expect((await checkRateLimit("capacity-0", { limit: 2, windowMs: 60_000 })).allowed).toBe(false);
+      expect(buckets.has("new-at-capacity")).toBe(false);
+    } finally {
+      buckets.clear();
+    }
+  });
+
+  it("keeps Retry-After finite after expired capacity is pruned and refilled in one burst", async () => {
+    vi.useFakeTimers();
+    const now = Date.now() + 10_000;
+    vi.setSystemTime(now);
+    const buckets = global.rateLimitBuckets!;
+    buckets.clear();
+    const rule = { limit: 2, windowMs: 60_000 };
+    try {
+      for (let i = 0; i < 10_000; i++) {
+        buckets.set(`expired-capacity-${i}`, { count: 1, resetAt: now + 9999 });
+      }
+      await checkRateLimit("denied-before-expiry", rule);
+      vi.setSystemTime(now + 10_000);
+      for (let i = 0; i < 10_000; i++) {
+        expect((await checkRateLimit(`refill-${i}`, rule)).allowed).toBe(true);
+      }
+      const denied = await checkRateLimit("denied-after-refill", rule);
+      expect(denied.allowed).toBe(false);
+      expect(Number.isFinite(denied.retryAfterSeconds)).toBe(true);
+      expect(denied.retryAfterSeconds).toBe(60);
+      expect(buckets.size).toBe(10_000);
+    } finally {
+      buckets.clear();
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("checkRateLimit under an open circuit breaker", () => {

@@ -1,5 +1,6 @@
 "use server";
 
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
@@ -23,6 +24,7 @@ import {
   type StaffRecord,
 } from "@/lib/staff";
 import { logger } from "@/lib/logger";
+import { seenMessageIdsSchema } from "@/lib/mobile/thread-read";
 import { parseRecordId } from "@/lib/record-id";
 import {
   markAdminThreadRead,
@@ -685,6 +687,7 @@ export async function generateMobileAccessCodeAction(
 
   const code = generateAccessCode();
   try {
+    // Serializable prevents concurrent first-time issuers from creating two live codes.
     await prisma.$transaction(async (tx) => {
       await tx.staffAccessCode.updateMany({
         where: { businessId: owned.businessId, staffMemberId: owned.staffId, status: "ACTIVE" },
@@ -698,7 +701,7 @@ export async function generateMobileAccessCodeAction(
           expiresAt: new Date(Date.now() + ACCESS_CODE_TTL_MS),
         },
       });
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
     logger.error("Failed to generate mobile access code.", error, { staffId: owned.staffId });
     return { ok: false, error: "We couldn't generate a code. Please try again." };
@@ -774,20 +777,25 @@ export async function sendStaffMessageAction(
   return { ok: true };
 }
 
-export async function markStaffThreadReadAction(staffId: string): Promise<StaffMessageResult> {
+export async function markStaffThreadReadAction(staffId: string, seenMessageIds?: string[]): Promise<StaffMessageResult & { unreadCount?: number }> {
   // An acknowledgement the tab fires once and never retries: background allowance.
   const owned = await requireOwnedStaff(staffId, { budget: "background" });
   if ("error" in owned) {
     return { ok: false, error: owned.error };
   }
+  const parsed = seenMessageIdsSchema.optional().safeParse(seenMessageIds);
+  if (!parsed.success) return { ok: false, error: "Invalid message selection." };
+  let unreadCount: number;
   try {
-    await markAdminThreadRead(owned.businessId, owned.staffId);
+    const result = await markAdminThreadRead(owned.businessId, owned.staffId, parsed.data);
+    if (!result.ok) return { ok: false, error: result.error };
+    unreadCount = result.unreadCount;
   } catch (error) {
     logger.error("Failed to mark staff thread read.", error, { staffId: owned.staffId });
     return { ok: false, error: "Something went wrong." };
   }
   revalidateStaffSurfaces(owned.staffId);
-  return { ok: true };
+  return { ok: true, unreadCount };
 }
 
 /**

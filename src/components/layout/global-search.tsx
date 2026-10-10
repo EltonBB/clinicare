@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CalendarDays,
   Loader2,
@@ -118,40 +118,22 @@ export function GlobalSearchPalette({
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
-  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
-  const previousOpenRef = useRef(open);
-
-  // Captured during render, not inside an effect — by the time an effect
-  // runs, Base UI's own focus-trap layout effect (a descendant, so it
-  // commits first) has already moved focus onto the autoFocus input, so an
-  // effect here would "restore" focus to that input instead of whatever was
-  // focused before the dialog opened.
-  if (open !== previousOpenRef.current) {
-    previousOpenRef.current = open;
+  const [previousOpen, setPreviousOpen] = useState(open);
+  if (open !== previousOpen) {
+    setPreviousOpen(open);
     if (open) {
-      previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+      // Preserve the closing animation's results, then reset before reopening.
+      setQuery("");
+      setResults([]);
+      setIsLoading(false);
+      setActiveIndex(0);
     }
   }
 
   useEffect(() => {
-    if (open) {
-      // Reset on open, not on close — clearing on close would wipe the
-      // results out from under the exit animation, flashing the empty state
-      // for the ~duration-slow it takes the dialog to fade out.
-      setQuery("");
-      setResults([]);
-      setActiveIndex(0);
-    } else {
-      previouslyFocusedRef.current?.focus?.();
-    }
-  }, [open]);
-
-  useEffect(() => {
     const trimmedQuery = query.trim();
 
-    if (trimmedQuery.length < 2) {
-      setResults([]);
-      setIsLoading(false);
+    if (!open || trimmedQuery.length < 2) {
       return;
     }
 
@@ -168,12 +150,14 @@ export function GlobalSearchPalette({
           }
         );
 
+        if (controller.signal.aborted) return;
         if (!response.ok) {
           setResults([]);
           return;
         }
 
         const payload = (await response.json()) as { results?: SearchResult[] };
+        if (controller.signal.aborted) return;
         setResults(payload.results ?? []);
         setActiveIndex(0);
       } catch {
@@ -191,7 +175,7 @@ export function GlobalSearchPalette({
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [query]);
+  }, [query, open]);
 
   // Arrow-key navigation only moves activeIndex — nothing scrolls the
   // dialog's own scroll container, so once a result list overflows this
@@ -216,6 +200,7 @@ export function GlobalSearchPalette({
           tailwind-merge and make the palette exactly viewport-wide on
           narrow screens, flush against the edges (Codex). */}
       <DialogContent
+        initialFocus={true}
         showCloseButton={false}
         className="top-[12dvh] flex max-h-[min(560px,80dvh)] w-full translate-y-0 flex-col gap-0 rounded-(--radius-panel) p-0 shadow-(--shadow-pop) sm:max-w-[560px]"
       >
@@ -223,9 +208,16 @@ export function GlobalSearchPalette({
         <div className="flex h-14 shrink-0 items-center gap-3 px-4">
           <Search className="size-4.5 shrink-0 text-muted-foreground" />
           <input
-            autoFocus
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              const value = event.target.value;
+              setQuery(value);
+              if (value.trim().length < 2) {
+                setResults([]);
+                setIsLoading(false);
+                setActiveIndex(0);
+              }
+            }}
             onKeyDown={(event) => {
               if (event.key === "ArrowDown") {
                 event.preventDefault();

@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+# Disposable local QA databases, private certificates, and fictional access codes
+/.qa-postgres/
 
 # next.js
 /.next/

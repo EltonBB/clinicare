@@ -12,24 +12,61 @@ type StaffMessagesTabProps = {
   staffId: string;
   staffName: string;
   initial: AdminThreadView;
+  onUnreadCountChange: (count: number) => void;
 };
 
-export function StaffMessagesTab({ staffId, staffName, initial }: StaffMessagesTabProps) {
+export function StaffMessagesTab({ staffId, staffName, initial, onUnreadCountChange }: StaffMessagesTabProps) {
   const [messages, setMessages] = useState<AdminThreadMessage[]>(initial.messages);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
+  const [unreadCount, setUnreadCount] = useState(initial.unreadForAdmin);
   const [isPending, startTransition] = useTransition();
   const endRef = useRef<HTMLDivElement>(null);
+  const receiptVersion = useRef(0);
 
   useEffect(() => {
-    // Opening the conversation clears the admin's unread count for this staff.
-    void markStaffThreadReadAction(staffId);
+    // Acknowledge the rendered snapshot; a later arrival must stay unread.
+    let active = true;
+    const version = ++receiptVersion.current;
+    void markStaffThreadReadAction(staffId, initial.messages.map((message) => message.id)).then((result) => {
+      if (!active || receiptVersion.current !== version) return;
+      if (result.ok && result.unreadCount !== undefined) {
+        setUnreadCount(result.unreadCount);
+        onUnreadCountChange(result.unreadCount);
+      } else setError(result.error ?? "Could not update read status. Reopen messages to retry.");
+    }).catch(() => {
+      if (active && receiptVersion.current === version) setError("Could not update read status. Reopen messages to retry.");
+    });
+    return () => {
+      active = false;
+      // A delayed Mark all response must not update the parent after tab removal.
+      ++receiptVersion.current;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length]);
+
+  function markAllRead() {
+    const version = ++receiptVersion.current;
+    setError("");
+    startTransition(async () => {
+      try {
+        const result = await markStaffThreadReadAction(staffId);
+        if (receiptVersion.current !== version) return;
+        if (!result.ok || result.unreadCount === undefined) {
+          setError(result.error ?? "Could not update read status. Please try again.");
+          return;
+        }
+        setUnreadCount(result.unreadCount);
+        onUnreadCountChange(result.unreadCount);
+      } catch {
+        if (receiptVersion.current === version) setError("Could not update read status. Please try again.");
+      }
+    });
+  }
 
   function send() {
     const body = draft.trim();
@@ -64,6 +101,11 @@ export function StaffMessagesTab({ staffId, staffName, initial }: StaffMessagesT
         <p className="mt-0.5 text-xs text-muted-foreground">
           Private chat with this staff member in the Vela Staff app
         </p>
+        {unreadCount > 0 ? (
+          <Button variant="ghost" size="sm" className="mt-1 h-8" disabled={isPending} onClick={markAllRead}>
+            Mark all read
+          </Button>
+        ) : null}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-4">

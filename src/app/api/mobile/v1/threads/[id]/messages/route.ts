@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { mobileRateLimit } from "@/lib/mobile/guard";
+import { mobileRateLimit, staffAuthResponse } from "@/lib/mobile/guard";
 import { postConversationMessage } from "@/lib/mobile/inbox";
+import { readMobileJson } from "@/lib/mobile/json-body";
 import { requireStaffContext } from "@/lib/staff-auth";
 
 export const runtime = "nodejs";
@@ -15,7 +16,7 @@ export async function POST(
 ) {
   const ctx = await requireStaffContext(request);
   if ("error" in ctx) {
-    return NextResponse.json({ error: ctx.error }, { status: ctx.status });
+    return staffAuthResponse(ctx);
   }
 
   const limited = await mobileRateLimit(ctx.device.id, "thread-send", { limit: 30, windowMs: 60_000 });
@@ -23,13 +24,9 @@ export async function POST(
     return limited;
   }
 
-  let json: unknown;
-  try {
-    json = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
-  }
-  const parsed = bodySchema.safeParse(json);
+  const body = await readMobileJson(request);
+  if ("response" in body) return body.response;
+  const parsed = bodySchema.safeParse(body.data);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }

@@ -6,7 +6,7 @@
 
 ## ⚠️ Next.js version
 
-This repo runs a **modified Next.js with breaking changes** (currently `^16.2.6`, App Router, React 19). Before touching routing, server/client components, caching, middleware, data fetching, server actions, layouts, or app-directory behavior, read the relevant guide in `node_modules/next/dist/docs/`. Do not assume older Next.js conventions.
+This repo runs a **modified Next.js with breaking changes** (currently `^16.3.8`, App Router, React 19). Before touching routing, server/client components, caching, middleware, data fetching, server actions, layouts, or app-directory behavior, read the relevant guide in `node_modules/next/dist/docs/`. Do not assume older Next.js conventions.
 
 ## Stack
 

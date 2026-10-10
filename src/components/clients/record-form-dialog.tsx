@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -62,23 +62,18 @@ export function RecordFormDialog({
   isPending: boolean;
   onSubmit: (values: RecordFormValues) => void;
 }) {
-  const [values, setValues] = useState<RecordFormValues>({});
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const next: RecordFormValues = {};
-
-    for (const field of fields) {
-      next[field.key] = initialValues?.[field.key] ?? fieldDefault(field);
-    }
-
-    setValues(next);
-    // Reset only when the dialog opens for a (possibly different) record.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  function defaultValues(): RecordFormValues {
+    return Object.fromEntries(fields.map((field) => [
+      field.key, initialValues?.[field.key] ?? fieldDefault(field),
+    ]));
+  }
+  const [values, setValues] = useState<RecordFormValues>(defaultValues);
+  const [previousOpen, setPreviousOpen] = useState(open);
+  // Reset before rendering a newly opened record; keep edits on prop refreshes.
+  if (previousOpen !== open) {
+    setPreviousOpen(open);
+    if (open) setValues(defaultValues());
+  }
 
   const missingRequired = fields.some(
     (field) => field.required && !String(values[field.key] ?? "").trim()

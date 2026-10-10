@@ -1,0 +1,84 @@
+{
+  "date": "2026-10-10T18:06:10.616Z",
+  "next": "16.3.8",
+  "node": "v24.13.0",
+  "listener": "127.0.0.1:3100",
+  "postgresListener": "127.0.0.1:55432",
+  "tls": {
+    "ssl": true,
+    "version": "TLSv1.3",
+    "cipher": "TLS_AES_256_GCM_SHA384"
+  },
+  "serverEntry": "next start",
+  "normalPrismaSeam": true,
+  "mocks": false,
+  "fictionalDataOnly": true,
+  "results": [
+    {
+      "name": "preflight passes through listening Next proxy",
+      "passed": true
+    },
+    {
+      "name": "unauthenticated HTTP is JSON 401 with CORS and private no-store",
+      "passed": true
+    },
+    {
+      "name": "HTTP enrollment reaches real Prisma TLS Postgres and returns profile",
+      "passed": true
+    },
+    {
+      "name": "authenticated HTTP profile resolves normal production Prisma seam",
+      "passed": true
+    },
+    {
+      "name": "HTTP same-clinic peer and foreign thread reads do not cross ownership",
+      "passed": true
+    },
+    {
+      "name": "HTTP refuses to cancel a recorded no-show and preserves its mobile status contract",
+      "passed": true
+    },
+    {
+      "name": "concurrent HTTP cancellation persists one notice, reset and pending Pro slot-offer draft",
+      "passed": true
+    },
+    {
+      "name": "concurrent HTTP sends share one thread and preserve every unread increment",
+      "passed": true
+    },
+    {
+      "name": "HTTP malformed and oversized JSON stop at request boundary",
+      "passed": true
+    },
+    {
+      "name": "HTTP snapshot acknowledgment preserves unseen arrivals, capped history and retries",
+      "passed": true
+    },
+    {
+      "name": "HTTP read selections reject malformed and foreign IDs without partial receipts",
+      "passed": true
+    },
+    {
+      "name": "HTTP empty seen selection is no-op and explicit legacy mark-all clears hidden history",
+      "passed": true
+    },
+    {
+      "name": "staff deactivation is reflected on next HTTP request",
+      "passed": true
+    },
+    {
+      "name": "HTTP device rate limit exposes Retry-After across CORS",
+      "passed": true
+    },
+    {
+      "name": "logout revokes token before subsequent HTTP reads",
+      "passed": true
+    }
+  ],
+  "boundaries": [
+    "Fresh schema via db push; production RLS/deployment SQL not exercised",
+    "Redis absent: per-process fallback limiter",
+    "No browser, mobile-native runtime, external auth, storage or push provider exercised"
+  ],
+  "runDirectory": "C:\\dev\\vela\\worktrees\\mobile-qa-integration-20261010\\.qa-postgres\\http-yCQ8qC"
+}
