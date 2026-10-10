@@ -33,6 +33,9 @@ declare global {
 }
 
 const MAX_TRACKED_KEYS = 10_000;
+const PRUNE_INTERVAL_MS = 1000;
+let lastPrunedAt = 0;
+let earliestBucketResetAt = 0;
 
 const buckets = global.rateLimitBuckets ?? new Map<string, Bucket>();
 
@@ -74,9 +77,6 @@ function getRedisLimiter(rule: RateLimitRule): Ratelimit | null {
   // The breaker is consulted on EVERY call, including cache hits below: a
   // cached limiter still issues a real Redis command, so short-circuiting
   // before this would let `checkRateLimit` bypass an open breaker entirely.
-  // The breaker is consulted on EVERY call, including cache hits below: a
-  // cached limiter still issues a real Redis command, so short-circuiting
-  // before this would let `checkRateLimit` bypass an open breaker entirely.
   // `rate-limit.test.ts` pins this.
   const redis = getRedis();
   if (!redis) {
@@ -114,15 +114,19 @@ function getRedisLimiter(rule: RateLimitRule): Ratelimit | null {
   }
 }
 
-/** Drop expired buckets when the map grows large, to bound memory. */
+/** Drop expired buckets at capacity, at most once per second under a key flood. */
 function pruneExpired(now: number) {
-  if (buckets.size <= MAX_TRACKED_KEYS) {
+  if (buckets.size < MAX_TRACKED_KEYS || now - lastPrunedAt < PRUNE_INTERVAL_MS) {
     return;
   }
+  lastPrunedAt = now;
+  earliestBucketResetAt = Infinity;
 
   for (const [key, bucket] of buckets) {
     if (now >= bucket.resetAt) {
       buckets.delete(key);
+    } else {
+      earliestBucketResetAt = Math.min(earliestBucketResetAt, bucket.resetAt);
     }
   }
 }
@@ -134,7 +138,20 @@ function checkRateLimitInMemory(key: string, rule: RateLimitRule): RateLimitResu
 
   if (!existing || now >= existing.resetAt) {
     pruneExpired(now);
-    buckets.set(key, { count: 1, resetAt: now + rule.windowMs });
+    // Preserve existing subjects' budgets. Eviction would reset an attacker's
+    // allowance; admitting unlimited active keys would exhaust process memory.
+    if (!existing && buckets.size >= MAX_TRACKED_KEYS) {
+      return {
+        allowed: false,
+        remaining: 0,
+        retryAfterSeconds: Math.max(1, Math.ceil((earliestBucketResetAt - now) / 1000)),
+      };
+    }
+    const resetAt = now + rule.windowMs;
+    buckets.set(key, { count: 1, resetAt });
+    // A prune can empty the map and set this to Infinity. Track refills too:
+    // a burst can fill the map again before the next permitted prune.
+    earliestBucketResetAt = Math.min(earliestBucketResetAt || Infinity, resetAt);
     return { allowed: true, remaining: Math.max(rule.limit - 1, 0), retryAfterSeconds: 0 };
   }
 

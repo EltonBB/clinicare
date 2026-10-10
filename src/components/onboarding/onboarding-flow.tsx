@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
+import { useEffect, useState, useSyncExternalStore, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import {
   AnimatePresence,
@@ -74,6 +74,15 @@ const stepIcons: Record<OnboardingStepId, typeof Building2> = {
 };
 
 const onboardingDraftStorageKey = "vela:onboarding-draft";
+function subscribeDraft(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  return () => window.removeEventListener("storage", onChange);
+}
+function getDraftSnapshot(): string | null {
+  try { return window.localStorage.getItem(onboardingDraftStorageKey); }
+  catch { return null; }
+}
+function getServerDraftSnapshot(): undefined { return undefined; }
 
 const fieldInputClass =
   "h-11 rounded-(--radius-card) border-border bg-white px-3.5 text-[15px] shadow-none placeholder:text-muted-foreground/70";
@@ -213,7 +222,7 @@ export function OnboardingFlow({
   }, [reduce, pointerX, pointerY]);
 
   // Seed from initialState only, so the server render and the first client render
-  // agree. A saved localStorage draft is restored after mount (effect below) to
+  // agree. A saved localStorage draft is restored after hydration to
   // avoid a hydration mismatch.
   const [state, setState] = useState(initialState);
   const [showWelcome, setShowWelcome] = useState(
@@ -277,43 +286,34 @@ export function OnboardingFlow({
     };
   }, [logoPreviewUrl, state.clinic.logoUrl]);
 
-  // Restore a saved draft after mount — kept out of the useState initializer so
-  // the server render and the first client render agree (no hydration mismatch).
-  useEffect(() => {
-    const rawDraft = window.localStorage.getItem(onboardingDraftStorageKey);
-    if (!rawDraft) {
-      return;
-    }
-    try {
-      const draft = normalizeOnboardingState(JSON.parse(rawDraft));
-      if (draft.completed) {
-        return;
+  const draftSnapshot = useSyncExternalStore(subscribeDraft, getDraftSnapshot, getServerDraftSnapshot);
+  const [draftRestored, setDraftRestored] = useState(false);
+  if (!draftRestored && draftSnapshot !== undefined) {
+    setDraftRestored(true);
+    if (draftSnapshot) {
+      try {
+        const draft = normalizeOnboardingState(JSON.parse(draftSnapshot));
+        if (!draft.completed) {
+          setState(draft);
+          setShowWelcome(draft.currentStep <= 1);
+          setSolo(!draft.staffMember.name.trim());
+        }
+      } catch {
+        // Persistence replaces an invalid draft after restoration.
       }
-      setState(draft);
-      setShowWelcome(draft.currentStep <= 1);
-      setSolo(!draft.staffMember.name.trim());
-    } catch {
-      window.localStorage.removeItem(onboardingDraftStorageKey);
     }
-  }, []);
+  }
 
-  // Persist the draft on change. Skip the first run so it can't overwrite a saved
-  // draft with the initial state before the restore effect above has applied it.
-  const skipFirstDraftSave = useRef(true);
+  // Wait for hydration and restoration before saving over the stored draft.
   useEffect(() => {
-    if (skipFirstDraftSave.current) {
-      skipFirstDraftSave.current = false;
-      return;
+    if (!draftRestored) return;
+    try {
+      if (state.completed) window.localStorage.removeItem(onboardingDraftStorageKey);
+      else window.localStorage.setItem(onboardingDraftStorageKey, JSON.stringify(state));
+    } catch {
+      // Storage may be unavailable; server progress saving still works.
     }
-    if (typeof window === "undefined") {
-      return;
-    }
-    if (state.completed) {
-      window.localStorage.removeItem(onboardingDraftStorageKey);
-      return;
-    }
-    window.localStorage.setItem(onboardingDraftStorageKey, JSON.stringify(state));
-  }, [state]);
+  }, [state, draftRestored]);
 
   function persistState(nextState: OnboardingState, options?: { complete?: boolean; status?: string }) {
     startSaving(async () => {

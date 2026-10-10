@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import type { StaffContext } from "@/lib/staff-auth";
+import { acknowledgeThreadMessages } from "@/lib/mobile/thread-read";
 
 /**
  * Internal staff↔admin messaging + notifications for the mobile app. This is the
@@ -192,25 +193,14 @@ export async function postConversationMessage(
   return { ok: true, threadId: thread.id, message: serializeMessage(message, now) };
 }
 
-export async function markConversationRead(ctx: StaffContext, idParam: string): Promise<boolean> {
+export async function markConversationRead(ctx: StaffContext, idParam: string, seenMessageIds?: string[]) {
   const thread = await findThread(ctx, idParam);
   if (!thread) {
-    // Nothing to mark yet (no thread created) — treat as a no-op success.
-    return true;
+    if (idParam !== "admin") return { ok: false as const, status: 404, error: "Conversation not found." };
+    if (seenMessageIds?.length) return { ok: false as const, status: 400, error: "Invalid message selection." };
+    return { ok: true as const, unreadCount: 0 };
   }
-  const now = new Date();
-  await prisma.$transaction(async (tx) => {
-    await tx.staffThread.update({
-      where: { id: thread.id },
-      data: { unreadForStaff: 0 },
-    });
-    // Mark inbound (admin) messages as read.
-    await tx.staffThreadMessage.updateMany({
-      where: { threadId: thread.id, sender: "ADMIN", readAt: null },
-      data: { readAt: now },
-    });
-  });
-  return true;
+  return acknowledgeThreadMessages(thread, "staff", seenMessageIds);
 }
 
 export async function listNotifications(ctx: StaffContext): Promise<MobileNotification[]> {

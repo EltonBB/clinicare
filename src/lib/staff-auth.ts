@@ -4,6 +4,9 @@ import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { bearerToken, hashDeviceToken } from "@/lib/staff-auth-crypto";
+import { DEVICE_ABSOLUTE_TTL_MS, DEVICE_TOKEN_TTL_MS } from "@/lib/staff-device-policy";
+
+export { DEVICE_ABSOLUTE_TTL_MS, DEVICE_TOKEN_TTL_MS } from "@/lib/staff-device-policy";
 
 // Re-exported for existing callers (e.g. the redeem route) — the actual
 // implementations live in staff-auth-crypto.ts, which has no Prisma import so
@@ -35,15 +38,6 @@ export {
  * `node:crypto` primitives, mirroring `src/lib/cron-auth.ts`.
  */
 
-/** Device session idle lifetime — slides forward on activity, capped by DEVICE_ABSOLUTE_TTL_MS. */
-export const DEVICE_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-/**
- * Absolute device session lifetime from enrollment, regardless of activity —
- * without this, a device used at least once every 30 days would slide forever
- * and never require re-enrollment even if it were lost/stolen and later used
- * once. Forces periodic re-enrollment via a fresh admin-issued code.
- */
-export const DEVICE_ABSOLUTE_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 /** Only bump lastSeenAt/expiresAt when the session is at least this stale — a
  *  DB write on literally every request (polling included) is unnecessary. */
 const SESSION_REFRESH_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
@@ -70,7 +64,7 @@ export type StaffContext = {
   device: StaffDevice;
 };
 
-export type StaffAuthError = { error: string; status: number };
+export type StaffAuthError = { error: string; status: number; retryAfterSeconds?: number };
 
 /**
  * Authenticate a `/api/mobile/v1/*` request from its bearer device token.
@@ -93,7 +87,11 @@ export async function requireStaffContext(
   const ip = clientIpFromHeaders(request.headers);
   const throttled = await checkRateLimit(`mobile-auth:${ip}`, { limit: 600, windowMs: 60_000 });
   if (!throttled.allowed) {
-    return { error: "Too many requests. Please slow down for a moment.", status: 429 };
+    return {
+      error: "Too many requests. Please slow down for a moment.",
+      status: 429,
+      retryAfterSeconds: throttled.retryAfterSeconds,
+    };
   }
 
   const raw = bearerToken(request);

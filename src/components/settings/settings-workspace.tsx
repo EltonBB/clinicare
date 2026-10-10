@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -339,10 +340,7 @@ export function SettingsWorkspace({
     onSavingChange?.(isPending);
   }, [isPending, onSavingChange]);
 
-  // onSaved is read via a ref, not as a dependency below, so a prop-identity
-  // change on its own can't re-fire the completion effect.
-  const onSavedRef = useRef(onSaved);
-  onSavedRef.current = onSaved;
+  const notifySaved = useEffectEvent(() => onSaved?.(hasUnsavedChanges));
 
   // Bumped once handleSave finishes reconciling account/settings state.
   // Reported through this tick (rather than calling onSaved directly from
@@ -358,10 +356,9 @@ export function SettingsWorkspace({
     if (saveCompletionTick === 0) {
       return;
     }
-    onSavedRef.current?.(hasUnsavedChanges);
+    notifySaved();
     // Must fire exactly once per completed save (the tick bump), not again
     // on every later unrelated hasUnsavedChanges change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saveCompletionTick]);
 
   function updateDay(day: WeekdayKey, patch: Partial<(typeof state.workingHours)[WeekdayKey]>) {

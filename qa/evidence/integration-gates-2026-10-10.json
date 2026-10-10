@@ -1,0 +1,222 @@
+{
+  "dateUtc": "2026-10-10T18:48:47.102Z",
+  "base": "bbe2524949c614c91fe16111b8bda3a6c77ce46f",
+  "sourceAggregateSha256": "f7deab64ee906dbce73a6e98ca11698e250335f719dd5619171904568b984e7f",
+  "typecheck": {
+    "name": "typecheck",
+    "code": 0,
+    "signal": null,
+    "durationMs": 49551
+  },
+  "lint": {
+    "name": "lint",
+    "code": 0,
+    "signal": null,
+    "durationMs": 73755
+  },
+  "generate": {
+    "name": "generate",
+    "code": 0,
+    "signal": null,
+    "durationMs": 2303
+  },
+  "build": {
+    "name": "build",
+    "code": 0,
+    "signal": null,
+    "durationMs": 80971
+  },
+  "receipts": {
+    "passed": 5,
+    "gate": {
+      "name": "receipts",
+      "code": 0,
+      "signal": null,
+      "durationMs": 1265
+    }
+  },
+  "workerTypecheck": {
+    "name": "workerTypecheck",
+    "code": 0,
+    "signal": null,
+    "durationMs": 5825
+  },
+  "unit": {
+    "passed": 1679,
+    "failed": 0,
+    "passedFiles": 375,
+    "failedFiles": 0,
+    "success": true,
+    "gate": {
+      "name": "unit",
+      "code": 0,
+      "signal": null,
+      "durationMs": 34439
+    }
+  },
+  "unitInitial": {
+    "passed": 1665,
+    "failed": 7,
+    "passedFiles": 91,
+    "failedFiles": 2,
+    "totalLoadedTests": 1672,
+    "reason": "Separate worker dependencies absent: baileys and qrcode-terminal; application suites passed. One worker suite could not load.",
+    "fullSuiteStatus": "resolved: user manual npm ci succeeded; full suite and worker typecheck passed"
+  },
+  "postgres": {
+    "passed": 24,
+    "failed": 0,
+    "success": true,
+    "cases": [
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL redeems a formatted code once, returns the mobile profile, and stores only a token hash",
+        "status": "passed",
+        "durationMs": 391.3595999999998
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL allows only one of five concurrent redemptions to create a device",
+        "status": "passed",
+        "durationMs": 309.3932999999997
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL rejects expired codes and inactive staff without issuing devices",
+        "status": "passed",
+        "durationMs": 144.42450000000008
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL enforces code issuance supersession under genuine concurrent serializable transactions",
+        "status": "passed",
+        "durationMs": 83.08640000000014
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL preserves the current web-owner action budget before generating an enrollment code",
+        "status": "passed",
+        "durationMs": 119.83640000000014
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL isolates appointment lists and blocks both same-clinic peers and foreign records",
+        "status": "passed",
+        "durationMs": 83.27599999999984
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL cancels once with immutable metadata and one notice, and refuses completed/no-show visits",
+        "status": "passed",
+        "durationMs": 101.30480000000034
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL keeps Pro slot matching and draft creation atomic with concurrent mobile cancellations",
+        "status": "passed",
+        "durationMs": 105.94889999999987
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL does not create slot-offer drafts on Basic even when an eligible patient is waiting",
+        "status": "passed",
+        "durationMs": 79.13479999999981
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL does not draft a Pro slot offer for a future slot outside configured working hours",
+        "status": "passed",
+        "durationMs": 75.44300000000021
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL keeps admin reads side-effect free and isolates thread reads and writes",
+        "status": "passed",
+        "durationMs": 66.19440000000031
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL creates only one admin thread under ten concurrent first contacts",
+        "status": "passed",
+        "durationMs": 89.49309999999969
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL bounds a long conversation and alert history at the route response boundary",
+        "status": "passed",
+        "durationMs": 188.7551999999996
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL acknowledges only the fetched message IDs and preserves a later ADMIN arrival",
+        "status": "passed",
+        "durationMs": 125.96140000000014
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL rejects malformed, oversized, unknown and foreign read selections without partial writes",
+        "status": "passed",
+        "durationMs": 92.67840000000069
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL serializes overlapping real admin sends and duplicate read acknowledgments without losing unread",
+        "status": "passed",
+        "durationMs": 132.35670000000027
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL preserves unseen STAFF and SYSTEM messages when the admin acknowledges a fetched snapshot",
+        "status": "passed",
+        "durationMs": 91.83330000000024
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL acknowledges ordinary cancellation SYSTEM receipts without clearing a later cancellation",
+        "status": "passed",
+        "durationMs": 95.21470000000045
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL lists and marks only the authenticated staff member's notifications",
+        "status": "passed",
+        "durationMs": 42.22199999999975
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL rejects revoked, idle-expired, absolute-expired, and inactive sessions",
+        "status": "passed",
+        "durationMs": 45.638199999999415
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL refreshes an active sliding session and permanently rejects its token after logout",
+        "status": "passed",
+        "durationMs": 53.636499999999614
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL bounds request bodies, validates push tokens, and sends finite Retry-After after the device quota",
+        "status": "passed",
+        "durationMs": 191.88979999999992
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL enforces the unauthenticated IP budget through the actual me route",
+        "status": "passed",
+        "durationMs": 82.82539999999972
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL enforces shift eligibility and one open attendance record under concurrent check-ins",
+        "status": "passed",
+        "durationMs": 74.18059999999969
+      }
+    ]
+  },
+  "http": {
+    "passed": 15,
+    "failed": 0,
+    "tls": {
+      "ssl": true,
+      "version": "TLSv1.3",
+      "cipher": "TLS_AES_256_GCM_SHA384"
+    },
+    "fictionalDataOnly": true,
+    "serverEntry": "next start",
+    "mocks": false
+  },
+  "cleanup": {
+    "httpPort": 3100,
+    "postgresPort": 55432,
+    "listenersRemaining": 0,
+    "mobilePreviewRunning": false
+  },
+  "review": {
+    "firstMedium": "clean",
+    "ponytailOnce": "no actionable simplification",
+    "finalMedium": "clean"
+  },
+  "boundaries": [
+    "Local fictional data only",
+    "Hosted deployment, real clinic, mobile native devices, external providers and distributed Redis not exercised",
+    "Worker installation initially blocked by automatic approval review; user completed manual setup successfully",
+    "No hosted schema or clinic-data writes"
+  ]
+}

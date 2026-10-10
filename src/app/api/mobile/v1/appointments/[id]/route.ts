@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { APPOINTMENT_NOT_FOUND_ERROR } from "@/lib/appointments-shared";
 import { getOwnAppointment } from "@/lib/mobile/appointments";
-import { mobileRateLimit } from "@/lib/mobile/guard";
+import { mobileRateLimit, staffAuthResponse } from "@/lib/mobile/guard";
 import { requireStaffContext } from "@/lib/staff-auth";
 
 export const runtime = "nodejs";
@@ -14,7 +14,7 @@ export async function GET(
 ) {
   const ctx = await requireStaffContext(request);
   if ("error" in ctx) {
-    return NextResponse.json({ error: ctx.error }, { status: ctx.status });
+    return staffAuthResponse(ctx);
   }
 
   const limited = await mobileRateLimit(ctx.device.id, "appointment", {

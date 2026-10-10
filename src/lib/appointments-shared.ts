@@ -7,6 +7,7 @@ import { buildStaffPushPayload, sendStaffPush } from "@/lib/mobile/push";
 import { prisma } from "@/lib/prisma";
 import { retryOnWriteConflict } from "@/lib/prisma-retry";
 import { offerFreedSlot, withdrawSlotOffers } from "@/lib/slot-offers";
+import { activeStaffDeviceWhere } from "@/lib/staff-device-policy";
 
 /**
  * Appointment-mutation side effects shared by the web calendar actions and the
@@ -562,7 +563,7 @@ export async function notifyStaffOfAppointmentChange(
       },
     });
     const devices = await prisma.staffDevice.findMany({
-      where: { businessId, staffMemberId, revokedAt: null, expoPushToken: { not: null } },
+      where: { businessId, staffMemberId, ...activeStaffDeviceWhere(), expoPushToken: { not: null } },
       select: { expoPushToken: true },
     });
     await sendStaffPush(

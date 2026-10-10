@@ -1,0 +1,125 @@
+{
+  "generatedAt": "2026-10-10T17:58:48.0097933+00:00",
+  "base": "bbe2524949c614c91fe16111b8bda3a6c77ce46f",
+  "scope": "Own normal integration worktree install only; synthetic loopback Prisma configuration; no env files, database connections, launches or deployment",
+  "node": "v24.13.0",
+  "install": {
+    "normalDirectoryNoJunction": true,
+    "initialNpmCiPassed": true,
+    "initialPackagesInstalled": 677,
+    "method": "Clean npm ci including lifecycle scripts, followed by targeted compatible npm update @humanfs/node brace-expansion, then successful explicit final postinstall. Final lock is not claimed to have received a second cold npm ci.",
+    "finalPostinstallPassed": true,
+    "prismaClientGenerated": "6.19.3"
+  },
+  "versions": {
+    "next": "16.3.8",
+    "eslint-config-next": "16.3.8",
+    "@next/eslint-plugin-next": "16.3.8",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "prisma": "6.19.3",
+    "@prisma/client": "6.19.3",
+    "@prisma/adapter-pg": "7.6.0",
+    "pg": "8.20.0",
+    "sharp": "0.35.5",
+    "vitest": "4.1.11",
+    "vite": "8.3.4",
+    "postcss": "8.5.29",
+    "deepmerge-ts": "8.0.2",
+    "braces": "3.0.3",
+    "patch-package": "8.0.1",
+    "@humanfs/node": "0.16.8",
+    "@humanfs/core": "0.19.2"
+  },
+  "braceExpansionInstallations": [
+    {
+      "path": "node_modules/@typescript-eslint/typescript-estree/node_modules/brace-expansion",
+      "version": "5.0.12"
+    },
+    {
+      "path": "node_modules/brace-expansion",
+      "version": "1.1.21"
+    },
+    {
+      "path": "node_modules/glob/node_modules/brace-expansion",
+      "version": "5.0.12"
+    }
+  ],
+  "regressions": {
+    "bracesAndMicromatchPassed": true,
+    "scopedPrismaDeepmergePassed": true,
+    "vitePostcssCompatibilityAndConsumerPassed": true,
+    "prismaSchemaValidatePassed": true
+  },
+  "audit": {
+    "unmodifiedScannerOutput": true,
+    "full": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 7,
+      "critical": 0,
+      "total": 7
+    },
+    "production": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 4,
+      "critical": 0,
+      "total": 4
+    },
+    "remainingUnderlyingAdvisories": [
+      "GHSA-vfj7-8cjw-p6xm"
+    ],
+    "warning": "braces 3.0.3 remains visible by upstream version although installed source has the reviewed bounded-depth patch. No fabricated version, suppression or empty replacement."
+  },
+  "hashes": [
+    {
+      "file": "package.json",
+      "sha256": "0bb8f09d02f7ba27f34a20a80cecd773941efa564545c2614ea32db6f57e4e45"
+    },
+    {
+      "file": "package-lock.json",
+      "sha256": "129f8762315536e6d88b3244d342a7fb4ff4840d581ad567fa4a45136070136c"
+    },
+    {
+      "file": "patches/braces+3.0.3.patch",
+      "sha256": "b25fd952c49fdd9f7003aaf5309fa20cac78053935adca87a73c9c82c672a0ae"
+    },
+    {
+      "file": "qa/dependency-security.mjs",
+      "sha256": "1456dcd97d7826c6dce900e2c790254d2674695b837a184c3531882d59ddcb8b"
+    }
+  ],
+  "patchedSourceHashes": [
+    {
+      "file": "node_modules/braces/lib/compile.js",
+      "sha256": "3219efa3f58f88f3de31c9ffd5cc35ce0c121eec30a7385ca3ee07ab53d62de9"
+    },
+    {
+      "file": "node_modules/braces/lib/expand.js",
+      "sha256": "7560479f6a5436ec555d59be8c9b9658d9fcce89d080b912ac186139bfe6b58b"
+    },
+    {
+      "file": "node_modules/braces/lib/parse.js",
+      "sha256": "717a2b435090985f4ab72b69c18e4c2ecc33a7b0729b4503c6ca441833006482"
+    },
+    {
+      "file": "node_modules/braces/lib/stringify.js",
+      "sha256": "1c3497739604fd1511ca353d61628837a85011c34101d68feea3194bc8585b97"
+    }
+  ],
+  "compatibility": {
+    "vitePostcssRequirement": "^8.5.29",
+    "actualPostcss": "8.5.29",
+    "viteNodeRequirement": "^20.19.0 || >=22.12.0",
+    "ciNode20": "Current 20.x satisfies >=20.19; checks in this dependency task used Node24",
+    "prismaAdapter": "Main retained Prisma/client 6.19.3 plus adapter-pg 7.6.0. No pairing change; full real database verification belongs to application gates."
+  },
+  "pending": [
+    "Full integrated application gates",
+    "Deployment",
+    "Live clinic and physical-device QA"
+  ]
+}

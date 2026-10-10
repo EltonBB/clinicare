@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { logger } from "@/lib/logger";
 import { loadMobileMe } from "@/lib/mobile/me";
+import { readMobileJson } from "@/lib/mobile/json-body";
+import { isExpoPushToken } from "@/lib/mobile/push-token";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import {
@@ -20,7 +22,7 @@ const bodySchema = z.object({
   code: z.string().min(1).max(64),
   deviceLabel: z.string().max(120).optional(),
   platform: z.enum(["ios", "android"]).optional(),
-  expoPushToken: z.string().max(256).optional(),
+  expoPushToken: z.string().max(256).refine(isExpoPushToken).optional(),
 });
 
 const REDEEM_RATE_LIMIT = { limit: 8, windowMs: 60_000 };
@@ -45,14 +47,10 @@ export async function POST(request: Request) {
     );
   }
 
-  let json: unknown;
-  try {
-    json = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
-  }
+  const body = await readMobileJson(request);
+  if ("response" in body) return body.response;
 
-  const parsed = bodySchema.safeParse(json);
+  const parsed = bodySchema.safeParse(body.data);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }

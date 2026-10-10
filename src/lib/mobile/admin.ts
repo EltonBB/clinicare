@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { activeStaffDeviceWhere } from "@/lib/staff-device-policy";
 import { formatZonedFullDate, formatZonedShortDateTime } from "@/lib/time-zone";
 
 /**
@@ -32,7 +33,7 @@ export async function getMobileAccessStatus(
     prisma.staffDevice.findFirst({
       // Only a device that can still authenticate counts as "paired" — exclude
       // revoked and idle-expired sessions (their token is already rejected).
-      where: { businessId, staffMemberId, revokedAt: null, expiresAt: { gt: new Date() } },
+      where: { businessId, staffMemberId, ...activeStaffDeviceWhere() },
       orderBy: { lastSeenAt: "desc" },
       select: { deviceLabel: true, platform: true, createdAt: true, lastSeenAt: true },
     }),

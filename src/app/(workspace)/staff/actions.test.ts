@@ -17,6 +17,10 @@ const mocks = vi.hoisted(() => {
   const retireWaitlistEntries = vi.fn();
   const reofferFreedSlots = vi.fn();
   const lockStaffMemberExclusive = vi.fn();
+  const codeUpdateMany = vi.fn();
+  const codeCreate = vi.fn();
+  const loggerError = vi.fn();
+  const markAdminThreadRead = vi.fn();
   return {
     staffMember,
     staffShift,
@@ -27,6 +31,10 @@ const mocks = vi.hoisted(() => {
     retireWaitlistEntries,
     reofferFreedSlots,
     lockStaffMemberExclusive,
+    codeUpdateMany,
+    codeCreate,
+    loggerError,
+    markAdminThreadRead,
   };
 });
 
@@ -54,6 +62,13 @@ vi.mock("@/lib/row-locks", () => ({
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("@/lib/logger", () => ({
+  logger: { error: mocks.loggerError, warn: vi.fn(), info: vi.fn() },
+}));
+vi.mock("@/lib/mobile/admin-inbox", () => ({
+  markAdminThreadRead: mocks.markAdminThreadRead,
+  postAdminThreadMessage: vi.fn(),
+}));
 
 import { revalidatePath } from "next/cache";
 
@@ -524,6 +539,38 @@ describe("saveStaffAction", () => {
 });
 
 describe("generateMobileAccessCodeAction", () => {
+  it("supersedes prior codes and creates the new code inside a serializable transaction", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: STAFF_ID, isActive: true, status: "ACTIVE" });
+    mocks.codeUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.codeCreate.mockResolvedValue({ id: "code_1" });
+    mocks.$transaction.mockImplementationOnce(async (callback) => callback({
+      staffAccessCode: { updateMany: mocks.codeUpdateMany, create: mocks.codeCreate },
+    }));
+
+    const result = await generateMobileAccessCodeAction(STAFF_ID);
+
+    expect(result.ok).toBe(true);
+    expect(result.code).toMatch(/^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/);
+    expect(mocks.$transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
+    expect(mocks.codeUpdateMany).toHaveBeenCalledWith({
+      where: { businessId: "biz_1", staffMemberId: STAFF_ID, status: "ACTIVE" }, data: { status: "REVOKED" },
+    });
+    expect(mocks.codeCreate.mock.calls[0][0].data.codeHash).not.toBe(result.code);
+    expect(mocks.codeUpdateMany.mock.invocationCallOrder[0]).toBeLessThan(mocks.codeCreate.mock.invocationCallOrder[0]);
+  });
+
+  it("does not retry or return a code when serialization rejects a concurrent issuer", async () => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: STAFF_ID, isActive: true, status: "ACTIVE" });
+    mocks.$transaction.mockRejectedValueOnce(Object.assign(new Error("Serialization conflict"), { code: "P2034" }));
+
+    const result = await generateMobileAccessCodeAction(STAFF_ID);
+
+    expect(result).toEqual({ ok: false, error: "We couldn't generate a code. Please try again." });
+    expect(mocks.$transaction).toHaveBeenCalledOnce();
+    expect(mocks.loggerError).toHaveBeenCalledOnce();
+    expect(result.code).toBeUndefined();
+  });
+
   it("refuses to issue a code when the staff member is inactive", async () => {
     mocks.staffMember.findFirst.mockResolvedValue({
       id: STAFF_ID,
@@ -557,6 +604,40 @@ describe("generateMobileAccessCodeAction", () => {
       ok: false,
       error: "Mobile access can't be issued to an inactive staff member.",
     });
+  });
+});
+
+describe("markStaffThreadReadAction", () => {
+  beforeEach(() => {
+    mocks.staffMember.findFirst.mockResolvedValue({ id: STAFF_ID, isActive: true, status: "ACTIVE" });
+  });
+
+  it("acknowledges the exact snapshot and returns the confirmed remaining count", async () => {
+    mocks.markAdminThreadRead.mockResolvedValueOnce({ ok: true, unreadCount: 3 });
+    expect(await markStaffThreadReadAction(STAFF_ID, ["message_1"])).toEqual({ ok: true, unreadCount: 3 });
+    expect(mocks.markAdminThreadRead).toHaveBeenCalledWith("biz_1", STAFF_ID, ["message_1"]);
+    expect(mocks.getAuthedBusiness).toHaveBeenCalledWith(undefined, { budget: "background" });
+  });
+
+  it("keeps the explicit mark-all call separate from an empty snapshot", async () => {
+    mocks.markAdminThreadRead.mockResolvedValue({ ok: true, unreadCount: 0 });
+    await markStaffThreadReadAction(STAFF_ID, []);
+    await markStaffThreadReadAction(STAFF_ID);
+    expect(mocks.markAdminThreadRead.mock.calls.map((call) => call[2])).toEqual([[], undefined]);
+  });
+
+  it("rejects malformed and oversized selections before acknowledgment", async () => {
+    for (const ids of [[""], ["bad/id"], Array(101).fill("message_1")]) {
+      expect(await markStaffThreadReadAction(STAFF_ID, ids)).toEqual({ ok: false, error: "Invalid message selection." });
+    }
+    expect(mocks.markAdminThreadRead).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("returns a scope rejection without clearing the unread badge", async () => {
+    mocks.markAdminThreadRead.mockResolvedValueOnce({ ok: false, status: 400, error: "Invalid message selection." });
+    expect(await markStaffThreadReadAction(STAFF_ID, ["foreign_message"])).toEqual({ ok: false, error: "Invalid message selection." });
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 });
 

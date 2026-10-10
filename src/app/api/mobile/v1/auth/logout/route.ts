@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { mobileRateLimit } from "@/lib/mobile/guard";
+import { mobileRateLimit, staffAuthResponse } from "@/lib/mobile/guard";
 import { prisma } from "@/lib/prisma";
 import { requireStaffContext } from "@/lib/staff-auth";
 
@@ -16,7 +16,7 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   const ctx = await requireStaffContext(request);
   if ("error" in ctx) {
-    return NextResponse.json({ error: ctx.error }, { status: ctx.status });
+    return staffAuthResponse(ctx);
   }
 
   const limited = await mobileRateLimit(ctx.device.id, "logout", { limit: 10, windowMs: 60_000 });
