@@ -40,7 +40,7 @@ export function StaffMessagesTab({ staffId, staffName, initial, onUnreadCountCha
     return () => {
       active = false;
       // A delayed Mark all response must not update the parent after tab removal.
-      ++receiptVersion.current;
+      receiptVersion.current += 1;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

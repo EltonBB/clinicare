@@ -1,0 +1,154 @@
+{
+  "dateUtc": "2026-10-11T17:01:31.925Z",
+  "base": "bbe2524949c614c91fe16111b8bda3a6c77ce46f",
+  "sourceAggregateSha256": "d684fa5ec9113969031cd81b195be384485bce2a71e32ba936cdaf3b0f5a2d6f",
+  "typecheck": {
+    "name": "typecheck",
+    "code": 0,
+    "signal": null,
+    "durationMs": 293457,
+    "completedUtc": "2026-10-11T16:44:36.251Z",
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "lint": {
+    "name": "lint",
+    "code": 0,
+    "signal": null,
+    "durationMs": 240206,
+    "completedUtc": "2026-10-11T16:48:36.457Z",
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "build": {
+    "name": "build",
+    "code": 0,
+    "signal": null,
+    "durationMs": 510110,
+    "completedUtc": "2026-10-11T16:57:06.568Z",
+    "logSha256": "e6d2d9160d61be64f8441f58214966182294e848800ddb960e5b075d483bad7c"
+  },
+  "workerTypecheck": {
+    "name": "workerTypecheck",
+    "code": 0,
+    "signal": null,
+    "durationMs": 19477,
+    "completedUtc": "2026-10-11T16:51:12.185Z",
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "workerSecurity": {
+    "name": "workerSecurity",
+    "code": 0,
+    "signal": null,
+    "durationMs": 1440,
+    "completedUtc": "2026-10-11T16:50:52.706Z",
+    "logSha256": "c856b74c0c1a466e29c78d2e897ec3e3bfea514da954de0418aa3679dc16ab83"
+  },
+  "workerLint": {
+    "name": "workerLint",
+    "code": 0,
+    "signal": null,
+    "durationMs": 3274,
+    "completedUtc": "2026-10-11T16:52:41.385Z",
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "unit": {
+    "passed": 1679,
+    "failed": 0,
+    "passedFiles": 93,
+    "failedFiles": 0,
+    "success": true,
+    "gate": {
+      "name": "unit",
+      "code": 0,
+      "signal": null,
+      "durationMs": 75654,
+      "completedUtc": "2026-10-11T16:52:27.840Z",
+      "logSha256": "7c079b7ec347b1ac1a33ffa458309e1b6912eef6d6fb3a83ebc04baac919cf60"
+    }
+  },
+  "workerAudits": {
+    "full": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "production": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "installedEvidence": "worker-dependency-installed-2026-10-11.json"
+  },
+  "rootAudits": {
+    "full": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 7,
+      "critical": 0,
+      "total": 7
+    },
+    "production": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 4,
+      "critical": 0,
+      "total": 4
+    },
+    "underlyingAdvisories": [
+      "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm"
+    ],
+    "rawFiles": [
+      "root-audit-full-2026-10-11.json",
+      "root-audit-production-2026-10-11.json"
+    ],
+    "patchEvidence": "dependency-security-2026-10-10.json",
+    "scannerFindingsRemain": true
+  },
+  "continuity": {
+    "originalSourceManifest": "integration-source-2026-10-10.json",
+    "originalSourceFiles": 448,
+    "originalAggregateSha256": "f7deab64ee906dbce73a6e98ca11698e250335f719dd5619171904568b984e7f",
+    "changedOriginalFiles": [
+      {
+        "file": "src/components/staff/staff-messages-tab.tsx",
+        "before": "461ea9be0f88e47119882c90c20db59bfa464855890b33546b8e204bdc1d3240",
+        "after": "3467d8b819ab69af37315246577f1ca378cde5a3e9723b9cabfb5485ec9b8d92"
+      }
+    ],
+    "unchangedOriginalFiles": 447,
+    "explanation": "All original API/library/Prisma/race-test sources remain byte-identical. The only original-source change is the equivalent receipt invalidation assignment (++x to x += 1). The new guarded worker security runner and separate worker source are included in the current manifest.",
+    "retainedResults": {
+      "file": "integration-gates-2026-10-10.json",
+      "receipts": 5,
+      "postgres": 24,
+      "http": 15,
+      "tls": {
+        "ssl": true,
+        "version": "TLSv1.3",
+        "cipher": "TLS_AES_256_GCM_SHA384"
+      }
+    },
+    "retainedResultsRerun": false
+  },
+  "review": {
+    "independentMedium": "clean",
+    "simplificationOnce": "no actionable simplification",
+    "finalMedium": "clean; MP4 rejection assertion and installed lock verified"
+  },
+  "boundaries": [
+    "Worker installation was performed manually by the user after automatic approval review blocked agent installation",
+    "No hosted schema or clinic-data writes",
+    "Both pull requests remain unmerged; exact follow-up remote CI/review runs after push",
+    "The live provider worker is deployed separately from Next and was not released",
+    "Physical iPhone/Android, real-clinic login, external providers and hosted distributed quotas remain unverified",
+    "Root and mobile raw dependency findings remain recorded separately; clean worker audits do not establish a clean whole-product scanner result",
+    "The mobile preview remains stopped"
+  ]
+}

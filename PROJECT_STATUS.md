@@ -1,6 +1,6 @@
 # Project Status: Vela / Clinicare
 
-Last updated: 2026-10-10
+Last updated: 2026-10-11
 
 ## Product Overview
 
@@ -20,7 +20,7 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Completed Features
 
-- **Mobile API QA integration (2026-10-10, local review candidate on `codex/mobile-qa-integration`).** Carries exact snapshot read receipts, Serializable enrollment, bounded mobile bodies, Retry-After/private caching, active-device push filtering, dependency repairs, and seven hook repairs onto current main (`bbe2524`) while preserving newer no-show/waitlist workflows and web UI. Root and worker TypeScript, full lint, production build, 1,679 tests across 93 suites, 5 receipt regressions, 24 fresh PostgreSQL cases and 15 actual HTTP cases passed; independent review and simplification checks found no further issues. The initial worker dependency failure was resolved by the user's successful manual installation; no test expectations were weakened. Candidate is not pushed or deployed; repository review, real-clinic and physical-device acceptance remain pending. Details and boundaries: `qa/INTEGRATION-QA-2026-10-10.md` and `qa/evidence/`.
+- **Mobile API QA integration (2026-10-10; follow-up 2026-10-11 on `codex/mobile-qa-integration`, PR #144).** Carries exact snapshot read receipts, Serializable enrollment, bounded mobile bodies, Retry-After/private caching, active-device push filtering, dependency repairs, and seven hook repairs onto current main (`bbe2524`) while preserving newer no-show/waitlist workflows and web UI. Initial root/worker TypeScript, lint, production build, 1,679 tests across 93 files, 5 receipt regressions, 24 PostgreSQL cases and 15 actual HTTP cases passed. The original PR head passed CI/preview and completed Codex review without inline findings. The separate worker's four published dependency replacements and scoped Prisma override are now installed after the user's successful manual update. Actual consumer security regressions, worker TypeScript, all 1,679 tests, and fresh full/production worker audits pass with zero worker audit findings; root TypeScript, zero-warning lint and production build passed again. Independent review and simplification checks were clean. The follow-up's exact-commit remote checks, final user review, release, real-clinic and physical-device acceptance remain pending; mobile changes are in mobile PR #24. Root/mobile scanner findings remain documented separately. Details and boundaries: `qa/INTEGRATION-QA-2026-10-10.md`, `qa/WORKER-DEPENDENCY-SECURITY.md` and `qa/evidence/`.
 
 - **No-show status (Pro) (2026-09-22, uncommitted; PR 1 of the no-show/workflow series, spec + plans in `docs/superpowers`).** Adds a `NO_SHOW` appointment status, a "Mark as no-show/attended" action in the calendar quick view, and a No-show rate in Reports. **The schema change (`prisma/no-show-status-migration.sql`, `ALTER TYPE "AppointmentStatus" ADD VALUE IF NOT EXISTS 'NO_SHOW'`) has been applied to the database** (owner go-ahead given, 2026-09-22) — live-verified end to end (mark/undo, `lastVisitAt` recompute, Reports rate, dashboard totals, Basic-plan gating) on both the Pro test workspace and a fresh Basic signup. The code itself is still uncommitted.
 
