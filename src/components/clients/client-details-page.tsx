@@ -317,9 +317,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [isPending, startSaving] = useTransition();
 
-  const upcomingAppointments = client.appointments.filter(
-    (appointment) => appointment.status === "PENDING" || appointment.status === "CONFIRMED"
-  );
+  const nextAppointment = client.nextAppointment;
   const latestPayment = client.payments[0];
   const currentMedications = client.medications.filter((medication) => medication.isActive);
   const allergies = client.healthItems.filter((item) =>
@@ -761,18 +759,18 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
         <TabsContent value="overview" className="grid items-start gap-3">
           <div className="grid items-stretch gap-3 grid-cols-[repeat(auto-fit,minmax(280px,1fr))]">
             <WorkspaceCard title="Next appointment">
-              {upcomingAppointments[0] ? (
+              {nextAppointment ? (
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-foreground">{upcomingAppointments[0].date}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{upcomingAppointments[0].title}</p>
-                    {upcomingAppointments[0].notes ? (
+                    <p className="text-sm font-semibold text-foreground">{nextAppointment.date}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{nextAppointment.title}</p>
+                    {nextAppointment.notes ? (
                       <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                        {upcomingAppointments[0].notes}
+                        {nextAppointment.notes}
                       </p>
                     ) : null}
                   </div>
-                  <StatusBadge status={upcomingAppointments[0].status} />
+                  <StatusBadge status={nextAppointment.status} />
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">No upcoming appointment.</p>

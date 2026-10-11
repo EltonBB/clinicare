@@ -17,7 +17,12 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { fetchInboxConversations, normalizeConversationsForBusiness } from "./inbox-server";
+import {
+  CLIENT_MATCH_ORDER,
+  fetchInboxConversations,
+  findClientsForConversations,
+  normalizeConversationsForBusiness,
+} from "./inbox-server";
 
 const BUSINESS_ID = "biz_1";
 
@@ -217,5 +222,29 @@ describe("normalizeConversationsForBusiness", () => {
     expect(mocks.conversation.update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "conv_1" }, data: expect.objectContaining({ unreadCount: 3 }) })
     );
+  });
+});
+
+// Codex #143: conversations are named after their clients, found by phone key
+// rather than from a capped recent-clients list, so the Inbox and the dashboard
+// agree however many clients a clinic has.
+describe("findClientsForConversations", () => {
+  it("looks up exactly the conversations' numbers, newest client first", async () => {
+    mocks.client.findMany.mockResolvedValue([{ id: "c1", name: "Filan Fistek", phone: "+38344123456" }]);
+
+    const clients = await findClientsForConversations(BUSINESS_ID, ["+383 44 123 456", "38344123456", "+15550001111"]);
+
+    expect(clients).toEqual([{ id: "c1", name: "Filan Fistek", phone: "+38344123456" }]);
+    expect(mocks.client.findMany).toHaveBeenCalledWith({
+      where: { businessId: BUSINESS_ID, phoneKey: { in: ["38344123456", "15550001111"] } },
+      select: { id: true, name: true, phone: true },
+      orderBy: CLIENT_MATCH_ORDER,
+    });
+    expect(mocks.client.findMany.mock.calls[0][0]).not.toHaveProperty("take");
+  });
+
+  it("skips the query when there is nothing to look up", async () => {
+    await expect(findClientsForConversations(BUSINESS_ID, ["", "  "])).resolves.toEqual([]);
+    expect(mocks.client.findMany).not.toHaveBeenCalled();
   });
 });

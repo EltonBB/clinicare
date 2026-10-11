@@ -98,6 +98,24 @@ export function phoneLookupKey(value: string) {
   return normalizePhone(value).replace(/^\+/, "");
 }
 
+/**
+ * The name a conversation is shown under, everywhere: the linked client's name
+ * when the number belongs to a client, otherwise the contact's WhatsApp profile
+ * name, unless that is just the number itself.
+ */
+export function conversationDisplayName(
+  contactName: string,
+  phoneNumber: string,
+  linkedClientName?: string | null
+): string {
+  if (linkedClientName) {
+    return linkedClientName;
+  }
+  return contactName.trim().length > 0 && phoneLookupKey(contactName) !== phoneLookupKey(phoneNumber)
+    ? contactName
+    : "Unregistered contact";
+}
+
 function formatConversationTimestamp(date: Date, now: Date, timeZone: string) {
   const daysAgo = zonedCalendarDaysBetween(date, now, timeZone);
 
@@ -221,18 +239,18 @@ export function buildInboxConversation(
   const lastMessage = sortedMessages[sortedMessages.length - 1];
   const lastActivityAt = lastMessage?.sentAt ?? conversation.updatedAt;
   const isLinkedClient = Boolean(linkedClient);
-  const fallbackDisplayName =
-    conversation.contactName.trim().length > 0 &&
-    phoneLookupKey(conversation.contactName) !== phoneLookupKey(conversation.phoneNumber)
-      ? conversation.contactName
-      : "Unregistered contact";
+  const displayName = conversationDisplayName(
+    conversation.contactName,
+    conversation.phoneNumber,
+    linkedClient?.name
+  );
 
   return {
     id: conversation.id,
     phone: conversation.phoneNumber,
     clientId: linkedClient?.id,
-    clientName: linkedClient?.name ?? fallbackDisplayName,
-    displayName: linkedClient?.name ?? fallbackDisplayName,
+    clientName: displayName,
+    displayName,
     isLinkedClient,
     contactStatusLabel: linkedClient ? "Client linked" : "Unregistered contact",
     preview: lastMessage?.body ?? "",
