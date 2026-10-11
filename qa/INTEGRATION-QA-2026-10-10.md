@@ -1,6 +1,6 @@
 # Mobile QA integration — 2026-10-10
 
-The mobile API repairs are integrated onto `origin/main` base `bbe2524949c614c91fe16111b8bda3a6c77ce46f` in branch `codex/mobile-qa-integration`, submitted as [PR #144](https://github.com/EltonBB/clinicare/pull/144). Current main's redesigned web interfaces, action quotas, record-ID validation, no-show protection and waiting-list transactions are preserved. Release and real-clinic acceptance are pending.
+The mobile API repairs are integrated in branch `codex/mobile-qa-integration`, submitted as [PR #144](https://github.com/EltonBB/clinicare/pull/144). Initially based on `bbe2524949c614c91fe16111b8bda3a6c77ce46f`, the final candidate also integrates main `3bfbdb1b4223c09052f01581c140d6e63b2733b2` as recorded below. Main's redesigned web interfaces, action quotas, record-ID validation, no-show protection and waiting-list transactions are preserved. Release and real-clinic acceptance are pending.
 
 ## Follow-up — 11 October
 
@@ -33,6 +33,12 @@ The new regression first reproduced four failures, then all 14 focused tests pas
 - Seven hook repairs are adapted to current main's components. Search ignores aborted responses and uses the dialog's focus handling; delayed Mark-all completion cannot overwrite a newer badge after tab removal.
 - Dependencies retain current main's React/Prisma/adapter versions, apply the reviewed braces backport, and use compatible tooling/deepmerge/PostCSS updates.
 
+## Final current-main sync — 11 October
+
+While verification ran, web QA PRs #142 and #143 landed on `main`. Their next-appointment and dashboard/inbox name-resolution fixes are now preserved in this candidate through merge `6e6a811c92e8de9688e3e844105c86cdad1c2e1b`, based on current main `3bfbdb1b4223c09052f01581c140d6e63b2733b2`. The 14 incoming files merged cleanly; independent review confirmed compatibility with our client-detail/dialog and inbox hydration hook repairs. Mobile route dependencies are unchanged. The upstream phone-key data backfill remains a standalone SQL file; this QA run made no hosted writes or schema changes.
+
+Root TypeScript, full lint, production build and **1,690 tests across 93 files** passed on the merged source. All **25 PostgreSQL cases** passed again in another fresh fictional database, which stopped successfully. The extra eight unit cases come from the upstream web fixes. [Final merged-source gate evidence](evidence/integration-final-main-2026-10-11.json) and the [472-file manifest](evidence/integration-source-final-main-2026-10-11.json) retain the earlier staged results separately. This final candidate still needs exact-commit remote checks after push and user review before release; live clinic/device/provider acceptance remains pending.
+
 ## Initial verification — 10 October
 
 | Check | Result |
@@ -56,7 +62,7 @@ The 24 database cases include real owner action quotas, NO_SHOW refusal/serializ
 
 ## Acceptance remaining
 
-- Push the dependency follow-up and pass CI/Codex review for its exact commit.
+- Push the final candidate, including Expo-token compatibility and current-main integration, and pass CI/Codex review for its exact commit.
 - Review both pull requests before release; verify any later release through the repository's Git deployment workflow. The provider worker needs its separate normal release process.
 - Connect the mobile app to that verified backend and enter a fresh staff access code directly in the app.
 - Verify signed-in behavior on physical iPhone and Android, real push delivery, hosted distributed quotas, storage and messaging providers. Local fictional data tests do not establish those results.

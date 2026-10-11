@@ -1,0 +1,237 @@
+{
+  "dateUtc": "2026-10-11T17:30:53.874Z",
+  "base": "3bfbdb1b4223c09052f01581c140d6e63b2733b2",
+  "sourceAggregateSha256": "711ed6652b37aa9e607e9595215e73792b3960552f32c86b525baff97a9711ea",
+  "integratedUpstream": {
+    "pullRequests": [
+      142,
+      143
+    ],
+    "mergeCommit": "6e6a811c92e8de9688e3e844105c86cdad1c2e1b",
+    "incomingFiles": [
+      "prisma/client-phone-key-backfill.sql",
+      "src/app/(workspace)/clients/actions.test.ts",
+      "src/app/(workspace)/dashboard/page.tsx",
+      "src/app/(workspace)/inbox/actions.ts",
+      "src/app/(workspace)/inbox/page.tsx",
+      "src/components/clients/client-details-page.tsx",
+      "src/lib/clients.test.ts",
+      "src/lib/clients.ts",
+      "src/lib/dashboard.test.ts",
+      "src/lib/dashboard.ts",
+      "src/lib/inbox-server.test.ts",
+      "src/lib/inbox-server.ts",
+      "src/lib/inbox.test.ts",
+      "src/lib/inbox.ts"
+    ],
+    "changedManifestFiles": [
+      "prisma/client-phone-key-backfill.sql",
+      "src/app/(workspace)/clients/actions.test.ts",
+      "src/app/(workspace)/dashboard/page.tsx",
+      "src/app/(workspace)/inbox/actions.ts",
+      "src/app/(workspace)/inbox/page.tsx",
+      "src/components/clients/client-details-page.tsx",
+      "src/lib/clients.test.ts",
+      "src/lib/clients.ts",
+      "src/lib/dashboard.test.ts",
+      "src/lib/dashboard.ts",
+      "src/lib/inbox-server.test.ts",
+      "src/lib/inbox-server.ts",
+      "src/lib/inbox.test.ts",
+      "src/lib/inbox.ts"
+    ],
+    "schemaChange": false,
+    "hostedBackfillExecuted": false
+  },
+  "typecheck": {
+    "name": "typecheck",
+    "code": 0,
+    "signal": null,
+    "durationMs": 10894,
+    "completedUtc": "2026-10-11T17:27:33.792Z",
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "lint": {
+    "name": "lint",
+    "code": 0,
+    "signal": null,
+    "durationMs": 18971,
+    "completedUtc": "2026-10-11T17:27:52.765Z",
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "build": {
+    "name": "build",
+    "code": 0,
+    "signal": null,
+    "durationMs": 32615,
+    "completedUtc": "2026-10-11T17:28:49.270Z",
+    "logSha256": "f88a4fed705074664d2ad04258e676b8e453f2b874514e7998eec576beada765"
+  },
+  "unit": {
+    "passed": 1690,
+    "failed": 0,
+    "passedFiles": 93,
+    "gate": {
+      "name": "unit",
+      "code": 0,
+      "signal": null,
+      "durationMs": 23887,
+      "completedUtc": "2026-10-11T17:28:16.654Z",
+      "logSha256": "c27fb599cd8ce7071c40d5b5d20cc048ec87971f54a6ba04164254e492ac7189"
+    }
+  },
+  "postgres": {
+    "passed": 25,
+    "failed": 0,
+    "success": true,
+    "sourceReportSha256": "f41f462e21add9ff0407c6bf402dff40c926d53032c33d9ad3a639143df370bd",
+    "cases": [
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL redeems a formatted code once, returns the mobile profile, and stores only a token hash",
+        "status": "passed",
+        "durationMs": 389.29280000000017
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL redeems and updates UUID-style Expo tokens without consuming codes for malformed tokens",
+        "status": "passed",
+        "durationMs": 127.28099999999995
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL allows only one of five concurrent redemptions to create a device",
+        "status": "passed",
+        "durationMs": 268.8069999999998
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL rejects expired codes and inactive staff without issuing devices",
+        "status": "passed",
+        "durationMs": 146.8152
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL enforces code issuance supersession under genuine concurrent serializable transactions",
+        "status": "passed",
+        "durationMs": 72.12379999999985
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL preserves the current web-owner action budget before generating an enrollment code",
+        "status": "passed",
+        "durationMs": 115.52100000000019
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL isolates appointment lists and blocks both same-clinic peers and foreign records",
+        "status": "passed",
+        "durationMs": 69.74329999999964
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL cancels once with immutable metadata and one notice, and refuses completed/no-show visits",
+        "status": "passed",
+        "durationMs": 103.04150000000027
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL keeps Pro slot matching and draft creation atomic with concurrent mobile cancellations",
+        "status": "passed",
+        "durationMs": 102.29349999999977
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL does not create slot-offer drafts on Basic even when an eligible patient is waiting",
+        "status": "passed",
+        "durationMs": 65.51150000000007
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL does not draft a Pro slot offer for a future slot outside configured working hours",
+        "status": "passed",
+        "durationMs": 70.72659999999996
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL keeps admin reads side-effect free and isolates thread reads and writes",
+        "status": "passed",
+        "durationMs": 60.148699999999735
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL creates only one admin thread under ten concurrent first contacts",
+        "status": "passed",
+        "durationMs": 199.8154999999997
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL bounds a long conversation and alert history at the route response boundary",
+        "status": "passed",
+        "durationMs": 209.91560000000027
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL acknowledges only the fetched message IDs and preserves a later ADMIN arrival",
+        "status": "passed",
+        "durationMs": 87.09179999999924
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL rejects malformed, oversized, unknown and foreign read selections without partial writes",
+        "status": "passed",
+        "durationMs": 78.54120000000057
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL serializes overlapping real admin sends and duplicate read acknowledgments without losing unread",
+        "status": "passed",
+        "durationMs": 128.5643999999993
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL preserves unseen STAFF and SYSTEM messages when the admin acknowledges a fetched snapshot",
+        "status": "passed",
+        "durationMs": 98.33530000000064
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL acknowledges ordinary cancellation SYSTEM receipts without clearing a later cancellation",
+        "status": "passed",
+        "durationMs": 103.73220000000038
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL lists and marks only the authenticated staff member's notifications",
+        "status": "passed",
+        "durationMs": 45.989700000000084
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL rejects revoked, idle-expired, absolute-expired, and inactive sessions",
+        "status": "passed",
+        "durationMs": 50.334099999999125
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL refreshes an active sliding session and permanently rejects its token after logout",
+        "status": "passed",
+        "durationMs": 57.78559999999925
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL bounds request bodies, validates push tokens, and sends finite Retry-After after the device quota",
+        "status": "passed",
+        "durationMs": 194.60260000000017
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL enforces the unauthenticated IP budget through the actual me route",
+        "status": "passed",
+        "durationMs": 96.1238000000003
+      },
+      {
+        "name": "actual mobile route handlers with disposable PostgreSQL enforces shift eligibility and one open attendance record under concurrent check-ins",
+        "status": "passed",
+        "durationMs": 71.16130000000067
+      }
+    ]
+  },
+  "workflowSha256": "a60bcddc3654515cac7cf085d7bb94a67895582269758cfc0c9212ece8cc451f",
+  "retainedEvidence": {
+    "expoTokenRedGreen": "expo-token-compatibility-2026-10-11.json",
+    "workerInstallationAndAudits": "integration-followup-2026-10-11.json",
+    "originalHttpTlsAndReceipts": "integration-gates-2026-10-10.json"
+  },
+  "review": {
+    "tokenCorrectness": "clean",
+    "upstreamIntegrationCompatibility": "clean",
+    "ponytailOnce": "no actionable simplification",
+    "finalDirectConfirmation": "clean"
+  },
+  "boundaries": [
+    "Fresh fictional records only, no hosted schema or clinic-data writes",
+    "Main phoneKey backfill was preserved as source and not executed against a hosted database",
+    "Both PRs unmerged, exact final-head remote checks pending after push",
+    "Worker/mobile source unchanged by upstream integration; earlier installed audit/mobile evidence retained",
+    "Original 15 HTTP/TLS cases and five focused receipt cases retained, not rerun",
+    "Temporary PostgreSQL stopped, mobile preview stopped",
+    "Real-clinic, native phone and external-provider acceptance remain pending"
+  ]
+}
