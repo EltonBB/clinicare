@@ -4,7 +4,11 @@ import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { InboxWorkspace } from "@/components/inbox/inbox-workspace";
 import { buildInboxViewFromWorkspace } from "@/lib/inbox";
 import { buildWhatsAppConnectionSummary } from "@/lib/settings";
-import { ensureConversationForClient, fetchInboxConversations } from "@/lib/inbox-server";
+import {
+  ensureConversationForClient,
+  fetchInboxConversations,
+  findClientsForConversations,
+} from "@/lib/inbox-server";
 import { getPendingFollowUpDraftCount } from "@/lib/follow-ups-data";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
@@ -34,16 +38,14 @@ export default async function InboxPage({
     }
   });
 
-  const [clients, clientCount, { conversations, totalUnreadCount }, whatsappConnection, followUpsCount] =
+  const [recentClient, clientCount, { conversations, totalUnreadCount }, whatsappConnection, followUpsCount] =
     await Promise.all([
-      prisma.client.findMany({
+      prisma.client.findFirst({
         where: {
           businessId: business.id,
         },
         select: {
           id: true,
-          name: true,
-          phone: true,
         },
         orderBy: [
           {
@@ -53,7 +55,6 @@ export default async function InboxPage({
             createdAt: "desc",
           },
         ],
-        take: 150,
       }),
       prisma.client.count({
         where: {
@@ -80,6 +81,12 @@ export default async function InboxPage({
         return 0;
       }),
     ]);
+  // Each conversation is named after the client its number belongs to, looked
+  // up directly rather than from a capped recent-clients list (Codex #143).
+  const clients = await findClientsForConversations(
+    business.id,
+    conversations.map((entry) => entry.phoneNumber)
+  );
   const inboxView = buildInboxViewFromWorkspace({
     conversations,
     clients,
@@ -103,7 +110,7 @@ export default async function InboxPage({
       ownerName={ownerName}
       connection={buildWhatsAppConnectionSummary(whatsappConnection)}
       clientCount={clientCount}
-      recommendedClientId={clients[0]?.id}
+      recommendedClientId={recentClient?.id}
       followUpsCount={followUpsCount}
     />
   );

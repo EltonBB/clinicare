@@ -15,7 +15,13 @@ import {
   type InboxConversation,
   type InboxViewModel,
 } from "@/lib/inbox";
-import { conversationSelect, fetchInboxConversations, RECENT_MESSAGE_LIMIT } from "@/lib/inbox-server";
+import {
+  CLIENT_MATCH_ORDER,
+  conversationSelect,
+  fetchInboxConversations,
+  findClientsForConversations,
+  RECENT_MESSAGE_LIMIT,
+} from "@/lib/inbox-server";
 import { sendMessage } from "@/lib/messaging";
 import { parseRecordId } from "@/lib/record-id";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
@@ -87,6 +93,7 @@ async function hydrateConversation(conversationId: string, businessId: string) {
           businessId,
           phoneKey: conversationPhoneKey,
         },
+        orderBy: CLIENT_MATCH_ORDER,
         select: {
           id: true,
           name: true,
@@ -99,28 +106,11 @@ async function hydrateConversation(conversationId: string, businessId: string) {
 }
 
 async function loadInboxView(businessId: string) {
-  const [clients, { conversations, totalUnreadCount }] = await Promise.all([
-    prisma.client.findMany({
-      where: {
-        businessId,
-      },
-      select: {
-        id: true,
-        name: true,
-        phone: true,
-      },
-      orderBy: [
-        {
-          updatedAt: "desc",
-        },
-        {
-          createdAt: "desc",
-        },
-      ],
-      take: 150,
-    }),
-    fetchInboxConversations(businessId),
-  ]);
+  const { conversations, totalUnreadCount } = await fetchInboxConversations(businessId);
+  const clients = await findClientsForConversations(
+    businessId,
+    conversations.map((conversation) => conversation.phoneNumber)
+  );
 
   return buildInboxViewFromWorkspace({
     conversations,
@@ -286,6 +276,7 @@ export async function sendInboxMessageAction(
             businessId: context.business.id,
             phoneKey: conversationPhoneKey,
           },
+          orderBy: CLIENT_MATCH_ORDER,
           select: {
             id: true,
             name: true,
@@ -449,6 +440,7 @@ export async function deleteConversationAction(
           businessId: context.business.id,
           phoneKey: conversationPhoneKey,
         },
+        orderBy: CLIENT_MATCH_ORDER,
         select: { id: true },
       })
     : null;
@@ -554,6 +546,7 @@ export async function convertConversationToClientAction(
           businessId,
           phoneKey: conversationPhoneKey,
         },
+        orderBy: CLIENT_MATCH_ORDER,
         select: {
           id: true,
           name: true,

@@ -72,6 +72,35 @@ export function conversationSelect(messageLimit: number) {
  * rendering a silently-truncated one. It only runs at all when the aggregate
  * proves `recent` doesn't already account for every unread conversation.
  */
+/**
+ * Which client a phone number belongs to when more than one client shares it:
+ * the most recently updated. Every lookup that names or links a conversation
+ * uses this order, so the Inbox list, an opened thread and the dashboard always
+ * agree (Codex #143).
+ */
+export const CLIENT_MATCH_ORDER = [
+  { updatedAt: "desc" },
+  { createdAt: "desc" },
+] satisfies Prisma.ClientOrderByWithRelationInput[];
+
+/**
+ * The clients the given conversations belong to, found by the indexed phone key
+ * rather than from a capped "most recent clients" list, so every conversation
+ * can be named after its client however many clients the clinic has. Ordered
+ * by CLIENT_MATCH_ORDER: buildInboxConversation keeps the first client per key.
+ */
+export async function findClientsForConversations(businessId: string, phoneNumbers: string[]) {
+  const phoneKeys = [...new Set(phoneNumbers.map(phoneLookupKey).filter(Boolean))];
+  if (phoneKeys.length === 0) {
+    return [];
+  }
+  return prisma.client.findMany({
+    where: { businessId, phoneKey: { in: phoneKeys } },
+    select: { id: true, name: true, phone: true },
+    orderBy: CLIENT_MATCH_ORDER,
+  });
+}
+
 export async function fetchInboxConversations(businessId: string) {
   const [recent, totalUnreadAggregate] = await Promise.all([
     prisma.conversation.findMany({
