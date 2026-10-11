@@ -12,6 +12,8 @@ The user completed the manual dependency update after the agent's installation w
 
 [October 11 gate evidence](evidence/integration-followup-2026-10-11.json) and the [current 471-file source manifest](evidence/integration-source-2026-10-11.json) preserve the earlier October 10 results separately. Of the original 448 source files, 447 are byte-identical; only the equivalent receipt-counter assignment changed. All original API/library/Prisma and integration-test sources are unchanged, so the 24 PostgreSQL, 15 HTTP and five focused receipt results below remain earlier results, rather than claimed reruns. The current manifest also includes the worker source/configuration and new security runner.
 
+The dependency follow-up `c0a1cb23bd369ee7e5603592a127cdd41cac11d2` passed remote CI and its Vercel preview build. CI reported deprecated Node 20 actions and an upcoming `ubuntu-latest` image change. A subsequent workflow-only maintenance change pins Ubuntu 24.04, uses the locally tested Node 24 major, restricts checkout to read-only credentials without persistence, and adds the guarded worker regression to CI. Checkout [v7.0.1](https://github.com/actions/checkout/releases/tag/v7.0.1) and setup-node [v7.1.0](https://github.com/actions/setup-node/releases/tag/v7.1.0) are pinned to their verified immutable commit IDs. This workflow is outside the application source manifest; its exact-commit CI/review must pass after push.
+
 ## Changes
 
 - Exact fetched-message receipts preserve later unread arrivals. Both staff and admin can deliberately mark older history read. Receipt responses update badges only while their request/tab remains current.
