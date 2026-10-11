@@ -8,6 +8,7 @@ import { buildDashboardViewFromWorkspace } from "@/lib/dashboard";
 import { getDashboardAppointmentAggregates } from "@/lib/dashboard-data";
 import { getNoShowRiskAssessments } from "@/lib/no-show-risk-data";
 import { phoneLookupKey } from "@/lib/inbox";
+import { findClientsForConversations } from "@/lib/inbox-server";
 import { subDays } from "date-fns";
 import {
   getAppTimeZone,
@@ -279,22 +280,13 @@ export default async function DashboardPage() {
   // picks). Started before the risk lookup so the two run together.
   const conversationRows =
     conversationsResult.status === "fulfilled" ? conversationsResult.value : [];
-  const conversationPhoneKeys = [
-    ...new Set(conversationRows.map((row) => phoneLookupKey(row.phoneNumber)).filter(Boolean)),
-  ];
-  const linkedClientsPromise =
-    conversationPhoneKeys.length > 0
-      ? prisma.client
-          .findMany({
-            where: { businessId: business.id, phoneKey: { in: conversationPhoneKeys } },
-            select: { name: true, phoneKey: true },
-            orderBy: { updatedAt: "desc" },
-          })
-          .catch((error) => {
-            console.error("Dashboard conversation client lookup failed", error);
-            return [];
-          })
-      : Promise.resolve([]);
+  const linkedClientsPromise = findClientsForConversations(
+    business.id,
+    conversationRows.map((row) => row.phoneNumber)
+  ).catch((error) => {
+    console.error("Dashboard conversation client lookup failed", error);
+    return [];
+  });
 
   let noShowRisk: Awaited<ReturnType<typeof getNoShowRiskAssessments>> | undefined;
   if (isProBusinessPlan(business.plan) && upcomingForRisk.length > 0) {
@@ -342,8 +334,9 @@ export default async function DashboardPage() {
     paymentsResult.status === "fulfilled" ? paymentsResult.value : [];
   const clientNameByPhoneKey = new Map<string, string>();
   for (const client of await linkedClientsPromise) {
-    if (client.phoneKey && !clientNameByPhoneKey.has(client.phoneKey)) {
-      clientNameByPhoneKey.set(client.phoneKey, client.name);
+    const key = phoneLookupKey(client.phone ?? "");
+    if (key && !clientNameByPhoneKey.has(key)) {
+      clientNameByPhoneKey.set(key, client.name);
     }
   }
   const conversations = conversationRows.map((row) => ({
