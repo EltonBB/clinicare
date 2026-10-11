@@ -1,0 +1,223 @@
+{
+  "dateUtc": "2026-10-11T17:43:51.582Z",
+  "base": "3bfbdb1b4223c09052f01581c140d6e63b2733b2",
+  "reviewedParent": "733edc4aacabe7508148694c402fce0ed7220ad7",
+  "sourceAggregateSha256": "805005504a9fb401da3f96780a9b03afafd91ee434926681a9dc612a72c6e911",
+  "changedManifestFiles": [
+    "qa/mobile-api.integration.test.ts",
+    "src/lib/mobile/admin.ts",
+    "src/lib/staff-device-policy.ts"
+  ],
+  "fix": "Keep unrevoked, unexpired devices visible to their owner while staff is inactive; retain staff eligibility for authentication and push.",
+  "regression": {
+    "beforeFix": {
+      "passed": 25,
+      "failed": 1,
+      "sourceReportSha256": "66df988c19f3dd55793dc8e2b01175068764ace6c4f52a5834d6e384a7c429a0",
+      "failures": [
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL keeps inactive staff devices visible for scoped owner revocation before reactivation",
+          "messages": [
+            "AssertionError: expected null not to be null\n    at C:/dev/vela/worktrees/mobile-qa-integration-20261010/qa/mobile-api.integration.test.ts:399:88\n    at async file:///C:/dev/vela/worktrees/mobile-qa-integration-20261010/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        }
+      ]
+    },
+    "afterFix": {
+      "passed": 26,
+      "failed": 0,
+      "success": true,
+      "sourceReportSha256": "21ecfa69c6984def8ea611082512fc6df5b05a7f614378b2c07387b5124e404f",
+      "cases": [
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL redeems a formatted code once, returns the mobile profile, and stores only a token hash",
+          "status": "passed",
+          "durationMs": 361.2433000000001
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL redeems and updates UUID-style Expo tokens without consuming codes for malformed tokens",
+          "status": "passed",
+          "durationMs": 246.26310000000012
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL allows only one of five concurrent redemptions to create a device",
+          "status": "passed",
+          "durationMs": 228.1227000000008
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL rejects expired codes and inactive staff without issuing devices",
+          "status": "passed",
+          "durationMs": 231.21729999999934
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL enforces code issuance supersession under genuine concurrent serializable transactions",
+          "status": "passed",
+          "durationMs": 103.08579999999984
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL preserves the current web-owner action budget before generating an enrollment code",
+          "status": "passed",
+          "durationMs": 184.71600000000035
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL isolates appointment lists and blocks both same-clinic peers and foreign records",
+          "status": "passed",
+          "durationMs": 148.53049999999985
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL cancels once with immutable metadata and one notice, and refuses completed/no-show visits",
+          "status": "passed",
+          "durationMs": 207.26360000000022
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL keeps Pro slot matching and draft creation atomic with concurrent mobile cancellations",
+          "status": "passed",
+          "durationMs": 197.6853000000001
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL does not create slot-offer drafts on Basic even when an eligible patient is waiting",
+          "status": "passed",
+          "durationMs": 132.84720000000016
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL does not draft a Pro slot offer for a future slot outside configured working hours",
+          "status": "passed",
+          "durationMs": 170.13260000000082
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL keeps admin reads side-effect free and isolates thread reads and writes",
+          "status": "passed",
+          "durationMs": 135.20199999999932
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL creates only one admin thread under ten concurrent first contacts",
+          "status": "passed",
+          "durationMs": 231.29240000000027
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL bounds a long conversation and alert history at the route response boundary",
+          "status": "passed",
+          "durationMs": 1743.2986
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL acknowledges only the fetched message IDs and preserves a later ADMIN arrival",
+          "status": "passed",
+          "durationMs": 189.48359999999957
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL rejects malformed, oversized, unknown and foreign read selections without partial writes",
+          "status": "passed",
+          "durationMs": 162.2302000000018
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL serializes overlapping real admin sends and duplicate read acknowledgments without losing unread",
+          "status": "passed",
+          "durationMs": 226.76310000000012
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL preserves unseen STAFF and SYSTEM messages when the admin acknowledges a fetched snapshot",
+          "status": "passed",
+          "durationMs": 321.40259999999944
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL acknowledges ordinary cancellation SYSTEM receipts without clearing a later cancellation",
+          "status": "passed",
+          "durationMs": 192.4341000000004
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL lists and marks only the authenticated staff member's notifications",
+          "status": "passed",
+          "durationMs": 83.53899999999885
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL rejects revoked, idle-expired, absolute-expired, and inactive sessions",
+          "status": "passed",
+          "durationMs": 123.77269999999953
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL keeps inactive staff devices visible for scoped owner revocation before reactivation",
+          "status": "passed",
+          "durationMs": 267.8828000000012
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL refreshes an active sliding session and permanently rejects its token after logout",
+          "status": "passed",
+          "durationMs": 103.16179999999986
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL bounds request bodies, validates push tokens, and sends finite Retry-After after the device quota",
+          "status": "passed",
+          "durationMs": 217.8844999999983
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL enforces the unauthenticated IP budget through the actual me route",
+          "status": "passed",
+          "durationMs": 149.0661
+        },
+        {
+          "name": "actual mobile route handlers with disposable PostgreSQL enforces shift eligibility and one open attendance record under concurrent check-ins",
+          "status": "passed",
+          "durationMs": 137.1187000000009
+        }
+      ]
+    }
+  },
+  "typecheck": {
+    "name": "typecheck",
+    "code": 0,
+    "signal": null,
+    "durationMs": 9557,
+    "completedUtc": "2026-10-11T17:41:50.048Z",
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "lint": {
+    "name": "lint",
+    "code": 0,
+    "signal": null,
+    "durationMs": 18129,
+    "completedUtc": "2026-10-11T17:42:08.314Z",
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "build": {
+    "name": "build",
+    "code": 0,
+    "signal": null,
+    "durationMs": 53277,
+    "completedUtc": "2026-10-11T17:43:25.870Z",
+    "logSha256": "ed6f3ac2020706d08309e6b5ac42a2f2b8a096016a683e984043b6c84ab87dc8"
+  },
+  "unit": {
+    "passed": 1690,
+    "failed": 0,
+    "passedFiles": 93,
+    "gate": {
+      "name": "unit",
+      "code": 0,
+      "signal": null,
+      "durationMs": 24275,
+      "completedUtc": "2026-10-11T17:42:32.591Z",
+      "logSha256": "b2522adb61731e689e1ca99167d287b7052ac65c139a171ca3aa2ad1d90b494c"
+    }
+  },
+  "review": {
+    "independentMediumCorrectness": "clean",
+    "siblingCredentialVisibilityAudit": "clean; admin is the only visibility consumer",
+    "ponytailOnce": "Lean already. Ship.",
+    "finalDirectConfirmation": "clean"
+  },
+  "retainedEvidence": {
+    "mainIntegration": "integration-final-main-2026-10-11.json",
+    "expoTokenCompatibility": "expo-token-compatibility-2026-10-11.json",
+    "workerInstallationAndAudits": "integration-followup-2026-10-11.json",
+    "originalHttpTlsAndReceipts": "integration-gates-2026-10-10.json"
+  },
+  "boundaries": [
+    "Fictional local PostgreSQL records only; no hosted writes or schema changes",
+    "Authentication, push eligibility and owner revocation scopes remain unchanged",
+    "Root/mobile/worker dependency trees and mobile source are unchanged by this repair",
+    "Prior 15 HTTP/TLS and five focused receipt cases are retained, not rerun",
+    "Temporary PostgreSQL stopped; mobile preview remains stopped",
+    "Exact new-head remote checks and final user review precede release",
+    "Physical iPhone/Android, real clinic and external-provider acceptance remain pending"
+  ]
+}

@@ -39,6 +39,12 @@ While verification ran, web QA PRs #142 and #143 landed on `main`. Their next-ap
 
 Root TypeScript, full lint, production build and **1,690 tests across 93 files** passed on the merged source. All **25 PostgreSQL cases** passed again in another fresh fictional database, which stopped successfully. The extra eight unit cases come from the upstream web fixes. [Final merged-source gate evidence](evidence/integration-final-main-2026-10-11.json) and the [472-file manifest](evidence/integration-source-final-main-2026-10-11.json) retain the earlier staged results separately. This final candidate still needs exact-commit remote checks after push and user review before release; live clinic/device/provider acceptance remains pending.
 
+## Inactive staff device revocation — 11 October
+
+Automated review of `733edc4` found that the owner mobile-access card hid otherwise-valid devices when staff became inactive. Those credentials could regain access on reactivation, but their owner had lost the Revoke access control. The admin query now uses the shared revocation/lifetime filter without staff eligibility. Authentication and push retain their active-staff requirement; owner revocation still covers all of the selected staff member's unrevoked devices and active codes within their business.
+
+The new database regression first failed on the hidden device. After the fix, **26 PostgreSQL cases** pass, covering all three inactive flag/status combinations, owner revocation while inactive, active-code invalidation, untouched peer/foreign devices, and continued 401 after reactivation. Revoked, idle-expired and absolute-expired devices remain hidden. Root TypeScript, full lint, production build and **1,690 tests across 93 files** pass again. Independent medium correctness review, sibling audit, one simplification review and final confirmation were clean. [Red/green and gate evidence](evidence/inactive-device-revocation-2026-10-11.json) and the [472-file manifest](evidence/integration-source-revocation-2026-10-11.json) preserve the previous checks. Exact new-head remote checks remain pending after push.
+
 ## Initial verification — 10 October
 
 | Check | Result |
@@ -62,7 +68,7 @@ The 24 database cases include real owner action quotas, NO_SHOW refusal/serializ
 
 ## Acceptance remaining
 
-- Push the final candidate, including Expo-token compatibility and current-main integration, and pass CI/Codex review for its exact commit.
+- Push the final inactive-device revocation repair and pass CI/Codex review for its exact commit. The preceding `733edc4` passed CI and preview build; its actionable review finding is addressed above.
 - Review both pull requests before release; verify any later release through the repository's Git deployment workflow. The provider worker needs its separate normal release process.
 - Connect the mobile app to that verified backend and enter a fresh staff access code directly in the app.
 - Verify signed-in behavior on physical iPhone and Android, real push delivery, hosted distributed quotas, storage and messaging providers. Local fictional data tests do not establish those results.

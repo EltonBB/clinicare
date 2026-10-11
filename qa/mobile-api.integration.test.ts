@@ -361,6 +361,7 @@ describe("actual mobile route handlers with disposable PostgreSQL", () => {
   });
 
   it("rejects revoked, idle-expired, absolute-expired, and inactive sessions", async () => {
+    const { getMobileAccessStatus } = await import("@/lib/mobile/admin");
     const day = 86_400_000;
     const states = [
       { revokedAt: new Date(), expiresAt: new Date(Date.now() + day), createdAt: new Date() },
@@ -370,9 +371,43 @@ describe("actual mobile route handlers with disposable PostgreSQL", () => {
     for (const data of states) {
       await db.staffDevice.update({ where: { id: fixture.device.id }, data });
       expect((await routes.me.GET(request("me"))).status).toBe(401);
+      expect((await getMobileAccessStatus(fixture.a.id, fixture.staff.id)).device).toBeNull();
     }
     await db.staffDevice.update({ where: { id: fixture.device.id }, data: { revokedAt: null, createdAt: new Date(), expiresAt: new Date(Date.now() + day) } });
     await db.staffMember.update({ where: { id: fixture.staff.id }, data: { status: "INACTIVE" } });
+    expect((await routes.me.GET(request("me"))).status).toBe(401);
+  });
+
+  it("keeps inactive staff devices visible for scoped owner revocation before reactivation", async () => {
+    const { getMobileAccessStatus } = await import("@/lib/mobile/admin");
+    const otherDevices = await Promise.all([fixture.peer, fixture.foreign].map(staff =>
+      db.staffDevice.create({ data: {
+        businessId: staff.businessId, staffMemberId: staff.id,
+        tokenHash: crypto.hashDeviceToken(crypto.generateDeviceToken()),
+        expiresAt: new Date(Date.now() + 86_400_000),
+      } }),
+    ));
+    expect((await routes.actions.generateMobileAccessCodeAction(fixture.staff.id)).ok).toBe(true);
+    const inactiveStates = [
+      { isActive: false, status: "ACTIVE" },
+      { isActive: true, status: "INACTIVE" },
+      { isActive: false, status: "INACTIVE" },
+    ] as const;
+    for (const data of inactiveStates) {
+      await db.staffMember.update({ where: { id: fixture.staff.id }, data });
+      expect((await routes.me.GET(request("me"))).status).toBe(401);
+      expect((await getMobileAccessStatus(fixture.a.id, fixture.staff.id)).device).not.toBeNull();
+    }
+    expect((await getMobileAccessStatus(fixture.b.id, fixture.staff.id)).device).toBeNull();
+    expect(await routes.actions.revokeMobileAccessAction(fixture.foreign.id)).toMatchObject({ ok: false });
+    expect(await routes.actions.revokeMobileAccessAction(fixture.staff.id)).toEqual({ ok: true });
+    expect((await db.staffDevice.findUniqueOrThrow({ where: { id: fixture.device.id } })).revokedAt).not.toBeNull();
+    expect(await db.staffAccessCode.count({ where: { staffMemberId: fixture.staff.id, status: "ACTIVE" } })).toBe(0);
+    expect((await getMobileAccessStatus(fixture.a.id, fixture.staff.id)).device).toBeNull();
+    for (const device of otherDevices) {
+      expect((await db.staffDevice.findUniqueOrThrow({ where: { id: device.id } })).revokedAt).toBeNull();
+    }
+    await db.staffMember.update({ where: { id: fixture.staff.id }, data: { isActive: true, status: "ACTIVE" } });
     expect((await routes.me.GET(request("me"))).status).toBe(401);
   });
 

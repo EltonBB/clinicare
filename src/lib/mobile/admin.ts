@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { activeStaffDeviceWhere } from "@/lib/staff-device-policy";
+import { unrevokedStaffDeviceWhere } from "@/lib/staff-device-policy";
 import { formatZonedFullDate, formatZonedShortDateTime } from "@/lib/time-zone";
 
 /**
@@ -31,9 +31,9 @@ export async function getMobileAccessStatus(
       select: { id: true },
     }),
     prisma.staffDevice.findFirst({
-      // Only a device that can still authenticate counts as "paired" — exclude
-      // revoked and idle-expired sessions (their token is already rejected).
-      where: { businessId, staffMemberId, ...activeStaffDeviceWhere() },
+      // Keep otherwise-valid credentials visible for revocation even while the
+      // staff member is inactive; reactivation could restore their access.
+      where: { businessId, staffMemberId, ...unrevokedStaffDeviceWhere() },
       orderBy: { lastSeenAt: "desc" },
       select: { deviceLabel: true, platform: true, createdAt: true, lastSeenAt: true },
     }),
