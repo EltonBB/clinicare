@@ -162,6 +162,8 @@ export type ClientRecord = {
   history: ClientHistoryEntry[];
   timeline: ClientTimelineEntry[];
   appointments: ClientAppointmentEntry[];
+  /** The soonest pending or confirmed visit that hasn't started yet, if any. */
+  nextAppointment: ClientAppointmentEntry | null;
   medications: ClientMedicationEntry[];
   documents: ClientDocumentEntry[];
   payments: ClientPaymentEntry[];
@@ -371,15 +373,20 @@ function formatFileSize(bytes: number | null) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function buildAppointments(client: ClientWithRelations): ClientAppointmentEntry[] {
-  return client.appointments.map((appointment) => ({
+function toAppointmentEntry(appointment: ClientWithRelations["appointments"][number]): ClientAppointmentEntry {
+  return {
     id: appointment.id,
     date: format(appointment.startAt, "MMM d, yyyy"),
     title: appointment.title,
     status: appointment.status,
     notes: appointment.notes ?? "",
-  }));
+  };
 }
+
+function buildAppointments(client: ClientWithRelations): ClientAppointmentEntry[] {
+  return client.appointments.map(toAppointmentEntry);
+}
+
 
 function buildMedications(client: ClientWithRelations): ClientMedicationEntry[] {
   return client.medications.map((medication) => ({
@@ -543,13 +550,14 @@ function buildTimeline(client: ClientWithRelations, currency: string): ClientTim
  */
 export async function buildClientRecord(
   client: ClientWithRelations,
-  currency: string
+  currency: string,
+  now: Date = new Date()
 ): Promise<ClientRecord> {
   // The payments array on `client` is a display list capped at take:60
   // (most-recent-first) — fine for rendering history, but a patient with more
   // invoices than that would understate the paid/unpaid totals. Sum those over
   // the FULL history in the DB instead, unbounded by the display take limit.
-  const [paymentSumsByStatus, galleryUrlMap] = await Promise.all([
+  const [paymentSumsByStatus, galleryUrlMap, nextAppointment] = await Promise.all([
     prisma.clientPayment.groupBy({
       by: ["status"],
       where: { businessId: client.businessId, clientId: client.id },
@@ -560,6 +568,20 @@ export async function buildClientRecord(
     // round-trip per item; independent of the sums above, so it runs alongside
     // them rather than after.
     resolveMediaDisplayUrls(client.galleryItems.map((item) => item.imageUrl)),
+    // "Next" means still to come: an old booking nobody marked completed or
+    // cancelled stays PENDING and must not read as the next visit (QA
+    // 2026-10-07). Its own query, not the capped display list, which holds the
+    // latest bookings first and can leave the soonest one out (Codex #142).
+    prisma.appointment.findFirst({
+      where: {
+        businessId: client.businessId,
+        clientId: client.id,
+        status: { in: ["PENDING", "CONFIRMED"] },
+        startAt: { gt: now },
+      },
+      orderBy: { startAt: "asc" },
+      select: { id: true, title: true, startAt: true, status: true, notes: true },
+    }),
   ]);
 
   const paymentSum = (status: string) =>
@@ -615,6 +637,7 @@ export async function buildClientRecord(
     history: buildHistory(client),
     timeline: buildTimeline(client, currency),
     appointments: buildAppointments(client),
+    nextAppointment: nextAppointment ? toAppointmentEntry(nextAppointment) : null,
     medications: buildMedications(client),
     documents: await buildDocuments(client),
     payments: buildPayments(client, currency),
