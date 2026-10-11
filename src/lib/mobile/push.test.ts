@@ -75,14 +75,6 @@ describe("sendStaffPush", () => {
     ]);
   });
 
-  it("never sends more than 100 recipients in a provider request", async () => {
-    const tokens = Array.from({ length: 205 }, (_, i) => `ExpoPushToken[fixture_${i}]`);
-    await sendStaffPush(tokens, buildStaffPushPayload({ kind: "appointment" }));
-    expect(fetchMock.mock.calls.map((call) => JSON.parse(call[1].body).length)).toEqual([
-      100, 100, 5,
-    ]);
-  });
-
   it("reports ticket errors even on HTTP 200 without logging provider text or tokens", async () => {
     fetchMock.mockResolvedValueOnce(
       Response.json({

@@ -1,6 +1,6 @@
 # Project Status: Vela / Clinicare
 
-Last updated: 2026-10-11
+Last updated: 2026-10-12
 
 ## Product Overview
 
@@ -10,7 +10,7 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Technical Stack
 
-- Next.js 16.3.8 App Router with React 19.
+- Next.js 16.2.6 App Router with React 19.
 - TypeScript, Tailwind CSS 4, shadcn-style UI components, Radix primitives, Lucide icons.
 - Prisma with PostgreSQL via Supabase.
 - Supabase Auth for email/password authentication and email confirmation.
@@ -20,13 +20,7 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Completed Features
 
-- **Inactive staff device revocation (2026-10-11, PR #144).** The owner can still see and revoke otherwise-valid paired credentials while staff is inactive, before a later reactivation restores eligibility. Authentication and push remain blocked for inactive staff. The regression reproduced the defect; 26 fresh PostgreSQL cases and all 1,690 tests across 93 files pass after repair, along with root TypeScript, full lint and production build. Independent correctness/sibling review, simplification and final confirmation were clean. The preceding commit passed CI/preview; exact repaired-head remote checks and user review precede release. Prior checkpoint counts below are historical. Details: `qa/INTEGRATION-QA-2026-10-10.md` and `qa/evidence/inactive-device-revocation-2026-10-11.json`.
-
-- **Current-main QA candidate (2026-10-11, PR #144).** Integrated web QA PRs #142/#143 onto base `3bfbdb1`, preserving their next-appointment and inbox/dashboard name-resolution repairs. Root TypeScript, full lint, production build, 1,690 tests across 93 files and 25 fresh PostgreSQL cases pass on the merged source. Independent integration review was clean. No hosted writes or schema changes were made; the upstream phone-key backfill remains a standalone SQL file. Final exact-commit remote checks and user review precede release; real clinic, physical devices and providers remain unverified. The older counts below describe earlier checkpoints. Evidence: `qa/evidence/integration-final-main-2026-10-11.json`.
-
-- **Expo push-token compatibility (2026-10-11, PR #144).** Corrects the shared backend predicate to accept Expo's UUID-style tokens during enrollment, registration and send filtering. Malformed tokens remain rejected without consuming access codes or overwriting stored tokens. The new regressions reproduced the issue before the fix; all 14 focused tests, 1,682 full-suite tests across 93 files, and 25 fresh PostgreSQL cases now pass. Root TypeScript, full lint and production build passed again; review found no actionable issues. The mobile client already forwards these tokens unchanged. The new head still needs remote CI/Codex review after push; release and real-device acceptance remain pending. Details: `qa/INTEGRATION-QA-2026-10-10.md` and `qa/evidence/expo-token-compatibility-2026-10-11.json`.
-
-- **Mobile API QA integration (2026-10-10; follow-up 2026-10-11 on `codex/mobile-qa-integration`, PR #144).** Carries exact snapshot read receipts, Serializable enrollment, bounded mobile bodies, Retry-After/private caching, active-device push filtering, dependency repairs, and seven hook repairs onto current main (`bbe2524`) while preserving newer no-show/waitlist workflows and web UI. Initial root/worker TypeScript, lint, production build, 1,679 tests across 93 files, 5 receipt regressions, 24 PostgreSQL cases and 15 actual HTTP cases passed. The original PR head passed CI/preview and completed Codex review without inline findings. The separate worker's four published dependency replacements and scoped Prisma override are now installed after the user's successful manual update. Actual consumer security regressions, worker TypeScript, all 1,679 tests, and fresh full/production worker audits pass with zero worker audit findings; root TypeScript, zero-warning lint and production build passed again. Independent review and simplification checks were clean. The follow-up's exact-commit remote checks, final user review, release, real-clinic and physical-device acceptance remain pending; mobile changes are in mobile PR #24. Root/mobile scanner findings remain documented separately. Details and boundaries: `qa/INTEGRATION-QA-2026-10-10.md`, `qa/WORKER-DEPENDENCY-SECURITY.md` and `qa/evidence/`.
+- **Mobile API hardening + read receipts (2026-10-12, PR #144).** Mobile API requests are capped at 32KB with a read deadline; throttled responses carry `Retry-After`; mobile API responses are `private, no-store`. Push only reaches unexpired devices of active staff, accepts Expo's UUID-style tokens, and logs per-ticket delivery errors (counts only). Read receipts now acknowledge only the messages the reader actually saw (staff app and the web Messages tab), so a message arriving mid-read stays unread; check-in system messages now clear from the admin unread count. Access-code issuance is Serializable. The in-memory rate-limit fallback evicts its oldest keys under a key flood instead of growing without bound. Dependencies: Vitest 4.1.11, `deepmerge-ts` 8 override for Prisma's config (production audit clean); the remaining `braces` advisory is dev-only (ESLint's glob tooling, never fed user input). CI runs with read-only permissions on Node 24.
 
 - **No-show status (Pro) (2026-09-22, uncommitted; PR 1 of the no-show/workflow series, spec + plans in `docs/superpowers`).** Adds a `NO_SHOW` appointment status, a "Mark as no-show/attended" action in the calendar quick view, and a No-show rate in Reports. **The schema change (`prisma/no-show-status-migration.sql`, `ALTER TYPE "AppointmentStatus" ADD VALUE IF NOT EXISTS 'NO_SHOW'`) has been applied to the database** (owner go-ahead given, 2026-09-22) — live-verified end to end (mark/undo, `lastVisitAt` recompute, Reports rate, dashboard totals, Basic-plan gating) on both the Pro test workspace and a fresh Basic signup. The code itself is still uncommitted.
 

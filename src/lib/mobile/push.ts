@@ -18,7 +18,6 @@ import { isExpoPushToken } from "@/lib/mobile/push-token";
  */
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
-const EXPO_PUSH_BATCH_SIZE = 100;
 
 export type StaffPushKind = "message" | "appointment" | "reminder" | "system";
 
@@ -55,10 +54,7 @@ export function buildStaffPushPayload(input: {
   return {
     title: TITLES[input.kind],
     body: BODIES[input.kind],
-    data:
-      input.linkType && input.linkId
-        ? { linkType: input.linkType, linkId: input.linkId }
-        : undefined,
+    data: input.linkType && input.linkId ? { linkType: input.linkType, linkId: input.linkId } : undefined,
   };
 }
 
@@ -69,7 +65,7 @@ export function buildStaffPushPayload(input: {
  */
 export async function sendStaffPush(
   expoPushTokens: Array<string | null | undefined>,
-  payload: StaffPushPayload,
+  payload: StaffPushPayload
 ): Promise<void> {
   const tokens = Array.from(new Set(expoPushTokens.filter(isExpoPushToken)));
   if (tokens.length === 0) {
@@ -87,51 +83,45 @@ export async function sendStaffPush(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
   try {
-    // Sequential batches keep provider concurrency bounded; the deadline covers the whole send.
-    for (let offset = 0; offset < messages.length; offset += EXPO_PUSH_BATCH_SIZE) {
-      const batch = messages.slice(offset, offset + EXPO_PUSH_BATCH_SIZE);
-      const response = await fetch(EXPO_PUSH_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          ...(process.env.EXPO_ACCESS_TOKEN
-            ? { Authorization: `Bearer ${process.env.EXPO_ACCESS_TOKEN}` }
-            : {}),
-        },
-        body: JSON.stringify(batch),
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        logger.error("Expo push send failed.", undefined, { status: response.status });
-        continue;
-      }
-      const result: unknown = await response.json();
-      if (
-        !result ||
-        typeof result !== "object" ||
-        !("data" in result) ||
-        !Array.isArray(result.data)
-      ) {
-        logger.error("Expo push returned an invalid ticket response.");
-        continue;
-      }
-      const failed = result.data.filter(
-        (ticket: unknown) =>
-          !ticket || typeof ticket !== "object" || !("status" in ticket) || ticket.status !== "ok",
-      ).length;
-      if (failed > 0 || result.data.length !== batch.length) {
-        // Provider messages can contain tokens. Only counts belong in logs.
-        logger.error("Expo push tickets reported delivery errors.", undefined, {
-          failed,
-          expected: batch.length,
-          received: result.data.length,
-        });
-      }
+    const response = await fetch(EXPO_PUSH_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...(process.env.EXPO_ACCESS_TOKEN
+          ? { Authorization: `Bearer ${process.env.EXPO_ACCESS_TOKEN}` }
+          : {}),
+      },
+      body: JSON.stringify(messages),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      logger.error("Expo push send failed.", undefined, { status: response.status });
+      return;
     }
-  } catch {
-    // JSON parse errors can echo provider response text containing a push token.
-    logger.error("Expo push could not be completed.");
+    // Expo answers 200 with a per-message ticket; a bad token only shows up there.
+    const result: unknown = await response.json();
+    const tickets =
+      result && typeof result === "object" && "data" in result && Array.isArray(result.data)
+        ? result.data
+        : [];
+    const failed = tickets.filter(
+      (ticket: unknown) =>
+        !ticket || typeof ticket !== "object" || !("status" in ticket) || ticket.status !== "ok",
+    ).length;
+    if (failed > 0 || tickets.length !== messages.length) {
+      // Provider messages can contain tokens. Only counts belong in logs.
+      logger.error("Expo push tickets reported delivery errors.", undefined, {
+        failed,
+        expected: messages.length,
+        received: tickets.length,
+      });
+    }
+  } catch (error) {
+    // Only the error's name: a JSON parse error can echo provider text containing a token.
+    logger.error("Expo push could not be completed.", undefined, {
+      reason: error instanceof Error ? error.name : "unknown",
+    });
   } finally {
     clearTimeout(timer);
   }

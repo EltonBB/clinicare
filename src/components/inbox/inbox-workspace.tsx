@@ -148,9 +148,6 @@ export function InboxWorkspace({
   const [filter, setFilter] = useState<InboxFilter>("all");
   const [draftMessage, setDraftMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
-  const [hydrationFailure, setHydrationFailure] = useState<{
-    conversationId: string; message: string;
-  } | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [convertDialogOpen, setConvertDialogOpen] = useState(false);
   const [convertName, setConvertName] = useState("");
@@ -202,10 +199,6 @@ export function InboxWorkspace({
   const selectedConversationHasFullHistory =
     conversations.find((conversation) => conversation.id === selectedConversationId)
       ?.hasFullHistory ?? true;
-  const visibleErrorMessage = errorMessage || (
-    !selectedConversationHasFullHistory && hydrationFailure?.conversationId === selectedConversationId
-      ? hydrationFailure.message : ""
-  );
   const hasClients = clientCount > 0;
   const bookingHref = recommendedClientId
     ? `/calendar/new?client=${recommendedClientId}`
@@ -365,7 +358,15 @@ export function InboxWorkspace({
       return;
     }
 
-    if (selectedConversationHasFullHistory) return;
+    if (selectedConversationHasFullHistory) {
+      // The conversation can gain full history either from this effect's own
+      // hydrate succeeding below, or from the ordinary "recent" poll picking
+      // it up on its own (e.g. a fresh reply bumped its updatedAt back into
+      // the recency window) — either way, a stale hydration-failure error no
+      // longer applies.
+      setErrorMessage("");
+      return;
+    }
 
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -389,13 +390,17 @@ export function InboxWorkspace({
         }
 
         if (!result.ok || !result.conversation) {
-          setHydrationFailure({ conversationId: selectedConversationId, message: result.error ?? "We couldn't load the full conversation history." });
+          setErrorMessage(result.error ?? "We couldn't load the full conversation history.");
           scheduleRetry();
           return;
         }
 
         const hydrated = result.conversation;
-        setHydrationFailure(null);
+        // Clear immediately on this success, rather than only relying on the
+        // early-return branch above catching it a render later (it still
+        // does, for the case where a poll — not this fetch — is what
+        // actually resolves hasFullHistory to true).
+        setErrorMessage("");
         // unreadCount deliberately comes from local state, not the hydrate
         // fetch — the optimistic zero on open (or a concurrent mark-read
         // commit) is more current than whatever this read saw.
@@ -416,7 +421,7 @@ export function InboxWorkspace({
       })
       .catch(() => {
         if (!cancelled) {
-          setHydrationFailure({ conversationId: selectedConversationId, message: "We couldn't load the full conversation history." });
+          setErrorMessage("We couldn't load the full conversation history.");
           scheduleRetry();
         }
       });
@@ -675,10 +680,10 @@ export function InboxWorkspace({
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto border-t border-border/70">
-                {visibleErrorMessage ? (
+                {errorMessage ? (
                   <div className="px-3.5 py-3">
                     <div className="rounded-(--radius-card) border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                      {visibleErrorMessage}
+                      {errorMessage}
                     </div>
                   </div>
                 ) : null}

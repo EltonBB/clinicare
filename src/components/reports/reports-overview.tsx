@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   format,
@@ -133,18 +133,12 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
   const customStart = view.periods.custom.periodStartKey;
   const customEnd = view.periods.custom.periodEndKey;
 
-  const [previousRange, setPreviousRange] = useState({
-    period: view.defaultPeriod, start: customStart, end: customEnd,
-  });
-  if (previousRange.period !== view.defaultPeriod ||
-      previousRange.start !== customStart || previousRange.end !== customEnd) {
-    setPreviousRange({ period: view.defaultPeriod, start: customStart, end: customEnd });
-    if (view.defaultPeriod === "custom") {
-      setSelectedPeriod("custom");
-      setFromInput(customStart);
-      setToInput(customEnd);
-    }
-  }
+  useEffect(() => {
+    if (view.defaultPeriod !== "custom") return;
+    setSelectedPeriod("custom");
+    setFromInput(customStart);
+    setToInput(customEnd);
+  }, [view.defaultPeriod, customStart, customEnd]);
 
   function refreshInsights() {
     setIsRefreshing(true);

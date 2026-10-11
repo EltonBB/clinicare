@@ -687,8 +687,9 @@ export async function generateMobileAccessCodeAction(
 
   const code = generateAccessCode();
   try {
-    // Serializable prevents concurrent first-time issuers from creating two live codes.
-    await prisma.$transaction(async (tx) => {
+    // Serializable prevents concurrent first-time issuers from creating two live
+    // codes; the losing transaction is retried once rather than shown as a failure.
+    await retryOnWriteConflict(() => prisma.$transaction(async (tx) => {
       await tx.staffAccessCode.updateMany({
         where: { businessId: owned.businessId, staffMemberId: owned.staffId, status: "ACTIVE" },
         data: { status: "REVOKED" },
@@ -701,7 +702,7 @@ export async function generateMobileAccessCodeAction(
           expiresAt: new Date(Date.now() + ACCESS_CODE_TTL_MS),
         },
       });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
   } catch (error) {
     logger.error("Failed to generate mobile access code.", error, { staffId: owned.staffId });
     return { ok: false, error: "We couldn't generate a code. Please try again." };

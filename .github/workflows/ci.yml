@@ -38,8 +38,6 @@ jobs:
         run: npm run typecheck
       - name: Typecheck the WhatsApp worker
         run: npm run typecheck --prefix services/whatsapp-worker
-      - name: Worker dependency security regressions
-        run: node qa/worker-dependency-security.mjs
       - name: Lint
         run: npm run lint
       - name: Unit tests

@@ -33,9 +33,6 @@ declare global {
 }
 
 const MAX_TRACKED_KEYS = 10_000;
-const PRUNE_INTERVAL_MS = 1000;
-let lastPrunedAt = 0;
-let earliestBucketResetAt = 0;
 
 const buckets = global.rateLimitBuckets ?? new Map<string, Bucket>();
 
@@ -114,20 +111,30 @@ function getRedisLimiter(rule: RateLimitRule): Ratelimit | null {
   }
 }
 
-/** Drop expired buckets at capacity, at most once per second under a key flood. */
+/** Drop expired buckets when the map grows large, to bound memory. */
 function pruneExpired(now: number) {
-  if (buckets.size < MAX_TRACKED_KEYS || now - lastPrunedAt < PRUNE_INTERVAL_MS) {
+  if (buckets.size < MAX_TRACKED_KEYS) {
     return;
   }
-  lastPrunedAt = now;
-  earliestBucketResetAt = Infinity;
 
   for (const [key, bucket] of buckets) {
     if (now >= bucket.resetAt) {
       buckets.delete(key);
-    } else {
-      earliestBucketResetAt = Math.min(earliestBucketResetAt, bucket.resetAt);
     }
+  }
+
+  if (buckets.size < MAX_TRACKED_KEYS) {
+    return;
+  }
+
+  // Still full of live buckets (a flood of distinct keys): evict the oldest
+  // tenth. Refusing new keys instead would lock every new user out, and an
+  // attacker would need ~1,000 fresh keys to reset one budget this way.
+  for (const key of buckets.keys()) {
+    if (buckets.size < MAX_TRACKED_KEYS * 0.9) {
+      break;
+    }
+    buckets.delete(key);
   }
 }
 
@@ -138,20 +145,9 @@ function checkRateLimitInMemory(key: string, rule: RateLimitRule): RateLimitResu
 
   if (!existing || now >= existing.resetAt) {
     pruneExpired(now);
-    // Preserve existing subjects' budgets. Eviction would reset an attacker's
-    // allowance; admitting unlimited active keys would exhaust process memory.
-    if (!existing && buckets.size >= MAX_TRACKED_KEYS) {
-      return {
-        allowed: false,
-        remaining: 0,
-        retryAfterSeconds: Math.max(1, Math.ceil((earliestBucketResetAt - now) / 1000)),
-      };
-    }
-    const resetAt = now + rule.windowMs;
-    buckets.set(key, { count: 1, resetAt });
-    // A prune can empty the map and set this to Infinity. Track refills too:
-    // a burst can fill the map again before the next permitted prune.
-    earliestBucketResetAt = Math.min(earliestBucketResetAt || Infinity, resetAt);
+    // Re-insert so Map order tracks recency: eviction drops the oldest first.
+    buckets.delete(key);
+    buckets.set(key, { count: 1, resetAt: now + rule.windowMs });
     return { allowed: true, remaining: Math.max(rule.limit - 1, 0), retryAfterSeconds: 0 };
   }
 

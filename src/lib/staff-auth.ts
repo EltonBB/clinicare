@@ -4,9 +4,9 @@ import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { bearerToken, hashDeviceToken } from "@/lib/staff-auth-crypto";
-import { DEVICE_ABSOLUTE_TTL_MS, DEVICE_TOKEN_TTL_MS } from "@/lib/staff-device-policy";
+import { DEVICE_TOKEN_TTL_MS, isUsableStaffDevice } from "@/lib/staff-device-policy";
 
-export { DEVICE_ABSOLUTE_TTL_MS, DEVICE_TOKEN_TTL_MS } from "@/lib/staff-device-policy";
+export { DEVICE_TOKEN_TTL_MS } from "@/lib/staff-device-policy";
 
 // Re-exported for existing callers (e.g. the redeem route) — the actual
 // implementations live in staff-auth-crypto.ts, which has no Prisma import so
@@ -107,9 +107,7 @@ export async function requireStaffContext(
   const now = new Date();
   const valid =
     device &&
-    device.revokedAt === null &&
-    device.expiresAt > now &&
-    now.getTime() - device.createdAt.getTime() <= DEVICE_ABSOLUTE_TTL_MS &&
+    isUsableStaffDevice(device, now) &&
     isStaffMemberActive(device.staffMember);
 
   if (!device || !valid) {
