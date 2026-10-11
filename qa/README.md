@@ -4,6 +4,8 @@
 
 Verified on 2026-10-10 against the current-main integration: **24 passed**, including the current no-show and waiting-list workflows. See [integration report](INTEGRATION-QA-2026-10-10.md). Earlier results from the older QA checkout are not acceptance evidence for this branch.
 
+The October 11 Expo-token correction reran this suite against another fresh fictional database: **25 passed**, including UUID-style token redemption, persistence and updates, malformed redemption leaving the code usable, and rejected registration preserving the previous token. [Correction evidence](evidence/expo-token-compatibility-2026-10-11.json).
+
 The Windows harness needs portable PostgreSQL binaries in a separate tooling folder. The verified runtime for the 2026-10-09 review is `@embedded-postgres/windows-x64@17.10.0-beta.17` (PostgreSQL 17.10). This tool is not an application dependency. Registry metadata points to [the package's official repository](https://github.com/leinelissen/embedded-postgres); its lockfile remains in the isolated tooling folder.
 
 Run from a sanitized source snapshot with its own installed dependencies and **no loadable `.env` files** (inert `.example` templates are allowed):

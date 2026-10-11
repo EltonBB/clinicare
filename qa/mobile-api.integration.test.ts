@@ -126,6 +126,24 @@ describe("actual mobile route handlers with disposable PostgreSQL", () => {
     expect((await routes.redeem.POST(request("auth/redeem", { code }))).status).toBe(401);
   });
 
+  it("redeems and updates UUID-style Expo tokens without consuming codes for malformed tokens", async () => {
+    const code = crypto.generateAccessCode();
+    await db.staffAccessCode.create({ data: { businessId: fixture.a.id, staffMemberId: fixture.staff.id, codeHash: crypto.hashAccessCode(code), expiresAt: new Date(Date.now() + 60_000) } });
+    const firstToken = "12345678-1234-1234-1234-123456789abc";
+    const replacement = "ABCDEF12-ABCD-ABCD-ABCD-ABCDEF123456";
+    expect((await routes.redeem.POST(request("auth/redeem", { code, expoPushToken: `${firstToken}!` }))).status).toBe(400);
+    expect(await db.staffDevice.count()).toBe(1);
+    const response = await routes.redeem.POST(request("auth/redeem", { code, platform: "android", expoPushToken: firstToken }));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const stored = await db.staffDevice.findUniqueOrThrow({ where: { tokenHash: crypto.hashDeviceToken(body.token) } });
+    expect(stored.expoPushToken).toBe(firstToken);
+    expect((await routes.devices.POST(request("devices", { expoPushToken: replacement }, body.token))).status).toBe(200);
+    expect((await db.staffDevice.findUniqueOrThrow({ where: { id: stored.id } })).expoPushToken).toBe(replacement);
+    expect((await routes.devices.POST(request("devices", { expoPushToken: `${replacement}\n` }, body.token))).status).toBe(400);
+    expect((await db.staffDevice.findUniqueOrThrow({ where: { id: stored.id } })).expoPushToken).toBe(replacement);
+  });
+
   it("allows only one of five concurrent redemptions to create a device", async () => {
     const code = crypto.generateAccessCode();
     await db.staffAccessCode.create({ data: { businessId: fixture.a.id, staffMemberId: fixture.staff.id, codeHash: crypto.hashAccessCode(code), expiresAt: new Date(Date.now() + 60_000) } });

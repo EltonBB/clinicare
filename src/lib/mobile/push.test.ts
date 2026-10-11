@@ -51,11 +51,14 @@ describe("sendStaffPush", () => {
     vi.unstubAllEnvs();
   });
 
-  it("sends both token formats, deduplicates, and drops malformed tokens", async () => {
+  it("sends bracketed and UUID-style tokens, deduplicates, and drops malformed tokens", async () => {
     await sendStaffPush(
       [
         "ExpoPushToken[current]",
         "ExponentPushToken[legacy]",
+        "12345678-1234-1234-1234-123456789abc",
+        "ABCDEF12-ABCD-ABCD-ABCD-ABCDEF123456",
+        "12345678-1234-1234-1234-123456789abc",
         "ExpoPushToken[current]",
         "ExponentPushTokenBAD",
         null,
@@ -67,6 +70,8 @@ describe("sendStaffPush", () => {
     expect(messages.map((message: { to: string }) => message.to)).toEqual([
       "ExpoPushToken[current]",
       "ExponentPushToken[legacy]",
+      "12345678-1234-1234-1234-123456789abc",
+      "ABCDEF12-ABCD-ABCD-ABCD-ABCDEF123456",
     ]);
   });
 

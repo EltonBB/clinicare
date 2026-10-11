@@ -10,9 +10,19 @@ A subsequent audit of the separately locked WhatsApp worker found five package e
 
 The user completed the manual dependency update after the agent's installation was policy-blocked. Post-install worker TypeScript, all 1,679 tests across 93 files, guarded security regressions and their scoped lint passed. Root TypeScript, full lint (zero warnings) and the production build also passed again. The equivalent receipt-counter cleanup assignment removes a lint warning without changing invalidation behavior. Neither PR has been merged or released; the follow-up still needs remote CI/review after push.
 
-[October 11 gate evidence](evidence/integration-followup-2026-10-11.json) and the [current 471-file source manifest](evidence/integration-source-2026-10-11.json) preserve the earlier October 10 results separately. Of the original 448 source files, 447 are byte-identical; only the equivalent receipt-counter assignment changed. All original API/library/Prisma and integration-test sources are unchanged, so the 24 PostgreSQL, 15 HTTP and five focused receipt results below remain earlier results, rather than claimed reruns. The current manifest also includes the worker source/configuration and new security runner.
+[October 11 dependency gate evidence](evidence/integration-followup-2026-10-11.json) and its [471-file source manifest](evidence/integration-source-2026-10-11.json) preserve the earlier October 10 results separately. At that dependency-only checkpoint, 447 of the original 448 source files were byte-identical; only the equivalent receipt-counter assignment had changed. Its API/library/Prisma and integration-test sources were unchanged, so the 24 PostgreSQL, 15 HTTP and five focused receipt results below were retained results. The manifest also includes the worker source/configuration and new security runner. The later Expo-token correction and database rerun are recorded next.
 
 The dependency follow-up `c0a1cb23bd369ee7e5603592a127cdd41cac11d2` passed remote CI and its Vercel preview build. CI reported deprecated Node 20 actions and an upcoming `ubuntu-latest` image change. A subsequent workflow-only maintenance change pins Ubuntu 24.04, uses the locally tested Node 24 major, restricts checkout to read-only credentials without persistence, and adds the guarded worker regression to CI. Checkout [v7.0.1](https://github.com/actions/checkout/releases/tag/v7.0.1) and setup-node [v7.1.0](https://github.com/actions/setup-node/releases/tag/v7.1.0) are pinned to their verified immutable commit IDs. This workflow is outside the application source manifest; its exact-commit CI/review must pass after push.
+
+## Expo push-token correction — 11 October
+
+The workflow head `6b7143c32f5b54f4e616e237d06347ee3658e436` passed CI, including all three worker consumer regression groups, and its Vercel preview build. Codex's review identified one compatibility issue: the central push predicate rejected the UUID-style form supported by [Expo's official implementation](https://github.com/expo/expo-server-sdk-node/blob/main/src/ExpoClient.ts). This could reject code redemption/registration or filter a stored valid token from delivery.
+
+The predicate now accepts Expo's case-insensitive alphanumeric 8-4-4-4-12 form alongside bracketed tokens, while rejecting boundary whitespace. Redemption, registration and outbound filtering share this predicate. Authentication, body limits, the 256-character input limit, quotas and tenant ownership checks are unchanged. A sibling audit found that mobile already forwards Expo's returned token unchanged; no mobile source change was needed.
+
+The new regression first reproduced four failures, then all 14 focused tests passed. Root TypeScript, full lint and the production build passed again; the full unit suite now passes **1,682 tests across 93 files**. A fresh fictional PostgreSQL run passes **25 cases**, including actual UUID-style redemption/persistence and registration updates, rejection without consuming an access code, and preservation of the stored token after a rejected update. The database stopped successfully. Independent correctness, one simplification review and final confirmation were clean. Exact new-head remote checks remain pending until push.
+
+[Correction evidence](evidence/expo-token-compatibility-2026-10-11.json) and its [current source manifest](evidence/integration-source-expo-tokens-2026-10-11.json) retain the earlier evidence separately. Only the central predicate and three test files changed from the dependency-stage manifest. The 15 HTTP/TLS and five focused receipt results remain earlier checks; they were not rerun for this correction. Root/worker dependency trees and the mobile candidate are unchanged.
 
 ## Changes
 
@@ -23,7 +33,7 @@ The dependency follow-up `c0a1cb23bd369ee7e5603592a127cdd41cac11d2` passed remot
 - Seven hook repairs are adapted to current main's components. Search ignores aborted responses and uses the dialog's focus handling; delayed Mark-all completion cannot overwrite a newer badge after tab removal.
 - Dependencies retain current main's React/Prisma/adapter versions, apply the reviewed braces backport, and use compatible tooling/deepmerge/PostCSS updates.
 
-## Verification
+## Initial verification — 10 October
 
 | Check | Result |
 |---|---|
