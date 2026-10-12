@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { NewStaffForm } from "@/components/staff/new-staff-form";
 import { CreatePageShell } from "@/components/workspace/create-page-shell";
 import { requireCurrentWorkspace } from "@/lib/business";
-import { buildStaffRecord, completedAppointmentCutoff } from "@/lib/staff";
+import { buildStaffRecord, staffRecordAppointmentWindow } from "@/lib/staff";
 import { prisma } from "@/lib/prisma";
 
 function staffTimeEntryCutoff() {
@@ -66,9 +66,7 @@ export default async function EditStaffPage({
         },
         appointments: {
           where: {
-            startAt: {
-              gte: completedAppointmentCutoff(),
-            },
+            startAt: staffRecordAppointmentWindow(),
           },
           include: {
             client: {

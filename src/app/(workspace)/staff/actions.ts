@@ -17,7 +17,7 @@ import {
 } from "@/lib/time-zone";
 import {
   buildStaffRecord,
-  completedAppointmentCutoff,
+  staffRecordAppointmentWindow,
   findActiveShiftWindow,
   staffStatuses,
   type SaveStaffPayload,
@@ -125,9 +125,7 @@ async function fetchStaffRecord(staffId: string, businessId: string) {
       },
       appointments: {
         where: {
-          startAt: {
-            gte: completedAppointmentCutoff(),
-          },
+          startAt: staffRecordAppointmentWindow(),
         },
         include: {
           client: {
