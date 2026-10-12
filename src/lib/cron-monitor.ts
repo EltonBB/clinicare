@@ -11,11 +11,7 @@ import vercelConfig from "../../vercel.json";
  * A no-op when SENTRY_DSN is unset.
  */
 export async function withCronMonitor(path: string, run: () => Promise<Response>): Promise<Response> {
-  const schedule = vercelConfig.crons.find((cron) => cron.path === path)?.schedule;
-  if (!schedule) {
-    return run();
-  }
-
+  const schedule = vercelConfig.crons.find((cron) => cron.path === path)!.schedule;
   const monitorSlug = path.replace(/^\/api\/cron\//, "cron-");
   const checkInId = Sentry.captureCheckIn(
     { monitorSlug, status: "in_progress" },

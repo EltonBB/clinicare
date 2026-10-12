@@ -46,10 +46,4 @@ describe("withCronMonitor", () => {
 
     expect(sentry.captureCheckIn).toHaveBeenLastCalledWith(expect.objectContaining({ status: "error" }));
   });
-
-  it("runs without a check-in for a path that has no schedule", async () => {
-    await withCronMonitor("/api/cron/unknown", async () => new Response(null, { status: 200 }));
-
-    expect(sentry.captureCheckIn).not.toHaveBeenCalled();
-  });
 });
