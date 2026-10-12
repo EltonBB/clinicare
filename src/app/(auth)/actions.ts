@@ -1,5 +1,7 @@
 "use server";
 
+import { createHash } from "node:crypto";
+
 import { type EmailOtpType } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { cookies, headers } from "next/headers";
@@ -156,6 +158,9 @@ const TOO_MANY_ATTEMPTS_MESSAGE =
 // Per-IP throttles: blunt credential-stuffing on login and email-send abuse on
 // signup / resend / forgot-password (the latter three share the email quota).
 const LOGIN_RATE_LIMIT: RateLimitRule = { limit: 12, windowMs: 60_000 };
+// Per account, so guesses spread across many IPs still hit a ceiling. Keyed by
+// a hash so the limiter store never holds the address itself.
+const LOGIN_ACCOUNT_RATE_LIMIT: RateLimitRule = { limit: 10, windowMs: 15 * 60_000 };
 const SIGNUP_RATE_LIMIT: RateLimitRule = { limit: 6, windowMs: 60_000 };
 const EMAIL_SEND_RATE_LIMIT: RateLimitRule = { limit: 5, windowMs: 60_000 };
 // Confirm-link submits are one click per email for a real user; 10/min per IP
@@ -279,6 +284,12 @@ export async function loginAction(
       fieldErrors,
       values,
     };
+  }
+
+  const accountKey = createHash("sha256").update(parsed.data.email.toLowerCase()).digest("hex");
+
+  if (!(await checkRateLimit(`login-account:${accountKey}`, LOGIN_ACCOUNT_RATE_LIMIT)).allowed) {
+    return { error: TOO_MANY_ATTEMPTS_MESSAGE, values };
   }
 
   const supabase = await createClient();
