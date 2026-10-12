@@ -9,17 +9,27 @@ import { MODULES } from "../shared/modules";
 
 /**
  * The six modules as a slow, endless strip under the hero, each with its drawn
- * glyph and one line. Pointing at one stops the strip, lights its glyph, and
- * dims the rest; every item opens the product tour. Reduced motion: the strip
- * stands still (the shared `.animate-marquee` rule).
+ * glyph and one line. Pointing at one (or tabbing to it) stops the strip,
+ * lights its glyph, and dims the rest; each item opens the product explorer
+ * on its own module. Reduced motion: the strip stands still (the shared
+ * `.animate-marquee` rule).
  */
 export function ModuleStrip() {
   const [hovered, setHovered] = useState<number | null>(null);
   const items = [...MODULES, ...MODULES];
 
   return (
-    <nav aria-label="Modules" className="group/strip relative overflow-hidden border-y border-border/60 marquee-mask">
-      <ul className="animate-marquee flex w-max group-hover/strip:[animation-play-state:paused]" onPointerLeave={() => setHovered(null)}>
+    <nav
+      aria-label="Modules"
+      className="group/strip relative overflow-hidden border-y border-border/60 marquee-mask"
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) setHovered(null);
+      }}
+    >
+      <ul
+        className="animate-marquee flex w-max group-focus-within/strip:[animation-play-state:paused] group-hover/strip:[animation-play-state:paused]"
+        onPointerLeave={() => setHovered(null)}
+      >
         {items.map((mod, i) => {
           const index = i % MODULES.length;
           const Glyph = MODULE_GLYPHS[index];
@@ -27,7 +37,7 @@ export function ModuleStrip() {
           return (
             <li key={i} aria-hidden={i >= MODULES.length || undefined} className="border-r border-border/60">
               <Link
-                href="/product#modules"
+                href={`/product?module=${index}#modules`}
                 tabIndex={i >= MODULES.length ? -1 : undefined}
                 onPointerEnter={() => setHovered(index)}
                 onFocus={() => setHovered(index)}

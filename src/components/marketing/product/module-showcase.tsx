@@ -15,7 +15,7 @@ import { MODULES, onSelectModule } from "../shared/modules";
  * not hovered or focused; the active tab's progress bar is the timer (its animationend
  * advances), so pausing the bar pauses the cycle. Reduced motion: the bar
  * doesn't animate, so it never auto-advances. The hero rail can open a module
- * directly (`selectModule`).
+ * directly (`selectModule`), and links can name one with `?module=`.
  */
 export function ModuleShowcase() {
   const ref = useRef<HTMLDivElement>(null);
@@ -30,6 +30,15 @@ export function ModuleShowcase() {
   const Visual = MODULE_VISUALS[active];
 
   useEffect(() => onSelectModule(setActive), []);
+
+  // Links from elsewhere (the home module strip) name a module: ?module=2.
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get("module");
+    const requested = Number(raw);
+    if (raw === null || !Number.isInteger(requested) || requested < 0 || requested >= MODULES.length) return;
+    const frame = requestAnimationFrame(() => setActive(requested));
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
