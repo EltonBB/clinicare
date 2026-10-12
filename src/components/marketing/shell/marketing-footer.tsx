@@ -33,26 +33,35 @@ const columns = [
 
 /**
  * The ink footer every marketing page ends on. Pages that close on a call to
- * action (`cta`) get it as the footer's opening line, so the last screen is one
+ * action (`cta`, optionally with their own closing line) get it as the
+ * footer's opening line, so the last screen is one
  * dark stage: the ask, the links, and a giant cursor-lit "Vela" cropped by the
  * bottom of the page.
  */
-export function MarketingFooter({ cta = false }: { cta?: boolean }) {
+/** A page's own closing line for the footer CTA; `true` uses the default. */
+export type FooterCta = boolean | { lead: string; rest: string; copy: string };
+
+const DEFAULT_CTA = {
+  lead: "Give the day back",
+  rest: "to the people running it.",
+  copy: "Appointments, patients, staff, and messages in one calm workspace, from your first day.",
+};
+
+export function MarketingFooter({ cta = false }: { cta?: FooterCta }) {
   const year = new Date().getFullYear();
+  const ask = cta === true ? DEFAULT_CTA : cta || null;
 
   return (
     <footer data-tone="dark" className="relative overflow-hidden bg-[var(--brand-ink)] text-white">
-      {cta ? (
+      {ask ? (
         <div className="mx-auto max-w-7xl px-4 pb-20 pt-24 sm:px-6 sm:pb-24 sm:pt-32 lg:px-8">
           <Reveal>
             <h2 className="display-1 max-w-5xl text-balance">
-              Give the day back <span className="text-white/45">to the people running it.</span>
+              {ask.lead} <span className="text-white/45">{ask.rest}</span>
             </h2>
           </Reveal>
           <Reveal delay={0.1} className="mt-12 flex flex-col gap-8 sm:flex-row sm:items-end sm:justify-between">
-            <p className="max-w-md text-lg leading-8 text-white/60">
-              Appointments, patients, staff, and messages in one calm workspace, from your first day.
-            </p>
+            <p className="max-w-md text-lg leading-8 text-white/60">{ask.copy}</p>
             <div className="flex flex-wrap gap-3">
               <Magnetic>
                 <Link

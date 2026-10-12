@@ -84,7 +84,7 @@ function ReminderBuilder() {
               onClick={() => setDenied((d) => ({ label, n: (d?.n ?? 0) + 1 }))}
               className="inline-flex h-8 cursor-not-allowed items-center rounded-full border border-dashed border-border bg-[var(--brand-wash)]/40 px-3 text-xs font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
             >
-              <span key={denied?.label === label ? denied.n : 0} className={cn("inline-flex items-center gap-1.5", denied?.label === label && "animate-[vela-shake_380ms_ease-out]")}>
+              <span key={denied?.label === label ? denied.n : 0} className={cn("inline-flex items-center gap-1.5", denied?.label === label && "motion-safe:animate-[vela-shake_380ms_ease-out]")}>
                 <Lock className="size-3" />
                 {label}
               </span>

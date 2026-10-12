@@ -42,9 +42,9 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-function TestimonialCard({ t }: { t: Testimonial }) {
+function TestimonialCard({ t, copy }: { t: Testimonial; copy?: boolean }) {
   return (
-    <div className="testimonial-card group/card flex h-[184px] w-[340px] shrink-0 flex-col rounded-(--radius-mkt-card) border border-border/70 bg-white p-6 shadow-[0_1px_2px_rgba(20,21,47,0.03)] transition-all duration-(--duration-base) ease-out-quint hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-[0_14px_30px_-20px_rgba(10,34,255,0.14)]">
+    <div aria-hidden={copy || undefined} className="testimonial-card group/card flex h-[184px] w-[340px] shrink-0 flex-col rounded-(--radius-mkt-card) border border-border/70 bg-white p-6 shadow-[0_1px_2px_rgba(20,21,47,0.03)] transition-all duration-(--duration-base) ease-out-quint hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-[0_14px_30px_-20px_rgba(10,34,255,0.14)]">
       <div className="flex items-center gap-3">
         <span className="flex size-9 shrink-0 items-center justify-center rounded-(--radius-mkt-tile) bg-[var(--brand-ink)] text-[11px] font-bold text-white transition-colors duration-(--duration-base) group-hover/card:bg-primary/90">
           {initials(t.name)}
@@ -75,7 +75,8 @@ function Row({ items, direction, duration }: { items: Testimonial[]; direction: 
         style={{ animationDuration: duration }}
       >
         {track.map((t, i) => (
-          <TestimonialCard key={i} t={t} />
+          // The second half only makes the loop seamless; screen readers hear each quote once.
+          <TestimonialCard key={i} t={t} copy={i >= items.length} />
         ))}
       </div>
     </div>

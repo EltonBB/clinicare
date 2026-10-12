@@ -1,5 +1,4 @@
 import { MarketingShell } from "../shell/marketing-shell";
-import { PrimaryCta, SecondaryCta } from "../shared/cta-links";
 import { SectionHeader } from "../shared/section-header";
 import { Reveal } from "../motion/reveal";
 import { Highlight, WordReveal } from "../motion/word-reveal";
@@ -33,7 +32,13 @@ const principles: { title: string; copy: string; row: string; status: string }[]
 
 export function AboutPage() {
   return (
-    <MarketingShell>
+    <MarketingShell
+      footerCta={{
+        lead: "Run the day.",
+        rest: "Don’t chase it.",
+        copy: "Start with your calendar and patients. Add staff, messages, and reports when you are ready.",
+      }}
+    >
       {/* manifesto hero: the one centered opening on the site, no actions until the end */}
       <section className="pb-16 pt-24 sm:pb-20 sm:pt-32">
         <div className="mx-auto max-w-6xl px-4 text-center sm:px-6 lg:px-8">
@@ -90,24 +95,6 @@ export function AboutPage() {
             ))}
           </Reveal>
         </div>
-      </section>
-
-      {/* closer: answers the manifesto, with the ask beside it */}
-      <section className="border-t border-border/60 py-20 sm:py-24">
-        <Reveal className="mx-auto grid max-w-7xl grid-cols-1 gap-10 px-4 sm:px-6 lg:grid-cols-[1.4fr_1fr] lg:items-end lg:gap-16 lg:px-8">
-          <h2 className="display-1 text-balance text-[var(--brand-ink)]">
-            Run the day. <span className="text-muted-foreground">Don’t chase it.</span>
-          </h2>
-          <div>
-            <p className="max-w-sm text-lg leading-8 text-muted-foreground">
-              Start with your calendar and patients. Add staff, messages, and reports when you are ready.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <PrimaryCta href="/sign-up">Start free</PrimaryCta>
-              <SecondaryCta href="/contact">Contact us</SecondaryCta>
-            </div>
-          </div>
-        </Reveal>
       </section>
     </MarketingShell>
   );
