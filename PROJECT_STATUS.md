@@ -1,6 +1,6 @@
 # Project Status: Vela / Clinicare
 
-Last updated: 2026-09-01
+Last updated: 2026-10-12
 
 ## Product Overview
 
@@ -19,6 +19,8 @@ The core product direction is customer-first: clinics should not need to underst
 - OpenAI-backed analytics snapshots with rule-based fallback when AI is unavailable.
 
 ## Completed Features
+
+- **Mobile API hardening + read receipts (2026-10-12, PR #144).** Mobile API requests are capped at 32KB with a read deadline; throttled responses carry `Retry-After`; mobile API responses are `private, no-store`. Push only reaches unexpired devices of active staff, accepts Expo's UUID-style tokens, and logs per-ticket delivery errors (counts only). Read receipts now acknowledge only the messages the reader actually saw (staff app and the web Messages tab), so a message arriving mid-read stays unread; check-in system messages now clear from the admin unread count. Access-code issuance is Serializable. The in-memory rate-limit fallback evicts its oldest keys under a key flood instead of growing without bound. Dependencies: Vitest 4.1.11, `deepmerge-ts` 8 override for Prisma's config (production audit clean); the remaining `braces` advisory is dev-only (ESLint's glob tooling, never fed user input). CI runs with read-only permissions on Node 24.
 
 - **No-show status (Pro) (2026-09-22, uncommitted; PR 1 of the no-show/workflow series, spec + plans in `docs/superpowers`).** Adds a `NO_SHOW` appointment status, a "Mark as no-show/attended" action in the calendar quick view, and a No-show rate in Reports. **The schema change (`prisma/no-show-status-migration.sql`, `ALTER TYPE "AppointmentStatus" ADD VALUE IF NOT EXISTS 'NO_SHOW'`) has been applied to the database** (owner go-ahead given, 2026-09-22) — live-verified end to end (mark/undo, `lastVisitAt` recompute, Reports rate, dashboard totals, Basic-plan gating) on both the Pro test workspace and a fresh Basic signup. The code itself is still uncommitted.
 

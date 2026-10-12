@@ -1,7 +1,10 @@
 import { ensureAdminThread } from "@/lib/mobile/inbox";
+import { logger } from "@/lib/logger";
 import { buildStaffPushPayload, sendStaffPush } from "@/lib/mobile/push";
 import { clockLabel, dayLabel } from "@/lib/mobile/relative-time";
 import { prisma } from "@/lib/prisma";
+import { activeStaffDeviceWhere } from "@/lib/staff-device-policy";
+import { acknowledgeThreadMessages } from "@/lib/mobile/thread-read";
 
 /**
  * Admin (Vela dashboard) side of the staff↔admin thread. The admin reads and
@@ -104,40 +107,36 @@ export async function postAdminThreadMessage(
     });
   });
 
-  // Best-effort push to the staff member's devices (never blocks the reply).
-  const devices = await prisma.staffDevice.findMany({
-    where: { businessId, staffMemberId, revokedAt: null, expoPushToken: { not: null } },
-    select: { expoPushToken: true },
-  });
-  await sendStaffPush(
-    devices.map((device) => device.expoPushToken),
-    buildStaffPushPayload({ kind: "message", linkType: "conversation", linkId: thread.id })
-  );
+  // The message is committed. A push lookup failure must not invite a duplicate retry.
+  try {
+    const devices = await prisma.staffDevice.findMany({
+      where: { businessId, staffMemberId, ...activeStaffDeviceWhere(), expoPushToken: { not: null } },
+      select: { expoPushToken: true },
+    });
+    await sendStaffPush(
+      devices.map((device) => device.expoPushToken),
+      buildStaffPushPayload({ kind: "message", linkType: "conversation", linkId: thread.id })
+    );
+  } catch (error) {
+    logger.error("Failed to notify staff after saving an admin message.", error, { staffMemberId });
+  }
 
   return { ok: true, threadId: thread.id };
 }
 
 export async function markAdminThreadRead(
   businessId: string,
-  staffMemberId: string
-): Promise<void> {
+  staffMemberId: string,
+  seenMessageIds?: string[],
+) {
   // READ-ONLY w.r.t. thread existence — nothing to mark if none exists yet.
   const thread = await prisma.staffThread.findFirst({
     where: { businessId, staffMemberId },
     orderBy: { createdAt: "asc" },
   });
   if (!thread) {
-    return;
+    if (seenMessageIds?.length) return { ok: false as const, status: 400, error: "Invalid message selection." };
+    return { ok: true as const, unreadCount: 0 };
   }
-  const now = new Date();
-  await prisma.$transaction(async (tx) => {
-    await tx.staffThread.update({
-      where: { id: thread.id },
-      data: { unreadForAdmin: 0 },
-    });
-    await tx.staffThreadMessage.updateMany({
-      where: { threadId: thread.id, sender: "STAFF", readAt: null },
-      data: { readAt: now },
-    });
-  });
+  return acknowledgeThreadMessages(thread, "admin", seenMessageIds);
 }

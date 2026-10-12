@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { isExpoPushToken } from "@/lib/mobile/push-token";
 
 /**
  * Staff push notifications (Expo). This is the single choke point for sending
@@ -66,13 +67,7 @@ export async function sendStaffPush(
   expoPushTokens: Array<string | null | undefined>,
   payload: StaffPushPayload
 ): Promise<void> {
-  const tokens = Array.from(
-    new Set(
-      expoPushTokens.filter(
-        (token): token is string => !!token && token.startsWith("ExponentPushToken")
-      )
-    )
-  );
+  const tokens = Array.from(new Set(expoPushTokens.filter(isExpoPushToken)));
   if (tokens.length === 0) {
     return;
   }
@@ -102,9 +97,31 @@ export async function sendStaffPush(
     });
     if (!response.ok) {
       logger.error("Expo push send failed.", undefined, { status: response.status });
+      return;
+    }
+    // Expo answers 200 with a per-message ticket; a bad token only shows up there.
+    const result: unknown = await response.json();
+    const tickets =
+      result && typeof result === "object" && "data" in result && Array.isArray(result.data)
+        ? result.data
+        : [];
+    const failed = tickets.filter(
+      (ticket: unknown) =>
+        !ticket || typeof ticket !== "object" || !("status" in ticket) || ticket.status !== "ok",
+    ).length;
+    if (failed > 0 || tickets.length !== messages.length) {
+      // Provider messages can contain tokens. Only counts belong in logs.
+      logger.error("Expo push tickets reported delivery errors.", undefined, {
+        failed,
+        expected: messages.length,
+        received: tickets.length,
+      });
     }
   } catch (error) {
-    logger.error("Expo push send threw.", error);
+    // Only the error's name: a JSON parse error can echo provider text containing a token.
+    logger.error("Expo push could not be completed.", undefined, {
+      reason: error instanceof Error ? error.name : "unknown",
+    });
   } finally {
     clearTimeout(timer);
   }

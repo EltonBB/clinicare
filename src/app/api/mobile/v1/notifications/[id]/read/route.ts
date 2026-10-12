@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { mobileRateLimit } from "@/lib/mobile/guard";
+import { mobileRateLimit, staffAuthResponse } from "@/lib/mobile/guard";
 import { markNotificationRead } from "@/lib/mobile/inbox";
 import { requireStaffContext } from "@/lib/staff-auth";
 
@@ -12,7 +12,7 @@ export async function POST(
 ) {
   const ctx = await requireStaffContext(request);
   if ("error" in ctx) {
-    return NextResponse.json({ error: ctx.error }, { status: ctx.status });
+    return staffAuthResponse(ctx);
   }
 
   const limited = await mobileRateLimit(ctx.device.id, "notification-read", {
