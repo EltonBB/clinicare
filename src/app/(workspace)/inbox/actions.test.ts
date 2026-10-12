@@ -194,12 +194,12 @@ describe("sendInboxMessageAction", () => {
 
 describe("sendInboxMessageAction body limits", () => {
   it.each([
-    ["an oversized body", "X".repeat(4001)],
+    ["an oversized body", "X".repeat(8001)],
     ["a non-string body", { text: "hi" } as unknown as string],
   ])("refuses %s before looking up the conversation", async (_label, body) => {
     const result = await sendInboxMessageAction(CONVERSATION_ID, body);
 
-    expect(result).toEqual({ ok: false, error: "Messages can be up to 4,000 characters." });
+    expect(result).toEqual({ ok: false, error: "Messages can be up to 8,000 characters." });
     expect(mocks.conversation.findFirst).not.toHaveBeenCalled();
     expect(mocks.sendMessage).not.toHaveBeenCalled();
   });

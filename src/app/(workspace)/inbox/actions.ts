@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { MAX_MESSAGE_BODY_LENGTH } from "@/lib/messaging/limits";
 import { manualSendRefusal } from "@/lib/messaging/send-limits";
 import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
@@ -64,6 +65,7 @@ export type ConvertConversationToClientResult = {
 };
 
 const CONVERSATION_NOT_FOUND_ERROR = "Conversation not found in this clinic workspace.";
+const MESSAGE_TOO_LONG_ERROR = `Messages can be up to ${MAX_MESSAGE_BODY_LENGTH.toLocaleString("en-US")} characters.`;
 const INBOX_DELIVERY_UNCERTAIN_ERROR =
   "We couldn't confirm this message was delivered. It may have reached the patient, so check the WhatsApp chat before sending it again.";
 
@@ -239,9 +241,9 @@ export async function sendInboxMessageAction(
   }
 
   // A crafted call can send a non-string or an oversized body; the composer
-  // never does. Same 4,000-character cap as the staff app's messages.
-  if (typeof body !== "string" || body.length > 4000) {
-    return { ok: false, error: "Messages can be up to 4,000 characters." };
+  // never does. Same ceiling the messaging seam enforces for every send.
+  if (typeof body !== "string" || body.length > MAX_MESSAGE_BODY_LENGTH) {
+    return { ok: false, error: MESSAGE_TOO_LONG_ERROR };
   }
 
   const cleanedBody = body.trim();
