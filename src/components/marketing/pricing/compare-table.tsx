@@ -15,6 +15,9 @@ const GROUPS: { title: string; rows: [string, Cell, Cell][] }[] = [
       ["Patient record timeline", true, true],
       ["Documents, scans, and images", true, true],
       ["WhatsApp-ready inbox", true, true],
+      ["Payment and thank-you message drafts", true, true],
+      ["Waiting list with automatic slot offers", false, true],
+      ["Rebooking nudges", false, true],
     ],
   },
   {
@@ -23,6 +26,7 @@ const GROUPS: { title: string; rows: [string, Cell, Cell][] }[] = [
       ["Operational reports", "Basic", "Advanced"],
       ["AI-assisted insights", "Limited", "Full"],
       ["Staff activity and utilization", false, true],
+      ["No-show tracking and risk alerts", false, true],
     ],
   },
   {

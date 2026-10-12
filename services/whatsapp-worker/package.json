@@ -31,5 +31,10 @@
     "@types/qrcode-terminal": "^0.12.2",
     "prisma": "^6.19.3",
     "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.2"
+    }
   }
 }

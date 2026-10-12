@@ -98,6 +98,12 @@ export type AppointmentForMobile = Pick<
   "id" | "title" | "startAt" | "endAt" | "status" | "notes"
 > & { client: { name: string } };
 
+// The mobile app only knows four statuses. A no-show is a slot that didn't
+// happen, so it reads as cancelled there until the app grows its own state.
+function toMobileAppointmentStatus(status: AppointmentForMobile["status"]): MobileAppointmentStatus {
+  return status === "NO_SHOW" ? "cancelled" : (status.toLowerCase() as MobileAppointmentStatus);
+}
+
 export function serializeAppointment(
   appointment: AppointmentForMobile,
   dayKey: "today" | "tomorrow" | string,
@@ -114,8 +120,7 @@ export function serializeAppointment(
     endLabel: formatZonedTime24(appointment.endAt),
     startMinutes: hours * 60 + minutes,
     durationMin: appointmentDurationMinutes(appointment),
-    // The enum values map 1:1 to the mobile lowercase statuses.
-    status: appointment.status.toLowerCase() as MobileAppointmentStatus,
+    status: toMobileAppointmentStatus(appointment.status),
     hasEnded: appointment.endAt.getTime() < now.getTime(),
     dayKey,
     dateLabel: dateLabelFor(appointment.startAt, dayKey),

@@ -4,6 +4,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSupabasePublishableKey, getSupabaseUrl } from "@/lib/env";
 import { isOnboardingCompleted } from "@/lib/onboarding";
 
+import { authCookieOptions } from "./cookie-options";
+
 const supabaseUrl = getSupabaseUrl();
 const supabaseKey = getSupabasePublishableKey();
 
@@ -53,6 +55,7 @@ export async function updateSession(request: NextRequest) {
   });
 
   const supabase = createServerClient(supabaseUrl!, supabaseKey!, {
+    cookieOptions: authCookieOptions,
     cookies: {
       getAll() {
         return request.cookies.getAll();

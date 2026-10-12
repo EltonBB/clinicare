@@ -6,7 +6,13 @@ import {
   generateAnalyticsSnapshotsForBusiness,
   type GenerateAnalyticsSnapshotResult,
 } from "@/lib/analytics-ai";
-import { requireCurrentWorkspace } from "@/lib/business";
+import {
+  allPeriodsRateLimited,
+  analyticsSnapshotsCacheKey,
+} from "@/lib/analytics-snapshot-cache";
+import { ACTION_RATE_LIMIT_ERROR, isWithinActionBudget, requireCurrentWorkspace } from "@/lib/business";
+import { invalidateCacheVersioned } from "@/lib/cache";
+import { logger } from "@/lib/logger";
 
 export type RefreshAnalyticsInsightsResult = {
   ok: boolean;
@@ -15,12 +21,33 @@ export type RefreshAnalyticsInsightsResult = {
 };
 
 export async function refreshAnalyticsInsightsAction(): Promise<RefreshAnalyticsInsightsResult> {
-  const { business } = await requireCurrentWorkspace("/reports", {
+  const { business, user } = await requireCurrentWorkspace("/reports", {
     missingBusinessRedirect: "/onboarding",
   });
 
+  if (!(await isWithinActionBudget(user.id))) {
+    return { ok: false, message: ACTION_RATE_LIMIT_ERROR, results: [] };
+  }
+
   const results = await generateAnalyticsSnapshotsForBusiness(business.id);
 
+  // A fully-rate-limited refresh (e.g. a double-click inside the cooldown)
+  // writes nothing — skip the cache eviction so the next Reports load still
+  // gets a cheap cache hit instead of paying for a no-op refresh. Versioned
+  // (not plain) invalidation: a concurrent /reports load whose producer read
+  // pre-refresh data must not be able to resurrect it after this bumps the
+  // version — see getCachedVersioned's docstring.
+  if (!allPeriodsRateLimited(results)) {
+    const invalidated = await invalidateCacheVersioned(analyticsSnapshotsCacheKey(business.id));
+    if (!invalidated) {
+      // Not a hard failure — the 60s TTL still bounds staleness — but a
+      // refresh the user just triggered not being immediately visible is
+      // worth a signal rather than silently swallowing it.
+      logger.warn("Reports cache invalidation failed after a manual refresh", {
+        businessId: business.id,
+      });
+    }
+  }
   revalidatePath("/reports");
   revalidatePath("/dashboard");
 

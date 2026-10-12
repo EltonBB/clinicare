@@ -1,31 +1,16 @@
 import { WorkspaceHeader, WorkspacePage } from "@/components/workspace/workspace-layout";
 
 type CreatePageShellProps = {
-  eyebrow: string;
   title: string;
-  description: string;
-  backHref: string;
-  backLabel: string;
   children: React.ReactNode;
 };
 
-export function CreatePageShell({
-  eyebrow,
-  title,
-  description,
-  backHref,
-  backLabel,
-  children,
-}: CreatePageShellProps) {
+// Title-only header: the form's Cancel button is the way back, and a form page
+// doesn't need a breadcrumb, eyebrow, or explainer line above its fields.
+export function CreatePageShell({ title, children }: CreatePageShellProps) {
   return (
     <WorkspacePage size="form" className="px-1 py-2 sm:py-3">
-      <WorkspaceHeader
-        eyebrow={eyebrow}
-        title={title}
-        description={description}
-        backHref={backHref}
-        backLabel={backLabel}
-      />
+      <WorkspaceHeader title={title} />
       {children}
     </WorkspacePage>
   );

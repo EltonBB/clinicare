@@ -161,16 +161,10 @@ export default async function EditClientPage({
     notFound();
   }
 
-  const record = await buildClientRecord(client);
+  const record = await buildClientRecord(client, business.currency);
 
   return (
-    <CreatePageShell
-      eyebrow="Patient record"
-      title={`Edit ${record.name}`}
-      description="Update patient demographics, clinic information, and medical profile fields from a full-page form."
-      backHref={`/clients/${record.id}`}
-      backLabel="patient details"
-    >
+    <CreatePageShell title={`Edit ${record.name}`}>
       <EditClientForm client={record} />
     </CreatePageShell>
   );

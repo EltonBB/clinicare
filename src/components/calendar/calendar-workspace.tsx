@@ -3,8 +3,6 @@
 import Link from "next/link";
 import {
   addDays,
-  addMonths,
-  addWeeks,
   eachDayOfInterval,
   endOfMonth,
   endOfWeek,
@@ -14,30 +12,46 @@ import {
   parseISO,
   startOfMonth,
   startOfWeek,
-  subMonths,
-  subWeeks,
 } from "date-fns";
-import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import {
   CalendarDays,
   CalendarX2,
-  ChevronLeft,
-  ChevronRight,
+  Clock,
   Plus,
   UsersRound,
+  X,
 } from "lucide-react";
 
+import {
+  getNoShowRiskAction,
+  loadCalendarMonthAction,
+  recordAppointmentAttendanceAction,
+} from "@/app/(workspace)/calendar/actions";
 import { buttonVariants } from "@/components/ui/button";
 import {
   WorkspaceEmptyState,
-  WorkspaceCard,
   WorkspaceHeader,
-  WorkspaceMainGrid,
   WorkspacePage,
-  WorkspaceRail,
 } from "@/components/workspace/workspace-layout";
 import { MonthGrid } from "@/components/workspace/month-grid";
-import { cn, sumMergedIntervals } from "@/lib/utils";
+import { NoShowRiskBadge, useShowNoShowRisk } from "./no-show-risk-badge";
+import { WaitlistPanel } from "./waitlist-panel";
+import { useDismissOnOutsideOrEscape } from "@/hooks/use-dismiss-on-outside-or-escape";
+import { appointmentStartIso, businessHoursForDate, timeToMinutes } from "@/lib/calendar";
+import { rowsThatFit, visibleEntryCount } from "@/lib/calendar-fit";
+import { monthsToLoad, type CalendarRange } from "@/lib/calendar-range";
+import { MAX_RISK_BATCH_SIZE, type NoShowRiskAssessment } from "@/lib/no-show-risk";
+import type { WaitlistEntryRow } from "@/lib/waitlist-data";
+import { cn } from "@/lib/utils";
 import type {
   CalendarAppointment,
   CalendarAppointmentStatus,
@@ -49,33 +63,32 @@ type CalendarView = "day" | "week" | "month";
 
 type CalendarWorkspaceProps = {
   initialView: CalendarViewModel;
-  ownerName: string;
+  /** The days the page already loaded; any other month is fetched on demand. */
+  initialRange: CalendarRange;
+  /** The real current date (`YYYY-MM-DD`), independent of the date being viewed. */
+  today: string;
+  /** Pro workspaces can mark a visit as a no-show (and undo it) from the quick view. */
+  canRecordNoShows: boolean;
+  /** Pro workspaces see a no-show risk badge in the quick view and Day view. */
+  canViewNoShowRisk: boolean;
+  /** Pro workspaces can open the waiting-list panel from the header. */
+  canManageWaitlist: boolean;
+  /** Empty on a Basic workspace — page.tsx skips the query entirely there. */
+  waitlistEntries: WaitlistEntryRow[];
 };
 
 const views: CalendarView[] = ["day", "week", "month"];
-const slotHours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
-const hourRowHeight = 64;
 
-const eventClasses: Record<CalendarAppointmentStatus, string> = {
-  confirmed: "border-primary/25 bg-[#eef2ff] text-[#16219c] hover:bg-[#e4eaff]",
-  pending: "border-amber-300/70 bg-amber-50 text-amber-900 hover:bg-amber-100/70",
-  completed:
-    "border-emerald-300/70 bg-emerald-50 text-emerald-900 hover:bg-emerald-100/60",
-  cancelled: "border-border/80 bg-[#f6f7f9] text-muted-foreground hover:bg-[#eef0f4]",
-};
-
-const eventBarClasses: Record<CalendarAppointmentStatus, string> = {
-  confirmed: "bg-primary",
-  pending: "bg-amber-400",
-  completed: "bg-emerald-500",
-  cancelled: "bg-slate-300",
-};
-
+// Source of truth for appointment-status color (AGENTS.md: "the same tone
+// set as everywhere else") — lib/status-tone.ts mirrors these 5 colors as
+// raw values for places (Reports' donut/legend) that need a CSS color
+// rather than a Tailwind class; keep both in sync if these change.
 const statusDotClasses: Record<CalendarAppointmentStatus, string> = {
   confirmed: "bg-primary",
   completed: "bg-emerald-500",
   pending: "bg-amber-500",
   cancelled: "bg-destructive",
+  "no-show": "bg-violet-500",
 };
 
 const monthChipClasses: Record<CalendarAppointmentStatus, string> = {
@@ -83,11 +96,34 @@ const monthChipClasses: Record<CalendarAppointmentStatus, string> = {
   pending: "bg-amber-50 text-amber-800",
   completed: "bg-emerald-50 text-emerald-800",
   cancelled: "bg-[#f1f3f6] text-muted-foreground line-through",
+  "no-show": "bg-violet-50 text-violet-800",
 };
 
-function timeToMinutes(time: string) {
-  const [hours, minutes] = time.split(":").map(Number);
-  return (hours || 0) * 60 + (minutes || 0);
+// Fills the viewport below the header + toolbar so the grid reads as the whole
+// page rather than a card floating above empty space (mirrors Inbox's own
+// lg:h-[calc(100vh-174px)] fill pattern, offset for Calendar's extra toolbar row).
+const calendarGridHeightClass = "surface-card section-reveal step-enter flex flex-col overflow-clip p-0 lg:h-[calc(100vh-230px)]";
+
+// Appointments and blocks share one chronological list, not two stacked ones
+// — a 09:00 block must sit above a 10:00 appointment, not below every
+// appointment regardless of time. Shared by month cells and week/day columns.
+function mergeEntriesByTime(items: CalendarAppointment[], blocks: CalendarScheduleBlock[]) {
+  return [...items, ...blocks].sort(
+    (left, right) => timeToMinutes(left.startTime) - timeToMinutes(right.startTime)
+  );
+}
+
+// Adds newly loaded rows to what's already on screen. Neighbouring months' grids
+// overlap by up to a week, so rows are keyed (a newer copy replaces an older one)
+// rather than appended — an overlap must never show an appointment twice.
+function mergeByKey<T>(current: T[], incoming: T[], keyOf: (item: T) => string) {
+  const merged = new Map(current.map((item) => [keyOf(item), item]));
+
+  for (const item of incoming) {
+    merged.set(keyOf(item), item);
+  }
+
+  return [...merged.values()];
 }
 
 function weekDays(activeDate: Date) {
@@ -105,171 +141,277 @@ function monthDays(activeDate: Date) {
   });
 }
 
-// The visible grid only ever renders slotHours[0]:00 through
-// (slotHours[last]+1):00 — a continuation ScheduleBlock segment can carry a
-// startTime/endTime well outside that (e.g. "00:00" for every day after a
-// multi-day block's first). Clipping both ends to the grid here, not just
-// the start, is what keeps a block that ends mid-day from rendering with the
-// height of its full (mostly invisible, before-the-grid) nominal duration —
-// previously only the start was clamped, so the visible block could overlay
-// hours past its real end and intercept clicks on open slots (Codex P2).
-const gridStartMinutes = slotHours[0] * 60;
-const gridEndMinutes = (slotHours[slotHours.length - 1] + 1) * 60;
-
-function clipMinutesToGrid(minutes: number) {
-  return Math.min(Math.max(minutes, gridStartMinutes), gridEndMinutes);
-}
-
-// A block entirely before/after the grid clips both ends to the same
-// boundary — appointmentHeight's own `duration` floor (below) would still
-// render it as a minimum-height card sitting right over the first/last
-// visible slot, with zero real overlap, intercepting clicks on a slot it
-// doesn't actually block (Codex P2, fresh evidence after the clipping fix
-// above). Callers rendering block cards must skip any block this returns
-// false for.
-function hasVisibleGridInterval(startTime: string, endTime: string) {
-  return clipMinutesToGrid(timeToMinutes(endTime)) > clipMinutesToGrid(timeToMinutes(startTime));
-}
-
-function appointmentHeight(startTime: string, endTime: string) {
-  const start = clipMinutesToGrid(timeToMinutes(startTime));
-  const end = clipMinutesToGrid(timeToMinutes(endTime));
-  const duration = Math.max(end - start, 30);
-  return `${Math.max((duration / 60) * hourRowHeight, 42)}px`;
-}
-
-function appointmentOffset(startTime: string) {
-  const start = clipMinutesToGrid(timeToMinutes(startTime));
-  return `${Math.max(((start - gridStartMinutes) / 60) * hourRowHeight, 0)}px`;
-}
-
-function dayCapacityMinutes(
-  date: Date,
-  businessHours: CalendarViewModel["businessHours"],
-  scheduleBlocks: CalendarViewModel["scheduleBlocks"]
-) {
-  const weekday = (date.getDay() + 6) % 7;
-  const hours = businessHours.find((item) => item.weekday === weekday);
-
-  if (!hours || !hours.enabled) {
-    return 0;
-  }
-
-  const openStart = timeToMinutes(hours.start);
-  const openEnd = timeToMinutes(hours.end);
-  const openMinutes = Math.max(openEnd - openStart, 0);
-
-  // A business-wide ScheduleBlock inside open hours isn't real capacity — an
-  // appointment can't be booked into it.
-  if (scheduleBlocks.length === 0) {
-    return openMinutes;
-  }
-
-  const dateKey = format(date, "yyyy-MM-dd");
-  // sumMergedIntervals merges overlapping blocks before summing, so two
-  // ScheduleBlocks covering the same hour don't get subtracted twice.
-  const blockedMinutes = sumMergedIntervals(
-    scheduleBlocks
-      .filter((block) => block.date === dateKey)
-      .map((block) => ({
-        start: Math.max(openStart, timeToMinutes(block.startTime)),
-        end: Math.min(openEnd, timeToMinutes(block.endTime)),
-      }))
-  );
-
-  return Math.max(openMinutes - blockedMinutes, 0);
-}
-
-function hourOpenForDay(
-  date: Date,
-  hour: number,
-  businessHours: CalendarViewModel["businessHours"]
-) {
-  const weekday = (date.getDay() + 6) % 7;
-  const hours = businessHours.find((item) => item.weekday === weekday);
-
-  if (!hours || !hours.enabled) {
-    return false;
-  }
-
-  const cellStart = hour * 60;
-  const cellEnd = cellStart + 60;
-
-  return cellEnd > timeToMinutes(hours.start) && cellStart < timeToMinutes(hours.end);
-}
-
-function formatMinutes(minutes: number) {
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-
-  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
-}
-
-function AppointmentCard({
+// Uniform pill for an appointment — every card is the same shape regardless
+// of duration (there's no time-axis grid to position against anymore):
+// name left, start time right, tinted by status.
+function EventPill({
   appointment,
-  index,
+  onOpen,
+  dense = false,
+  detailed = false,
+  risk,
 }: {
   appointment: CalendarAppointment;
-  index: number;
+  onOpen: (event: MouseEvent<HTMLAnchorElement>) => void;
+  // Month-grid cells are ~20px tall per row — same pill, smaller type/padding,
+  // plus pointer-events-auto to punch through the cell's pointer-events-none
+  // day-open overlay button.
+  dense?: boolean;
+  // Day view is one full-width column, where a name-left/time-right pill leaves
+  // ~900px of dead space between the two. Same pill, laid out as a schedule row:
+  // time first, then who, what and with whom, then the status in words.
+  detailed?: boolean;
+  /** Only rendered in the detailed (Day view) row — never fetched for month/week pills. */
+  risk?: NoShowRiskAssessment;
 }) {
   return (
     <Link
       href={`/calendar/${appointment.id}/edit`}
-      className={cn(
-        "event-enter absolute inset-x-1 flex flex-col justify-center overflow-hidden rounded-(--radius-tile) border py-1 pl-3.5 pr-2.5 text-left transition-[background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-out-quint hover:z-20 hover:-translate-y-px hover:shadow-(--shadow-card-hover)",
-        eventClasses[appointment.status]
-      )}
-      style={{
-        top: appointmentOffset(appointment.startTime),
-        height: appointmentHeight(appointment.startTime, appointment.endTime),
-        animationDelay: `${Math.min(index, 6) * 45}ms`,
+      onClick={(event) => {
+        // Always stop the day-cell's own click-to-navigate handler from
+        // seeing this. A plain left click opens the quick-view popover
+        // instead of navigating (unchanged behavior); a modified click
+        // (ctrl/cmd/shift) or middle-click falls through to the browser's
+        // native link handling — open in new tab, copy link, no-JS
+        // navigation — none of which a plain <button> here could support (Codex).
+        event.stopPropagation();
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+          return;
+        }
+        event.preventDefault();
+        onOpen(event);
       }}
+      data-pill=""
+      className={cn(
+        "flex w-full shrink-0 items-center justify-between gap-1.5 truncate rounded-(--radius-tile) text-left font-medium transition-[filter,transform] duration-(--duration-base) hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+        dense
+          ? "pointer-events-auto gap-1.5 px-2 py-1 text-[11px] active:scale-[0.97]"
+          : "gap-2.5 px-3 py-2.5 text-sm active:scale-[0.98]",
+        monthChipClasses[appointment.status]
+      )}
     >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "absolute inset-y-1 left-1 w-[3px] rounded-full",
-          eventBarClasses[appointment.status]
-        )}
-      />
-      <span
-        className={cn(
-          "block truncate text-xs font-semibold leading-4",
-          appointment.status === "cancelled" && "line-through"
-        )}
-      >
-        {appointment.clientName}
-      </span>
-      <span className="block truncate text-[11px] leading-4 opacity-80">
-        {appointment.startTime} · {appointment.service || "Appointment"}
-      </span>
+      {detailed ? (
+        <>
+          <span className="w-12 shrink-0 tabular-nums opacity-80">{appointment.startTime}</span>
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate font-semibold",
+              appointment.status === "cancelled" && "line-through"
+            )}
+          >
+            {appointment.clientName}
+          </span>
+          <span className="hidden min-w-0 flex-[2] truncate opacity-80 sm:block">
+            {appointment.service} · {appointment.staffName}
+          </span>
+          <span className="hidden w-20 shrink-0 text-right text-xs font-semibold capitalize opacity-80 sm:block">
+            {appointment.status}
+          </span>
+          <NoShowRiskBadge risk={risk} expiresAtIso={appointmentStartIso(appointment)} />
+        </>
+      ) : (
+        <>
+          <span className={cn("truncate font-semibold", appointment.status === "cancelled" && "line-through")}>
+            {appointment.clientName}
+          </span>
+          <span className="shrink-0 tabular-nums opacity-80">{appointment.startTime}</span>
+        </>
+      )}
     </Link>
   );
 }
 
-function BlockCard({ block, index }: { block: CalendarScheduleBlock; index: number }) {
+function BlockPill({ block }: { block: CalendarScheduleBlock }) {
   return (
     <div
-      className="event-enter absolute inset-x-1 flex flex-col justify-center overflow-hidden rounded-(--radius-tile) border border-slate-300/70 bg-slate-100/90 py-1 pl-3.5 pr-2.5 text-left text-slate-700"
-      style={{
-        top: appointmentOffset(block.startTime),
-        height: appointmentHeight(block.startTime, block.endTime),
-        animationDelay: `${Math.min(index, 6) * 45}ms`,
-      }}
+      data-block-pill=""
+      className="flex min-h-10 w-full shrink-0 items-center justify-between gap-2 rounded-(--radius-tile) bg-slate-100 px-2.5 py-1.5 text-left text-xs font-medium text-slate-700"
     >
-      <span
-        aria-hidden="true"
-        className="absolute inset-y-1 left-1 w-[3px] rounded-full bg-slate-400"
-      />
-      <span className="flex items-center gap-1 truncate text-xs font-semibold leading-4">
+      <span className="flex min-w-0 items-center gap-1.5 truncate">
         <CalendarX2 className="size-3 shrink-0" />
-        {block.title}
+        <span className="truncate">{block.title}</span>
       </span>
-      <span className="block truncate text-[11px] leading-4 opacity-80">
-        {block.startTime} - {block.endTime}
+      <span className="shrink-0 tabular-nums opacity-80">
+        {block.startTime} – {block.endTime}
       </span>
     </div>
   );
+}
+
+// A week column stretches to the viewport (`lg` and up), so how many rows fit is
+// measured; below that its height just follows its content, so there is nothing
+// to measure and it falls back to nine rows: up to nine entries, or eight plus
+// the "+N more" link (never a link standing in for a single hidden entry).
+const LG_MEDIA_QUERY = "(min-width: 1024px)";
+const DAY_COLUMN_FALLBACK_SLOTS = 9;
+const DAY_COLUMN_PILL_HEIGHT = 40;
+
+// Rows (entry pills, plus the "+N more" link that takes one) that fit in a week
+// column, measured from the column's real box and its real pills so it holds at
+// any viewport height and text size.
+function measureDayColumnSlots(column: HTMLElement) {
+  if (!window.matchMedia(LG_MEDIA_QUERY).matches) {
+    return DAY_COLUMN_FALLBACK_SLOTS;
+  }
+
+  const styles = getComputedStyle(column);
+  const gap = parseFloat(styles.rowGap) || 0;
+  const padding = (parseFloat(styles.paddingTop) || 0) + (parseFloat(styles.paddingBottom) || 0);
+  const footerHeight = column.querySelector<HTMLElement>("[data-day-footer]")?.offsetHeight ?? 0;
+  // A block row is held to the pill's height (min-h-10), so either one gives the row height.
+  const pillHeight =
+    column.querySelector<HTMLElement>("a[data-pill], [data-block-pill]")?.offsetHeight ?? DAY_COLUMN_PILL_HEIGHT;
+
+  return rowsThatFit(column.clientHeight - padding - footerHeight - gap, pillHeight, gap);
+}
+
+// A week column lists as many entries as fill it, then one "+N more" row that
+// opens that day. Day view (`detailed`) lists every entry and scrolls instead —
+// reading the whole day is what that view is for.
+function DayColumn({
+  dayKey,
+  entries,
+  isToday,
+  isSelectedColumn,
+  isEmpty,
+  isClosed,
+  onOpen,
+  onOpenDay,
+  detailed = false,
+  risk,
+}: {
+  dayKey: string;
+  entries: Array<CalendarAppointment | CalendarScheduleBlock>;
+  isToday: boolean;
+  isSelectedColumn: boolean;
+  isEmpty: boolean;
+  // The clinic doesn't work this weekday: the "Add" prompt is replaced by a label.
+  isClosed: boolean;
+  onOpen: (appointment: CalendarAppointment, event: MouseEvent<HTMLAnchorElement>) => void;
+  onOpenDay: () => void;
+  detailed?: boolean;
+  /** Keyed by appointment id — only read for detailed (Day view) rows. */
+  risk?: Record<string, NoShowRiskAssessment>;
+}) {
+  const columnRef = useRef<HTMLDivElement>(null);
+  const [slots, setSlots] = useState(DAY_COLUMN_FALLBACK_SLOTS);
+
+  useEffect(() => {
+    const column = columnRef.current;
+
+    if (!column || detailed) {
+      return;
+    }
+
+    // The observer reports once as soon as it starts watching (before the first
+    // paint), so the fallback is replaced by the measured count straight away;
+    // state is only ever set inside its callback (react-hooks/set-state-in-effect).
+    const observer = new ResizeObserver(() => setSlots(measureDayColumnSlots(column)));
+
+    observer.observe(column);
+
+    return () => observer.disconnect();
+  }, [detailed]);
+
+  const shownCount = detailed ? entries.length : visibleEntryCount(entries.length, slots);
+  const hiddenCount = entries.length - shownCount;
+  const footerClasses = "flex shrink-0 items-center justify-center rounded-(--radius-tile) px-2.5 py-2 text-xs font-medium";
+
+  return (
+    <div
+      ref={columnRef}
+      className={cn(
+        "flex max-h-[520px] min-h-[200px] flex-col gap-1.5 overflow-y-auto border-l border-t border-border/75 p-2.5 first:border-l-0 lg:h-full lg:max-h-none lg:min-h-0",
+        isEmpty && "justify-center",
+        isToday ? "bg-[#f6f9ff]" : isSelectedColumn && "bg-[#f8fafd]"
+      )}
+    >
+      {entries.slice(0, shownCount).map((entry) =>
+        "status" in entry ? (
+          <EventPill
+            key={entry.id}
+            appointment={entry}
+            detailed={detailed}
+            // Risk only ever applies to an upcoming pending/confirmed visit; a
+            // stale cached assessment (or one from a request that was still
+            // in-flight when the appointment got finalized) must not show a
+            // badge on a row that's now completed/no-show/cancelled. The
+            // "has this visit's start time passed" check lives inside
+            // NoShowRiskBadge itself (expiresAtIso) so it self-expires live
+            // if the page is left open, rather than only on next re-render.
+            risk={
+              entry.status === "pending" || entry.status === "confirmed" ? risk?.[entry.id] : undefined
+            }
+            onOpen={(event) => onOpen(entry, event)}
+          />
+        ) : (
+          <BlockPill key={entry.id} block={entry} />
+        )
+      )}
+      {hiddenCount > 0 ? (
+        <button
+          type="button"
+          onClick={onOpenDay}
+          aria-label={`${hiddenCount} more calendar entries — open this day`}
+          className="flex shrink-0 items-center justify-center rounded-(--radius-tile) px-3 py-2.5 text-sm font-semibold text-primary transition-colors duration-(--duration-base) hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        >
+          +{hiddenCount} more
+        </button>
+      ) : null}
+      {isClosed ? (
+        <p
+          data-day-footer=""
+          className={cn(footerClasses, "text-muted-foreground", !isEmpty && "mt-auto")}
+        >
+          Clinic closed
+        </p>
+      ) : (
+        <Link
+          data-day-footer=""
+          href={`/calendar/new?date=${dayKey}`}
+          className={cn(
+            footerClasses,
+            "text-muted-foreground transition-[background-color,color,transform] duration-(--duration-base) hover:bg-primary/5 hover:text-primary active:scale-[0.97]",
+            isEmpty ? "gap-1.5 border border-dashed border-border/70" : "mt-auto gap-1.5"
+          )}
+        >
+          <Plus className="size-3.5" />
+          Add
+        </Link>
+      )}
+    </div>
+  );
+}
+
+// Below `lg` a month cell just grows with its pills, so three is a fixed cap;
+// from `lg` the cells split the viewport evenly and as many pills as fill one show.
+const MONTH_FALLBACK_SLOTS = 3;
+const MONTH_PILL_HEIGHT = 25;
+
+// Pills that fit in a month cell below its date row. The "+N more" count lives in
+// the date row, so it takes no slot here. Measured from a real cell (they are all
+// the same height) and a real pill.
+function measureMonthSlots(grid: HTMLElement) {
+  if (!window.matchMedia(LG_MEDIA_QUERY).matches) {
+    return MONTH_FALLBACK_SLOTS;
+  }
+
+  const cell = grid.querySelector<HTMLElement>("[data-month-cell]");
+  const list = cell?.querySelector<HTMLElement>("[data-month-list]");
+
+  if (!cell || !list?.parentElement) {
+    return MONTH_FALLBACK_SLOTS;
+  }
+
+  const cellStyles = getComputedStyle(cell);
+  const listStyles = getComputedStyle(list);
+  const bottomEdge =
+    cell.getBoundingClientRect().bottom -
+    (parseFloat(cellStyles.borderBottomWidth) || 0) -
+    (parseFloat(getComputedStyle(list.parentElement).paddingBottom) || 0);
+  const pillHeight = grid.querySelector<HTMLElement>("a[data-pill]")?.offsetHeight ?? MONTH_PILL_HEIGHT;
+
+  return rowsThatFit(bottomEdge - list.getBoundingClientRect().top, pillHeight, parseFloat(listStyles.rowGap) || 0);
 }
 
 function DatePickerPopover({
@@ -287,33 +429,10 @@ function DatePickerPopover({
   const [monthCursor, setMonthCursor] = useState(() => startOfMonth(activeDate));
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const onPointerDown = (event: PointerEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    };
-
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
+  useDismissOnOutsideOrEscape(containerRef, () => setOpen(false), { active: open });
 
   return (
-    <div ref={containerRef} className="relative ml-auto">
+    <div ref={containerRef} className="relative">
       <button
         type="button"
         aria-label="Jump to date"
@@ -334,7 +453,7 @@ function DatePickerPopover({
         <div
           role="dialog"
           aria-label="Choose a date"
-          className="state-pop absolute right-0 top-[calc(100%+8px)] z-50 w-[284px] rounded-(--radius-card) border border-border/80 bg-white p-3 shadow-(--shadow-pop)"
+          className="state-pop absolute right-0 top-[calc(100%+8px)] z-50 w-[284px] origin-top-right rounded-(--radius-card) border border-border/80 bg-white p-3 shadow-(--shadow-pop)"
         >
           <MonthGrid
             monthCursor={monthCursor}
@@ -350,7 +469,7 @@ function DatePickerPopover({
               showDot: appointmentDateKeys.has(format(day, "yyyy-MM-dd")),
             })}
           />
-          <div className="mt-2 border-t border-border/70 pt-2 text-right">
+          <div className="mt-2 text-right">
             <button
               type="button"
               onClick={() => {
@@ -368,106 +487,257 @@ function DatePickerPopover({
   );
 }
 
-function NowLine() {
-  const [topPx, setTopPx] = useState<number | null>(null);
+type AttendanceAction = { attended: boolean; label: string };
 
-  useEffect(() => {
-    const compute = () => {
-      const now = new Date();
-      const minutes = now.getHours() * 60 + now.getMinutes();
-      const start = slotHours[0] * 60;
-      const end = (slotHours[slotHours.length - 1] + 1) * 60;
+// Anchored to the clicked chip's bounding rect (not a portal) so it renders
+// above the surrounding surface-card's overflow-clip without needing to
+// change that ancestor's overflow behavior.
+function AppointmentQuickView({
+  appointment,
+  anchorRect,
+  onClose,
+  attendanceAction,
+  onRecordAttendance,
+  risk,
+}: {
+  appointment: CalendarAppointment;
+  anchorRect: DOMRect;
+  onClose: () => void;
+  /** Present only for a Pro workspace and a visit whose day has come. */
+  attendanceAction: AttendanceAction | null;
+  /** Resolves to an error message, or null when it worked (the parent then closes this). */
+  onRecordAttendance: (attended: boolean) => Promise<string | null>;
+  /** Present only for a Pro workspace, once the batched lookup resolves. */
+  risk?: NoShowRiskAssessment;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [attendanceError, setAttendanceError] = useState("");
+  const riskExpiresAtIso = appointmentStartIso(appointment);
+  // Same value NoShowRiskBadge derives internally, reused here so the "Risk"
+  // label row doesn't outlive the pill it labels (Codex #129).
+  const qualifyingRisk = useShowNoShowRisk(risk, riskExpiresAtIso);
 
-      setTopPx(
-        minutes < start || minutes > end
-          ? null
-          : ((minutes - start) / 60) * hourRowHeight
-      );
-    };
+  async function handleAttendance(attended: boolean) {
+    setBusy(true);
+    setAttendanceError("");
 
-    compute();
-    const interval = window.setInterval(compute, 60000);
+    const message = await onRecordAttendance(attended);
 
-    return () => window.clearInterval(interval);
-  }, []);
-
-  if (topPx === null) {
-    return null;
+    // On success the parent closes this popover, so only a failure needs state.
+    if (message) {
+      setAttendanceError(message);
+      setBusy(false);
+    }
   }
 
-  return (
-    <div className="pointer-events-none absolute inset-x-0 z-10" style={{ top: topPx }}>
-      <div className="relative h-px bg-primary">
-        <span
-          aria-hidden="true"
-          className="now-ping absolute -left-1 top-1/2 size-2 -translate-y-1/2 rounded-full bg-primary"
-        />
-        <span className="absolute -left-1 top-1/2 size-2 -translate-y-1/2 rounded-full bg-primary" />
-      </div>
-    </div>
+  useDismissOnOutsideOrEscape(containerRef, onClose, { dismissOnScroll: true });
+
+  const width = 264;
+  // The upper bound is itself floored at 12 — on a viewport narrower than
+  // width + 24 (a resized desktop window, a narrow foldable cover display),
+  // `window.innerWidth - width - 12` drops below the 12px margin (or
+  // negative), which would otherwise invert the clamp range and push the
+  // card off the left edge of the screen (Codex).
+  const left = Math.min(Math.max(anchorRect.left, 12), Math.max(window.innerWidth - width - 12, 12));
+  // Rendered below the anchor on the first paint (there's no real content to
+  // measure before it's in the DOM); corrected to flip above from the card's
+  // actual rendered height the moment it mounts (a ref callback fires during
+  // the same commit, before the browser paints, so a wrong first guess is
+  // never visible) — replacing a hardcoded height guess that could silently
+  // drift out of sync with this card's real content.
+  const [top, setTop] = useState(() => anchorRect.bottom + 8);
+
+  const measureRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      containerRef.current = node;
+      if (!node) return;
+      const fitsBelow = anchorRect.bottom + 8 + node.offsetHeight <= window.innerHeight;
+      setTop(fitsBelow ? anchorRect.bottom + 8 : Math.max(anchorRect.top - node.offsetHeight - 8, 12));
+    },
+    [anchorRect]
   );
-}
-
-function UtilizationRing({ value }: { value: number }) {
-  const [progress, setProgress] = useState(0);
-
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      const frame = requestAnimationFrame(() => setProgress(value));
-      return () => cancelAnimationFrame(frame);
-    }
-
-    const duration = 750;
-    let startedAt: number | null = null;
-    let frame = 0;
-
-    const tick = (now: number) => {
-      startedAt = startedAt ?? now;
-      const elapsed = Math.min((now - startedAt) / duration, 1);
-      const eased = 1 - Math.pow(1 - elapsed, 4);
-      setProgress(Math.round(value * eased));
-
-      if (elapsed < 1) {
-        frame = requestAnimationFrame(tick);
-      }
-    };
-
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [value]);
 
   return (
     <div
-      className="grid size-20 shrink-0 place-items-center rounded-full"
-      style={{
-        background: `conic-gradient(var(--primary) ${progress}%, #eef2f7 0)`,
-      }}
+      ref={measureRef}
+      role="dialog"
+      aria-label={`${appointment.clientName} appointment details`}
+      className="state-pop fixed z-50 origin-top rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-pop)"
+      style={{ left, top, width }}
     >
-      <div className="grid size-16 place-items-center rounded-full bg-white text-center">
-        <span>
-          <span className="block text-lg font-semibold leading-5 tabular-nums text-foreground">
-            {progress}%
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-foreground">{appointment.clientName}</p>
+          <p className="text-xs text-muted-foreground">{format(parseISO(appointment.date), "EEEE, MMMM d")}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors duration-(--duration-base) hover:bg-secondary hover:text-foreground"
+        >
+          <X className="size-3.5" />
+        </button>
+      </div>
+      <div className="mt-2.5 space-y-1.5 text-sm">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-muted-foreground">Time</span>
+          <span className="font-medium text-foreground">
+            {appointment.startTime} – {appointment.endTime}
           </span>
-          <span className="text-[9px] text-muted-foreground">Booked</span>
-        </span>
+        </div>
+        {appointment.service ? (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">Service</span>
+            <span className="truncate font-medium text-foreground">{appointment.service}</span>
+          </div>
+        ) : null}
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-muted-foreground">Doctor</span>
+          <span className="truncate font-medium text-foreground">{appointment.staffName}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-muted-foreground">Status</span>
+          <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-semibold capitalize", monthChipClasses[appointment.status])}>
+            {appointment.status}
+          </span>
+        </div>
+        {qualifyingRisk ? (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">Risk</span>
+            <NoShowRiskBadge risk={risk} expiresAtIso={riskExpiresAtIso} />
+          </div>
+        ) : null}
+      </div>
+      <div className="mt-3 space-y-2">
+        {attendanceAction ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void handleAttendance(attendanceAction.attended)}
+            className="flex h-8 w-full items-center justify-center rounded-(--radius-card) border border-border/75 bg-white text-sm font-semibold text-foreground transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] disabled:opacity-60"
+          >
+            {attendanceAction.label}
+          </button>
+        ) : null}
+        {attendanceError ? (
+          <p role="alert" className="text-xs text-destructive">
+            {attendanceError}
+          </p>
+        ) : null}
+        <Link
+          href={`/calendar/${appointment.id}/edit`}
+          className="flex h-8 items-center justify-center rounded-(--radius-card) border border-border/75 bg-white text-sm font-semibold text-foreground transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]"
+        >
+          View appointment
+        </Link>
       </div>
     </div>
   );
 }
 
-export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
+export function CalendarWorkspace({
+  initialView,
+  initialRange,
+  today,
+  canRecordNoShows,
+  canViewNoShowRisk,
+  canManageWaitlist,
+  waitlistEntries,
+}: CalendarWorkspaceProps) {
   const [view, setView] = useState<CalendarView>("week");
   const [activeDate, setActiveDate] = useState(() => parseISO(initialView.initialDate));
-  const appointments = initialView.appointments;
-  const scheduleBlocks = initialView.scheduleBlocks;
+  const [quickView, setQuickView] = useState<{ appointment: CalendarAppointment; rect: DOMRect } | null>(null);
+  const [waitlistOpen, setWaitlistOpen] = useState(false);
+  const [risk, setRisk] = useState<Record<string, NoShowRiskAssessment>>({});
+  // Ids whose risk was already requested (whether or not an assessment came
+  // back), kept in a ref rather than read from `risk`: an empty answer — a visit
+  // that isn't upcoming — must not look "not fetched yet" and re-trigger the request.
+  const requestedRiskIds = useRef<Set<string>>(new Set());
+  // Bumped per id whenever its cached risk is invalidated out-of-band (a
+  // same-client attendance change, below) — a loadRisk response only applies
+  // to an id if the generation it captured at request time is still current,
+  // so a request already in flight when the invalidation happens can't
+  // resurrect a risk assessment scored from history that just changed
+  // (Codex/CodeRabbit #129).
+  const riskGeneration = useRef<Map<string, number>>(new Map());
+  // The page loads the viewed month; every other month is fetched when navigated
+  // to (below) and merged in, so history and far-off dates are never silently empty.
+  const [appointments, setAppointments] = useState(initialView.appointments);
+  const [scheduleBlocks, setScheduleBlocks] = useState(initialView.scheduleBlocks);
+  const [loadedRanges, setLoadedRanges] = useState<CalendarRange[]>([initialRange]);
+  const [failedMonths, setFailedMonths] = useState<string[]>([]);
+  // An expired session can't be fixed by retrying, so it gets a sign-in link
+  // instead of "Try again".
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const requestedMonths = useRef(new Set<string>());
+  const monthGridRef = useRef<HTMLDivElement>(null);
+  const [monthSlots, setMonthSlots] = useState(MONTH_FALLBACK_SLOTS);
   const hasClients = initialView.hasClients;
-  const todayDate = useMemo(
-    () => parseISO(initialView.initialDate),
-    [initialView.initialDate]
-  );
+  const todayDate = useMemo(() => parseISO(today), [today]);
 
   const currentWeek = useMemo(() => weekDays(activeDate), [activeDate]);
   const currentMonth = useMemo(() => monthDays(activeDate), [activeDate]);
+  // Which months the visible days need that aren't loaded yet. Derived from what
+  // is on screen, so there's no separate "loading" state to keep in sync.
+  const visibleDayKeys = useMemo(
+    () =>
+      (view === "day" ? [activeDate] : view === "week" ? currentWeek : currentMonth).map((day) =>
+        format(day, "yyyy-MM-dd")
+      ),
+    [view, activeDate, currentWeek, currentMonth]
+  );
+  const missingMonths = useMemo(
+    () => monthsToLoad(visibleDayKeys, loadedRanges, format(activeDate, "yyyy-MM")),
+    [visibleDayKeys, loadedRanges, activeDate]
+  );
+  const pendingMonthsKey = missingMonths.filter((month) => !failedMonths.includes(month)).join(",");
+  const isLoadingMonths = pendingMonthsKey !== "";
+  const loadFailed = missingMonths.some((month) => failedMonths.includes(month));
+
+  useEffect(() => {
+    if (!pendingMonthsKey) {
+      return;
+    }
+
+    for (const monthKey of pendingMonthsKey.split(",")) {
+      if (requestedMonths.current.has(monthKey)) {
+        continue;
+      }
+
+      requestedMonths.current.add(monthKey);
+      // State is only set inside these async callbacks, never synchronously in the
+      // effect body (react-hooks/set-state-in-effect).
+      loadCalendarMonthAction(monthKey)
+        .then((result) => {
+          if (!result.ok) {
+            if (result.sessionExpired) {
+              setSessionExpired(true);
+            }
+
+            throw new Error(result.error);
+          }
+
+          setAppointments((current) => mergeByKey(current, result.appointments, (item) => item.id));
+          setScheduleBlocks((current) =>
+            mergeByKey(current, result.scheduleBlocks, (item) => `${item.id}|${item.date}`)
+          );
+          setLoadedRanges((current) => [...current, result.range]);
+        })
+        .catch(() => {
+          setFailedMonths((current) => (current.includes(monthKey) ? current : [...current, monthKey]));
+        })
+        .finally(() => {
+          requestedMonths.current.delete(monthKey);
+        });
+    }
+  }, [pendingMonthsKey]);
+
+  function retryLoading() {
+    setFailedMonths([]);
+  }
+
   const appointmentDateKeys = useMemo(
     () =>
       new Set(
@@ -477,63 +747,35 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
       ),
     [appointments]
   );
+  // Grouped once per appointments/scheduleBlocks change so month/week/day cells
+  // do an O(1) Map lookup instead of an O(n) filter over the whole ~6-month
+  // window on every render (a click that only opens the quick-view popover was
+  // re-scanning the full window per visible day before this).
+  const appointmentsByDate = useMemo(() => {
+    const map = new Map<string, CalendarAppointment[]>();
+    for (const appointment of appointments) {
+      const bucket = map.get(appointment.date);
+      if (bucket) {
+        bucket.push(appointment);
+      } else {
+        map.set(appointment.date, [appointment]);
+      }
+    }
+    return map;
+  }, [appointments]);
+  const scheduleBlocksByDate = useMemo(() => {
+    const map = new Map<string, CalendarScheduleBlock[]>();
+    for (const block of scheduleBlocks) {
+      const bucket = map.get(block.date);
+      if (bucket) {
+        bucket.push(block);
+      } else {
+        map.set(block.date, [block]);
+      }
+    }
+    return map;
+  }, [scheduleBlocks]);
   const selectedDateKey = format(activeDate, "yyyy-MM-dd");
-  const visibleDates = useMemo(() => {
-    if (view === "day") {
-      return [activeDate];
-    }
-
-    if (view === "week") {
-      return currentWeek;
-    }
-
-    return currentMonth.filter((day) => isSameMonth(day, activeDate));
-  }, [activeDate, currentMonth, currentWeek, view]);
-
-  const visibleAppointments = useMemo(() => {
-    if (view === "day") {
-      return appointments.filter((appointment) => appointment.date === selectedDateKey);
-    }
-
-    if (view === "week") {
-      const visibleKeys = new Set(currentWeek.map((day) => format(day, "yyyy-MM-dd")));
-      return appointments.filter((appointment) => visibleKeys.has(appointment.date));
-    }
-
-    const visibleKeys = new Set(currentMonth.map((day) => format(day, "yyyy-MM-dd")));
-    return appointments.filter((appointment) => visibleKeys.has(appointment.date));
-  }, [appointments, currentMonth, currentWeek, selectedDateKey, view]);
-
-  const visibleBlocks = useMemo(() => {
-    if (view === "day") {
-      return scheduleBlocks.filter((block) => block.date === selectedDateKey);
-    }
-
-    if (view === "week") {
-      const visibleKeys = new Set(currentWeek.map((day) => format(day, "yyyy-MM-dd")));
-      return scheduleBlocks.filter((block) => visibleKeys.has(block.date));
-    }
-
-    const visibleKeys = new Set(currentMonth.map((day) => format(day, "yyyy-MM-dd")));
-    return scheduleBlocks.filter((block) => visibleKeys.has(block.date));
-  }, [currentMonth, currentWeek, scheduleBlocks, selectedDateKey, view]);
-
-  function shiftRange(direction: "prev" | "next") {
-    startTransition(() => {
-      setActiveDate((current) => {
-        if (view === "day") {
-          return addDays(current, direction === "next" ? 1 : -1);
-        }
-
-        if (view === "week") {
-          return direction === "next" ? addWeeks(current, 1) : subWeeks(current, 1);
-        }
-
-        return direction === "next" ? addMonths(current, 1) : subMonths(current, 1);
-      });
-    });
-  }
-
   const weekStart = currentWeek[0];
   const weekEnd = currentWeek[6];
   const rangeLabel =
@@ -544,56 +786,234 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
         : isSameMonth(weekStart, weekEnd)
           ? `${format(weekStart, "MMM d")} – ${format(weekEnd, "d, yyyy")}`
           : `${format(weekStart, "MMM d")} – ${format(weekEnd, "MMM d, yyyy")}`;
-  const gridKey = `${view}-${format(visibleDates[0] ?? activeDate, "yyyy-MM-dd")}`;
-  const selectedDayAppointments = appointments
-    .filter((appointment) => appointment.date === selectedDateKey)
-    .sort((left, right) => left.startTime.localeCompare(right.startTime));
-  const selectedDayBlocks = scheduleBlocks.filter((block) => block.date === selectedDateKey);
-  // Cancelled appointments free their slot — exclude them from every booked /
-  // utilization figure so the ring, "Scheduled", and the header description agree
-  // (and match Reports, which counts only booked statuses).
-  const activeVisibleAppointments = visibleAppointments.filter(
-    (appointment) => appointment.status !== "cancelled"
-  );
-  const activeBookedMinutes = activeVisibleAppointments.reduce(
-    (sum, appointment) =>
-      sum + Math.max(timeToMinutes(appointment.endTime) - timeToMinutes(appointment.startTime), 0),
-    0
-  );
-  const capacityMinutes = visibleDates.reduce(
-    (sum, day) => sum + dayCapacityMinutes(day, initialView.businessHours, scheduleBlocks),
-    0
-  );
-  const availableMinutes = Math.max(capacityMinutes - activeBookedMinutes, 0);
-  const utilization = Math.min(
-    Math.round((activeBookedMinutes / Math.max(capacityMinutes, 1)) * 100),
-    100
-  );
-  const utilizationScope =
-    view === "day" ? "Selected day" : view === "week" ? "This week" : "This month";
-  const scopeLabel =
+  // Remounts the grid subtree on a real navigation (view switch or jumping to
+  // a different day/week/month) so per-view local state resets cleanly —
+  // just the anchor date for each view, not the full visible-date list.
+  const gridKey =
     view === "day"
-      ? `on ${format(activeDate, "MMMM d")}`
+      ? `day-${format(activeDate, "yyyy-MM-dd")}`
       : view === "week"
-        ? `in the week of ${format(currentWeek[0], "MMMM d")}`
-        : `in ${format(activeDate, "MMMM yyyy")}`;
-  const headerDescription =
-    activeVisibleAppointments.length === 0
-      ? `No appointments ${scopeLabel} yet — the schedule is open.`
-      : `${activeVisibleAppointments.length} appointment${
-          activeVisibleAppointments.length === 1 ? "" : "s"
-        } ${scopeLabel} · ${formatMinutes(activeBookedMinutes)} booked.`;
+        ? `week-${format(weekStart, "yyyy-MM-dd")}`
+        : `month-${format(startOfMonth(activeDate), "yyyy-MM-dd")}`;
 
-  const quietControlClasses =
-    "inline-flex h-9 items-center justify-center text-muted-foreground transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] hover:text-foreground active:bg-[#eef2f8] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45";
+  useEffect(() => {
+    const grid = monthGridRef.current;
+
+    if (!grid) {
+      return;
+    }
+
+    // Same pattern as DayColumn: the first report replaces the fallback before the
+    // first paint, and state is only set inside the observer's callback.
+    const observer = new ResizeObserver(() => setMonthSlots(measureMonthSlots(grid)));
+
+    observer.observe(grid);
+
+    return () => observer.disconnect();
+  }, [gridKey]);
+
+  function openQuickView(appointment: CalendarAppointment, event: MouseEvent<HTMLAnchorElement>) {
+    event.stopPropagation();
+    setQuickView({ appointment, rect: event.currentTarget.getBoundingClientRect() });
+  }
+
+  // Requests risk for any of these ids not asked for yet. Results are keyed by
+  // appointment id, so one arriving after the popover/day moved on is still worth
+  // merging (dropping it would leave the id marked as requested with no badge until
+  // a reload); a failed request is forgotten so the next open retries it.
+  const loadRisk = useCallback((ids: string[]) => {
+    const fresh = ids.filter((id) => !requestedRiskIds.current.has(id));
+    if (fresh.length === 0) return;
+    fresh.forEach((id) => requestedRiskIds.current.add(id));
+    // The action answers at most MAX_RISK_BATCH_SIZE ids, so a busier list goes
+    // in batches. Each batch snapshots its ids' invalidation generation before
+    // the request goes out — if a same-client attendance change bumps it
+    // before this resolves, that id's part of the response is stale and must
+    // be dropped, not merged.
+    for (let start = 0; start < fresh.length; start += MAX_RISK_BATCH_SIZE) {
+      const batch = fresh.slice(start, start + MAX_RISK_BATCH_SIZE);
+      const requestedAt = new Map(batch.map((id) => [id, riskGeneration.current.get(id) ?? 0]));
+      getNoShowRiskAction(batch)
+        .then((result) => {
+          setRisk((current) => {
+            let changed = false;
+            const next = { ...current };
+            for (const [id, assessment] of Object.entries(result)) {
+              if ((riskGeneration.current.get(id) ?? 0) !== requestedAt.get(id)) continue;
+              next[id] = assessment;
+              changed = true;
+            }
+            return changed ? next : current;
+          });
+        })
+        .catch(() => batch.forEach((id) => requestedRiskIds.current.delete(id)));
+    }
+  }, []);
+
+  // Only a Pro workspace, and only for a visit the score applies to (upcoming ones
+  // are pending or confirmed).
+  useEffect(() => {
+    if (!canViewNoShowRisk || !quickView) return;
+    const { id, status } = quickView.appointment;
+    if (status === "pending" || status === "confirmed") loadRisk([id]);
+  }, [canViewNoShowRisk, quickView, loadRisk]);
+
+  // Day view lists every appointment for the active date, so its risk badges are
+  // fetched as one batch for the whole column rather than per-row.
+  useEffect(() => {
+    if (!canViewNoShowRisk || view !== "day") return;
+    const dayKey = format(activeDate, "yyyy-MM-dd");
+    loadRisk(
+      appointments
+        .filter(
+          (appointment) =>
+            appointment.date === dayKey &&
+            (appointment.status === "pending" || appointment.status === "confirmed")
+        )
+        .map((appointment) => appointment.id)
+    );
+  }, [canViewNoShowRisk, view, activeDate, appointments, loadRisk]);
+
+  // Only Pro, only a visit whose day has come, never a cancelled one. `today` is
+  // the clinic-zone date, so this compares like with like; a visit later today
+  // that hasn't started is refused by the server with a plain message.
+  function attendanceActionFor(appointment: CalendarAppointment): AttendanceAction | null {
+    if (!canRecordNoShows || appointment.status === "cancelled" || appointment.date > today) {
+      return null;
+    }
+
+    return appointment.status === "no-show"
+      ? { attended: true, label: "Mark as attended" }
+      : { attended: false, label: "Mark as no-show" };
+  }
+
+  async function recordAttendance(appointment: CalendarAppointment, attended: boolean) {
+    let result;
+
+    try {
+      result = await recordAppointmentAttendanceAction(appointment.id, attended);
+    } catch {
+      // A rejected server action (network drop, 5xx, deploy skew) — a plain
+      // message, never the raw error, so the popover can show it and re-enable.
+      return "We couldn't update this appointment. Try again.";
+    }
+
+    const status = result.status;
+
+    if (!result.ok || !status) {
+      return result.error ?? "We couldn't update this appointment.";
+    }
+
+    // Every upcoming appointment for this client was scored from history that
+    // just changed (this one just became a real visit or a real no-show), so
+    // their cached risk is stale too — not just this appointment's own (which
+    // the render-time status gate already hides). Drop them from both the
+    // cache and the requested-ids tracking so the next popover/Day-view open
+    // refetches instead of reusing a now-outdated assessment (Codex). Derived
+    // from the current `appointments` snapshot, not read back out of the
+    // setAppointments updater below — that updater runs during React's own
+    // render pass, not synchronously with this call, so a variable assigned
+    // inside it and read immediately after can still see its stale initial
+    // value (CodeRabbit #129). Filtered by the server-confirmed clientId, not
+    // this component's possibly-stale copy of `appointment.clientId` — another
+    // tab can reassign the appointment to a different client between this
+    // one loading and this mutation running, and it's that live client's
+    // history the server just recomputed (Codex #129 round 2).
+    const affectedClientId = result.clientId ?? appointment.clientId;
+    const sameClientIds = appointments
+      .filter((item) => item.clientId === affectedClientId)
+      .map((item) => item.id);
+    setAppointments((current) =>
+      current.map((item) => (item.id === appointment.id ? { ...item, status } : item))
+    );
+    if (sameClientIds.length > 0) {
+      for (const id of sameClientIds) {
+        requestedRiskIds.current.delete(id);
+        riskGeneration.current.set(id, (riskGeneration.current.get(id) ?? 0) + 1);
+      }
+      setRisk((current) => {
+        let changed = false;
+        const next = { ...current };
+        for (const id of sameClientIds) {
+          if (id in next) {
+            delete next[id];
+            changed = true;
+          }
+        }
+        return changed ? next : current;
+      });
+    }
+    // Only close the popover this request belongs to — the user may have opened
+    // a different appointment's while it was in flight.
+    setQuickView((current) => (current?.appointment.id === appointment.id ? null : current));
+
+    return null;
+  }
 
   return (
     <WorkspacePage size="wide">
-      <WorkspaceHeader
-        title="Calendar"
-        description={headerDescription}
-        actions={
-          hasClients ? (
+      <WorkspaceHeader title="Calendar" />
+
+      <div className="section-reveal relative z-30 flex flex-wrap items-center gap-3 py-1">
+        <div className="inline-flex items-center gap-1.5">
+          {views.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => startTransition(() => setView(option))}
+              className={cn(
+                "h-8 rounded-(--radius-tile) border border-transparent px-3.5 text-sm font-semibold capitalize text-muted-foreground transition-[background-color,border-color,color] duration-(--duration-base) hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45",
+                view === option &&
+                  "border-primary/40 text-primary hover:bg-transparent hover:text-primary"
+              )}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setActiveDate(todayDate)}
+          className="text-sm font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
+        >
+          Today
+        </button>
+
+        {/* flex-wrap, not a fixed one-line row — the date label, date-jump
+            popover, and New appointment CTA together don't fit one line at
+            narrow widths, and the app shell clips horizontal overflow
+            rather than scrolling it, so a non-wrapping cluster here just
+            clipped part of the date or the CTA off-screen (Codex). */}
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-3">
+          {isLoadingMonths ? (
+            <span role="status" className="text-sm text-muted-foreground">
+              Loading…
+            </span>
+          ) : null}
+          <span className="text-[17px] font-semibold tracking-tight text-foreground">
+            {rangeLabel}
+          </span>
+
+          <DatePickerPopover
+            activeDate={activeDate}
+            todayDate={todayDate}
+            appointmentDateKeys={appointmentDateKeys}
+            onSelect={(day) => setActiveDate(day)}
+          />
+
+          {canManageWaitlist ? (
+            <button
+              type="button"
+              onClick={() => setWaitlistOpen(true)}
+              className={cn(buttonVariants({ variant: "outline" }), "h-9 rounded-(--radius-card) px-3.5")}
+            >
+              <Clock className="size-4" />
+              Waiting list
+            </button>
+          ) : null}
+
+          {hasClients ? (
             <Link
               href={`/calendar/new?date=${selectedDateKey}`}
               className={cn(
@@ -615,74 +1035,40 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
               <UsersRound className="size-4" />
               Add first client
             </Link>
-          )
-        }
-      />
-
-      <div className="surface-card section-reveal relative z-30 p-2.5">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="inline-flex gap-0.5 rounded-(--radius-card) border border-border/75 bg-[#f1f4f9] p-0.5">
-            {views.map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => startTransition(() => setView(option))}
-                className={cn(
-                  "h-8 rounded-(--radius-tile) px-3.5 text-sm font-semibold capitalize text-muted-foreground transition-[background-color,color,box-shadow] duration-(--duration-base) hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45",
-                  view === option &&
-                    "bg-primary text-primary-foreground hover:text-primary-foreground"
-                )}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-
-          <div className="inline-flex items-center overflow-hidden rounded-(--radius-card) border border-border/75 bg-white">
-            <button
-              type="button"
-              onClick={() => shiftRange("prev")}
-              aria-label="Previous period"
-              className={cn(quietControlClasses, "px-3")}
-            >
-              <ChevronLeft className="size-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveDate(parseISO(initialView.initialDate))}
-              className={cn(
-                quietControlClasses,
-                "border-x border-border/75 px-3.5 text-sm font-semibold text-foreground"
-              )}
-            >
-              Today
-            </button>
-            <button
-              type="button"
-              onClick={() => shiftRange("next")}
-              aria-label="Next period"
-              className={cn(quietControlClasses, "px-3")}
-            >
-              <ChevronRight className="size-4" />
-            </button>
-          </div>
-
-          <span className="px-1.5 text-[17px] font-semibold tracking-tight text-foreground">
-            {rangeLabel}
-          </span>
-
-          <DatePickerPopover
-            activeDate={activeDate}
-            todayDate={todayDate}
-            appointmentDateKeys={appointmentDateKeys}
-            onSelect={(day) => setActiveDate(day)}
-          />
+          )}
         </div>
       </div>
 
-      <WorkspaceMainGrid railWidth="md">
-        <div className="space-y-3">
-          {!hasClients ? (
+      <div className="space-y-3" aria-busy={isLoadingMonths}>
+        {loadFailed ? (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-3 rounded-(--radius-card) border border-destructive/20 bg-destructive/5 px-3.5 py-2.5 text-sm text-destructive"
+          >
+            <span>
+              {sessionExpired
+                ? "Your session expired, so these dates couldn't load."
+                : "We couldn't load these dates, so some appointments may be missing."}
+            </span>
+            {sessionExpired ? (
+              <Link
+                href="/login"
+                className="shrink-0 font-semibold underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
+              >
+                Log in again
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={retryLoading}
+                className="shrink-0 font-semibold underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
+              >
+                Try again
+              </button>
+            )}
+          </div>
+        ) : null}
+        {!hasClients ? (
             <WorkspaceEmptyState
               icon={UsersRound}
               title="Add a client before booking"
@@ -691,322 +1077,222 @@ export function CalendarWorkspace({ initialView }: CalendarWorkspaceProps) {
               actionLabel="Add first client"
             />
           ) : view === "month" ? (
-            <div key={gridKey} className="surface-card section-reveal step-enter overflow-clip p-0">
-              <div className="z-30 grid grid-cols-7 border-b border-border/80 bg-white text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground lg:sticky lg:top-[57px]">
+            <div key={gridKey} className={calendarGridHeightClass}>
+              <div className="z-30 grid shrink-0 grid-cols-7 border-b border-border/80 bg-white text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                 {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
                   <div key={label} className="px-4 py-3">
                     {label}
                   </div>
                 ))}
               </div>
-              <div className="grid grid-cols-7">
+              <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+              <div ref={monthGridRef} className="grid grid-cols-7 lg:h-full lg:auto-rows-fr">
                 {currentMonth.map((day) => {
                   const key = format(day, "yyyy-MM-dd");
-                  const items = appointments.filter((appointment) => appointment.date === key);
-                  const blocks = scheduleBlocks.filter((block) => block.date === key);
+                  const items = appointmentsByDate.get(key) ?? [];
+                  const blocks = scheduleBlocksByDate.get(key) ?? [];
+                  const isToday = isSameDay(day, todayDate);
+                  const visibleEntries = mergeEntriesByTime(items, blocks).slice(0, monthSlots);
+                  const overflowCount = items.length + blocks.length - visibleEntries.length;
+
+                  return (
+                    <div
+                      key={key}
+                      data-month-cell=""
+                      className={cn(
+                        "relative min-h-20 overflow-hidden border-b border-r border-border/75",
+                        !isSameMonth(day, activeDate) && "bg-muted/35 text-muted-foreground"
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveDate(day);
+                          startTransition(() => setView("day"));
+                        }}
+                        aria-label={`Open ${format(day, "MMMM d")}`}
+                        className="absolute inset-0 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
+                      />
+                      <div className="pointer-events-none relative px-2.5 py-2">
+                        {/* The overflow count lives in the date row, not under the pills: the
+                            cell clips its overflow, so on a busy day the line below two pills
+                            fell outside it and the count — the one thing that says how full
+                            the day is — was cut off. */}
+                        <div className="flex items-center justify-between gap-1">
+                          <span
+                            className={cn(
+                              "inline-flex size-6 items-center justify-center rounded-full text-sm font-medium",
+                              isToday && "bg-primary font-semibold text-primary-foreground"
+                            )}
+                          >
+                            {format(day, "d")}
+                          </span>
+                          {overflowCount > 0 ? (
+                            <span
+                              aria-label={`${overflowCount} more calendar entries`}
+                              className="hidden shrink-0 text-[10px] font-semibold text-primary sm:block"
+                            >
+                              +{overflowCount}
+                              <span className="hidden lg:inline"> more</span>
+                            </span>
+                          ) : null}
+                        </div>
+                        {/* Below sm, a column is ~45px — full chips truncate to unreadable
+                            fragments ("0...", "1..."), so mobile gets the same density-only
+                            dot summary as the week/day header (see the day-column buttons
+                            below); tapping the day still opens Day view for full detail. */}
+                        <div data-month-list="" className="mt-1.5 hidden flex-col gap-1 sm:flex">
+                          {visibleEntries.map((entry) =>
+                            "status" in entry ? (
+                              <EventPill
+                                key={entry.id}
+                                dense
+                                appointment={entry}
+                                onOpen={(event) => openQuickView(entry, event)}
+                              />
+                            ) : (
+                              <div
+                                key={entry.id}
+                                className="pointer-events-none shrink-0 truncate rounded-(--radius-tile) bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700"
+                              >
+                                {entry.startTime} {entry.title}
+                              </div>
+                            )
+                          )}
+                        </div>
+                        {items.length > 0 || blocks.length > 0 ? (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1 sm:hidden">
+                            {items.slice(0, 4).map((item) => (
+                              <span
+                                key={item.id}
+                                className={cn("size-1.5 rounded-full", statusDotClasses[item.status])}
+                              />
+                            ))}
+                            {blocks.length > 0 ? (
+                              <span className="size-1.5 rounded-full bg-slate-400" />
+                            ) : null}
+                            {items.length > 4 ? (
+                              <span className="text-[9px] font-semibold leading-none text-muted-foreground">
+                                +{items.length - 4}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              </div>
+            </div>
+          ) : (
+            <div key={gridKey} className={calendarGridHeightClass}>
+              <div className="min-h-0 overflow-x-auto lg:flex lg:flex-1 lg:flex-col">
+                <div className={cn("lg:flex lg:h-full lg:min-h-0 lg:flex-col", view === "week" && "min-w-[720px]")}>
+              <div className={cn("grid shrink-0 border-b border-border/80 bg-white", view === "day" ? "grid-cols-1" : "grid-cols-7")}>
+                {(view === "day" ? [activeDate] : currentWeek).map((day) => {
                   const isToday = isSameDay(day, todayDate);
                   const isSelected = isSameDay(day, activeDate);
-                  const isClosed = dayCapacityMinutes(day, initialView.businessHours, scheduleBlocks) === 0;
 
                   return (
                     <button
-                      key={key}
+                      key={day.toISOString()}
                       type="button"
-                      onClick={() => {
-                        setActiveDate(day);
-                        startTransition(() => setView("day"));
-                      }}
+                      onClick={() => setActiveDate(day)}
                       className={cn(
-                        "min-h-24 border-b border-r border-border/75 px-3 py-2.5 text-left transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40",
-                        !isSameMonth(day, activeDate) && "bg-muted/35 text-muted-foreground",
-                        isSameMonth(day, activeDate) &&
-                          (isClosed ? "bg-rose-50/60" : "bg-emerald-50/30"),
-                        isSelected && !isToday && "bg-[#f5f8fd]",
-                        isToday && "bg-[#f6f9ff]"
+                        "border-l border-border/80 px-3.5 py-3 text-left transition-colors duration-(--duration-base) first:border-l-0 hover:bg-[#f7f9fc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40",
+                        isToday ? "bg-[#f6f9ff]" : isSelected && "bg-[#f5f8fd]"
                       )}
                     >
-                      <span
+                      <p
                         className={cn(
-                          "inline-flex size-6 items-center justify-center rounded-full text-sm font-medium",
-                          isToday && "bg-primary font-semibold text-primary-foreground"
+                          "text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground",
+                          isToday && "text-primary"
                         )}
                       >
-                        {format(day, "d")}
-                      </span>
-                      <div className="mt-2 space-y-1.5">
-                        {[...items.slice(0, 2), ...blocks.slice(0, 1)].map((entry) => (
-                          <div
-                            key={entry.id}
-                            className={cn(
-                              "truncate rounded-(--radius-tile) px-2 py-1 text-xs font-medium",
-                              "status" in entry
-                                ? monthChipClasses[entry.status]
-                                : "bg-slate-100 text-slate-700"
-                            )}
-                          >
-                            {entry.startTime}{" "}
-                            {"service" in entry ? entry.service : entry.title}
-                          </div>
-                        ))}
-                        {items.length + blocks.length > 3 ? (
-                          <p className="px-2 text-[11px] font-medium text-muted-foreground">
-                            +{items.length + blocks.length - 3} more
-                          </p>
-                        ) : null}
-                      </div>
+                        {format(day, "EEE")}
+                      </p>
+                      <p className="mt-1.5">
+                        <span
+                          className={cn(
+                            "inline-flex size-8 items-center justify-center rounded-full text-xl font-semibold tracking-tight text-foreground",
+                            isToday && "bg-primary text-primary-foreground"
+                          )}
+                        >
+                          {format(day, "d")}
+                        </span>
+                      </p>
                     </button>
                   );
                 })}
               </div>
-            </div>
-          ) : (
-            <div key={gridKey} className="surface-card section-reveal step-enter overflow-clip p-0">
-              <div className="overflow-x-auto min-[1660px]:overflow-x-clip">
-                <div className="min-w-[940px]">
-                  <div
-                    className={cn(
-                      "z-30 grid border-b border-border/80 bg-white min-[1660px]:sticky min-[1660px]:top-[57px]",
-                      view === "day" ? "grid-cols-[76px_1fr]" : "grid-cols-[76px_repeat(7,minmax(0,1fr))]"
-                    )}
-                  >
-                    <div className="px-3 py-4 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      {initialView.timeZoneLabel}
-                    </div>
-                    {(view === "day" ? [activeDate] : currentWeek).map((day) => {
-                      const isToday = isSameDay(day, todayDate);
-                      const isSelected = isSameDay(day, activeDate);
-                      const dayItems = appointments
-                        .filter((appointment) => appointment.date === format(day, "yyyy-MM-dd"))
-                        .sort((left, right) => left.startTime.localeCompare(right.startTime));
 
-                      return (
-                        <button
-                          key={day.toISOString()}
-                          type="button"
-                          onClick={() => setActiveDate(day)}
-                          className={cn(
-                            "border-l border-border/80 px-3.5 py-3 text-left transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40",
-                            isToday ? "bg-[#f6f9ff]" : isSelected && "bg-[#f5f8fd]"
-                          )}
-                        >
-                          <p
-                            className={cn(
-                              "text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground",
-                              isToday && "text-primary"
-                            )}
-                          >
-                            {format(day, "EEE")}
-                          </p>
-                          <p className="mt-1.5">
-                            <span
-                              className={cn(
-                                "inline-flex size-8 items-center justify-center rounded-full text-xl font-semibold tracking-tight text-foreground",
-                                isToday && "bg-primary text-primary-foreground"
-                              )}
-                            >
-                              {format(day, "d")}
-                            </span>
-                          </p>
-                          <span className="mt-1.5 flex h-1.5 items-center gap-1">
-                            {dayItems.slice(0, 3).map((appointment) => (
-                              <span
-                                key={appointment.id}
-                                className={cn(
-                                  "size-1.5 rounded-full",
-                                  statusDotClasses[appointment.status]
-                                )}
-                                aria-hidden="true"
-                              />
-                            ))}
-                            {dayItems.length > 3 ? (
-                              <span className="text-[9px] font-semibold leading-none text-muted-foreground">
-                                +{dayItems.length - 3}
-                              </span>
-                            ) : null}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+              <div className={cn("grid lg:min-h-0 lg:flex-1", view === "day" ? "grid-cols-1" : "grid-cols-7")}>
+                {(view === "day" ? [activeDate] : currentWeek).map((day) => {
+                  const key = format(day, "yyyy-MM-dd");
+                  const items = appointmentsByDate.get(key) ?? [];
+                  const blocks = scheduleBlocksByDate.get(key) ?? [];
+                  const dayEntries = mergeEntriesByTime(items, blocks);
+                  const isToday = isSameDay(day, todayDate);
+                  const isSelectedColumn = isSameDay(day, activeDate);
 
-                  <div className={cn("grid", view === "day" ? "grid-cols-[76px_1fr]" : "grid-cols-[76px_repeat(7,minmax(0,1fr))]")}>
-                    <div>
-                      {slotHours.map((hour, index) => (
-                        <div
-                          key={hour}
-                          className="flex h-16 items-start justify-end pr-3 text-xs text-muted-foreground"
-                        >
-                          <span className={cn("leading-none", index === 0 ? "pt-2" : "-translate-y-1/2")}>
-                            {format(new Date(2026, 3, 3, hour), "h a")}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                  const isEmpty = items.length === 0 && blocks.length === 0;
+                  const isClosed = !businessHoursForDate(key, initialView.businessHours).enabled;
 
-                    {(view === "day" ? [activeDate] : currentWeek).map((day) => {
-                      const key = format(day, "yyyy-MM-dd");
-                      const items = visibleAppointments.filter((appointment) => appointment.date === key);
-                      const blocks = visibleBlocks.filter(
-                        (block) =>
-                          block.date === key && hasVisibleGridInterval(block.startTime, block.endTime)
-                      );
-                      const isToday = isSameDay(day, todayDate);
-                      const isSelectedColumn = isSameDay(day, activeDate);
-
-                      return (
-                        <div
-                          key={key}
-                          className={cn(
-                            "relative border-l border-border/80",
-                            isToday ? "bg-[#f6f9ff]" : isSelectedColumn && "bg-[#f8fafd]"
-                          )}
-                        >
-                          {slotHours.map((hour) =>
-                            hourOpenForDay(day, hour, initialView.businessHours) ? (
-                              <Link
-                                key={hour}
-                                href={`/calendar/new?date=${key}&time=${String(hour).padStart(2, "0")}:00`}
-                                tabIndex={-1}
-                                aria-label={`Book ${format(day, "MMMM d")} at ${format(new Date(2026, 3, 3, hour), "h a")}`}
-                                className={cn(
-                                  "group/slot relative block h-16 border-b border-border/75",
-                                  !isToday && !isSelectedColumn && "bg-emerald-50/40"
-                                )}
-                              >
-                                <span className="pointer-events-none absolute inset-1 flex items-center justify-center rounded-(--radius-tile) border border-dashed border-primary/35 bg-primary/5 opacity-0 transition-opacity duration-(--duration-base) group-hover/slot:opacity-100">
-                                  <Plus className="size-3.5 text-primary/80" />
-                                </span>
-                              </Link>
-                            ) : (
-                              <div key={hour} className="h-16 border-b border-border/75 bg-rose-50/60" />
-                            )
-                          )}
-                          {items.map((appointment, index) => (
-                            <AppointmentCard key={appointment.id} appointment={appointment} index={index} />
-                          ))}
-                          {blocks.map((block, index) => (
-                            <BlockCard key={block.id} block={block} index={items.length + index} />
-                          ))}
-                          {isToday ? <NowLine /> : null}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  return (
+                    <DayColumn
+                      key={key}
+                      dayKey={key}
+                      entries={dayEntries}
+                      isToday={isToday}
+                      isSelectedColumn={isSelectedColumn}
+                      isEmpty={isEmpty}
+                      isClosed={isClosed}
+                      detailed={view === "day"}
+                      risk={risk}
+                      onOpen={openQuickView}
+                      onOpenDay={() => {
+                        setActiveDate(day);
+                        startTransition(() => setView("day"));
+                      }}
+                    />
+                  );
+                })}
+              </div>
                 </div>
               </div>
             </div>
           )}
         </div>
 
-        <WorkspaceRail className="section-reveal-delayed gap-3">
-          <WorkspaceCard
-            compact
-            title="Selected day"
-            action={
-              <Link
-                href={`/calendar/new?date=${selectedDateKey}`}
-                className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
-              >
-                Add appointment
-              </Link>
-            }
-          >
-            <p className="mb-2 text-xs font-medium text-muted-foreground">
-              {format(activeDate, "EEEE, MMMM d")}
-            </p>
-            {selectedDayAppointments.length > 0 || selectedDayBlocks.length > 0 ? (
-              <div className="divide-y divide-border/65">
-                {selectedDayAppointments.map((appointment) => (
-                  <Link
-                    key={appointment.id}
-                    href={`/calendar/${appointment.id}/edit`}
-                    className="flex items-center gap-2.5 rounded-(--radius-tile) px-1 py-2 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]"
-                  >
-                    <span className="w-11 shrink-0 text-xs font-semibold tabular-nums text-foreground">
-                      {appointment.startTime}
-                    </span>
-                    <span
-                      className={cn(
-                        "size-2 shrink-0 rounded-full",
-                        statusDotClasses[appointment.status]
-                      )}
-                      aria-hidden="true"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span
-                        className={cn(
-                          "block truncate text-sm font-semibold text-foreground",
-                          appointment.status === "cancelled" &&
-                            "text-muted-foreground line-through"
-                        )}
-                      >
-                        {appointment.clientName}
-                      </span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {appointment.service}
-                      </span>
-                    </span>
-                  </Link>
-                ))}
-                {selectedDayBlocks.map((block) => (
-                  <div key={block.id} className="flex items-center gap-2.5 px-1 py-2">
-                    <span className="w-11 shrink-0 text-xs font-semibold tabular-nums text-foreground">
-                      {block.startTime}
-                    </span>
-                    <span className="size-2 shrink-0 rounded-full bg-slate-400" aria-hidden="true" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-foreground">
-                        {block.title}
-                      </span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        Blocked time
-                      </span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-1.5 py-5 text-center">
-                <span className="mb-1 flex size-8 items-center justify-center rounded-(--radius-tile) border border-border/75 bg-[#f7f9fc] text-primary">
-                  <CalendarX2 className="size-3.5" />
-                </span>
-                <p className="text-sm font-semibold text-foreground">No bookings</p>
-                <p className="text-xs leading-5 text-muted-foreground">
-                  Add a booking or blocked time for this date.
-                </p>
-              </div>
-            )}
-          </WorkspaceCard>
+      {quickView ? (
+        <AppointmentQuickView
+          appointment={quickView.appointment}
+          anchorRect={quickView.rect}
+          onClose={() => setQuickView(null)}
+          attendanceAction={attendanceActionFor(quickView.appointment)}
+          onRecordAttendance={(attended) => recordAttendance(quickView.appointment, attended)}
+          // Same guard as the Day-view row: hide a stale or late-arriving
+          // assessment once the appointment is no longer pending/confirmed.
+          // The "has this visit started" half lives inside AppointmentQuickView
+          // itself (useShowNoShowRisk) so it self-expires live (Codex #129).
+          risk={
+            quickView.appointment.status === "pending" || quickView.appointment.status === "confirmed"
+              ? risk[quickView.appointment.id]
+              : undefined
+          }
+        />
+      ) : null}
 
-          <WorkspaceCard
-            compact
-            title="Utilization"
-            action={
-              <span className="text-[11px] font-medium text-muted-foreground">
-                {utilizationScope}
-              </span>
-            }
-          >
-            <div className="flex items-center gap-4">
-              <UtilizationRing value={utilization} />
-              <div className="min-w-0 flex-1 space-y-2 text-sm">
-                <RailMetric label="Scheduled" value={formatMinutes(activeBookedMinutes)} />
-                <RailMetric label="Available" value={formatMinutes(availableMinutes)} />
-                <RailMetric label="Blocks" value={visibleBlocks.length.toString()} />
-              </div>
-            </div>
-          </WorkspaceCard>
-        </WorkspaceRail>
-      </WorkspaceMainGrid>
+      {canManageWaitlist ? (
+        <WaitlistPanel
+          open={waitlistOpen}
+          onOpenChange={setWaitlistOpen}
+          entries={waitlistEntries}
+          clients={initialView.clients}
+          staffMembers={initialView.staffMembers}
+        />
+      ) : null}
     </WorkspacePage>
-  );
-}
-
-function RailMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-4 border-b border-border/70 pb-2 last:border-b-0 last:pb-0">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-semibold text-foreground">{value}</span>
-    </div>
   );
 }

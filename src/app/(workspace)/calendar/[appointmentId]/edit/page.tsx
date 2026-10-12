@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { NewAppointmentForm } from "@/components/calendar/new-appointment-form";
 import { CreatePageShell } from "@/components/workspace/create-page-shell";
+import { isProBusinessPlan } from "@/lib/billing";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { buildCalendarViewFromRecords } from "@/lib/calendar";
 import { prisma } from "@/lib/prisma";
@@ -110,13 +111,7 @@ export default async function EditAppointmentPage({
   const initialAppointment = calendarView.appointments[0];
 
   return (
-    <CreatePageShell
-      eyebrow="Booking timeline"
-      title="Edit booking"
-      description="Update the client, service, staff owner, time, status, and appointment notes."
-      backHref={`/calendar?date=${initialAppointment.date}`}
-      backLabel="calendar"
-    >
+    <CreatePageShell title="Edit booking">
       <NewAppointmentForm
         clients={calendarView.clients}
         staffMembers={calendarView.staffMembers}
@@ -124,6 +119,7 @@ export default async function EditAppointmentPage({
         ownerName={ownerName}
         initialDate={initialAppointment.date}
         initialAppointment={initialAppointment}
+        canRecordNoShows={isProBusinessPlan(business.plan)}
       />
     </CreatePageShell>
   );

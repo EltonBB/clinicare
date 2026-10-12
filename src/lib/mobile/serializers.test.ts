@@ -92,6 +92,10 @@ describe("serializeAppointment", () => {
     );
   });
 
+  it("shows a no-show as cancelled — the mobile app has no fifth status", () => {
+    expect(serializeAppointment(appt({ status: "NO_SHOW" }), "today").status).toBe("cancelled");
+  });
+
   it("labels tomorrow distinctly", () => {
     expect(serializeAppointment(appt(), "tomorrow").dateLabel.startsWith("Tomorrow, ")).toBe(true);
   });

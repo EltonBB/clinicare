@@ -1,6 +1,6 @@
 "use server";
 
-import { requireCurrentWorkspace } from "@/lib/business";
+import { ACTION_RATE_LIMIT_ERROR, isWithinActionBudget, requireCurrentWorkspace } from "@/lib/business";
 import { checkinDetail } from "@/lib/notification-copy";
 import { prisma } from "@/lib/prisma";
 
@@ -49,9 +49,13 @@ export async function refreshWorkspaceNotificationsAction(): Promise<{
   error?: string;
   view?: WorkspaceNotificationsView;
 }> {
-  const { business } = await requireCurrentWorkspace("/dashboard", {
+  const { business, user } = await requireCurrentWorkspace("/dashboard", {
     missingBusinessRedirect: "/onboarding",
   });
+
+  if (!(await isWithinActionBudget(user.id))) {
+    return { ok: false, error: ACTION_RATE_LIMIT_ERROR };
+  }
 
   const [
     unreadAggregate,

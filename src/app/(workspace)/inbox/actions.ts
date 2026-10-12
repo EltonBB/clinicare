@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { manualSendRefusal } from "@/lib/messaging/send-limits";
 import { prisma } from "@/lib/prisma";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { logger } from "@/lib/logger";
@@ -14,8 +15,15 @@ import {
   type InboxConversation,
   type InboxViewModel,
 } from "@/lib/inbox";
-import { conversationSelect, fetchInboxConversations, RECENT_MESSAGE_LIMIT } from "@/lib/inbox-server";
+import {
+  CLIENT_MATCH_ORDER,
+  conversationSelect,
+  fetchInboxConversations,
+  findClientsForConversations,
+  RECENT_MESSAGE_LIMIT,
+} from "@/lib/inbox-server";
 import { sendMessage } from "@/lib/messaging";
+import { parseRecordId } from "@/lib/record-id";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 
 export type SendInboxMessageResult = {
@@ -55,9 +63,14 @@ export type ConvertConversationToClientResult = {
   clientId?: string;
 };
 
-function getAuthedBusiness() {
+const CONVERSATION_NOT_FOUND_ERROR = "Conversation not found in this clinic workspace.";
+const INBOX_DELIVERY_UNCERTAIN_ERROR =
+  "We couldn't confirm this message was delivered. It may have reached the patient, so check the WhatsApp chat before sending it again.";
+
+function getAuthedBusiness(options?: { budget?: "actions" | "background" }) {
   return getAuthedBusinessContext(
-    "Your session expired. Log in again to manage the inbox."
+    "Your session expired. Log in again to manage the inbox.",
+    options
   );
 }
 
@@ -80,6 +93,7 @@ async function hydrateConversation(conversationId: string, businessId: string) {
           businessId,
           phoneKey: conversationPhoneKey,
         },
+        orderBy: CLIENT_MATCH_ORDER,
         select: {
           id: true,
           name: true,
@@ -92,28 +106,11 @@ async function hydrateConversation(conversationId: string, businessId: string) {
 }
 
 async function loadInboxView(businessId: string) {
-  const [clients, { conversations, totalUnreadCount }] = await Promise.all([
-    prisma.client.findMany({
-      where: {
-        businessId,
-      },
-      select: {
-        id: true,
-        name: true,
-        phone: true,
-      },
-      orderBy: [
-        {
-          updatedAt: "desc",
-        },
-        {
-          createdAt: "desc",
-        },
-      ],
-      take: 150,
-    }),
-    fetchInboxConversations(businessId),
-  ]);
+  const { conversations, totalUnreadCount } = await fetchInboxConversations(businessId);
+  const clients = await findClientsForConversations(
+    businessId,
+    conversations.map((conversation) => conversation.phoneNumber)
+  );
 
   return buildInboxViewFromWorkspace({
     conversations,
@@ -145,7 +142,7 @@ export async function refreshInboxAction(): Promise<RefreshInboxResult> {
  * silently-truncated 1-message history.
  */
 export async function hydrateConversationAction(
-  conversationId: string
+  rawConversationId: string
 ): Promise<HydrateConversationResult> {
   const context = await getAuthedBusiness();
 
@@ -156,6 +153,12 @@ export async function hydrateConversationAction(
     };
   }
 
+  const conversationId = parseRecordId(rawConversationId);
+
+  if (!conversationId) {
+    return { ok: false, error: CONVERSATION_NOT_FOUND_ERROR };
+  }
+
   return {
     ok: true,
     conversation: await hydrateConversation(conversationId, context.business.id),
@@ -163,15 +166,22 @@ export async function hydrateConversationAction(
 }
 
 export async function markConversationReadAction(
-  conversationId: string
+  rawConversationId: string
 ): Promise<MarkConversationReadResult> {
-  const context = await getAuthedBusiness();
+  // An acknowledgement opening a conversation fires once: background allowance.
+  const context = await getAuthedBusiness({ budget: "background" });
 
   if ("error" in context) {
     return {
       ok: false,
       error: context.error,
     };
+  }
+
+  const conversationId = parseRecordId(rawConversationId);
+
+  if (!conversationId) {
+    return { ok: false, error: CONVERSATION_NOT_FOUND_ERROR };
   }
 
   const conversation = await prisma.conversation.findFirst({
@@ -187,7 +197,7 @@ export async function markConversationReadAction(
   if (!conversation) {
     return {
       ok: false,
-      error: "Conversation not found in this clinic workspace.",
+      error: CONVERSATION_NOT_FOUND_ERROR,
     };
   }
 
@@ -210,7 +220,7 @@ export async function markConversationReadAction(
 }
 
 export async function sendInboxMessageAction(
-  conversationId: string,
+  rawConversationId: string,
   body: string
 ): Promise<SendInboxMessageResult> {
   const context = await getAuthedBusiness();
@@ -220,6 +230,12 @@ export async function sendInboxMessageAction(
       ok: false,
       error: context.error,
     };
+  }
+
+  const conversationId = parseRecordId(rawConversationId);
+
+  if (!conversationId) {
+    return { ok: false, error: CONVERSATION_NOT_FOUND_ERROR };
   }
 
   const cleanedBody = body.trim();
@@ -246,7 +262,7 @@ export async function sendInboxMessageAction(
   if (!conversation) {
     return {
       ok: false,
-      error: "Conversation not found in this clinic workspace.",
+      error: CONVERSATION_NOT_FOUND_ERROR,
     };
   }
 
@@ -260,6 +276,7 @@ export async function sendInboxMessageAction(
             businessId: context.business.id,
             phoneKey: conversationPhoneKey,
           },
+          orderBy: CLIENT_MATCH_ORDER,
           select: {
             id: true,
             name: true,
@@ -277,9 +294,19 @@ export async function sendInboxMessageAction(
     };
   }
 
+  const sendRefusal = await manualSendRefusal(context.business.id);
+  if (sendRefusal) {
+    return { ok: false, error: sendRefusal };
+  }
+
   // All outbound WhatsApp flows through the messaging seam, which routes to the
   // active provider (Baileys), renders/validates the payload, never throws, and
   // returns the exact body it sent for storage.
+  //
+  // Deliberately unkeyed (no idempotencyKey): a manual reply has no record id
+  // of its own, and a per-compose key would hold an uncertain send for hours,
+  // so staff who checked the chat and saw it never arrived couldn't send it
+  // again. Instead an uncertain send says so (below), and the person decides.
   const result = await sendMessage({
     channel: "WHATSAPP",
     businessId: context.business.id,
@@ -288,16 +315,20 @@ export async function sendInboxMessageAction(
   });
 
   if (!result.ok) {
-    logger.error("WhatsApp outbound send failed.", undefined, {
-      businessId: context.business.id,
-      conversationId,
-      reason: result.reason,
-    });
+    // The clinic's sending ceiling refusing a send is the limiter working, not
+    // a fault: a warning, not an error report (Codex #136).
+    const failureContext = { businessId: context.business.id, conversationId, reason: result.reason };
+    if (result.reason === "rate_limited") {
+      logger.warn("WhatsApp outbound send held back by the clinic's sending ceiling.", failureContext);
+    } else {
+      logger.error("WhatsApp outbound send failed.", undefined, failureContext);
+    }
     // Only a genuine provider/connection failure flags the clinic's shared
     // connection as errored. A bad recipient or empty body is a per-message
     // problem — marking the whole connection ERRORED for it would wrongly
-    // signal the WhatsApp link is down and churn the Settings status.
-    if (result.reason === "provider_error") {
+    // signal the WhatsApp link is down and churn the Settings status. An
+    // uncertain send counts: it means the link stalled mid-send.
+    if (result.reason === "provider_error" || result.reason === "delivery_uncertain") {
       await prisma.whatsAppConnection.update({
         where: { businessId: context.business.id },
         data: { status: "ERRORED", lastSyncedAt: new Date() },
@@ -305,12 +336,15 @@ export async function sendInboxMessageAction(
     }
     return {
       ok: false,
-      // Surface the specific, customer-safe copy for a too-long message; keep the
-      // generic line for genuine provider/connection failures.
+      // Surface the specific, customer-safe copy for a too-long message and for
+      // a send that may have gone out anyway (so it isn't simply sent again);
+      // keep the generic line for genuine provider/connection failures.
       error:
-        result.reason === "message_too_long"
+        result.reason === "message_too_long" || result.reason === "rate_limited"
           ? result.error
-          : "We couldn't send the WhatsApp message.",
+          : result.reason === "delivery_uncertain"
+            ? INBOX_DELIVERY_UNCERTAIN_ERROR
+            : "We couldn't send the WhatsApp message.",
     };
   }
 
@@ -320,6 +354,7 @@ export async function sendInboxMessageAction(
         conversationId: conversation.id,
         clientId: matchedClient?.id ?? null,
         direction: "OUTBOUND",
+        source: "INBOX_REPLY",
         body: result.body,
         providerMessageSid: result.providerMessageId,
         deliveryStatus: result.status,
@@ -360,7 +395,7 @@ export async function sendInboxMessageAction(
 }
 
 export async function deleteConversationAction(
-  conversationId: string
+  rawConversationId: string
 ): Promise<DeleteConversationResult> {
   const context = await getAuthedBusiness();
 
@@ -369,6 +404,13 @@ export async function deleteConversationAction(
       ok: false,
       error: context.error,
     };
+  }
+
+  // A non-string id would delete every conversation in the workspace.
+  const conversationId = parseRecordId(rawConversationId);
+
+  if (!conversationId) {
+    return { ok: false, error: CONVERSATION_NOT_FOUND_ERROR };
   }
 
   const conversation = await prisma.conversation.findFirst({
@@ -385,7 +427,7 @@ export async function deleteConversationAction(
   if (!conversation) {
     return {
       ok: false,
-      error: "Conversation not found in this clinic workspace.",
+      error: CONVERSATION_NOT_FOUND_ERROR,
     };
   }
 
@@ -399,6 +441,7 @@ export async function deleteConversationAction(
           businessId: context.business.id,
           phoneKey: conversationPhoneKey,
         },
+        orderBy: CLIENT_MATCH_ORDER,
         select: { id: true },
       })
     : null;
@@ -417,7 +460,7 @@ export async function deleteConversationAction(
   if (count === 0) {
     return {
       ok: false,
-      error: "Conversation not found in this clinic workspace.",
+      error: CONVERSATION_NOT_FOUND_ERROR,
     };
   }
 
@@ -443,7 +486,7 @@ const convertConversationSchema = z.object({
 });
 
 export async function convertConversationToClientAction(
-  conversationId: string,
+  rawConversationId: string,
   payload: {
     name: string;
     email?: string;
@@ -456,6 +499,12 @@ export async function convertConversationToClientAction(
       ok: false,
       error: context.error,
     };
+  }
+
+  const conversationId = parseRecordId(rawConversationId);
+
+  if (!conversationId) {
+    return { ok: false, error: CONVERSATION_NOT_FOUND_ERROR };
   }
 
   const businessId = context.business.id;
@@ -486,7 +535,7 @@ export async function convertConversationToClientAction(
   if (!conversation) {
     return {
       ok: false,
-      error: "Conversation not found in this clinic workspace.",
+      error: CONVERSATION_NOT_FOUND_ERROR,
     };
   }
 
@@ -498,6 +547,7 @@ export async function convertConversationToClientAction(
           businessId,
           phoneKey: conversationPhoneKey,
         },
+        orderBy: CLIENT_MATCH_ORDER,
         select: {
           id: true,
           name: true,

@@ -12,7 +12,7 @@ import type { DashboardAppointmentAggregates } from "@/lib/dashboard";
  * - completion split / completed-this-month: status counts over the same windows
  * - average duration: TRUNC(epoch/60) per row (matches date-fns differenceInMinutes,
  *   which truncates) clamped at 0, then AVG + ROUND
- * - visit buckets: non-cancelled, grouped by app-zone calendar day (YYYY-MM-DD),
+ * - visit buckets: neither cancelled nor no-show, grouped by app-zone calendar day (YYYY-MM-DD),
  *   matching formatZonedDateKey
  */
 export async function getDashboardAppointmentAggregates(args: {
@@ -24,6 +24,10 @@ export async function getDashboardAppointmentAggregates(args: {
 }): Promise<DashboardAppointmentAggregates> {
   const { businessId, recentWindowStart, monthStart, todayEnd } = args;
   const timeZone = args.timeZone ?? getAppTimeZone();
+  // The day buckets feed both the rolling 30-day total and the calendar
+  // month-to-date total. On the 31st the 30-day window starts on day 2, so reach
+  // back to the 1st or the month tile would miss that day's visits.
+  const bucketStart = monthStart < recentWindowStart ? monthStart : recentWindowStart;
 
   const [statusCounts, completedThisMonth, avgRows, buckets] = await Promise.all([
     prisma.appointment.groupBy({
@@ -58,9 +62,9 @@ export async function getDashboardAppointmentAggregates(args: {
              count(*)::int AS count
       FROM "Appointment"
       WHERE "businessId" = ${businessId}
-        AND "startAt" >= ${recentWindowStart}
+        AND "startAt" >= ${bucketStart}
         AND "startAt" <= ${todayEnd}
-        AND "status" <> 'CANCELLED'
+        AND "status" NOT IN ('CANCELLED', 'NO_SHOW')
       GROUP BY key
     `,
   ]);
@@ -69,10 +73,13 @@ export async function getDashboardAppointmentAggregates(args: {
     statusCounts.find((row) => row.status === "COMPLETED")?._count._all ?? 0;
   const recentCancelled =
     statusCounts.find((row) => row.status === "CANCELLED")?._count._all ?? 0;
+  const recentNoShow =
+    statusCounts.find((row) => row.status === "NO_SHOW")?._count._all ?? 0;
 
   return {
     recentCompleted,
     recentCancelled,
+    recentNoShow,
     completedThisMonth,
     averageDurationMinutes: avgRows[0]?.avg_minutes ?? 0,
     visitCountsByDay: buckets,

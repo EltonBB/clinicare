@@ -170,11 +170,6 @@ export default async function ClientsPage({
         select: {
           title: true,
           startAt: true,
-          staffMember: {
-            select: {
-              name: true,
-            },
-          },
         },
         orderBy: {
           startAt: "desc",

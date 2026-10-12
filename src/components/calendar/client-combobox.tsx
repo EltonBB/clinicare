@@ -14,10 +14,6 @@ type ClientComboboxProps = {
   className?: string;
 };
 
-function optionLabel(option: CalendarSelectOption) {
-  return option.phone ? `${option.name} — ${option.phone}` : option.name;
-}
-
 /**
  * Server-backed client picker: shows a bounded recent list and queries
  * /api/clients/search as the user types, so booking/edit forms never load the
@@ -32,6 +28,10 @@ export function ClientCombobox({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CalendarSelectOption[]>([]);
+  // The client picked from a search stays known on its own — a later search
+  // replaces `searchResults` and may not include them, which would blank the
+  // trigger while `value` still holds their id.
+  const [picked, setPicked] = useState<CalendarSelectOption | null>(null);
   const [loading, setLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -40,16 +40,19 @@ export function ClientCombobox({
   // query, then the server results. No state writes for the empty-query case.
   const options = trimmedQuery.length >= 2 ? searchResults : initialOptions;
 
-  // Stable id -> label lookup across the initial list and any fetched results,
-  // so the selected client's label shows even when it isn't in the current list.
-  const labelById = useMemo(() => {
+  // Stable id -> name lookup across the initial list and any fetched results,
+  // so the selected client's name shows even when it isn't in the current list.
+  // Only the name: the phone number helps tell people apart while searching
+  // (it stays on the list rows) but is noise once someone is picked.
+  const nameById = useMemo(() => {
     const map = new Map<string, string>();
-    for (const option of initialOptions) map.set(option.id, optionLabel(option));
-    for (const option of searchResults) map.set(option.id, optionLabel(option));
+    for (const option of initialOptions) map.set(option.id, option.name);
+    for (const option of searchResults) map.set(option.id, option.name);
+    if (picked) map.set(picked.id, picked.name);
     return map;
-  }, [initialOptions, searchResults]);
+  }, [initialOptions, searchResults, picked]);
 
-  const selectedLabel = labelById.get(value) ?? "";
+  const selectedLabel = nameById.get(value) ?? "";
 
   useEffect(() => {
     const q = query.trim();
@@ -144,13 +147,19 @@ export function ClientCombobox({
                   <button
                     type="button"
                     onClick={() => {
+                      setPicked(option);
                       onChange(option.id);
                       setQuery("");
                       setOpen(false);
                     }}
                     className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-muted/60"
                   >
-                    <span className="truncate">{optionLabel(option)}</span>
+                    <span className="truncate">
+                      {option.name}
+                      {option.phone ? (
+                        <span className="ml-2 text-xs text-muted-foreground">{option.phone}</span>
+                      ) : null}
+                    </span>
                     {option.id === value ? (
                       <Check className="size-4 shrink-0 text-primary" />
                     ) : null}

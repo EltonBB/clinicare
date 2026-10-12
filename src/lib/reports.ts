@@ -25,9 +25,12 @@ import {
   getZonedDayWindowFromParts,
   getZonedMonthWindow,
   getZonedWeekWindow,
+  zonedCalendarDaysBetween,
 } from "@/lib/time-zone";
 import { sumMergedIntervals } from "@/lib/utils";
 
+
+export type ReportMessage = Pick<Message, "direction" | "sentAt" | "conversationId" | "source">;
 export type ReportMetricTrend = "up" | "down" | "flat";
 export type ReportSnapshotTone = "strong" | "healthy" | "watch" | "attention";
 export type ReportPeriodKey = "daily" | "weekly" | "monthly" | "custom";
@@ -47,6 +50,7 @@ export type ReportKpi = {
     | "appointments"
     | "completionRate"
     | "newClients"
+    | "utilization"
     | "avgVisitLength"
     | "activeClients"
     | "unreadMessages";
@@ -57,14 +61,7 @@ export type ReportKpi = {
   helper: string;
 };
 
-export type ReportDetailRowKey =
-  | "utilization"
-  | "lostSlot"
-  | "repeatVisit"
-  | "followUp"
-  | "sameDayBookings"
-  | "leadTime"
-  | "unassigned";
+export type ReportDetailRowKey = "lostSlot" | "noShow" | "repeatVisit" | "followUp";
 
 export type ReportDetailRow = {
   /** Stable identifier — match on this, never on the display label. */
@@ -172,6 +169,10 @@ export type ReportPeriodView = {
     points: ReportChartPoint[];
     completedValues: number[];
     newClientValues: number[];
+    // Same bucket count/shape as `points`, one full span earlier (e.g. the
+    // prior 7 days for the daily chart) — a ghost-line overlay for a quick
+    // visual comparison, not a measured/audited stat.
+    previousValues: number[];
     hasData: boolean;
   };
   snapshot: ReportSnapshot;
@@ -197,7 +198,7 @@ type ReportsWorkspaceArgs = {
   // base composition arrives precomputed as `clientMix`.
   clients: Array<Pick<Client, "createdAt" | "isArchived">>;
   clientMix: ReportClientMix;
-  messages: Array<Pick<Message, "direction" | "sentAt">>;
+  messages: ReportMessage[];
   businessHours: Array<Pick<BusinessHours, "weekday" | "isOpen" | "startTime" | "endTime">>;
   scheduleBlocks: Array<Pick<ScheduleBlock, "startsAt" | "endsAt">>;
   staffMembers: Array<Pick<StaffMember, "id" | "name" | "role" | "status" | "isActive">>;
@@ -236,6 +237,8 @@ type PeriodStats = {
   bookedMinutes: number;
   completionRate: number;
   lostSlotRate: number;
+  noShowCount: number;
+  noShowRate: number;
   utilizationRate: number;
   capacityMinutes: number;
   newClients: number;
@@ -254,6 +257,23 @@ export type ReportClientMix = {
   archived: number;
 };
 
+// The heat-grid's time axis: 4 fixed bands rather than raw hours — 24 rows
+// would be mostly empty at typical appointment volumes, and it keeps the grid
+// readable as a small day-by-band matrix instead of a full clock.
+export const DEMAND_HEATMAP_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+export const DEMAND_HEATMAP_BANDS = [
+  { key: "morning", label: "Morning", maxHour: 12 },
+  { key: "midday", label: "Midday", maxHour: 15 },
+  { key: "afternoon", label: "Afternoon", maxHour: 18 },
+  { key: "evening", label: "Evening", maxHour: 24 },
+] as const;
+
+export type ReportDemandHeatmapCell = {
+  day: (typeof DEMAND_HEATMAP_DAYS)[number];
+  band: (typeof DEMAND_HEATMAP_BANDS)[number]["label"];
+  count: number;
+};
+
 export type ReportPeriodDiagnostics = {
   statusMix: Array<{
     label: string;
@@ -264,13 +284,19 @@ export type ReportPeriodDiagnostics = {
     busiestDays: Array<{ label: string; count: number }>;
     quietestDays: Array<{ label: string; count: number }>;
     busiestHours: Array<{ label: string; count: number }>;
+    heatmap: ReportDemandHeatmapCell[];
   };
   staffLoad: Array<{
+    id: string;
     name: string;
     role: string;
     appointments: number;
     bookedMinutes: number;
     utilizationShare: string;
+    // "" when the provider has no finalized (completed or cancelled) visits
+    // yet this period — same "unmeasured, not zero" convention as every other
+    // rate in this file.
+    completionRate: string;
   }>;
   bookingBehavior: {
     averageLeadTimeHours: number;
@@ -442,9 +468,14 @@ function formatHourLabel(hour: number) {
   return `${hour12} ${suffix}`;
 }
 
+function bandForHour(hour: number): (typeof DEMAND_HEATMAP_BANDS)[number] {
+  return DEMAND_HEATMAP_BANDS.find((band) => hour < band.maxHour) ?? DEMAND_HEATMAP_BANDS[DEMAND_HEATMAP_BANDS.length - 1];
+}
+
 function statusLabel(status: Appointment["status"]) {
   if (status === "COMPLETED") return "Completed";
   if (status === "CANCELLED") return "Cancelled";
+  if (status === "NO_SHOW") return "No-show";
   if (status === "CONFIRMED") return "Confirmed";
   return "Pending";
 }
@@ -564,7 +595,12 @@ function formatRangeLabel(window: PeriodWindow, period: ReportPeriodKey, timeZon
 }
 
 function isBookedStatus(status: Appointment["status"]) {
+  // No-shows stay booked: the demand and the held slot were real.
   return status !== "CANCELLED";
+}
+
+function isFinalizedStatus(status: Appointment["status"]) {
+  return status === "COMPLETED" || status === "CANCELLED" || status === "NO_SHOW";
 }
 
 function countDistinct<T>(values: T[]) {
@@ -612,13 +648,42 @@ function filterAppointmentsInRange(
 }
 
 function filterMessagesInRange(
-  messages: Array<Pick<Message, "direction" | "sentAt">>,
+  messages: ReportMessage[],
   start: Date,
   end: Date
 ) {
   return messages.filter((message) =>
     isWithinInterval(message.sentAt, { start, end })
   );
+}
+
+// Automatic or proactive sends are not answers to what the patient wrote.
+const NOT_A_REPLY = new Set<Message["source"]>(["REMINDER", "REPLY_ACK", "FOLLOW_UP"]);
+
+/**
+ * Inbound messages the clinic answered later in the same conversation. A
+ * reply may land after the window, so it is looked up across every loaded
+ * message; each inbound counts at most once, so the share can't pass 100%.
+ * Outbound rows from before message sources were recorded (null) count as
+ * replies, as they did before.
+ */
+export function countRepliedInbound(scoped: ReportMessage[], all: ReportMessage[]): number {
+  const lastReplyAt = new Map<string, number>();
+  for (const message of all) {
+    if (message.direction !== "OUTBOUND" || !message.conversationId || NOT_A_REPLY.has(message.source)) {
+      continue;
+    }
+    const at = message.sentAt.getTime();
+    if (at > (lastReplyAt.get(message.conversationId) ?? -Infinity)) {
+      lastReplyAt.set(message.conversationId, at);
+    }
+  }
+  return scoped.filter(
+    (message) =>
+      message.direction === "INBOUND" &&
+      message.conversationId !== null &&
+      (lastReplyAt.get(message.conversationId) ?? -Infinity) > message.sentAt.getTime()
+  ).length;
 }
 
 function filterClientsInRange(
@@ -723,7 +788,7 @@ function buildCapacityMinutes(
 function buildPeriodStats(args: {
   appointments: ReportAppointment[];
   clients: Array<Pick<Client, "createdAt" | "isArchived">>;
-  messages: Array<Pick<Message, "direction" | "sentAt">>;
+  messages: ReportMessage[];
   businessHours: Array<Pick<BusinessHours, "weekday" | "isOpen" | "startTime" | "endTime">>;
   scheduleBlocks: Array<Pick<ScheduleBlock, "startsAt" | "endsAt">>;
   activeStaffCount: number;
@@ -743,15 +808,17 @@ function buildPeriodStats(args: {
     timeZone,
   } = args;
   const scopedAppointments = filterAppointmentsInRange(appointments, window.start, window.end);
-  const finalizedAppointments = scopedAppointments.filter(
-    (appointment) =>
-      appointment.status === "COMPLETED" || appointment.status === "CANCELLED"
+  const finalizedAppointments = scopedAppointments.filter((appointment) =>
+    isFinalizedStatus(appointment.status)
   );
   const completedAppointments = scopedAppointments.filter(
     (appointment) => appointment.status === "COMPLETED"
   );
   const cancelledAppointments = scopedAppointments.filter(
     (appointment) => appointment.status === "CANCELLED"
+  );
+  const noShowAppointments = scopedAppointments.filter(
+    (appointment) => appointment.status === "NO_SHOW"
   );
   const bookedMinutes = scopedAppointments
     .filter((appointment) => isBookedStatus(appointment.status))
@@ -805,6 +872,11 @@ function buildPeriodStats(args: {
       finalizedAppointments.length > 0
         ? (cancelledAppointments.length / finalizedAppointments.length) * 100
         : 0,
+    noShowCount: noShowAppointments.length,
+    noShowRate:
+      finalizedAppointments.length > 0
+        ? (noShowAppointments.length / finalizedAppointments.length) * 100
+        : 0,
     capacityMinutes,
     // A ScheduleBlock can drive a day's capacity to exactly 0 while a real
     // booking still exists under it — saveAppointmentAction validates against
@@ -824,7 +896,10 @@ function buildPeriodStats(args: {
       distinctCompletedClients > 0 ? (repeatClients / distinctCompletedClients) * 100 : 0,
     outboundMessages,
     inboundMessages,
-    followUpRate: inboundMessages > 0 ? (outboundMessages / inboundMessages) * 100 : 0,
+    followUpRate:
+      inboundMessages > 0
+        ? (countRepliedInbound(scopedMessages, messages) / inboundMessages) * 100
+        : 0,
     averageVisitLength:
       completedAppointments.length > 0
         ? Math.round(
@@ -855,22 +930,28 @@ function buildPeriodDiagnostics(args: {
     isBookedStatus(appointment.status)
   );
   const totalAppointments = Math.max(scopedAppointments.length, 1);
-  const statusMix = (["COMPLETED", "CONFIRMED", "PENDING", "CANCELLED"] as const).map(
-    (status) => {
-      const count = scopedAppointments.filter(
-        (appointment) => appointment.status === status
-      ).length;
+  // No-show only appears once one has been recorded, so a workspace that never
+  // uses it sees the same four-slice donut as before.
+  const statusOrder: Array<Appointment["status"]> = ["COMPLETED", "CONFIRMED", "PENDING", "CANCELLED"];
+  if (scopedAppointments.some((appointment) => appointment.status === "NO_SHOW")) {
+    statusOrder.push("NO_SHOW");
+  }
+  const statusMix = statusOrder.map((status) => {
+    const count = scopedAppointments.filter((appointment) => appointment.status === status).length;
 
-      return {
-        label: statusLabel(status),
-        count,
-        share: formatPercent((count / totalAppointments) * 100),
-      };
-    }
-  );
+    return {
+      label: statusLabel(status),
+      count,
+      share: formatPercent((count / totalAppointments) * 100),
+    };
+  });
   const dayCounts = new Map<string, number>();
   const hourCounts = new Map<number, number>();
-  const staffCounts = new Map<string, { appointments: number; bookedMinutes: number }>();
+  const heatmapCounts = new Map<string, number>();
+  const staffCounts = new Map<
+    string,
+    { appointments: number; bookedMinutes: number; completedCount: number; finalizedCount: number }
+  >();
   let totalBookedMinutes = 0;
   let totalLeadTimeHours = 0;
   let leadTimeCount = 0;
@@ -891,15 +972,22 @@ function buildPeriodDiagnostics(args: {
 
     dayCounts.set(dayLabel, (dayCounts.get(dayLabel) ?? 0) + 1);
     hourCounts.set(hour, (hourCounts.get(hour) ?? 0) + 1);
+    const heatmapKey = `${dayLabel}__${bandForHour(hour).key}`;
+    heatmapCounts.set(heatmapKey, (heatmapCounts.get(heatmapKey) ?? 0) + 1);
 
     if (appointment.staffMemberId) {
       const current = staffCounts.get(appointment.staffMemberId) ?? {
         appointments: 0,
         bookedMinutes: 0,
+        completedCount: 0,
+        finalizedCount: 0,
       };
+      const isFinalized = isFinalizedStatus(appointment.status);
       staffCounts.set(appointment.staffMemberId, {
         appointments: current.appointments + 1,
         bookedMinutes: current.bookedMinutes + (isBookedStatus(appointment.status) ? duration : 0),
+        completedCount: current.completedCount + (appointment.status === "COMPLETED" ? 1 : 0),
+        finalizedCount: current.finalizedCount + (isFinalized ? 1 : 0),
       });
     } else {
       unassignedAppointments += 1;
@@ -931,14 +1019,25 @@ function buildPeriodDiagnostics(args: {
       count,
     }));
   const staffLoad = args.staffMembers
-    .filter((member) => member.isActive && member.status !== "INACTIVE")
+    .filter((member) => {
+      const isCurrentlyActive = member.isActive && member.status !== "INACTIVE";
+      // A staff member who has since gone inactive can still have real
+      // tracked activity for this (past) period — excluding them here made
+      // a period's own appointment/status totals disagree with an empty
+      // Staff performance table whenever every visit that period belonged
+      // to someone no longer on the active roster (Codex).
+      return isCurrentlyActive || staffCounts.has(member.id);
+    })
     .map((member) => {
       const load = staffCounts.get(member.id) ?? {
         appointments: 0,
         bookedMinutes: 0,
+        completedCount: 0,
+        finalizedCount: 0,
       };
 
       return {
+        id: member.id,
         name: member.name,
         role: member.role,
         appointments: load.appointments,
@@ -947,10 +1046,24 @@ function buildPeriodDiagnostics(args: {
           totalBookedMinutes > 0
             ? formatPercent((load.bookedMinutes / totalBookedMinutes) * 100)
             : "0.0%",
+        completionRate:
+          load.finalizedCount > 0
+            ? formatPercent((load.completedCount / load.finalizedCount) * 100)
+            : "",
       };
     })
-    .sort((left, right) => right.bookedMinutes - left.bookedMinutes)
-    .slice(0, 6);
+    // Staff performance's columns are independently sortable (visits/booked
+    // time/completion) client-side, so truncating the team here would hide
+    // whoever doesn't rank in the top 6 by booked minutes specifically, even
+    // when the operator sorts by a different column looking for them.
+    .sort((left, right) => right.bookedMinutes - left.bookedMinutes);
+  const heatmap: ReportDemandHeatmapCell[] = DEMAND_HEATMAP_DAYS.flatMap((day) =>
+    DEMAND_HEATMAP_BANDS.map((band) => ({
+      day,
+      band: band.label,
+      count: heatmapCounts.get(`${day}__${band.key}`) ?? 0,
+    }))
+  );
   // Whole-base client composition is precomputed in the data layer (bounded
   // aggregate) and passed in — it does not depend on the period window.
   const clientMix = args.clientMix;
@@ -966,6 +1079,7 @@ function buildPeriodDiagnostics(args: {
       busiestDays: sortedDays.slice(0, 3),
       quietestDays: sortedDays.slice().reverse().slice(0, 3),
       busiestHours,
+      heatmap,
     },
     staffLoad,
     bookingBehavior: {
@@ -1712,6 +1826,10 @@ function buildMetrics(args: {
     current.finalizedCount > 0 && previous.finalizedCount > 0
       ? formatPointChange(current.lostSlotRate, previous.lostSlotRate, { inverse: true })
       : unmeasuredDelta();
+  const noShowDelta =
+    current.finalizedCount > 0 && previous.finalizedCount > 0
+      ? formatPointChange(current.noShowRate, previous.noShowRate, { inverse: true })
+      : unmeasuredDelta();
   // Every other rate metric above already gates its delta on both periods
   // having enough data to compare — utilizationRate was the one exception.
   // Without this, a period with bookings but zero measured capacity (a
@@ -1787,7 +1905,7 @@ function buildMetrics(args: {
         value: current.inboundMessages > 0 ? formatPercent(current.followUpRate) : "",
         delta: followUpDelta.delta,
         trend: followUpDelta.trend,
-        helper: "Outbound vs inbound messages",
+        helper: "Inbound messages that got a reply",
       },
       {
         label: "Avg visit length",
@@ -1801,6 +1919,7 @@ function buildMetrics(args: {
       appointments: appointmentDelta,
       completion: completionDelta,
       lostSlot: lostSlotDelta,
+      noShow: noShowDelta,
       utilization: utilizationDelta,
       clients: newClientsDelta,
       repeatVisit: repeatVisitDelta,
@@ -1818,8 +1937,37 @@ type ReportChartData = {
 
 type ReportClientRecord = Pick<Client, "createdAt" | "isArchived">;
 
+// Requires `clients` sorted ascending by createdAt (the view builder sorts
+// once up front, same as filterAppointmentsInRange above) — binary-searches
+// the inclusive [start, end] range instead of scanning the whole array on
+// every chart bucket.
 function countClientsCreatedInRange(clients: ReportClientRecord[], start: Date, end: Date) {
-  return clients.filter((client) => client.createdAt >= start && client.createdAt <= end).length;
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+
+  let lo = 0;
+  let hi = clients.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (clients[mid].createdAt.getTime() < startMs) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  const from = lo;
+
+  hi = clients.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (clients[mid].createdAt.getTime() <= endMs) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+
+  return lo - from;
 }
 
 function toChartData(
@@ -1842,11 +1990,15 @@ function buildDailyChart(
   appointments: ReportAppointment[],
   clients: ReportClientRecord[],
   now: Date,
-  timeZone: string
+  timeZone: string,
+  // Shifts the whole 7-day window back by this many days — used to build the
+  // "previous period" ghost-line series from the exact same bucket logic
+  // rather than a separate calculation.
+  offsetDays = 0
 ): ReportChartData {
   return toChartData(
     Array.from({ length: 7 }, (_, index) => {
-      const dayWindow = getZonedDayWindowByOffset(now, index - 6, timeZone);
+      const dayWindow = getZonedDayWindowByOffset(now, index - 6 + offsetDays, timeZone);
 
       return {
         label: formatZonedDayName(dayWindow.start, timeZone),
@@ -1861,13 +2013,15 @@ function buildWeeklyChart(
   appointments: ReportAppointment[],
   clients: ReportClientRecord[],
   now: Date,
-  timeZone: string
+  timeZone: string,
+  // Shifts the whole 8-week window back by this many weeks — see buildDailyChart.
+  offsetWeeks = 0
 ): ReportChartData {
   const currentWeek = getZonedWeekWindow(now, timeZone);
 
   return toChartData(
     Array.from({ length: 8 }, (_, index) => {
-      const startParts = addZonedDays(currentWeek.parts, (index - 7) * 7);
+      const startParts = addZonedDays(currentWeek.parts, (index - 7 + offsetWeeks) * 7);
       const weekStart = getZonedDayWindowFromParts(
         startParts.year,
         startParts.month,
@@ -1896,13 +2050,15 @@ function buildMonthlyChart(
   appointments: ReportAppointment[],
   clients: ReportClientRecord[],
   now: Date,
-  timeZone: string
+  timeZone: string,
+  // Shifts the whole 6-month window back by this many months — see buildDailyChart.
+  offsetMonths = 0
 ): ReportChartData {
   const currentMonth = getZonedMonthWindow(now, timeZone);
 
   return toChartData(
     Array.from({ length: 6 }, (_, index) => {
-      const monthOffset = index - 5;
+      const monthOffset = index - 5 + offsetMonths;
       const localMonthIndex = currentMonth.parts.month - 1 + monthOffset;
       const monthDate = new Date(Date.UTC(currentMonth.parts.year, localMonthIndex, 1));
       const monthStart = getZonedDayWindowFromParts(
@@ -2010,6 +2166,14 @@ function buildKpis(args: {
       helper: comparisonLabel,
     },
     {
+      key: "utilization",
+      label: "Estimated utilization",
+      value: formatPercent(current.utilizationRate),
+      delta: deltas.utilization.delta,
+      trend: deltas.utilization.trend,
+      helper: deltas.utilization.delta ? comparisonLabel : "",
+    },
+    {
       key: "avgVisitLength",
       label: "Avg visit length",
       value: current.averageVisitLength > 0 ? `${current.averageVisitLength}m` : "",
@@ -2042,19 +2206,12 @@ function buildKpis(args: {
 function buildOperationalDetail(args: {
   current: PeriodStats;
   deltas: ReturnType<typeof buildMetrics>["deltas"];
-  diagnostics: ReportPeriodDiagnostics;
 }): ReportDetailRow[] {
-  const { current, deltas, diagnostics } = args;
-  const rows: ReportDetailRow[] = [
-    {
-      key: "utilization",
-      label: "Estimated utilization",
-      value: formatPercent(current.utilizationRate),
-      delta: deltas.utilization.delta,
-      trend: deltas.utilization.trend,
-      helper: "Booked minutes vs open hours × staff (estimate)",
-    },
-  ];
+  const { current, deltas } = args;
+  // Utilization itself is now a first-class KPI (buildKpis) rather than a
+  // Highlights row — this list covers only the rates that don't have their
+  // own KPI card.
+  const rows: ReportDetailRow[] = [];
 
   if (current.finalizedCount > 0) {
     rows.push({
@@ -2063,6 +2220,17 @@ function buildOperationalDetail(args: {
       value: formatPercent(current.lostSlotRate),
       delta: deltas.lostSlot.delta,
       trend: deltas.lostSlot.trend,
+      helper: "",
+    });
+  }
+
+  if (current.noShowCount > 0) {
+    rows.push({
+      key: "noShow",
+      label: "No-show rate",
+      value: formatPercent(current.noShowRate),
+      delta: deltas.noShow.delta,
+      trend: deltas.noShow.trend,
       helper: "",
     });
   }
@@ -2087,37 +2255,6 @@ function buildOperationalDetail(args: {
       trend: deltas.followUp.trend,
       helper: "",
     });
-  }
-
-  rows.push({
-    key: "sameDayBookings",
-    label: "Same-day bookings",
-    value: diagnostics.bookingBehavior.sameDayBookings.toLocaleString("en-US"),
-    delta: "",
-    trend: "flat",
-    helper: "",
-  });
-
-  if (current.scheduledCount > 0) {
-    rows.push({
-      key: "leadTime",
-      label: "Avg booking lead time",
-      value: `${diagnostics.bookingBehavior.averageLeadTimeHours}h`,
-      delta: "",
-      trend: "flat",
-      helper: "",
-    });
-
-    if (diagnostics.bookingBehavior.unassignedAppointments > 0) {
-      rows.push({
-        key: "unassigned",
-        label: "Unassigned appointments",
-        value: diagnostics.bookingBehavior.unassignedAppointments.toLocaleString("en-US"),
-        delta: "",
-        trend: "flat",
-        helper: "",
-      });
-    }
   }
 
   return rows;
@@ -2148,6 +2285,7 @@ function buildPeriodView(args: {
   previous: PeriodStats;
   diagnostics: ReportPeriodDiagnostics;
   chartData: ReportChartData;
+  previousChartData: ReportChartData;
   aiSnapshots: ReportAiSnapshotInput[];
   timeZone: string;
   aiSupported?: boolean;
@@ -2160,6 +2298,7 @@ function buildPeriodView(args: {
     previous,
     diagnostics,
     chartData,
+    previousChartData,
     aiSnapshots,
     timeZone,
     aiSupported = true,
@@ -2210,7 +2349,7 @@ function buildPeriodView(args: {
       comparisonLabel,
       clientMixTotal: clientMixView.total,
     }),
-    operationalDetail: buildOperationalDetail({ current, deltas, diagnostics }),
+    operationalDetail: buildOperationalDetail({ current, deltas }),
     statusTotal: diagnostics.statusMix.reduce((total, status) => total + status.count, 0),
     clientMixTotal: clientMixView.total,
     clientMixSegments: clientMixView.segments,
@@ -2235,7 +2374,14 @@ function buildPeriodView(args: {
       points: chartData.points,
       completedValues: chartData.completedValues,
       newClientValues: chartData.newClientValues,
-      hasData: chartData.points.some((point) => point.value > 0),
+      previousValues: previousChartData.points.map((point) => point.value),
+      // Includes the previous-period series — a current span with zero
+      // appointments but a previous span that had some is still worth
+      // charting (it shows the decline to zero), not just when the
+      // current span alone has data (Codex).
+      hasData:
+        chartData.points.some((point) => point.value > 0) ||
+        previousChartData.points.some((point) => point.value > 0),
     },
     snapshot,
   };
@@ -2244,7 +2390,7 @@ function buildPeriodView(args: {
 export function buildReportsViewFromWorkspace({
   business,
   appointments: appointmentsInput,
-  clients,
+  clients: clientsInput,
   clientMix,
   messages,
   businessHours,
@@ -2261,6 +2407,14 @@ export function buildReportsViewFromWorkspace({
   // downstream consumer reads this sorted copy; results are order-independent.
   const appointments = [...appointmentsInput].sort(
     (left, right) => left.startAt.getTime() - right.startAt.getTime()
+  );
+  // Same technique, same reason — countClientsCreatedInRange is called once
+  // per chart bucket (now twice as often per period, since the new
+  // "previous period" ghost line re-runs the same bucketing), so an unsorted
+  // scan here compounds exactly like the appointments case above did before
+  // this sort was added (Codex).
+  const clients = [...clientsInput].sort(
+    (left, right) => left.createdAt.getTime() - right.createdAt.getTime()
   );
   const activeStaffCount = staffMembers.filter(
     (member) => member.isActive && member.status !== "INACTIVE"
@@ -2321,16 +2475,32 @@ export function buildReportsViewFromWorkspace({
     previousEnd: monthlyPreviousEnd,
   };
   const customWindow: PeriodWindow | undefined = customRange
-    ? {
-        start: customRange.start,
-        end: customRange.end,
-        previousStart: new Date(
-          customRange.start.getTime() -
-            Math.max(customRange.end.getTime() - customRange.start.getTime(), 86_400_000) -
-            1
-        ),
-        previousEnd: new Date(customRange.start.getTime() - 1),
-      }
+    ? (() => {
+        // Shift back by whole zoned calendar days, not elapsed milliseconds —
+        // a range crossing a DST transition would otherwise land the previous
+        // window on a different number of local days than the selected range,
+        // pairing the wrong comparison buckets (Codex P2).
+        const rangeDays = Math.max(
+          zonedCalendarDaysBetween(customRange.start, customRange.end, timeZone) + 1,
+          1
+        );
+        const previousStartParts = addZonedDays(
+          getZonedDateParts(customRange.start, timeZone),
+          -rangeDays
+        );
+
+        return {
+          start: customRange.start,
+          end: customRange.end,
+          previousStart: getZonedDayWindowFromParts(
+            previousStartParts.year,
+            previousStartParts.month,
+            previousStartParts.day,
+            timeZone
+          ).start,
+          previousEnd: new Date(customRange.start.getTime() - 1),
+        };
+      })()
     : undefined;
 
   const dailyCurrent = buildPeriodStats({
@@ -2477,6 +2647,18 @@ export function buildReportsViewFromWorkspace({
         timeZone,
       })
     : weeklyPrevious;
+  // Reuse the same-length "previous period" window customWindow already
+  // computes (with its zero-length floor) for the KPI deltas, rather than
+  // re-deriving it — two independent computations of "previous custom
+  // period" could otherwise silently disagree at edge cases.
+  const previousCustomWindow: PeriodWindow | undefined = customWindow
+    ? {
+        start: customWindow.previousStart,
+        end: customWindow.previousEnd,
+        previousStart: customWindow.start,
+        previousEnd: customWindow.end,
+      }
+    : undefined;
   const customPeriod = buildPeriodView({
     key: "custom",
     label: "Custom range",
@@ -2487,6 +2669,10 @@ export function buildReportsViewFromWorkspace({
     chartData: customWindow
       ? buildCustomChart(appointments, clients, customWindow, timeZone)
       : buildWeeklyChart(appointments, clients, now, timeZone),
+    previousChartData:
+      customWindow && previousCustomWindow
+        ? buildCustomChart(appointments, clients, previousCustomWindow, timeZone)
+        : buildWeeklyChart(appointments, clients, now, timeZone, -8),
     aiSnapshots: [],
     timeZone,
     aiSupported: false,
@@ -2506,6 +2692,7 @@ export function buildReportsViewFromWorkspace({
         previous: dailyPrevious,
         diagnostics: dailyDiagnostics,
         chartData: buildDailyChart(appointments, clients, now, timeZone),
+        previousChartData: buildDailyChart(appointments, clients, now, timeZone, -7),
         aiSnapshots,
         timeZone,
       }),
@@ -2517,6 +2704,7 @@ export function buildReportsViewFromWorkspace({
         previous: weeklyPrevious,
         diagnostics: weeklyDiagnostics,
         chartData: buildWeeklyChart(appointments, clients, now, timeZone),
+        previousChartData: buildWeeklyChart(appointments, clients, now, timeZone, -8),
         aiSnapshots,
         timeZone,
       }),
@@ -2528,6 +2716,7 @@ export function buildReportsViewFromWorkspace({
         previous: monthlyPrevious,
         diagnostics: monthlyDiagnostics,
         chartData: buildMonthlyChart(appointments, clients, now, timeZone),
+        previousChartData: buildMonthlyChart(appointments, clients, now, timeZone, -6),
         aiSnapshots,
         timeZone,
       }),

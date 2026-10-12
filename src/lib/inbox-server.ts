@@ -72,6 +72,35 @@ export function conversationSelect(messageLimit: number) {
  * rendering a silently-truncated one. It only runs at all when the aggregate
  * proves `recent` doesn't already account for every unread conversation.
  */
+/**
+ * Which client a phone number belongs to when more than one client shares it:
+ * the most recently updated. Every lookup that names or links a conversation
+ * uses this order, so the Inbox list, an opened thread and the dashboard always
+ * agree (Codex #143).
+ */
+export const CLIENT_MATCH_ORDER = [
+  { updatedAt: "desc" },
+  { createdAt: "desc" },
+] satisfies Prisma.ClientOrderByWithRelationInput[];
+
+/**
+ * The clients the given conversations belong to, found by the indexed phone key
+ * rather than from a capped "most recent clients" list, so every conversation
+ * can be named after its client however many clients the clinic has. Ordered
+ * by CLIENT_MATCH_ORDER: buildInboxConversation keeps the first client per key.
+ */
+export async function findClientsForConversations(businessId: string, phoneNumbers: string[]) {
+  const phoneKeys = [...new Set(phoneNumbers.map(phoneLookupKey).filter(Boolean))];
+  if (phoneKeys.length === 0) {
+    return [];
+  }
+  return prisma.client.findMany({
+    where: { businessId, phoneKey: { in: phoneKeys } },
+    select: { id: true, name: true, phone: true },
+    orderBy: CLIENT_MATCH_ORDER,
+  });
+}
+
 export async function fetchInboxConversations(businessId: string) {
   const [recent, totalUnreadAggregate] = await Promise.all([
     prisma.conversation.findMany({
@@ -289,6 +318,7 @@ export async function normalizeConversationsForBusiness(businessId: string) {
       select: {
         id: true,
         phoneNumber: true,
+        phoneKey: true,
         contactName: true,
         unreadCount: true,
         updatedAt: true,
@@ -298,6 +328,16 @@ export async function normalizeConversationsForBusiness(businessId: string) {
       },
     }),
   ]);
+
+  // One lookup per phone key instead of scanning every client for every
+  // conversation (the first client with a key wins, as the scan did).
+  const clientByKey = new Map<string, (typeof clients)[number]>();
+  for (const client of clients) {
+    const key = phoneLookupKey(client.phone);
+    if (key && !clientByKey.has(key)) {
+      clientByKey.set(key, client);
+    }
+  }
 
   const grouped = new Map<string, typeof conversations>();
 
@@ -316,9 +356,7 @@ export async function normalizeConversationsForBusiness(businessId: string) {
 
   for (const [lookupKey, group] of grouped) {
     try {
-      const matchingClient = clients.find(
-        (client) => phoneLookupKey(client.phone) === lookupKey
-      );
+      const matchingClient = clientByKey.get(lookupKey);
       const canonicalPhone =
         normalizePhone(matchingClient?.phone ?? "") ||
         normalizePhone(group[0]?.phoneNumber ?? "");
@@ -334,6 +372,21 @@ export async function normalizeConversationsForBusiness(businessId: string) {
       const duplicateIds = group
         .filter((conversation) => conversation.id !== preferredConversation.id)
         .map((conversation) => conversation.id);
+      const contactName =
+        matchingClient?.name ?? preferredConversation.contactName ?? canonicalPhone;
+
+      // Already normal: nothing to merge or rewrite. This runs on every client
+      // save that touches a phone number, across the clinic's whole Inbox, so
+      // writing every conversation each time made one save cost one
+      // transaction per conversation (2026-10-06 QA).
+      if (
+        duplicateIds.length === 0 &&
+        preferredConversation.phoneNumber === canonicalPhone &&
+        preferredConversation.phoneKey === lookupKey &&
+        preferredConversation.contactName === contactName
+      ) {
+        continue;
+      }
 
       await prisma.$transaction(async (tx) => {
         if (duplicateIds.length > 0) {
@@ -364,10 +417,7 @@ export async function normalizeConversationsForBusiness(businessId: string) {
           data: {
             phoneNumber: canonicalPhone,
             phoneKey: lookupKey,
-            contactName:
-              matchingClient?.name ??
-              preferredConversation.contactName ??
-              canonicalPhone,
+            contactName,
             unreadCount: group.reduce(
               (total, conversation) => total + conversation.unreadCount,
               0

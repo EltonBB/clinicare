@@ -70,6 +70,16 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
             "value": 5,
           },
         ],
+        "previousValues": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+        ],
         "title": "Appointments in range",
       },
       "clientMixSegments": [
@@ -137,6 +147,148 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
               "label": "11 AM",
             },
           ],
+          "heatmap": [
+            {
+              "band": "Morning",
+              "count": 1,
+              "day": "Mon",
+            },
+            {
+              "band": "Midday",
+              "count": 1,
+              "day": "Mon",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Mon",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Mon",
+            },
+            {
+              "band": "Morning",
+              "count": 3,
+              "day": "Tue",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Tue",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Tue",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Tue",
+            },
+            {
+              "band": "Morning",
+              "count": 0,
+              "day": "Wed",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Wed",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Wed",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Wed",
+            },
+            {
+              "band": "Morning",
+              "count": 0,
+              "day": "Thu",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Thu",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Thu",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Thu",
+            },
+            {
+              "band": "Morning",
+              "count": 0,
+              "day": "Fri",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Fri",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Fri",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Fri",
+            },
+            {
+              "band": "Morning",
+              "count": 0,
+              "day": "Sat",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Sat",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Sat",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Sat",
+            },
+            {
+              "band": "Morning",
+              "count": 0,
+              "day": "Sun",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Sun",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Sun",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Sun",
+            },
+          ],
           "quietestDays": [
             {
               "count": 2,
@@ -153,6 +305,8 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           {
             "appointments": 4,
             "bookedMinutes": 90,
+            "completionRate": "50.0%",
+            "id": "s1",
             "name": "Dr. One",
             "role": "Dentist",
             "utilizationShare": "66.7%",
@@ -160,6 +314,8 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           {
             "appointments": 1,
             "bookedMinutes": 45,
+            "completionRate": "100.0%",
+            "id": "s2",
             "name": "Dr. Two",
             "role": "Hygienist",
             "utilizationShare": "33.3%",
@@ -191,7 +347,7 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
       "highlightChange": "67%",
       "highlightSummary": "5 appointments are on the schedule, covering 2.3 booked hours; 66.7% completion across 3 finalized visits, and booked activity is up +2.",
       "highlightTrend": "flat",
-      "highlightValue": "62/100",
+      "highlightValue": "56/100",
       "key": "custom",
       "kpis": [
         {
@@ -217,6 +373,14 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           "label": "New clients",
           "trend": "up",
           "value": "1",
+        },
+        {
+          "delta": "+0.9 pts",
+          "helper": "vs previous range",
+          "key": "utilization",
+          "label": "Estimated utilization",
+          "trend": "up",
+          "value": "2.8%",
         },
         {
           "delta": "-7m",
@@ -288,11 +452,11 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           "value": "100.0%",
         },
         {
-          "delta": "+100 pts",
-          "helper": "Outbound vs inbound messages",
+          "delta": "-100 pts",
+          "helper": "Inbound messages that got a reply",
           "label": "Follow-up coverage",
-          "trend": "up",
-          "value": "100.0%",
+          "trend": "down",
+          "value": "0.0%",
         },
         {
           "delta": "-7m",
@@ -303,14 +467,6 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
         },
       ],
       "operationalDetail": [
-        {
-          "delta": "+0.9 pts",
-          "helper": "Booked minutes vs open hours × staff (estimate)",
-          "key": "utilization",
-          "label": "Estimated utilization",
-          "trend": "up",
-          "value": "2.8%",
-        },
         {
           "delta": "0 pts",
           "helper": "",
@@ -328,28 +484,12 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           "value": "100.0%",
         },
         {
-          "delta": "+100 pts",
+          "delta": "-100 pts",
           "helper": "",
           "key": "followUp",
           "label": "Follow-up coverage",
-          "trend": "up",
-          "value": "100.0%",
-        },
-        {
-          "delta": "",
-          "helper": "",
-          "key": "sameDayBookings",
-          "label": "Same-day bookings",
-          "trend": "flat",
-          "value": "5",
-        },
-        {
-          "delta": "",
-          "helper": "",
-          "key": "leadTime",
-          "label": "Avg booking lead time",
-          "trend": "flat",
-          "value": "0h",
+          "trend": "down",
+          "value": "0.0%",
         },
       ],
       "periodEnd": "2026-06-28T23:59:59.999Z",
@@ -361,7 +501,7 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
         "actions": [
           {
             "detail": "1 new client entered the clinic for this range, which keeps acquisition moving.",
-            "expectedImpact": "Protects the current 62/100 performance score by preserving the strongest metric signal.",
+            "expectedImpact": "Protects the current 56/100 performance score by preserving the strongest metric signal.",
             "metric": "Completion and utilization",
             "priority": "medium",
             "title": "Protect the strongest signal",
@@ -408,12 +548,12 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
             "title": "Lost slots are reducing usable capacity",
           },
           {
-            "evidence": "Repeat visits are 100.0% and follow-up coverage is 100.0%.",
+            "evidence": "Repeat visits are 100.0% and follow-up coverage is 0.0%.",
             "severity": "low",
             "title": "Retention and follow-up need regular monitoring",
           },
         ],
-        "score": 62,
+        "score": 56,
         "severity": "high",
         "source": "rules",
         "statHighlights": [
@@ -510,6 +650,15 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
             "value": 3,
           },
         ],
+        "previousValues": [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+        ],
         "title": "Appointments per day",
       },
       "clientMixSegments": [
@@ -573,6 +722,148 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
               "label": "11 AM",
             },
           ],
+          "heatmap": [
+            {
+              "band": "Morning",
+              "count": 0,
+              "day": "Mon",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Mon",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Mon",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Mon",
+            },
+            {
+              "band": "Morning",
+              "count": 3,
+              "day": "Tue",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Tue",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Tue",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Tue",
+            },
+            {
+              "band": "Morning",
+              "count": 0,
+              "day": "Wed",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Wed",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Wed",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Wed",
+            },
+            {
+              "band": "Morning",
+              "count": 0,
+              "day": "Thu",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Thu",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Thu",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Thu",
+            },
+            {
+              "band": "Morning",
+              "count": 0,
+              "day": "Fri",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Fri",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Fri",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Fri",
+            },
+            {
+              "band": "Morning",
+              "count": 0,
+              "day": "Sat",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Sat",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Sat",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Sat",
+            },
+            {
+              "band": "Morning",
+              "count": 0,
+              "day": "Sun",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Sun",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Sun",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Sun",
+            },
+          ],
           "quietestDays": [
             {
               "count": 3,
@@ -585,6 +876,8 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           {
             "appointments": 3,
             "bookedMinutes": 60,
+            "completionRate": "50.0%",
+            "id": "s1",
             "name": "Dr. One",
             "role": "Dentist",
             "utilizationShare": "100.0%",
@@ -592,6 +885,8 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           {
             "appointments": 0,
             "bookedMinutes": 0,
+            "completionRate": "",
+            "id": "s2",
             "name": "Dr. Two",
             "role": "Hygienist",
             "utilizationShare": "0.0%",
@@ -623,7 +918,7 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
       "highlightChange": "-50 pts",
       "highlightSummary": "3 appointments are on the schedule, covering 1 booked hour; 50.0% completion across 2 finalized visits, and booked activity is up +1.",
       "highlightTrend": "down",
-      "highlightValue": "46/100",
+      "highlightValue": "40/100",
       "key": "daily",
       "kpis": [
         {
@@ -649,6 +944,14 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           "label": "New clients",
           "trend": "down",
           "value": "0",
+        },
+        {
+          "delta": "",
+          "helper": "",
+          "key": "utilization",
+          "label": "Estimated utilization",
+          "trend": "flat",
+          "value": "6.3%",
         },
         {
           "delta": "-15m",
@@ -721,10 +1024,10 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
         },
         {
           "delta": "",
-          "helper": "Outbound vs inbound messages",
+          "helper": "Inbound messages that got a reply",
           "label": "Follow-up coverage",
           "trend": "flat",
-          "value": "100.0%",
+          "value": "0.0%",
         },
         {
           "delta": "-15m",
@@ -735,14 +1038,6 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
         },
       ],
       "operationalDetail": [
-        {
-          "delta": "",
-          "helper": "Booked minutes vs open hours × staff (estimate)",
-          "key": "utilization",
-          "label": "Estimated utilization",
-          "trend": "flat",
-          "value": "6.3%",
-        },
         {
           "delta": "+50 pts",
           "helper": "",
@@ -765,23 +1060,7 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           "key": "followUp",
           "label": "Follow-up coverage",
           "trend": "flat",
-          "value": "100.0%",
-        },
-        {
-          "delta": "",
-          "helper": "",
-          "key": "sameDayBookings",
-          "label": "Same-day bookings",
-          "trend": "flat",
-          "value": "3",
-        },
-        {
-          "delta": "",
-          "helper": "",
-          "key": "leadTime",
-          "label": "Avg booking lead time",
-          "trend": "flat",
-          "value": "0h",
+          "value": "0.0%",
         },
       ],
       "periodEnd": "2026-06-23T23:59:59.999Z",
@@ -793,7 +1072,7 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
         "actions": [
           {
             "detail": "1 completed visit give the clinic a measurable baseline today.",
-            "expectedImpact": "Protects the current 46/100 performance score by preserving the strongest metric signal.",
+            "expectedImpact": "Protects the current 40/100 performance score by preserving the strongest metric signal.",
             "metric": "Completion and utilization",
             "priority": "medium",
             "title": "Protect the strongest signal",
@@ -840,12 +1119,12 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
             "title": "Lost slots are reducing usable capacity",
           },
           {
-            "evidence": "Repeat visits are 0.0% and follow-up coverage is 100.0%.",
+            "evidence": "Repeat visits are 0.0% and follow-up coverage is 0.0%.",
             "severity": "medium",
             "title": "Retention and follow-up need regular monitoring",
           },
         ],
-        "score": 46,
+        "score": 40,
         "severity": "high",
         "source": "rules",
         "statHighlights": [
@@ -936,6 +1215,14 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
             "value": 11,
           },
         ],
+        "previousValues": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+        ],
         "title": "Appointments per month",
       },
       "clientMixSegments": [
@@ -1007,6 +1294,148 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
               "label": "11 AM",
             },
           ],
+          "heatmap": [
+            {
+              "band": "Morning",
+              "count": 2,
+              "day": "Mon",
+            },
+            {
+              "band": "Midday",
+              "count": 1,
+              "day": "Mon",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Mon",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Mon",
+            },
+            {
+              "band": "Morning",
+              "count": 3,
+              "day": "Tue",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Tue",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Tue",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Tue",
+            },
+            {
+              "band": "Morning",
+              "count": 1,
+              "day": "Wed",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Wed",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Wed",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Wed",
+            },
+            {
+              "band": "Morning",
+              "count": 0,
+              "day": "Thu",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Thu",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Thu",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Thu",
+            },
+            {
+              "band": "Morning",
+              "count": 1,
+              "day": "Fri",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Fri",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Fri",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Fri",
+            },
+            {
+              "band": "Morning",
+              "count": 2,
+              "day": "Sat",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Sat",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Sat",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Sat",
+            },
+            {
+              "band": "Morning",
+              "count": 1,
+              "day": "Sun",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Sun",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Sun",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Sun",
+            },
+          ],
           "quietestDays": [
             {
               "count": 1,
@@ -1027,6 +1456,8 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           {
             "appointments": 8,
             "bookedMinutes": 210,
+            "completionRate": "60.0%",
+            "id": "s1",
             "name": "Dr. One",
             "role": "Dentist",
             "utilizationShare": "56.0%",
@@ -1034,6 +1465,8 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           {
             "appointments": 3,
             "bookedMinutes": 165,
+            "completionRate": "100.0%",
+            "id": "s2",
             "name": "Dr. Two",
             "role": "Hygienist",
             "utilizationShare": "44.0%",
@@ -1091,6 +1524,14 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           "label": "New clients",
           "trend": "up",
           "value": "2",
+        },
+        {
+          "delta": "+1.7 pts",
+          "helper": "vs last month",
+          "key": "utilization",
+          "label": "Estimated utilization",
+          "trend": "up",
+          "value": "1.9%",
         },
         {
           "delta": "+18m",
@@ -1163,7 +1604,7 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
         },
         {
           "delta": "",
-          "helper": "Outbound vs inbound messages",
+          "helper": "Inbound messages that got a reply",
           "label": "Follow-up coverage",
           "trend": "flat",
           "value": "50.0%",
@@ -1177,14 +1618,6 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
         },
       ],
       "operationalDetail": [
-        {
-          "delta": "+1.7 pts",
-          "helper": "Booked minutes vs open hours × staff (estimate)",
-          "key": "utilization",
-          "label": "Estimated utilization",
-          "trend": "up",
-          "value": "1.9%",
-        },
         {
           "delta": "-25 pts",
           "helper": "",
@@ -1208,22 +1641,6 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           "label": "Follow-up coverage",
           "trend": "flat",
           "value": "50.0%",
-        },
-        {
-          "delta": "",
-          "helper": "",
-          "key": "sameDayBookings",
-          "label": "Same-day bookings",
-          "trend": "flat",
-          "value": "11",
-        },
-        {
-          "delta": "",
-          "helper": "",
-          "key": "leadTime",
-          "label": "Avg booking lead time",
-          "trend": "flat",
-          "value": "0h",
         },
       ],
       "periodEnd": "2026-06-30T23:59:59.999Z",
@@ -1390,6 +1807,16 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
             "value": 5,
           },
         ],
+        "previousValues": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+        ],
         "title": "Appointments per week",
       },
       "clientMixSegments": [
@@ -1457,6 +1884,148 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
               "label": "11 AM",
             },
           ],
+          "heatmap": [
+            {
+              "band": "Morning",
+              "count": 1,
+              "day": "Mon",
+            },
+            {
+              "band": "Midday",
+              "count": 1,
+              "day": "Mon",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Mon",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Mon",
+            },
+            {
+              "band": "Morning",
+              "count": 3,
+              "day": "Tue",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Tue",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Tue",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Tue",
+            },
+            {
+              "band": "Morning",
+              "count": 0,
+              "day": "Wed",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Wed",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Wed",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Wed",
+            },
+            {
+              "band": "Morning",
+              "count": 0,
+              "day": "Thu",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Thu",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Thu",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Thu",
+            },
+            {
+              "band": "Morning",
+              "count": 0,
+              "day": "Fri",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Fri",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Fri",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Fri",
+            },
+            {
+              "band": "Morning",
+              "count": 0,
+              "day": "Sat",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Sat",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Sat",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Sat",
+            },
+            {
+              "band": "Morning",
+              "count": 0,
+              "day": "Sun",
+            },
+            {
+              "band": "Midday",
+              "count": 0,
+              "day": "Sun",
+            },
+            {
+              "band": "Afternoon",
+              "count": 0,
+              "day": "Sun",
+            },
+            {
+              "band": "Evening",
+              "count": 0,
+              "day": "Sun",
+            },
+          ],
           "quietestDays": [
             {
               "count": 2,
@@ -1473,6 +2042,8 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           {
             "appointments": 4,
             "bookedMinutes": 90,
+            "completionRate": "50.0%",
+            "id": "s1",
             "name": "Dr. One",
             "role": "Dentist",
             "utilizationShare": "66.7%",
@@ -1480,6 +2051,8 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           {
             "appointments": 1,
             "bookedMinutes": 45,
+            "completionRate": "100.0%",
+            "id": "s2",
             "name": "Dr. Two",
             "role": "Hygienist",
             "utilizationShare": "33.3%",
@@ -1511,7 +2084,7 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
       "highlightChange": "67%",
       "highlightSummary": "5 appointments are on the schedule, covering 2.3 booked hours; 66.7% completion across 3 finalized visits, and booked activity is up +2.",
       "highlightTrend": "flat",
-      "highlightValue": "62/100",
+      "highlightValue": "56/100",
       "key": "weekly",
       "kpis": [
         {
@@ -1537,6 +2110,14 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           "label": "New clients",
           "trend": "up",
           "value": "1",
+        },
+        {
+          "delta": "+0.9 pts",
+          "helper": "vs last week",
+          "key": "utilization",
+          "label": "Estimated utilization",
+          "trend": "up",
+          "value": "2.8%",
         },
         {
           "delta": "-7m",
@@ -1608,11 +2189,11 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           "value": "100.0%",
         },
         {
-          "delta": "+100 pts",
-          "helper": "Outbound vs inbound messages",
+          "delta": "-100 pts",
+          "helper": "Inbound messages that got a reply",
           "label": "Follow-up coverage",
-          "trend": "up",
-          "value": "100.0%",
+          "trend": "down",
+          "value": "0.0%",
         },
         {
           "delta": "-7m",
@@ -1623,14 +2204,6 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
         },
       ],
       "operationalDetail": [
-        {
-          "delta": "+0.9 pts",
-          "helper": "Booked minutes vs open hours × staff (estimate)",
-          "key": "utilization",
-          "label": "Estimated utilization",
-          "trend": "up",
-          "value": "2.8%",
-        },
         {
           "delta": "0 pts",
           "helper": "",
@@ -1648,28 +2221,12 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           "value": "100.0%",
         },
         {
-          "delta": "+100 pts",
+          "delta": "-100 pts",
           "helper": "",
           "key": "followUp",
           "label": "Follow-up coverage",
-          "trend": "up",
-          "value": "100.0%",
-        },
-        {
-          "delta": "",
-          "helper": "",
-          "key": "sameDayBookings",
-          "label": "Same-day bookings",
-          "trend": "flat",
-          "value": "5",
-        },
-        {
-          "delta": "",
-          "helper": "",
-          "key": "leadTime",
-          "label": "Avg booking lead time",
-          "trend": "flat",
-          "value": "0h",
+          "trend": "down",
+          "value": "0.0%",
         },
       ],
       "periodEnd": "2026-06-28T23:59:59.999Z",
@@ -1681,7 +2238,7 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
         "actions": [
           {
             "detail": "1 new client entered the clinic this week, which keeps acquisition moving.",
-            "expectedImpact": "Protects the current 62/100 performance score by preserving the strongest metric signal.",
+            "expectedImpact": "Protects the current 56/100 performance score by preserving the strongest metric signal.",
             "metric": "Completion and utilization",
             "priority": "medium",
             "title": "Protect the strongest signal",
@@ -1728,12 +2285,12 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
             "title": "Lost slots are reducing usable capacity",
           },
           {
-            "evidence": "Repeat visits are 100.0% and follow-up coverage is 100.0%.",
+            "evidence": "Repeat visits are 100.0% and follow-up coverage is 0.0%.",
             "severity": "low",
             "title": "Retention and follow-up need regular monitoring",
           },
         ],
-        "score": 62,
+        "score": 56,
         "severity": "high",
         "source": "rules",
         "statHighlights": [

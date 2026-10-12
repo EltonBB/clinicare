@@ -1,23 +1,26 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { format } from "date-fns";
-import { ArrowLeft, CalendarClock, Save, Trash2, UserRoundPlus } from "lucide-react";
 
 import { deleteStaffAction, saveStaffAction } from "@/app/(workspace)/staff/actions";
-import { Button, buttonVariants } from "@/components/ui/button";
 import { ConfirmDeleteDialog } from "@/components/clients/record-form-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  DestructiveTextButton,
+  FormActions,
+  FormError,
+  FormField,
+  FormSelect,
+} from "@/components/workspace/form-parts";
+import {
   fieldInputClass,
-  fieldSelectClass,
+  fieldTextareaClass,
   WorkspaceFormSection,
 } from "@/components/workspace/workspace-layout";
 import { staffRoles, staffStatuses, type StaffRecord, type StaffStatus } from "@/lib/staff";
-import { cn } from "@/lib/utils";
 
 type NewStaffFormProps = {
   staff?: StaffRecord;
@@ -100,38 +103,6 @@ function buildInitialSchedule(
   }).filter((item): item is ScheduleDraft => Boolean(item));
 }
 
-function SelectField({
-  name,
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  name: string;
-  label: string;
-  value: string;
-  options: readonly string[];
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="space-y-2">
-      <span className="text-sm font-semibold text-foreground">{label}</span>
-      <select
-        name={name}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={fieldSelectClass}
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
 export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -139,10 +110,10 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [role, setRole] = useState(staff?.role ?? "Specialist");
   const [status, setStatus] = useState<StaffStatus>(staff?.status ?? "ACTIVE");
+  const isEditing = Boolean(staff);
   const [schedule, setSchedule] = useState<ScheduleDraft[]>(() =>
     buildInitialSchedule(staff, businessHours)
   );
-  const isEditing = Boolean(staff);
 
   function updateSchedule(index: number, patch: Partial<ScheduleDraft>) {
     setSchedule((current) =>
@@ -200,170 +171,116 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
   }
 
   return (
-    <form action={handleSubmit} className="space-y-3.5">
-      <WorkspaceFormSection title="Staff profile">
-        <div className="grid gap-3.5 sm:grid-cols-2">
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-foreground">Name</span>
-            <Input name="name" required defaultValue={staff?.name} placeholder="Staff member name" className={fieldInputClass} />
-          </label>
-          <SelectField
-            name="role"
-            label="Role"
-            value={role}
-            options={staffRoles}
-            onChange={setRole}
-          />
+    <form action={handleSubmit} className="space-y-3">
+      <WorkspaceFormSection>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <FormField label="Name" className="sm:col-span-2">
+            <Input name="name" required defaultValue={staff?.name} className={fieldInputClass} />
+          </FormField>
+          <FormSelect label="Role" name="role" value={role} options={staffRoles} onChange={setRole} />
           {/* A new staff member is active by default; status (Away / Inactive) is
               only set later, so it's an edit-only control. */}
           {isEditing ? (
-            <SelectField
-              name="status"
+            <FormSelect
               label="Status"
+              name="status"
               value={status}
               options={staffStatuses}
               onChange={(value) => setStatus(value as StaffStatus)}
             />
           ) : null}
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-foreground">Phone</span>
+          <FormField label="Phone">
             <Input name="phone" defaultValue={staff?.phone} placeholder="+1 555 000 0000" className={fieldInputClass} />
-          </label>
-          <label className="space-y-2 sm:col-span-2">
-            <span className="text-sm font-semibold text-foreground">Email</span>
-            <Input name="email" type="email" defaultValue={staff?.email} placeholder="staff@example.com" className={fieldInputClass} />
-          </label>
+          </FormField>
+          <FormField label="Email" className={isEditing ? undefined : "sm:col-span-2"}>
+            <Input name="email" type="email" defaultValue={staff?.email} className={fieldInputClass} />
+          </FormField>
+          <FormField label="Note" className="sm:col-span-2">
+            <Textarea name="profileNote" defaultValue={staff?.profileNote} className={fieldTextareaClass} />
+          </FormField>
         </div>
-      </WorkspaceFormSection>
-
-      <WorkspaceFormSection title="Operational note">
-        <label className="block space-y-2">
-          <span className="text-sm font-semibold text-foreground">Profile note</span>
-          <Textarea
-            name="profileNote"
-            defaultValue={staff?.profileNote}
-            placeholder="Working preferences, specialties, or scheduling notes"
-            className="min-h-24 rounded-(--radius-card) bg-white px-3 py-3"
-          />
-        </label>
       </WorkspaceFormSection>
 
       <WorkspaceFormSection
-        title={
-          <span className="inline-flex items-center gap-2">
-            <CalendarClock className="size-4 text-primary" />
-            Weekly schedule
-          </span>
+        title="Weekly schedule"
+        action={
+          schedule.length > 0 ? (
+            <button
+              type="button"
+              onClick={() =>
+                setSchedule((current) =>
+                  current.map((item) => ({
+                    ...item,
+                    enabled: true,
+                    startTime: item.clinicStart,
+                    endTime: item.clinicEnd,
+                  }))
+                )
+              }
+              className="text-sm font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
+            >
+              Use clinic hours
+            </button>
+          ) : null
         }
-        description="Set the staff member's shifts only on clinic working days. Check-in is allowed only during the scheduled shift window."
+        contentClassName="space-y-0.5"
       >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <span className="text-sm text-muted-foreground">Next seven clinic days</span>
-          <button
-            type="button"
-            onClick={() =>
-              setSchedule((current) =>
-                current.map((item) => ({
-                  ...item,
-                  enabled: true,
-                  startTime: item.clinicStart,
-                  endTime: item.clinicEnd,
-                }))
-              )
-            }
-            className="text-sm font-semibold text-primary"
-          >
-            Use clinic hours
-          </button>
-        </div>
         {schedule.length === 0 ? (
-          <p className="mt-3.5 rounded-[0.72rem] border border-border/75 bg-secondary/30 px-3.5 py-3 text-sm text-muted-foreground">
-            No clinic working days are configured for the next seven days.
-          </p>
+          <p className="text-sm text-muted-foreground">No open clinic days coming up.</p>
         ) : (
-        <div className="mt-3.5 overflow-hidden rounded-[0.72rem] border border-border/75">
-          <div className="hidden grid-cols-[minmax(120px,1fr)_110px_110px_110px] bg-secondary/35 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground sm:grid">
-            <span>Day</span>
-            <span>Start</span>
-            <span>End</span>
-            <span>Status</span>
-          </div>
-          <div className="divide-y divide-border/70">
-            {schedule.map((item, index) => (
-              <div
-                key={item.date}
-                className="grid gap-3 px-4 py-3 sm:grid-cols-[minmax(120px,1fr)_110px_110px_110px] sm:items-center"
-              >
-                <label className="flex items-center gap-3 text-sm font-semibold text-foreground">
-                  <input
-                    type="checkbox"
-                    checked={item.enabled}
-                    onChange={(event) => updateSchedule(index, { enabled: event.target.checked })}
-                    className="size-4 rounded border-border text-primary"
+          schedule.map((item, index) => (
+            <div
+              key={item.date}
+              className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-(--radius-card) px-2 py-1 transition-colors duration-(--duration-base) hover:bg-secondary/40"
+            >
+              <label className="flex w-36 shrink-0 items-center gap-2.5 text-sm font-medium text-foreground">
+                <input
+                  type="checkbox"
+                  checked={item.enabled}
+                  onChange={(event) => updateSchedule(index, { enabled: event.target.checked })}
+                  className="size-4 rounded border-border accent-primary"
+                />
+                {item.day}
+              </label>
+              {item.enabled ? (
+                <div className="flex w-full items-center gap-2 sm:w-auto">
+                  <Input
+                    type="time"
+                    value={item.startTime}
+                    onChange={(event) => updateSchedule(index, { startTime: event.target.value })}
+                    className="h-9 min-w-0 flex-1 rounded-(--radius-card) bg-white px-2 text-sm max-sm:[&::-webkit-calendar-picker-indicator]:hidden sm:w-32 sm:flex-none sm:px-3.5"
+                    aria-label={`${item.day} shift start`}
                   />
-                  <span>{item.day}</span>
-                </label>
-                <Input
-                  type="time"
-                  value={item.startTime}
-                  disabled={!item.enabled}
-                  onChange={(event) => updateSchedule(index, { startTime: event.target.value })}
-                  className="h-9 rounded-[0.65rem] bg-white"
-                  aria-label={`${item.day} shift start`}
-                />
-                <Input
-                  type="time"
-                  value={item.endTime}
-                  disabled={!item.enabled}
-                  onChange={(event) => updateSchedule(index, { endTime: event.target.value })}
-                  className="h-9 rounded-[0.65rem] bg-white"
-                  aria-label={`${item.day} shift end`}
-                />
-                <span className={cn("text-sm font-medium", item.enabled ? "text-emerald-700" : "text-muted-foreground")}>
-                  {item.enabled ? "Scheduled" : "Off"}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+                  <span className="text-muted-foreground">–</span>
+                  <Input
+                    type="time"
+                    value={item.endTime}
+                    onChange={(event) => updateSchedule(index, { endTime: event.target.value })}
+                    className="h-9 min-w-0 flex-1 rounded-(--radius-card) bg-white px-2 text-sm max-sm:[&::-webkit-calendar-picker-indicator]:hidden sm:w-32 sm:flex-none sm:px-3.5"
+                    aria-label={`${item.day} shift end`}
+                  />
+                </div>
+              ) : (
+                <span className="text-sm text-muted-foreground">Off</span>
+              )}
+            </div>
+          ))
         )}
       </WorkspaceFormSection>
 
-      {error ? (
-        <div className="rounded-(--radius-card) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
-      ) : null}
+      <FormError message={error} />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <FormActions
+        cancelHref={staff ? `/staff/${staff.id}` : "/staff"}
+        submitLabel={isEditing ? "Save" : "Create"}
+        isPending={isPending}
+      >
         {staff ? (
-          <Button
-            type="button"
-            variant="outline"
-            className="rounded-(--radius-card) border-destructive/25 bg-white text-destructive hover:bg-destructive/5 hover:text-destructive"
-            onClick={() => setConfirmingDelete(true)}
-            disabled={isPending}
-          >
-            <Trash2 className="size-4" />
+          <DestructiveTextButton onClick={() => setConfirmingDelete(true)} disabled={isPending}>
             Delete staff member
-          </Button>
-        ) : (
-          <span />
-        )}
-        <div className="flex justify-end gap-3">
-        <Link
-          href={staff ? `/staff/${staff.id}` : "/staff"}
-          className={cn(buttonVariants({ variant: "outline" }), "rounded-(--radius-card) bg-white")}
-        >
-          <ArrowLeft className="size-4" />
-          Cancel
-        </Link>
-        <Button type="submit" className="rounded-(--radius-card)" disabled={isPending}>
-          {isEditing ? <Save className="size-4" /> : <UserRoundPlus className="size-4" />}
-          {isPending ? "Saving..." : isEditing ? "Save staff" : "Create staff"}
-        </Button>
-        </div>
-      </div>
+          </DestructiveTextButton>
+        ) : null}
+      </FormActions>
 
       <ConfirmDeleteDialog
         open={confirmingDelete}

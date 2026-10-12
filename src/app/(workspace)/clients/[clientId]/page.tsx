@@ -189,5 +189,15 @@ export default async function ClientDetailsRoute({
     notFound();
   }
 
-  return <ClientDetailsPage initialClient={await buildClientRecord(client)} />;
+  // ClientDetailsPage seeds its state from this prop once (useState), so it
+  // never re-reads a later render's fresh currency-formatted record on its
+  // own. Settings' currency save calls router.refresh(), which re-runs this
+  // page and gives a new-currency record — keying by the currency remounts
+  // the component with it instead of leaving the old formatting stuck.
+  return (
+    <ClientDetailsPage
+      key={business.currency}
+      initialClient={await buildClientRecord(client, business.currency)}
+    />
+  );
 }

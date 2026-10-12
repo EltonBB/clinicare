@@ -3,8 +3,12 @@ import { after } from "next/server";
 import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
 import { prisma } from "@/lib/prisma";
 import { requireCurrentWorkspace } from "@/lib/business";
+import { isProBusinessPlan } from "@/lib/billing";
 import { buildDashboardViewFromWorkspace } from "@/lib/dashboard";
 import { getDashboardAppointmentAggregates } from "@/lib/dashboard-data";
+import { getNoShowRiskAssessments } from "@/lib/no-show-risk-data";
+import { phoneLookupKey } from "@/lib/inbox";
+import { findClientsForConversations } from "@/lib/inbox-server";
 import { subDays } from "date-fns";
 import {
   getAppTimeZone,
@@ -49,7 +53,7 @@ export default async function DashboardPage() {
     paymentsResult,
     conversationsResult,
     staffMembersResult,
-    nonCancelledAppointmentCountResult,
+    allTimeVisitCountResult,
   ] =
     await Promise.allSettled([
       prisma.appointment.findMany({
@@ -145,8 +149,10 @@ export default async function DashboardPage() {
           startAt: {
             gte: now,
           },
+          // Only a visit that will still happen: a cancelled or no-show booking
+          // is never "next up".
           status: {
-            not: "COMPLETED",
+            in: ["PENDING", "CONFIRMED"],
           },
         },
         include: {
@@ -196,9 +202,6 @@ export default async function DashboardPage() {
         _sum: {
           amountCents: true,
         },
-        _count: {
-          _all: true,
-        },
       }),
       prisma.conversation.findMany({
         where: {
@@ -207,6 +210,7 @@ export default async function DashboardPage() {
         select: {
           id: true,
           contactName: true,
+          phoneNumber: true,
           unreadCount: true,
           updatedAt: true,
           messages: {
@@ -240,11 +244,13 @@ export default async function DashboardPage() {
         },
         take: 6,
       }),
+      // A no-show is not a visit that happened, so it stays out of the all-time
+      // total just like the 7-day/30-day/this-month tiles (see dashboard-data.ts).
       prisma.appointment.count({
         where: {
           businessId: business.id,
           status: {
-            not: "CANCELLED",
+            notIn: ["CANCELLED", "NO_SHOW"],
           },
         },
       }),
@@ -252,6 +258,55 @@ export default async function DashboardPage() {
 
   const appointments =
     appointmentsResult.status === "fulfilled" ? appointmentsResult.value : [];
+  const nextAppointment =
+    nextAppointmentResult.status === "fulfilled" ? nextAppointmentResult.value : null;
+  // Status alone isn't enough — it doesn't auto-flip once a visit's start
+  // time passes, so an earlier-today pending/confirmed appointment must not
+  // still read as an upcoming no-show risk (same class as Codex #129's
+  // calendar-badge finding).
+  const isScorable = (appointment: { status: string; startAt: Date }) =>
+    (appointment.status === "PENDING" || appointment.status === "CONFIRMED") && appointment.startAt > now;
+  const upcomingForRisk = appointments.filter(isScorable);
+
+  // "Next up" is often not on today's list (tomorrow, or after today's last
+  // visit), and its risk marker must not depend on which day it falls on.
+  if (nextAppointment && isScorable(nextAppointment) && !upcomingForRisk.some((a) => a.id === nextAppointment.id)) {
+    upcomingForRisk.push(nextAppointment);
+  }
+
+  // The risk badges are an extra on top of the schedule: a failed lookup (say a
+  // database that hasn't had the NO_SHOW migration applied yet) must not take the
+  // whole dashboard down, so it degrades to no badges — like every sibling query here.
+  // The Messages card names each conversation the way the Inbox does: by the
+  // client the number belongs to (most recently updated first, as the Inbox
+  // picks). Started before the risk lookup so the two run together.
+  const conversationRows =
+    conversationsResult.status === "fulfilled" ? conversationsResult.value : [];
+  const linkedClientsPromise = findClientsForConversations(
+    business.id,
+    conversationRows.map((row) => row.phoneNumber)
+  ).catch((error) => {
+    console.error("Dashboard conversation client lookup failed", error);
+    return [];
+  });
+
+  let noShowRisk: Awaited<ReturnType<typeof getNoShowRiskAssessments>> | undefined;
+  if (isProBusinessPlan(business.plan) && upcomingForRisk.length > 0) {
+    try {
+      noShowRisk = await getNoShowRiskAssessments({
+        businessId: business.id,
+        appointments: upcomingForRisk.map((appointment) => ({
+          id: appointment.id,
+          clientId: appointment.clientId,
+          startAt: appointment.startAt,
+          createdAt: appointment.createdAt,
+          status: appointment.status as "PENDING" | "CONFIRMED",
+        })),
+      });
+    } catch (error) {
+      console.error("Dashboard no-show risk lookup failed", error);
+    }
+  }
   const unreadCount =
     unreadMessagesResult.status === "fulfilled"
       ? unreadMessagesResult.value._sum.unreadCount ?? 0
@@ -266,27 +321,35 @@ export default async function DashboardPage() {
     appointmentCountResult.status === "fulfilled" ? appointmentCountResult.value : 0;
   const lastClients =
     lastClientsResult.status === "fulfilled" ? lastClientsResult.value : [];
-  const nextAppointment =
-    nextAppointmentResult.status === "fulfilled" ? nextAppointmentResult.value : null;
   const appointmentAggregates =
     appointmentAggregatesResult.status === "fulfilled"
       ? appointmentAggregatesResult.value
       : {
           recentCompleted: 0,
           recentCancelled: 0,
+          recentNoShow: 0,
           completedThisMonth: 0,
           averageDurationMinutes: 0,
           visitCountsByDay: [],
         };
   const paymentGroups =
     paymentsResult.status === "fulfilled" ? paymentsResult.value : [];
-  const conversations =
-    conversationsResult.status === "fulfilled" ? conversationsResult.value : [];
+  const clientNameByPhoneKey = new Map<string, string>();
+  for (const client of await linkedClientsPromise) {
+    const key = phoneLookupKey(client.phone ?? "");
+    if (key && !clientNameByPhoneKey.has(key)) {
+      clientNameByPhoneKey.set(key, client.name);
+    }
+  }
+  const conversations = conversationRows.map((row) => ({
+    ...row,
+    linkedClientName: clientNameByPhoneKey.get(phoneLookupKey(row.phoneNumber)) ?? null,
+  }));
   const staffMembers =
     staffMembersResult.status === "fulfilled" ? staffMembersResult.value : [];
-  const nonCancelledAppointmentCount =
-    nonCancelledAppointmentCountResult.status === "fulfilled"
-      ? nonCancelledAppointmentCountResult.value
+  const allTimeVisitCount =
+    allTimeVisitCountResult.status === "fulfilled"
+      ? allTimeVisitCountResult.value
       : 0;
 
   if (appointmentsResult.status === "rejected") {
@@ -349,10 +412,10 @@ export default async function DashboardPage() {
     console.error("Dashboard staff query failed", staffMembersResult.reason);
   }
 
-  if (nonCancelledAppointmentCountResult.status === "rejected") {
+  if (allTimeVisitCountResult.status === "rejected") {
     console.error(
-      "Dashboard non-cancelled appointment count query failed",
-      nonCancelledAppointmentCountResult.reason
+      "Dashboard all-time visit count query failed",
+      allTimeVisitCountResult.reason
     );
   }
 
@@ -374,7 +437,7 @@ export default async function DashboardPage() {
     todaysHours,
     clientCount,
     appointmentCount,
-    nonCancelledAppointmentCount,
+    allTimeVisitCount,
     appointmentAggregates,
     paymentGroups,
     conversations,
@@ -382,6 +445,7 @@ export default async function DashboardPage() {
     recentClientId: recentClient?.id,
     now,
     timeZone,
+    noShowRisk,
   });
 
   return <DashboardOverview view={view} />;

@@ -1,6 +1,7 @@
-import { differenceInMinutes, subDays } from "date-fns";
+import { differenceInMinutes } from "date-fns";
 import type { Appointment, Business, Client } from "@prisma/client";
 import { isProBusinessPlan, planDisplayName, planStatusLabel } from "@/lib/billing";
+import type { NoShowRiskAssessment } from "@/lib/no-show-risk";
 import { formatCurrency } from "@/lib/utils";
 import {
   formatZonedDateKey,
@@ -10,8 +11,14 @@ import {
   formatZonedTime,
   getAppTimeZone,
 } from "@/lib/time-zone";
+import { conversationDisplayName } from "@/lib/inbox";
 
-export type DashboardAppointmentStatus = "confirmed" | "pending" | "cancelled" | "completed";
+export type DashboardAppointmentStatus =
+  | "confirmed"
+  | "pending"
+  | "cancelled"
+  | "completed"
+  | "no-show";
 
 export type DashboardAppointment = {
   id: string;
@@ -22,6 +29,7 @@ export type DashboardAppointment = {
   service: string;
   staffName: string;
   status: DashboardAppointmentStatus;
+  risk?: NoShowRiskAssessment;
 };
 
 export type DashboardQuickAction = {
@@ -51,8 +59,6 @@ export type DashboardAnalyticsSummary = {
   averageDurationMinutes: number;
 };
 
-export type DashboardTrendTone = "up" | "down" | "neutral";
-
 export type DashboardVisitsDay = {
   key: string;
   label: string;
@@ -63,19 +69,13 @@ export type DashboardVisitsDay = {
 export type DashboardVisitsSummary = {
   days: DashboardVisitsDay[];
   lastSevenDays: number;
-  previousSevenDays: number;
-  deltaLabel: string | null;
-  deltaTone: DashboardTrendTone;
   lastThirtyDays: number;
+  thisMonth: number;
   allTime: number;
 };
 
 export type DashboardRevenueSummary = {
   monthToDateDisplay: string;
-  paidCountThisMonth: number;
-  outstandingDisplay: string;
-  hasOutstanding: boolean;
-  hasPayments: boolean;
 };
 
 export type DashboardConversationPreview = {
@@ -112,6 +112,8 @@ export type DashboardViewModel = {
   heading: string;
   dateLabel: string;
   appointments: DashboardAppointment[];
+  /** Today's visits for the KPI tile; cancelled and no-show ones stay listed but don't count. */
+  activeAppointmentCount: number;
   lastClients: DashboardClientSummary[];
   nextAppointment: DashboardAppointment | null;
   quickActions: DashboardQuickAction[];
@@ -128,7 +130,6 @@ export type DashboardViewModel = {
 export type DashboardPaymentStatusGroup = {
   status: string;
   _sum: { amountCents: number | null };
-  _count: { _all: number };
 };
 
 /**
@@ -141,17 +142,22 @@ export type DashboardAppointmentAggregates = {
   recentCompleted: number;
   /** CANCELLED in the rolling 30-day window. */
   recentCancelled: number;
+  /** NO_SHOW in the rolling 30-day window. */
+  recentNoShow: number;
   /** COMPLETED month-to-date. */
   completedThisMonth: number;
   /** Mean completed-visit length (minutes) in the rolling 30-day window. */
   averageDurationMinutes: number;
-  /** Non-cancelled visit counts per app-zone calendar day (YYYY-MM-DD) in the window. */
+  /** Visit counts (excluding cancelled and no-show) per app-zone calendar day (YYYY-MM-DD) in the window. */
   visitCountsByDay: Array<{ key: string; count: number }>;
 };
 
 export type DashboardConversationRow = {
   id: string;
   contactName: string;
+  phoneNumber: string;
+  /** Name of the client this number belongs to, when there is one. */
+  linkedClientName?: string | null;
   unreadCount: number;
   updatedAt: Date;
   messages: Array<{ body: string; sentAt: Date }>;
@@ -209,6 +215,10 @@ function toDashboardStatus(status: Appointment["status"]): DashboardAppointmentS
     return "cancelled";
   }
 
+  if (status === "NO_SHOW") {
+    return "no-show";
+  }
+
   if (status === "COMPLETED") {
     return "completed";
   }
@@ -220,7 +230,16 @@ function toDashboardStatus(status: Appointment["status"]): DashboardAppointmentS
   return "confirmed";
 }
 
-const formatDashboardMoney = (cents: number) => formatCurrency(cents, { whole: true });
+// The calendar day `offset` days before `now` in the clinic's time zone. The
+// subtraction runs on the date parts in UTC, so it never depends on the
+// server's own zone, and a DST change can't push a 24-hour step onto the wrong
+// calendar day (which would skip one day and repeat another).
+function zonedDayBefore(now: Date, timeZone: string, offset: number) {
+  const [year, month, day] = formatZonedDateKey(now, timeZone).split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day - offset, 12));
+
+  return { key: date.toISOString().slice(0, 10), date };
+}
 
 export function buildVisitsSummary(args: {
   visitCountsByDay: Array<{ key: string; count: number }>;
@@ -235,88 +254,64 @@ export function buildVisitsSummary(args: {
     countsByDay.set(bucket.key, bucket.count);
   }
 
+  // `zonedDayBefore` returns UTC-noon of the calendar date, so the weekday is
+  // read in UTC — the clinic zone was already applied when picking the date.
   const weekdayFormatter = new Intl.DateTimeFormat("en-US", {
     weekday: "short",
-    timeZone,
+    timeZone: "UTC",
   });
   const days: DashboardVisitsDay[] = [];
-  let previousSevenDays = 0;
 
-  for (let offset = 13; offset >= 0; offset -= 1) {
-    const day = subDays(now, offset);
-    const key = formatZonedDateKey(day, timeZone);
-    const count = countsByDay.get(key) ?? 0;
-
-    if (offset >= 7) {
-      previousSevenDays += count;
-      continue;
-    }
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const { key, date } = zonedDayBefore(now, timeZone, offset);
 
     days.push({
       key,
-      label: weekdayFormatter.format(day),
-      count,
+      label: weekdayFormatter.format(date),
+      count: countsByDay.get(key) ?? 0,
       isToday: offset === 0,
     });
   }
 
   const lastSevenDays = days.reduce((sum, day) => sum + day.count, 0);
-  const deltaPercent =
-    previousSevenDays > 0
-      ? Math.round(((lastSevenDays - previousSevenDays) / previousSevenDays) * 100)
-      : null;
-  const lastThirtyDays = Array.from(countsByDay.values()).reduce(
-    (sum, count) => sum + count,
-    0
-  );
+  // The buckets can reach back past 30 days (to the 1st of the month), so sum
+  // exactly the last 30 day keys rather than every bucket.
+  let lastThirtyDays = 0;
+
+  for (let offset = 29; offset >= 0; offset -= 1) {
+    lastThirtyDays += countsByDay.get(zonedDayBefore(now, timeZone, offset).key) ?? 0;
+  }
+
+  // Calendar month-to-date, not a rolling window — distinct from lastThirtyDays.
+  const currentMonthPrefix = formatZonedDateKey(now, timeZone).slice(0, 7);
+  const thisMonth = Array.from(countsByDay.entries())
+    .filter(([key]) => key.startsWith(currentMonthPrefix))
+    .reduce((sum, [, count]) => sum + count, 0);
 
   return {
     days,
     lastSevenDays,
-    previousSevenDays,
-    deltaLabel:
-      deltaPercent === null
-        ? null
-        : `${deltaPercent >= 0 ? "+" : ""}${deltaPercent}% vs prior week`,
-    deltaTone:
-      deltaPercent === null || deltaPercent === 0
-        ? "neutral"
-        : deltaPercent > 0
-          ? "up"
-          : "down",
     lastThirtyDays,
+    thisMonth,
     allTime,
   };
 }
 
 export function buildRevenueSummary(
-  paymentGroups: DashboardPaymentStatusGroup[]
+  paymentGroups: DashboardPaymentStatusGroup[],
+  currency: string
 ): DashboardRevenueSummary {
+  // Compact tiles show whole amounts, in the clinic's own currency.
+  const formatDashboardMoney = (cents: number) => formatCurrency(cents, currency, { whole: true });
   let paidCents = 0;
-  let paidCountThisMonth = 0;
-  let outstandingCents = 0;
-  let totalCount = 0;
 
   for (const group of paymentGroups) {
-    const sum = group._sum.amountCents ?? 0;
-    const count = group._count._all;
-    totalCount += count;
-
     if (group.status === "Paid") {
-      paidCents += sum;
-      paidCountThisMonth += count;
-    } else if (group.status === "Unpaid" || group.status === "Partially Paid") {
-      outstandingCents += sum;
+      paidCents += group._sum.amountCents ?? 0;
     }
   }
 
-  return {
-    monthToDateDisplay: formatDashboardMoney(paidCents),
-    paidCountThisMonth,
-    outstandingDisplay: formatDashboardMoney(outstandingCents),
-    hasOutstanding: outstandingCents > 0,
-    hasPayments: totalCount > 0,
-  };
+  return { monthToDateDisplay: formatDashboardMoney(paidCents) };
 }
 
 function buildPlanSummary(
@@ -340,7 +335,7 @@ export function buildDashboardViewFromWorkspace(args: {
   todaysHours: number;
   clientCount: number;
   appointmentCount: number;
-  nonCancelledAppointmentCount: number;
+  allTimeVisitCount: number;
   appointmentAggregates: DashboardAppointmentAggregates;
   paymentGroups?: DashboardPaymentStatusGroup[];
   conversations?: DashboardConversationRow[];
@@ -348,6 +343,7 @@ export function buildDashboardViewFromWorkspace(args: {
   recentClientId?: string;
   now?: Date;
   timeZone?: string;
+  noShowRisk?: Map<string, NoShowRiskAssessment>;
 }): DashboardViewModel {
   const {
     business,
@@ -357,7 +353,7 @@ export function buildDashboardViewFromWorkspace(args: {
     unreadCount,
     clientCount,
     appointmentCount,
-    nonCancelledAppointmentCount,
+    allTimeVisitCount,
     appointmentAggregates,
     paymentGroups = [],
     conversations = [],
@@ -365,12 +361,15 @@ export function buildDashboardViewFromWorkspace(args: {
     recentClientId,
     now = new Date(),
     timeZone = getAppTimeZone(),
+    noShowRisk,
   } = args;
   // Appointment metrics are aggregated in the DB (see lib/dashboard-data.ts) —
   // the rolling-window completion split, month-to-date completed count, mean
   // visit length, and per-day visit counts arrive pre-computed.
   const recentFinal =
-    appointmentAggregates.recentCompleted + appointmentAggregates.recentCancelled;
+    appointmentAggregates.recentCompleted +
+    appointmentAggregates.recentCancelled +
+    appointmentAggregates.recentNoShow;
   const completionRate =
     recentFinal > 0
       ? Math.round((appointmentAggregates.recentCompleted / recentFinal) * 100)
@@ -380,11 +379,11 @@ export function buildDashboardViewFromWorkspace(args: {
   const todayKey = formatZonedDateKey(now, timeZone);
   const visitsSummary = buildVisitsSummary({
     visitCountsByDay: appointmentAggregates.visitCountsByDay,
-    allTime: nonCancelledAppointmentCount,
+    allTime: allTimeVisitCount,
     now,
     timeZone,
   });
-  const revenueSummary = buildRevenueSummary(paymentGroups);
+  const revenueSummary = buildRevenueSummary(paymentGroups, business.currency);
   const conversationPreviews: DashboardConversationPreview[] = conversations.map(
     (conversation) => {
       const lastMessage = conversation.messages[0];
@@ -392,7 +391,13 @@ export function buildDashboardViewFromWorkspace(args: {
 
       return {
         id: conversation.id,
-        contactName: conversation.contactName,
+        // Named the way the Inbox names it (QA 2026-10-07: the card showed the
+        // patient's own WhatsApp profile name instead of the clinic's record).
+        contactName: conversationDisplayName(
+          conversation.contactName,
+          conversation.phoneNumber,
+          conversation.linkedClientName
+        ),
         snippet: lastMessage?.body ?? "No messages yet",
         timeLabel:
           formatZonedDateKey(lastActivity, timeZone) === todayKey
@@ -462,6 +467,7 @@ export function buildDashboardViewFromWorkspace(args: {
         service: nextAppointment.title,
         staffName: nextAppointment.staffMember?.name ?? "Workspace staff",
         status: toDashboardStatus(nextAppointment.status),
+        risk: noShowRisk?.get(nextAppointment.id),
       }
     : null;
 
@@ -469,6 +475,9 @@ export function buildDashboardViewFromWorkspace(args: {
     businessName: business.name,
     heading: "Today",
     dateLabel: formatZonedLongDate(now, timeZone),
+    activeAppointmentCount: appointments.filter(
+      (appointment) => appointment.status !== "CANCELLED" && appointment.status !== "NO_SHOW"
+    ).length,
     appointments: appointments.map((appointment) => ({
       id: appointment.id,
       time: formatZonedTime(appointment.startAt, timeZone),
@@ -478,6 +487,7 @@ export function buildDashboardViewFromWorkspace(args: {
       service: appointment.title,
       staffName: appointment.staffMember?.name ?? "Workspace staff",
       status: toDashboardStatus(appointment.status),
+      risk: noShowRisk?.get(appointment.id),
     })),
     lastClients: lastClients.map((client) => ({
       id: client.id,

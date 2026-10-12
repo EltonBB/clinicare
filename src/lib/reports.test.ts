@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { AppointmentStatus, MessageDirection } from "@prisma/client";
+import type { AppointmentStatus, MessageDirection, MessageSource } from "@prisma/client";
 
-import { buildKeyMetrics, buildReportsViewFromWorkspace } from "@/lib/reports";
+import {
+  buildKeyMetrics,
+  buildReportsViewFromWorkspace,
+  countRepliedInbound,
+} from "@/lib/reports";
 
 // Characterization harness: pins the entire reports view model for a fixed
 // dataset so a future DB-aggregation rewrite of the data layer can prove it
@@ -23,8 +27,13 @@ function appt(
   return { status, startAt, endAt, createdAt: startAt, clientId, staffMemberId };
 }
 
-function msg(hoursAgo: number, direction: MessageDirection) {
-  return { direction, sentAt: new Date(now.getTime() - hoursAgo * 3_600_000) };
+function msg(
+  hoursAgo: number,
+  direction: MessageDirection,
+  conversationId = "conv_1",
+  source: MessageSource | null = direction === "OUTBOUND" ? "INBOX_REPLY" : null
+) {
+  return { direction, sentAt: new Date(now.getTime() - hoursAgo * 3_600_000), conversationId, source };
 }
 
 const view = buildReportsViewFromWorkspace({
@@ -355,6 +364,107 @@ describe("buildReportsViewFromWorkspace — ScheduleBlock capacity", () => {
   });
 });
 
+describe("buildReportsViewFromWorkspace — Reports redesign additions", () => {
+  it("promotes Estimated utilization to its own KPI, matching the existing metrics-array value", () => {
+    const utilizationMetric = view.periods.daily.metrics.find(
+      (metric) => metric.label === "Estimated utilization"
+    );
+    const utilizationKpi = view.periods.daily.kpis.find((kpi) => kpi.key === "utilization");
+
+    expect(utilizationKpi).toBeDefined();
+    expect(utilizationKpi?.value).toBe(utilizationMetric?.value);
+  });
+
+  it("buckets the day×time heat-grid into the 4 fixed bands, not raw hours", () => {
+    // now (daysAgo 0) is a Tuesday — see the busiest-day assertions elsewhere
+    // in this file. One appointment per band, all on the same day, isolates
+    // the band boundaries cleanly.
+    const heatmapView = buildReportsViewFromWorkspace({
+      business: { name: "Band Clinic" },
+      appointments: [
+        appt(0, 9, "COMPLETED"), // morning (< 12)
+        appt(0, 13, "COMPLETED"), // midday (< 15)
+        appt(0, 16, "COMPLETED"), // afternoon (< 18)
+        appt(0, 20, "COMPLETED"), // evening (>= 18)
+      ],
+      clients: [],
+      clientMix: { active: 0, atRisk: 0, inactive: 0, archived: 0 },
+      messages: [],
+      businessHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+        weekday,
+        isOpen: true,
+        startTime: "00:00",
+        endTime: "23:00",
+      })),
+      scheduleBlocks: [],
+      staffMembers: [
+        { id: "s1", name: "Dr. One", role: "Dentist", status: "ACTIVE", isActive: true },
+      ],
+      conversations: [],
+      aiSnapshots: [],
+      now,
+      timeZone: "UTC",
+    });
+
+    const { heatmap } = heatmapView.periods.daily.diagnostics.demandWindows;
+    expect(heatmap).toHaveLength(28); // 7 days x 4 bands, including zero cells
+
+    const tueCells = heatmap.filter((cell) => cell.day === "Tue");
+    expect(tueCells.map((cell) => cell.count)).toEqual([1, 1, 1, 1]);
+    expect(heatmap.filter((cell) => cell.day !== "Tue").every((cell) => cell.count === 0)).toBe(
+      true
+    );
+  });
+
+  it("computes per-provider completion rate as completed / finalized, leaving it unmeasured with no finalized visits", () => {
+    const staffView = buildReportsViewFromWorkspace({
+      business: { name: "Staff Clinic" },
+      appointments: [
+        appt(0, 9, "COMPLETED", 30, "s1"),
+        appt(0, 10, "COMPLETED", 30, "s1"),
+        appt(0, 11, "CANCELLED", 30, "s1"),
+        appt(0, 12, "CONFIRMED", 30, "s1"), // not finalized, excluded from the rate
+        appt(0, 9, "PENDING", 30, "s2"), // s2 has zero finalized visits
+      ],
+      clients: [],
+      clientMix: { active: 0, atRisk: 0, inactive: 0, archived: 0 },
+      messages: [],
+      businessHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+        weekday,
+        isOpen: true,
+        startTime: "00:00",
+        endTime: "23:00",
+      })),
+      scheduleBlocks: [],
+      staffMembers: [
+        { id: "s1", name: "Dr. One", role: "Dentist", status: "ACTIVE", isActive: true },
+        { id: "s2", name: "Dr. Two", role: "Hygienist", status: "ACTIVE", isActive: true },
+      ],
+      conversations: [],
+      aiSnapshots: [],
+      now,
+      timeZone: "UTC",
+    });
+
+    const { staffLoad } = staffView.periods.daily.diagnostics;
+    expect(staffLoad.find((row) => row.name === "Dr. One")?.completionRate).toBe("66.7%");
+    expect(staffLoad.find((row) => row.name === "Dr. Two")?.completionRate).toBe("");
+  });
+
+  it("builds a previous-period chart series of the same shape, for the ghost-line overlay", () => {
+    for (const key of ["daily", "weekly", "monthly"] as const) {
+      const { points, previousValues } = view.periods[key].chart;
+      expect(previousValues).toHaveLength(points.length);
+      expect(previousValues.every((value) => Number.isFinite(value) && value >= 0)).toBe(true);
+    }
+
+    // Daily's previous series covers days 7-13 ago (one full 7-day span before
+    // the current one) — only appt(10, ...) in the top-level fixture falls
+    // there, so the ghost line should sum to exactly 1.
+    expect(view.periods.daily.chart.previousValues.reduce((sum, value) => sum + value, 0)).toBe(1);
+  });
+});
+
 describe("buildKeyMetrics", () => {
   it("keeps only the three headline KPIs Reports' own KPI row shows, dropping the display-only helper field", () => {
     // Codex finding on the OpenAI payload trim: currentRuleSnapshot's prose
@@ -371,5 +481,100 @@ describe("buildKeyMetrics", () => {
     for (const metric of keyMetrics) {
       expect(metric).not.toHaveProperty("helper");
     }
+  });
+});
+
+describe("buildReportsViewFromWorkspace — no-shows", () => {
+  function reportFor(appointments: ReturnType<typeof appt>[]) {
+    return buildReportsViewFromWorkspace({
+      business: { name: "No-show Clinic" },
+      appointments,
+      clients: [],
+      clientMix: { active: 0, atRisk: 0, inactive: 0, archived: 0 },
+      messages: [],
+      businessHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+        weekday,
+        isOpen: true,
+        startTime: "08:00",
+        endTime: "17:00",
+      })),
+      scheduleBlocks: [],
+      staffMembers: [
+        { id: "s1", name: "Dr. One", role: "Dentist", status: "ACTIVE", isActive: true },
+      ],
+      conversations: [],
+      aiSnapshots: [],
+      now,
+      timeZone: "UTC",
+    });
+  }
+
+  it("treats a no-show as a finalized visit: it lowers completion and gets its own rate", () => {
+    const daily = reportFor([
+      appt(0, 8, "COMPLETED"),
+      appt(0, 9, "COMPLETED"),
+      appt(0, 10, "NO_SHOW"),
+      appt(0, 11, "CANCELLED"),
+    ]).periods.daily;
+
+    expect(daily.metrics.find((metric) => metric.label === "Completion rate")?.value).toBe("50.0%");
+    expect(daily.operationalDetail.find((row) => row.key === "noShow")?.value).toBe("25.0%");
+    // Lost-slot rate stays cancellations only.
+    expect(daily.operationalDetail.find((row) => row.key === "lostSlot")?.value).toBe("25.0%");
+  });
+
+  it("adds a No-show slice to the status mix only when there is one", () => {
+    const withNoShow = reportFor([appt(0, 8, "COMPLETED"), appt(0, 9, "NO_SHOW")]).periods.daily;
+    const without = reportFor([appt(0, 8, "COMPLETED"), appt(0, 9, "CANCELLED")]).periods.daily;
+
+    expect(withNoShow.diagnostics.statusMix.map((item) => item.label)).toEqual([
+      "Completed",
+      "Confirmed",
+      "Pending",
+      "Cancelled",
+      "No-show",
+    ]);
+    expect(withNoShow.diagnostics.statusMix.find((item) => item.label === "No-show")?.count).toBe(1);
+    expect(without.diagnostics.statusMix.map((item) => item.label)).toEqual([
+      "Completed",
+      "Confirmed",
+      "Pending",
+      "Cancelled",
+    ]);
+    expect(without.operationalDetail.some((row) => row.key === "noShow")).toBe(false);
+  });
+});
+
+// QA 2026-10-12: Follow-up coverage read 300% because it divided all outbound
+// messages (reminders included) by inbound ones.
+describe("countRepliedInbound", () => {
+  it("counts each inbound message once, however many replies follow", () => {
+    const messages = [msg(5, "INBOUND"), msg(4, "OUTBOUND"), msg(3, "OUTBOUND"), msg(2, "OUTBOUND")];
+    expect(countRepliedInbound(messages, messages)).toBe(1);
+  });
+
+  it("ignores a reply sent before the message or in another conversation", () => {
+    const messages = [msg(6, "OUTBOUND"), msg(5, "INBOUND"), msg(1, "OUTBOUND", "conv_2")];
+    expect(countRepliedInbound(messages, messages)).toBe(0);
+  });
+
+  it("doesn't treat a reminder, auto-acknowledgement or follow-up as an answer", () => {
+    const messages = [
+      msg(5, "INBOUND"),
+      msg(4, "OUTBOUND", "conv_1", "REMINDER"),
+      msg(3, "OUTBOUND", "conv_1", "REPLY_ACK"),
+      msg(2, "OUTBOUND", "conv_1", "FOLLOW_UP"),
+    ];
+    expect(countRepliedInbound(messages, messages)).toBe(0);
+  });
+
+  it("still counts an outbound message recorded before sources existed", () => {
+    const messages = [msg(5, "INBOUND"), msg(4, "OUTBOUND", "conv_1", null)];
+    expect(countRepliedInbound(messages, messages)).toBe(1);
+  });
+
+  it("finds a reply that landed after the reporting window", () => {
+    const inWindow = [msg(30, "INBOUND")];
+    expect(countRepliedInbound(inWindow, [...inWindow, msg(1, "OUTBOUND")])).toBe(1);
   });
 });
