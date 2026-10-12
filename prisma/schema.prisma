@@ -511,6 +511,10 @@ model Message {
   // (Postgres allows multiple NULLs, so outbound/legacy rows are unaffected).
   providerMessageSid String?                @unique
   deliveryStatus     MessageDeliveryStatus?
+  // Who produced an OUTBOUND row, so Reports can tell a staff reply from an
+  // automatic send. Null on inbound rows and on outbound rows written before
+  // this column existed.
+  source             MessageSource?
   deliveryErrorCode  String?
   deliveryUpdatedAt  DateTime?
   sentAt             DateTime               @default(now())
@@ -742,6 +746,13 @@ enum MessageDirection {
   INBOUND
   OUTBOUND
   SYSTEM
+}
+
+enum MessageSource {
+  INBOX_REPLY
+  REMINDER
+  REPLY_ACK
+  FOLLOW_UP
 }
 
 enum MessageDeliveryStatus {

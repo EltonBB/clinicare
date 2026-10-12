@@ -354,6 +354,7 @@ export async function sendInboxMessageAction(
         conversationId: conversation.id,
         clientId: matchedClient?.id ?? null,
         direction: "OUTBOUND",
+        source: "INBOX_REPLY",
         body: result.body,
         providerMessageSid: result.providerMessageId,
         deliveryStatus: result.status,

@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { AppointmentStatus, MessageDirection } from "@prisma/client";
+import type { AppointmentStatus, MessageDirection, MessageSource } from "@prisma/client";
 
-import { buildKeyMetrics, buildReportsViewFromWorkspace } from "@/lib/reports";
+import {
+  buildKeyMetrics,
+  buildReportsViewFromWorkspace,
+  countRepliedInbound,
+} from "@/lib/reports";
 
 // Characterization harness: pins the entire reports view model for a fixed
 // dataset so a future DB-aggregation rewrite of the data layer can prove it
@@ -23,8 +27,13 @@ function appt(
   return { status, startAt, endAt, createdAt: startAt, clientId, staffMemberId };
 }
 
-function msg(hoursAgo: number, direction: MessageDirection) {
-  return { direction, sentAt: new Date(now.getTime() - hoursAgo * 3_600_000) };
+function msg(
+  hoursAgo: number,
+  direction: MessageDirection,
+  conversationId = "conv_1",
+  source: MessageSource | null = direction === "OUTBOUND" ? "INBOX_REPLY" : null
+) {
+  return { direction, sentAt: new Date(now.getTime() - hoursAgo * 3_600_000), conversationId, source };
 }
 
 const view = buildReportsViewFromWorkspace({
@@ -533,5 +542,39 @@ describe("buildReportsViewFromWorkspace — no-shows", () => {
       "Cancelled",
     ]);
     expect(without.operationalDetail.some((row) => row.key === "noShow")).toBe(false);
+  });
+});
+
+// QA 2026-10-12: Follow-up coverage read 300% because it divided all outbound
+// messages (reminders included) by inbound ones.
+describe("countRepliedInbound", () => {
+  it("counts each inbound message once, however many replies follow", () => {
+    const messages = [msg(5, "INBOUND"), msg(4, "OUTBOUND"), msg(3, "OUTBOUND"), msg(2, "OUTBOUND")];
+    expect(countRepliedInbound(messages, messages)).toBe(1);
+  });
+
+  it("ignores a reply sent before the message or in another conversation", () => {
+    const messages = [msg(6, "OUTBOUND"), msg(5, "INBOUND"), msg(1, "OUTBOUND", "conv_2")];
+    expect(countRepliedInbound(messages, messages)).toBe(0);
+  });
+
+  it("doesn't treat a reminder, auto-acknowledgement or follow-up as an answer", () => {
+    const messages = [
+      msg(5, "INBOUND"),
+      msg(4, "OUTBOUND", "conv_1", "REMINDER"),
+      msg(3, "OUTBOUND", "conv_1", "REPLY_ACK"),
+      msg(2, "OUTBOUND", "conv_1", "FOLLOW_UP"),
+    ];
+    expect(countRepliedInbound(messages, messages)).toBe(0);
+  });
+
+  it("still counts an outbound message recorded before sources existed", () => {
+    const messages = [msg(5, "INBOUND"), msg(4, "OUTBOUND", "conv_1", null)];
+    expect(countRepliedInbound(messages, messages)).toBe(1);
+  });
+
+  it("finds a reply that landed after the reporting window", () => {
+    const inWindow = [msg(30, "INBOUND")];
+    expect(countRepliedInbound(inWindow, [...inWindow, msg(1, "OUTBOUND")])).toBe(1);
   });
 });

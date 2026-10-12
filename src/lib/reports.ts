@@ -29,6 +29,8 @@ import {
 } from "@/lib/time-zone";
 import { sumMergedIntervals } from "@/lib/utils";
 
+
+export type ReportMessage = Pick<Message, "direction" | "sentAt" | "conversationId" | "source">;
 export type ReportMetricTrend = "up" | "down" | "flat";
 export type ReportSnapshotTone = "strong" | "healthy" | "watch" | "attention";
 export type ReportPeriodKey = "daily" | "weekly" | "monthly" | "custom";
@@ -196,7 +198,7 @@ type ReportsWorkspaceArgs = {
   // base composition arrives precomputed as `clientMix`.
   clients: Array<Pick<Client, "createdAt" | "isArchived">>;
   clientMix: ReportClientMix;
-  messages: Array<Pick<Message, "direction" | "sentAt">>;
+  messages: ReportMessage[];
   businessHours: Array<Pick<BusinessHours, "weekday" | "isOpen" | "startTime" | "endTime">>;
   scheduleBlocks: Array<Pick<ScheduleBlock, "startsAt" | "endsAt">>;
   staffMembers: Array<Pick<StaffMember, "id" | "name" | "role" | "status" | "isActive">>;
@@ -646,13 +648,42 @@ function filterAppointmentsInRange(
 }
 
 function filterMessagesInRange(
-  messages: Array<Pick<Message, "direction" | "sentAt">>,
+  messages: ReportMessage[],
   start: Date,
   end: Date
 ) {
   return messages.filter((message) =>
     isWithinInterval(message.sentAt, { start, end })
   );
+}
+
+// Automatic or proactive sends are not answers to what the patient wrote.
+const NOT_A_REPLY = new Set<Message["source"]>(["REMINDER", "REPLY_ACK", "FOLLOW_UP"]);
+
+/**
+ * Inbound messages the clinic answered later in the same conversation. A
+ * reply may land after the window, so it is looked up across every loaded
+ * message; each inbound counts at most once, so the share can't pass 100%.
+ * Outbound rows from before message sources were recorded (null) count as
+ * replies, as they did before.
+ */
+export function countRepliedInbound(scoped: ReportMessage[], all: ReportMessage[]): number {
+  const lastReplyAt = new Map<string, number>();
+  for (const message of all) {
+    if (message.direction !== "OUTBOUND" || !message.conversationId || NOT_A_REPLY.has(message.source)) {
+      continue;
+    }
+    const at = message.sentAt.getTime();
+    if (at > (lastReplyAt.get(message.conversationId) ?? -Infinity)) {
+      lastReplyAt.set(message.conversationId, at);
+    }
+  }
+  return scoped.filter(
+    (message) =>
+      message.direction === "INBOUND" &&
+      message.conversationId !== null &&
+      (lastReplyAt.get(message.conversationId) ?? -Infinity) > message.sentAt.getTime()
+  ).length;
 }
 
 function filterClientsInRange(
@@ -757,7 +788,7 @@ function buildCapacityMinutes(
 function buildPeriodStats(args: {
   appointments: ReportAppointment[];
   clients: Array<Pick<Client, "createdAt" | "isArchived">>;
-  messages: Array<Pick<Message, "direction" | "sentAt">>;
+  messages: ReportMessage[];
   businessHours: Array<Pick<BusinessHours, "weekday" | "isOpen" | "startTime" | "endTime">>;
   scheduleBlocks: Array<Pick<ScheduleBlock, "startsAt" | "endsAt">>;
   activeStaffCount: number;
@@ -865,7 +896,10 @@ function buildPeriodStats(args: {
       distinctCompletedClients > 0 ? (repeatClients / distinctCompletedClients) * 100 : 0,
     outboundMessages,
     inboundMessages,
-    followUpRate: inboundMessages > 0 ? (outboundMessages / inboundMessages) * 100 : 0,
+    followUpRate:
+      inboundMessages > 0
+        ? (countRepliedInbound(scopedMessages, messages) / inboundMessages) * 100
+        : 0,
     averageVisitLength:
       completedAppointments.length > 0
         ? Math.round(
@@ -1871,7 +1905,7 @@ function buildMetrics(args: {
         value: current.inboundMessages > 0 ? formatPercent(current.followUpRate) : "",
         delta: followUpDelta.delta,
         trend: followUpDelta.trend,
-        helper: "Outbound vs inbound messages",
+        helper: "Inbound messages that got a reply",
       },
       {
         label: "Avg visit length",
