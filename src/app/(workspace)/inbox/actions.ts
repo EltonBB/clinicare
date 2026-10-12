@@ -74,14 +74,20 @@ function getAuthedBusiness(options?: { budget?: "actions" | "background" }) {
   );
 }
 
+// Null when the conversation isn't in this workspace — deleted in another tab,
+// or a stale/foreign id — so callers answer "not found" instead of throwing.
 async function hydrateConversation(conversationId: string, businessId: string) {
-  const conversation = await prisma.conversation.findFirstOrThrow({
+  const conversation = await prisma.conversation.findFirst({
     where: {
       id: conversationId,
       businessId,
     },
     select: conversationSelect(RECENT_MESSAGE_LIMIT),
   });
+
+  if (!conversation) {
+    return null;
+  }
 
   // Indexed match on the canonical digit key instead of scanning the whole
   // client table for one conversation's link (same pattern already used by
@@ -159,10 +165,9 @@ export async function hydrateConversationAction(
     return { ok: false, error: CONVERSATION_NOT_FOUND_ERROR };
   }
 
-  return {
-    ok: true,
-    conversation: await hydrateConversation(conversationId, context.business.id),
-  };
+  const conversation = await hydrateConversation(conversationId, context.business.id);
+
+  return conversation ? { ok: true, conversation } : { ok: false, error: CONVERSATION_NOT_FOUND_ERROR };
 }
 
 export async function markConversationReadAction(
@@ -387,10 +392,7 @@ export async function sendInboxMessageAction(
 
   return {
     ok: true,
-    conversation: await hydrateConversation(
-      conversation.id,
-      context.business.id
-    ),
+    conversation: (await hydrateConversation(conversation.id, context.business.id)) ?? undefined,
   };
 }
 
@@ -636,6 +638,6 @@ export async function convertConversationToClientAction(
   return {
     ok: true,
     clientId,
-    conversation: await hydrateConversation(conversation.id, businessId),
+    conversation: (await hydrateConversation(conversation.id, businessId)) ?? undefined,
   };
 }
