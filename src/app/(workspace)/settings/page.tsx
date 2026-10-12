@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { after } from "next/server";
 
 import { SettingsWorkspace } from "@/components/settings/settings-workspace";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { loadSettingsState } from "@/lib/settings-server";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
+
+export const metadata: Metadata = { title: "Settings | Vela" };
 
 type SettingsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;

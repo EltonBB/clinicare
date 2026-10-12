@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import type { Prisma } from "@prisma/client";
 
@@ -9,6 +10,8 @@ import {
   buildClientDirectoryViewFromRecords,
   type ClientDirectoryFilter,
 } from "@/lib/clients";
+
+export const metadata: Metadata = { title: "Clients | Vela" };
 
 const PAGE_SIZE = 25;
 

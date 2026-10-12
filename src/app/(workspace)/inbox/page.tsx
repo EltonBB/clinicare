@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { after } from "next/server";
 
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
@@ -13,6 +14,8 @@ import { getPendingFollowUpDraftCount } from "@/lib/follow-ups-data";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
+
+export const metadata: Metadata = { title: "Inbox | Vela" };
 
 export default async function InboxPage({
   searchParams,
