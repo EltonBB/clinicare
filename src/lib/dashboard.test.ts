@@ -209,6 +209,20 @@ describe("buildDashboardViewFromWorkspace — no-show risk", () => {
     });
   });
 
+  it("counts today's appointments for the KPI without cancelled or no-show ones, but still lists them", () => {
+    const view = buildDashboardViewFromWorkspace({
+      ...BASE_ARGS,
+      appointments: [
+        APPT_FIXTURE,
+        { ...APPT_FIXTURE, id: "appt_cancelled", status: "CANCELLED" },
+        { ...APPT_FIXTURE, id: "appt_no_show", status: "NO_SHOW" },
+      ],
+    });
+
+    expect(view.appointments).toHaveLength(3);
+    expect(view.activeAppointmentCount).toBe(1);
+  });
+
   it("leaves risk undefined when none was provided", () => {
     const view = buildDashboardViewFromWorkspace({ ...BASE_ARGS, appointments: [APPT_FIXTURE] });
     expect(view.appointments[0]?.risk).toBeUndefined();

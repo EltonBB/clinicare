@@ -149,8 +149,10 @@ export default async function DashboardPage() {
           startAt: {
             gte: now,
           },
+          // Only a visit that will still happen: a cancelled or no-show booking
+          // is never "next up".
           status: {
-            not: "COMPLETED",
+            in: ["PENDING", "CONFIRMED"],
           },
         },
         include: {
