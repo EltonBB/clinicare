@@ -138,7 +138,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
         <KpiTile
           label="Appointments today"
           href="/calendar"
-          value={view.appointments.length.toString()}
+          value={view.activeAppointmentCount.toString()}
         />
         <KpiTile
           label="Completion rate"
