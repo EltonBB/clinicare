@@ -60,7 +60,12 @@ async function run() {
     }
 
     // Counts only — never client names or draft text.
-    return NextResponse.json({ ok: true, ...result }, { status: 200, headers: { "Cache-Control": "no-store" } });
+    // degraded is read by withCronMonitor: errors or an abandoned business
+    // fail the Sentry check-in even though the run returns 200.
+    return NextResponse.json(
+      { ok: true, ...result, degraded: result.errors > 0 || holdLock },
+      { status: 200, headers: { "Cache-Control": "no-store" } }
+    );
   } catch (error) {
     logger.error("Follow-up cron failed.", error);
 

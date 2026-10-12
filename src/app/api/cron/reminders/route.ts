@@ -165,6 +165,9 @@ async function run() {
       {
         ok: true,
         ...outcome,
+        // Read by withCronMonitor: a hard-deadline hit or an abandoned
+        // business is a failed run for Sentry Crons, even though it returns 200.
+        degraded: outcome.timedOut || outcome.abandonedBusinesses > 0,
         triggeredAt: new Date().toISOString(),
       },
       {

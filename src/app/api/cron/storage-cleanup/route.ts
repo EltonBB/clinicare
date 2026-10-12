@@ -49,7 +49,14 @@ async function run() {
     }
 
     return NextResponse.json(
-      { ok: true, ...result, triggeredAt: new Date().toISOString() },
+      {
+        ok: true,
+        ...result,
+        // Read by withCronMonitor: a missing service key or a failed row fails
+        // the check-in even though the sweep returns 200.
+        degraded: !result.serviceRoleConfigured || result.errored > 0,
+        triggeredAt: new Date().toISOString(),
+      },
       { status: 200, headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {

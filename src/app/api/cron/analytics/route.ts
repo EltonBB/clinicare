@@ -115,6 +115,8 @@ async function run() {
       ok: true,
       processedBusinesses: proBusinesses.length,
       results,
+      // Read by withCronMonitor: any clinic's failed snapshot fails the check-in.
+      degraded: results.some((result) => result.errored),
       triggeredAt: new Date().toISOString(),
     },
     {

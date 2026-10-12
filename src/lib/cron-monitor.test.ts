@@ -37,6 +37,21 @@ describe("withCronMonitor", () => {
     expect(sentry.captureCheckIn).toHaveBeenLastCalledWith(expect.objectContaining({ status: "error" }));
   });
 
+  it("marks a 200 run that reports itself degraded as an error", async () => {
+    // e.g. reminders hitting their hard deadline, or a clinic abandoned to its
+    // per-business timeout: the route still answers 200.
+    const response = await withCronMonitor("/api/cron/reminders", async () => Response.json({ ok: true, degraded: true }));
+
+    expect(response.status).toBe(200);
+    expect(sentry.captureCheckIn).toHaveBeenLastCalledWith(expect.objectContaining({ status: "error" }));
+  });
+
+  it("keeps a healthy JSON run ok", async () => {
+    await withCronMonitor("/api/cron/storage-cleanup", async () => Response.json({ ok: true, degraded: false }));
+
+    expect(sentry.captureCheckIn).toHaveBeenLastCalledWith(expect.objectContaining({ status: "ok" }));
+  });
+
   it("marks a thrown run as an error and rethrows", async () => {
     await expect(
       withCronMonitor("/api/cron/follow-ups", async () => {
