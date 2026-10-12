@@ -203,6 +203,7 @@ export async function sendFollowUpDraftAction(
     clientName: sent.clientName,
     phone: sent.phone,
     result: sent.result,
+    source: "FOLLOW_UP",
     failureMessage: "Sent a follow-up draft but couldn't mirror it to the inbox.",
     logContext: { businessId: business.id, draftId },
   });

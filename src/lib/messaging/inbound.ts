@@ -529,6 +529,7 @@ async function applyInboundReplyIntentCore(
         clientName: appointment.client.name,
         phone,
         result,
+        source: "REPLY_ACK",
         failureMessage: "Recorded a confirm/cancel reply but couldn't mirror it to the inbox.",
         logContext: { businessId, clientId: repliedClientId },
       });

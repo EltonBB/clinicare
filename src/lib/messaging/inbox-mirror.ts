@@ -2,6 +2,8 @@ import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 
+import type { MessageSource } from "@prisma/client";
+
 import type { SendMessageResult } from "./types";
 
 /**
@@ -25,10 +27,11 @@ export async function mirrorOutboundToInbox(args: {
   clientName: string | null;
   phone: string;
   result: Extract<SendMessageResult, { ok: true }>;
+  source: MessageSource;
   failureMessage: string;
   logContext: Record<string, string>;
 }) {
-  const { businessId, clientId, clientName, phone, result, failureMessage, logContext } = args;
+  const { businessId, clientId, clientName, phone, result, source, failureMessage, logContext } = args;
   const phoneKey = phoneLookupKey(phone);
   if (!phoneKey) {
     return;
@@ -59,6 +62,7 @@ export async function mirrorOutboundToInbox(args: {
           conversationId: conversation.id,
           clientId,
           direction: "OUTBOUND",
+          source,
           body: result.body,
           providerMessageSid: result.providerMessageId,
           deliveryStatus: result.status,

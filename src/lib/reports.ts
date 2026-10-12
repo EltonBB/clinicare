@@ -30,7 +30,7 @@ import {
 import { sumMergedIntervals } from "@/lib/utils";
 
 
-export type ReportMessage = Pick<Message, "direction" | "sentAt" | "conversationId">;
+export type ReportMessage = Pick<Message, "direction" | "sentAt" | "conversationId" | "source">;
 export type ReportMetricTrend = "up" | "down" | "flat";
 export type ReportSnapshotTone = "strong" | "healthy" | "watch" | "attention";
 export type ReportPeriodKey = "daily" | "weekly" | "monthly" | "custom";
@@ -657,15 +657,22 @@ function filterMessagesInRange(
   );
 }
 
+// Automatic or proactive sends are not answers to what the patient wrote.
+const NOT_A_REPLY = new Set<Message["source"]>(["REMINDER", "REPLY_ACK", "FOLLOW_UP"]);
+
 /**
  * Inbound messages the clinic answered later in the same conversation. A
  * reply may land after the window, so it is looked up across every loaded
  * message; each inbound counts at most once, so the share can't pass 100%.
+ * Outbound rows from before message sources were recorded (null) count as
+ * replies, as they did before.
  */
 export function countRepliedInbound(scoped: ReportMessage[], all: ReportMessage[]): number {
   const lastReplyAt = new Map<string, number>();
   for (const message of all) {
-    if (message.direction !== "OUTBOUND" || !message.conversationId) continue;
+    if (message.direction !== "OUTBOUND" || !message.conversationId || NOT_A_REPLY.has(message.source)) {
+      continue;
+    }
     const at = message.sentAt.getTime();
     if (at > (lastReplyAt.get(message.conversationId) ?? -Infinity)) {
       lastReplyAt.set(message.conversationId, at);

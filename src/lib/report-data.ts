@@ -135,6 +135,7 @@ export async function getReportWorkspaceData(
         direction: true,
         sentAt: true,
         conversationId: true,
+        source: true,
       },
     }),
     prisma.businessHours.findMany({

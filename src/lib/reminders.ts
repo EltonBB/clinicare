@@ -410,6 +410,7 @@ export async function syncAppointmentRemindersForBusiness(
             conversationId: clientConversation.id,
             clientId: appointment.client.id,
             direction: "OUTBOUND",
+            source: "REMINDER",
             body: result.body,
             providerMessageSid: result.providerMessageId,
             deliveryStatus: result.status,

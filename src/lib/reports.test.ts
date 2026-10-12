@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AppointmentStatus, MessageDirection } from "@prisma/client";
+import type { AppointmentStatus, MessageDirection, MessageSource } from "@prisma/client";
 
 import {
   buildKeyMetrics,
@@ -27,8 +27,13 @@ function appt(
   return { status, startAt, endAt, createdAt: startAt, clientId, staffMemberId };
 }
 
-function msg(hoursAgo: number, direction: MessageDirection, conversationId = "conv_1") {
-  return { direction, sentAt: new Date(now.getTime() - hoursAgo * 3_600_000), conversationId };
+function msg(
+  hoursAgo: number,
+  direction: MessageDirection,
+  conversationId = "conv_1",
+  source: MessageSource | null = direction === "OUTBOUND" ? "INBOX_REPLY" : null
+) {
+  return { direction, sentAt: new Date(now.getTime() - hoursAgo * 3_600_000), conversationId, source };
 }
 
 const view = buildReportsViewFromWorkspace({
@@ -551,6 +556,21 @@ describe("countRepliedInbound", () => {
   it("ignores a reply sent before the message or in another conversation", () => {
     const messages = [msg(6, "OUTBOUND"), msg(5, "INBOUND"), msg(1, "OUTBOUND", "conv_2")];
     expect(countRepliedInbound(messages, messages)).toBe(0);
+  });
+
+  it("doesn't treat a reminder, auto-acknowledgement or follow-up as an answer", () => {
+    const messages = [
+      msg(5, "INBOUND"),
+      msg(4, "OUTBOUND", "conv_1", "REMINDER"),
+      msg(3, "OUTBOUND", "conv_1", "REPLY_ACK"),
+      msg(2, "OUTBOUND", "conv_1", "FOLLOW_UP"),
+    ];
+    expect(countRepliedInbound(messages, messages)).toBe(0);
+  });
+
+  it("still counts an outbound message recorded before sources existed", () => {
+    const messages = [msg(5, "INBOUND"), msg(4, "OUTBOUND", "conv_1", null)];
+    expect(countRepliedInbound(messages, messages)).toBe(1);
   });
 
   it("finds a reply that landed after the reporting window", () => {
