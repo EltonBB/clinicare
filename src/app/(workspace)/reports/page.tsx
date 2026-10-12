@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { isProBusinessPlan } from "@/lib/billing";
 import { ProFeatureLock } from "@/components/billing/pro-feature-lock";
@@ -12,6 +13,8 @@ import { prisma } from "@/lib/prisma";
 import { getReportWorkspaceData } from "@/lib/report-data";
 import { addZonedDays, getZonedDayWindowFromParts } from "@/lib/time-zone";
 import { logger } from "@/lib/logger";
+
+export const metadata: Metadata = { title: "Reports | Vela" };
 
 export const maxDuration = 60;
 

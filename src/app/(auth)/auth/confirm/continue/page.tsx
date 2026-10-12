@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { confirmEmailLinkAction } from "@/app/(auth)/actions";
@@ -7,6 +8,8 @@ import {
   INVALID_CONFIRM_LINK_REDIRECT,
 } from "@/lib/app-url-policy";
 import { SubmitButton } from "@/components/auth/submit-button";
+
+export const metadata: Metadata = { title: "Confirm your email | Vela" };
 
 type ConfirmContinuePageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;

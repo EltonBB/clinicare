@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { CSSProperties } from "react";
@@ -10,6 +11,8 @@ import { hoursBetweenTimes, isOnboardingCompleted } from "@/lib/onboarding";
 import { prisma } from "@/lib/prisma";
 import { cn, firstDisplayName, getInitials } from "@/lib/utils";
 import { createClient } from "@/utils/supabase/server";
+
+export const metadata: Metadata = { title: "Setup complete | Vela" };
 
 const nextActions = [
   {

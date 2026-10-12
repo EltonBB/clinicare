@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Mail } from "lucide-react";
 
 import { EmailVerificationWatcher } from "@/components/auth/email-verification-watcher";
 import { ResendConfirmationForm } from "@/components/auth/resend-confirmation-form";
 import { createClient } from "@/utils/supabase/server";
+
+export const metadata: Metadata = { title: "Check your email | Vela" };
 
 type ConfirmEmailPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;

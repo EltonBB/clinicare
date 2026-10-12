@@ -131,6 +131,21 @@ describe("inbox actions refuse a non-string conversation id before touching the 
   });
 });
 
+describe("hydrateConversationAction", () => {
+  it("answers not-found for a conversation outside the workspace instead of throwing", async () => {
+    // Deleted in another tab, or another clinic's id: the scoped lookup finds
+    // nothing, which used to surface as a Prisma P2025 from findFirstOrThrow.
+    mocks.conversation.findFirst.mockResolvedValue(null);
+
+    const result = await hydrateConversationAction(CONVERSATION_ID);
+
+    expect(result).toEqual({ ok: false, error: "Conversation not found in this clinic workspace." });
+    expect(mocks.conversation.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: CONVERSATION_ID, businessId: "biz_1" } })
+    );
+  });
+});
+
 // Codex #140: opening a conversation marks it read once; a refusal over the
 // per-user action budget would leave the unread count to come back.
 describe("markConversationReadAction", () => {

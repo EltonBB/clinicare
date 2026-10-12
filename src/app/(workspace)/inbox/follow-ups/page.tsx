@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { isProBusinessPlan } from "@/lib/billing";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { buildFollowUpsViewFromRecords } from "@/lib/follow-ups";
 import { listPendingFollowUpDrafts } from "@/lib/follow-ups-data";
 import { WorkspaceHeader, WorkspacePage } from "@/components/workspace/workspace-layout";
 import { FollowUpsList } from "@/components/inbox/follow-ups-list";
+
+export const metadata: Metadata = { title: "Follow-ups | Vela" };
 
 export default async function FollowUpsPage() {
   const { business } = await requireCurrentWorkspace("/inbox/follow-ups", {

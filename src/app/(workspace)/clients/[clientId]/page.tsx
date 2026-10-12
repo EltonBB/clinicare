@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { ClientDetailsPage } from "@/components/clients/client-details-page";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { buildClientRecord } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
+
+export const metadata: Metadata = { title: "Client | Vela" };
 
 export default async function ClientDetailsRoute({
   params,

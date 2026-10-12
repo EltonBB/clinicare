@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { ResetPasswordForm } from "@/components/auth/reset-password-form";
 import { createClient } from "@/utils/supabase/server";
+
+export const metadata: Metadata = { title: "Choose a new password | Vela" };
 
 export default async function ResetPasswordPage() {
   const supabase = await createClient();
