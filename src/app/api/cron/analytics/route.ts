@@ -6,6 +6,7 @@ import { isProBusinessPlan } from "@/lib/billing";
 import { invalidateCacheVersioned } from "@/lib/cache";
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
+import { withCronMonitor } from "@/lib/cron-monitor";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 
@@ -31,6 +32,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized cron request." }, { status: 401 });
   }
 
+  return withCronMonitor("/api/cron/analytics", run);
+}
+
+async function run() {
   const businesses = await prisma.business.findMany({
     where: {
       planStatus: "ACTIVE",

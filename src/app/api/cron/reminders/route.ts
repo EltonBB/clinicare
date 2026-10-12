@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { withDeadline } from "@/lib/concurrency";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
+import { withCronMonitor } from "@/lib/cron-monitor";
 import { logger } from "@/lib/logger";
 import { handOffAbandonedReplyIntents } from "@/lib/messaging/inbound";
 import { createReminderRunProgress, syncAppointmentRemindersJob } from "@/lib/reminders";
@@ -42,6 +43,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized cron request." }, { status: 401 });
   }
 
+  return withCronMonitor("/api/cron/reminders", run);
+}
+
+async function run() {
   // Vercel Cron does not serialize invocations — a slow run can still be in
   // flight when the next hourly trigger fires. Without this, an overlapping
   // run could read the same due appointment before either has written its
