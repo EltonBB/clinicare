@@ -6,6 +6,7 @@ import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { withCronMonitor } from "@/lib/cron-monitor";
 import { logger } from "@/lib/logger";
 import { handOffAbandonedReplyIntents } from "@/lib/messaging/inbound";
+import { isWhatsAppWorkerDown } from "@/lib/messaging/worker-heartbeat";
 import { createReminderRunProgress, syncAppointmentRemindersJob } from "@/lib/reminders";
 import { HARD_RESPONSE_DEADLINE_MS, REMINDER_RUN_BUDGET_MS } from "@/lib/reminder-timing";
 import { autoCloseStaleTimeEntries } from "@/lib/staff-clock";
@@ -20,6 +21,9 @@ export const maxDuration = 300;
 // matters: a 2-hour-before reminder only ever fires if the cron lands inside
 // that window.
 const LOCK_NAME = "reminders";
+
+// The worker lease check's own budget, on top of HARD_RESPONSE_DEADLINE_MS.
+const WORKER_CHECK_TIMEOUT_MS = 5_000;
 
 // HARD_RESPONSE_DEADLINE_MS itself now lives in lib/reminders.ts — comfortably
 // under the 300s platform cap, covering the reminders job AND the stale-entry
@@ -131,6 +135,31 @@ async function run() {
       }
     );
 
+    // Sentry can't watch the worker from outside (it refuses *.railway.app
+    // monitors), so this hourly run checks the worker's lease instead and
+    // fails its check-in when the lease has lapsed. Best-effort, like the
+    // sweeps above.
+    // Bounded on its own: after a run that hit the hard deadline the pool may
+    // still be busy with the abandoned work, and an unbounded read here could
+    // outlast maxDuration (the hard deadline plus this stay under it).
+    let workerDown = false;
+    try {
+      const check = await withDeadline(isWhatsAppWorkerDown(), WORKER_CHECK_TIMEOUT_MS, () => null);
+      if (check === null) {
+        logger.warn("Checking the WhatsApp worker's lease timed out.");
+      } else {
+        workerDown = check;
+      }
+    } catch (error) {
+      logger.error("Checking the WhatsApp worker's lease failed.", error);
+    }
+
+    if (workerDown) {
+      logger.error(
+        "The WhatsApp worker hasn't renewed its lease in over 5 minutes — messages can't be sent or received until it is running again."
+      );
+    }
+
     if (outcome.timedOut) {
       // Worded around "this invocation," not "the reminder run": the slow
       // part could be the reminders job OR the stale-entry sweep after it —
@@ -165,9 +194,11 @@ async function run() {
       {
         ok: true,
         ...outcome,
-        // Read by withCronMonitor: a hard-deadline hit or an abandoned
-        // business is a failed run for Sentry Crons, even though it returns 200.
-        degraded: outcome.timedOut || outcome.abandonedBusinesses > 0,
+        // Read by withCronMonitor: a hard-deadline hit, an abandoned business
+        // or a stopped WhatsApp worker is a failed run for Sentry Crons, even
+        // though it returns 200.
+        workerDown,
+        degraded: outcome.timedOut || outcome.abandonedBusinesses > 0 || workerDown,
         triggeredAt: new Date().toISOString(),
       },
       {
