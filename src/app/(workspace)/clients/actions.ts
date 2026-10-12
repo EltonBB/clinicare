@@ -173,6 +173,33 @@ const idField = recordIdSchema;
 const text = (max: number) => z.string().max(max);
 const optionalText = (max: number) => z.string().max(max).optional();
 
+// The profile form (new/edit client). Same bounds as the sub-records: a crafted
+// or pasted payload can't store a 50,000-character name (it would also reach
+// reminder messages) or crash the action with a non-string field.
+const saveClientSchema = z.object({
+  id: optionalText(64),
+  name: text(200),
+  email: text(254).refine((value) => !value.trim() || z.email().safeParse(value.trim()).success, {
+    message: "Enter a valid email address.",
+  }),
+  phone: text(40),
+  gender: optionalText(60),
+  dateOfBirth: optionalText(40),
+  address: optionalText(500),
+  patientType: optionalText(120),
+  clinicType: optionalText(120),
+  status: z.enum(["active", "at-risk", "inactive", "archived"]).catch("active"),
+  notes: text(5000),
+  medicalHistory: optionalText(10000),
+  allergies: optionalText(10000),
+  importantHealthNotes: optionalText(10000),
+  previousTreatments: optionalText(10000),
+  treatmentPlan: optionalText(10000),
+  preferredChannel: text(60),
+  assignedStaff: text(200),
+  tags: text(1000),
+});
+
 const HEALTH_TYPES = [
   "Allergy",
   "Medical alert",
@@ -709,6 +736,18 @@ export async function saveClientAction(
   if (existingClientId === null) {
     return { ok: false, error: "Client not found in this clinic workspace." };
   }
+
+  const parsedPayload = saveClientSchema.safeParse(payload);
+
+  if (!parsedPayload.success) {
+    const invalidEmail = parsedPayload.error.issues.some((issue) => issue.path[0] === "email");
+    return {
+      ok: false,
+      error: invalidEmail ? "Enter a valid email address." : "Check the client details and try again.",
+    };
+  }
+
+  payload = parsedPayload.data;
 
   payload = { ...payload, id: existingClientId };
 

@@ -924,3 +924,35 @@ describe("updateClientPaymentAction takes the financial lock before editing a pa
     expect(mocks.clientPayment.update).not.toHaveBeenCalled();
   });
 });
+
+// Final sweep: the profile form had no schema, so a crafted payload stored a
+// 50,000-character name and a non-string field crashed the action.
+describe("saveClientAction validates the profile before any write", () => {
+  const NEW_CLIENT: SaveClientPayload = {
+    name: "Arta Krasniqi",
+    email: "",
+    phone: "+38344111222",
+    status: "active",
+    notes: "",
+    preferredChannel: "",
+    assignedStaff: "",
+    tags: "",
+  };
+
+  it.each([
+    ["an oversized name", { name: "X".repeat(201) }],
+    ["a non-string name", { name: { a: 1 } as unknown as string }],
+    ["missing tags", { tags: undefined as unknown as string }],
+  ])("refuses %s", async (_label, override) => {
+    const result = await saveClientAction({ ...NEW_CLIENT, ...override });
+
+    expect(result).toEqual({ ok: false, error: "Check the client details and try again." });
+    expect(mocks.client.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("refuses an invalid email with its own message", async () => {
+    const result = await saveClientAction({ ...NEW_CLIENT, email: "not-an-email" });
+
+    expect(result).toEqual({ ok: false, error: "Enter a valid email address." });
+  });
+});

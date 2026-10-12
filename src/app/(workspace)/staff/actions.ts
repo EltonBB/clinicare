@@ -2,6 +2,7 @@
 
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { closeOpenTimeEntryIfPresent, openTimeEntryIfAbsent } from "@/lib/mobile/clock";
@@ -77,6 +78,29 @@ function parseDateTime(date: string, time: string) {
 }
 
 const STAFF_NOT_FOUND_ERROR = "Staff member not found in this workspace.";
+
+// The staff profile form. Bounded like the client form so a crafted payload
+// can't store an oversized field or crash the action with a non-string one.
+const saveStaffSchema = z.object({
+  id: z.string().max(64).optional(),
+  name: z.string().max(200),
+  role: z.string().max(120),
+  email: z.string().max(254),
+  phone: z.string().max(40),
+  profileNote: z.string().max(2000),
+  status: z.enum(staffStatuses).catch("ACTIVE"),
+  weeklySchedule: z
+    .array(
+      z.object({
+        date: z.string().max(10),
+        enabled: z.boolean(),
+        startTime: z.string().max(5),
+        endTime: z.string().max(5),
+      })
+    )
+    .max(14)
+    .optional(),
+});
 
 function getAuthedBusiness() {
   return getAuthedBusinessContext(
@@ -272,6 +296,14 @@ export async function saveStaffAction(payload: SaveStaffPayload): Promise<SaveSt
   if (existingStaffId === null) {
     return { ok: false, error: STAFF_NOT_FOUND_ERROR };
   }
+
+  const parsedPayload = saveStaffSchema.safeParse(payload);
+
+  if (!parsedPayload.success) {
+    return { ok: false, error: "Check the staff details and try again." };
+  }
+
+  payload = parsedPayload.data;
 
   payload = { ...payload, id: existingStaffId };
 
