@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -5,6 +6,8 @@ import { confirmPasswordRecoveryAction } from "@/app/(auth)/actions";
 import { RECOVERY_EXPIRED_REDIRECT } from "@/lib/app-url-policy";
 import { BrandMark } from "@/components/brand-mark";
 import { SubmitButton } from "@/components/auth/submit-button";
+
+export const metadata: Metadata = { title: "Reset your password | Vela" };
 
 type ConfirmRecoveryPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;

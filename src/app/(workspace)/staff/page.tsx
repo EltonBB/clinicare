@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { StaffWorkspace } from "@/components/staff/staff-workspace";
@@ -10,6 +11,8 @@ import {
   getStaffUnseenCheckInCounts,
 } from "@/lib/staff-data";
 import { getZonedMonthWindow } from "@/lib/time-zone";
+
+export const metadata: Metadata = { title: "Staff | Vela" };
 
 function staffShiftCutoff() {
   const now = new Date();

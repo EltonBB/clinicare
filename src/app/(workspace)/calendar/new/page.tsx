@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { format } from "date-fns";
 
 import { NewAppointmentForm } from "@/components/calendar/new-appointment-form";
@@ -5,6 +6,8 @@ import { CreatePageShell } from "@/components/workspace/create-page-shell";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
 import { isRealDateKey } from "@/lib/time-zone";
+
+export const metadata: Metadata = { title: "New appointment | Vela" };
 
 // A real calendar date: the shape alone lets 2026-02-31 through to be prefilled
 // (and then rolled over into March 3 when saved).

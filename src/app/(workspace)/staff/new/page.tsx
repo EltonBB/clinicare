@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { NewStaffForm } from "@/components/staff/new-staff-form";
 import { CreatePageShell } from "@/components/workspace/create-page-shell";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
+
+export const metadata: Metadata = { title: "New staff member | Vela" };
 
 export default async function NewStaffPage() {
   const { business } = await requireCurrentWorkspace("/staff/new", {

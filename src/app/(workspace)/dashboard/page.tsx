@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { after } from "next/server";
 
 import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
@@ -17,6 +18,8 @@ import {
   getZonedWeekday,
 } from "@/lib/time-zone";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
+
+export const metadata: Metadata = { title: "Dashboard | Vela" };
 
 export default async function DashboardPage() {
   const { business } = await requireCurrentWorkspace("/dashboard", {

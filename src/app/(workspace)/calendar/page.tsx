@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { CalendarWorkspace } from "@/components/calendar/calendar-workspace";
 import { prisma } from "@/lib/prisma";
 import { isProBusinessPlan } from "@/lib/billing";
@@ -9,6 +10,8 @@ import { formatZonedDateKey } from "@/lib/time-zone";
 import { listWaitingEntries } from "@/lib/waitlist-data";
 import { redirect } from "next/navigation";
 import { isValid, parseISO } from "date-fns";
+
+export const metadata: Metadata = { title: "Calendar | Vela" };
 
 // A real calendar date in `YYYY-MM-DD` form — the shape check alone lets through
 // impossible dates like 2026-02-31, which would crash the workspace.

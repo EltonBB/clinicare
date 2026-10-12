@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { OnboardingFlow } from "@/components/onboarding/onboarding-flow";
@@ -7,6 +8,8 @@ import {
   normalizeOnboardingState,
 } from "@/lib/onboarding";
 import { createClient } from "@/utils/supabase/server";
+
+export const metadata: Metadata = { title: "Set up your workspace | Vela" };
 
 export default async function OnboardingPage() {
   const supabase = await createClient();

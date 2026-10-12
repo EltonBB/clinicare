@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { BrandMark } from "@/components/brand-mark";
 import { LoginForm } from "@/components/auth/login-form";
 import { sanitizeOversizedAuthMetadataByEmail } from "@/lib/auth-metadata";
 import { getEmailVerificationReceiptEmail } from "@/lib/email-verification-receipts";
+
+export const metadata: Metadata = { title: "Log in | Vela" };
 
 type LoginPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;

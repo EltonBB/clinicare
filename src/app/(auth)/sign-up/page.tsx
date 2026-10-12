@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { BrandMark } from "@/components/brand-mark";
 import { SignUpForm } from "@/components/auth/sign-up-form";
+
+export const metadata: Metadata = { title: "Create your workspace | Vela" };
 
 export default function SignUpPage() {
   return (
