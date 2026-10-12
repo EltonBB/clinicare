@@ -7,6 +7,7 @@ import {
   formatZonedShortDate,
   formatZonedTime,
   formatZonedTime24,
+  getZonedDayWindow,
   getZonedMonthStart,
   getZonedWeekWindow,
 } from "@/lib/time-zone";
@@ -305,6 +306,16 @@ function clockState(args: {
  */
 export function completedAppointmentCutoff() {
   return getZonedMonthStart();
+}
+
+/**
+ * The appointments a staff record needs: this month up to the end of today
+ * (completion rate, recent work, today's list). Without the upper bound the
+ * newest-first `take` filled up with future bookings, so a provider booked
+ * weeks ahead showed no recent work and a partial "today" (QA 2026-10-12).
+ */
+export function staffRecordAppointmentWindow() {
+  return { gte: completedAppointmentCutoff(), lte: getZonedDayWindow().end };
 }
 
 /** Early check-in grace before a scheduled shift's start. */

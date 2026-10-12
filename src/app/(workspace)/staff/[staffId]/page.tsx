@@ -4,7 +4,7 @@ import { StaffDetailsPage } from "@/components/staff/staff-details-page";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { getAdminThread } from "@/lib/mobile/admin-inbox";
 import { getMobileAccessStatus } from "@/lib/mobile/admin";
-import { buildStaffRecord, completedAppointmentCutoff } from "@/lib/staff";
+import { buildStaffRecord, staffRecordAppointmentWindow } from "@/lib/staff";
 import { prisma } from "@/lib/prisma";
 
 function staffTimeEntryCutoff() {
@@ -69,9 +69,7 @@ export default async function StaffDetailsRoute({
       },
       appointments: {
         where: {
-          startAt: {
-            gte: completedAppointmentCutoff(),
-          },
+          startAt: staffRecordAppointmentWindow(),
         },
         include: {
           client: {
