@@ -10,7 +10,7 @@ import { SCENES } from "./clinic-day-scenes";
 type Moment = { time: string; tag: string; title: string; copy: string };
 
 const MOMENTS: Moment[] = [
-  { time: "08:00", tag: "Reminder", title: "Reminders go out.", copy: "Upcoming patients get a WhatsApp reminder with their name and time. Nothing clinical." },
+  { time: "08:00", tag: "Reminder", title: "Reminders go out.", copy: "Upcoming patients get a WhatsApp reminder with their name and time, and confirm with one reply. Nothing clinical." },
   { time: "09:30", tag: "Visit", title: "Maya's visit starts.", copy: "Her history, documents, and balance are already on her record." },
   { time: "11:00", tag: "Message", title: "A message lands.", copy: "Daniel asks to move his visit. It shows up next to his record, unread." },
   { time: "13:00", tag: "Calendar", title: "The schedule shifts.", copy: "His visit moves to Friday. The calendar and his record change together." },

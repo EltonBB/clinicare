@@ -31,10 +31,17 @@ function ReminderScene({ active, still }: SceneProps) {
   return (
     <Frame className="flex flex-col items-end gap-2">
       <m.div {...enter(active, still, 0.15)} className="max-w-[19rem] rounded-2xl rounded-br-md bg-primary px-4 py-3 text-sm leading-6 text-white shadow-[0_12px_30px_-14px_rgba(10,34,255,0.6)]">
-        Hi Maya, this is a reminder for your appointment at 09:30 on Thursday.
+        Hi Maya, this is a reminder for your appointment at 09:30 on Thursday. Reply 1 to confirm or 2 to cancel.
       </m.div>
-      <m.p {...enter(active, still, 0.55)} className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+      <m.p {...enter(active, still, 0.4)} className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
         08:00 <CheckCheck className="size-3.5 text-primary" /> Delivered
+      </m.p>
+      {/* Maya answers from the reminder itself; the visit confirms on its own. */}
+      <m.div {...enter(active, still, 0.75)} className="self-start rounded-2xl rounded-bl-md bg-white px-4 py-2 text-sm font-semibold text-[var(--brand-ink)] ring-1 ring-border/70">
+        1
+      </m.div>
+      <m.p {...enter(active, still, 1)} className="self-start text-xs font-medium text-primary">
+        08:04 · Visit confirmed
       </m.p>
     </Frame>
   );

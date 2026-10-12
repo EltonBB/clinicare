@@ -37,7 +37,9 @@ export function ProductHero() {
           <span aria-hidden className="block">
             <WordReveal>One workspace for</WordReveal>
           </span>
-          <span aria-hidden className="relative block h-[1.1em] overflow-hidden text-primary">
+          {/* The rolling word can't wrap, so on narrow phones the line scales with
+              the viewport ("patient records." is the longest) instead of clipping. */}
+          <span aria-hidden className="relative block h-[1.1em] overflow-hidden text-[min(1em,10vw)] text-primary">
             <AnimatePresence initial={false} mode="popLayout">
               <m.span
                 key={MODULES[index].word}

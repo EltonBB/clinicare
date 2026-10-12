@@ -12,7 +12,7 @@ import { MODULES, onSelectModule } from "../shared/modules";
 
 /**
  * Vertical module tabs beside a detail card. Auto-advances while in view and
- * not hovered; the active tab's progress bar is the timer (its animationend
+ * not hovered or focused; the active tab's progress bar is the timer (its animationend
  * advances), so pausing the bar pauses the cycle. Reduced motion: the bar
  * doesn't animate, so it never auto-advances. The hero rail can open a module
  * directly (`selectModule`).
@@ -23,7 +23,9 @@ export function ModuleShowcase() {
   const inView = useInView(ref, { margin: "0px 0px -25% 0px" });
   const [active, setActive] = useState(0);
   const [hovered, setHovered] = useState(false);
-  const paused = hovered || !inView;
+  const [focused, setFocused] = useState(false);
+  // Pointer or keyboard focus inside the explorer holds the current module.
+  const paused = hovered || focused || !inView;
   const mod = MODULES[active];
   const Visual = MODULE_VISUALS[active];
 
@@ -49,6 +51,10 @@ export function ModuleShowcase() {
             className="grid grid-cols-1 gap-6 lg:grid-cols-[0.85fr_1.15fr] lg:gap-10"
             onPointerEnter={() => setHovered(true)}
             onPointerLeave={() => setHovered(false)}
+            onFocus={() => setFocused(true)}
+            onBlur={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget)) setFocused(false);
+            }}
           >
             <div role="tablist" aria-orientation="vertical" aria-label="Product modules" className="border-b border-border/60" onKeyDown={onKeyDown}>
               {MODULES.map((item, i) => {

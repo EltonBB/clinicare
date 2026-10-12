@@ -69,12 +69,16 @@ export function SmoothScrollProvider({ children }: { children: ReactNode }) {
     };
   }, [reduced, coarse]);
 
-  // Intra-marketing navigation: reset to top + re-measure the new page.
+  // Intra-marketing navigation: re-measure the new page, then land at the top,
+  // or on the link's hash target (e.g. /product#modules) when it has one.
   useEffect(() => {
     const lenis = lenisRef.current;
     const raf = requestAnimationFrame(() => {
-      lenis?.scrollTo(0, { immediate: true });
       lenis?.resize();
+      const hash = window.location.hash.slice(1);
+      const target = hash ? document.getElementById(decodeURIComponent(hash)) : null;
+      // Targets carry their own scroll-margin for the 64px header, which Lenis honors.
+      lenis?.scrollTo(target ?? 0, { immediate: true });
       ScrollTrigger.refresh();
     });
     return () => cancelAnimationFrame(raf);

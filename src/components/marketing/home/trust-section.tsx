@@ -26,7 +26,7 @@ function message(on: Set<Key>) {
   if (on.has("staff")) text += " with Dr. Collins";
   if (on.has("time")) text += " at 09:30";
   if (on.has("date")) text += " on Thursday";
-  return `${text}. Reply here if you need to reschedule.`;
+  return `${text}. Reply 1 to confirm or 2 to cancel.`;
 }
 
 /**
