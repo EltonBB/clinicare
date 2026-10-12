@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
+import { withCronMonitor } from "@/lib/cron-monitor";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { generateFollowUpDrafts } from "@/lib/follow-up-generation";
 import { logger } from "@/lib/logger";
@@ -23,6 +24,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized cron request." }, { status: 401 });
   }
 
+  return withCronMonitor("/api/cron/follow-ups", run);
+}
+
+async function run() {
   // Vercel Cron does not serialize invocations; without the lock two runs could
   // both read the same client as needing a draft.
   const lock = await acquireCronLock(LOCK_NAME, LOCK_TTL_SECONDS);
@@ -55,7 +60,12 @@ export async function GET(request: Request) {
     }
 
     // Counts only — never client names or draft text.
-    return NextResponse.json({ ok: true, ...result }, { status: 200, headers: { "Cache-Control": "no-store" } });
+    // degraded is read by withCronMonitor: errors or an abandoned business
+    // fail the Sentry check-in even though the run returns 200.
+    return NextResponse.json(
+      { ok: true, ...result, degraded: result.errors > 0 || holdLock },
+      { status: 200, headers: { "Cache-Control": "no-store" } }
+    );
   } catch (error) {
     logger.error("Follow-up cron failed.", error);
 

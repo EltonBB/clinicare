@@ -80,6 +80,7 @@ describe("follow-ups cron route", () => {
       draftsExpired: 2,
       errors: 0,
       abandonedBusinesses: 0,
+      degraded: false,
     });
     expect(acquireCronLock).toHaveBeenCalledWith("follow-ups", expect.any(Number));
     expect(releaseCronLock).toHaveBeenCalledWith("follow-ups", "test-token");
