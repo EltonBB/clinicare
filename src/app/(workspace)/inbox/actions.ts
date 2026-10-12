@@ -238,6 +238,12 @@ export async function sendInboxMessageAction(
     return { ok: false, error: CONVERSATION_NOT_FOUND_ERROR };
   }
 
+  // A crafted call can send a non-string or an oversized body; the composer
+  // never does. Same 4,000-character cap as the staff app's messages.
+  if (typeof body !== "string" || body.length > 4000) {
+    return { ok: false, error: "Messages can be up to 4,000 characters." };
+  }
+
   const cleanedBody = body.trim();
 
   if (!cleanedBody) {

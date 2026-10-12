@@ -713,3 +713,27 @@ describe("staff actions refuse a non-string id before touching the database", ()
     expect(mocks.staffMember.findFirst).not.toHaveBeenCalled();
   });
 });
+
+// Final sweep: the staff form had no schema, so oversized or non-string
+// fields reached the database or crashed the action.
+describe("saveStaffAction validates the profile before any write", () => {
+  const NEW_STAFF: SaveStaffPayload = {
+    name: "Dr. Reed",
+    role: "Specialist",
+    email: "",
+    phone: "",
+    profileNote: "",
+    status: "ACTIVE",
+  };
+
+  it.each([
+    ["an oversized name", { name: "X".repeat(201) }],
+    ["a non-string role", { role: 5 as unknown as string }],
+    ["an oversized schedule", { weeklySchedule: Array.from({ length: 15 }, () => ({ date: "2026-10-20", enabled: true, startTime: "09:00", endTime: "17:00" })) }],
+  ])("refuses %s", async (_label, override) => {
+    const result = await saveStaffAction({ ...NEW_STAFF, ...override });
+
+    expect(result).toEqual({ ok: false, error: "Check the staff details and try again." });
+    expect(mocks.staffMember.findFirst).not.toHaveBeenCalled();
+  });
+});

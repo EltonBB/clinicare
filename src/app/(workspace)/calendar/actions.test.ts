@@ -1772,3 +1772,19 @@ describe("appointment actions refuse a non-string id before touching the databas
     expect(mocks.appointment.findMany.mock.calls[0][0].where.id).toEqual({ in: ["a1"] });
   });
 });
+
+// Final sweep: the booking form had no schema, so an oversized note or a
+// non-string field reached the database or crashed the action.
+describe("saveAppointmentAction validates the booking before any read", () => {
+  it.each([
+    ["an oversized note", { notes: "X".repeat(5001) }],
+    ["a non-string service", { service: ["Checkup"] as unknown as string }],
+    ["an unknown status", { status: "done" as unknown as SaveAppointmentPayload["status"] }],
+  ])("refuses %s", async (_label, override) => {
+    const result = await saveAppointmentAction({ ...PAYLOAD, ...override });
+
+    expect(result).toEqual({ ok: false, error: "Check the appointment details and try again." });
+    expect(mocks.getAuthedBusiness).not.toHaveBeenCalled();
+    expect(mocks.appointment.findFirst).not.toHaveBeenCalled();
+  });
+});
