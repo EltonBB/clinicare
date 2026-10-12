@@ -6,6 +6,7 @@ import { useActionState } from "react";
 import { loginAction, type AuthActionState } from "@/app/(auth)/actions";
 import { SubmitButton } from "@/components/auth/submit-button";
 import { authFieldClassName } from "@/components/auth/field-styles";
+import { PasswordInput } from "@/components/auth/password-input";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -59,10 +60,9 @@ export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
             Forgot?
           </Link>
         </div>
-        <Input
+        <PasswordInput
           id="password"
           name="password"
-          type="password"
           autoComplete="current-password"
           placeholder="Enter your password"
           aria-invalid={Boolean(state.fieldErrors?.password)}

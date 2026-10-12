@@ -1,166 +1,114 @@
-import Link from "next/link";
-import { CheckCircle2, ChevronRight } from "lucide-react";
-
 import { MarketingShell } from "../shell/marketing-shell";
-import { InnerHero, Highlight } from "../shared/inner-hero";
-import { CtaBand } from "../shared/cta-band";
-import { Reveal, RevealGroup, RevealItem } from "../motion/reveal";
+import { PrimaryCta, SecondaryCta } from "../shared/cta-links";
+import { SectionHeader } from "../shared/section-header";
+import { Reveal } from "../motion/reveal";
+import { Highlight, WordReveal } from "../motion/word-reveal";
+import { ScrollStatement } from "./about-motion";
+import { LoopSteps } from "./loop-steps";
+import { ToolsConverge } from "./tools-converge";
 
-const context = [
-  {
-    title: "Why Vela exists",
-    copy: "Appointment-based clinics often grow by adding disconnected tools. Vela brings the daily work back into one calm place: schedule, records, communication, payments, and reporting.",
-  },
-  {
-    title: "What stays simple",
-    copy: "Clinic users should see product language, not provider setup. Vela keeps technical services behind clear, customer-safe states and support-ready flows.",
-  },
-  {
-    title: "How it grows",
-    copy: "Clinics can begin with appointments, patients, and staff, then expand into messaging, document workflows, payments, advanced reports, and operational recommendations.",
-  },
-];
+const STATEMENT =
+  "Clinics grow by adding tools: a calendar here, a spreadsheet there, a phone full of messages. Vela brings the day back into one calm place. Staff see plain product language, never provider setup, and the workspace grows with the clinic, from appointments and staff to messaging, payments, and reports.";
 
-const model = [
-  ["Configure", "Set clinic identity, hours, staff, and workspace preferences."],
-  ["Operate", "Run appointments, patient records, messages, documents, and payments."],
-  ["Understand", "Read performance trends and AI-assisted operational insights."],
-  ["Improve", "Adjust availability, follow-up, and reporting with clearer context."],
-];
-
-const stats = [
-  ["1", "workspace"],
-  ["6", "core modules"],
-  ["3", "report windows"],
-];
-
-const principles = [
+const principles: { title: string; copy: string; row: string; status: string }[] = [
   {
-    title: "Built around the clinic day",
-    copy: "The product starts from the work clinics repeat every day: bookings, arrivals, follow-ups, staff coverage, payments, documents, and easy-to-find records.",
+    title: "Plain language",
+    copy: "Clinic staff see product words, never provider setup or raw system errors.",
+    row: "Provider details on screen",
+    status: "Hidden",
   },
   {
-    title: "Operational clarity, not medical claims",
-    copy: "Recommendations stay focused on clinic operations: demand patterns, completion rates, message workload, staff availability, and reporting habits.",
+    title: "Minimum necessary",
+    copy: "Patient reminders carry a name and an appointment time. Nothing clinical.",
+    row: "Clinical detail in reminders",
+    status: "Never",
   },
   {
-    title: "Simple surfaces over provider setup",
-    copy: "Messaging, storage, reports, and access should feel like one product. Technical provider details stay behind support-ready states.",
+    title: "One record",
+    copy: "Every module reads from the same patient record instead of keeping its own copy.",
+    row: "Copying between tools",
+    status: "Not needed",
   },
-  {
-    title: "Designed to grow carefully",
-    copy: "Clinics can begin with the essentials and add deeper reporting, messaging, automation, and insight as their team and process mature.",
-  },
-];
-
-const legal = [
-  ["Terms & Conditions", "/terms-and-conditions"],
-  ["Privacy Policy", "/privacy"],
-  ["Refund Policy", "/refund"],
 ];
 
 export function AboutPage() {
   return (
-    <MarketingShell overlay>
-      <InnerHero
-        eyebrow="About Vela"
-        title={
-          <>
-            Calm operational intelligence for <Highlight>clinics</Highlight>.
-          </>
-        }
-        copy="Vela is built around one belief: clinics should understand the day, care for patients, and improve performance without wrestling with disconnected tools."
-        primaryHref="/sign-up"
-        primaryLabel="Start free"
-        secondaryHref="/contact"
-        secondaryLabel="Contact us"
-      />
-
-      {/* context + stats */}
-      <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
-        <RevealGroup className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-          {context.map((c) => (
-            <RevealItem key={c.title} className="rounded-(--radius-hero) border border-border/80 bg-white p-6 shadow-[0_18px_54px_rgba(20,21,47,0.05)]">
-              <h2 className="text-xl font-semibold text-[var(--brand-ink)]">{c.title}</h2>
-              <p className="mt-4 text-sm leading-7 text-muted-foreground">{c.copy}</p>
-            </RevealItem>
-          ))}
-        </RevealGroup>
-        <Reveal className="mt-6 grid grid-cols-1 gap-3 rounded-(--radius-hero) border border-border/80 bg-[var(--brand-wash)]/40 p-4 sm:grid-cols-3">
-          {stats.map(([value, label]) => (
-            <div key={label} className="rounded-(--radius-field) bg-white p-5 text-center shadow-[0_12px_30px_rgba(20,21,47,0.04)]">
-              <p className="text-4xl font-semibold text-primary">{value}</p>
-              <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-            </div>
-          ))}
-        </Reveal>
+    <MarketingShell>
+      {/* manifesto hero: the one centered opening on the site, no actions until the end */}
+      <section className="pb-16 pt-24 sm:pb-20 sm:pt-32">
+        <div className="mx-auto max-w-6xl px-4 text-center sm:px-6 lg:px-8">
+          <p className="section-reveal text-sm font-semibold text-muted-foreground">About Vela</p>
+          <h1 className="display-1 mx-auto mt-6 max-w-5xl text-balance text-[var(--brand-ink)]">
+            <WordReveal>
+              Calm operational intelligence for <Highlight>clinics.</Highlight>
+            </WordReveal>
+          </h1>
+          <div className="hero-follow">
+            <p className="mx-auto mt-8 max-w-lg text-lg leading-8 text-muted-foreground">
+              One belief: clinics should run without wrestling disconnected tools.
+            </p>
+          </div>
+        </div>
       </section>
 
-      {/* operating model */}
-      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
-        <Reveal className="mx-auto mb-10 max-w-2xl text-center">
-          <p className="eyebrow text-primary">The operating model</p>
-          <h2 className="mt-3 display-2 text-[var(--brand-ink)]">A workspace that gives the clinic its focus back.</h2>
-        </Reveal>
-        <RevealGroup className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {model.map(([title, copy], i) => (
-            <RevealItem key={title} className="relative rounded-(--radius-panel) border border-border/80 bg-white p-6 shadow-[0_16px_44px_rgba(20,21,47,0.045)]">
-              <span className="flex size-9 items-center justify-center rounded-(--radius-tile) vela-gradient text-sm font-bold text-white">{i + 1}</span>
-              <h3 className="mt-4 text-base font-bold text-[var(--brand-ink)]">{title}</h3>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">{copy}</p>
-              {i < model.length - 1 ? (
-                <ChevronRight aria-hidden className="absolute -right-2.5 top-1/2 hidden size-5 -translate-y-1/2 text-border xl:block" />
-              ) : null}
-            </RevealItem>
-          ))}
-        </RevealGroup>
+      <section className="border-t border-border/60 py-20 sm:py-24">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <ToolsConverge />
+        </div>
       </section>
 
-      {/* principles — dark band */}
-      <section className="vela-night relative overflow-hidden text-white">
-        <div aria-hidden className="vela-grid-texture pointer-events-none absolute inset-0 opacity-50" />
-        <Reveal className="relative mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
-          <div className="grid grid-cols-1 gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
-            <div>
-              <p className="eyebrow text-white/55">How Vela thinks</p>
-              <h2 className="mt-4 display-2">Calm software for busy appointment teams.</h2>
-              <p className="mt-5 max-w-md text-base leading-8 text-white/65">
-                Vela is shaped for owners, managers, providers, and front-desk teams who need a shared source of truth
-                without turning the clinic into a technical project.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {principles.map((p) => (
-                <article key={p.title} className="rounded-(--radius-field) border border-white/12 bg-white/[0.05] p-5 backdrop-blur">
-                  <span className="flex size-9 items-center justify-center rounded-(--radius-tile) bg-white/10 text-[#9ec3ff]">
-                    <CheckCircle2 className="size-5" />
-                  </span>
-                  <h3 className="mt-4 text-base font-bold text-white">{p.title}</h3>
-                  <p className="mt-2 text-sm leading-6 text-white/60">{p.copy}</p>
-                </article>
-              ))}
+      <section className="border-t border-border/60 py-20 sm:py-24">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <ScrollStatement text={STATEMENT} />
+        </div>
+      </section>
+
+      <section className="border-t border-border/60 py-20 sm:py-24">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <SectionHeader className="mb-10" lead="How a clinic runs on Vela." rest="Four steps, on repeat." />
+          <Reveal>
+            <LoopSteps />
+          </Reveal>
+        </div>
+      </section>
+
+      <section className="border-t border-border/60 py-20 sm:py-24">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <SectionHeader className="mb-10" lead="What stays true." rest="However the clinic grows." />
+          <Reveal className="grid grid-cols-1 overflow-hidden rounded-(--radius-mkt-card) border border-border/70 divide-y divide-border/60 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+            {principles.map((p) => (
+              <div key={p.title} className="flex flex-col">
+                <div className="p-8">
+                  <p className="text-xl font-semibold text-[var(--brand-ink)]">{p.title}</p>
+                  <p className="mt-3 text-sm leading-6 text-muted-foreground">{p.copy}</p>
+                </div>
+                <div className="mt-auto flex items-center justify-between gap-4 border-t border-border/60 bg-[var(--brand-wash)]/40 px-8 py-4 text-sm">
+                  <span className="text-muted-foreground">{p.row}</span>
+                  <span className="shrink-0 font-semibold text-primary">{p.status}</span>
+                </div>
+              </div>
+            ))}
+          </Reveal>
+        </div>
+      </section>
+
+      {/* closer: answers the manifesto, with the ask beside it */}
+      <section className="border-t border-border/60 py-20 sm:py-24">
+        <Reveal className="mx-auto grid max-w-7xl grid-cols-1 gap-10 px-4 sm:px-6 lg:grid-cols-[1.4fr_1fr] lg:items-end lg:gap-16 lg:px-8">
+          <h2 className="display-1 text-balance text-[var(--brand-ink)]">
+            Run the day. <span className="text-muted-foreground">Don’t chase it.</span>
+          </h2>
+          <div>
+            <p className="max-w-sm text-lg leading-8 text-muted-foreground">
+              Start with your calendar and patients. Add staff, messages, and reports when you are ready.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <PrimaryCta href="/sign-up">Start free</PrimaryCta>
+              <SecondaryCta href="/contact">Contact us</SecondaryCta>
             </div>
           </div>
         </Reveal>
       </section>
-
-      {/* legal */}
-      <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-        <Reveal className="grid grid-cols-1 gap-4 rounded-(--radius-hero) border border-border/80 bg-white p-5 shadow-[0_24px_80px_rgba(20,21,47,0.06)] sm:grid-cols-3">
-          {legal.map(([label, href]) => (
-            <Link
-              key={href}
-              href={href}
-              className="group flex items-center justify-between rounded-(--radius-field) border border-border/80 p-4 text-sm font-bold text-foreground transition-[border-color,color] duration-(--duration-base) ease-out-quint hover:border-primary/40 hover:text-primary"
-            >
-              {label}
-              <ChevronRight className="size-4 transition-transform duration-(--duration-base) group-hover:translate-x-1" />
-            </Link>
-          ))}
-        </Reveal>
-      </section>
-
-      <CtaBand />
     </MarketingShell>
   );
 }

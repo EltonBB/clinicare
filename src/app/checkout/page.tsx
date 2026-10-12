@@ -1,17 +1,7 @@
+import Image from "next/image";
 import Link from "next/link";
 import type { Metadata } from "next";
-import {
-  ArrowLeft,
-  ArrowRight,
-  BadgeCheck,
-  CalendarDays,
-  CheckCircle2,
-  CreditCard,
-  LockKeyhole,
-  MessageCircle,
-  ShieldCheck,
-  Sparkles,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, LockKeyhole } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
 import { getCurrentUser } from "@/lib/auth";
@@ -37,6 +27,8 @@ type CheckoutPageProps = {
   }>;
 };
 
+const STEPS = ["Account", "Workspace", "Activation"];
+
 export default async function CheckoutPage({ searchParams }: CheckoutPageProps) {
   const params = await searchParams;
   const selectedPlan = getPublicPlan(params?.plan);
@@ -50,209 +42,180 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
     isAuthenticated: Boolean(user),
   });
 
+  const status = planState.statusLabel.charAt(0).toUpperCase() + planState.statusLabel.slice(1);
+  // Where this visitor stands on the path to an active plan.
+  const stage = !user ? 1 : !business ? 2 : planState.intent === "current_plan" ? 4 : 3;
+
   return (
-    <main className="app-shell-bg min-h-screen text-foreground">
-      <header className="border-b border-border/70 bg-white/86 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+    <main className="grid min-h-dvh bg-white text-foreground lg:grid-cols-[minmax(0,1fr)_minmax(0,36rem)]">
+      <div className="flex flex-col px-5 py-6 sm:px-10 sm:py-8 lg:min-h-dvh lg:px-14">
+        <header className="flex items-center justify-between">
           <BrandMark href="/" includeSubtitle={false} />
           <Link
             href="/pricing"
-            className="inline-flex h-10 items-center gap-2 rounded-[0.85rem] border border-border/80 bg-white px-4 text-sm font-bold text-foreground shadow-[0_12px_28px_rgba(20,21,47,0.04)] transition hover:border-primary/40 hover:text-primary"
+            className="group/back inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors duration-(--duration-base) hover:text-[var(--brand-ink)]"
           >
-            <ArrowLeft className="size-4" />
-            Pricing
+            <ArrowLeft className="size-4 transition-transform duration-(--duration-base) ease-out-quint group-hover/back:-translate-x-0.5" />
+            Back to pricing
           </Link>
-        </div>
-      </header>
+        </header>
 
-      <section className="px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
-        <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[minmax(0,0.96fr)_minmax(360px,0.64fr)] lg:items-start">
-          <div className="space-y-6">
-            <div className="surface-card p-6 sm:p-8">
-              <div className="flex flex-wrap items-center gap-3 text-sm font-bold text-primary">
-                <span className="vela-icon-tile">
-                  <CreditCard className="size-5" />
+        <div className="flex flex-1 items-center py-12">
+          <div className="w-full max-w-xl motion-safe:animate-[vela-fade-up_0.5s_var(--ease-out-expo)_both]">
+            <p className="text-sm font-semibold text-primary">{planState.badge}</p>
+            <h1 className="mt-3 text-balance text-[2.75rem] font-semibold leading-[1.02] tracking-[-0.035em] text-[var(--brand-ink)]">
+              {planState.headline}
+            </h1>
+
+            <div className="mt-10 flex items-baseline justify-between">
+              <p className="text-sm font-medium text-[var(--brand-ink)]">Choose a plan</p>
+              <Link
+                href="/pricing"
+                className="text-sm text-muted-foreground underline-offset-4 transition-colors hover:text-[var(--brand-ink)] hover:underline"
+              >
+                Compare plans
+              </Link>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {publicPlans.map((plan) => (
+                <PlanOption key={plan.key} plan={plan} selected={plan.key === selectedPlan.key} planState={planState} />
+              ))}
+            </div>
+
+            <ol className="mt-10 grid grid-cols-3 gap-2" aria-label="Activation steps">
+              {STEPS.map((label, i) => {
+                const n = i + 1;
+                const done = n < stage;
+                const now = n === stage;
+                return (
+                  <li key={label} className="min-w-0" aria-current={now ? "step" : undefined}>
+                    <span
+                      className={cn(
+                        "block h-1 rounded-full",
+                        done ? "bg-primary" : now ? "bg-gradient-to-r from-primary to-[#64B6FF]" : "bg-border",
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        "mt-2.5 flex items-center gap-1.5 text-xs font-medium",
+                        done || now ? "text-[var(--brand-ink)]" : "text-muted-foreground",
+                      )}
+                    >
+                      {done ? <Check className="size-3.5 shrink-0 text-primary" /> : <span className="tabular-nums text-muted-foreground">{n}</span>}
+                      <span className="truncate">{label}</span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        </div>
+
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <LockKeyhole className="size-3.5 shrink-0" />
+          Card payment opens soon. Until then, we switch your plan on with you.
+          <Link href="/contact" className="font-medium text-[var(--brand-ink)] underline-offset-4 hover:underline">
+            Talk to us
+          </Link>
+        </p>
+      </div>
+
+      {/* The summary prints as a receipt on the ink side. */}
+      <aside className="relative flex items-center justify-center overflow-hidden bg-[var(--brand-ink)] px-5 py-16 sm:px-10 lg:sticky lg:top-0 lg:h-dvh">
+        <Image
+          src="/brand/vela-icon.svg"
+          alt=""
+          width={640}
+          height={640}
+          aria-hidden
+          className="pointer-events-none absolute -bottom-40 -right-48 size-[40rem] max-w-none opacity-[0.08]"
+        />
+        <span aria-hidden className="absolute left-1/2 top-1/3 size-80 -translate-x-1/2 rounded-full bg-primary/30 blur-[110px]" />
+
+        <div className="relative w-full max-w-sm drop-shadow-[0_40px_60px_rgba(0,0,0,0.45)]">
+          <div key={selectedPlan.key} className="motion-safe:animate-[vela-print_0.8s_var(--ease-out-expo)_both]">
+            <div className="rounded-t-[1.25rem] bg-white px-7 pb-5 pt-7">
+              <div className="flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--brand-ink)]">
+                  <Image src="/brand/vela-icon.svg" alt="" width={20} height={20} aria-hidden />
+                  Vela
                 </span>
-                {planState.badge}
+                <span
+                  className={cn(
+                    "rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
+                    planState.intent === "current_plan" ? "bg-primary text-white" : "bg-[var(--brand-wash)] text-primary",
+                  )}
+                >
+                  {planState.intent === "current_plan" ? "Active now" : planState.summaryTitle}
+                </span>
               </div>
-              <h1 className="mt-6 max-w-2xl text-4xl font-semibold leading-[0.98] text-[var(--brand-ink)] sm:text-6xl">
-                {planState.headline}
-              </h1>
-              <p className="mt-5 max-w-2xl text-base leading-8 text-muted-foreground">
-                {planState.description}
+
+              <p className="mt-7 text-sm text-muted-foreground">Vela {selectedPlan.name}</p>
+              <p className="mt-1 flex items-baseline gap-1.5">
+                <span className="text-[3.25rem] font-semibold leading-none tracking-[-0.04em] text-[var(--brand-ink)] tabular-nums">
+                  {selectedPlan.price}
+                </span>
+                <span className="text-sm text-muted-foreground">{selectedPlan.cadence}</span>
               </p>
 
-              <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                <TrustCard icon={ShieldCheck} title="Plan review" copy="Confirm the plan that fits your clinic." />
-                <TrustCard icon={CalendarDays} title="Monthly plan" copy="Start with predictable monthly pricing." />
-                <TrustCard icon={MessageCircle} title="Setup support" copy="We can help activate the right workspace plan." />
-              </div>
-            </div>
-
-            <section className="surface-card p-5 sm:p-6">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-semibold text-[var(--brand-ink)]">Choose a plan</h2>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    Switching plans updates the checkout summary before payment.
-                  </p>
-                </div>
-                <Link
-                  href="/pricing"
-                  className="text-sm font-bold text-primary transition hover:text-primary/80"
-                >
-                  Compare features
-                </Link>
-              </div>
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                {publicPlans.map((plan) => (
-                  <PlanOption
-                    key={plan.key}
-                    plan={plan}
-                    selected={plan.key === selectedPlan.key}
-                    planState={planState}
-                  />
+              <Perforation />
+              <ul className="grid gap-2.5 text-sm">
+                {selectedPlan.features.map((feature, i) => (
+                  <li
+                    key={feature}
+                    className="flex items-start gap-2.5 text-[var(--brand-ink)] motion-safe:animate-[vela-fade-up_0.5s_var(--ease-out-expo)_both]"
+                    style={{ animationDelay: `${280 + i * 50}ms` }}
+                  >
+                    <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+                    {feature}
+                  </li>
                 ))}
-              </div>
-            </section>
-          </div>
+              </ul>
 
-          <aside className="lg:sticky lg:top-6">
-            <div className="overflow-hidden rounded-[1.35rem] border border-border/80 bg-white shadow-[0_28px_90px_rgba(20,21,47,0.09)]">
-              <div className="vela-gradient p-6 text-white">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/70">
-                      {planState.summaryTitle}
-                    </p>
-                    <h2 className="mt-3 text-3xl font-semibold">{selectedPlan.name}</h2>
-                  </div>
-                  {planState.intent === "current_plan" ? (
-                    <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-bold text-white">
-                      Active now
-                    </span>
-                  ) : selectedPlan.highlighted ? (
-                    <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-bold text-white">
-                      Most popular
-                    </span>
-                  ) : null}
-                </div>
-                <p className="mt-4 text-sm leading-6 text-white/78">{selectedPlan.description}</p>
-              </div>
+              <Perforation />
+              <dl className="grid gap-2 text-sm">
+                <SummaryLine label="Workspace" value={planState.workspaceName ?? "Not connected yet"} />
+                <SummaryLine label="Status" value={status} />
+              </dl>
 
-              <div className="p-6">
-                <div className="flex items-end justify-between border-b border-border/70 pb-5">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                      Due today
-                    </p>
-                    <div className="mt-2 flex items-end gap-2">
-                      <span className="text-5xl font-semibold text-[var(--brand-ink)]">{selectedPlan.price}</span>
-                      <span className="pb-2 text-sm font-bold text-muted-foreground">/{selectedPlan.cadence}</span>
-                    </div>
-                  </div>
-                  <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
-                    Monthly
-                  </span>
-                </div>
-
-                <div className="mt-5 rounded-[1rem] border border-border/80 bg-[var(--brand-wash)]/55 p-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                    Account status
-                  </p>
-                  <div className="mt-3 grid gap-3 text-sm">
-                    <SummaryLine
-                      label="Workspace"
-                      value={planState.workspaceName ?? "No workspace connected"}
-                    />
-                    <SummaryLine
-                      label="Current plan"
-                      value={
-                        planState.currentPlanName
-                          ? `Vela ${planState.currentPlanName}`
-                          : "No current plan"
-                      }
-                    />
-                    <SummaryLine label="Plan status" value={planState.statusLabel} />
-                    <SummaryLine label="Checkout type" value={planState.badge} />
-                  </div>
-                </div>
-
-                <div className="mt-5 grid gap-3">
-                  {selectedPlan.features.map((feature) => (
-                    <div key={feature} className="flex items-start gap-3 text-sm font-semibold text-foreground">
-                      <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
-                      <span>{feature}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  disabled
-                  className="mt-7 inline-flex h-12 w-full cursor-not-allowed items-center justify-center gap-2 rounded-[0.85rem] bg-primary/65 px-5 text-sm font-bold text-white shadow-[0_18px_36px_rgba(10,34,255,0.18)]"
-                  title="Online card checkout is being prepared."
-                >
-                  {planState.primaryActionLabel}
-                  <LockKeyhole className="size-4" />
-                </button>
-                <p className="mt-3 text-center text-xs font-semibold text-muted-foreground">
-                  Online card checkout is being prepared. Plan activation is currently handled during setup.
-                </p>
-
-                <div className="mt-6 rounded-[1rem] border border-border/80 bg-white p-4 shadow-[0_12px_30px_rgba(20,21,47,0.035)]">
-                  <div className="flex gap-3">
-                    <BadgeCheck className="mt-0.5 size-5 shrink-0 text-primary" />
-                    <div>
-                      <p className="text-sm font-bold text-[var(--brand-ink)]">What happens next</p>
-                      <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                        Contact us and we will help activate this plan for your workspace. The selected plan and account context are already reflected in this review.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <Link
-                  href={planState.secondaryActionHref}
-                  className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-[0.85rem] border border-border/80 bg-white px-5 text-sm font-bold text-foreground transition hover:border-primary/40 hover:text-primary"
-                >
-                  {planState.secondaryActionLabel}
-                  <ArrowRight className="size-4" />
-                </Link>
-              </div>
+              <Link
+                href={planState.secondaryActionHref}
+                className="group/next mt-7 inline-flex h-12 w-full items-center justify-center gap-2 rounded-(--radius-mkt-field) bg-[var(--brand-ink)] px-5 text-sm font-semibold text-white transition-[transform,background-color] duration-(--duration-base) ease-out-quint hover:bg-[var(--brand-ink)]/90 active:scale-[0.98]"
+              >
+                {planState.secondaryActionLabel}
+                <ArrowRight className="size-4 transition-transform duration-(--duration-base) ease-out-quint group-hover/next:translate-x-0.5" />
+              </Link>
+              <button
+                type="button"
+                disabled
+                title="Online card checkout is being prepared."
+                className="mt-1 inline-flex h-10 w-full cursor-not-allowed items-center justify-center gap-2 text-xs font-medium text-muted-foreground/70"
+              >
+                <LockKeyhole className="size-3.5" />
+                {planState.primaryActionLabel}
+              </button>
             </div>
-          </aside>
+            {/* Torn edge */}
+            <div
+              aria-hidden
+              className="h-3 bg-[linear-gradient(135deg,#fff_50%,transparent_50%),linear-gradient(225deg,#fff_50%,transparent_50%)] bg-[length:12px_12px] bg-repeat-x"
+            />
+          </div>
         </div>
-      </section>
+      </aside>
     </main>
   );
+}
+
+function Perforation() {
+  return <div aria-hidden className="-mx-7 my-6 border-t-2 border-dashed border-border/80" />;
 }
 
 function SummaryLine({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-4">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-right font-bold text-[var(--brand-ink)]">{value}</span>
-    </div>
-  );
-}
-
-function TrustCard({
-  icon: Icon,
-  title,
-  copy,
-}: {
-  icon: typeof ShieldCheck;
-  title: string;
-  copy: string;
-}) {
-  return (
-    <div className="rounded-[1rem] border border-border/80 bg-[var(--brand-wash)]/55 p-4">
-      <span className="vela-icon-tile">
-        <Icon className="size-5" />
-      </span>
-      <h3 className="mt-4 text-sm font-bold text-[var(--brand-ink)]">{title}</h3>
-      <p className="mt-1 text-sm leading-6 text-muted-foreground">{copy}</p>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="truncate text-right font-medium text-[var(--brand-ink)]">{value}</dd>
     </div>
   );
 }
@@ -271,35 +234,34 @@ function PlanOption({
   return (
     <Link
       href={`/checkout?plan=${plan.key}`}
+      scroll={false}
+      aria-current={selected ? "true" : undefined}
       className={cn(
-        "group rounded-[1.1rem] border bg-white p-5 transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-[0_20px_54px_rgba(10,34,255,0.12)]",
+        "group/plan relative flex flex-col rounded-(--radius-mkt-card) p-5 transition-[box-shadow,background-color,transform] duration-(--duration-base) ease-out-quint active:scale-[0.98] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45",
         selected
-          ? "border-primary/70 shadow-[0_18px_54px_rgba(10,34,255,0.14)]"
-          : "border-border/80 shadow-[0_14px_40px_rgba(20,21,47,0.045)]"
+          ? "bg-[var(--brand-wash)]/60 shadow-[inset_0_0_0_2px_var(--brand-ink)]"
+          : "shadow-[inset_0_0_0_1px_var(--border)] hover:shadow-[inset_0_0_0_1px_rgba(20,21,47,0.35)]",
       )}
-      aria-current={selected ? "page" : undefined}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-lg font-semibold text-[var(--brand-ink)]">{plan.name}</h3>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">{plan.audience}</p>
-        </div>
+      <span className="flex items-center justify-between">
+        <span className="text-base font-semibold text-[var(--brand-ink)]">{plan.name}</span>
         <span
+          aria-hidden
           className={cn(
-            "flex size-8 shrink-0 items-center justify-center rounded-full border",
-            selected ? "border-primary/30 bg-white text-primary" : "border-border text-transparent"
+            "flex size-5 items-center justify-center rounded-full transition-colors duration-(--duration-base)",
+            selected ? "bg-[var(--brand-ink)] text-white" : "border border-border group-hover/plan:border-[var(--brand-ink)]/40",
           )}
         >
-          <CheckCircle2 className="size-4" />
+          {selected ? <Check className="size-3" strokeWidth={3} /> : null}
         </span>
-      </div>
-      <div className="mt-5 flex items-end gap-2">
-        <span className="text-3xl font-semibold text-[var(--brand-ink)]">{plan.price}</span>
-        <span className="pb-1 text-sm font-bold text-muted-foreground">/{plan.cadence}</span>
-      </div>
-      <span className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-primary">
+      </span>
+      <span className="mt-4 flex items-baseline gap-1.5">
+        <span className="text-[1.75rem] font-semibold leading-none tracking-[-0.03em] text-[var(--brand-ink)] tabular-nums">{plan.price}</span>
+        <span className="text-xs text-muted-foreground">{plan.cadence}</span>
+      </span>
+      <span className="mt-3 text-[13px] leading-5 text-muted-foreground">{plan.description}</span>
+      <span className={cn("mt-4 text-xs font-semibold", selected ? "text-primary" : "text-muted-foreground")}>
         {selected ? "Selected" : optionLabel}
-        <Sparkles className="size-4 transition group-hover:rotate-6" />
       </span>
     </Link>
   );

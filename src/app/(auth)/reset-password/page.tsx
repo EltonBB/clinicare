@@ -2,7 +2,6 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { BrandMark } from "@/components/brand-mark";
 import { ResetPasswordForm } from "@/components/auth/reset-password-form";
 import { createClient } from "@/utils/supabase/server";
 
@@ -23,11 +22,9 @@ export default async function ResetPasswordPage() {
 
   return (
     <>
-      {/* Mobile brand (the desktop brand lives in the left panel) */}
-      <BrandMark href="/" includeSubtitle={false} className="mb-10 lg:hidden" />
 
       <div className="space-y-2">
-        <h1 className="text-[2rem] font-semibold leading-tight tracking-tight text-[var(--brand-ink)]">
+        <h1 className="text-[2.5rem] font-semibold leading-[1.05] tracking-[-0.03em] text-[var(--brand-ink)]">
           Choose a new password
         </h1>
         <p className="text-[15px] leading-7 text-muted-foreground">

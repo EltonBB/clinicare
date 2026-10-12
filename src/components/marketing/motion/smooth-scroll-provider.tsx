@@ -46,7 +46,8 @@ export function SmoothScrollProvider({ children }: { children: ReactNode }) {
     // Native scroll for reduced-motion or touch — no Lenis, no scrub.
     if (reduced || coarse) return;
 
-    const lenis = new Lenis({ duration: 1.1, smoothWheel: true, syncTouch: false });
+    // `anchors` glides in-page links (hero cue, module rail) and clears the 64px header.
+    const lenis = new Lenis({ duration: 1.1, smoothWheel: true, syncTouch: false, anchors: { offset: -64 } });
     lenisRef.current = lenis;
 
     lenis.on("scroll", ScrollTrigger.update);

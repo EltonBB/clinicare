@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export default function RefundPage() {
   return (
     <LegalPage
-      eyebrow="Terms and policies"
+      current="refund"
       title="Refund Policy"
       description="This policy explains cancellations, renewals, first-period refund requests, annual plans, provider costs, duplicate charges, and how clinics can contact support about billing issues."
       lastUpdated={legalLastUpdated}

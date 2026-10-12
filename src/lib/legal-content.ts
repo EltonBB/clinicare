@@ -1,12 +1,12 @@
 import type { LegalSection } from "@/components/legal/legal-page";
 
-export const legalLastUpdated = "May 1, 2026";
+export const legalLastUpdated = "October 6, 2026";
 
 export const termsSections: LegalSection[] = [
   {
     title: "1. Agreement to these terms",
     body: [
-      "These Terms of Service govern access to and use of Vela / Clinicare, including the web app, onboarding, clinic workspace, appointment tools, client records, staff tools, messaging inbox, reminders, reports, and related services.",
+      "These Terms of Service govern access to and use of Vela / Clinicare, including the web app, the Vela Staff mobile app, onboarding, clinic workspace, appointment tools, client records, staff tools, messaging inbox, reminders, reports, and related services.",
       "By creating an account, using the service, or using the service on behalf of a clinic or business, you confirm that you can enter into this agreement and bind that clinic or business to these terms.",
     ],
   },
@@ -102,6 +102,7 @@ export const privacySections: LegalSection[] = [
     body: [
       "We collect account information such as names, email addresses, login details, clinic names, clinic type, staff records, branding choices, settings, plan information, and support communications.",
       "Clinics may store client information such as names, contact details, appointment history, notes, messages, uploaded images, captions, reminder records, and other clinic workflow data.",
+      "If a clinic gives its staff access to the Vela Staff mobile app, we also process what that app needs to work: staff access codes, registered devices, check-in and check-out times, notifications, and messages exchanged between staff and the clinic's administrators.",
       "We also collect technical information such as device, browser, IP address, session, security, usage, error, and performance data needed to run, protect, and improve the service.",
     ],
   },

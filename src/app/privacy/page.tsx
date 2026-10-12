@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export default function PrivacyPage() {
   return (
     <LegalPage
-      eyebrow="Terms and policies"
+      current="privacy"
       title="Privacy Policy"
       description="This policy explains what information Vela processes, how clinic and client data is used to run the workspace, and how account owners can request support with privacy, export, correction, or deletion."
       lastUpdated={legalLastUpdated}
