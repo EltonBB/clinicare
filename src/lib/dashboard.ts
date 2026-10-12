@@ -112,7 +112,7 @@ export type DashboardViewModel = {
   heading: string;
   dateLabel: string;
   appointments: DashboardAppointment[];
-  /** Today's visits for the KPI tile; cancelled ones stay listed but don't count. */
+  /** Today's visits for the KPI tile; cancelled and no-show ones stay listed but don't count. */
   activeAppointmentCount: number;
   lastClients: DashboardClientSummary[];
   nextAppointment: DashboardAppointment | null;
@@ -475,8 +475,9 @@ export function buildDashboardViewFromWorkspace(args: {
     businessName: business.name,
     heading: "Today",
     dateLabel: formatZonedLongDate(now, timeZone),
-    activeAppointmentCount: appointments.filter((appointment) => appointment.status !== "CANCELLED")
-      .length,
+    activeAppointmentCount: appointments.filter(
+      (appointment) => appointment.status !== "CANCELLED" && appointment.status !== "NO_SHOW"
+    ).length,
     appointments: appointments.map((appointment) => ({
       id: appointment.id,
       time: formatZonedTime(appointment.startAt, timeZone),
