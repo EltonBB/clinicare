@@ -484,6 +484,16 @@ export function InboxWorkspace({
     setConvertDialogOpen(true);
   }
 
+  function removeConversationFromList(conversationId: string) {
+    setConversations((current) => {
+      const nextConversations = current.filter(
+        (conversation) => conversation.id !== conversationId
+      );
+      setSelectedConversationId(nextConversations[0]?.id ?? "");
+      return nextConversations;
+    });
+  }
+
   function sendMessage() {
     const body = draftMessage.trim();
 
@@ -495,8 +505,18 @@ export function InboxWorkspace({
     startTransition(async () => {
       const result = await sendInboxMessageAction(activeConversationId, body);
 
-      if (!result.ok || !result.conversation) {
+      if (!result.ok) {
         setErrorMessage(result.error ?? "We couldn't send the message.");
+        return;
+      }
+
+      // Sent, but the thread was deleted in another tab before it could be
+      // reloaded: keep the send (clear the draft so it isn't sent twice) and
+      // drop the thread here too.
+      if (!result.conversation) {
+        removeConversationFromList(activeConversationId);
+        setDraftMessage("");
+        setErrorMessage("Message sent. This conversation was deleted in another tab.");
         return;
       }
 
@@ -522,13 +542,7 @@ export function InboxWorkspace({
         return;
       }
 
-      setConversations((current) => {
-        const nextConversations = current.filter(
-          (conversation) => conversation.id !== conversationId
-        );
-        setSelectedConversationId(nextConversations[0]?.id ?? "");
-        return nextConversations;
-      });
+      removeConversationFromList(conversationId);
       setConfirmingDeleteId(null);
       setDraftMessage("");
       setErrorMessage("");
@@ -546,8 +560,20 @@ export function InboxWorkspace({
         email: convertEmail,
       });
 
-      if (!result.ok || !result.conversation) {
+      if (!result.ok) {
         setErrorMessage(result.error ?? "We couldn't convert this conversation.");
+        return;
+      }
+
+      setConvertDialogOpen(false);
+      setConvertName("");
+      setConvertEmail("");
+
+      // The client was saved, but the thread was deleted in another tab before
+      // it could be reloaded.
+      if (!result.conversation) {
+        removeConversationFromList(activeConversation.id);
+        setErrorMessage("Client saved. This conversation was deleted in another tab.");
         return;
       }
 
@@ -556,9 +582,6 @@ export function InboxWorkspace({
         ...current.filter((conversation) => conversation.id !== result.conversation!.id),
       ]);
       setSelectedConversationId(result.conversation.id);
-      setConvertDialogOpen(false);
-      setConvertName("");
-      setConvertEmail("");
       setErrorMessage("");
     });
   }

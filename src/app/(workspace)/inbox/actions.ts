@@ -392,6 +392,8 @@ export async function sendInboxMessageAction(
 
   return {
     ok: true,
+    // ok stays true even if the thread was deleted meanwhile: the message did
+    // go out, and the Inbox keeps the send instead of inviting a duplicate.
     conversation: (await hydrateConversation(conversation.id, context.business.id)) ?? undefined,
   };
 }
