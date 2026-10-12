@@ -45,7 +45,14 @@ export function SiteHeader() {
     };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    // A section can turn dark (or light) without a scroll event of its own,
+    // e.g. the clinic day's evening flag commits after the scroll that set it.
+    const tones = new MutationObserver(onScroll);
+    tones.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-tone"] });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      tones.disconnect();
+    };
   }, []);
 
   // Pause smooth-scroll + lock the page behind the open mobile menu.

@@ -26,7 +26,7 @@ export function SignUpForm() {
   const long = length >= 8;
 
   return (
-    <form action={formAction} className="space-y-5">
+    <form action={formAction} onReset={() => setLength(0)} className="space-y-5">
       {state.error ? (
         <div className="state-pop rounded-(--radius-field) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {state.error}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 
+import { SUPPORT_EMAIL } from "@/lib/public-contact";
 import { cn } from "@/lib/utils";
 import { MarketingShell } from "@/components/marketing/shell/marketing-shell";
 import { WordReveal } from "@/components/marketing/motion/word-reveal";
@@ -16,8 +17,6 @@ const POLICIES = [
   { key: "privacy", label: "Privacy", href: "/privacy" },
   { key: "refund", label: "Refunds", href: "/refund" },
 ] as const;
-
-const CONTACT_EMAIL = "support@clinicare-vela.space";
 
 type LegalPageProps = {
   current: (typeof POLICIES)[number]["key"];
@@ -94,11 +93,11 @@ export function LegalPage({ current, title, description, lastUpdated, sections }
                 For account, privacy, billing, or data requests, write to us directly.
               </p>
               <a
-                href={`mailto:${CONTACT_EMAIL}`}
+                href={`mailto:${SUPPORT_EMAIL}`}
                 className="group/mail mt-5 inline-flex items-center gap-2 text-base font-semibold text-[var(--brand-ink)]"
               >
                 <span className="relative">
-                  {CONTACT_EMAIL}
+                  {SUPPORT_EMAIL}
                   <span
                     aria-hidden
                     className="absolute inset-x-0 -bottom-0.5 h-px origin-left scale-x-0 bg-primary transition-transform duration-(--duration-slow) ease-out-quint group-hover/mail:scale-x-100"

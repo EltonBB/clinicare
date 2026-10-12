@@ -8,6 +8,7 @@ import { MODULE_GLYPHS } from "@/components/marketing/shared/module-glyphs";
 import { MODULES } from "@/components/marketing/shared/modules";
 
 const RADIUS = 41; // % of the stage, where the module tiles ride
+const still = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /**
  * The auth panel's one idea: everything a clinic runs, around one centre.
@@ -24,7 +25,7 @@ export function ModuleOrbit() {
   const tilt = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (holding || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (holding || still()) return;
     const id = window.setInterval(() => setActive((i) => (i + 1) % MODULES.length), 2800);
     return () => window.clearInterval(id);
   }, [holding]);
@@ -32,7 +33,7 @@ export function ModuleOrbit() {
   useEffect(() => {
     const host = stage.current?.closest("aside");
     const el = tilt.current;
-    if (!host || !el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!host || !el || still()) return;
     const onMove = (e: PointerEvent) => {
       const r = host.getBoundingClientRect();
       const x = (e.clientX - r.left) / r.width - 0.5;

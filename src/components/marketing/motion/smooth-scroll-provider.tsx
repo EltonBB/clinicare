@@ -32,7 +32,7 @@ function useMediaQuery(query: string) {
  *
  * The marketing shell does NOT unmount between marketing routes, so Lenis is a
  * true singleton for the visit; per-route re-measuring happens in the pathname
- * effect, and per-section pins clean themselves up via useScrollScene.
+ * effect.
  */
 export function SmoothScrollProvider({ children }: { children: ReactNode }) {
   const lenisRef = useRef<Lenis | null>(null);

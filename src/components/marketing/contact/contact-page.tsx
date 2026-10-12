@@ -3,13 +3,13 @@
 import { ArrowRight, ArrowUpRight } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
+import { SUPPORT_EMAIL } from "@/lib/public-contact";
 import { cn } from "@/lib/utils";
 import { MarketingShell } from "../shell/marketing-shell";
 import { Reveal } from "../motion/reveal";
 import { Highlight, WordReveal } from "../motion/word-reveal";
 import { Magnetic } from "../motion/magnetic";
 
-const CONTACT_EMAIL = "support@clinicare-vela.space";
 const TOPICS = ["Book a demo", "Pricing question", "Help with setup"];
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -27,7 +27,7 @@ function buildMailtoHref(fields: { name: string; email: string; clinicName: stri
   ]
     .filter((line) => line !== null)
     .join("\n");
-  return `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 const inputClass =
@@ -75,11 +75,11 @@ export function ContactPage() {
                 Ask about setup, workflows, pricing, or moving your process into Vela.
               </p>
               <a
-                href={`mailto:${CONTACT_EMAIL}`}
+                href={`mailto:${SUPPORT_EMAIL}`}
                 className="group/mail mt-10 inline-flex items-center gap-2 text-base font-medium text-[var(--brand-ink)]"
               >
                 <span className="relative">
-                  {CONTACT_EMAIL}
+                  {SUPPORT_EMAIL}
                   <span
                     aria-hidden
                     className="absolute inset-x-0 -bottom-0.5 h-px origin-left scale-x-0 bg-primary transition-transform duration-(--duration-slow) ease-out-quint group-hover/mail:scale-x-100"
@@ -96,7 +96,7 @@ export function ContactPage() {
                 <h2 className="text-2xl font-semibold tracking-tight text-[var(--brand-ink)]">Your email app should be open.</h2>
                 <p className="max-w-md text-[15px] leading-7 text-muted-foreground">
                   The message is ready, so just hit send. Didn&apos;t open?{" "}
-                  <a href={`mailto:${CONTACT_EMAIL}`} className="font-medium text-primary underline underline-offset-4">
+                  <a href={`mailto:${SUPPORT_EMAIL}`} className="font-medium text-primary underline underline-offset-4">
                     Email us directly
                   </a>
                   .

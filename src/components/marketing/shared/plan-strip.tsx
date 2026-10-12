@@ -44,7 +44,7 @@ export function PlanStrip() {
             ))}
           </ul>
 
-          <span className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-[var(--brand-ink)] transition-colors duration-(--duration-base) group-hover/plan:text-primary">
+          <span className="mt-auto inline-flex items-center gap-2 pt-8 text-sm font-semibold text-[var(--brand-ink)] transition-colors duration-(--duration-base) group-hover/plan:text-primary">
             Choose {plan.name}
             <ArrowRight className="size-4 transition-transform duration-(--duration-base) ease-out-quint group-hover/plan:translate-x-1" />
           </span>

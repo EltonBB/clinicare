@@ -1,4 +1,5 @@
 import type { LegalSection } from "@/components/legal/legal-page";
+import { SUPPORT_EMAIL } from "./public-contact";
 
 export const legalLastUpdated = "October 6, 2026";
 
@@ -231,7 +232,7 @@ export const refundSections: LegalSection[] = [
   {
     title: "8. How to request a refund",
     body: [
-      "Refund requests must be sent to support@clinicare-vela.space from an account owner or authorized billing contact.",
+      `Refund requests must be sent to ${SUPPORT_EMAIL} from an account owner or authorized billing contact.`,
       "Include the clinic name, account email, payment date, amount, reason for the request, and any supporting information. We may ask for additional verification before processing the request.",
     ],
   },

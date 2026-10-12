@@ -121,18 +121,20 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
       </div>
 
       {/* The summary prints as a receipt on the ink side. */}
-      <aside className="relative flex items-center justify-center overflow-hidden bg-[var(--brand-ink)] px-5 py-16 sm:px-10 lg:sticky lg:top-0 lg:h-dvh">
-        <Image
-          src="/brand/vela-icon.svg"
-          alt=""
-          width={640}
-          height={640}
-          aria-hidden
-          className="pointer-events-none absolute -bottom-40 -right-48 size-[40rem] max-w-none opacity-[0.08]"
-        />
-        <span aria-hidden className="absolute left-1/2 top-1/3 size-80 -translate-x-1/2 rounded-full bg-primary/30 blur-[110px]" />
+      <aside className="relative flex bg-[var(--brand-ink)] px-5 py-16 sm:px-10 lg:sticky lg:top-0 lg:h-dvh lg:overflow-y-auto lg:py-6">
+        {/* Decoration is clipped on its own layer, so a long receipt can still scroll. */}
+        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+          <Image
+            src="/brand/vela-icon.svg"
+            alt=""
+            width={640}
+            height={640}
+            className="absolute -bottom-40 -right-48 size-[40rem] max-w-none opacity-[0.08]"
+          />
+          <span className="absolute left-1/2 top-1/3 size-80 -translate-x-1/2 rounded-full bg-primary/30 blur-[110px]" />
+        </div>
 
-        <div className="relative w-full max-w-sm drop-shadow-[0_40px_60px_rgba(0,0,0,0.45)]">
+        <div className="relative m-auto w-full max-w-sm drop-shadow-[0_40px_60px_rgba(0,0,0,0.45)]">
           <div key={selectedPlan.key} className="motion-safe:animate-[vela-print_0.8s_var(--ease-out-expo)_both]">
             <div className="rounded-t-[1.25rem] bg-white px-7 pb-5 pt-7">
               <div className="flex items-center justify-between gap-3">
@@ -150,7 +152,7 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
                 </span>
               </div>
 
-              <p className="mt-7 text-sm text-muted-foreground">Vela {selectedPlan.name}</p>
+              <p className="mt-6 text-sm text-muted-foreground">Vela {selectedPlan.name}</p>
               <p className="mt-1 flex items-baseline gap-1.5">
                 <span className="text-[3.25rem] font-semibold leading-none tracking-[-0.04em] text-[var(--brand-ink)] tabular-nums">
                   {selectedPlan.price}
@@ -159,7 +161,7 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
               </p>
 
               <Perforation />
-              <ul className="grid gap-2.5 text-sm">
+              <ul className="grid gap-2 text-sm">
                 {selectedPlan.features.map((feature, i) => (
                   <li
                     key={feature}
@@ -208,7 +210,7 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
 }
 
 function Perforation() {
-  return <div aria-hidden className="-mx-7 my-6 border-t-2 border-dashed border-border/80" />;
+  return <div aria-hidden className="-mx-7 my-5 border-t-2 border-dashed border-border/80" />;
 }
 
 function SummaryLine({ label, value }: { label: string; value: string }) {
