@@ -22,6 +22,9 @@ export const maxDuration = 300;
 // that window.
 const LOCK_NAME = "reminders";
 
+// The worker lease check's own budget, on top of HARD_RESPONSE_DEADLINE_MS.
+const WORKER_CHECK_TIMEOUT_MS = 5_000;
+
 // HARD_RESPONSE_DEADLINE_MS itself now lives in lib/reminders.ts — comfortably
 // under the 300s platform cap, covering the reminders job AND the stale-entry
 // sweep after it, so a genuine hang still returns a response instead of being
@@ -136,9 +139,17 @@ async function run() {
     // monitors), so this hourly run checks the worker's lease instead and
     // fails its check-in when the lease has lapsed. Best-effort, like the
     // sweeps above.
+    // Bounded on its own: after a run that hit the hard deadline the pool may
+    // still be busy with the abandoned work, and an unbounded read here could
+    // outlast maxDuration (the hard deadline plus this stay under it).
     let workerDown = false;
     try {
-      workerDown = await isWhatsAppWorkerDown();
+      const check = await withDeadline(isWhatsAppWorkerDown(), WORKER_CHECK_TIMEOUT_MS, () => null);
+      if (check === null) {
+        logger.warn("Checking the WhatsApp worker's lease timed out.");
+      } else {
+        workerDown = check;
+      }
     } catch (error) {
       logger.error("Checking the WhatsApp worker's lease failed.", error);
     }

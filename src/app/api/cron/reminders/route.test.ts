@@ -250,6 +250,25 @@ describe("reminders cron route", () => {
     expect(await res.json()).toMatchObject({ ok: true, workerDown: false });
   });
 
+  it("bounds the lease check, so a stuck read can't push the run past maxDuration", async () => {
+    syncAppointmentRemindersJob.mockResolvedValue({
+      processedBusinesses: 0,
+      sent: 0,
+      failed: 0,
+      skippedBusinesses: 0,
+      abandonedBusinesses: 0,
+    });
+    isWhatsAppWorkerDown.mockReturnValueOnce(new Promise(() => {}));
+    const { GET } = await import("./route");
+
+    const pending = GET(request());
+    await vi.advanceTimersByTimeAsync(5_000);
+    const res = await pending;
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, workerDown: false });
+  });
+
   it("returns 401 without a valid cron secret, without touching the lock", async () => {
     isAuthorizedCronRequest.mockReturnValue(false);
     const { GET } = await import("./route");
