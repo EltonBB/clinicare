@@ -95,7 +95,7 @@ export function ModuleOrbit() {
                   <div className="motion-safe:animate-[vela-orbit_90s_linear_infinite_reverse]" style={spin}>
                     <button
                       type="button"
-                      aria-label={`${item.label}: ${item.line}`}
+                      aria-label={`${item.label}: ${item.title}`}
                       aria-pressed={lit}
                       onPointerEnter={() => {
                         setActive(i);
@@ -129,7 +129,9 @@ export function ModuleOrbit() {
         </div>
       </div>
 
-      <div aria-live="polite" className="mt-5 h-14 text-center">
+      {/* Visual readout only: it changes with the auto-cycle, so it must not
+          announce over the form. Each tile's label carries the same text. */}
+      <div aria-hidden className="mt-5 h-14 text-center">
         <p key={current.label} className="text-lg font-semibold tracking-tight motion-safe:animate-[vela-fade-up_0.45s_var(--ease-out-expo)_both]">
           {current.label}
         </p>
