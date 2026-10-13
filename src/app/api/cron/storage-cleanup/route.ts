@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
+import { withCronMonitor } from "@/lib/cron-monitor";
 import { logger } from "@/lib/logger";
 import { sweepPendingStorageCleanup } from "@/lib/media-storage-server";
 
@@ -27,6 +28,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized cron request." }, { status: 401 });
   }
 
+  return withCronMonitor("/api/cron/storage-cleanup", run);
+}
+
+async function run() {
   const lock = await acquireCronLock(LOCK_NAME, LOCK_TTL_SECONDS);
   if (!lock.proceed) {
     logger.warn("Storage cleanup cron skipped — a previous run is still in progress.");
@@ -44,7 +49,14 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json(
-      { ok: true, ...result, triggeredAt: new Date().toISOString() },
+      {
+        ok: true,
+        ...result,
+        // Read by withCronMonitor: a missing service key or a failed row fails
+        // the check-in even though the sweep returns 200.
+        degraded: !result.serviceRoleConfigured || result.errored > 0,
+        triggeredAt: new Date().toISOString(),
+      },
       { status: 200, headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {

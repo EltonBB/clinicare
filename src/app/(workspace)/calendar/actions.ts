@@ -1,6 +1,7 @@
 "use server";
 
 import { Prisma } from "@prisma/client";
+import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
 import { retryOnWriteConflict } from "@/lib/prisma-retry";
@@ -78,6 +79,24 @@ export type DeleteAppointmentResult = {
 };
 
 const APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR = "Appointment not found in this clinic workspace.";
+
+// The booking form. Bounded like the client form: a crafted payload can't store
+// an oversized service or note, or crash the action with a non-string field.
+const appointmentStatusSchema = z.enum(["confirmed", "pending", "cancelled", "completed", "no-show"]);
+const saveAppointmentSchema = z.object({
+  id: z.string().max(64).optional(),
+  // Checked by parseRecordId below, which keeps their specific messages.
+  clientId: z.any(),
+  service: z.string().max(200),
+  staffMemberId: z.any().optional(),
+  date: z.string().max(10),
+  startTime: z.string().max(5),
+  endTime: z.string().max(5),
+  notes: z.string().max(5000),
+  status: appointmentStatusSchema,
+  baselineStatus: appointmentStatusSchema,
+});
+
 const STAFF_NOT_IN_WORKSPACE_ERROR = "The selected staff member does not belong to this clinic workspace.";
 
 function getAuthedBusiness() {
@@ -144,6 +163,14 @@ export async function saveAppointmentAction(
   if (appointmentId === null) {
     return { ok: false, error: APPOINTMENT_NOT_FOUND_IN_WORKSPACE_ERROR };
   }
+
+  const parsedPayload = saveAppointmentSchema.safeParse(payload);
+
+  if (!parsedPayload.success) {
+    return { ok: false, error: "Check the appointment details and try again." };
+  }
+
+  payload = parsedPayload.data;
 
   const context = await getAuthedBusiness();
 
