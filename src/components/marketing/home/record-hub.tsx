@@ -28,7 +28,9 @@ const wire = (n: { x: number; y: number }) => {
 /**
  * "One record underneath", drawn: the six modules wired into a single patient
  * record. Small pulses travel each wire into the record, one module after
- * another; pointing at a module lights its wire and names what it adds.
+ * another; pointing at (or tabbing to, or tapping) a module lights its wire
+ * and names what it adds. Each module is a labelled button, so the same
+ * reading reaches keyboard and screen-reader users.
  * Reduced motion: wires only, no pulses.
  */
 export function RecordHub() {
@@ -37,7 +39,13 @@ export function RecordHub() {
   const adds = ["Visits", "History", "Provider", "Messages", "Files & balance", "Trends"];
 
   return (
-    <div className="relative mx-auto aspect-[9/5] w-full max-w-[26rem]" onPointerLeave={() => setHovered(null)}>
+    <div
+      className="relative mx-auto aspect-[9/5] w-full max-w-[26rem]"
+      // Mouse reads while pointing; on touch a tapped module stays lit until the next tap.
+      onPointerLeave={(e) => {
+        if (e.pointerType === "mouse") setHovered(null);
+      }}
+    >
       <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 h-full w-full" aria-hidden>
         {NODES.map((n, i) => (
           <path
@@ -66,18 +74,27 @@ export function RecordHub() {
         const Glyph = MODULE_GLYPHS[i];
         const on = hovered === i;
         return (
-          <span
+          <button
             key={i}
-            onPointerEnter={() => setHovered(i)}
-            title={MODULES[i].label}
+            type="button"
+            aria-label={`${MODULES[i].label}: adds ${adds[i].toLowerCase()} to the patient record`}
+            aria-pressed={on}
+            onPointerEnter={(e) => {
+              if (e.pointerType === "mouse") setHovered(i);
+            }}
+            onPointerDown={(e) => {
+              if (e.pointerType !== "mouse") setHovered((h) => (h === i ? null : i));
+            }}
+            onFocus={() => setHovered(i)}
+            onBlur={() => setHovered(null)}
             className={cn(
-              "absolute flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-(--radius-mkt-tile) border bg-white transition-[border-color,box-shadow,transform] duration-300 ease-out-quint",
+              "absolute flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-(--radius-mkt-tile) border bg-white transition-[border-color,box-shadow,transform] duration-300 ease-out-quint focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45",
               on ? "scale-110 border-primary/40 shadow-[0_8px_20px_-8px_rgba(10,34,255,0.5)]" : "border-border/80",
             )}
             style={{ left: `${(n.x / W) * 100}%`, top: `${(n.y / H) * 100}%` }}
           >
             <Glyph active={on} className={cn("size-6", on ? "text-primary" : "text-muted-foreground")} />
-          </span>
+          </button>
         );
       })}
 
