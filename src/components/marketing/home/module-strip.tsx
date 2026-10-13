@@ -5,17 +5,19 @@ import { useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { MODULE_GLYPHS } from "../shared/module-glyphs";
+import { PauseToggle } from "../shared/pause-toggle";
 import { MODULES } from "../shared/modules";
 
 /**
  * The six modules as a slow, endless strip under the hero, each with its drawn
  * glyph and one line. Pointing at one (or tabbing to it) stops the strip,
  * lights its glyph, and dims the rest; each item opens the product explorer
- * on its own module. Reduced motion: the strip stands still (the shared
+ * on its own module. A pause button at the right edge stops it on touch. Reduced motion: the strip stands still (the shared
  * `.animate-marquee` rule).
  */
 export function ModuleStrip() {
   const [hovered, setHovered] = useState<number | null>(null);
+  const [paused, setPaused] = useState(false);
   const items = [...MODULES, ...MODULES];
 
   return (
@@ -29,6 +31,7 @@ export function ModuleStrip() {
       <ul
         className="animate-marquee flex w-max group-focus-within/strip:[animation-play-state:paused] group-hover/strip:[animation-play-state:paused]"
         onPointerLeave={() => setHovered(null)}
+        style={paused ? { animationPlayState: "paused" } : undefined}
       >
         {items.map((mod, i) => {
           const index = i % MODULES.length;
@@ -57,6 +60,12 @@ export function ModuleStrip() {
           );
         })}
       </ul>
+      <PauseToggle
+        paused={paused}
+        onToggle={() => setPaused((p) => !p)}
+        label="module strip"
+        className="absolute right-3 top-1/2 z-10 -translate-y-1/2"
+      />
     </nav>
   );
 }

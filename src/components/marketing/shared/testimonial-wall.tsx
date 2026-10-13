@@ -1,4 +1,9 @@
+"use client";
+
+import { useState } from "react";
+
 import { cn } from "@/lib/utils";
+import { PauseToggle } from "./pause-toggle";
 import { SectionHeader } from "./section-header";
 
 type Testimonial = { quote: string; name: string; role: string; org: string };
@@ -61,7 +66,7 @@ function TestimonialCard({ t, copy }: { t: Testimonial; copy?: boolean }) {
   );
 }
 
-function Row({ items, direction, duration }: { items: Testimonial[]; direction: "left" | "right"; duration: string }) {
+function Row({ items, direction, duration, paused }: { items: Testimonial[]; direction: "left" | "right"; duration: string; paused: boolean }) {
   // Track renders the row twice back-to-back so the 50% translate loop is seamless.
   // py-3 gives the hover lift + shadow room so the parent's overflow-hidden
   // doesn't clip the card's top border/shadow. Pausing on hover is handled
@@ -72,7 +77,7 @@ function Row({ items, direction, duration }: { items: Testimonial[]; direction: 
     <div className="overflow-hidden">
       <div
         className={cn("testimonial-track flex items-start gap-3 py-3", direction === "left" ? "animate-marquee" : "animate-marquee-reverse")}
-        style={{ animationDuration: duration }}
+        style={{ animationDuration: duration, animationPlayState: paused ? "paused" : undefined }}
       >
         {track.map((t, i) => (
           // The second half only makes the loop seamless; screen readers hear each quote once.
@@ -86,9 +91,11 @@ function Row({ items, direction, duration }: { items: Testimonial[]; direction: 
 /** Ever-drifting wall of testimonials — three rows floating sideways at
  *  different speeds and directions. Hovering any card spotlights it and
  *  dims every other card across the whole wall; hovering a row pauses just
- *  that row. Sample quotes for illustration; Vela is pre-launch, no real
- *  clinic names or numbers. */
+ *  that row. A pause button stops the wall for touch and keyboard users.
+ *  Sample quotes for illustration; Vela is pre-launch, no real clinic names
+ *  or numbers. */
 export function TestimonialWall() {
+  const [paused, setPaused] = useState(false);
   return (
     <section className="py-24 sm:py-32">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -96,11 +103,16 @@ export function TestimonialWall() {
           className="mb-12"
           lead="What clinics say"
           rest="once the day slows down."
-          aside={<p className="text-sm text-muted-foreground">Illustrative quotes, not real customers.</p>}
+          aside={
+            <div className="flex items-center gap-3">
+              <p className="text-sm text-muted-foreground">Illustrative quotes, not real customers.</p>
+              <PauseToggle paused={paused} onToggle={() => setPaused((p) => !p)} label="testimonials" />
+            </div>
+          }
         />
         <div className="testimonial-wall marquee-mask flex flex-col gap-1">
           {ROWS.map((row, i) => (
-            <Row key={i} {...row} />
+            <Row key={i} {...row} paused={paused} />
           ))}
         </div>
       </div>
