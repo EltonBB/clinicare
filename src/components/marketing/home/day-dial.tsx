@@ -210,6 +210,19 @@ export function DayDial({ still }: { still: boolean }) {
         ))}
       </svg>
 
+      {/* The arcs are drawn art (the SVG is aria-hidden), so every visit is also a
+          visually hidden button. Focusing one lights its arc and reads it in the
+          centre, exactly like pointing at it. */}
+      <ul aria-label="Appointments on this sample day" className="sr-only">
+        {PLACED.map((p) => (
+          <li key={p.key}>
+            <button type="button" onFocus={() => setHovered(p)} onBlur={() => setHovered(null)}>
+              {`${p.staff}: ${p.patient}, ${p.service}, ${p.from} to ${p.to}`}
+            </button>
+          </li>
+        ))}
+      </ul>
+
       {/* The hand: its own square layer, so rotating it turns around the dial's centre. */}
       <m.svg viewBox="0 0 600 600" className="pointer-events-none absolute inset-0 h-full w-full" style={{ rotate }} aria-hidden>
         <line x1={C} y1={C - 132} x2={C} y2={C - TICK_R + 2} stroke="#14152f" strokeWidth={1.5} strokeLinecap="round" />
