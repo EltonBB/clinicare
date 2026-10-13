@@ -56,20 +56,24 @@ export function PlanFinder() {
                     value ? "translate-x-full" : "translate-x-0",
                   )}
                 />
+                {/* Native radios: one tab stop per question, arrow keys switch the answer. */}
                 {[false, true].map((v) => (
-                  <button
+                  <label
                     key={String(v)}
-                    type="button"
-                    role="radio"
-                    aria-checked={value === v}
-                    onClick={() => answer(q.key, v)}
                     className={cn(
-                      "relative z-10 w-16 rounded-full py-1.5 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40",
+                      "relative z-10 w-16 cursor-pointer rounded-full py-1.5 text-center transition-colors duration-200 has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/40",
                       value === v ? "text-[var(--brand-ink)]" : "text-muted-foreground",
                     )}
                   >
+                    <input
+                      type="radio"
+                      name={`plan-finder-${q.key}`}
+                      checked={value === v}
+                      onChange={() => answer(q.key, v)}
+                      className="sr-only"
+                    />
                     {v ? "Yes" : "No"}
-                  </button>
+                  </label>
                 ))}
               </div>
             </li>
