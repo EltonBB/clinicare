@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { LogOut, Settings } from "lucide-react";
 
@@ -137,6 +137,13 @@ export function AppShell({
   const [liveNotifications, setLiveNotifications] = useState(notifications);
   const [liveStaffUnreadCount, setLiveStaffUnreadCount] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // A `/settings?section=…` link lands here as `?settings=<section>` (see
+  // settings/page.tsx) and opens the dialog on that section; closing it drops
+  // the params, so the nav's Settings button opens on the first section.
+  const searchParams = useSearchParams();
+  const linkedSettingsSection = searchParams.get("settings");
+  const settingsNotice =
+    searchParams.get("notice") === "email_updated" ? "Your email address was confirmed and updated." : "";
   const [searchOpen, setSearchOpen] = useState(false);
   const logoutFormRef = useRef<HTMLFormElement>(null);
   const businessInitial = (businessName || "V").charAt(0).toUpperCase();
@@ -422,8 +429,19 @@ export function AppShell({
       </nav>
 
       <SettingsDialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
+        open={settingsOpen || Boolean(linkedSettingsSection)}
+        onOpenChange={(open) => {
+          setSettingsOpen(open);
+          if (!open && linkedSettingsSection) {
+            const rest = new URLSearchParams(searchParams);
+            rest.delete("settings");
+            rest.delete("notice");
+            const query = rest.toString();
+            window.history.replaceState(null, "", query ? `${pathname}?${query}` : pathname);
+          }
+        }}
+        initialSection={linkedSettingsSection ?? undefined}
+        flashMessage={settingsNotice}
         ownerName={ownerName}
         ownerEmail={ownerEmail}
         ownerPhone={ownerPhone}

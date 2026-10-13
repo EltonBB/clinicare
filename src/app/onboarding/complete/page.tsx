@@ -30,7 +30,7 @@ const nextActions = [
     hint: "2 min",
   },
   {
-    href: "/settings",
+    href: "/settings?section=whatsapp",
     icon: MessageCircle,
     title: "Connect WhatsApp",
     detail: "Send reminders from your number",

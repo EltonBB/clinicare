@@ -244,36 +244,6 @@ export function ReportsPageSkeleton() {
   );
 }
 
-// Settings deep-link fallback (/settings): master nav list beside the active section.
-export function SettingsPageSkeleton() {
-  return (
-    // pageSizes.default, matching WorkspacePage's default size — the
-    // standalone route isn't wrapped in the "wide" frame, and this fallback
-    // previously capped at 1000px, so the whole grid widened by hundreds of
-    // pixels once data resolved (Codex).
-    <div className={pageSizes.default}>
-      <SkeletonBlock className="h-8 w-40" />
-      {/* The real WorkspaceHeader here always renders a description line
-          ("Configure how the workspace runs.") below the title — omitting
-          it shifts the whole nav/detail grid down once data resolves
-          (Codex). */}
-      <SkeletonBlock className="h-4 w-72 max-w-full" />
-      {/* xl, not lg — the standalone (non-dialog) SettingsWorkspace only
-          switches to two columns at xl, so matching lg here would show the
-          detail pane beside the nav during loading and then move it below
-          once data resolves (Codex). */}
-      <div className="grid gap-3.5 xl:grid-cols-[290px_minmax(0,1fr)]">
-        <div className="space-y-2">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <SkeletonBlock key={index} className="h-14 w-full" />
-          ))}
-        </div>
-        <SkeletonBlock className="h-[28rem]" />
-      </div>
-    </div>
-  );
-}
-
 // New/edit forms: title → one form card (CreatePageShell renders a title-only header).
 export function FormPageSkeleton() {
   return (
