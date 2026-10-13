@@ -23,8 +23,9 @@ const GROUPS: { title: string; rows: [string, Cell, Cell][] }[] = [
   {
     title: "Insight",
     rows: [
-      ["Operational reports", "Basic", "Advanced"],
-      ["AI-assisted insights", "Limited", "Full"],
+      ["Daily dashboard", true, true],
+      ["Reports and analytics", false, true],
+      ["AI-assisted insights", false, true],
       ["Staff activity and utilization", false, true],
       ["No-show tracking and risk alerts", false, true],
     ],

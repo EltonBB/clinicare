@@ -31,7 +31,7 @@ export const publicPlans: PublicPlan[] = [
       "Payments and invoice tracking",
       "WhatsApp-ready inbox context",
       "Payment reminders and thank-you messages, drafted for you to review and send",
-      "Basic operational reports",
+      "A daily dashboard of visits, revenue, and today's schedule",
     ],
   },
   {
@@ -45,7 +45,7 @@ export const publicPlans: PublicPlan[] = [
     audience: "Best for clinics that want reporting, staff visibility, and launch support.",
     features: [
       "Everything in Basic",
-      "Advanced AI-assisted operational insights",
+      "Reports with AI-assisted operational insights",
       "Staff activity and utilization",
       "No-show tracking, reporting, risk alerts, automatic slot-offer drafts from your waiting list, and rebooking nudges",
       "More workflow automation",

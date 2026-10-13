@@ -16,7 +16,7 @@ const faqs: Faq[] = [
   },
   {
     q: "What's the difference between Basic and Pro?",
-    a: "Basic covers daily operations: scheduling, records, documents, payments, and inbox. Pro adds advanced reports, AI-assisted insights, staff utilization, and priority support.",
+    a: "Basic covers daily operations: scheduling, records, documents, payments, and inbox. Pro adds reports with AI-assisted insights, staff utilization, no-show tracking, and priority support.",
   },
   {
     q: "Can I switch plans later?",
@@ -59,7 +59,7 @@ export function PricingPageContent() {
               </WordReveal>
             </h1>
             <div className="hero-follow max-w-sm">
-              <p className="text-base leading-7 text-muted-foreground">Start with the operating system. Upgrade when you need deeper reporting.</p>
+              <p className="text-base leading-7 text-muted-foreground">Start with the operating system. Upgrade when you want reports and insights.</p>
             </div>
           </div>
           <Reveal delay={0.15} className="mt-12">
