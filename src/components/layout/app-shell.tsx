@@ -36,6 +36,39 @@ function navLinkClasses(isActive: boolean) {
   );
 }
 
+function formatBadgeCount(count: number) {
+  return count > 99 ? "99+" : String(count);
+}
+
+// A count bubble on a nav item. Inverted on the active (primary-filled) item so
+// it stays visible; the visible number is backed by a screen-reader label.
+function NavCountBadge({
+  count,
+  isActive,
+  className,
+}: {
+  count: number;
+  isActive: boolean;
+  className?: string;
+}) {
+  if (count <= 0) {
+    return null;
+  }
+
+  return (
+    <span
+      className={cn(
+        "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[11px] font-semibold leading-none tabular-nums",
+        isActive ? "bg-white text-primary" : "bg-primary text-primary-foreground",
+        className
+      )}
+    >
+      {count > 9 ? "9+" : count}
+      <span className="sr-only"> unread</span>
+    </span>
+  );
+}
+
 type AppShellProps = {
   children: React.ReactNode;
   businessName?: string;
@@ -51,8 +84,6 @@ type AppShellProps = {
   // Patient-inbox-only unread — feeds WorkspaceLiveContext (dashboard KPI, Messages card).
   inboxUnreadCount?: number;
   notifications?: NotificationItem[];
-  hasInboxUnread?: boolean;
-  hasStaffUnread?: boolean;
 };
 
 export function AppShell({
@@ -66,8 +97,6 @@ export function AppShell({
   unreadCount = 0,
   inboxUnreadCount = 0,
   notifications = [],
-  hasInboxUnread = false,
-  hasStaffUnread = false,
 }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -106,23 +135,39 @@ export function AppShell({
   const [liveInboxUnreadCount, setLiveInboxUnreadCount] = useState(inboxUnreadCount);
   const [unreadInitialized, setUnreadInitialized] = useState(false);
   const [liveNotifications, setLiveNotifications] = useState(notifications);
-  const [liveHasInboxUnread, setLiveHasInboxUnread] = useState(hasInboxUnread);
-  const [liveHasStaffUnread, setLiveHasStaffUnread] = useState(hasStaffUnread);
+  const [liveStaffUnreadCount, setLiveStaffUnreadCount] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const logoutFormRef = useRef<HTMLFormElement>(null);
   const businessInitial = (businessName || "V").charAt(0).toUpperCase();
-  // Which nav item (sidebar + mobile bottom nav) gets the small unread dot —
-  // Inbox for patient-conversation unread, Staff for staff-thread messages or
-  // unseen check-ins. Neither source drives any other nav item.
-  const navDotHref = useCallback(
+  // The count badge on a nav item (sidebar + mobile bottom nav): Inbox for
+  // patient-conversation unread, Staff for staff-thread messages plus unseen
+  // check-ins. Neither source drives any other nav item.
+  const navBadgeCount = useCallback(
     (href: string) => {
-      if (href === "/inbox") return liveHasInboxUnread;
-      if (href === "/staff") return liveHasStaffUnread;
-      return false;
+      if (href === "/inbox") return liveInboxUnreadCount;
+      if (href === "/staff") return liveStaffUnreadCount;
+      return 0;
     },
-    [liveHasInboxUnread, liveHasStaffUnread]
+    [liveInboxUnreadCount, liveStaffUnreadCount]
   );
+
+  // Show the total in the browser tab ("(3) Dashboard | Vela") so new
+  // activity is noticeable from another tab. Next rewrites <title> on every
+  // navigation, so re-apply the prefix whenever <head> changes.
+  useEffect(() => {
+    const applyTitlePrefix = () => {
+      const base = document.title.replace(/^\(\d+\+?\) /, "");
+      const next = liveUnreadCount > 0 ? `(${formatBadgeCount(liveUnreadCount)}) ${base}` : base;
+      if (document.title !== next) {
+        document.title = next;
+      }
+    };
+    applyTitlePrefix();
+    const observer = new MutationObserver(applyTitlePrefix);
+    observer.observe(document.head, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  }, [liveUnreadCount]);
   // Published to descendants (e.g. the dashboard Messages card) so they read
   // this single poll instead of starting their own. Inbox-only count — see
   // liveInboxUnreadCount above.
@@ -171,11 +216,10 @@ export function AppShell({
     let cancelled = false;
     let interval: number | undefined;
 
+    // Keeps polling while the tab is in the background (browsers throttle
+    // hidden-tab timers on their own): the "(3)" tab-title count is meant to
+    // be seen from another tab, so it has to keep updating there.
     async function refreshNotifications() {
-      if (document.visibilityState !== "visible") {
-        return;
-      }
-
       const result = await refreshWorkspaceNotificationsAction();
 
       if (!result.ok || !result.view || cancelled) {
@@ -185,8 +229,7 @@ export function AppShell({
       setLiveUnreadCount(result.view.unreadCount);
       setLiveInboxUnreadCount(result.view.inboxUnreadCount);
       setLiveNotifications(result.view.notifications);
-      setLiveHasInboxUnread(result.view.hasInboxUnread);
-      setLiveHasStaffUnread(result.view.hasStaffUnread);
+      setLiveStaffUnreadCount(result.view.staffUnreadCount);
       setUnreadInitialized(true);
     }
 
@@ -239,19 +282,13 @@ export function AppShell({
                     onFocus={() => prefetchRoute(item.href)}
                     onMouseEnter={() => prefetchRoute(item.href)}
                   >
-                    <span className="relative inline-flex">
-                      <Icon className="size-4" />
-                      {navDotHref(item.href) ? (
-                        <span
-                          className={cn(
-                            "absolute -right-0.5 -top-0.5 size-1.5 rounded-full",
-                            isActive ? "bg-white" : "bg-primary"
-                          )}
-                          aria-hidden="true"
-                        />
-                      ) : null}
-                    </span>
+                    <Icon className="size-4" />
                     {item.label}
+                    <NavCountBadge
+                      count={navBadgeCount(item.href)}
+                      isActive={isActive}
+                      className="ml-auto"
+                    />
                   </Link>
                 );
               })}
@@ -315,8 +352,8 @@ export function AppShell({
                 <NotificationsMenu
                   unreadCount={liveUnreadCount}
                   items={liveNotifications}
-                  hasInboxUnread={liveHasInboxUnread}
-                  hasStaffUnread={liveHasStaffUnread}
+                  hasInboxUnread={liveInboxUnreadCount > 0}
+                  hasStaffUnread={liveStaffUnreadCount > 0}
                 />
                 <div className="lg:hidden">
                   <LogoutButton />
@@ -371,15 +408,11 @@ export function AppShell({
               >
                 <span className="relative inline-flex">
                   <Icon className="size-4" />
-                  {navDotHref(item.href) ? (
-                    <span
-                      className={cn(
-                        "absolute -right-0.5 -top-0.5 size-1.5 rounded-full",
-                        isActive ? "bg-white" : "bg-primary"
-                      )}
-                      aria-hidden="true"
-                    />
-                  ) : null}
+                  <NavCountBadge
+                    count={navBadgeCount(item.href)}
+                    isActive={isActive}
+                    className="absolute -right-2.5 -top-2"
+                  />
                 </span>
                 <span className="truncate">{item.label}</span>
               </Link>

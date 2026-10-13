@@ -81,8 +81,6 @@ export default async function WorkspaceLayout({
       unreadCount={0}
       inboxUnreadCount={0}
       notifications={[]}
-      hasInboxUnread={false}
-      hasStaffUnread={false}
     >
       {children}
       <WorkspaceToaster />

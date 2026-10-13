@@ -15,12 +15,11 @@ export type WorkspaceNotificationsView = {
   // Patient-inbox-only unread — the correct value for anything that means
   // "unread conversations" specifically (WorkspaceLiveContext's `unreadCount`).
   inboxUnreadCount: number;
-  // Drive the small nav-level dots (sidebar + mobile bottom nav) on Inbox and
-  // Staff — computed from the true (uncapped) counts below, NOT derived from
-  // the capped `notifications` list, so a busier source can never crowd a
-  // quieter one out of the dot itself (only out of the visible list).
-  hasInboxUnread: boolean;
-  hasStaffUnread: boolean;
+  // Staff-side unread for the Staff nav badge: unread staff-thread messages
+  // plus check-ins the admin hasn't seen. Like inboxUnreadCount it comes from
+  // the true (uncapped) counts, NOT the capped `notifications` list, so a busier
+  // source can never crowd a quieter one out of its badge.
+  staffUnreadCount: number;
   notifications: Array<{
     id: string;
     title: string;
@@ -172,8 +171,7 @@ export async function refreshWorkspaceNotificationsAction(): Promise<{
     view: {
       unreadCount: inboxUnreadCount + staffMessageUnreadCount + unseenCheckInsCount,
       inboxUnreadCount,
-      hasInboxUnread: inboxUnreadCount > 0,
-      hasStaffUnread: staffMessageUnreadCount > 0 || unseenCheckInsCount > 0,
+      staffUnreadCount: staffMessageUnreadCount + unseenCheckInsCount,
       notifications,
     },
   };
