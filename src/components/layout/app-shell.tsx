@@ -216,11 +216,10 @@ export function AppShell({
     let cancelled = false;
     let interval: number | undefined;
 
+    // Keeps polling while the tab is in the background (browsers throttle
+    // hidden-tab timers on their own): the "(3)" tab-title count is meant to
+    // be seen from another tab, so it has to keep updating there.
     async function refreshNotifications() {
-      if (document.visibilityState !== "visible") {
-        return;
-      }
-
       const result = await refreshWorkspaceNotificationsAction();
 
       if (!result.ok || !result.view || cancelled) {
