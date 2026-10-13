@@ -4,7 +4,6 @@ import { redirect } from "next/navigation";
 
 import { confirmPasswordRecoveryAction } from "@/app/(auth)/actions";
 import { RECOVERY_EXPIRED_REDIRECT } from "@/lib/app-url-policy";
-import { BrandMark } from "@/components/brand-mark";
 import { SubmitButton } from "@/components/auth/submit-button";
 
 export const metadata: Metadata = { title: "Reset your password | Vela" };
@@ -24,11 +23,9 @@ export default async function ConfirmRecoveryPage({ searchParams }: ConfirmRecov
 
   return (
     <>
-      {/* Mobile brand (the desktop brand lives in the left panel) */}
-      <BrandMark href="/" includeSubtitle={false} className="mb-10 lg:hidden" />
 
       <div className="space-y-2">
-        <h1 className="text-[2rem] font-semibold leading-tight tracking-tight text-[var(--brand-ink)]">
+        <h1 className="text-[2.5rem] font-semibold leading-[1.05] tracking-[-0.03em] text-[var(--brand-ink)]">
           Confirm password reset
         </h1>
         <p className="text-[15px] leading-7 text-muted-foreground">

@@ -1,9 +1,10 @@
 "use client";
 
 import { useFormStatus } from "react-dom";
-import { Loader2 } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 type SubmitButtonProps = {
   children: React.ReactNode;
@@ -25,7 +26,11 @@ export function SubmitButton({
       type="submit"
       size="lg"
       variant={variant}
-      className={className}
+      className={cn(
+        "group/submit transition-[background-color,transform] duration-(--duration-base) ease-out-quint active:scale-[0.98]",
+        variant === "default" && "bg-[var(--brand-ink)] text-white hover:bg-[var(--brand-ink)]/90",
+        className,
+      )}
       disabled={pending}
     >
       {pending ? (
@@ -34,7 +39,10 @@ export function SubmitButton({
           {pendingLabel}
         </>
       ) : (
-        children
+        <>
+          {children}
+          <ArrowRight className="size-4 transition-transform duration-(--duration-base) ease-out-quint group-hover/submit:translate-x-0.5" data-icon="inline-end" />
+        </>
       )}
     </Button>
   );

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { BrandMark } from "@/components/brand-mark";
 import { ForgotPasswordForm } from "@/components/auth/forgot-password-form";
 
 export const metadata: Metadata = { title: "Reset your password | Vela" };
@@ -16,11 +15,9 @@ export default async function ForgotPasswordPage({ searchParams }: ForgotPasswor
 
   return (
     <>
-      {/* Mobile brand (the desktop brand lives in the left panel) */}
-      <BrandMark href="/" includeSubtitle={false} className="mb-10 lg:hidden" />
 
       <div className="space-y-2">
-        <h1 className="text-[2rem] font-semibold leading-tight tracking-tight text-[var(--brand-ink)]">
+        <h1 className="text-[2.5rem] font-semibold leading-[1.05] tracking-[-0.03em] text-[var(--brand-ink)]">
           Reset your password
         </h1>
         <p className="text-[15px] leading-7 text-muted-foreground">

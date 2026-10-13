@@ -93,6 +93,11 @@
   --radius-panel: 0.75rem;
   --radius-modal: 0.85rem;
   --radius-hero: 1.5rem;
+  /* Marketing-only radius scale — smaller and squarer than the workspace
+     tokens above. Kept separate so the authenticated app is untouched. */
+  --radius-mkt-tile: 0.4rem;
+  --radius-mkt-field: 0.5rem;
+  --radius-mkt-card: 0.75rem;
   --duration-fast: 140ms;
   --duration-base: 190ms;
   --duration-slow: 240ms;
@@ -172,6 +177,54 @@
     background: linear-gradient(135deg, var(--brand-start), var(--brand-end));
     background-clip: text;
     color: transparent;
+  }
+
+  /* Marketing hero headline: each word un-blurs and rises in sequence
+     (`--i` is its index). CSS-only so it runs off the main thread on load. */
+  .hero-word {
+    display: inline-block;
+    animation: vela-word-in 760ms var(--ease-out-expo) both;
+    animation-delay: calc(var(--i) * 45ms);
+  }
+
+  /* Copy + CTAs that follow a word-revealed headline. */
+  .hero-follow > * {
+    animation: vela-fade-up var(--duration-entrance) var(--ease-out-expo) both;
+  }
+
+  .hero-follow > :nth-child(1) {
+    animation-delay: 320ms;
+  }
+
+  .hero-follow > :nth-child(2) {
+    animation-delay: 400ms;
+  }
+
+  .hero-follow > :nth-child(3) {
+    animation-delay: 520ms;
+  }
+
+  /* The hero's scroll cue: a short cobalt bead running down its line. */
+  .hero-cue {
+    animation: vela-cue 2.2s var(--ease-out-quint) infinite;
+  }
+
+  /* Auto-advance timer bar (module explorer): its animationend IS the timer,
+     so pausing the animation pauses the advance. */
+  .animate-progress {
+    transform-origin: left;
+    animation: vela-progress 6s linear both;
+  }
+
+  /* Infinite horizontal marquee track — the parent duplicates its children
+     once so the 50% translate loops seamlessly. "reverse" starts at -50% so
+     it loops seamlessly in the opposite visual direction (testimonial wall). */
+  .animate-marquee {
+    animation: vela-marquee 26s linear infinite;
+  }
+
+  .animate-marquee-reverse {
+    animation: vela-marquee-reverse 26s linear infinite;
   }
 
   .vela-icon-tile {
@@ -305,9 +358,11 @@
   }
 
   .display-1 {
-    font-size: clamp(2.75rem, 5vw + 1.1rem, 5.5rem);
-    line-height: 0.96;
-    letter-spacing: -0.025em;
+    font-size: clamp(2.9rem, 6vw + 0.6rem, 6.75rem);
+    /* 1.02, not tighter: stacked lines must clear descenders (p, g, y) on the
+       line above ascenders (l, i) on the line below. */
+    line-height: 1.02;
+    letter-spacing: -0.035em;
     font-weight: 600;
   }
 
@@ -502,13 +557,19 @@
     .bar-grow,
     .badge-pulse,
     .event-enter,
-    .now-ping {
+    .now-ping,
+    .animate-marquee,
+    .animate-marquee-reverse,
+    .animate-progress,
+    .hero-cue {
       animation: none;
     }
 
     .state-pop,
     .step-enter,
-    .stagger-children > * {
+    .stagger-children > *,
+    .hero-word,
+    .hero-follow > * {
       animation: vela-fade-only 200ms ease-out both;
       animation-delay: 0ms;
     }
@@ -544,6 +605,120 @@
   }
   to {
     opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes vela-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes vela-marquee-reverse {
+  from {
+    transform: translateX(-50%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes vela-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-4px);
+  }
+  45% {
+    transform: translateX(4px);
+  }
+  70% {
+    transform: translateX(-2px);
+  }
+}
+
+@keyframes vela-cue {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(270%);
+  }
+}
+
+@keyframes vela-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* Auth orbit: the module ring turns, its tiles turn back to stay upright. */
+@keyframes vela-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The centre answers each module with one soft ring. */
+@keyframes vela-orbit-ping {
+  from {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  to {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+
+/* A pulse running along a spoke from a module into the centre. */
+@keyframes vela-spoke {
+  from {
+    left: 100%;
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  to {
+    left: 0%;
+    opacity: 0;
+  }
+}
+
+/* Checkout receipt: prints downward when the plan changes. */
+@keyframes vela-print {
+  from {
+    clip-path: inset(0 0 100% 0);
+    transform: translateY(-18px);
+  }
+  to {
+    clip-path: inset(0 0 -40px 0);
+    transform: translateY(0);
+  }
+}
+
+@keyframes vela-word-in {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+    transform: translateY(0.28em);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
     transform: translateY(0);
   }
 }
@@ -796,62 +971,24 @@ html.lenis body {
   mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
 }
 
-/* First-paint landing splash — covers the hero while its 3D logo chunk loads,
-   then fades to reveal the page. Same dark brand mesh as the hero so the reveal
-   reads as a continuation, not a swap. (JS toggles [data-leaving]; the FADE_MS
-   in landing-loader.tsx must match the opacity transition below.) */
-.vela-landing-loader {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  background-color: #050a1f;
-  opacity: 1;
-  transition: opacity 520ms var(--ease-out-quint);
-}
-.vela-landing-loader[data-leaving] {
-  opacity: 0;
-  pointer-events: none;
-}
-.vela-landing-loader__inner {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1.6rem;
-}
-.vela-landing-loader__mark {
-  width: 76px;
-  height: 76px;
-  /* Luminous sky halo + a deeper blue lift so the bright mark pops off the mesh. */
-  filter: drop-shadow(0 0 16px rgba(158, 195, 255, 0.55)) drop-shadow(0 8px 26px rgba(10, 34, 255, 0.42));
-}
-.vela-landing-loader__mark svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-.vela-landing-loader__bar {
-  position: relative;
-  width: 132px;
-  height: 3px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.14);
-}
-.vela-landing-loader__bar::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  width: 42%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #0a22ff, #64b6ff);
+/* Testimonial wall spotlight — hovering any card pauses every row (not just
+   the hovered one) and dims every other card across all rows; the hovered
+   card's own :hover rule wins it back to full opacity (higher specificity
+   than the wall-wide dim). */
+.testimonial-wall:hover .testimonial-track {
+  animation-play-state: paused;
 }
 
+.testimonial-wall:hover .testimonial-card {
+  opacity: 0.45;
+}
+
+.testimonial-wall:hover .testimonial-card:hover {
+  opacity: 1;
+}
+
+/* Shared loader keyframes — used by PageLoading (src/components/page-loading.tsx),
+   the route-level loading screen shown across the app. */
 @keyframes vela-loader-breathe {
   0%,
   100% {

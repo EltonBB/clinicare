@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Mail } from "lucide-react";
 
-import { BrandMark } from "@/components/brand-mark";
 import { EmailVerificationWatcher } from "@/components/auth/email-verification-watcher";
 import { ResendConfirmationForm } from "@/components/auth/resend-confirmation-form";
 import { createClient } from "@/utils/supabase/server";
@@ -32,13 +31,12 @@ export default async function ConfirmEmailPage({ searchParams }: ConfirmEmailPag
   if (verified) {
     return (
       <>
-        <BrandMark href="/" includeSubtitle={false} className="mb-10 lg:hidden" />
 
         <div className="flex size-14 items-center justify-center rounded-(--radius-field) border border-border/80 bg-white">
           <Mail className="size-6 text-primary" />
         </div>
         <div className="mt-6 space-y-2">
-          <h1 className="text-[2rem] font-semibold leading-tight tracking-tight text-[var(--brand-ink)]">
+          <h1 className="text-[2.5rem] font-semibold leading-[1.05] tracking-[-0.03em] text-[var(--brand-ink)]">
             Email confirmed
           </h1>
           <p className="text-[15px] leading-7 text-muted-foreground">
@@ -48,7 +46,7 @@ export default async function ConfirmEmailPage({ searchParams }: ConfirmEmailPag
 
         <Link
           href="/login"
-          className="vela-gradient mt-8 flex h-12 w-full items-center justify-center rounded-(--radius-field) text-[15px] font-semibold text-white shadow-[0_18px_36px_rgba(10,34,255,0.24)] transition-[transform,box-shadow] duration-(--duration-base) ease-out-quint hover:shadow-[0_22px_44px_rgba(10,34,255,0.30)] active:translate-y-px active:scale-[0.99] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
+          className="mt-8 flex h-12 w-full items-center justify-center rounded-(--radius-field) bg-[var(--brand-ink)] text-[15px] font-semibold text-white transition-[transform,background-color] duration-(--duration-base) ease-out-quint hover:bg-[var(--brand-ink)]/90 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
         >
           Continue to login
         </Link>
@@ -59,13 +57,12 @@ export default async function ConfirmEmailPage({ searchParams }: ConfirmEmailPag
   return (
     <>
       {sent && ticket ? <EmailVerificationWatcher ticket={ticket} /> : null}
-      <BrandMark href="/" includeSubtitle={false} className="mb-10 lg:hidden" />
 
       <div className="flex size-14 items-center justify-center rounded-(--radius-field) border border-border/80 bg-white">
         <Mail className="size-6 text-primary" />
       </div>
       <div className="mt-6 space-y-2">
-        <h1 className="text-[2rem] font-semibold leading-tight tracking-tight text-[var(--brand-ink)]">
+        <h1 className="text-[2.5rem] font-semibold leading-[1.05] tracking-[-0.03em] text-[var(--brand-ink)]">
           Check your email
         </h1>
         <p className="text-[15px] leading-7 text-muted-foreground">
@@ -96,7 +93,7 @@ export default async function ConfirmEmailPage({ searchParams }: ConfirmEmailPag
           ) : null}
 
           {sent && !already ? (
-            <div className="rounded-(--radius-field) border border-border/75 bg-[linear-gradient(135deg,rgba(10,34,255,0.06),rgba(100,182,255,0.06))] px-4 py-3 text-sm text-muted-foreground">
+            <div className="rounded-(--radius-field) border border-border/75 bg-[var(--brand-wash)]/50 px-4 py-3 text-sm text-muted-foreground">
               Once the email is confirmed, this page will redirect you to login automatically.
             </div>
           ) : null}
@@ -107,20 +104,21 @@ export default async function ConfirmEmailPage({ searchParams }: ConfirmEmailPag
         <ResendConfirmationForm email={email} ticket={ticket} />
       </div>
 
-      <div className="mt-8 space-y-3 border-t border-border/70 pt-6 text-center text-sm">
-        <Link href="/sign-up" className="font-semibold text-foreground hover:underline">
+      <div className="mt-8 flex items-center justify-between gap-4 border-t border-border/70 pt-6 text-sm">
+        <Link href="/sign-up" className="font-medium text-muted-foreground transition-colors hover:text-[var(--brand-ink)]">
           Back to sign up
         </Link>
-        <div>
-          <Link href="/forgot-password" className="font-semibold text-primary hover:underline">
-            Need to reset your password?
-          </Link>
-        </div>
+        <Link href="/forgot-password" className="font-medium text-primary hover:underline">
+          Reset your password
+        </Link>
       </div>
 
-      <p className="mt-6 text-center text-sm text-muted-foreground">
-        Can&apos;t find the email? Check your spam folder or contact{" "}
-        <span className="font-semibold text-primary">Support</span>.
+      <p className="mt-6 text-sm leading-6 text-muted-foreground">
+        Can&apos;t find the email? Check your spam folder or{" "}
+        <Link href="/contact" className="font-medium text-primary hover:underline">
+          contact us
+        </Link>
+        .
       </p>
     </>
   );

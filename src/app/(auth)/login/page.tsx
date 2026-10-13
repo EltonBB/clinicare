@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { BrandMark } from "@/components/brand-mark";
 import { LoginForm } from "@/components/auth/login-form";
 import { sanitizeOversizedAuthMetadataByEmail } from "@/lib/auth-metadata";
 import { getEmailVerificationReceiptEmail } from "@/lib/email-verification-receipts";
@@ -27,11 +26,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   return (
     <>
-      {/* Mobile brand (the desktop brand lives in the left panel) */}
-      <BrandMark href="/" includeSubtitle={false} className="mb-10 lg:hidden" />
 
       <div className="space-y-2">
-        <h1 className="text-[2rem] font-semibold leading-tight tracking-tight text-[var(--brand-ink)]">
+        <h1 className="text-[2.5rem] font-semibold leading-[1.05] tracking-[-0.03em] text-[var(--brand-ink)]">
           Welcome back
         </h1>
         <p className="text-[15px] leading-7 text-muted-foreground">Sign in to your clinic workspace.</p>
