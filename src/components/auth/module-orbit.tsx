@@ -59,7 +59,10 @@ export function ModuleOrbit() {
       <div
         ref={tilt}
         className="relative aspect-square w-[min(100%,27rem,52vh)] transition-transform duration-700 ease-out-quint [transform-style:preserve-3d]"
-        onPointerLeave={() => setHolding(false)}
+        // Only a mouse leaving releases the hold; a tapped tile stays lit until blur.
+        onPointerLeave={(e) => {
+          if (e.pointerType === "mouse") setHolding(false);
+        }}
       >
         {/* Orbit paths */}
         <span aria-hidden className="absolute inset-[9%] rounded-full border border-white/[0.07]" />

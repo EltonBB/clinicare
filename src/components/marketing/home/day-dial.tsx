@@ -120,7 +120,17 @@ export function DayDial({ still }: { still: boolean }) {
   const focus = hovered ?? current[0] ?? null;
 
   return (
-    <div className="relative mx-auto aspect-square w-full max-w-[640px]" onPointerLeave={() => setHovered(null)}>
+    <div
+      className="relative mx-auto aspect-square w-full max-w-[640px]"
+      // Mouse: reading lasts while pointing. Touch: a tap on an arc pins it (and
+      // pauses the sweep) until the next tap, since touch has no hover to hold.
+      onPointerLeave={(e) => {
+        if (e.pointerType === "mouse") setHovered(null);
+      }}
+      onPointerDown={(e) => {
+        if (e.pointerType !== "mouse" && !(e.target as Element).closest("[data-arc]")) setHovered(null);
+      }}
+    >
       <svg viewBox="0 0 600 600" className="h-full w-full overflow-visible" aria-hidden>
         <defs>
           <pattern id="dial-blocked" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
@@ -174,7 +184,13 @@ export function DayDial({ still }: { still: boolean }) {
                   d={arc(p.start + 2, p.end - 2, r)}
                   fill="none"
                   strokeLinecap="round"
-                  onPointerEnter={() => setHovered(p)}
+                  data-arc
+                  onPointerEnter={(e) => {
+                    if (e.pointerType === "mouse") setHovered(p);
+                  }}
+                  onPointerDown={(e) => {
+                    if (e.pointerType !== "mouse") setHovered((h) => (h?.key === p.key ? null : p));
+                  }}
                   className="cursor-pointer transition-[stroke,stroke-width,opacity] duration-300"
                   style={{ pointerEvents: "stroke" }}
                   stroke={state === "now" || isHover ? "#0A22FF" : state === "done" ? "rgba(10,34,255,0.38)" : "rgba(10,34,255,0.16)"}

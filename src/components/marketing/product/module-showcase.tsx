@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { AnimatePresence, m, useInView } from "framer-motion";
 
 import { cn } from "@/lib/utils";
 import { EASE } from "../motion/ease";
 import { Reveal } from "../motion/reveal";
+import { PauseToggle } from "../shared/pause-toggle";
 import { SectionHeader } from "../shared/section-header";
 import { MODULE_VISUALS } from "./module-visuals";
 import { MODULES, onSelectModule } from "../shared/modules";
@@ -24,35 +25,46 @@ export function ModuleShowcase() {
   const [active, setActive] = useState(0);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
-  // Pointer or keyboard focus inside the explorer holds the current module.
-  const paused = hovered || focused || !inView;
+  // Choosing a module (tap, click, the hero rail, or a ?module= link) holds it
+  // until the visitor presses play; hover and keyboard focus pause meanwhile.
+  const [held, setHeld] = useState(false);
+  const paused = held || hovered || focused || !inView;
+  const choose = useCallback((i: number) => {
+    setActive(i);
+    setHeld(true);
+  }, []);
   const mod = MODULES[active];
   const Visual = MODULE_VISUALS[active];
 
-  useEffect(() => onSelectModule(setActive), []);
+  useEffect(() => onSelectModule(choose), [choose]);
 
   // Links from elsewhere (the home module strip) name a module: ?module=2.
   useEffect(() => {
     const raw = new URLSearchParams(window.location.search).get("module");
     const requested = Number(raw);
     if (raw === null || !Number.isInteger(requested) || requested < 0 || requested >= MODULES.length) return;
-    const frame = requestAnimationFrame(() => setActive(requested));
+    const frame = requestAnimationFrame(() => choose(requested));
     return () => cancelAnimationFrame(frame);
-  }, []);
+  }, [choose]);
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
     if (!step) return;
     event.preventDefault();
     const next = (active + step + MODULES.length) % MODULES.length;
-    setActive(next);
+    choose(next);
     tabRefs.current[next]?.focus();
   }
 
   return (
     <section id="modules" className="scroll-mt-16 border-t border-border/60 py-24 sm:py-32">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <SectionHeader className="mb-12" lead="Every surface, all day." rest="Six modules, one record underneath." />
+        <SectionHeader
+          className="mb-12"
+          lead="Every surface, all day."
+          rest="Six modules, one record underneath."
+          aside={<PauseToggle paused={held} onToggle={() => setHeld((h) => !h)} label="module tour" />}
+        />
 
         <Reveal>
           <div
@@ -80,7 +92,7 @@ export function ModuleShowcase() {
                     aria-selected={selected}
                     aria-controls="module-panel"
                     tabIndex={selected ? 0 : -1}
-                    onClick={() => setActive(i)}
+                    onClick={() => choose(i)}
                     className={cn(
                       "relative flex w-full items-baseline gap-4 border-t border-border/60 py-5 text-left transition-colors duration-(--duration-base) ease-out-quint focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45",
                       selected ? "text-[var(--brand-ink)]" : "text-muted-foreground/70 hover:text-[var(--brand-ink)]",

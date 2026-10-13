@@ -12,7 +12,9 @@ import { MODULES } from "../shared/modules";
  * The six modules as a slow, endless strip under the hero, each with its drawn
  * glyph and one line. Pointing at one (or tabbing to it) stops the strip,
  * lights its glyph, and dims the rest; each item opens the product explorer
- * on its own module. A pause button at the right edge stops it on touch. Reduced motion: the strip stands still (the shared
+ * on its own module. A pause button at the right edge stops it on touch.
+ * Keyboard focus stops the marquee at its start (rather than pausing it
+ * mid-scroll), so the browser can bring the focused link into view. Reduced motion: the strip stands still (the shared
  * `.animate-marquee` rule).
  */
 export function ModuleStrip() {
@@ -25,11 +27,14 @@ export function ModuleStrip() {
       aria-label="Modules"
       className="group/strip relative overflow-hidden border-y border-border/60 marquee-mask"
       onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget)) setHovered(null);
+        if (e.currentTarget.contains(e.relatedTarget)) return;
+        setHovered(null);
+        // Focus may have scrolled the strip to reveal a link; hand the marquee back from the start.
+        e.currentTarget.scrollLeft = 0;
       }}
     >
       <ul
-        className="animate-marquee flex w-max group-focus-within/strip:[animation-play-state:paused] group-hover/strip:[animation-play-state:paused]"
+        className="animate-marquee flex w-max group-hover/strip:[animation-play-state:paused] group-has-[:focus-visible]/strip:animate-none"
         onPointerLeave={() => setHovered(null)}
         style={paused ? { animationPlayState: "paused" } : undefined}
       >
