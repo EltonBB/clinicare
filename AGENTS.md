@@ -448,7 +448,7 @@ Avoid: dense metric-table cards (Operational detail-style), synthetic deltas/tre
 
 ### Settings
 
-Settings is a **popup opened from the sidebar/mobile nav** (Claude-style), not a standalone page — `/settings` is kept only as a deep-link/tour fallback. It is a **master-detail** workspace (revised 2026-06 after owner review): a left section list + a right pane that shows **one section at a time**, each opening as its own purposeful, well-described, filled page.
+Settings is a **popup opened from the sidebar/mobile nav** (Claude-style), and it is the **only** settings surface (owner decision, 2026-10-13: never re-add a standalone settings page). `/settings?section=<id>` still works as a link: it redirects to the dashboard with the popup open on that section. It is a **master-detail** workspace (revised 2026-06 after owner review): a left section list + a right pane that shows **one section at a time**, each opening as its own purposeful, well-described, filled page.
 
 - Left: a **section nav card** — one row per section with a square icon tile, title, one-line subtitle, and chevron; the selected row is tinted primary; clicking switches the right pane (no scrollspy/scroll). **Save changes / Discard changes buttons live at the bottom of this card** (Discard disabled when nothing changed; resets to last saved state).
 - Right: the **active section only**, as one card with a header (title + one-line description) above its content. Each section is filled with meaningful content — never a lone sparse card; the dialog sizes to its content so panes are never hollow. **There is no Staff section** — staff lives only in its own workspace. The settled component designs:
@@ -459,7 +459,6 @@ Settings is a **popup opened from the sidebar/mobile nav** (Claude-style), not a
   - **Workflows**: three divided toggle rows — Rebooking nudge (Pro only, hidden on Basic), Unpaid payment reminder, Thank-you message — each with an inline timing select while on ("after N months/days", "N hours after the visit"), a muted "Off" when disabled; the section description says the suggestions land as drafts in Inbox › Follow-ups and nothing sends without review. Payment reminders and thank-yous are on by default, rebooking nudges off.
   - **WhatsApp**: a status panel (dot + Connected/Not connected + quiet Refresh, plus the connection detail and next-step line) above the number input + Connect, a format hint, and a checklist of what connecting enables — including the minimum-necessary "name + appointment time only, never clinical detail" line.
   - **Billing**: a plan panel (name + status pill + one-line note) above a feature checklist ("Included in your plan" on Pro / "Unlock with Pro" on Basic) and a support line + Manage plan CTA.
-- The workspace tour anchors to the WhatsApp **nav button** (`settings-whatsapp`), which is always rendered.
 - Field labels are sentence case (no all-caps/letter-spaced labels); status pills use sentence case.
 
 Avoid: cramming every section into one long scroll, hollow/oversized panes, a sparse single-card section, a Staff section, dashboard clutter, exposing provider implementation details or internal product names in any customer-facing copy.

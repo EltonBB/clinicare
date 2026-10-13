@@ -54,17 +54,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Toggle, ToggleRow } from "@/components/settings/settings-toggle";
 import { WorkflowsSection } from "@/components/settings/workflows-section";
-import {
-  WorkspaceHeader,
-  WorkspacePage,
-} from "@/components/workspace/workspace-layout";
 import { LazyMotionProvider } from "@/components/layout/motion-provider";
 
 type SettingsWorkspaceProps = {
   initialState: SettingsState;
   flashMessage?: string;
   /** "page" renders the full route; "dialog" renders inside the settings popup. */
-  variant?: "page" | "dialog";
   /**
    * Called after a successful save (the dialog uses this to refresh the app
    * shell) with whether the workspace still has unsaved changes — reconciling
@@ -245,7 +240,6 @@ function resolveInitialSection(requested: string | undefined): SettingsSectionId
 export function SettingsWorkspace({
   initialState,
   flashMessage = "",
-  variant = "page",
   onSaved,
   onDirtyChange,
   onUnsavedLogoUrlChange,
@@ -256,7 +250,6 @@ export function SettingsWorkspace({
   ownerPhone = "",
   initialSection,
 }: SettingsWorkspaceProps) {
-  const inDialog = variant === "dialog";
   const [state, setState] = useState(initialState);
   const [savedState, setSavedState] = useState(initialState);
   // Owner account fields live in their own state — they save through the auth
@@ -274,10 +267,8 @@ export function SettingsWorkspace({
     email: ownerEmail,
     phone: ownerPhone,
   });
-  // Server-resolved (e.g. checkout's ?section=billing deep link on the
-  // standalone /settings page) so the right section is in the very first
-  // render — no client-side swap/flash after hydration. The dialog never
-  // passes initialSection, so it always starts on "business" as before.
+  // A `/settings?section=billing` link opens the dialog on that section;
+  // opening it from the nav starts on "business".
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(() =>
     resolveInitialSection(initialSection)
   );
@@ -847,16 +838,11 @@ export function SettingsWorkspace({
       <div
         className={cn(
           "grid gap-4",
-          inDialog
-            ? "items-start md:items-stretch md:grid-cols-[232px_minmax(0,1fr)]"
-            : "items-start xl:grid-cols-[290px_minmax(0,1fr)]"
+          "items-start md:items-stretch md:grid-cols-[232px_minmax(0,1fr)]"
         )}
       >
         <div
-          className={cn(
-            "flex flex-col rounded-(--radius-card) border border-border/80 bg-white p-2 shadow-(--shadow-card)",
-            !inDialog && "xl:sticky xl:top-20"
-          )}
+          className="flex flex-col rounded-(--radius-card) border border-border/80 bg-white p-2 shadow-(--shadow-card)"
         >
           <nav>
             {settingsNav.map((section) => {
@@ -1590,21 +1576,9 @@ export function SettingsWorkspace({
     </LazyMotionProvider>
   );
 
-  if (inDialog) {
-    return (
-      <div className="dialog-scroll-body min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
-        {content}
-      </div>
-    );
-  }
-
   return (
-    <WorkspacePage>
-      <WorkspaceHeader
-        title="Settings"
-        description="Configure how the workspace runs."
-      />
+    <div className="dialog-scroll-body min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
       {content}
-    </WorkspacePage>
+    </div>
   );
 }
