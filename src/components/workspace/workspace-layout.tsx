@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ComponentProps, ComponentType, ReactNode } from "react";
 
-import { buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { cn } from "@/lib/utils";
 
 type WorkspacePageProps = ComponentProps<"div"> & {
@@ -281,6 +281,84 @@ export function WorkspaceFormSection({
   );
 }
 
+/** The cell shapes a first-run ghost row can draw, matching real row content. */
+export type WorkspaceGhostCell = "identity" | "text" | "wide" | "pill" | "action";
+
+type WorkspaceFirstRunProps = {
+  title: string;
+  description?: string;
+  actionHref?: string;
+  actionLabel?: string;
+  /** The real rows' grid template, so the ghost rows line up with the headers. */
+  gridClassName?: string;
+  cells?: WorkspaceGhostCell[];
+  rows?: number;
+  className?: string;
+};
+
+const ghostCellClass: Record<WorkspaceGhostCell, string> = {
+  identity: "",
+  text: "h-2.5 w-20 rounded-full bg-foreground/[0.07]",
+  wide: "h-2.5 w-36 rounded-full bg-foreground/[0.07]",
+  pill: "h-5 w-16 rounded-full bg-foreground/[0.06]",
+  action: "ml-auto h-7 w-16 rounded-(--radius-tile) bg-foreground/[0.05]",
+};
+
+// Each ghost row is a little fainter than the one above, so the outline fades
+// out instead of ending on a hard edge (no gradient in the workspace).
+const ghostRowOpacity = [1, 0.7, 0.45, 0.25, 0.12];
+
+/**
+ * What a page shows before it has any records: a few faint rows in the real
+ * rows' shapes (no sample data), then one line on what lands here and one
+ * action. Used inside a table or list body; the page's own headers and card
+ * frame stay, so the empty page already looks like the page it will become.
+ */
+export function WorkspaceFirstRun({
+  title,
+  description,
+  actionHref,
+  actionLabel,
+  gridClassName,
+  cells = ["identity", "text", "wide", "pill", "action"],
+  rows = 4,
+  className,
+}: WorkspaceFirstRunProps) {
+  return (
+    <div className={cn("pb-8", className)}>
+      <div aria-hidden>
+        {Array.from({ length: rows }, (_, row) => (
+          <div
+            key={row}
+            className={cn("grid items-center gap-3 px-3.5 py-2 lg:min-h-[54px]", gridClassName)}
+            style={{ opacity: ghostRowOpacity[row] ?? 0.1 }}
+          >
+            {cells.map((cell, index) =>
+              cell === "identity" ? (
+                <span key={index} className="flex items-center gap-3">
+                  <span className="size-8 shrink-0 rounded-(--radius-tile) bg-foreground/[0.06]" />
+                  <span className="h-2.5 w-28 rounded-full bg-foreground/[0.08]" />
+                </span>
+              ) : (
+                <span key={index} className={cn("hidden lg:block", ghostCellClass[cell])} />
+              )
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="mx-auto mt-2 max-w-sm px-4 text-center">
+        <p className="text-[15px] font-semibold text-foreground">{title}</p>
+        {description ? <p className="mt-1 text-sm leading-5 text-muted-foreground">{description}</p> : null}
+        {actionHref && actionLabel ? (
+          <Link href={actionHref} className={cn(buttonVariants({ size: "sm" }), "mt-4 rounded-(--radius-tile)")}>
+            {actionLabel}
+          </Link>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function WorkspaceEmptyState({
   icon: Icon,
   title,
@@ -291,25 +369,18 @@ export function WorkspaceEmptyState({
   className,
   compact = false,
 }: WorkspaceEmptyStateProps) {
+  // A quiet muted panel: no dashed slot, and the icon is a small glyph rather
+  // than a bordered badge (AGENTS.md visual law 7).
   return (
     <div
       className={cn(
-        "rounded-(--radius-card) border border-dashed border-border/80 bg-[#fbfcfe] px-3.5 text-center",
-        compact ? "py-2.5" : "py-3.5",
+        "rounded-(--radius-card) bg-muted/60 px-3.5 text-center",
+        compact ? "py-3" : "py-4",
         className
       )}
     >
-      {Icon ? (
-        <span
-          className={cn(
-            "mx-auto flex items-center justify-center rounded-(--radius-tile) border border-border/75 bg-white text-primary",
-            compact ? "size-8" : "size-9"
-          )}
-        >
-          <Icon className={cn(compact ? "size-3.5" : "size-4")} />
-        </span>
-      ) : null}
-      <p className={cn("text-sm font-semibold text-foreground", Icon && (compact ? "mt-2" : "mt-3"))}>{title}</p>
+      {Icon ? <Icon className={cn("mx-auto text-muted-foreground", compact ? "size-4" : "size-[18px]")} /> : null}
+      <p className={cn("text-sm font-semibold text-foreground", Icon && "mt-2")}>{title}</p>
       {description ? (
         <p className={cn("mx-auto mt-1 max-w-sm text-sm text-muted-foreground", compact ? "leading-5" : "leading-5")}>
           {description}

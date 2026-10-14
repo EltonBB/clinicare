@@ -38,7 +38,7 @@ import {
 } from "@/app/(workspace)/calendar/actions";
 import { buttonVariants } from "@/components/ui/button";
 import {
-  WorkspaceEmptyState,
+  WorkspaceFirstRun,
   WorkspaceHeader,
   WorkspacePage,
 } from "@/components/workspace/workspace-layout";
@@ -1073,13 +1073,17 @@ export function CalendarWorkspace({
           </div>
         ) : null}
         {!hasClients ? (
-            <WorkspaceEmptyState
-              icon={UsersRound}
-              title="Add a client before booking"
-              description="Appointments need a client record so reminders, inbox threads, and visit history stay attached to the right person."
-              actionHref="/clients/new?next=calendar"
-              actionLabel="Add first client"
-            />
+            <div className="surface-card overflow-hidden">
+              <WorkspaceFirstRun
+                cells={["identity", "text", "pill"]}
+                gridClassName="lg:grid-cols-[minmax(0,1fr)_120px_100px]"
+                className="pt-2"
+                title="Add a client before booking"
+                description="Every appointment belongs to a client, so reminders reach the right person."
+                actionHref="/clients/new?next=calendar"
+                actionLabel="Add first client"
+              />
+            </div>
           ) : view === "month" ? (
             <div key={gridKey} className={calendarGridHeightClass}>
               <div className="z-30 grid shrink-0 grid-cols-7 border-b border-border/80 bg-white text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
