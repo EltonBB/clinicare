@@ -88,6 +88,9 @@ export async function sendStaffPush(
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
+        // Optional: only needed once Expo's enhanced push security is turned on
+        // for the account. Until then sends work unauthenticated; after, they
+        // fail with a 401 that the error log below records.
         ...(process.env.EXPO_ACCESS_TOKEN
           ? { Authorization: `Bearer ${process.env.EXPO_ACCESS_TOKEN}` }
           : {}),

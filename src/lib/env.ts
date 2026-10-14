@@ -61,8 +61,6 @@ const importantOptionalEnv: Record<string, string> = {
     "inbound WhatsApp events are authenticated with the shared bridge secret alone instead of a signed request (set it here and APP_WEBHOOK_SECRET on the worker)",
   SENTRY_DSN: "server-side error monitoring is silently disabled",
   NEXT_PUBLIC_SENTRY_DSN: "client-side error monitoring is silently disabled",
-  EXPO_ACCESS_TOKEN:
-    "staff push notifications send unauthenticated (fine until Expo enforces enhanced push security on this account)",
   SUPABASE_SERVICE_ROLE_KEY:
     "the storage-cleanup retry sweep can't authenticate to Storage; pending cleanup rows accumulate until it's set",
 };
