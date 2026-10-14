@@ -4,14 +4,9 @@ import { PrismaClient } from '@prisma/client';
 import { Client, Pool } from 'pg';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { acquireSchedulingLock, hasSchedulingConflict } from '@/lib/scheduling-conflicts';
+
 import { requireTestDatabaseUrl, requireTestSchema } from './database-safety.mjs';
-
-vi.mock('@/lib/prisma', () => ({ prisma: {} }));
-vi.mock('@/lib/mobile/push', () => ({ buildStaffPushPayload: vi.fn(), sendStaffPush: vi.fn() }));
-vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
-vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
-
-import { acquireSchedulingLock, hasSchedulingConflict } from '@/lib/appointments-shared';
 
 const connectionString = requireTestDatabaseUrl(process.env.VELA_TEST_DATABASE_URL);
 const schema = requireTestSchema(process.env.VELA_TEST_SCHEMA);
@@ -130,5 +125,13 @@ describe('real PostgreSQL scheduling concurrency', () => {
     expect(await hasSchedulingConflict(db, { businessId, staffMemberId, startAt: endAt, endAt: adjacentEnd })).toBe(false);
     await db.appointment.updateMany({ where: { businessId }, data: { status: 'CANCELLED' } });
     expect(await hasSchedulingConflict(db, { businessId, staffMemberId, startAt, endAt })).toBe(false);
+  });
+
+  it('refuses a booking inside a blocked-off period, for any staff member or none', async () => {
+    await db.scheduleBlock.create({ data: { businessId, title: 'Synthetic closure', startsAt: startAt, endsAt: endAt } });
+    const inside = { businessId, startAt: new Date('2030-01-15T10:10:00Z'), endAt: new Date('2030-01-15T10:20:00Z') };
+    expect(await hasSchedulingConflict(db, { ...inside, staffMemberId })).toBe(true);
+    expect(await hasSchedulingConflict(db, { ...inside, staffMemberId: null })).toBe(true);
+    expect(await hasSchedulingConflict(db, { businessId, staffMemberId, startAt: endAt, endAt: new Date('2030-01-15T11:00:00Z') })).toBe(false);
   });
 });

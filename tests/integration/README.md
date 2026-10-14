@@ -12,10 +12,9 @@ real competing transactions and drops only that generated schema in `finally`.
 An interrupted process may leave its generated schema behind inside this disposable
 test database. Use a fresh disposable instance if cleanup cannot run.
 
-The suite verifies the existing scheduling lock, actual PostgreSQL lock contention,
-overlap rejection, rollback and cancellation/adjacency boundaries. It does not yet
-verify appointment revisions or enrollment uniqueness; those tests accompany their
-remediation changes. No network provider calls or real clinic data are used.
+The suite verifies the scheduling lock under real PostgreSQL lock contention,
+overlap rejection, rollback, cancellation/adjacency boundaries and blocked-off
+periods. No network provider calls or real clinic data are used.
 
 `prisma db push` does not apply the repository's manual SQL migrations or RLS.
 Add explicit migration fixtures before testing manual indexes, grants, RLS or new
