@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   HARD_RESPONSE_DEADLINE_MS,
   PER_BUSINESS_TIMEOUT_MS,
+  RATE_LIMIT_WAIT_HEADROOM_MS,
   REMINDER_RUN_BUDGET_MS,
 } from "./reminder-timing";
 
@@ -29,6 +30,15 @@ describe("reminder cron timing", () => {
     // near-zero (or negative) if PER_BUSINESS_TIMEOUT_MS is ever raised
     // without revisiting this relationship.
     expect(REMINDER_RUN_BUDGET_MS).toBeGreaterThanOrEqual(60_000);
+  });
+
+  // Codex #136: a clinic that fills its 30-a-minute window in this run has
+  // spent about a minute (sends plus the wait, measured from its first send),
+  // and must still have room to wait it out and send the next reminder.
+  it("lets a business wait out a full minute window it filled itself", () => {
+    const fullWindowMs = 60_000;
+    const roundingMs = 1_000; // retry-after is rounded up to whole seconds
+    expect(fullWindowMs + roundingMs + RATE_LIMIT_WAIT_HEADROOM_MS).toBeLessThanOrEqual(PER_BUSINESS_TIMEOUT_MS);
   });
 
   it("stays comfortably under the 300s platform maxDuration even in the worst case", () => {

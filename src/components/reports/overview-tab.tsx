@@ -130,6 +130,7 @@ function capitalize(value: string) {
 function statusColor(label: string) {
   const normalized = label.toLowerCase();
 
+  if (normalized.includes("no-show")) return APPOINTMENT_STATUS_COLORS.noShow;
   if (normalized.includes("completed")) return APPOINTMENT_STATUS_COLORS.completed;
   if (normalized.includes("cancelled")) return APPOINTMENT_STATUS_COLORS.cancelled;
   if (normalized.includes("pending")) return APPOINTMENT_STATUS_COLORS.pending;
@@ -202,12 +203,14 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
   const avgVisitKpi = kpiByKey.get("avgVisitLength");
   const repeatVisitRow = period.operationalDetail.find((row) => row.key === "repeatVisit");
   const lostSlotRow = period.operationalDetail.find((row) => row.key === "lostSlot");
+  const noShowRow = period.operationalDetail.find((row) => row.key === "noShow");
   const followUpRow = period.operationalDetail.find((row) => row.key === "followUp");
   const busiestDay = period.diagnostics.demandWindows.busiestDays[0];
   const quietestDay = period.diagnostics.demandWindows.quietestDays[0];
 
   const completionDetailParts = [
     lostSlotRow?.value ? `Lost-slot rate: ${lostSlotRow.value} of finalized visits were cancelled.` : null,
+    noShowRow?.value ? `No-show rate: ${noShowRow.value} of finalized visits were no-shows.` : null,
     followUpRow?.value ? `Follow-up coverage: ${followUpRow.value} of inbound messages got an outbound reply.` : null,
     avgVisitKpi?.value ? `Average visit length: ${avgVisitKpi.value}.` : null,
     repeatVisitRow?.value ? `${repeatVisitRow.value} of clients return for another visit.` : null,
@@ -599,6 +602,7 @@ export function HighlightsCard({ period }: { period: ReportPeriodView }) {
   const avgVisitKpi = period.kpis.find((kpi) => kpi.key === "avgVisitLength");
   const repeatVisitRow = period.operationalDetail.find((row) => row.key === "repeatVisit");
   const lostSlotRow = period.operationalDetail.find((row) => row.key === "lostSlot");
+  const noShowRow = period.operationalDetail.find((row) => row.key === "noShow");
   const followUpRow = period.operationalDetail.find((row) => row.key === "followUp");
 
   const highlights = [
@@ -611,6 +615,9 @@ export function HighlightsCard({ period }: { period: ReportPeriodView }) {
     lostSlotRow && lostSlotRow.value
       ? { title: "Lost-slot rate", detail: `${lostSlotRow.value} of finalized visits were cancelled.` }
       : null,
+    noShowRow && noShowRow.value
+      ? { title: "No-show rate", detail: `${noShowRow.value} of finalized visits were no-shows.` }
+      : null,
     followUpRow && followUpRow.value
       ? { title: "Follow-up coverage", detail: `${followUpRow.value} of inbound messages got an outbound reply.` }
       : null,
@@ -620,7 +627,10 @@ export function HighlightsCard({ period }: { period: ReportPeriodView }) {
           detail: `${period.activeClients.toLocaleString("en-US")} of ${period.clientMixTotal.toLocaleString("en-US")} client records are currently active.`,
         }
       : null,
-  ].filter((item): item is { title: string; detail: string } => Boolean(item));
+  ]
+    .filter((item): item is { title: string; detail: string } => Boolean(item))
+    // AGENTS.md locks Highlights at five tiles; with a sixth, the last one drops.
+    .slice(0, 5);
 
   return (
     <m.section

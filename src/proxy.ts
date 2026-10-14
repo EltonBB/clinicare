@@ -12,6 +12,7 @@ function corsHeaders(): Record<string, string> {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Expose-Headers": "Retry-After",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -29,6 +30,8 @@ export async function proxy(request: NextRequest) {
       return new NextResponse(null, { status: 204, headers: corsHeaders() });
     }
     const response = NextResponse.next();
+    // Includes enrollment tokens, private schedules, messages, and error responses.
+    response.headers.set("Cache-Control", "private, no-store");
     for (const [key, value] of Object.entries(corsHeaders())) {
       response.headers.set(key, value);
     }

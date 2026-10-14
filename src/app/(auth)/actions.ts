@@ -1,5 +1,7 @@
 "use server";
 
+import { createHash } from "node:crypto";
+
 import { type EmailOtpType } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { cookies, headers } from "next/headers";
@@ -22,6 +24,8 @@ import {
   clientIpFromHeaders,
   type RateLimitRule,
 } from "@/lib/rate-limit";
+import { ACTION_RATE_LIMIT_ERROR, isWithinActionBudget } from "@/lib/business";
+import { safeRedirectPath } from "@/lib/safe-redirect";
 import { createClient } from "@/utils/supabase/server";
 
 type FormValues = {
@@ -145,16 +149,6 @@ const resetPasswordSchema = z
     }
   });
 
-function sanitizeNextPath(next?: string) {
-  // Same-origin absolute paths only. Reject protocol-relative targets — both
-  // "//evil.com" and the "/\evil.com" backslash variant some browsers normalize.
-  if (!next || !next.startsWith("/") || next[1] === "/" || next[1] === "\\") {
-    return "/dashboard";
-  }
-
-  return next;
-}
-
 const EMAIL_RATE_LIMIT_MESSAGE =
   "We're sending a lot of emails right now. Please wait a minute and try again.";
 
@@ -164,12 +158,16 @@ const TOO_MANY_ATTEMPTS_MESSAGE =
 // Per-IP throttles: blunt credential-stuffing on login and email-send abuse on
 // signup / resend / forgot-password (the latter three share the email quota).
 const LOGIN_RATE_LIMIT: RateLimitRule = { limit: 12, windowMs: 60_000 };
+// Per account, so guesses spread across many IPs still hit a ceiling. Keyed by
+// a hash so the limiter store never holds the address itself.
+const LOGIN_ACCOUNT_RATE_LIMIT: RateLimitRule = { limit: 10, windowMs: 15 * 60_000 };
 const SIGNUP_RATE_LIMIT: RateLimitRule = { limit: 6, windowMs: 60_000 };
 const EMAIL_SEND_RATE_LIMIT: RateLimitRule = { limit: 5, windowMs: 60_000 };
 // Confirm-link submits are one click per email for a real user; 10/min per IP
 // leaves room for double-clicks and retries while stopping token-probe loops
 // from draining the auth provider's verify quota for everyone else.
 const CONFIRM_ATTEMPT_RATE_LIMIT: RateLimitRule = { limit: 10, windowMs: 60_000 };
+const OWNER_REAUTH_RATE_LIMIT: RateLimitRule = { limit: 5, windowMs: 15 * 60_000 };
 
 async function isWithinRateLimit(action: string, rule: RateLimitRule) {
   const ip = clientIpFromHeaders(await headers());
@@ -288,6 +286,12 @@ export async function loginAction(
     };
   }
 
+  const accountKey = createHash("sha256").update(parsed.data.email.toLowerCase()).digest("hex");
+
+  if (!(await checkRateLimit(`login-account:${accountKey}`, LOGIN_ACCOUNT_RATE_LIMIT)).allowed) {
+    return { error: TOO_MANY_ATTEMPTS_MESSAGE, values };
+  }
+
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signInWithPassword({
     email: parsed.data.email,
@@ -307,7 +311,7 @@ export async function loginAction(
     );
   }
 
-  redirect(sanitizeNextPath(parsed.data.next));
+  redirect(safeRedirectPath(parsed.data.next));
 }
 
 export async function resendConfirmationAction(
@@ -478,6 +482,12 @@ export async function resetPasswordAction(
     };
   }
 
+  // A recovery session is still a signed-in user: the password write spends
+  // the same per-user budget as every other signed-in action (Codex #140).
+  if (!(await isWithinActionBudget(user.id))) {
+    return { error: ACTION_RATE_LIMIT_ERROR, values };
+  }
+
   const { error } = await supabase.auth.updateUser({
     password: parsed.data.password,
   });
@@ -634,6 +644,11 @@ export async function updateOwnerProfileAction(
     };
   }
 
+  // Signed in, so the same per-user budget as every other action (Codex #140).
+  if (!(await isWithinActionBudget(user.id))) {
+    return { error: ACTION_RATE_LIMIT_ERROR, values };
+  }
+
   const currentMetadata = sanitizeAuthMetadataForSession(user.user_metadata);
   const metadataPatch = {
     ...currentMetadata,
@@ -651,6 +666,13 @@ export async function updateOwnerProfileAction(
   // a borrowed/hijacked session can't silently set new credentials. Done before
   // any mutation, so a wrong current password changes nothing.
   if (passwordChanged) {
+    // Each attempt checks a guess at the current password, so a borrowed or
+    // stolen session could otherwise use this form to guess it: a few tries
+    // per quarter hour per account (2026-10-06 QA).
+    if (!(await checkRateLimit(`owner-reauth:${user.id}`, OWNER_REAUTH_RATE_LIMIT)).allowed) {
+      return { error: TOO_MANY_ATTEMPTS_MESSAGE, values };
+    }
+
     const { error: reauthError } = await supabase.auth.signInWithPassword({
       email: user.email ?? "",
       password: parsed.data.currentPassword?.trim() ?? "",

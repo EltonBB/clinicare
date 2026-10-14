@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { AppointmentStatus, MessageDirection } from "@prisma/client";
+import type { AppointmentStatus, MessageDirection, MessageSource } from "@prisma/client";
 
-import { buildKeyMetrics, buildReportsViewFromWorkspace } from "@/lib/reports";
+import {
+  buildKeyMetrics,
+  buildReportsViewFromWorkspace,
+  countRepliedInbound,
+} from "@/lib/reports";
 
 // Characterization harness: pins the entire reports view model for a fixed
 // dataset so a future DB-aggregation rewrite of the data layer can prove it
@@ -23,8 +27,13 @@ function appt(
   return { status, startAt, endAt, createdAt: startAt, clientId, staffMemberId };
 }
 
-function msg(hoursAgo: number, direction: MessageDirection) {
-  return { direction, sentAt: new Date(now.getTime() - hoursAgo * 3_600_000) };
+function msg(
+  hoursAgo: number,
+  direction: MessageDirection,
+  conversationId = "conv_1",
+  source: MessageSource | null = direction === "OUTBOUND" ? "INBOX_REPLY" : null
+) {
+  return { direction, sentAt: new Date(now.getTime() - hoursAgo * 3_600_000), conversationId, source };
 }
 
 const view = buildReportsViewFromWorkspace({
@@ -472,5 +481,100 @@ describe("buildKeyMetrics", () => {
     for (const metric of keyMetrics) {
       expect(metric).not.toHaveProperty("helper");
     }
+  });
+});
+
+describe("buildReportsViewFromWorkspace — no-shows", () => {
+  function reportFor(appointments: ReturnType<typeof appt>[]) {
+    return buildReportsViewFromWorkspace({
+      business: { name: "No-show Clinic" },
+      appointments,
+      clients: [],
+      clientMix: { active: 0, atRisk: 0, inactive: 0, archived: 0 },
+      messages: [],
+      businessHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+        weekday,
+        isOpen: true,
+        startTime: "08:00",
+        endTime: "17:00",
+      })),
+      scheduleBlocks: [],
+      staffMembers: [
+        { id: "s1", name: "Dr. One", role: "Dentist", status: "ACTIVE", isActive: true },
+      ],
+      conversations: [],
+      aiSnapshots: [],
+      now,
+      timeZone: "UTC",
+    });
+  }
+
+  it("treats a no-show as a finalized visit: it lowers completion and gets its own rate", () => {
+    const daily = reportFor([
+      appt(0, 8, "COMPLETED"),
+      appt(0, 9, "COMPLETED"),
+      appt(0, 10, "NO_SHOW"),
+      appt(0, 11, "CANCELLED"),
+    ]).periods.daily;
+
+    expect(daily.metrics.find((metric) => metric.label === "Completion rate")?.value).toBe("50.0%");
+    expect(daily.operationalDetail.find((row) => row.key === "noShow")?.value).toBe("25.0%");
+    // Lost-slot rate stays cancellations only.
+    expect(daily.operationalDetail.find((row) => row.key === "lostSlot")?.value).toBe("25.0%");
+  });
+
+  it("adds a No-show slice to the status mix only when there is one", () => {
+    const withNoShow = reportFor([appt(0, 8, "COMPLETED"), appt(0, 9, "NO_SHOW")]).periods.daily;
+    const without = reportFor([appt(0, 8, "COMPLETED"), appt(0, 9, "CANCELLED")]).periods.daily;
+
+    expect(withNoShow.diagnostics.statusMix.map((item) => item.label)).toEqual([
+      "Completed",
+      "Confirmed",
+      "Pending",
+      "Cancelled",
+      "No-show",
+    ]);
+    expect(withNoShow.diagnostics.statusMix.find((item) => item.label === "No-show")?.count).toBe(1);
+    expect(without.diagnostics.statusMix.map((item) => item.label)).toEqual([
+      "Completed",
+      "Confirmed",
+      "Pending",
+      "Cancelled",
+    ]);
+    expect(without.operationalDetail.some((row) => row.key === "noShow")).toBe(false);
+  });
+});
+
+// QA 2026-10-12: Follow-up coverage read 300% because it divided all outbound
+// messages (reminders included) by inbound ones.
+describe("countRepliedInbound", () => {
+  it("counts each inbound message once, however many replies follow", () => {
+    const messages = [msg(5, "INBOUND"), msg(4, "OUTBOUND"), msg(3, "OUTBOUND"), msg(2, "OUTBOUND")];
+    expect(countRepliedInbound(messages, messages)).toBe(1);
+  });
+
+  it("ignores a reply sent before the message or in another conversation", () => {
+    const messages = [msg(6, "OUTBOUND"), msg(5, "INBOUND"), msg(1, "OUTBOUND", "conv_2")];
+    expect(countRepliedInbound(messages, messages)).toBe(0);
+  });
+
+  it("doesn't treat a reminder, auto-acknowledgement or follow-up as an answer", () => {
+    const messages = [
+      msg(5, "INBOUND"),
+      msg(4, "OUTBOUND", "conv_1", "REMINDER"),
+      msg(3, "OUTBOUND", "conv_1", "REPLY_ACK"),
+      msg(2, "OUTBOUND", "conv_1", "FOLLOW_UP"),
+    ];
+    expect(countRepliedInbound(messages, messages)).toBe(0);
+  });
+
+  it("still counts an outbound message recorded before sources existed", () => {
+    const messages = [msg(5, "INBOUND"), msg(4, "OUTBOUND", "conv_1", null)];
+    expect(countRepliedInbound(messages, messages)).toBe(1);
+  });
+
+  it("finds a reply that landed after the reporting window", () => {
+    const inWindow = [msg(30, "INBOUND")];
+    expect(countRepliedInbound(inWindow, [...inWindow, msg(1, "OUTBOUND")])).toBe(1);
   });
 });

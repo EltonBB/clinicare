@@ -8,7 +8,11 @@ import { prisma } from "@/lib/prisma";
 import { getReminderCursor, setReminderCursor } from "@/lib/reminder-cursor";
 import { lastAttemptedId, rotateForFairness } from "@/lib/reminder-fairness";
 import { reminderTypeForAppointment } from "@/lib/reminder-schedule";
-import { PER_BUSINESS_TIMEOUT_MS, REMINDER_RUN_BUDGET_MS } from "@/lib/reminder-timing";
+import {
+  PER_BUSINESS_TIMEOUT_MS,
+  RATE_LIMIT_WAIT_HEADROOM_MS,
+  REMINDER_RUN_BUDGET_MS,
+} from "@/lib/reminder-timing";
 import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 
 type ReminderSyncResult = {
@@ -100,8 +104,10 @@ export async function syncAppointmentRemindersForBusiness(
   const appointments = await prisma.appointment.findMany({
     where: {
       businessId,
+      // A no-show has already started, so it never reaches a future reminder
+      // window — excluded explicitly so that can't change by accident.
       status: {
-        not: "CANCELLED",
+        notIn: ["CANCELLED", "NO_SHOW"],
       },
       startAt: {
         gt: now,
@@ -176,7 +182,7 @@ export async function syncAppointmentRemindersForBusiness(
     // Outbound reminders flow through the messaging seam, which renders a HIPAA
     // minimum-necessary body (name + appointment time only — never the
     // service/treatment) and routes to the active WhatsApp provider.
-    const result = await sendMessage({
+    const send = () => sendMessage({
       channel: "WHATSAPP",
       businessId,
       to: clientPhone,
@@ -188,7 +194,82 @@ export async function syncAppointmentRemindersForBusiness(
         staffName: appointment.staffMember?.name ?? business.name,
         template,
       },
+      // One key per reminder of this booking as it now stands: a run that
+      // reaches the provider twice for it (an overlapping run, or a retry after
+      // the SENT marker below failed to save) is still delivered once. Every
+      // edit that clears the booking's reminders (a new time, client, staff
+      // member, service, length or status; a cancel) moves reminderGeneration
+      // on, so a reminder owed again after one is a new message, not a repeat
+      // the worker would replay or refuse (Codex #133).
+      idempotencyKey: `reminder:${appointment.id}:${reminderType}:${appointment.startAt.getTime()}:${appointment.reminderGeneration}`,
     });
+
+    let result = await send();
+    // The clinic's number is at its sending ceiling, so nothing went out. A
+    // full minute window clears within a minute: wait it out and send, as long
+    // as this business still has room to finish (RATE_LIMIT_WAIT_HEADROOM_MS).
+    // Otherwise the next hourly run would be too late for a visit starting
+    // before it (Codex #136).
+    while (!result.ok && result.reason === "rate_limited") {
+      const waitMs = Math.max(1, result.retryAfterSeconds ?? Infinity) * 1_000;
+      const elapsedMs = Date.now() - now.getTime();
+      if (elapsedMs + waitMs + RATE_LIMIT_WAIT_HEADROOM_MS > PER_BUSINESS_TIMEOUT_MS) break;
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      result = await send();
+    }
+
+    if (!result.ok && result.reason === "rate_limited") {
+      // Still refused (the hourly ceiling, or a wait that wouldn't fit): stop
+      // this clinic's run without recording a failure. Reminders go soonest
+      // visit first, so what's left is the latest-starting, and the next
+      // hourly run picks up whatever is still inside its reminder window.
+      logger.warn("Stopping reminder run early — the clinic reached its sending ceiling.", {
+        businessId,
+        attempted: sent + failed,
+      });
+      break;
+    }
+
+    if (!result.ok && result.reason === "delivery_uncertain") {
+      // The reminder may already be with the patient. Record it as SENT so no
+      // later run sends it again: a possibly-missed reminder (each visit gets up
+      // to two) is the lesser harm than a duplicate, and staff can still see the
+      // failure in the logs. Counted as failed (not confirmed), not mirrored to
+      // the Inbox (nothing confirmed to show), and it trips the breaker like a
+      // provider error, since it means the link stalled.
+      failed += 1;
+      progress.failed += 1;
+      consecutiveProviderErrors += 1;
+      logger.error("Reminder delivery uncertain — recorded as sent so it isn't sent twice.", undefined, {
+        businessId,
+        appointmentId: appointment.id,
+        reminderType,
+      });
+      await prisma.appointmentReminder
+        .upsert({
+          where: { appointmentId_type: { appointmentId: appointment.id, type: reminderType } },
+          create: { appointmentId: appointment.id, type: reminderType, status: "SENT" },
+          update: { status: "SENT", sentAt: new Date() },
+        })
+        .catch((error) => {
+          // Not recorded: the next run tries again with the same key, which the
+          // worker answers from its record of this send ("unknown" again)
+          // instead of re-sending.
+          logger.error("Failed to record an uncertain reminder as sent.", error, {
+            businessId,
+            appointmentId: appointment.id,
+            reminderType,
+          });
+        });
+      if (consecutiveProviderErrors >= MAX_CONSECUTIVE_PROVIDER_ERRORS) {
+        logger.warn(
+          "Stopping reminder run early — WhatsApp worker appears unavailable.",
+          { businessId, attempted: sent + failed }
+        );
+        break;
+      }
+      continue;
+    }
 
     if (!result.ok) {
       failed += 1;
@@ -279,9 +360,10 @@ export async function syncAppointmentRemindersForBusiness(
       progress.sent += 1;
       consecutiveProviderErrors = 0;
     } catch (error) {
-      // Couldn't even record the SENT marker — count as failed. It may re-send
-      // on the next run: the minimal, irreducible at-least-once window, far
-      // rarer than a multi-write transaction failing.
+      // Couldn't even record the SENT marker — count as failed. The next run
+      // retries with the same idempotency key, which the worker answers by
+      // replaying this send from its record (kept a week) rather than
+      // re-sending.
       failed += 1;
       progress.failed += 1;
       logger.error("Failed to record sent reminder.", error, {
@@ -328,6 +410,7 @@ export async function syncAppointmentRemindersForBusiness(
             conversationId: clientConversation.id,
             clientId: appointment.client.id,
             direction: "OUTBOUND",
+            source: "REMINDER",
             body: result.body,
             providerMessageSid: result.providerMessageId,
             deliveryStatus: result.status,

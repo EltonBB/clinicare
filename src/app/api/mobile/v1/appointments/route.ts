@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { listOwnAppointments } from "@/lib/mobile/appointments";
-import { mobileRateLimit } from "@/lib/mobile/guard";
+import { mobileRateLimit, staffAuthResponse } from "@/lib/mobile/guard";
 import { requireStaffContext } from "@/lib/staff-auth";
 
 export const runtime = "nodejs";
@@ -15,7 +15,7 @@ const MAX_OFFSET_DAYS = 365;
 export async function GET(request: Request) {
   const ctx = await requireStaffContext(request);
   if ("error" in ctx) {
-    return NextResponse.json({ error: ctx.error }, { status: ctx.status });
+    return staffAuthResponse(ctx);
   }
 
   const limited = await mobileRateLimit(ctx.device.id, "appointments", {

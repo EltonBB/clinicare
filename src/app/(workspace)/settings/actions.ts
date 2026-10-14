@@ -5,7 +5,14 @@ import { after } from "next/server";
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
-import { requireCurrentBusiness, requireCurrentWorkspace } from "@/lib/business";
+import {
+  ACTION_RATE_LIMIT_ERROR,
+  isWithinActionBudget,
+  isWithinBackgroundBudget,
+  requireCurrentBusiness,
+  requireCurrentWorkspace,
+} from "@/lib/business";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { getCurrentUser, updateCurrentUserMetadata } from "@/lib/auth";
 import { sanitizeAuthMetadataForSession } from "@/lib/auth-metadata";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
@@ -17,6 +24,7 @@ import {
   requestBaileysPairing,
 } from "@/lib/messaging/baileys-control";
 import type { WorkerConnectionStatus } from "@/lib/messaging/baileys-contract";
+import { CURRENCY_CHOOSABLE_FROM, isSupportedCurrency } from "@/lib/currency";
 import { normalizePhone } from "@/lib/inbox";
 import {
   isValidUploadShape,
@@ -32,12 +40,26 @@ import {
 import { logger } from "@/lib/logger";
 import { normalizeBrandHexColor, resolveBrandAccentPreset } from "@/lib/branding";
 import {
+  REBOOK_PLAN_ERROR,
   REMINDER_TEMPLATE_MAX_LENGTH,
+  WORKFLOW_LIMITS,
   type SaveSettingsPayload,
   type SettingsState,
 } from "@/lib/settings";
-import { loadSettingsState } from "@/lib/settings-server";
+import { loadSettingsState, WORKFLOW_SETTINGS_SELECT } from "@/lib/settings-server";
+import type { WorkflowSettingsValues } from "@/lib/workflow-generators";
+import { isProBusinessPlan } from "@/lib/billing";
 import { weekdayOrder } from "@/lib/onboarding";
+import { acquireBusinessFinancialLock } from "@/lib/business-financial-lock";
+
+const CURRENCY_LOCKED_ERROR =
+  "Currency can't be changed once payments are on record — it would misstate past amounts.";
+
+// Aborts the settings transaction from inside its callback when the currency
+// guard fails a check made under the financial lock — thrown instead of
+// returned so the transaction actually rolls back nothing-committed, then
+// caught right outside to produce the typed result.
+class CurrencyLockedError extends Error {}
 
 function clampReminderHours(value: number, fallback: number) {
   if (!Number.isFinite(value)) {
@@ -65,6 +87,16 @@ function clampReminderHours(value: number, fallback: number) {
 const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "must be HH:MM");
 const daySchema = z.object({ start: timeSchema, end: timeSchema });
 const saveSettingsSchema = z.object({
+  // Unlike businessType, currency IS validated: every amount is formatted with
+  // it, and a code outside the supported list (or a zero-decimal one) would
+  // show wrong amounts. It stays optional so a page opened before this field
+  // existed can still save; omitted means "leave the stored currency alone".
+  business: z.object({
+    currency: z
+      .string()
+      .refine(isSupportedCurrency, "Choose one of the listed currencies.")
+      .optional(),
+  }),
   workingHours: z.object({
     monday: daySchema,
     tuesday: daySchema,
@@ -88,10 +120,44 @@ export type SaveSettingsResult = {
 };
 
 
+const workflowSettingsSchema = z.object({
+  rebookEnabled: z.boolean(),
+  rebookAfterMonths: z
+    .number()
+    .int()
+    .min(WORKFLOW_LIMITS.rebookAfterMonths.min)
+    .max(WORKFLOW_LIMITS.rebookAfterMonths.max),
+  paymentReminderEnabled: z.boolean(),
+  paymentReminderAfterDays: z
+    .number()
+    .int()
+    .min(WORKFLOW_LIMITS.paymentReminderAfterDays.min)
+    .max(WORKFLOW_LIMITS.paymentReminderAfterDays.max),
+  thankYouEnabled: z.boolean(),
+  thankYouDelayHours: z
+    .number()
+    .int()
+    .min(WORKFLOW_LIMITS.thankYouDelayHours.min)
+    .max(WORKFLOW_LIMITS.thankYouDelayHours.max),
+});
+
+export type SaveWorkflowSettingsResult = {
+  ok: boolean;
+  error?: string;
+  /** The persisted values, for the caller to reconcile its saved snapshot with. */
+  workflows?: WorkflowSettingsValues;
+};
+
 export async function getSettingsDataAction(): Promise<SettingsState> {
   const { user, business } = await requireCurrentWorkspace("/settings", {
     missingBusinessRedirect: "/onboarding",
   });
+
+  // Each load also schedules a WhatsApp status sync, so it spends the same
+  // budget as the rest (Codex #140). The dialog shows "try again in a moment".
+  if (!(await isWithinActionBudget(user.id))) {
+    throw new Error(ACTION_RATE_LIMIT_ERROR);
+  }
 
   // Keep the WhatsApp status fresh for the next load, exactly like the
   // /settings route does — without delaying this response.
@@ -118,6 +184,10 @@ export async function saveSettingsAction(
     };
   }
 
+  if (!(await isWithinActionBudget(user.id))) {
+    return { ok: false, error: ACTION_RATE_LIMIT_ERROR };
+  }
+
   const validation = saveSettingsSchema.safeParse(payload);
   if (!validation.success) {
     return {
@@ -142,6 +212,8 @@ export async function saveSettingsAction(
       error: "Enter a valid HEX color, for example #0A22FF.",
     };
   }
+
+  const currencySubmitted = payload.business.currency !== undefined;
 
   // Only a Supabase storage reference or a safe HTTPS URL may be stored — the
   // logo is later interpolated into a CSS url() in the app shell.
@@ -173,80 +245,134 @@ export async function saveSettingsAction(
   // without a separate check here.
   const logoChanged = previousLogoUrl !== nextLogoUrl;
 
-  const pendingLogoCleanup = await prisma.$transaction(async (tx) => {
-    await tx.business.update({
-      where: {
-        id: business.id,
-      },
-      data: {
-        name: payload.business.businessName.trim() || business.name,
-        businessType: payload.business.businessType,
-        logoUrl: nextLogoUrl || null,
-        brandAccentColor,
-        whatsappNumber: normalizedWhatsAppNumber || null,
-      },
-    });
+  let pendingLogoCleanup;
+  try {
+    pendingLogoCleanup = await prisma.$transaction(async (tx) => {
+      if (currencySubmitted) {
+        // Held for the rest of this transaction: closes the gap between the
+        // check below and the update against a concurrent addClientPaymentAction,
+        // which acquires the same lock before its own create (Codex #131) —
+        // a plain check-then-update only narrows that race, it doesn't close it.
+        await acquireBusinessFinancialLock(tx, business.id);
 
-    // `whatsappEnabled` is connection-derived state owned by the pairing flow —
-    // it is NOT written here. There's no UI control for `whatsapp.sendReminders`,
-    // so writing it on save would silently disable a paired clinic's reminders
-    // on any unrelated settings change. The connection (provider, pairing
-    // status) is likewise owned by pairing + the inbound webhook.
-    for (const [index, day] of weekdayOrder.entries()) {
-      const schedule = payload.workingHours[day];
+        // Re-read under the lock instead of trusting the pre-transaction
+        // `business.currency` snapshot taken above: a submitted value that
+        // matches that snapshot can still be a real change if a concurrent
+        // request committed a different currency (and a payment in it) in
+        // between — the snapshot alone can't tell the two apart (Codex #131).
+        const freshBusiness = await tx.business.findUniqueOrThrow({
+          where: { id: business.id },
+          select: { currency: true },
+        });
 
-      await tx.businessHours.upsert({
+        if (freshBusiness.currency !== payload.business.currency) {
+          // Payments last written before currencies existed don't count: they
+          // were recorded under the old "$" label, not under a currency this
+          // workspace chose, and counting them would stop a workspace that
+          // really billed in another currency from ever correcting the
+          // migration's euro default (Codex #130). `updatedAt`, not
+          // `createdAt`: editing a legacy payment re-enters its amount under
+          // the label now in force, so from then on it counts like any other.
+          const existingPaymentCount = await tx.clientPayment.count({
+            where: { businessId: business.id, updatedAt: { gte: CURRENCY_CHOOSABLE_FROM } },
+          });
+          if (existingPaymentCount > 0) {
+            throw new CurrencyLockedError();
+          }
+
+          // This change relabels the legacy payments too, so it is their one
+          // correction: stamping them now makes them count above from here on,
+          // and the currency locks like any workspace's with payments. Left
+          // untouched, they'd let the owner relabel the same history again and
+          // again (Codex #130).
+          await tx.clientPayment.updateMany({
+            where: { businessId: business.id, updatedAt: { lt: CURRENCY_CHOOSABLE_FROM } },
+            data: { updatedAt: new Date() },
+          });
+        }
+      }
+
+      await tx.business.update({
         where: {
-          businessId_weekday: {
+          id: business.id,
+        },
+        data: {
+          name: payload.business.businessName.trim() || business.name,
+          businessType: payload.business.businessType,
+          // undefined = leave as is (Prisma skips it): an older client bundle omits the field.
+          currency: payload.business.currency,
+          logoUrl: nextLogoUrl || null,
+          brandAccentColor,
+          whatsappNumber: normalizedWhatsAppNumber || null,
+        },
+      });
+
+      // `whatsappEnabled` is connection-derived state owned by the pairing flow —
+      // it is NOT written here. There's no UI control for `whatsapp.sendReminders`,
+      // so writing it on save would silently disable a paired clinic's reminders
+      // on any unrelated settings change. The connection (provider, pairing
+      // status) is likewise owned by pairing + the inbound webhook.
+      for (const [index, day] of weekdayOrder.entries()) {
+        const schedule = payload.workingHours[day];
+
+        await tx.businessHours.upsert({
+          where: {
+            businessId_weekday: {
+              businessId: business.id,
+              weekday: index,
+            },
+          },
+          update: {
+            isOpen: schedule.enabled,
+            startTime: schedule.start,
+            endTime: schedule.end,
+          },
+          create: {
             businessId: business.id,
             weekday: index,
+            isOpen: schedule.enabled,
+            startTime: schedule.start,
+            endTime: schedule.end,
           },
+        });
+      }
+
+      await tx.reminderSettings.upsert({
+        where: {
+          businessId: business.id,
         },
         update: {
-          isOpen: schedule.enabled,
-          startTime: schedule.start,
-          endTime: schedule.end,
+          send24HourReminder: payload.reminders.twentyFourHour,
+          send2HourReminder: payload.reminders.twoHour,
+          reminderWindow: payload.whatsapp.reminderWindow,
+          firstReminderHours,
+          secondReminderHours,
+          template: payload.reminders.template.trim(),
         },
         create: {
           businessId: business.id,
-          weekday: index,
-          isOpen: schedule.enabled,
-          startTime: schedule.start,
-          endTime: schedule.end,
+          send24HourReminder: payload.reminders.twentyFourHour,
+          send2HourReminder: payload.reminders.twoHour,
+          reminderWindow: payload.whatsapp.reminderWindow,
+          firstReminderHours,
+          secondReminderHours,
+          template: payload.reminders.template.trim(),
         },
       });
-    }
 
-    await tx.reminderSettings.upsert({
-      where: {
-        businessId: business.id,
-      },
-      update: {
-        send24HourReminder: payload.reminders.twentyFourHour,
-        send2HourReminder: payload.reminders.twoHour,
-        reminderWindow: payload.whatsapp.reminderWindow,
-        firstReminderHours,
-        secondReminderHours,
-        template: payload.reminders.template.trim(),
-      },
-      create: {
-        businessId: business.id,
-        send24HourReminder: payload.reminders.twentyFourHour,
-        send2HourReminder: payload.reminders.twoHour,
-        reminderWindow: payload.whatsapp.reminderWindow,
-        firstReminderHours,
-        secondReminderHours,
-        template: payload.reminders.template.trim(),
-      },
+      // Recorded in the same transaction as the save above, so the outbox row
+      // exists if and only if this save actually committed with a changed
+      // logo — see lib/media-storage-server.ts.
+      return logoChanged
+        ? recordPendingStorageCleanup(tx, business.id, [previousLogoUrl])
+        : null;
     });
-
-    // Recorded in the same transaction as the save above, so the outbox row
-    // exists if and only if this save actually committed with a changed
-    // logo — see lib/media-storage-server.ts.
-    return logoChanged
-      ? recordPendingStorageCleanup(tx, business.id, [previousLogoUrl])
-      : null;
-  });
+  } catch (error) {
+    if (error instanceof CurrencyLockedError) {
+      return { ok: false, error: CURRENCY_LOCKED_ERROR };
+    }
+    throw error;
+  }
 
   // The transaction above already committed — business name, logo, brand
   // accent, working hours, and reminders all render in the app shell on every
@@ -299,6 +425,77 @@ export async function saveSettingsAction(
 }
 
 /**
+ * Saves the Workflows section (rebooking nudge, unpaid-payment reminder,
+ * thank-you message) — called from the Settings dialog's shared Save handler,
+ * ahead of saveSettingsAction, only when those values changed. Each workflow
+ * only ever creates a draft for the owner to review in Inbox › Follow-ups.
+ *
+ * The rebooking nudge is Pro-only and re-checked here, not just hidden in the
+ * UI: a Basic workspace can never store `rebookEnabled: true`, and its rebook
+ * timing is left exactly as stored.
+ */
+export async function saveWorkflowSettingsAction(
+  payload: WorkflowSettingsValues
+): Promise<SaveWorkflowSettingsResult> {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      error: "Your session expired. Log in again to update settings.",
+    };
+  }
+
+  if (!(await isWithinActionBudget(user.id))) {
+    return { ok: false, error: ACTION_RATE_LIMIT_ERROR };
+  }
+
+  const validation = workflowSettingsSchema.safeParse(payload);
+  if (!validation.success) {
+    return { ok: false, error: "Some workflow settings aren't valid." };
+  }
+
+  const values = validation.data;
+  const business = await requireCurrentBusiness(user, {
+    missingBusinessRedirect: "/onboarding",
+  });
+  const isPro = isProBusinessPlan(business.plan);
+
+  if (!isPro && values.rebookEnabled) {
+    return { ok: false, error: REBOOK_PLAN_ERROR };
+  }
+
+  const sharedValues = {
+    paymentReminderEnabled: values.paymentReminderEnabled,
+    paymentReminderAfterDays: values.paymentReminderAfterDays,
+    thankYouEnabled: values.thankYouEnabled,
+    thankYouDelayHours: values.thankYouDelayHours,
+  };
+  // Basic never writes the rebook fields at all: a downgraded workspace keeps
+  // whatever was stored (the cron re-checks the plan), and a first-ever save
+  // falls back to the column defaults (rebook off, 6 months).
+  const rebookValues = isPro
+    ? {
+        rebookEnabled: values.rebookEnabled,
+        rebookAfterMonths: values.rebookAfterMonths,
+      }
+    : {};
+
+  const saved = await prisma.workflowSettings.upsert({
+    where: { businessId: business.id },
+    update: { ...sharedValues, ...rebookValues },
+    create: { businessId: business.id, ...sharedValues, ...rebookValues },
+    select: WORKFLOW_SETTINGS_SELECT,
+  });
+
+  // Same as saveSettingsAction: settings changes are revalidated at the layout
+  // level so no cached workspace route serves stale values.
+  revalidatePath("/", "layout");
+
+  return { ok: true, workflows: saved };
+}
+
+/**
  * Best-effort cleanup for a logo the operator uploaded (handleLogoUpload in
  * settings-workspace.tsx writes it to Storage immediately, before Save) but
  * then discarded without saving. Nothing else ever records that file for
@@ -310,7 +507,11 @@ export async function saveSettingsAction(
 export async function discardUnsavedLogoAction(uploadedLogoUrl: string): Promise<void> {
   const user = await getCurrentUser();
 
-  if (!user) {
+  // Off the shared budget: the logo is already uploaded by the time this runs,
+  // and skipping it would orphan the file for good. It spends the separate
+  // background allowance instead, so it is still capped (Codex #140). It only
+  // ever deletes this user's own unsaved upload.
+  if (!user || !(await isWithinBackgroundBudget(user.id))) {
     return;
   }
 
@@ -408,9 +609,19 @@ export async function connectBaileysWhatsAppAction(options?: {
     };
   }
 
+  if (!(await isWithinActionBudget(user.id))) {
+    return { ok: false, error: ACTION_RATE_LIMIT_ERROR };
+  }
+
   const business = await requireCurrentBusiness(user, {
     missingBusinessRedirect: "/onboarding",
   });
+
+  // Each call restarts pairing on the worker, and a forced one wipes the
+  // stored link: a few a minute per clinic is plenty for a person.
+  if (!(await checkRateLimit(`whatsapp-pair:${business.id}`, { limit: 5, windowMs: 60_000 })).allowed) {
+    return { ok: false, error: "Wait a minute before trying to connect WhatsApp again." };
+  }
 
   if (!isBaileysWorkerConfigured()) {
     return {
@@ -545,6 +756,10 @@ export async function getBaileysPairingStatusAction(): Promise<BaileysPairingRes
       ok: false,
       error: "Your session expired. Log in again to check WhatsApp.",
     };
+  }
+
+  if (!(await isWithinActionBudget(user.id))) {
+    return { ok: false, error: ACTION_RATE_LIMIT_ERROR };
   }
 
   const business = await requireCurrentBusiness(user, {

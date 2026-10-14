@@ -1,0 +1,18 @@
+-- No-show appointment status
+-- =============================================================================
+-- Adds NO_SHOW to the AppointmentStatus enum. Additive and backward compatible:
+-- the code that is running today never writes or reads the value, so applying
+-- this first is safe. It MUST be applied to the database BEFORE the no-show code
+-- deploys: that code both writes NO_SHOW and filters on it in SQL, so if it
+-- ships first, all of these fail with an invalid enum value error:
+--   * recording a no-show;
+--   * the dashboard's four appointment-aggregate queries (one Promise.all, so a
+--     single rejection drops the whole block to zeros): the Completion-rate KPI,
+--     the Visits tiles/chart and average visit length all read 0, and errors
+--     are logged (the all-time visits count fails the same way);
+--   * the hourly reminders cron (notIn CANCELLED/NO_SHOW), which then sends
+--     nothing for any clinic until the value exists.
+--
+-- Safe to re-run. Run it on its own (ALTER TYPE ... ADD VALUE cannot share a
+-- transaction with statements that use the new value).
+ALTER TYPE "AppointmentStatus" ADD VALUE IF NOT EXISTS 'NO_SHOW';

@@ -1,11 +1,14 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { StaffDetailsPage } from "@/components/staff/staff-details-page";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { getAdminThread } from "@/lib/mobile/admin-inbox";
 import { getMobileAccessStatus } from "@/lib/mobile/admin";
-import { buildStaffRecord, completedAppointmentCutoff } from "@/lib/staff";
+import { buildStaffRecord, staffRecordAppointmentWindow } from "@/lib/staff";
 import { prisma } from "@/lib/prisma";
+
+export const metadata: Metadata = { title: "Staff member | Vela" };
 
 function staffTimeEntryCutoff() {
   return new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
@@ -69,9 +72,7 @@ export default async function StaffDetailsRoute({
       },
       appointments: {
         where: {
-          startAt: {
-            gte: completedAppointmentCutoff(),
-          },
+          startAt: staffRecordAppointmentWindow(),
         },
         include: {
           client: {

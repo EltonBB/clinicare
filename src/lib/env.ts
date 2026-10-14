@@ -57,6 +57,8 @@ const importantOptionalEnv: Record<string, string> = {
   BAILEYS_WORKER_URL: "WhatsApp sending and QR pairing are unavailable",
   BAILEYS_BRIDGE_SECRET:
     "WhatsApp worker requests can't be authenticated, so messaging is unavailable",
+  BAILEYS_WEBHOOK_SECRET:
+    "inbound WhatsApp events are authenticated with the shared bridge secret alone instead of a signed request (set it here and APP_WEBHOOK_SECRET on the worker)",
   SENTRY_DSN: "server-side error monitoring is silently disabled",
   NEXT_PUBLIC_SENTRY_DSN: "client-side error monitoring is silently disabled",
   EXPO_ACCESS_TOKEN:

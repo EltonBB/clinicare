@@ -1,10 +1,11 @@
 // Standalone Prisma schema for the WhatsApp worker.
 //
-// The worker only reads/writes its own two tables, so it carries a minimal
+// The worker only reads/writes its own five tables, so it carries a minimal
 // schema instead of the app's full one — this lets it build and deploy on its
 // own (Railway today, AWS ECS later) without the rest of the app. The model and
-// field names MUST match the app's `WhatsAppSession` / `WhatsAppSessionKey`
-// models (prisma/schema.prisma at the repo root) so both map to the same
+// field names MUST match the app's `WhatsAppSession` / `WhatsAppSessionKey`,
+// `WhatsAppSendKey`, `WhatsAppSentMessage` and `WhatsAppWorkerLease` models
+// (prisma/schema.prisma at the repo root) so both map to the same
 // Postgres tables — keep them in sync. The tables themselves (and their foreign
 // keys to Business) are created/owned by the app's migration.
 
@@ -35,4 +36,37 @@ model WhatsAppSessionKey {
 
   @@unique([businessId, category, keyId])
   @@index([businessId, category])
+}
+
+// Keyed sends (see src/send-key-store.ts and the app's WhatsAppSendKey model).
+model WhatsAppSendKey {
+  businessId        String
+  key               String
+  fingerprint       String
+  state             String
+  providerMessageId String?
+  expiresAt         DateTime
+  createdAt         DateTime @default(now())
+
+  @@id([businessId, key])
+  @@index([expiresAt])
+}
+
+// Sent messages kept for resend requests (see src/sent-message-store.ts).
+model WhatsAppSentMessage {
+  businessId String
+  messageId  String
+  content    Bytes
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@id([businessId, messageId])
+  @@index([expiresAt])
+}
+
+// The single-active-instance lease (see src/worker-lease.ts).
+model WhatsAppWorkerLease {
+  id        String   @id
+  holder    String
+  expiresAt DateTime
 }

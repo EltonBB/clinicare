@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { EditClientForm } from "@/components/clients/edit-client-form";
@@ -5,6 +6,8 @@ import { CreatePageShell } from "@/components/workspace/create-page-shell";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { buildClientRecord } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
+
+export const metadata: Metadata = { title: "Edit client | Vela" };
 
 export default async function EditClientPage({
   params,
@@ -161,7 +164,7 @@ export default async function EditClientPage({
     notFound();
   }
 
-  const record = await buildClientRecord(client);
+  const record = await buildClientRecord(client, business.currency);
 
   return (
     <CreatePageShell title={`Edit ${record.name}`}>

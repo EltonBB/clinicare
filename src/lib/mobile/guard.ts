@@ -1,6 +1,19 @@
 import { NextResponse } from "next/server";
 
 import { checkRateLimit, type RateLimitRule } from "@/lib/rate-limit";
+import type { StaffAuthError } from "@/lib/staff-auth";
+
+export function staffAuthResponse(error: StaffAuthError): NextResponse {
+  return NextResponse.json(
+    { error: error.error },
+    {
+      status: error.status,
+      ...(error.retryAfterSeconds
+        ? { headers: { "Retry-After": String(error.retryAfterSeconds) } }
+        : {}),
+    }
+  );
+}
 
 /**
  * Per-device rate limit for authenticated mobile endpoints (defense in depth —

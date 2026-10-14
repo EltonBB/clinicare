@@ -47,6 +47,22 @@ describe("checkRateLimit (in-memory fallback)", () => {
     expect((await checkRateLimit(key, rule)).remaining).toBe(1);
     expect((await checkRateLimit(key, rule)).remaining).toBe(0);
   });
+
+  it("bounds memory under a key flood by evicting the oldest buckets, still admitting new callers", async () => {
+    const buckets = global.rateLimitBuckets!;
+    buckets.clear();
+    const resetAt = Date.now() + 60_000;
+    for (let i = 0; i < 10_000; i++) buckets.set(`flood-${i}`, { count: 1, resetAt });
+    try {
+      expect((await checkRateLimit("new-at-capacity", { limit: 2, windowMs: 60_000 })).allowed).toBe(true);
+      expect(buckets.size).toBeLessThan(10_000);
+      expect(buckets.has("flood-0")).toBe(false);
+      expect(buckets.has("flood-9999")).toBe(true);
+      expect(buckets.has("new-at-capacity")).toBe(true);
+    } finally {
+      buckets.clear();
+    }
+  });
 });
 
 describe("checkRateLimit under an open circuit breaker", () => {

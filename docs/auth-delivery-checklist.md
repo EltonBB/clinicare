@@ -10,6 +10,19 @@ This project is now app-side ready for:
 
 ## External setup still required
 
+For an existing database with `on_auth_user_deleted`, apply
+`scripts/sql/restrict-auth-delete-trigger-execute.sql` in the Supabase SQL Editor
+after this change is approved. It only removes direct function execution from
+`PUBLIC`, `anon`, `authenticated`, and `service_role`; the `auth.users` delete
+trigger remains installed. Confirm the trigger still exists and
+`has_function_privilege('anon', 'public.handle_auth_user_deleted()', 'EXECUTE')`
+and the corresponding `authenticated` check both return false. The setup script
+also applies the same restriction whenever it creates/replaces the function.
+Do not rerun the full setup script merely to apply this grant change: that script
+also removes businesses with no matching Auth user.
+If the full setup script is ever needed again, supply `DATABASE_SSL_CA` when the
+database uses a private CA; remote database certificates are now verified.
+
 These steps happen in Supabase, not in the repo:
 
 1. Configure a real SMTP provider in Supabase Auth

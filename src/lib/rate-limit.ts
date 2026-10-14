@@ -74,9 +74,6 @@ function getRedisLimiter(rule: RateLimitRule): Ratelimit | null {
   // The breaker is consulted on EVERY call, including cache hits below: a
   // cached limiter still issues a real Redis command, so short-circuiting
   // before this would let `checkRateLimit` bypass an open breaker entirely.
-  // The breaker is consulted on EVERY call, including cache hits below: a
-  // cached limiter still issues a real Redis command, so short-circuiting
-  // before this would let `checkRateLimit` bypass an open breaker entirely.
   // `rate-limit.test.ts` pins this.
   const redis = getRedis();
   if (!redis) {
@@ -116,7 +113,7 @@ function getRedisLimiter(rule: RateLimitRule): Ratelimit | null {
 
 /** Drop expired buckets when the map grows large, to bound memory. */
 function pruneExpired(now: number) {
-  if (buckets.size <= MAX_TRACKED_KEYS) {
+  if (buckets.size < MAX_TRACKED_KEYS) {
     return;
   }
 
@@ -124,6 +121,20 @@ function pruneExpired(now: number) {
     if (now >= bucket.resetAt) {
       buckets.delete(key);
     }
+  }
+
+  if (buckets.size < MAX_TRACKED_KEYS) {
+    return;
+  }
+
+  // Still full of live buckets (a flood of distinct keys): evict the oldest
+  // tenth. Refusing new keys instead would lock every new user out, and an
+  // attacker would need ~1,000 fresh keys to reset one budget this way.
+  for (const key of buckets.keys()) {
+    if (buckets.size < MAX_TRACKED_KEYS * 0.9) {
+      break;
+    }
+    buckets.delete(key);
   }
 }
 
@@ -134,6 +145,8 @@ function checkRateLimitInMemory(key: string, rule: RateLimitRule): RateLimitResu
 
   if (!existing || now >= existing.resetAt) {
     pruneExpired(now);
+    // Re-insert so Map order tracks recency: eviction drops the oldest first.
+    buckets.delete(key);
     buckets.set(key, { count: 1, resetAt: now + rule.windowMs });
     return { allowed: true, remaining: Math.max(rule.limit - 1, 0), retryAfterSeconds: 0 };
   }

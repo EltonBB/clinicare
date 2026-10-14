@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { mobileRateLimit } from "@/lib/mobile/guard";
+import { mobileRateLimit, staffAuthResponse } from "@/lib/mobile/guard";
 import { getConversation } from "@/lib/mobile/inbox";
 import { requireStaffContext } from "@/lib/staff-auth";
 
@@ -13,7 +13,7 @@ export async function GET(
 ) {
   const ctx = await requireStaffContext(request);
   if ("error" in ctx) {
-    return NextResponse.json({ error: ctx.error }, { status: ctx.status });
+    return staffAuthResponse(ctx);
   }
 
   const limited = await mobileRateLimit(ctx.device.id, "thread", { limit: 90, windowMs: 60_000 });

@@ -347,7 +347,7 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
       "highlightChange": "67%",
       "highlightSummary": "5 appointments are on the schedule, covering 2.3 booked hours; 66.7% completion across 3 finalized visits, and booked activity is up +2.",
       "highlightTrend": "flat",
-      "highlightValue": "62/100",
+      "highlightValue": "56/100",
       "key": "custom",
       "kpis": [
         {
@@ -452,11 +452,11 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           "value": "100.0%",
         },
         {
-          "delta": "+100 pts",
-          "helper": "Outbound vs inbound messages",
+          "delta": "-100 pts",
+          "helper": "Inbound messages that got a reply",
           "label": "Follow-up coverage",
-          "trend": "up",
-          "value": "100.0%",
+          "trend": "down",
+          "value": "0.0%",
         },
         {
           "delta": "-7m",
@@ -484,12 +484,12 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           "value": "100.0%",
         },
         {
-          "delta": "+100 pts",
+          "delta": "-100 pts",
           "helper": "",
           "key": "followUp",
           "label": "Follow-up coverage",
-          "trend": "up",
-          "value": "100.0%",
+          "trend": "down",
+          "value": "0.0%",
         },
       ],
       "periodEnd": "2026-06-28T23:59:59.999Z",
@@ -501,7 +501,7 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
         "actions": [
           {
             "detail": "1 new client entered the clinic for this range, which keeps acquisition moving.",
-            "expectedImpact": "Protects the current 62/100 performance score by preserving the strongest metric signal.",
+            "expectedImpact": "Protects the current 56/100 performance score by preserving the strongest metric signal.",
             "metric": "Completion and utilization",
             "priority": "medium",
             "title": "Protect the strongest signal",
@@ -548,12 +548,12 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
             "title": "Lost slots are reducing usable capacity",
           },
           {
-            "evidence": "Repeat visits are 100.0% and follow-up coverage is 100.0%.",
+            "evidence": "Repeat visits are 100.0% and follow-up coverage is 0.0%.",
             "severity": "low",
             "title": "Retention and follow-up need regular monitoring",
           },
         ],
-        "score": 62,
+        "score": 56,
         "severity": "high",
         "source": "rules",
         "statHighlights": [
@@ -918,7 +918,7 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
       "highlightChange": "-50 pts",
       "highlightSummary": "3 appointments are on the schedule, covering 1 booked hour; 50.0% completion across 2 finalized visits, and booked activity is up +1.",
       "highlightTrend": "down",
-      "highlightValue": "46/100",
+      "highlightValue": "40/100",
       "key": "daily",
       "kpis": [
         {
@@ -1024,10 +1024,10 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
         },
         {
           "delta": "",
-          "helper": "Outbound vs inbound messages",
+          "helper": "Inbound messages that got a reply",
           "label": "Follow-up coverage",
           "trend": "flat",
-          "value": "100.0%",
+          "value": "0.0%",
         },
         {
           "delta": "-15m",
@@ -1060,7 +1060,7 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           "key": "followUp",
           "label": "Follow-up coverage",
           "trend": "flat",
-          "value": "100.0%",
+          "value": "0.0%",
         },
       ],
       "periodEnd": "2026-06-23T23:59:59.999Z",
@@ -1072,7 +1072,7 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
         "actions": [
           {
             "detail": "1 completed visit give the clinic a measurable baseline today.",
-            "expectedImpact": "Protects the current 46/100 performance score by preserving the strongest metric signal.",
+            "expectedImpact": "Protects the current 40/100 performance score by preserving the strongest metric signal.",
             "metric": "Completion and utilization",
             "priority": "medium",
             "title": "Protect the strongest signal",
@@ -1119,12 +1119,12 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
             "title": "Lost slots are reducing usable capacity",
           },
           {
-            "evidence": "Repeat visits are 0.0% and follow-up coverage is 100.0%.",
+            "evidence": "Repeat visits are 0.0% and follow-up coverage is 0.0%.",
             "severity": "medium",
             "title": "Retention and follow-up need regular monitoring",
           },
         ],
-        "score": 46,
+        "score": 40,
         "severity": "high",
         "source": "rules",
         "statHighlights": [
@@ -1604,7 +1604,7 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
         },
         {
           "delta": "",
-          "helper": "Outbound vs inbound messages",
+          "helper": "Inbound messages that got a reply",
           "label": "Follow-up coverage",
           "trend": "flat",
           "value": "50.0%",
@@ -2084,7 +2084,7 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
       "highlightChange": "67%",
       "highlightSummary": "5 appointments are on the schedule, covering 2.3 booked hours; 66.7% completion across 3 finalized visits, and booked activity is up +2.",
       "highlightTrend": "flat",
-      "highlightValue": "62/100",
+      "highlightValue": "56/100",
       "key": "weekly",
       "kpis": [
         {
@@ -2189,11 +2189,11 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           "value": "100.0%",
         },
         {
-          "delta": "+100 pts",
-          "helper": "Outbound vs inbound messages",
+          "delta": "-100 pts",
+          "helper": "Inbound messages that got a reply",
           "label": "Follow-up coverage",
-          "trend": "up",
-          "value": "100.0%",
+          "trend": "down",
+          "value": "0.0%",
         },
         {
           "delta": "-7m",
@@ -2221,12 +2221,12 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
           "value": "100.0%",
         },
         {
-          "delta": "+100 pts",
+          "delta": "-100 pts",
           "helper": "",
           "key": "followUp",
           "label": "Follow-up coverage",
-          "trend": "up",
-          "value": "100.0%",
+          "trend": "down",
+          "value": "0.0%",
         },
       ],
       "periodEnd": "2026-06-28T23:59:59.999Z",
@@ -2238,7 +2238,7 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
         "actions": [
           {
             "detail": "1 new client entered the clinic this week, which keeps acquisition moving.",
-            "expectedImpact": "Protects the current 62/100 performance score by preserving the strongest metric signal.",
+            "expectedImpact": "Protects the current 56/100 performance score by preserving the strongest metric signal.",
             "metric": "Completion and utilization",
             "priority": "medium",
             "title": "Protect the strongest signal",
@@ -2285,12 +2285,12 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
             "title": "Lost slots are reducing usable capacity",
           },
           {
-            "evidence": "Repeat visits are 100.0% and follow-up coverage is 100.0%.",
+            "evidence": "Repeat visits are 100.0% and follow-up coverage is 0.0%.",
             "severity": "low",
             "title": "Retention and follow-up need regular monitoring",
           },
         ],
-        "score": 62,
+        "score": 56,
         "severity": "high",
         "source": "rules",
         "statHighlights": [

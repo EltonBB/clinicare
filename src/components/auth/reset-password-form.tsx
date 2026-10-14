@@ -8,7 +8,7 @@ import {
 } from "@/app/(auth)/actions";
 import { SubmitButton } from "@/components/auth/submit-button";
 import { authFieldClassName } from "@/components/auth/field-styles";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/auth/password-input";
 import { cn } from "@/lib/utils";
 
 const initialState: PasswordResetActionState = {};
@@ -36,10 +36,9 @@ export function ResetPasswordForm() {
         <label htmlFor="password" className="text-sm font-semibold text-foreground">
           New password
         </label>
-        <Input
+        <PasswordInput
           id="password"
           name="password"
-          type="password"
           autoComplete="new-password"
           placeholder="Create a new password"
           aria-invalid={Boolean(state.fieldErrors?.password)}
@@ -52,10 +51,9 @@ export function ResetPasswordForm() {
         <label htmlFor="confirmPassword" className="text-sm font-semibold text-foreground">
           Confirm password
         </label>
-        <Input
+        <PasswordInput
           id="confirmPassword"
           name="confirmPassword"
-          type="password"
           autoComplete="new-password"
           placeholder="Repeat the new password"
           aria-invalid={Boolean(state.fieldErrors?.confirmPassword)}

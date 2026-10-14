@@ -1,0 +1,19 @@
+-- Message: a durable "reply-intent already handled" marker
+-- =============================================================================
+-- The Baileys worker retries an inbound-message delivery on a network error or
+-- timeout (services/whatsapp-worker/src/bridge.ts), including when the app
+-- fully processed the message and replied but that response was lost in
+-- transit — the app's own view is a clean success, the worker's is a failure.
+-- Without a durable marker, a retried delivery (detected as a duplicate on
+-- `providerMessageSid`) re-runs applyInboundReplyIntent against an appointment
+-- the first attempt may have already confirmed/cancelled, sending the patient
+-- a duplicate WhatsApp reply on every retry — up to MAX_ATTEMPTS times
+-- (CodeRabbit #130). This column is claimed (compare-and-set from NULL) before
+-- a message's reply-intent check runs and cleared again if the check throws; a
+-- retry that finds it claimed skips the check, whether the first attempt has
+-- finished or is still running.
+--
+-- Additive and idempotent (IF NOT EXISTS): safe to re-run, nothing existing is
+-- altered, and every historical Message row simply reads NULL (read as "not
+-- yet handled" by application code, same as today's behavior).
+ALTER TABLE "Message" ADD COLUMN IF NOT EXISTS "replyIntentHandledAt" TIMESTAMP(3);

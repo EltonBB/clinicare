@@ -3,7 +3,10 @@ import { NextResponse } from "next/server";
 import { withDeadline } from "@/lib/concurrency";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
+import { withCronMonitor } from "@/lib/cron-monitor";
 import { logger } from "@/lib/logger";
+import { handOffAbandonedReplyIntents } from "@/lib/messaging/inbound";
+import { isWhatsAppWorkerDown } from "@/lib/messaging/worker-heartbeat";
 import { createReminderRunProgress, syncAppointmentRemindersJob } from "@/lib/reminders";
 import { HARD_RESPONSE_DEADLINE_MS, REMINDER_RUN_BUDGET_MS } from "@/lib/reminder-timing";
 import { autoCloseStaleTimeEntries } from "@/lib/staff-clock";
@@ -18,6 +21,9 @@ export const maxDuration = 300;
 // matters: a 2-hour-before reminder only ever fires if the cron lands inside
 // that window.
 const LOCK_NAME = "reminders";
+
+// The worker lease check's own budget, on top of HARD_RESPONSE_DEADLINE_MS.
+const WORKER_CHECK_TIMEOUT_MS = 5_000;
 
 // HARD_RESPONSE_DEADLINE_MS itself now lives in lib/reminders.ts — comfortably
 // under the 300s platform cap, covering the reminders job AND the stale-entry
@@ -35,11 +41,16 @@ const LOCK_NAME = "reminders";
 // the two can't silently drift apart if one is ever changed alone.
 const LOCK_TTL_SECONDS = Math.ceil(HARD_RESPONSE_DEADLINE_MS / 1_000) + 60;
 
+
 export async function GET(request: Request) {
   if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized cron request." }, { status: 401 });
   }
 
+  return withCronMonitor("/api/cron/reminders", run);
+}
+
+async function run() {
   // Vercel Cron does not serialize invocations — a slow run can still be in
   // flight when the next hourly trigger fires. Without this, an overlapping
   // run could read the same due appointment before either has written its
@@ -61,10 +72,25 @@ export async function GET(request: Request) {
   let timedOut = false;
 
   try {
+    const startedAt = Date.now();
     const outcome = await withDeadline(
       (async () => {
+        // Hand to staff the patient replies whose check was cut off by a crash
+        // (see handOffAbandonedReplyIntents) — first, so slow reminder sends
+        // can never crowd it out. Best-effort: a fault here must not stop the
+        // reminders.
+        let handedOffReplies = 0;
+        try {
+          ({ handedOff: handedOffReplies } = await handOffAbandonedReplyIntents());
+        } catch (error) {
+          logger.error("Handing abandoned reply checks to staff failed.", error);
+        }
+
+        // Budgeted from the invocation's start, not from now: whatever the
+        // hand-off above took comes out of the reminders' share (a business
+        // left over is retried next hour), never out of the hard deadline.
         const result = await syncAppointmentRemindersJob(
-          Date.now() + REMINDER_RUN_BUDGET_MS,
+          startedAt + REMINDER_RUN_BUDGET_MS,
           progress
         );
 
@@ -86,7 +112,7 @@ export async function GET(request: Request) {
           logger.error("Auto-close stale time entries failed.", error);
         }
 
-        return { ...result, closedTimeEntries, timedOut: false as const };
+        return { ...result, closedTimeEntries, handedOffReplies, timedOut: false as const };
       })(),
       HARD_RESPONSE_DEADLINE_MS,
       () => {
@@ -103,10 +129,36 @@ export async function GET(request: Request) {
           skippedBusinesses: progress.skipped,
           abandonedBusinesses: progress.abandoned,
           closedTimeEntries: 0,
+          handedOffReplies: 0,
           timedOut: true as const,
         };
       }
     );
+
+    // Sentry can't watch the worker from outside (it refuses *.railway.app
+    // monitors), so this hourly run checks the worker's lease instead and
+    // fails its check-in when the lease has lapsed. Best-effort, like the
+    // sweeps above.
+    // Bounded on its own: after a run that hit the hard deadline the pool may
+    // still be busy with the abandoned work, and an unbounded read here could
+    // outlast maxDuration (the hard deadline plus this stay under it).
+    let workerDown = false;
+    try {
+      const check = await withDeadline(isWhatsAppWorkerDown(), WORKER_CHECK_TIMEOUT_MS, () => null);
+      if (check === null) {
+        logger.warn("Checking the WhatsApp worker's lease timed out.");
+      } else {
+        workerDown = check;
+      }
+    } catch (error) {
+      logger.error("Checking the WhatsApp worker's lease failed.", error);
+    }
+
+    if (workerDown) {
+      logger.error(
+        "The WhatsApp worker hasn't renewed its lease in over 5 minutes — messages can't be sent or received until it is running again."
+      );
+    }
 
     if (outcome.timedOut) {
       // Worded around "this invocation," not "the reminder run": the slow
@@ -142,6 +194,11 @@ export async function GET(request: Request) {
       {
         ok: true,
         ...outcome,
+        // Read by withCronMonitor: a hard-deadline hit, an abandoned business
+        // or a stopped WhatsApp worker is a failed run for Sentry Crons, even
+        // though it returns 200.
+        workerDown,
+        degraded: outcome.timedOut || outcome.abandonedBusinesses > 0 || workerDown,
         triggeredAt: new Date().toISOString(),
       },
       {

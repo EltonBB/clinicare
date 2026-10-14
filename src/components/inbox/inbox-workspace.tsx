@@ -60,6 +60,7 @@ type InboxWorkspaceProps = {
   connection: SettingsState["whatsapp"]["connection"];
   clientCount: number;
   recommendedClientId?: string;
+  followUpsCount: number;
 };
 
 type InboxFilter = "all" | "unread";
@@ -137,6 +138,7 @@ export function InboxWorkspace({
   connection,
   clientCount,
   recommendedClientId,
+  followUpsCount,
 }: InboxWorkspaceProps) {
   const [conversations, setConversations] = useState(initialView.conversations);
   const [selectedConversationId, setSelectedConversationId] = useState(
@@ -482,6 +484,16 @@ export function InboxWorkspace({
     setConvertDialogOpen(true);
   }
 
+  function removeConversationFromList(conversationId: string) {
+    setConversations((current) => {
+      const nextConversations = current.filter(
+        (conversation) => conversation.id !== conversationId
+      );
+      setSelectedConversationId(nextConversations[0]?.id ?? "");
+      return nextConversations;
+    });
+  }
+
   function sendMessage() {
     const body = draftMessage.trim();
 
@@ -493,8 +505,18 @@ export function InboxWorkspace({
     startTransition(async () => {
       const result = await sendInboxMessageAction(activeConversationId, body);
 
-      if (!result.ok || !result.conversation) {
+      if (!result.ok) {
         setErrorMessage(result.error ?? "We couldn't send the message.");
+        return;
+      }
+
+      // Sent, but the thread was deleted in another tab before it could be
+      // reloaded: keep the send (clear the draft so it isn't sent twice) and
+      // drop the thread here too.
+      if (!result.conversation) {
+        removeConversationFromList(activeConversationId);
+        setDraftMessage("");
+        setErrorMessage("Message sent. This conversation was deleted in another tab.");
         return;
       }
 
@@ -520,13 +542,7 @@ export function InboxWorkspace({
         return;
       }
 
-      setConversations((current) => {
-        const nextConversations = current.filter(
-          (conversation) => conversation.id !== conversationId
-        );
-        setSelectedConversationId(nextConversations[0]?.id ?? "");
-        return nextConversations;
-      });
+      removeConversationFromList(conversationId);
       setConfirmingDeleteId(null);
       setDraftMessage("");
       setErrorMessage("");
@@ -544,8 +560,20 @@ export function InboxWorkspace({
         email: convertEmail,
       });
 
-      if (!result.ok || !result.conversation) {
+      if (!result.ok) {
         setErrorMessage(result.error ?? "We couldn't convert this conversation.");
+        return;
+      }
+
+      setConvertDialogOpen(false);
+      setConvertName("");
+      setConvertEmail("");
+
+      // The client was saved, but the thread was deleted in another tab before
+      // it could be reloaded.
+      if (!result.conversation) {
+        removeConversationFromList(activeConversation.id);
+        setErrorMessage("Client saved. This conversation was deleted in another tab.");
         return;
       }
 
@@ -554,9 +582,6 @@ export function InboxWorkspace({
         ...current.filter((conversation) => conversation.id !== result.conversation!.id),
       ]);
       setSelectedConversationId(result.conversation.id);
-      setConvertDialogOpen(false);
-      setConvertName("");
-      setConvertEmail("");
       setErrorMessage("");
     });
   }
@@ -626,7 +651,22 @@ export function InboxWorkspace({
       />
 
       <WorkspacePage size="wide">
-        <WorkspaceHeader title="Inbox" />
+        <WorkspaceHeader
+          title="Inbox"
+          actions={
+            followUpsCount > 0 ? (
+              <Link
+                href="/inbox/follow-ups"
+                className="inline-flex items-center rounded-full bg-primary/8 px-3 py-1.5 text-sm font-medium text-primary transition-colors duration-(--duration-base) hover:bg-primary/14"
+              >
+                Follow-ups
+                <span className="ml-1.5 text-xs font-semibold tabular-nums text-primary/80">
+                  {followUpsCount}
+                </span>
+              </Link>
+            ) : null
+          }
+        />
 
         <div className="surface-card min-h-[640px] overflow-hidden p-0 lg:h-[calc(100vh-174px)]">
           <div className="grid h-full grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">

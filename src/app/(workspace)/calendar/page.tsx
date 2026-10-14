@@ -1,12 +1,17 @@
+import type { Metadata } from "next";
 import { CalendarWorkspace } from "@/components/calendar/calendar-workspace";
 import { prisma } from "@/lib/prisma";
+import { isProBusinessPlan } from "@/lib/billing";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { buildCalendarViewFromRecords } from "@/lib/calendar";
 import { loadCalendarMonthRecords } from "@/lib/calendar-data";
 import { isValidMonthKey } from "@/lib/calendar-range";
 import { formatZonedDateKey } from "@/lib/time-zone";
+import { listWaitingEntries } from "@/lib/waitlist-data";
 import { redirect } from "next/navigation";
 import { isValid, parseISO } from "date-fns";
+
+export const metadata: Metadata = { title: "Calendar | Vela" };
 
 // A real calendar date in `YYYY-MM-DD` form — the shape check alone lets through
 // impossible dates like 2026-02-31, which would crash the workspace.
@@ -49,9 +54,11 @@ export default async function CalendarPage({
     redirect(`/calendar/new${params.size ? `?${params.toString()}` : ""}`);
   }
 
+  const isPro = isProBusinessPlan(business.plan);
+
   // Only the viewed month's grid is loaded up front (every status, completed
   // visits included); the workspace fetches any other month when navigated to.
-  const [month, clientCount, staffMembers, businessHours] = await Promise.all([
+  const [month, clientCount, staffMembers, businessHours, waitlistEntries] = await Promise.all([
     loadCalendarMonthRecords({ businessId: business.id, monthKey: initialDate.slice(0, 7) }),
     // Only need to know whether any client exists (to gate the booking CTA) —
     // don't load the whole client table to render the calendar.
@@ -85,6 +92,10 @@ export default async function CalendarPage({
         weekday: "asc",
       },
     }),
+    // Waiting list is Pro-only — skip the query entirely on Basic rather than
+    // fetching rows nobody can see (same cost-avoidance discipline as the
+    // no-show risk batch lookup).
+    isPro ? listWaitingEntries(business.id) : Promise.resolve([]),
   ]);
 
   // initialDate is validated above, so its month key is always valid.
@@ -109,6 +120,10 @@ export default async function CalendarPage({
       initialView={initialView}
       initialRange={month.range}
       today={todayKey}
+      canRecordNoShows={isPro}
+      canViewNoShowRisk={isPro}
+      canManageWaitlist={isPro}
+      waitlistEntries={waitlistEntries}
     />
   );
 }

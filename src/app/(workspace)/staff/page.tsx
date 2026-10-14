@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { StaffWorkspace } from "@/components/staff/staff-workspace";
@@ -9,7 +10,9 @@ import {
   getStaffUnreadMessageCounts,
   getStaffUnseenCheckInCounts,
 } from "@/lib/staff-data";
-import { getZonedDayWindow, getZonedMonthWindow } from "@/lib/time-zone";
+import { getZonedMonthWindow } from "@/lib/time-zone";
+
+export const metadata: Metadata = { title: "Staff | Vela" };
 
 function staffShiftCutoff() {
   const now = new Date();
@@ -51,7 +54,6 @@ export default async function StaffPage({
   }
 
   const now = new Date();
-  const todayWindow = getZonedDayWindow(now);
   const monthWindow = getZonedMonthWindow(now);
 
   // Per-staff appointment counts are aggregated in the DB (see lib/staff-data.ts)
@@ -105,14 +107,8 @@ export default async function StaffPage({
     }),
     getStaffDirectoryCounts({
       businessId: business.id,
-      // Use the clinic-zone month start (not a server-local boundary) so the
-      // completion-rate window agrees with completedThisMonth around month
-      // boundaries (Codex review).
+      // The clinic-zone month start, not a server-local boundary.
       completionCutoff: monthWindow.start,
-      monthStart: monthWindow.start,
-      monthEnd: monthWindow.end,
-      todayStart: todayWindow.start,
-      todayEnd: todayWindow.end,
     }),
     getStaffUnreadMessageCounts(business.id),
     getStaffUnseenCheckInCounts(business.id),
