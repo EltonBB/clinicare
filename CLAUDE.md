@@ -29,7 +29,6 @@ npm run lint         # eslint
 npm run db:generate  # prisma generate
 npm run db:push      # prisma db push  (apply schema to the DB)
 npm run db:setup-auth-sync       # scripts/setup-auth-delete-sync.mjs
-npm run media:normalize-storage-refs  # scripts/normalize-media-storage-refs.mjs
 ```
 
 **Standard verification before pushing:** `npm run lint`, `npx tsc --noEmit`, and `npx vitest run`, then `npm run build` (and `npm audit --omit=dev` for dependency hygiene). A Vitest unit suite now exists (co-located `*.test.ts`, e.g. the messaging seam) — keep it green and add cases for new pure logic; signed-in browser QA remains the manual gate for UI/integration (see PROJECT_STATUS.md "Testing Checklist"). A reusable signed-in test session does not exist yet, so unauthenticated browser checks can only verify `/login` redirects and public pages.

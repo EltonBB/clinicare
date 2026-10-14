@@ -38,6 +38,18 @@ export function parseStorageReference(value: string): StorageReference | null {
   };
 }
 
+// The configured project's base URL, with a trailing slash so a base path
+// (".../supabase/") resolves "storage/v1/..." beneath it. Null when unset.
+function configuredProjectUrl(): URL | null {
+  try {
+    const url = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || "");
+    if (!url.pathname.endsWith("/")) url.pathname += "/";
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 export function parseSupabaseStorageUrl(
   value: string,
   expectedOwnerId: string,
@@ -45,8 +57,10 @@ export function parseSupabaseStorageUrl(
 ): StorageReference | null {
   try {
     const url = new URL(value.trim());
-    const configuredUrl = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || "");
-    if (!configuredUrl.pathname.endsWith("/")) configuredUrl.pathname += "/";
+    const configuredUrl = configuredProjectUrl();
+    if (!configuredUrl) {
+      return null;
+    }
     const storagePath = new URL("storage/v1/object/", configuredUrl).pathname;
     const localHttp =
       process.env.NODE_ENV !== "production" &&
@@ -70,15 +84,11 @@ export function parseSupabaseStorageUrl(
     const bucket = parts[1];
     const pathParts = parts.slice(2);
 
-    if (
-      (accessType !== "public" && accessType !== "sign") ||
-      bucket !== mediaBucket ||
-      pathParts.length !== 3 ||
-      pathParts.some((part) => !part)
-    ) {
+    if (accessType !== "public" && accessType !== "sign") {
       return null;
     }
 
+    // Checked after decoding, so an encoded "/" can't smuggle in a segment.
     const path = pathParts.map((part) => decodeURIComponent(part)).join("/");
     const [ownerId, folder] = path.split("/");
     return isValidUploadShape(bucket, path) &&
@@ -89,23 +99,6 @@ export function parseSupabaseStorageUrl(
   } catch {
     return null;
   }
-}
-
-function couldResolveToStorageRoute(pathname: string): boolean {
-  let path = pathname;
-  for (let depth = 0; depth < 8; depth += 1) {
-    if (/(?:^|\/)storage\/v1\/(?:object|render\/image)(?:\/|$)/i.test(path)) {
-      return true;
-    }
-    // Decode valid ASCII escapes one at a time so a malformed escape in an
-    // unrelated filename cannot stop detection in another path segment.
-    const decoded = path.replace(/%([0-7][0-9a-f])/gi, (_, hex: string) =>
-      String.fromCharCode(Number.parseInt(hex, 16))
-    );
-    if (decoded === path) return false;
-    path = decoded;
-  }
-  return /%[0-7][0-9a-f]/i.test(path);
 }
 
 export function normalizeStorageReference(
@@ -130,19 +123,17 @@ export function normalizeStorageReference(
     return createStorageReference(urlReference.bucket, urlReference.path);
   }
 
-  // A same-project Storage URL that failed the owner/folder/bucket checks
-  // must not fall through as an ordinary HTTPS link with someone else's
-  // signed token. This includes transformed-image routes and percent-encoded
-  // paths whose decoding at a proxy/router could hide a Storage route.
-  // Historical values remain untouched by the read path.
+  // Anything else on the project's own origin is refused. That origin serves
+  // only the backend itself, so a link there that isn't this clinic's verified
+  // upload (another clinic's object, a transformed-image route, an encoded
+  // variant of either) must not be stored as an ordinary HTTPS link carrying
+  // someone else's signed token. Historical values are untouched by reads.
   try {
-    const url = new URL(value.trim());
-    const configuredUrl = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || "");
-    if (url.origin === configuredUrl.origin && couldResolveToStorageRoute(url.pathname)) {
+    if (new URL(value.trim()).origin === configuredProjectUrl()?.origin) {
       return null;
     }
   } catch {
-    // Generic URL validation remains the caller's responsibility.
+    // Not a URL: generic validation remains the caller's responsibility.
   }
 
   return value.trim();

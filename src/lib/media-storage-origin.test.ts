@@ -51,24 +51,8 @@ describe("storage URL provenance", () => {
     expect(normalizeStorageReference(url, "owner", "logos")).toBeNull();
   });
 
-  it("keeps an unrelated unencoded HTTPS path on a shared project origin", () => {
-    const url = "https://clinic.example/images/public-logo.jpg";
-    expect(normalizeStorageReference(url, "owner", "logos")).toBe(url);
-  });
-
-  it("keeps an unrelated HTTPS path with an encoded space", () => {
-    const url = "https://clinic.example/images/My%20Logo.jpg";
-    expect(normalizeStorageReference(url, "owner", "logos")).toBe(url);
-  });
-
-  it("keeps an unrelated HTTPS path with an encoded literal percent", () => {
-    const url = "https://clinic.example/images/Discount%25.jpg";
-    expect(normalizeStorageReference(url, "owner", "logos")).toBe(url);
-  });
-
-  it("keeps an unrelated HTTPS path with a malformed percent escape", () => {
-    const url = "https://clinic.example/images/Discount%ZZ.jpg";
-    expect(normalizeStorageReference(url, "owner", "logos")).toBe(url);
+  it("refuses any other link on the project's own origin", () => {
+    expect(normalizeStorageReference("https://clinic.example/images/public-logo.jpg", "owner", "logos")).toBeNull();
   });
 
   it("honors a configured Supabase base path", () => {
