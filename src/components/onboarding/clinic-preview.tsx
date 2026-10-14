@@ -29,6 +29,10 @@ export type ClinicPreviewProps = {
   type: string;
   /** A display URL that is already safe to render (signed or validated), or "". */
   logoUrl: string;
+  /** The stored logo reference, used to tell a new upload from a restored one. */
+  logoRef?: string;
+  /** True once the starting state (including any restored draft) is in place; edits after it are announced. */
+  announceChanges?: boolean;
   accent: string;
   hours: WorkingHoursState;
   team: Array<{ name: string; role: string }>;
@@ -127,27 +131,20 @@ type Change = { id: number; text: string };
  */
 function useChangeFeed(props: ClinicPreviewProps) {
   const [changes, setChanges] = useState<Change[]>([]);
-  const previous = useRef(props);
+  const { name, type, logoRef = "", accent, hours, team, announceChanges = false } = props;
+  const member = team[0]?.name.trim() ?? "";
+  // The last values seen; every render moves it forward, announced or not.
+  const previous = useRef({ name: name.trim(), type, logoRef, accent, hours, member });
+  // Armed one render after the owner says its starting state is in place
+  // (announceChanges), so a restored draft, which lands in that same render,
+  // only ever becomes the baseline and is never announced.
+  const armed = useRef(false);
   const nextId = useRef(0);
-  // A saved draft is restored just after mount; that jump isn't an edit, so
-  // nothing is announced until the panel has settled.
-  const settled = useRef(false);
-  const { name, type, logoUrl, accent, hours, team } = props;
-
   const expiry = useRef<number | undefined>(undefined);
 
-  useEffect(() => {
-    const id = window.setTimeout(() => {
-      settled.current = true;
-    }, 700);
-    return () => {
-      window.clearTimeout(id);
-      window.clearTimeout(expiry.current);
-    };
-  }, []);
+  useEffect(() => () => window.clearTimeout(expiry.current), []);
 
   function push(text: string) {
-    if (!settled.current) return;
     const id = nextId.current++;
     setChanges([{ id, text }]);
     window.clearTimeout(expiry.current);
@@ -156,9 +153,11 @@ function useChangeFeed(props: ClinicPreviewProps) {
 
   useEffect(() => {
     const before = previous.current;
-    previous.current = { ...before, type, logoUrl, accent, hours };
+    previous.current = { ...before, type, logoRef, accent, hours };
+    if (!armed.current) return;
     if (accent !== before.accent) push("Brand color set. Buttons, the calendar and your records now use it.");
-    if (logoUrl && !before.logoUrl) push("Logo added. It shows across your workspace.");
+    // Compared by the stored reference: the signed display URL resolves later.
+    if (logoRef && !before.logoRef) push("Logo added. It shows across your workspace.");
     if (type !== before.type) push(`Set up as a ${type.toLowerCase()}.`);
     for (const day of weekdayOrder) {
       const now = hours[day];
@@ -173,22 +172,27 @@ function useChangeFeed(props: ClinicPreviewProps) {
         push(`${dayLabel(day)} now runs ${now.start} to ${now.end}.`);
       }
     }
-  }, [type, logoUrl, accent, hours]);
+  }, [type, logoRef, accent, hours]);
 
-  const member = team[0]?.name.trim() ?? "";
+  // Typed text waits for a pause, so it isn't announced per keystroke.
   useEffect(() => {
-    // An edit made before the panel settled (the draft restore) is never announced.
-    const announce = settled.current;
+    const announce = armed.current;
+    const trimmed = name.trim();
     const id = window.setTimeout(() => {
       const before = previous.current;
-      if (announce && name.trim() && name.trim() !== before.name.trim()) push(`Your workspace is now ${name.trim()}.`);
-      if (announce && member && member !== (before.team[0]?.name.trim() ?? "")) push(`${member} can now take appointments.`);
-      previous.current = { ...previous.current, name, team };
+      previous.current = { ...before, name: trimmed, member };
+      if (!announce) return;
+      if (trimmed && trimmed !== before.name) push(`Your workspace is now ${trimmed}.`);
+      if (member && member !== before.member) push(`${member} can now take appointments.`);
     }, 900);
     return () => window.clearTimeout(id);
-    // team is a fresh array each render; the first member's name is what matters.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name, member]);
+
+  // Declared after the effects above, so the render that brings the restored
+  // draft is recorded as the baseline before announcing starts.
+  useEffect(() => {
+    armed.current = announceChanges;
+  }, [announceChanges]);
 
   return changes;
 }

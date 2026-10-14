@@ -269,6 +269,8 @@ export function OnboardingFlow({ initialState, businessName, ownerName, userId }
       name={state.clinic.name}
       type={state.clinic.type}
       logoUrl={logoPreviewUrl}
+      logoRef={state.clinic.logoUrl}
+      announceChanges={draftRestored}
       accent={accent}
       hours={state.workingHours}
       team={team}
