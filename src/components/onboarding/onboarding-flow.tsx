@@ -1,44 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import {
-  AnimatePresence,
-  motion,
-  useMotionValue,
-  useReducedMotion,
-  useSpring,
-  useTransform,
-  type Variants,
-} from "framer-motion";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Building2,
-  CalendarClock,
-  Check,
-  Clock3,
-  ImagePlus,
-  Loader2,
-  UsersRound,
-} from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion, type Variants } from "framer-motion";
+import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 
 import { saveOnboardingStateAction } from "@/app/onboarding/actions";
-import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { businessTypes } from "@/lib/constants";
-import {
-  brandAccentPresets,
-  normalizeBrandHexColor,
-  resolveBrandAccentPreset,
-} from "@/lib/branding";
+import { normalizeBrandHexColor, resolveBrandAccentPreset } from "@/lib/branding";
 import {
   hoursBetweenTimes,
   normalizeOnboardingState,
   onboardingSteps,
   weekdayOrder,
-  type OnboardingStepId,
+  type DaySchedule,
   type OnboardingState,
   type WeekdayKey,
 } from "@/lib/onboarding";
@@ -48,100 +24,35 @@ import {
   safeUploadErrorMessage,
   uploadWorkspaceImage,
 } from "@/lib/media-storage-client";
-import { cn, firstDisplayName, getInitials } from "@/lib/utils";
+import { cn, firstDisplayName } from "@/lib/utils";
 
-const weekdayLabels: Record<WeekdayKey, string> = {
-  monday: "Monday",
-  tuesday: "Tuesday",
-  wednesday: "Wednesday",
-  thursday: "Thursday",
-  friday: "Friday",
-  saturday: "Saturday",
-  sunday: "Sunday",
-};
+import { ClinicPreview } from "./clinic-preview";
+import { inkButtonClassName } from "./form-parts";
+import { OnboardingShell } from "./onboarding-shell";
+import { ClinicStep, HoursStep, TeamStep, WelcomeStep } from "./steps";
 
-const timeOptions = [
-  "07:00", "08:00", "09:00", "10:00", "11:00", "12:00",
-  "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00",
-];
-
-const staffRoles = ["Specialist", "Manager", "Reception"];
-
-const stepIcons: Record<OnboardingStepId, typeof Building2> = {
-  clinic: Building2,
-  hours: CalendarClock,
-  team: UsersRound,
-};
-
-const onboardingDraftStorageKey = "vela:onboarding-draft";
-
-const fieldInputClass =
-  "h-11 rounded-(--radius-card) border-border bg-white px-3.5 text-[15px] shadow-none placeholder:text-muted-foreground/70";
-
-const selectClass =
-  "h-11 w-full appearance-none rounded-(--radius-card) border border-border bg-white px-3.5 pr-9 text-[15px] text-foreground shadow-none outline-none transition-colors focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+// The draft is keyed by user, so a different account signing in on the same
+// browser never restores (or saves into) someone else's setup. The old shared
+// key is cleared on sight.
+const legacyDraftStorageKey = "vela:onboarding-draft";
 
 const EASE = [0.23, 1, 0.32, 1] as const;
+
+// The panel's closing line follows the step, saying what that step gives the clinic.
+const panelLines = {
+  welcome: ["Your clinic,", "taking shape."],
+  clinic: ["Your name,", "on every screen."],
+  hours: ["Your week,", "ready for bookings."],
+  team: ["Your team,", "on the calendar."],
+} as const;
 
 type OnboardingFlowProps = {
   initialState: OnboardingState;
   businessName: string;
   ownerName: string;
+  /** The signed-in user's id, which scopes the local draft. */
+  userId: string;
 };
-
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <label className="text-sm font-medium text-muted-foreground">{children}</label>;
-}
-
-function Toggle({
-  checked,
-  onPressedChange,
-  ariaLabel,
-}: {
-  checked: boolean;
-  onPressedChange: (checked: boolean) => void;
-  ariaLabel: string;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={checked}
-      aria-label={ariaLabel}
-      onClick={() => onPressedChange(!checked)}
-      className={cn(
-        "relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors duration-(--duration-base)",
-        checked ? "bg-primary" : "bg-border"
-      )}
-    >
-      <span
-        className={cn(
-          "absolute top-1 size-4 rounded-full bg-white shadow-[0_1px_3px_rgba(20,21,47,0.18)] transition-transform duration-(--duration-base)",
-          checked ? "translate-x-6" : "translate-x-1"
-        )}
-      />
-    </button>
-  );
-}
-
-function NativeSelect({
-  value,
-  onChange,
-  options,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  options: string[];
-}) {
-  return (
-    <select value={value} onChange={(event) => onChange(event.target.value)} className={selectClass}>
-      {options.map((option) => (
-        <option key={option} value={option}>
-          {option}
-        </option>
-      ))}
-    </select>
-  );
-}
 
 function getStepError(state: OnboardingState, solo: boolean): string | null {
   const step = onboardingSteps[Math.min(Math.max(state.currentStep, 1), onboardingSteps.length) - 1];
@@ -150,20 +61,26 @@ function getStepError(state: OnboardingState, solo: boolean): string | null {
     if (!state.clinic.name.trim()) {
       return "Enter your clinic name before continuing.";
     }
+    if (!state.owner.name.trim()) {
+      return "Enter your name before continuing.";
+    }
     if (!businessTypes.includes(state.clinic.type as (typeof businessTypes)[number])) {
       return "Choose what kind of clinic this is.";
     }
-    if (!state.owner.name.trim()) {
-      return "Enter the clinic owner's name before continuing.";
-    }
     if (state.clinic.accentColor === "custom" && !normalizeBrandHexColor(state.clinic.accentHex)) {
-      return "Enter a valid brand color, for example #0A22FF.";
+      return "Enter a valid brand color, for example #3142D8.";
     }
     return null;
   }
 
-  if (step.id === "hours" && !weekdayOrder.some((day) => state.workingHours[day].enabled)) {
-    return "Open at least one day so patients can book.";
+  if (step.id === "hours") {
+    if (!weekdayOrder.some((day) => state.workingHours[day].enabled)) {
+      return "Open at least one day so patients can book.";
+    }
+    if (weekdayOrder.some((day) => state.workingHours[day].enabled && hoursBetweenTimes(state.workingHours[day].start, state.workingHours[day].end) <= 0)) {
+      return "Each open day needs a closing time after its opening time.";
+    }
+    return null;
   }
 
   if (step.id === "team" && !solo && !state.staffMember.name.trim()) {
@@ -173,93 +90,48 @@ function getStepError(state: OnboardingState, solo: boolean): string | null {
   return null;
 }
 
-export function OnboardingFlow({
-  initialState,
-  businessName,
-  ownerName,
-}: OnboardingFlowProps) {
+/**
+ * The three-step setup a new owner walks after confirming their email. The
+ * form sits on the left; the ink panel on the right is their own clinic,
+ * built live from what they enter. Saving goes through
+ * saveOnboardingStateAction exactly as before (each Continue saves, Finish
+ * bootstraps the workspace), and a local draft survives a reload.
+ */
+export function OnboardingFlow({ initialState, businessName, ownerName, userId }: OnboardingFlowProps) {
   const router = useRouter();
   const reduce = useReducedMotion();
-
-  // Cursor parallax for the ambient backdrop orbs (disabled under reduced motion).
-  const pointerX = useMotionValue(0);
-  const pointerY = useMotionValue(0);
-  const springX = useSpring(pointerX, { stiffness: 50, damping: 18 });
-  const springY = useSpring(pointerY, { stiffness: 50, damping: 18 });
-  const orbNearX = useTransform(springX, (v) => v * 60);
-  const orbNearY = useTransform(springY, (v) => v * 48);
-  const orbFarX = useTransform(springX, (v) => v * 28);
-  const orbFarY = useTransform(springY, (v) => v * 22);
-  useEffect(() => {
-    if (reduce || window.matchMedia("(pointer: coarse)").matches) {
-      return;
-    }
-    let viewportWidth = window.innerWidth;
-    let viewportHeight = window.innerHeight;
-    const onResize = () => {
-      viewportWidth = window.innerWidth;
-      viewportHeight = window.innerHeight;
-    };
-    const onPointerMove = (event: PointerEvent) => {
-      pointerX.set(event.clientX / viewportWidth - 0.5);
-      pointerY.set(event.clientY / viewportHeight - 0.5);
-    };
-    window.addEventListener("resize", onResize);
-    window.addEventListener("pointermove", onPointerMove);
-    return () => {
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("pointermove", onPointerMove);
-    };
-  }, [reduce, pointerX, pointerY]);
+  const draftKey = `${legacyDraftStorageKey}:${userId}`;
 
   // Seed from initialState only, so the server render and the first client render
   // agree. A saved localStorage draft is restored after mount (effect below) to
   // avoid a hydration mismatch.
   const [state, setState] = useState(initialState);
-  const [showWelcome, setShowWelcome] = useState(
-    initialState.currentStep <= 1 && !initialState.completed
-  );
+  const [showWelcome, setShowWelcome] = useState(initialState.currentStep <= 1 && !initialState.completed);
   const [solo, setSolo] = useState(!initialState.staffMember.name.trim());
-  const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [logoPreviewUrl, setLogoPreviewUrl] = useState("");
   const [isLogoUploading, setIsLogoUploading] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
   const [isPending, startSaving] = useTransition();
 
-  const selectedAccent = resolveBrandAccentPreset(
+  const accent = resolveBrandAccentPreset(
     state.clinic.accentColor === "custom" ? state.clinic.accentHex : state.clinic.accentColor
-  );
-  const normalizedCustomAccent = normalizeBrandHexColor(state.clinic.accentHex);
-  const customAccentInvalid = state.clinic.accentColor === "custom" && !normalizedCustomAccent;
-  const previewAccent = normalizedCustomAccent ?? selectedAccent.value;
-  const visibleAccentPresets = brandAccentPresets.filter((preset) => preset.id !== "emerald");
+  ).value;
 
   const stepIndex = Math.min(Math.max(state.currentStep, 1), onboardingSteps.length) - 1;
   const step = onboardingSteps[stepIndex];
-  const StepIcon = stepIcons[step.id];
   const isLastStep = state.currentStep >= onboardingSteps.length;
   const ownerFirstName = firstDisplayName(state.owner.name || ownerName) || "there";
 
-  // Logo is upload-only, so the only display source is the signed URL resolved
-  // from the stored storage reference — never a raw string that could be smuggled
-  // into the CSS url() below via a tampered draft.
-  const logoDisplayUrl = logoPreviewUrl;
-
-  // Variants — swift, ease-out, reduced-motion aware (movement off, opacity kept).
   const stepVariants: Variants = {
-    initial: { opacity: 0, y: reduce ? 0 : 14 },
-    animate: {
-      opacity: 1,
-      y: 0,
-      transition: { duration: 0.26, ease: EASE, when: "beforeChildren", staggerChildren: reduce ? 0 : 0.05 },
-    },
-    exit: { opacity: 0, y: reduce ? 0 : -8, transition: { duration: 0.16, ease: EASE } },
-  };
-  const itemVariants: Variants = {
-    initial: { opacity: 0, y: reduce ? 0 : 8 },
+    initial: { opacity: 0, y: reduce ? 0 : 12 },
     animate: { opacity: 1, y: 0, transition: { duration: 0.28, ease: EASE } },
+    exit: { opacity: 0, y: reduce ? 0 : -6, transition: { duration: 0.16, ease: EASE } },
   };
 
+  // Logo is upload-only, so the only display source is the signed URL resolved
+  // from the stored storage reference, never a raw string that could be smuggled
+  // into a CSS url() via a tampered draft.
   useEffect(() => {
     let ignore = false;
     if (!isStorageReference(state.clinic.logoUrl) || logoPreviewUrl) {
@@ -277,60 +149,50 @@ export function OnboardingFlow({
     };
   }, [logoPreviewUrl, state.clinic.logoUrl]);
 
-  // Restore a saved draft after mount — kept out of the useState initializer so
+  // Restore a saved draft after mount, kept out of the useState initializer so
   // the server render and the first client render agree (no hydration mismatch).
   useEffect(() => {
-    const rawDraft = window.localStorage.getItem(onboardingDraftStorageKey);
-    if (!rawDraft) {
-      return;
-    }
+    window.localStorage.removeItem(legacyDraftStorageKey);
+    const rawDraft = window.localStorage.getItem(draftKey);
     try {
-      const draft = normalizeOnboardingState(JSON.parse(rawDraft));
-      if (draft.completed) {
-        return;
+      const draft = rawDraft ? normalizeOnboardingState(JSON.parse(rawDraft)) : null;
+      if (draft && !draft.completed) {
+        setState(draft);
+        setShowWelcome(draft.currentStep <= 1);
+        setSolo(!draft.staffMember.name.trim());
       }
-      setState(draft);
-      setShowWelcome(draft.currentStep <= 1);
-      setSolo(!draft.staffMember.name.trim());
     } catch {
-      window.localStorage.removeItem(onboardingDraftStorageKey);
+      window.localStorage.removeItem(draftKey);
     }
-  }, []);
+    setDraftRestored(true);
+  }, [draftKey]);
 
-  // Persist the draft on change. Skip the first run so it can't overwrite a saved
-  // draft with the initial state before the restore effect above has applied it.
-  const skipFirstDraftSave = useRef(true);
+  // Persist the draft on change, but only once the restore above has applied:
+  // saving earlier would overwrite the stored draft with the initial state
+  // (a skip-the-first-run ref isn't enough, since dev runs effects twice).
   useEffect(() => {
-    if (skipFirstDraftSave.current) {
-      skipFirstDraftSave.current = false;
-      return;
-    }
-    if (typeof window === "undefined") {
+    if (!draftRestored) {
       return;
     }
     if (state.completed) {
-      window.localStorage.removeItem(onboardingDraftStorageKey);
+      window.localStorage.removeItem(draftKey);
       return;
     }
-    window.localStorage.setItem(onboardingDraftStorageKey, JSON.stringify(state));
-  }, [state]);
+    window.localStorage.setItem(draftKey, JSON.stringify(state));
+  }, [draftKey, draftRestored, state]);
 
-  function persistState(nextState: OnboardingState, options?: { complete?: boolean; status?: string }) {
+  function persistState(nextState: OnboardingState, options?: { complete?: boolean }) {
     startSaving(async () => {
       const result = await saveOnboardingStateAction(nextState);
       if (!result.ok || !result.state) {
         if (result.state) setState(result.state);
         setErrorMessage(result.error ?? "We couldn't save your progress.");
-        setStatusMessage("");
         return;
       }
       setState(result.state);
       setErrorMessage("");
-      setStatusMessage(options?.status ?? "Progress saved.");
       if (options?.complete) {
-        if (typeof window !== "undefined") {
-          window.localStorage.removeItem(onboardingDraftStorageKey);
-        }
+        window.localStorage.removeItem(draftKey);
         router.push("/onboarding/complete");
       }
     });
@@ -342,34 +204,25 @@ export function OnboardingFlow({
       setErrorMessage(validationError);
       return;
     }
-    const nextStaff = solo
-      ? { name: "", role: state.staffMember.role || "Specialist" }
-      : state.staffMember;
+    const nextStaff = solo ? { name: "", role: state.staffMember.role || "Specialist" } : state.staffMember;
 
     if (isLastStep) {
-      persistState(
-        { ...state, staffMember: nextStaff, completed: true },
-        { complete: true, status: "Onboarding complete." }
-      );
+      persistState({ ...state, staffMember: nextStaff, completed: true }, { complete: true });
       return;
     }
-    persistState(
-      { ...state, staffMember: nextStaff, currentStep: state.currentStep + 1 },
-      { status: `Saved ${step.shortLabel.toLowerCase()}.` }
-    );
+    persistState({ ...state, staffMember: nextStaff, currentStep: state.currentStep + 1 });
   }
 
   function handleBack() {
+    setErrorMessage("");
     if (state.currentStep <= 1) {
       setShowWelcome(true);
       return;
     }
-    setErrorMessage("");
-    setStatusMessage("");
     setState((current) => ({ ...current, currentStep: current.currentStep - 1 }));
   }
 
-  function updateDay(day: WeekdayKey, patch: Partial<(typeof state.workingHours)[WeekdayKey]>) {
+  function updateDay(day: WeekdayKey, patch: Partial<DaySchedule>) {
     setState((current) => ({
       ...current,
       workingHours: { ...current.workingHours, [day]: { ...current.workingHours[day], ...patch } },
@@ -403,559 +256,166 @@ export function OnboardingFlow({
     }
   }
 
-  const weeklyHours = weekdayOrder.reduce((total, day) => {
-    const current = state.workingHours[day];
-    return current.enabled ? total + hoursBetweenTimes(current.start, current.end) : total;
-  }, 0);
-  const openDays = weekdayOrder.filter((day) => state.workingHours[day].enabled).length;
+  // Mirrors what finishing creates: the named team member, or the owner
+  // themself when it's just them.
+  const team = [
+    solo
+      ? { name: state.owner.name.trim(), role: state.staffMember.role || "Specialist" }
+      : { name: state.staffMember.name.trim(), role: state.staffMember.role },
+  ];
+
+  const panel = (
+    <ClinicPreview
+      name={state.clinic.name}
+      type={state.clinic.type}
+      logoUrl={logoPreviewUrl}
+      logoRef={state.clinic.logoUrl}
+      announceChanges={draftRestored}
+      accent={accent}
+      hours={state.workingHours}
+      team={team}
+      focus={showWelcome ? "intro" : step.id}
+    />
+  );
 
   return (
-    <div
-      className="relative min-h-screen overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,var(--brand-wash)_100%)]"
-      style={
-        {
-          "--primary": selectedAccent.value,
-          "--primary-hover": selectedAccent.hover,
-          "--primary-soft": selectedAccent.soft,
-          "--primary-shadow": selectedAccent.shadow,
-          "--ring": selectedAccent.shadow,
-          "--accent": selectedAccent.soft,
-          "--accent-foreground": selectedAccent.value,
-        } as CSSProperties
-      }
+    <OnboardingShell
+      panel={panel}
+      panelLead={showWelcome ? panelLines.welcome[0] : panelLines[step.id][0]}
+      panelTail={showWelcome ? panelLines.welcome[1] : panelLines[step.id][1]}
     >
-      {/* Ambient brand backdrop — a moving field of cobalt / light-blue light that
-          fills the side margins, drifts (CSS, reduced-motion gated) and parallaxes
-          with the cursor. A soft center keeps the content column readable. */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute inset-0 bg-[linear-gradient(125deg,#e6ecff_0%,#e9f2ff_45%,#f0e9ff_100%)]" />
-        <motion.div style={{ x: orbNearX, y: orbNearY }} className="absolute inset-0">
-          <div className="dialog-accent-orb absolute -left-24 top-12 size-[30rem] rounded-full bg-[radial-gradient(circle,rgba(10,34,255,0.45),transparent_66%)] blur-3xl" />
-          <div className="landing-aurora-blob absolute -right-20 top-32 size-[34rem] rounded-full bg-[radial-gradient(circle,rgba(100,182,255,0.5),transparent_66%)] blur-3xl" />
-        </motion.div>
-        <motion.div style={{ x: orbFarX, y: orbFarY }} className="absolute inset-0">
-          <div
-            className="dialog-accent-orb absolute left-[4%] -bottom-24 size-[28rem] rounded-full bg-[radial-gradient(circle,rgba(91,33,182,0.34),transparent_68%)] blur-3xl"
-            style={{ animationDelay: "-2.6s" }}
-          />
-          <div
-            className="landing-aurora-blob absolute right-[3%] bottom-4 size-[30rem] rounded-full bg-[radial-gradient(circle,rgba(31,75,255,0.40),transparent_68%)] blur-3xl"
-            style={{ animationDelay: "-4s" }}
-          />
-        </motion.div>
-        <div className="absolute inset-0 bg-[radial-gradient(42%_55%_at_50%_42%,rgba(255,255,255,0.92),rgba(255,255,255,0.32)_56%,transparent_75%)]" />
-      </div>
-
-      <div className="relative mx-auto flex min-h-screen w-full max-w-5xl flex-col px-6 py-7 sm:px-8">
-        {/* header */}
-        <div className="flex items-center justify-center">
-          {/* No Business row exists until onboarding completes — prefetching
-              /dashboard here could cache a redirect-to-onboarding response
-              that outlives the moment bootstrap actually creates it. */}
-          <BrandMark href="/dashboard" includeSubtitle={false} prefetch={false} />
-        </div>
-
-        {/* stepper */}
-        <AnimatePresence initial={false}>
-          {!showWelcome ? (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.24, ease: EASE }}
-              className="overflow-hidden"
-            >
-              <div className="mx-auto flex w-full max-w-2xl items-center pt-8">
-                {onboardingSteps.map((item, index) => {
-                  const done = index < stepIndex;
-                  const active = index === stepIndex;
-                  return (
-                    <div key={item.id} className="flex flex-1 items-center last:flex-none">
-                      <div className="flex items-center gap-2.5">
-                        <span
-                          className={cn(
-                            "flex size-8 items-center justify-center rounded-(--radius-tile) border text-xs font-semibold transition-colors duration-(--duration-base)",
-                            done
-                              ? "border-primary bg-primary text-primary-foreground"
-                              : active
-                                ? "border-primary bg-white text-primary"
-                                : "border-border bg-white text-muted-foreground"
-                          )}
-                        >
-                          {done ? <Check className="size-4" /> : index + 1}
-                        </span>
-                        <span
-                          className={cn(
-                            "hidden text-sm font-medium transition-colors duration-(--duration-base) sm:block",
-                            active ? "text-foreground" : "text-muted-foreground"
-                          )}
-                        >
-                          {item.shortLabel}
-                        </span>
-                      </div>
-                      {index < onboardingSteps.length - 1 ? (
-                        <div className="mx-3 h-0.5 flex-1 overflow-hidden rounded-full bg-border">
-                          <motion.div
-                            className="vela-gradient h-full rounded-full"
-                            initial={false}
-                            animate={{ width: done ? "100%" : "0%" }}
-                            transition={{ duration: 0.3, ease: EASE }}
-                          />
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-
-        {/* body */}
-        <div className="flex flex-1 flex-col justify-center py-8">
-          <div className="mx-auto w-full max-w-xl">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={showWelcome ? "welcome" : step.id}
-              variants={stepVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-            >
-              {showWelcome ? (
-                <div className="text-center">
-                  <motion.p variants={itemVariants} className="text-sm font-semibold text-primary">
-                    Welcome to Vela
-                  </motion.p>
-                  <motion.h1
-                    variants={itemVariants}
-                    className="mx-auto mt-3 max-w-md text-[2.1rem] font-semibold leading-[1.1] tracking-tight text-foreground"
-                  >
-                    Let&apos;s set up your{" "}
-                    <span className="vela-gradient-text">clinic</span>, {ownerFirstName}.
-                  </motion.h1>
-                  <motion.p
-                    variants={itemVariants}
-                    className="mx-auto mt-4 max-w-sm text-[15px] leading-7 text-muted-foreground"
-                  >
-                    Three quick steps and your workspace is ready. We&apos;ll only ask for what Vela
-                    needs to run your day.
-                  </motion.p>
-
-                  <div className="mx-auto mt-9 max-w-sm space-y-2.5 text-left">
-                    {onboardingSteps.map((item, index) => {
-                      const Icon = stepIcons[item.id];
-                      return (
-                        <motion.div
-                          key={item.id}
-                          variants={itemVariants}
-                          className="flex items-center gap-3.5 rounded-(--radius-field) border border-border bg-white/80 px-4 py-3 transition-[transform,border-color,box-shadow] duration-(--duration-base) hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[0_12px_28px_rgba(10,34,255,0.10)]"
-                        >
-                          <span className="flex size-9 items-center justify-center rounded-(--radius-tile) border border-border bg-white text-primary">
-                            <Icon className="size-4" />
-                          </span>
-                          <div>
-                            <p className="text-sm font-semibold text-foreground">{item.shortLabel}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {item.id === "clinic"
-                                ? "Name, logo and brand color"
-                                : item.id === "hours"
-                                  ? "When patients can book"
-                                  : "Who works day one"}
-                            </p>
-                          </div>
-                          <span className="ml-auto text-xs font-medium text-muted-foreground">
-                            {index + 1}
-                          </span>
-                        </motion.div>
-                      );
-                    })}
-                  </div>
-
-                  <motion.p
-                    variants={itemVariants}
-                    className="mt-7 inline-flex items-center gap-2 text-sm text-muted-foreground"
-                  >
-                    <Clock3 className="size-4" />
-                    About 3 minutes
-                  </motion.p>
-
-                  <motion.div variants={itemVariants} className="mt-9">
-                    <Button
-                      type="button"
-                      size="lg"
-                      className="h-12 rounded-(--radius-field) px-8"
-                      onClick={() => {
-                        setErrorMessage("");
-                        setShowWelcome(false);
-                      }}
-                    >
-                      Set up my clinic
-                      <ArrowRight data-icon="inline-end" />
-                    </Button>
-                  </motion.div>
-                </div>
-              ) : (
-                <div className="rounded-(--radius-panel) border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-28px_rgba(10,34,255,0.28)] sm:p-8">
-                  <motion.div variants={itemVariants} className="flex items-center gap-3">
-                    <span className="flex size-10 items-center justify-center rounded-(--radius-tile) border border-border bg-white text-primary">
-                      <StepIcon className="size-5" />
-                    </span>
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      Step {stepIndex + 1} of {onboardingSteps.length}
-                    </p>
-                  </motion.div>
-
-                  <motion.h1
-                    variants={itemVariants}
-                    className="mt-5 text-[1.6rem] font-semibold leading-tight tracking-tight text-foreground"
-                  >
-                    {step.title}
-                  </motion.h1>
-                  <motion.p variants={itemVariants} className="mt-2 text-[15px] leading-7 text-muted-foreground">
-                    {step.why}
-                  </motion.p>
-
-                  <div className="mt-7 space-y-6">
-                    {step.id === "clinic" ? (
-                      <>
-                        <motion.div variants={itemVariants} className="space-y-2">
-                          <FieldLabel>Clinic name</FieldLabel>
-                          <Input
-                            value={state.clinic.name}
-                            onChange={(event) => updateClinic({ name: event.target.value })}
-                            placeholder={businessName || "Aldent Dental"}
-                            className={fieldInputClass}
-                          />
-                        </motion.div>
-
-                        <motion.div variants={itemVariants} className="space-y-2">
-                          <FieldLabel>Clinic type</FieldLabel>
-                          <div className="flex flex-wrap gap-2">
-                            {businessTypes.map((type) => {
-                              const active = state.clinic.type === type;
-                              return (
-                                <button
-                                  key={type}
-                                  type="button"
-                                  onClick={() => updateClinic({ type })}
-                                  className={cn(
-                                    "h-9 rounded-full border px-3.5 text-sm font-medium transition-colors duration-(--duration-base) focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40 active:scale-[0.97]",
-                                    active
-                                      ? "border-primary/55 bg-primary-soft text-primary"
-                                      : "border-border bg-white text-muted-foreground hover:text-foreground"
-                                  )}
-                                >
-                                  {type}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </motion.div>
-
-                        <motion.div variants={itemVariants} className="space-y-2">
-                          <FieldLabel>Logo</FieldLabel>
-                          <div className="flex items-center gap-3.5">
-                            <input
-                              id="clinic-logo-upload"
-                              type="file"
-                              accept="image/*"
-                              disabled={isLogoUploading}
-                              onChange={(event) => handleLogoUpload(event.currentTarget.files?.[0] ?? null)}
-                              className="sr-only"
-                            />
-                            <label
-                              htmlFor="clinic-logo-upload"
-                              className="flex size-14 cursor-pointer items-center justify-center overflow-hidden rounded-(--radius-tile) border border-border bg-white text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
-                            >
-                              {isLogoUploading ? (
-                                <Loader2 className="size-5 animate-spin" />
-                              ) : logoDisplayUrl ? (
-                                <span
-                                  aria-hidden
-                                  className="size-full bg-cover bg-center"
-                                  style={{ backgroundImage: `url("${logoDisplayUrl}")` }}
-                                />
-                              ) : (
-                                <ImagePlus className="size-5" />
-                              )}
-                            </label>
-                            <div className="text-sm text-muted-foreground">
-                              <p>A square mark looks best.</p>
-                              <p>
-                                {state.clinic.logoUrl ? (
-                                  <button
-                                    type="button"
-                                    className="font-medium text-primary hover:underline"
-                                    onClick={() => {
-                                      setLogoPreviewUrl("");
-                                      updateClinic({ logoUrl: "" });
-                                    }}
-                                  >
-                                    Remove logo
-                                  </button>
-                                ) : (
-                                  "No logo yet? We'll use your clinic's initial."
-                                )}
-                              </p>
-                            </div>
-                          </div>
-                        </motion.div>
-
-                        <motion.div variants={itemVariants} className="space-y-2">
-                          <FieldLabel>Brand color</FieldLabel>
-                          <div className="flex flex-wrap items-center gap-2.5">
-                            {visibleAccentPresets.map((preset) => {
-                              const active = state.clinic.accentColor === preset.id;
-                              return (
-                                <button
-                                  key={preset.id}
-                                  type="button"
-                                  aria-label={preset.name}
-                                  onClick={() =>
-                                    updateClinic({ accentColor: preset.id, accentHex: preset.value })
-                                  }
-                                  className={cn(
-                                    "flex size-8 items-center justify-center rounded-full transition-transform duration-(--duration-base) hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-95",
-                                    active && "ring-2 ring-offset-2 ring-offset-background"
-                                  )}
-                                  style={
-                                    {
-                                      backgroundColor: preset.value,
-                                      "--tw-ring-color": preset.value,
-                                    } as CSSProperties
-                                  }
-                                >
-                                  {active ? <Check className="size-4 text-white" /> : null}
-                                </button>
-                              );
-                            })}
-                            <label
-                              className={cn(
-                                "flex h-8 items-center gap-2 rounded-full border px-2.5 text-xs font-medium text-muted-foreground",
-                                state.clinic.accentColor === "custom"
-                                  ? "border-primary/55"
-                                  : "border-border",
-                                customAccentInvalid && "border-destructive/50"
-                              )}
-                            >
-                              <input
-                                type="color"
-                                value={normalizedCustomAccent ?? previewAccent}
-                                onChange={(event) =>
-                                  updateClinic({ accentColor: "custom", accentHex: event.target.value })
-                                }
-                                className="size-4 cursor-pointer rounded-full border-0 bg-transparent p-0"
-                              />
-                              <input
-                                value={state.clinic.accentHex}
-                                onFocus={() => updateClinic({ accentColor: "custom" })}
-                                onChange={(event) =>
-                                  updateClinic({ accentColor: "custom", accentHex: event.target.value })
-                                }
-                                placeholder="#0A22FF"
-                                className="w-16 bg-transparent font-mono uppercase outline-none"
-                              />
-                            </label>
-                          </div>
-                        </motion.div>
-
-                        <motion.div variants={itemVariants} className="space-y-2">
-                          <FieldLabel>Owner name</FieldLabel>
-                          <Input
-                            value={state.owner.name}
-                            onChange={(event) =>
-                              setState((current) => ({ ...current, owner: { name: event.target.value } }))
-                            }
-                            placeholder="Owner name"
-                            className={fieldInputClass}
-                          />
-                        </motion.div>
-                      </>
-                    ) : null}
-
-                    {step.id === "hours" ? (
-                      <motion.div variants={itemVariants} className="space-y-2.5">
-                        {weekdayOrder.map((day) => {
-                          const item = state.workingHours[day];
-                          return (
-                            <div
-                              key={day}
-                              className="flex items-center justify-between gap-3 rounded-(--radius-field) border border-border bg-white px-3.5 py-2.5"
-                            >
-                              <div className="flex items-center gap-3">
-                                <Toggle
-                                  checked={item.enabled}
-                                  onPressedChange={(checked) => updateDay(day, { enabled: checked })}
-                                  ariaLabel={weekdayLabels[day]}
-                                />
-                                <span className="text-sm font-medium text-foreground">
-                                  {weekdayLabels[day]}
-                                </span>
-                              </div>
-                              {item.enabled ? (
-                                <div className="flex items-center gap-2">
-                                  <NativeSelect
-                                    value={item.start}
-                                    onChange={(value) => updateDay(day, { start: value })}
-                                    options={timeOptions}
-                                  />
-                                  <span className="text-muted-foreground">–</span>
-                                  <NativeSelect
-                                    value={item.end}
-                                    onChange={(value) => updateDay(day, { end: value })}
-                                    options={timeOptions}
-                                  />
-                                </div>
-                              ) : (
-                                <span className="text-sm font-medium text-muted-foreground">Closed</span>
-                              )}
-                            </div>
-                          );
-                        })}
-                        <div className="flex items-center gap-2 rounded-(--radius-field) bg-primary-soft px-3.5 py-2.5 text-sm font-medium text-primary">
-                          <Clock3 className="size-4" />
-                          {weeklyHours} hours open per week · {openDays} days
-                        </div>
-                      </motion.div>
-                    ) : null}
-
-                    {step.id === "team" ? (
-                      <>
-                        <motion.button
-                          variants={itemVariants}
-                          type="button"
-                          onClick={() => {
-                            setSolo(true);
-                            setState((current) => ({
-                              ...current,
-                              staffMember: { ...current.staffMember, name: "" },
-                            }));
-                          }}
-                          className={cn(
-                            "flex w-full items-center gap-3 rounded-(--radius-field) border bg-white px-3.5 py-3 text-left transition-colors active:scale-[0.99]",
-                            solo ? "border-primary/55 ring-2 ring-primary/15" : "border-border"
-                          )}
-                        >
-                          <span className="flex size-9 items-center justify-center rounded-(--radius-tile) border border-border bg-white text-sm font-semibold text-primary">
-                            {getInitials(state.owner.name || ownerName || "Me")}
-                          </span>
-                          <span className="flex-1">
-                            <span className="block text-sm font-semibold text-foreground">
-                              It&apos;s just me for now
-                            </span>
-                            <span className="block text-sm text-muted-foreground">
-                              {firstDisplayName(state.owner.name || ownerName || "You")} runs the day solo
-                            </span>
-                          </span>
-                          <span
-                            className={cn(
-                              "flex size-5 items-center justify-center rounded-full border transition-colors",
-                              solo ? "border-primary bg-primary text-white" : "border-border"
-                            )}
-                          >
-                            {solo ? <Check className="size-3" /> : null}
-                          </span>
-                        </motion.button>
-
-                        <motion.div variants={itemVariants} className="space-y-3">
-                          <p className="text-sm font-medium text-muted-foreground">First team member</p>
-                          <div className="flex gap-2.5">
-                            <Input
-                              value={state.staffMember.name}
-                              onChange={(event) => {
-                                setSolo(false);
-                                setState((current) => ({
-                                  ...current,
-                                  staffMember: { ...current.staffMember, name: event.target.value },
-                                }));
-                              }}
-                              placeholder="Full name"
-                              className={cn(fieldInputClass, "flex-1")}
-                            />
-                            <div className="w-40">
-                              <NativeSelect
-                                value={state.staffMember.role}
-                                onChange={(value) =>
-                                  setState((current) => ({
-                                    ...current,
-                                    staffMember: { ...current.staffMember, role: value },
-                                  }))
-                                }
-                                options={staffRoles}
-                              />
-                            </div>
-                          </div>
-                          <p className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-                            <UsersRound className="size-3.5" />
-                            You can add the rest of your team anytime in Staff.
-                          </p>
-                        </motion.div>
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-              )}
-            </motion.div>
-          </AnimatePresence>
+      {!showWelcome ? (
+        <div className="mb-8">
+          <div className="flex gap-1.5" aria-hidden>
+            {onboardingSteps.map((item, index) => (
+              <span key={item.id} className="h-1 flex-1 overflow-hidden rounded-full bg-border">
+                <span
+                  className={cn(
+                    "block h-full rounded-full bg-[var(--brand-ink)] transition-[width] duration-(--duration-slow) ease-out-quint motion-reduce:transition-none",
+                    index <= stepIndex ? "w-full" : "w-0"
+                  )}
+                />
+              </span>
+            ))}
           </div>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Step {stepIndex + 1} of {onboardingSteps.length} · {step.shortLabel}
+          </p>
         </div>
+      ) : null}
 
-        {/* footer */}
-        <div className="mx-auto w-full max-w-xl space-y-4">
-          <AnimatePresence mode="wait">
-            {errorMessage ? (
-              <motion.div
-                key={`err-${errorMessage}`}
-                initial={{ opacity: 0, y: reduce ? 0 : 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.18, ease: EASE }}
-                className="rounded-(--radius-field) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-              >
-                {errorMessage}
-              </motion.div>
-            ) : !errorMessage && statusMessage ? (
-              <motion.div
-                key={`ok-${statusMessage}`}
-                initial={{ opacity: 0, y: reduce ? 0 : 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.18, ease: EASE }}
-                className="rounded-(--radius-field) border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary"
-              >
-                {statusMessage}
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={showWelcome ? "welcome" : step.id}
+          variants={stepVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+        >
+          {showWelcome ? (
+            <WelcomeStep firstName={ownerFirstName} />
+          ) : (
+            <>
+              <h1 className="text-[2rem] font-semibold leading-[1.08] tracking-[-0.03em] text-[var(--brand-ink)]">
+                {step.title}
+              </h1>
+              <p className="mt-2 text-[15px] leading-7 text-muted-foreground">{step.why}</p>
+              <div className="mt-7">
+                {step.id === "clinic" ? (
+                  <ClinicStep
+                    state={state}
+                    placeholderName={businessName && businessName !== "Vela Workspace" ? businessName : "Aldent Dental"}
+                    logoDisplayUrl={logoPreviewUrl}
+                    isLogoUploading={isLogoUploading}
+                    onClinicChange={updateClinic}
+                    onOwnerChange={(name) => setState((current) => ({ ...current, owner: { name } }))}
+                    onLogoUpload={handleLogoUpload}
+                    onLogoRemove={() => {
+                      setLogoPreviewUrl("");
+                      updateClinic({ logoUrl: "" });
+                    }}
+                  />
+                ) : step.id === "hours" ? (
+                  <HoursStep workingHours={state.workingHours} onDayChange={updateDay} />
+                ) : (
+                  <TeamStep
+                    ownerName={state.owner.name || ownerName}
+                    solo={solo}
+                    staffMember={state.staffMember}
+                    onChooseSolo={() => {
+                      setSolo(true);
+                      setState((current) => ({ ...current, staffMember: { ...current.staffMember, name: "" } }));
+                    }}
+                    onStaffChange={(patch) => {
+                      if (patch.name !== undefined) setSolo(false);
+                      setState((current) => ({ ...current, staffMember: { ...current.staffMember, ...patch } }));
+                    }}
+                  />
+                )}
+              </div>
+            </>
+          )}
+        </motion.div>
+      </AnimatePresence>
 
-          {!showWelcome ? (
-            <div className="flex items-center justify-between gap-4">
-              <Button
-                type="button"
-                variant="ghost"
-                className="rounded-(--radius-field) px-3 text-muted-foreground hover:bg-transparent"
-                onClick={handleBack}
-                disabled={isPending}
-              >
-                <ArrowLeft data-icon="inline-start" />
-                Back
-              </Button>
-              <Button
-                type="button"
-                size="lg"
-                className="h-12 rounded-(--radius-field) px-5"
-                onClick={handleNext}
-                disabled={isPending}
-              >
-                {isPending ? <Loader2 className="size-4 animate-spin" data-icon="inline-start" /> : null}
-                {isLastStep ? "Finish setup" : "Continue"}
-                {!isPending ? <ArrowRight data-icon="inline-end" /> : null}
-              </Button>
-            </div>
-          ) : null}
-        </div>
+      <div className="mt-8 space-y-4">
+        {errorMessage ? (
+          <p
+            role="alert"
+            className="state-pop rounded-(--radius-field) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          >
+            {errorMessage}
+          </p>
+        ) : null}
+
+        {showWelcome ? (
+          <Button
+            type="button"
+            size="lg"
+            className={cn(inkButtonClassName, "w-full")}
+            onClick={() => {
+              setErrorMessage("");
+              setShowWelcome(false);
+            }}
+          >
+            Set up my clinic
+            <ArrowRight className="size-4 transition-transform duration-(--duration-base) ease-out-quint group-hover/next:translate-x-0.5" data-icon="inline-end" />
+          </Button>
+        ) : (
+          <div className="flex items-center gap-3">
+            <Button
+              type="button"
+              variant="ghost"
+              size="lg"
+              className="h-12 rounded-(--radius-field) px-3 text-muted-foreground hover:bg-transparent hover:text-[var(--brand-ink)]"
+              onClick={handleBack}
+              disabled={isPending}
+            >
+              <ArrowLeft data-icon="inline-start" />
+              Back
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              className={cn(inkButtonClassName, "flex-1")}
+              onClick={handleNext}
+              disabled={isPending}
+            >
+              {isPending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" data-icon="inline-start" />
+                  {isLastStep ? "Creating your workspace..." : "Saving..."}
+                </>
+              ) : (
+                <>
+                  {isLastStep ? "Finish setup" : "Continue"}
+                  <ArrowRight className="size-4 transition-transform duration-(--duration-base) ease-out-quint group-hover/next:translate-x-0.5" data-icon="inline-end" />
+                </>
+              )}
+            </Button>
+          </div>
+        )}
       </div>
-    </div>
+    </OnboardingShell>
   );
 }

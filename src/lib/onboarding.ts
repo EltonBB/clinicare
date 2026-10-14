@@ -18,7 +18,7 @@ export const onboardingSteps = [
     id: "team",
     shortLabel: "Your team",
     title: "Who's working day one?",
-    why: "Appointments are assigned to staff — add your first now, more anytime.",
+    why: "Appointments are assigned to staff. Add your first now, the rest anytime.",
   },
 ] as const;
 
