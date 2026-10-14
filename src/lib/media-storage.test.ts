@@ -22,4 +22,9 @@ describe("isValidUploadShape", () => {
       false
     );
   });
+
+  it("rejects empty path segments", () => {
+    expect(isValidUploadShape(mediaBucket, "user-id//uuid.pdf")).toBe(false);
+    expect(isValidUploadShape(mediaBucket, "user-id/client-documents/")).toBe(false);
+  });
 });

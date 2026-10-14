@@ -78,3 +78,10 @@ should use short-lived signed URLs.
 When the app needs to show an image or document, it converts stored values like
 `supabase-storage://clinic-media/{user-id}/logos/{file-id}.jpg` into short-lived
 signed URLs. A copied file URL should expire instead of remaining public.
+
+## Saving a media reference
+
+Logo, gallery and document writes accept a stored reference (or a URL from the
+configured project) only when it points at this clinic's own upload, in the
+media bucket and the folder for that kind of file. Any other link on the
+project's own origin is refused; ordinary external HTTPS links stay allowed.

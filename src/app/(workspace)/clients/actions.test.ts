@@ -14,8 +14,8 @@ const mocks = vi.hoisted(() => {
   const clientTreatmentPlanItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientFollowUpReminder = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const clientPayment = { findFirst: vi.fn(), deleteMany: vi.fn(), groupBy: vi.fn(), create: vi.fn(), update: vi.fn() };
-  const clientDocument = { findFirst: vi.fn(), deleteMany: vi.fn() };
-  const clientGalleryItem = { findFirst: vi.fn(), deleteMany: vi.fn() };
+  const clientDocument = { findFirst: vi.fn(), deleteMany: vi.fn(), create: vi.fn() };
+  const clientGalleryItem = { findFirst: vi.fn(), deleteMany: vi.fn(), create: vi.fn() };
   const business = { findUniqueOrThrow: vi.fn() };
   const appointment = { groupBy: vi.fn(), count: vi.fn(), findFirst: vi.fn(async () => null) };
   const waitlistEntry = { findMany: vi.fn() };
@@ -112,6 +112,8 @@ async function flushAfter() {
 }
 
 import {
+  addClientDocumentAction,
+  addClientGalleryItemAction,
   addClientPaymentAction,
   updateClientPaymentAction,
   deleteClientAction,
@@ -954,5 +956,45 @@ describe("saveClientAction validates the profile before any write", () => {
     const result = await saveClientAction({ ...NEW_CLIENT, email: "not-an-email" });
 
     expect(result).toEqual({ ok: false, error: "Enter a valid email address." });
+  });
+});
+
+// A stored media reference is only accepted when it is this clinic's own upload
+// in the folder for that kind of file: another clinic's reference would
+// otherwise be signed and shown here.
+describe("media references must be this clinic's own uploads", () => {
+  const own = (folder: string) => `supabase-storage://clinic-media/owner_1/${folder}/a.jpg`;
+  const foreign = (folder: string) => `supabase-storage://clinic-media/owner_2/${folder}/a.jpg`;
+
+  beforeEach(() => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { id: "biz_1", ownerId: "owner_1" }, user: {} });
+    mocks.client.findFirst.mockResolvedValue({ id: CLIENT_ID });
+  });
+
+  it("refuses another clinic's gallery image or one from the wrong folder", async () => {
+    for (const imageUrl of [foreign("client-gallery"), own("logos")]) {
+      const result = await addClientGalleryItemAction({ clientId: CLIENT_ID, imageUrl, caption: "" });
+      expect(result).toMatchObject({ ok: false });
+    }
+    expect(mocks.clientGalleryItem.create).not.toHaveBeenCalled();
+  });
+
+  it("stores the clinic's own gallery image", async () => {
+    await addClientGalleryItemAction({ clientId: CLIENT_ID, imageUrl: own("client-gallery"), caption: "" }).catch(() => undefined);
+    expect(mocks.clientGalleryItem.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ imageUrl: own("client-gallery") }),
+    });
+  });
+
+  it("refuses another clinic's document", async () => {
+    const result = await addClientDocumentAction({
+      clientId: CLIENT_ID,
+      fileName: "scan.pdf",
+      fileType: "Other",
+      fileUrl: foreign("client-documents"),
+      notes: "",
+    });
+    expect(result).toEqual({ ok: false, error: "Use a file from this clinic or upload it again." });
+    expect(mocks.clientDocument.create).not.toHaveBeenCalled();
   });
 });

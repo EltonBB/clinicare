@@ -498,31 +498,22 @@ function getStorageCleanupServiceClient(): SupabaseClient | null {
  * Because a service-role client bypasses RLS entirely, this is also the
  * enforcement point for a requirement `attemptStorageCleanup` cannot make on
  * its own: nothing today validates that a queued value actually belongs to
- * the business that queued it (addClientDocumentAction/
- * addClientGalleryItemAction/saveSettingsAction accept any syntactically
- * valid storage reference as user input — normalizeStorageReference only
- * parses the bucket+path shape, it checks no ownership). Under the request
- * path that's harmless because Storage RLS still gates the actual delete; a
- * service-role sweep removes that safety net, so every row is re-validated
- * here before anything is deleted. The check: media-storage-client.ts builds
+ * the business that queued it. Write actions now check owner and folder, but
+ * older persisted values and queued cleanup rows still require independent
+ * validation. A service-role sweep bypasses Storage RLS, so every row is
+ * re-validated here before anything is deleted. The check: media-storage-client.ts builds
  * every upload path as `${userId}/${folder}/${uuid}.${ext}` where `userId`
  * is the uploader's Supabase auth id — Business.ownerId, NOT Business.id —
  * so a value only counts as valid when its bucket matches the configured
  * media bucket, its path has exactly that three-segment shape (`isValidUploadShape`,
  * shared with safe-url.ts's own input-side validation of the same shape), AND
- * its first segment matches the row's business's `ownerId` — the one check
- * that's specific to this function, since safe-url.ts has no caller identity
- * to compare against. Anything else is dropped (never
+ * its first segment matches the row's business's `ownerId`. Anything else is dropped (never
  * deleted) and logged once, loudly — but the found bucket/prefix are only
  * ever logged when independently verified safe (the real configured bucket;
  * a value with the shape a real ownerId actually has), never raw. A value
- * that reaches this branch didn't come from the legitimate upload path, so
- * there's no guarantee it's the opaque auth uid it would normally be — both
- * `normalizeStorageReference`'s and `normalizePublicUrl`'s own fast paths
- * (Codex + peer-verified) accept a `supabase-storage://`-shaped value with
- * an unvalidated bucket and path, so a crafted value's bucket or path
- * segment could be arbitrary text, including a patient name, by the time it
- * gets here. Logging only what's independently known-safe still lets a
+ * that reaches this branch may be a legacy value or malformed queued input,
+ * so its bucket or path segment could be arbitrary text, including a patient
+ * name. Logging only what's independently known-safe still lets a
  * human tell a real cross-tenant hit (the found prefix is a real, different
  * business's ownerId) apart from a data/logic bug or a malicious value,
  * without ever risking PHI in the log line itself. Dropped permanently, not
@@ -621,18 +612,9 @@ async function processPendingStorageCleanupRow(
         valid.push(value);
       } else {
         // Neither reference.bucket nor foundPrefix is safe to log raw here
-        // (Codex P2 + peer-verified): normalizeStorageReference's fast path
-        // (lib/media-storage.ts) reconstructs a submitted bucket+path
-        // verbatim with no validation, and normalizePublicUrl's own
-        // isValidStorageReference check (lib/safe-url.ts) runs BEFORE its
-        // HTTPS-only gate — so a value shaped like
-        // `supabase-storage://<anything>/<anything>` skips that gate
-        // entirely and can reach a document/gallery/logo field un-normalized
-        // beyond this shape. A crafted value's bucket or path segment could
-        // be arbitrary text, including a patient name, by the time it
-        // reaches this branch — the "opaque auth uid" safety argument only
-        // ever held for the LEGITIMATE upload path, not for values that hit
-        // this exact else because they didn't come from it. Redact anything
+        // (Codex P2 + peer-verified): legacy values and queued cleanup input
+        // may still contain arbitrary text, including patient names, even
+        // though current write actions validate ownership and folder. Redact anything
         // that isn't independently known-safe before it touches a log line:
         // the bucket only when it's the one real configured bucket, the
         // prefix only when it has the shape every real ownerId actually
