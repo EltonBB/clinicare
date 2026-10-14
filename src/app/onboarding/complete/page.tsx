@@ -1,42 +1,23 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { CSSProperties } from "react";
-import { ArrowRight, CalendarPlus, Check, MessageCircle, UserPlus } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 
+import { ClinicPreview } from "@/components/onboarding/clinic-preview";
+import { inkButtonClassName } from "@/components/onboarding/form-parts";
+import { OnboardingShell } from "@/components/onboarding/onboarding-shell";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { getCurrentBusiness } from "@/lib/business";
 import { resolveBrandAccentPreset } from "@/lib/branding";
-import { hoursBetweenTimes, isOnboardingCompleted } from "@/lib/onboarding";
+import { resolveMediaDisplayUrl } from "@/lib/media-storage-server";
+import { createDefaultOnboardingState, isOnboardingCompleted, weekdayOrder } from "@/lib/onboarding";
 import { prisma } from "@/lib/prisma";
-import { cn, firstDisplayName, getInitials } from "@/lib/utils";
+import { cn, firstDisplayName } from "@/lib/utils";
 import { createClient } from "@/utils/supabase/server";
 
 export const metadata: Metadata = { title: "Setup complete | Vela" };
 
-const nextActions = [
-  {
-    href: "/calendar/new",
-    icon: CalendarPlus,
-    title: "Book your first appointment",
-    detail: "Drop it straight onto your calendar",
-    hint: "Start here",
-  },
-  {
-    href: "/clients/new",
-    icon: UserPlus,
-    title: "Add a patient",
-    detail: "Build your patient list as you go",
-    hint: "2 min",
-  },
-  {
-    href: "/settings?section=whatsapp",
-    icon: MessageCircle,
-    title: "Connect WhatsApp",
-    detail: "Send reminders from your number",
-    hint: "Later",
-  },
-];
+type FirstStep = { href: string; title: string; detail: string };
 
 export default async function OnboardingCompletePage() {
   const supabase = await createClient();
@@ -59,118 +40,93 @@ export default async function OnboardingCompletePage() {
     redirect("/onboarding");
   }
 
-  const [hours, teamCount] = await Promise.all([
+  const [hours, staff, reminderSettings, logoUrl] = await Promise.all([
     prisma.businessHours.findMany({
       where: { businessId: business.id },
-      select: { isOpen: true, startTime: true, endTime: true },
+      select: { weekday: true, isOpen: true, startTime: true, endTime: true },
     }),
-    prisma.staffMember.count({ where: { businessId: business.id } }),
+    prisma.staffMember.findMany({
+      where: { businessId: business.id },
+      orderBy: { createdAt: "asc" },
+      select: { name: true, role: true },
+      take: 3,
+    }),
+    prisma.reminderSettings.findUnique({ where: { businessId: business.id }, select: { template: true } }),
+    resolveMediaDisplayUrl(business.logoUrl).catch(() => ""),
   ]);
 
-  const openDays = hours.filter((day) => day.isOpen).length;
-  const weeklyHours = hours.reduce(
-    (total, day) => (day.isOpen ? total + hoursBetweenTimes(day.startTime, day.endTime) : total),
-    0
-  );
-  const ownerFirstName =
-    firstDisplayName(typeof metadata.full_name === "string" ? metadata.full_name : "") || "you";
+  // Rows are stored by weekday index in weekdayOrder; a missing row is a closed day.
+  const workingHours = { ...createDefaultOnboardingState().workingHours };
+  for (const [index, day] of weekdayOrder.entries()) {
+    const row = hours.find((item) => item.weekday === index);
+    workingHours[day] = row
+      ? { enabled: row.isOpen, start: row.startTime, end: row.endTime }
+      : { ...workingHours[day], enabled: false };
+  }
 
-  const accent = resolveBrandAccentPreset(business.brandAccentColor);
+  const ownerFirstName = firstDisplayName(typeof metadata.full_name === "string" ? metadata.full_name : "");
 
-  const stats = [
-    { value: `${weeklyHours}h`, label: "Open per week" },
-    { value: `${openDays}`, label: "Days a week" },
-    { value: `${teamCount}`, label: teamCount === 1 ? "Team member" : "Team members" },
+  const firstSteps: FirstStep[] = [
+    { href: "/calendar/new", title: "Book your first appointment", detail: "It lands straight on the calendar" },
+    { href: "/clients/new", title: "Add a patient", detail: "Their record starts with the first visit" },
+    ...(staff.length <= 1
+      ? [{ href: "/staff/new", title: "Add your team", detail: "So visits can be shared out" }]
+      : []),
+    { href: "/settings?section=whatsapp", title: "Connect WhatsApp", detail: "Reminders go out from your own number" },
   ];
 
+  const panel = (
+    <ClinicPreview
+      name={business.name}
+      type={business.businessType}
+      logoUrl={logoUrl}
+      accent={resolveBrandAccentPreset(business.brandAccentColor).value}
+      hours={workingHours}
+      team={staff}
+      reminderTemplate={reminderSettings?.template}
+      focus="done"
+    />
+  );
+
   return (
-    <div
-      className="relative min-h-screen overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,var(--brand-wash)_100%)]"
-      style={
-        {
-          "--primary": accent.value,
-          "--primary-hover": accent.hover,
-          "--primary-soft": accent.soft,
-          "--primary-shadow": accent.shadow,
-          "--ring": accent.shadow,
-          "--accent": accent.soft,
-          "--accent-foreground": accent.value,
-        } as CSSProperties
-      }
-    >
-      {/* Ambient brand backdrop — soft wash + drifting cobalt / light-blue orbs. */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute inset-x-0 top-0 h-[30rem] bg-[radial-gradient(58%_100%_at_50%_0%,var(--primary-soft),transparent_72%)]" />
-        <div className="dialog-accent-orb absolute -left-28 top-24 size-80 rounded-full bg-[radial-gradient(circle,rgba(10,34,255,0.18),transparent_70%)] blur-3xl" />
-        <div className="landing-aurora-blob absolute -right-24 top-44 size-96 rounded-full bg-[radial-gradient(circle,rgba(100,182,255,0.26),transparent_70%)] blur-3xl" />
-      </div>
-      <div className="relative mx-auto flex min-h-screen w-full max-w-2xl flex-col items-center justify-center px-5 py-12 text-center">
-        <span className="section-reveal flex size-14 items-center justify-center rounded-(--radius-panel) border border-border bg-white text-lg font-semibold text-primary">
-          {getInitials(business.name)}
-        </span>
-        <span className="section-reveal mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-primary">
-          <Check className="size-4" />
-          Setup complete
-        </span>
+    <OnboardingShell panel={panel} panelLead="Your clinic," panelTail="ready for day one.">
+      <p className="state-pop inline-flex items-center gap-1.5 text-sm font-semibold text-primary">
+        <Check className="size-4" />
+        Setup complete
+      </p>
+      <h1 className="mt-3 text-[2.5rem] font-semibold leading-[1.05] tracking-[-0.03em] text-[var(--brand-ink)]">
+        {business.name} is ready{ownerFirstName ? "," : "."}{" "}
+        {ownerFirstName ? <span className="text-muted-foreground">{ownerFirstName}.</span> : null}
+      </h1>
 
-        <h1 className="section-reveal mt-4 text-3xl font-semibold tracking-tight text-foreground sm:text-[2.5rem]">
-          {business.name} is <span className="vela-gradient-text">ready</span>, {ownerFirstName}.
-        </h1>
-        <p className="section-reveal mt-3 max-w-md text-[15px] leading-7 text-muted-foreground">
-          Your branded workspace is live. Here are the best next steps to start your first calm clinic
-          day.
-        </p>
-
-        <div className="section-reveal-delayed mt-8 grid w-full grid-cols-3 gap-3">
-          {stats.map((stat) => (
-            <div
-              key={stat.label}
-              className="rounded-(--radius-card) border border-white/70 bg-white/85 p-4 text-left shadow-[0_18px_44px_-26px_rgba(10,34,255,0.30)]"
+      <p className="mt-8 text-sm font-semibold text-foreground">First steps</p>
+      <ol className="mt-2 space-y-1">
+        {firstSteps.map((item, index) => (
+          <li key={item.href}>
+            <Link
+              href={item.href}
+              className="group/step -mx-2 flex items-center gap-4 rounded-(--radius-field) px-2 py-2.5 transition-colors duration-(--duration-base) hover:bg-[var(--brand-wash)]/60 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15"
             >
-              <p className="text-2xl font-semibold tracking-tight text-foreground">{stat.value}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{stat.label}</p>
-            </div>
-          ))}
-        </div>
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-(--radius-tile) border border-border bg-white text-xs font-semibold text-[var(--brand-ink)] tabular-nums">
+                {index + 1}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-foreground">{item.title}</span>
+                <span className="block text-sm text-muted-foreground">{item.detail}</span>
+              </span>
+              <ArrowRight className="size-4 text-muted-foreground transition-transform duration-(--duration-base) ease-out-quint group-hover/step:translate-x-0.5 group-hover/step:text-[var(--brand-ink)]" />
+            </Link>
+          </li>
+        ))}
+      </ol>
 
-        <div className="section-reveal-delayed mt-4 w-full overflow-hidden rounded-(--radius-panel) border border-white/70 bg-white/90 text-left shadow-[0_30px_80px_-30px_rgba(10,34,255,0.28)]">
-          <p className="border-b border-border px-4 py-3 text-sm font-semibold text-foreground">
-            Next best actions
-          </p>
-          <div className="divide-y divide-border">
-            {nextActions.map((action) => (
-              <Link
-                key={action.href}
-                href={action.href}
-                className="flex items-center gap-3.5 px-4 py-3.5 transition-colors hover:bg-muted/50"
-              >
-                <span className="flex size-9 items-center justify-center rounded-(--radius-tile) border border-border bg-white text-primary">
-                  <action.icon className="size-4" />
-                </span>
-                <span className="flex-1">
-                  <span className="block text-sm font-semibold text-foreground">{action.title}</span>
-                  <span className="block text-sm text-muted-foreground">{action.detail}</span>
-                </span>
-                <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                  {action.hint}
-                  <ArrowRight className="size-3.5" />
-                </span>
-              </Link>
-            ))}
-          </div>
-        </div>
-
-        <Link
-          href="/dashboard"
-          className={cn(
-            buttonVariants({ size: "lg" }),
-            "section-reveal-delayed mt-6 h-12 rounded-(--radius-field) px-6"
-          )}
-        >
-          Go to dashboard
-          <ArrowRight data-icon="inline-end" />
-        </Link>
-      </div>
-    </div>
+      <Link
+        href="/dashboard"
+        className={cn(buttonVariants({ size: "lg" }), inkButtonClassName, "mt-8 w-full")}
+      >
+        Go to dashboard
+        <ArrowRight className="size-4 transition-transform duration-(--duration-base) ease-out-quint group-hover/next:translate-x-0.5" data-icon="inline-end" />
+      </Link>
+    </OnboardingShell>
   );
 }
