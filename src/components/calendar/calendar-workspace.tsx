@@ -58,6 +58,7 @@ import type {
   CalendarScheduleBlock,
   CalendarViewModel,
 } from "@/lib/calendar";
+import { HoverPrefetchLink } from "@/components/workspace/hover-prefetch-link";
 
 type CalendarView = "day" | "week" | "month";
 
@@ -167,6 +168,9 @@ function EventPill({
   return (
     <Link
       href={`/calendar/${appointment.id}/edit`}
+      // A plain click opens the quick-view popover, never this page, so a
+      // viewport prefetch per pill (dozens per month) would only waste requests.
+      prefetch={false}
       onClick={(event) => {
         // Always stop the day-cell's own click-to-navigate handler from
         // seeing this. A plain left click opens the quick-view popover
@@ -366,7 +370,7 @@ function DayColumn({
           Clinic closed
         </p>
       ) : (
-        <Link
+        <HoverPrefetchLink
           data-day-footer=""
           href={`/calendar/new?date=${dayKey}`}
           className={cn(
@@ -377,7 +381,7 @@ function DayColumn({
         >
           <Plus className="size-3.5" />
           Add
-        </Link>
+        </HoverPrefetchLink>
       )}
     </div>
   );

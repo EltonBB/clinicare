@@ -17,6 +17,7 @@ import {
 import { buttonVariants } from "@/components/ui/button-variants";
 import { cn, getInitials } from "@/lib/utils";
 import type { DashboardAppointmentStatus, DashboardViewModel } from "@/lib/dashboard";
+import { HoverPrefetchLink } from "@/components/workspace/hover-prefetch-link";
 
 const statusDotStyles: Record<DashboardAppointmentStatus, string> = {
   confirmed: "bg-primary",
@@ -315,7 +316,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
               )}
             >
               {view.appointments.map((appointment) => (
-                <Link
+                <HoverPrefetchLink
                   key={appointment.id}
                   href={`/calendar/${appointment.id}/edit`}
                   className="flex items-center gap-3 rounded-(--radius-tile) px-1.5 py-2.5 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]"
@@ -355,7 +356,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                   {appointment.risk?.level === "high" ? (
                     <NoShowRiskBadge risk={appointment.risk} expiresAtIso={appointment.startAtIso} />
                   ) : null}
-                </Link>
+                </HoverPrefetchLink>
               ))}
             </div>
           ) : (
@@ -397,7 +398,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           {view.lastClients.length > 0 ? (
             <div>
               {view.lastClients.slice(0, 4).map((client) => (
-                <Link
+                <HoverPrefetchLink
                   key={client.id}
                   href={`/clients/${client.id}`}
                   className="flex items-center gap-3 rounded-(--radius-tile) px-1.5 py-2.5 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]"
@@ -414,7 +415,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                     </span>
                   </span>
                   <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground" />
-                </Link>
+                </HoverPrefetchLink>
               ))}
             </div>
           ) : (

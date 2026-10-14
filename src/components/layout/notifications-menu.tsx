@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { HoverPrefetchLink } from "@/components/workspace/hover-prefetch-link";
 
 export type NotificationItem = {
   id: string;
@@ -72,7 +73,7 @@ export function NotificationsMenu({
         <div className="space-y-0.5 px-2 py-2">
           {hasUpdates ? (
             items.map((item) => (
-              <Link
+              <HoverPrefetchLink
                 key={item.id}
                 href={item.href}
                 className="flex items-start gap-2.5 rounded-(--radius-tile) px-2.5 py-2.5 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]"
@@ -86,7 +87,7 @@ export function NotificationsMenu({
                     {item.detail}
                   </span>
                 </span>
-              </Link>
+              </HoverPrefetchLink>
             ))
           ) : (
             <div className="rounded-(--radius-card) border border-border/75 bg-[#fbfcfe] px-3 py-3 text-xs leading-5 text-muted-foreground">
