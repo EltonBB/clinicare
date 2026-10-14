@@ -39,7 +39,7 @@ export function Toggle({
     >
       <span
         className={cn(
-          "absolute top-1 size-4 rounded-full bg-white shadow-[0_1px_3px_rgba(20,21,47,0.18)] transition-transform duration-(--duration-base) ease-out-quint",
+          "absolute top-1 size-4 rounded-full bg-white shadow-[0_1px_3px_rgba(20,21,47,0.18)] transition-transform duration-(--duration-base) ease-out-quint motion-reduce:transition-none",
           checked ? "translate-x-6" : "translate-x-1"
         )}
       />

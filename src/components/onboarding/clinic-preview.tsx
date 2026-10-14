@@ -55,27 +55,31 @@ function toHours(time: string) {
 
 const position = (hours: number) => Math.min(Math.max((hours - DAY_START) / DAY_SPAN, 0), 1) * 100;
 
-/** The next date (from tomorrow) that falls on the given weekday. */
-function nextDateOn(day: WeekdayKey) {
-  const date = new Date();
-  // weekdayOrder starts on Monday; getDay() starts on Sunday.
-  const target = (weekdayOrder.indexOf(day) + 1) % 7;
-  const ahead = (target - date.getDay() + 7) % 7 || 7;
-  date.setDate(date.getDate() + ahead);
-  return date;
+/** The soonest open day after today, with its date (null when the week is closed). */
+function nextOpenDay(hours: WorkingHoursState) {
+  for (let ahead = 1; ahead <= 7; ahead++) {
+    const date = new Date();
+    date.setDate(date.getDate() + ahead);
+    // weekdayOrder starts on Monday; getDay() starts on Sunday.
+    const day = weekdayOrder[(date.getDay() + 6) % 7];
+    if (hours[day].enabled) return { day, date };
+  }
+  return null;
 }
 
 function formatHours(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
-/** A number that counts to its new value instead of jumping. */
+/** A number that counts to its new value instead of jumping (jumps under reduced motion). */
 function CountUp({ value, format = (v: number) => String(Math.round(v)) }: { value: number; format?: (v: number) => string }) {
+  const still = useReducedMotion();
   const spring = useSpring(value, { stiffness: 90, damping: 20 });
   const text = useTransform(spring, format);
   useEffect(() => {
-    spring.set(value);
-  }, [spring, value]);
+    if (still) spring.jump(value);
+    else spring.set(value);
+  }, [spring, value, still]);
   return <motion.span className="tabular-nums">{text}</motion.span>;
 }
 
@@ -223,13 +227,13 @@ export function ClinicPreview(props: ClinicPreviewProps) {
   const openDays = weekdayOrder.filter((day) => hours[day].enabled);
   const dayHours = (day: WeekdayKey) => hoursBetweenTimes(hours[day].start, hours[day].end);
   const weeklyHours = openDays.reduce((total, day) => total + dayHours(day), 0);
-  const firstOpen = openDays[0];
-  const reminder = firstOpen
+  const nextOpen = nextOpenDay(hours);
+  const reminder = nextOpen
     ? renderReminder({
         kind: "appointment_reminder",
         recipientName: "Maya",
-        appointmentDate: formatZonedFullDate(nextDateOn(firstOpen)),
-        appointmentTime: hours[firstOpen].start,
+        appointmentDate: formatZonedFullDate(nextOpen.date),
+        appointmentTime: hours[nextOpen.day].start,
         template: reminderTemplate ?? undefined,
       })
     : "";
@@ -297,7 +301,7 @@ export function ClinicPreview(props: ClinicPreviewProps) {
             <span
               key={step}
               className={cn(
-                "h-1 rounded-full transition-[width,background-color] duration-(--duration-slow) ease-out-quint",
+                "h-1 rounded-full transition-[width,background-color] duration-(--duration-slow) ease-out-quint motion-reduce:transition-none",
                 index < stepIndex ? "w-4 bg-[var(--clinic-bright)]" : index === stepIndex ? "w-6 bg-white" : "w-4 bg-white/20"
               )}
             />
@@ -445,7 +449,7 @@ export function ClinicPreview(props: ClinicPreviewProps) {
                   members.map((member, index) => (
                     <motion.li
                       key={`${member.name}-${index}`}
-                      layout
+                      layout={!still}
                       initial={{ opacity: 0, y: still ? 0 : 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0 }}

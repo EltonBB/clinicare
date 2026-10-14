@@ -282,7 +282,7 @@ export function OnboardingFlow({ initialState, businessName, ownerName }: Onboar
               <span key={item.id} className="h-1 flex-1 overflow-hidden rounded-full bg-border">
                 <span
                   className={cn(
-                    "block h-full rounded-full bg-[var(--brand-ink)] transition-[width] duration-(--duration-slow) ease-out-quint",
+                    "block h-full rounded-full bg-[var(--brand-ink)] transition-[width] duration-(--duration-slow) ease-out-quint motion-reduce:transition-none",
                     index <= stepIndex ? "w-full" : "w-0"
                   )}
                 />
