@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { WorkspaceFirstRun, fieldTextareaClass } from "@/components/workspace/workspace-layout";
+import { WorkspaceEmptyState, fieldTextareaClass } from "@/components/workspace/workspace-layout";
 import {
   bookFollowUpSlotAction,
   dismissFollowUpDraftAction,
@@ -39,16 +39,12 @@ export function FollowUpsList({ items }: { items: FollowUpDraftItem[] }) {
     return (
       <>
         {noticeLine}
-        <div className="surface-card overflow-hidden">
-          <WorkspaceFirstRun
-            cells={["identity", "wide", "action"]}
-            gridClassName="grid-cols-[minmax(0,1fr)_auto] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_auto]"
-            rows={3}
-            className="pt-2"
-            title="Nothing to review"
-            description="Payment reminders, thank-yous and rebooking nudges are drafted here. Nothing sends until you do."
-          />
-        </div>
+        {/* Drafts come and go, so an empty list is usually "caught up", not a
+            first run: the quiet empty state, with what lands here. */}
+        <WorkspaceEmptyState
+          title="Nothing to review"
+          description="Payment reminders, thank-yous and rebooking nudges are drafted here. Nothing sends until you do."
+        />
       </>
     );
   }

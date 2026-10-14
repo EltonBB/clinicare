@@ -523,8 +523,8 @@ Use the shared workspace structure system for: app frame, sidebar, topbar, works
 
 Added 2026-10 so a brand-new clinic's pages don't open on a bare box.
 
-- **First run** (a page that has never had a record: Clients, Staff, Inbox, Follow-ups, Calendar before any client) uses `WorkspaceFirstRun` inside the page's own table or list frame. It draws a few faint rows in the real rows' shapes (the same grid template, so they line up under the real headers; each row fainter than the last, no gradient, no sample data), then a short title, one line on what lands there, and **one** action. Never two buttons, and no icon badge.
-- **Empty after filtering** ("No clients match this view") and **empty sections inside a card** (dashboard cards, record tabs) use `WorkspaceEmptyState`: a quiet muted panel with an optional small icon glyph, never a dashed slot or a bordered icon tile.
+- **First run** (a page that has never had a record: Clients, Staff, Inbox, Calendar before any client) uses `WorkspaceFirstRun` inside the page's own table or list frame. It draws a few faint rows in the real rows' shapes (the same grid template, so they line up under the real headers; each row fainter than the last, no gradient, no sample data), then a short title, one line on what lands there, and **one** action. Never two buttons, and no icon badge.
+- **Empty after filtering** ("No clients match this view"), **caught-up lists** whose items come and go (Inbox › Follow-ups: an empty list usually means everything was handled, so it is not a first run), and **empty sections inside a card** (dashboard cards, record tabs) use `WorkspaceEmptyState`: a quiet muted panel with an optional small icon glyph, never a dashed slot or a bordered icon tile.
 - `components/workspace/workspace-layout.tsx` is rendered from server and client components alike, so it imports `buttonVariants` from `ui/button-variants` (server-safe), never from the client `ui/button` module.
 
 ---
