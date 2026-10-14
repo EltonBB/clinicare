@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -14,6 +13,7 @@ import {
 
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { HoverPrefetchLink } from "@/components/workspace/hover-prefetch-link";
 
 type SearchResult = {
   id: string;
@@ -267,7 +267,7 @@ export function GlobalSearchPalette({
                 const Icon = resultIcons[result.type];
 
                 return (
-                  <Link
+                  <HoverPrefetchLink
                     key={result.id}
                     id={`global-search-result-${result.id}`}
                     href={result.href}
@@ -296,7 +296,7 @@ export function GlobalSearchPalette({
                         {result.detail}
                       </span>
                     </span>
-                  </Link>
+                  </HoverPrefetchLink>
                 );
               })}
             </div>

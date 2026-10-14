@@ -24,6 +24,7 @@ import type {
   ClientStatus,
   ClientsViewModel,
 } from "@/lib/clients";
+import { HoverPrefetchLink } from "@/components/workspace/hover-prefetch-link";
 
 type ClientsWorkspaceProps = {
   initialView: ClientsViewModel;
@@ -232,7 +233,7 @@ export function ClientsWorkspace({
                     clientTableGrid
                   )}
                 >
-                  <Link href={`/clients/${client.id}`} className="flex min-w-0 items-center gap-3">
+                  <HoverPrefetchLink href={`/clients/${client.id}`} className="flex min-w-0 items-center gap-3">
                     <Avatar size="lg" shape="square">
                       <AvatarFallback className="bg-white text-xs font-semibold text-primary">
                         {getInitials(client.name)}
@@ -241,7 +242,7 @@ export function ClientsWorkspace({
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-foreground">{client.name}</p>
                     </div>
-                  </Link>
+                  </HoverPrefetchLink>
                   <p className="text-sm text-muted-foreground lg:block">
                     <span className="font-medium text-foreground lg:hidden">Last visit: </span>
                     {client.lastVisit}
@@ -269,7 +270,7 @@ export function ClientsWorkspace({
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                    <Link
+                    <HoverPrefetchLink
                       href={`/clients/${client.id}`}
                       className={cn(
                         buttonVariants({ variant: "solid", size: "sm" }),
@@ -278,7 +279,7 @@ export function ClientsWorkspace({
                     >
                       Details
                       <ChevronRight className="size-4" />
-                    </Link>
+                    </HoverPrefetchLink>
                   </div>
                 </div>
               ))

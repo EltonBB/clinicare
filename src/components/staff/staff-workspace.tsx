@@ -23,6 +23,7 @@ import { cn, getInitials } from "@/lib/utils";
 import { STAFF_DIRECTORY_FILTERS as filters } from "@/lib/skeleton-counts";
 import type { StaffDirectoryFilter as StaffFilter } from "@/lib/skeleton-counts";
 import type { StaffStatus, StaffViewModel } from "@/lib/staff";
+import { HoverPrefetchLink } from "@/components/workspace/hover-prefetch-link";
 
 type StaffWorkspaceProps = {
   initialView: StaffViewModel;
@@ -235,7 +236,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                   staffTableGrid
                 )}
               >
-                <Link
+                <HoverPrefetchLink
                   href={
                     member.unreadMessages > 0
                       ? `/staff/${member.id}?tab=messages`
@@ -265,7 +266,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                       ) : null}
                     </p>
                   </div>
-                </Link>
+                </HoverPrefetchLink>
                 <div className="min-w-0">
                   <span className="inline-flex max-w-full truncate rounded-md bg-primary/8 px-2.5 py-1 text-xs font-semibold text-primary">
                     {member.role || "Staff"}
@@ -325,7 +326,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                   >
                     {clockingId === member.id ? "Saving" : member.clockLabel}
                   </Button>
-                  <Link
+                  <HoverPrefetchLink
                     href={`/staff/${member.id}`}
                     className={cn(
                       buttonVariants({ variant: "solid", size: "sm" }),
@@ -335,7 +336,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                   >
                     Details
                     <ChevronRight className="size-4" />
-                  </Link>
+                  </HoverPrefetchLink>
                 </div>
               </div>
             ))
