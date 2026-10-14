@@ -76,6 +76,7 @@ export default async function OnboardingPage() {
       initialState={hydratedInitialState}
       businessName={businessName}
       ownerName={ownerName}
+      userId={user.id}
     />
   );
 }

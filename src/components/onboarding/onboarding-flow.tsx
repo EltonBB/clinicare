@@ -31,7 +31,10 @@ import { inkButtonClassName } from "./form-parts";
 import { OnboardingShell } from "./onboarding-shell";
 import { ClinicStep, HoursStep, TeamStep, WelcomeStep } from "./steps";
 
-const onboardingDraftStorageKey = "vela:onboarding-draft";
+// The draft is keyed by user, so a different account signing in on the same
+// browser never restores (or saves into) someone else's setup. The old shared
+// key is cleared on sight.
+const legacyDraftStorageKey = "vela:onboarding-draft";
 
 const EASE = [0.23, 1, 0.32, 1] as const;
 
@@ -47,6 +50,8 @@ type OnboardingFlowProps = {
   initialState: OnboardingState;
   businessName: string;
   ownerName: string;
+  /** The signed-in user's id, which scopes the local draft. */
+  userId: string;
 };
 
 function getStepError(state: OnboardingState, solo: boolean): string | null {
@@ -92,9 +97,10 @@ function getStepError(state: OnboardingState, solo: boolean): string | null {
  * saveOnboardingStateAction exactly as before (each Continue saves, Finish
  * bootstraps the workspace), and a local draft survives a reload.
  */
-export function OnboardingFlow({ initialState, businessName, ownerName }: OnboardingFlowProps) {
+export function OnboardingFlow({ initialState, businessName, ownerName, userId }: OnboardingFlowProps) {
   const router = useRouter();
   const reduce = useReducedMotion();
+  const draftKey = `${legacyDraftStorageKey}:${userId}`;
 
   // Seed from initialState only, so the server render and the first client render
   // agree. A saved localStorage draft is restored after mount (effect below) to
@@ -146,7 +152,8 @@ export function OnboardingFlow({ initialState, businessName, ownerName }: Onboar
   // Restore a saved draft after mount, kept out of the useState initializer so
   // the server render and the first client render agree (no hydration mismatch).
   useEffect(() => {
-    const rawDraft = window.localStorage.getItem(onboardingDraftStorageKey);
+    window.localStorage.removeItem(legacyDraftStorageKey);
+    const rawDraft = window.localStorage.getItem(draftKey);
     try {
       const draft = rawDraft ? normalizeOnboardingState(JSON.parse(rawDraft)) : null;
       if (draft && !draft.completed) {
@@ -155,10 +162,10 @@ export function OnboardingFlow({ initialState, businessName, ownerName }: Onboar
         setSolo(!draft.staffMember.name.trim());
       }
     } catch {
-      window.localStorage.removeItem(onboardingDraftStorageKey);
+      window.localStorage.removeItem(draftKey);
     }
     setDraftRestored(true);
-  }, []);
+  }, [draftKey]);
 
   // Persist the draft on change, but only once the restore above has applied:
   // saving earlier would overwrite the stored draft with the initial state
@@ -168,11 +175,11 @@ export function OnboardingFlow({ initialState, businessName, ownerName }: Onboar
       return;
     }
     if (state.completed) {
-      window.localStorage.removeItem(onboardingDraftStorageKey);
+      window.localStorage.removeItem(draftKey);
       return;
     }
-    window.localStorage.setItem(onboardingDraftStorageKey, JSON.stringify(state));
-  }, [draftRestored, state]);
+    window.localStorage.setItem(draftKey, JSON.stringify(state));
+  }, [draftKey, draftRestored, state]);
 
   function persistState(nextState: OnboardingState, options?: { complete?: boolean }) {
     startSaving(async () => {
@@ -185,7 +192,7 @@ export function OnboardingFlow({ initialState, businessName, ownerName }: Onboar
       setState(result.state);
       setErrorMessage("");
       if (options?.complete) {
-        window.localStorage.removeItem(onboardingDraftStorageKey);
+        window.localStorage.removeItem(draftKey);
         router.push("/onboarding/complete");
       }
     });

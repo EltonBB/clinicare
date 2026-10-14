@@ -11,7 +11,7 @@ import {
 import { Check } from "lucide-react";
 
 import { renderReminder } from "@/lib/messaging/render";
-import { formatZonedFullDate } from "@/lib/time-zone";
+import { addZonedDays, formatZonedFullDate, getZonedDateParts } from "@/lib/time-zone";
 import { hoursBetweenTimes, weekdayOrder, type WeekdayKey, type WorkingHoursState } from "@/lib/onboarding";
 import { cn, getInitials } from "@/lib/utils";
 
@@ -55,16 +55,32 @@ function toHours(time: string) {
 
 const position = (hours: number) => Math.min(Math.max((hours - DAY_START) / DAY_SPAN, 0), 1) * 100;
 
-/** The soonest open day after today, with its date (null when the week is closed). */
+// weekdayOrder starts on Monday; getUTCDay() starts on Sunday.
+const weekdayOf = (utcDay: number) => weekdayOrder[(utcDay + 6) % 7];
+
+/**
+ * The soonest open day after today in the clinic's time zone (the zone
+ * reminders are sent in), with that date already formatted, or null when the
+ * week is closed. Day search and date math both stay on the zone's calendar.
+ */
 function nextOpenDay(hours: WorkingHoursState) {
+  const today = getZonedDateParts(new Date());
   for (let ahead = 1; ahead <= 7; ahead++) {
-    const date = new Date();
-    date.setDate(date.getDate() + ahead);
-    // weekdayOrder starts on Monday; getDay() starts on Sunday.
-    const day = weekdayOrder[(date.getDay() + 6) % 7];
-    if (hours[day].enabled) return { day, date };
+    const { year, month, day } = addZonedDays(today, ahead);
+    const calendarDay = new Date(Date.UTC(year, month - 1, day, 12));
+    const weekday = weekdayOf(calendarDay.getUTCDay());
+    if (hours[weekday].enabled) return { day: weekday, label: formatZonedFullDate(calendarDay, "UTC") };
   }
   return null;
+}
+
+/** Today's weekday and hour in the clinic's time zone. */
+function clinicNow() {
+  const parts = getZonedDateParts(new Date());
+  return {
+    day: weekdayOf(new Date(Date.UTC(parts.year, parts.month - 1, parts.day)).getUTCDay()),
+    hours: parts.hour + parts.minute / 60,
+  };
 }
 
 function formatHours(value: number) {
@@ -209,14 +225,12 @@ export function ClinicPreview(props: ClinicPreviewProps) {
   const still = useReducedMotion() ?? false;
   const latest = useChangeFeed(props)[0];
   const [hoveredDay, setHoveredDay] = useState<WeekdayKey | null>(null);
-  // Today and the time of day only exist in the browser, so they appear after mount.
+  // Today and the time of day (clinic zone) change while the page is open, so
+  // they're set after mount and refreshed each minute.
   const [now, setNow] = useState<{ day: WeekdayKey; hours: number } | null>(null);
 
   useEffect(() => {
-    const tick = () => {
-      const date = new Date();
-      setNow({ day: weekdayOrder[(date.getDay() + 6) % 7], hours: date.getHours() + date.getMinutes() / 60 });
-    };
+    const tick = () => setNow(clinicNow());
     tick();
     const id = window.setInterval(tick, 60_000);
     return () => window.clearInterval(id);
@@ -232,7 +246,7 @@ export function ClinicPreview(props: ClinicPreviewProps) {
     ? renderReminder({
         kind: "appointment_reminder",
         recipientName: "Maya",
-        appointmentDate: formatZonedFullDate(nextOpen.date),
+        appointmentDate: nextOpen.label,
         appointmentTime: hours[nextOpen.day].start,
         template: reminderTemplate ?? undefined,
       })
