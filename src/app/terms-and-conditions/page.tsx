@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export default function TermsAndConditionsPage() {
   return (
     <LegalPage
-      eyebrow="Terms and policies"
+      current="terms"
       title="Terms of Service"
       description="These terms explain how clinics may use Vela, what the product provides, and the responsibilities that come with managing client records, appointments, messages, media, reports, and AI-assisted operational insights."
       lastUpdated={legalLastUpdated}

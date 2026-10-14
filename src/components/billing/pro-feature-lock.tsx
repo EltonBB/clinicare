@@ -52,13 +52,9 @@ export function ProFeatureLock({
             <div className="rounded-[0.95rem] border border-border/80 bg-white/88 p-4">
               <p className="text-sm font-semibold text-foreground">Included on Basic</p>
               <ul className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
-                {basicFeatures
-                  // This screen's whole point is "full Reports is a Pro unlock" —
-                  // don't list a reports bullet under Basic right next to it.
-                  .filter((feature) => feature !== "Basic operational reports")
-                  .map((feature) => (
-                    <li key={feature}>{feature}</li>
-                  ))}
+                {basicFeatures.map((feature) => (
+                  <li key={feature}>{feature}</li>
+                ))}
               </ul>
             </div>
             <div className="rounded-[0.95rem] border border-primary/20 bg-primary/5 p-4">

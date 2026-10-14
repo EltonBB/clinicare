@@ -12,21 +12,32 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 20
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
           cache: npm
       # `npm install` (not `npm ci`): the lockfile is generated on Windows and
       # omits some Linux-only optional native deps (@emnapi/*), which strict
       # `npm ci` rejects. This matches what the Vercel deploy uses.
       - run: npm install --no-audit --no-fund
+      # The WhatsApp worker is its own package (Baileys etc.), and its unit
+      # tests run in the suite below, so its dependencies are installed too.
+      # Its postinstall generates the worker's own Prisma client, offline.
+      - run: npm install --prefix services/whatsapp-worker --no-audit --no-fund
       - name: Typecheck
         run: npm run typecheck
+      - name: Typecheck the WhatsApp worker
+        run: npm run typecheck --prefix services/whatsapp-worker
       - name: Lint
         run: npm run lint
       - name: Unit tests

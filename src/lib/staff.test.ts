@@ -4,7 +4,9 @@ import {
   CHECK_IN_EARLY_GRACE_MS,
   buildStaffDirectoryRecord,
   buildStaffViewFromRecords,
+  calculateCompletionRate,
   completedAppointmentCutoff,
+  staffRecordAppointmentWindow,
   findActiveShiftWindow,
 } from "@/lib/staff";
 
@@ -171,5 +173,39 @@ describe("completedAppointmentCutoff", () => {
     vi.setSystemTime(new Date("2026-06-01T00:30:00.000Z"));
 
     expect(completedAppointmentCutoff().toISOString()).toBe("2026-05-31T22:00:00.000Z");
+  });
+});
+
+describe("staffRecordAppointmentWindow", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // QA 2026-10-12: a provider booked two weeks ahead showed no recent work,
+  // because the newest-first `take` filled up with future bookings.
+  it("runs from the clinic's month start to the end of today, excluding future days", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-12T08:00:00.000Z")); // 10:00 in Budapest
+
+    const window = staffRecordAppointmentWindow();
+    expect(window.gte.toISOString()).toBe("2026-09-30T22:00:00.000Z");
+    expect(window.lte.toISOString()).toBe("2026-10-12T21:59:59.999Z");
+  });
+});
+
+describe("calculateCompletionRate", () => {
+  it("counts a no-show as a finalized visit that was not completed", () => {
+    expect(
+      calculateCompletionRate([
+        { status: "COMPLETED" },
+        { status: "COMPLETED" },
+        { status: "NO_SHOW" },
+        { status: "CANCELLED" },
+      ])
+    ).toBe(50);
+  });
+
+  it("ignores visits that are not finalized yet", () => {
+    expect(calculateCompletionRate([{ status: "CONFIRMED" }, { status: "PENDING" }])).toBe(0);
   });
 });

@@ -3,15 +3,37 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const conversation = { findFirst: vi.fn(), deleteMany: vi.fn() };
   const client = { findFirst: vi.fn() };
+  const whatsAppConnection = { update: vi.fn() };
   const getAuthedBusiness = vi.fn();
-  return { conversation, client, getAuthedBusiness };
+  const sendMessage = vi.fn();
+  const syncWhatsAppConnectionForBusiness = vi.fn();
+  const $transaction = vi.fn();
+  const logger = { error: vi.fn(), warn: vi.fn(), info: vi.fn() };
+  return {
+    logger,
+    conversation,
+    client,
+    whatsAppConnection,
+    getAuthedBusiness,
+    sendMessage,
+    syncWhatsAppConnectionForBusiness,
+    $transaction,
+  };
 });
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     conversation: mocks.conversation,
     client: mocks.client,
+    whatsAppConnection: mocks.whatsAppConnection,
+    $transaction: mocks.$transaction,
   },
+}));
+
+vi.mock("@/lib/messaging", () => ({ sendMessage: mocks.sendMessage }));
+
+vi.mock("@/lib/whatsapp-connection", () => ({
+  syncWhatsAppConnectionForBusiness: mocks.syncWhatsAppConnectionForBusiness,
 }));
 
 vi.mock("@/lib/business", () => ({
@@ -20,7 +42,15 @@ vi.mock("@/lib/business", () => ({
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
-import { deleteConversationAction } from "./actions";
+vi.mock("@/lib/logger", () => ({ logger: mocks.logger }));
+
+import {
+  convertConversationToClientAction,
+  deleteConversationAction,
+  hydrateConversationAction,
+  markConversationReadAction,
+  sendInboxMessageAction,
+} from "./actions";
 
 const BUSINESS = { id: "biz_1" };
 const CONVERSATION_ID = "conv_1";
@@ -78,5 +108,114 @@ describe("deleteConversationAction", () => {
       error: "Conversation not found in this clinic workspace.",
     });
     expect(mocks.conversation.deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+// Server actions take client-serialized arguments: an object id like
+// `{ not: "" }` would reach Prisma's `where` as a filter over the workspace
+// (the delete would remove every conversation).
+describe("inbox actions refuse a non-string conversation id before touching the database", () => {
+  const CRAFTED_ID = { not: "" } as unknown as string;
+
+  it.each([
+    ["delete", () => deleteConversationAction(CRAFTED_ID)],
+    ["send", () => sendInboxMessageAction(CRAFTED_ID, "Hello")],
+    ["mark read", () => markConversationReadAction(CRAFTED_ID)],
+    ["open full history", () => hydrateConversationAction(CRAFTED_ID)],
+    ["convert to client", () => convertConversationToClientAction(CRAFTED_ID, { name: "Alex" })],
+  ])("%s", async (_name, run) => {
+    expect(await run()).toEqual({ ok: false, error: "Conversation not found in this clinic workspace." });
+    expect(mocks.conversation.findFirst).not.toHaveBeenCalled();
+    expect(mocks.conversation.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.client.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("hydrateConversationAction", () => {
+  it("answers not-found for a conversation outside the workspace instead of throwing", async () => {
+    // Deleted in another tab, or another clinic's id: the scoped lookup finds
+    // nothing, which used to surface as a Prisma P2025 from findFirstOrThrow.
+    mocks.conversation.findFirst.mockResolvedValue(null);
+
+    const result = await hydrateConversationAction(CONVERSATION_ID);
+
+    expect(result).toEqual({ ok: false, error: "Conversation not found in this clinic workspace." });
+    expect(mocks.conversation.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: CONVERSATION_ID, businessId: "biz_1" } })
+    );
+  });
+});
+
+// Codex #140: opening a conversation marks it read once; a refusal over the
+// per-user action budget would leave the unread count to come back.
+describe("markConversationReadAction", () => {
+  it("spends the background allowance, not the shared action budget", async () => {
+    mocks.conversation.findFirst.mockResolvedValue(null);
+
+    await markConversationReadAction(CONVERSATION_ID);
+
+    expect(mocks.getAuthedBusiness).toHaveBeenCalledWith(expect.any(String), { budget: "background" });
+  });
+});
+
+describe("sendInboxMessageAction", () => {
+  beforeEach(() => {
+    mocks.conversation.findFirst.mockResolvedValue({ ...CONVERSATION, contactName: "Alex" });
+    mocks.syncWhatsAppConnectionForBusiness.mockResolvedValue({ status: "CONNECTED" });
+  });
+
+  // Codex #130: a send whose outcome is unknown may already be with the patient, so
+  // staff must not be told it simply failed (and re-send it).
+  it("says an uncertain send may have reached the patient, records no message, and flags the link", async () => {
+    mocks.sendMessage.mockResolvedValue({ ok: false, reason: "delivery_uncertain", error: "x" });
+
+    const result = await sendInboxMessageAction(CONVERSATION_ID, "Hello");
+
+    expect(result).toEqual({
+      ok: false,
+      error:
+        "We couldn't confirm this message was delivered. It may have reached the patient, so check the WhatsApp chat before sending it again.",
+    });
+    // A manual reply is deliberately sent without an idempotency key (see the action).
+    expect(mocks.sendMessage).toHaveBeenCalledWith(expect.not.objectContaining({ idempotencyKey: expect.anything() }));
+    expect(mocks.$transaction).not.toHaveBeenCalled();
+    expect(mocks.whatsAppConnection.update).toHaveBeenCalledWith({
+      where: { businessId: "biz_1" },
+      data: expect.objectContaining({ status: "ERRORED" }),
+    });
+  });
+
+  it("keeps the plain failure copy for a definite failure", async () => {
+    mocks.sendMessage.mockResolvedValue({ ok: false, reason: "provider_error", error: "x" });
+
+    expect(await sendInboxMessageAction(CONVERSATION_ID, "Hello")).toEqual({
+      ok: false,
+      error: "We couldn't send the WhatsApp message.",
+    });
+    expect(mocks.logger.error).toHaveBeenCalled();
+  });
+
+  // Codex #136: the clinic's ceiling refusing a send is the limiter working, not
+  // a fault, so it shows the wait and stays out of error reporting.
+  it("shows the wait for a send held back by the clinic's ceiling, as a warning", async () => {
+    mocks.sendMessage.mockResolvedValue({ ok: false, reason: "rate_limited", error: "Wait a minute.", retryAfterSeconds: 30 });
+
+    expect(await sendInboxMessageAction(CONVERSATION_ID, "Hello")).toEqual({ ok: false, error: "Wait a minute." });
+    expect(mocks.logger.error).not.toHaveBeenCalled();
+    expect(mocks.logger.warn).toHaveBeenCalled();
+    expect(mocks.whatsAppConnection.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("sendInboxMessageAction body limits", () => {
+  it.each([
+    ["an oversized body", "X".repeat(8001)],
+    ["a non-string body", { text: "hi" } as unknown as string],
+  ])("refuses %s before looking up the conversation", async (_label, body) => {
+    const result = await sendInboxMessageAction(CONVERSATION_ID, body);
+
+    expect(result).toEqual({ ok: false, error: "Messages can be up to 8,000 characters." });
+    expect(mocks.conversation.findFirst).not.toHaveBeenCalled();
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
   });
 });

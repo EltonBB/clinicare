@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildInboxViewFromWorkspace, normalizePhone, phoneLookupKey } from "@/lib/inbox";
+import { buildInboxViewFromWorkspace, conversationDisplayName, normalizePhone, phoneLookupKey } from "@/lib/inbox";
 
 describe("normalizePhone", () => {
   it("strips channel prefixes and formatting punctuation, keeping a leading +", () => {
@@ -25,6 +25,23 @@ describe("phoneLookupKey", () => {
     expect(phoneLookupKey("whatsapp:+1 555 123 4567")).toBe("15551234567");
     // Two different source formats of the same number share a lookup key.
     expect(phoneLookupKey("+1 (555) 123-4567")).toBe(phoneLookupKey("whatsapp:+15551234567"));
+  });
+});
+
+// Shared by the Inbox and the dashboard's Messages card, so both name a
+// conversation the same way (QA 2026-10-07).
+describe("conversationDisplayName", () => {
+  it("prefers the linked client's name", () => {
+    expect(conversationDisplayName("Xhevahire", "+38344123456", "Filan Fistek")).toBe("Filan Fistek");
+  });
+
+  it("falls back to the WhatsApp profile name", () => {
+    expect(conversationDisplayName("Eriki", "+38344123456", null)).toBe("Eriki");
+  });
+
+  it("never shows a bare number or a blank as a name", () => {
+    expect(conversationDisplayName("+383 44 123 456", "+38344123456")).toBe("Unregistered contact");
+    expect(conversationDisplayName("  ", "+38344123456")).toBe("Unregistered contact");
   });
 });
 

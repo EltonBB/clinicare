@@ -34,12 +34,17 @@ export function SettingsDialog({
   ownerName = "",
   ownerEmail = "",
   ownerPhone = "",
+  initialSection,
+  flashMessage,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   ownerName?: string;
   ownerEmail?: string;
   ownerPhone?: string;
+  /** Section to open on (a `/settings?section=…` link); "business" otherwise. */
+  initialSection?: string;
+  flashMessage?: string;
 }) {
   const router = useRouter();
   const [state, setState] = useState<SettingsState | null>(null);
@@ -157,8 +162,9 @@ export function SettingsDialog({
         </DialogHeader>
         {state ? (
           <SettingsWorkspace
-            variant="dialog"
             initialState={state}
+            initialSection={initialSection}
+            flashMessage={flashMessage}
             ownerName={ownerName}
             ownerEmail={ownerEmail}
             ownerPhone={ownerPhone}

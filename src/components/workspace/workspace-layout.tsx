@@ -114,11 +114,6 @@ export const fieldTextareaClass = "min-h-20 rounded-(--radius-card) bg-white px-
 export const searchFieldClass =
   "h-10 rounded-(--radius-card) border-0 bg-transparent pl-9 shadow-none transition-colors duration-(--duration-base) hover:bg-secondary/70 focus-visible:bg-white";
 
-// Shared by the Client/Staff detail sidebars for a plain profile-section title.
-export function SidebarSectionHeader({ title }: { title: string }) {
-  return <h2 className="text-[15px] font-semibold leading-5 text-foreground">{title}</h2>;
-}
-
 export function WorkspacePage({
   children,
   className,

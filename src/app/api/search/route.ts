@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { appointmentStatusKey } from "@/lib/appointment-status";
 import { getCurrentBusiness } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
@@ -138,7 +139,7 @@ export async function GET(request: Request) {
       id: `appointment-${appointment.id}`,
       type: "Appointment",
       title: appointment.title,
-      detail: `${appointment.client.name} - ${formatDate(appointment.startAt)} - ${appointment.status.toLowerCase()}`,
+      detail: `${appointment.client.name} - ${formatDate(appointment.startAt)} - ${appointmentStatusKey(appointment.status)}`,
       href: `/calendar/${appointment.id}/edit`,
     })),
     ...staff.map((member) => ({

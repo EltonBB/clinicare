@@ -96,14 +96,17 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 function Toggle({
   checked,
   onPressedChange,
+  ariaLabel,
 }: {
   checked: boolean;
   onPressedChange: (checked: boolean) => void;
+  ariaLabel: string;
 }) {
   return (
     <button
       type="button"
       aria-pressed={checked}
+      aria-label={ariaLabel}
       onClick={() => onPressedChange(!checked)}
       className={cn(
         "relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors duration-(--duration-base)",
@@ -784,6 +787,7 @@ export function OnboardingFlow({
                                 <Toggle
                                   checked={item.enabled}
                                   onPressedChange={(checked) => updateDay(day, { enabled: checked })}
+                                  ariaLabel={weekdayLabels[day]}
                                 />
                                 <span className="text-sm font-medium text-foreground">
                                   {weekdayLabels[day]}

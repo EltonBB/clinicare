@@ -1,6 +1,8 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
+import { normalizeCurrency } from "@/lib/currency"
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
@@ -65,16 +67,30 @@ export function sumMergedIntervals(intervals: Array<{ start: number; end: number
 }
 
 /**
- * Single source of truth for formatting a cents amount as USD. Pass
+ * Single source of truth for formatting a cents amount in a clinic's currency
+ * (`Business.currency`; see lib/currency.ts). The currency is a required
+ * argument on purpose — a call site that forgot it would silently show the wrong
+ * symbol. An unsupported stored value reads as the default currency. Pass
  * `{ whole: true }` for compact surfaces (e.g. dashboard KPI tiles) that show
- * rounded whole-dollar amounts; the default keeps two-decimal cent precision.
+ * rounded whole amounts; the default keeps two-decimal precision.
  */
-export function formatCurrency(cents: number, options?: { whole?: boolean }) {
+export function formatCurrency(
+  cents: number,
+  currency: string | null | undefined,
+  options?: { whole?: boolean }
+) {
   const amount = cents / 100
+
+  // Fraction digits are pinned, not left to ICU's per-currency default: ICU
+  // shows some supported currencies (e.g. the Albanian lek) with none, which
+  // would drop the cents of a stored amount and disagree with the two-decimal
+  // entry form.
+  const digits = options?.whole ? 0 : 2
 
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD",
-    ...(options?.whole ? { maximumFractionDigits: 0 } : {}),
+    currency: normalizeCurrency(currency),
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
   }).format(options?.whole ? Math.round(amount) : amount)
 }

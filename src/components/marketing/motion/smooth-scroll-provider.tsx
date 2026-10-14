@@ -32,7 +32,7 @@ function useMediaQuery(query: string) {
  *
  * The marketing shell does NOT unmount between marketing routes, so Lenis is a
  * true singleton for the visit; per-route re-measuring happens in the pathname
- * effect, and per-section pins clean themselves up via useScrollScene.
+ * effect.
  */
 export function SmoothScrollProvider({ children }: { children: ReactNode }) {
   const lenisRef = useRef<Lenis | null>(null);
@@ -46,7 +46,8 @@ export function SmoothScrollProvider({ children }: { children: ReactNode }) {
     // Native scroll for reduced-motion or touch — no Lenis, no scrub.
     if (reduced || coarse) return;
 
-    const lenis = new Lenis({ duration: 1.1, smoothWheel: true, syncTouch: false });
+    // `anchors` glides in-page links (hero cue, module rail) and clears the 64px header.
+    const lenis = new Lenis({ duration: 1.1, smoothWheel: true, syncTouch: false, anchors: { offset: -64 } });
     lenisRef.current = lenis;
 
     lenis.on("scroll", ScrollTrigger.update);
@@ -68,12 +69,16 @@ export function SmoothScrollProvider({ children }: { children: ReactNode }) {
     };
   }, [reduced, coarse]);
 
-  // Intra-marketing navigation: reset to top + re-measure the new page.
+  // Intra-marketing navigation: re-measure the new page, then land at the top,
+  // or on the link's hash target (e.g. /product#modules) when it has one.
   useEffect(() => {
     const lenis = lenisRef.current;
     const raf = requestAnimationFrame(() => {
-      lenis?.scrollTo(0, { immediate: true });
       lenis?.resize();
+      const hash = window.location.hash.slice(1);
+      const target = hash ? document.getElementById(decodeURIComponent(hash)) : null;
+      // Targets carry their own scroll-margin for the 64px header, which Lenis honors.
+      lenis?.scrollTo(target ?? 0, { immediate: true });
       ScrollTrigger.refresh();
     });
     return () => cancelAnimationFrame(raf);

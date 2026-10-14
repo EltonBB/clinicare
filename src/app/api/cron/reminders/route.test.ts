@@ -4,7 +4,9 @@ const acquireCronLock = vi.fn();
 const releaseCronLock = vi.fn();
 const syncAppointmentRemindersJob = vi.fn();
 const autoCloseStaleTimeEntries = vi.fn();
+const handOffAbandonedReplyIntents = vi.fn();
 const isAuthorizedCronRequest = vi.fn();
+const isWhatsAppWorkerDown = vi.fn();
 
 vi.mock("@/lib/cron-lock", () => ({ acquireCronLock, releaseCronLock }));
 vi.mock("@/lib/cron-auth", () => ({ isAuthorizedCronRequest }));
@@ -12,6 +14,8 @@ vi.mock("@/lib/logger", () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
 vi.mock("@/lib/staff-clock", () => ({ autoCloseStaleTimeEntries }));
+vi.mock("@/lib/messaging/inbound", () => ({ handOffAbandonedReplyIntents }));
+vi.mock("@/lib/messaging/worker-heartbeat", () => ({ isWhatsAppWorkerDown }));
 // Fully self-contained — NOT vi.importActual. reminders.ts imports lib/prisma,
 // which reads DATABASE_URL at module load time; CI has no .env, so pulling in
 // the real module here throws before a single test runs. createReminderRunProgress
@@ -25,7 +29,7 @@ vi.mock("@/lib/reminders", () => ({
     failed: 0,
     abandoned: 0,
   }),
-  REMINDER_RUN_BUDGET_MS: 165_000,
+  REMINDER_RUN_BUDGET_MS: 135_000,
   HARD_RESPONSE_DEADLINE_MS: 270_000,
 }));
 
@@ -41,6 +45,8 @@ describe("reminders cron route", () => {
     releaseCronLock.mockReset().mockResolvedValue(undefined);
     syncAppointmentRemindersJob.mockReset();
     autoCloseStaleTimeEntries.mockReset().mockResolvedValue({ closed: 0 });
+    handOffAbandonedReplyIntents.mockReset().mockResolvedValue({ handedOff: 0 });
+    isWhatsAppWorkerDown.mockReset().mockResolvedValue(false);
     // Every test defaults to an authorized request; the 401 test below is the
     // one exception. A vi.fn() here (not a plain arrow function) so that
     // exception is a plain mockReturnValueOnce, not a doMock/resetModules
@@ -90,6 +96,41 @@ describe("reminders cron route", () => {
    * release anything — releasing would risk evicting a DIFFERENT
    * invocation's real, still-held lock.
    */
+  // Codex #133: run after the reminders, the sweep could be crowded out by slow
+  // sends, so it runs first; the reminders' budget counts from the start.
+  it("hands abandoned reply checks to staff first, and a failure there doesn't fail the run", async () => {
+    syncAppointmentRemindersJob.mockResolvedValue({
+      processedBusinesses: 1,
+      sent: 1,
+      failed: 0,
+      skippedBusinesses: 0,
+      abandonedBusinesses: 0,
+    });
+    // The hand-off takes 20s of the invocation (only the clock is faked).
+    vi.useFakeTimers({ toFake: ["Date"] });
+    handOffAbandonedReplyIntents.mockImplementationOnce(async () => {
+      vi.setSystemTime(Date.now() + 20_000);
+      return { handedOff: 2 };
+    });
+    const { GET } = await import("./route");
+
+    const before = Date.now();
+    expect(await (await GET(request())).json()).toMatchObject({ ok: true, sent: 1, handedOffReplies: 2 });
+
+    expect(handOffAbandonedReplyIntents.mock.invocationCallOrder[0]).toBeLessThan(
+      syncAppointmentRemindersJob.mock.invocationCallOrder[0]
+    );
+    // The reminders' deadline: the invocation's start plus their budget (135s
+    // in this mock), not "now" after the hand-off has run.
+    expect(syncAppointmentRemindersJob.mock.calls[0][0]).toBeLessThanOrEqual(before + 135_000);
+    expect(syncAppointmentRemindersJob.mock.calls[0][0]).toBeGreaterThanOrEqual(before + 135_000 - 1_000);
+    vi.useRealTimers();
+
+    handOffAbandonedReplyIntents.mockRejectedValueOnce(new Error("sweep failed"));
+    expect(await (await GET(request())).json()).toMatchObject({ ok: true, sent: 1, handedOffReplies: 0 });
+    expect(syncAppointmentRemindersJob).toHaveBeenCalledTimes(2);
+  });
+
   it("still runs but releases nothing when the lock was fail-open (no token)", async () => {
     acquireCronLock.mockResolvedValue({ proceed: true, token: null });
     syncAppointmentRemindersJob.mockResolvedValue({
@@ -182,6 +223,50 @@ describe("reminders cron route", () => {
       sent: 3,
       failed: 1,
     });
+  });
+
+  // Sentry refuses uptime monitors on *.railway.app, so the hourly run is what
+  // notices a stopped worker: the lease check marks the run degraded, which
+  // fails its Sentry check-in. A failed check never fails the run itself.
+  it("reports a stopped WhatsApp worker as degraded, and keeps running if the check fails", async () => {
+    syncAppointmentRemindersJob.mockResolvedValue({
+      processedBusinesses: 1,
+      sent: 0,
+      failed: 0,
+      skippedBusinesses: 0,
+      abandonedBusinesses: 0,
+    });
+    const { GET } = await import("./route");
+
+    isWhatsAppWorkerDown.mockResolvedValueOnce(true);
+    expect(await (await GET(request())).json()).toMatchObject({ ok: true, workerDown: true, degraded: true });
+
+    isWhatsAppWorkerDown.mockResolvedValueOnce(false);
+    expect(await (await GET(request())).json()).toMatchObject({ workerDown: false, degraded: false });
+
+    isWhatsAppWorkerDown.mockRejectedValueOnce(new Error("db down"));
+    const res = await GET(request());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, workerDown: false });
+  });
+
+  it("bounds the lease check, so a stuck read can't push the run past maxDuration", async () => {
+    syncAppointmentRemindersJob.mockResolvedValue({
+      processedBusinesses: 0,
+      sent: 0,
+      failed: 0,
+      skippedBusinesses: 0,
+      abandonedBusinesses: 0,
+    });
+    isWhatsAppWorkerDown.mockReturnValueOnce(new Promise(() => {}));
+    const { GET } = await import("./route");
+
+    const pending = GET(request());
+    await vi.advanceTimersByTimeAsync(5_000);
+    const res = await pending;
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, workerDown: false });
   });
 
   it("returns 401 without a valid cron secret, without touching the lock", async () => {
