@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { ChevronRight, Plus, Search, UsersRound } from "lucide-react";
+import { ChevronRight, Plus, Search } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { buttonVariants } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import {
   FilterChip,
   WorkspaceEmptyState,
+  WorkspaceFirstRun,
   WorkspaceHeader,
   WorkspacePage,
   WorkspaceTable,
@@ -205,16 +206,14 @@ export function ClientsWorkspace({
             }
           >
             {!hasClients ? (
-              <div className="px-6 py-8">
-                <WorkspaceEmptyState
-                  icon={UsersRound}
-                  title="Add the first client"
-                  description="Clients are the base record for bookings, inbox threads, visit history, documents, and clinical media."
-                  actionHref="/clients/new"
-                  actionLabel="Add first client"
-                  compact
-                />
-              </div>
+              <WorkspaceFirstRun
+                gridClassName={clientTableGrid}
+                cells={["identity", "text", "wide", "text", "pill", "action"]}
+                title="No clients yet"
+                description="Each client's visits, messages, files and payments live on one record."
+                actionHref="/clients/new"
+                actionLabel="Add first client"
+              />
             ) : view.clients.length === 0 ? (
               <div className="px-6 py-8">
                 <WorkspaceEmptyState
