@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { LogOut, Settings } from "lucide-react";
+import { LogOut, Settings, TriangleAlert } from "lucide-react";
 
 import { logoutAction } from "@/app/(auth)/actions";
-import { refreshWorkspaceNotificationsAction } from "@/app/(workspace)/actions";
+import { refreshWorkspaceNotificationsAction, type ReminderWarning } from "@/app/(workspace)/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { LogoutButton } from "@/components/auth/logout-button";
 import {
@@ -14,7 +14,7 @@ import {
   GlobalSearchTrigger,
   useGlobalSearchHotkey,
 } from "@/components/layout/global-search";
-import { NotificationsMenu, type NotificationItem } from "@/components/layout/notifications-menu";
+import { NotificationsMenu, reminderWarningCopy, type NotificationItem } from "@/components/layout/notifications-menu";
 import { SettingsDialog } from "@/components/layout/settings-dialog";
 import { WorkspaceLiveProvider } from "@/components/layout/workspace-live-context";
 import {
@@ -136,12 +136,21 @@ export function AppShell({
   const [unreadInitialized, setUnreadInitialized] = useState(false);
   const [liveNotifications, setLiveNotifications] = useState(notifications);
   const [liveStaffUnreadCount, setLiveStaffUnreadCount] = useState(0);
+  const [reminderWarning, setReminderWarning] = useState<ReminderWarning>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // A `/settings?section=…` link lands here as `?settings=<section>` (see
   // settings/page.tsx) and opens the dialog on that section; closing it drops
   // the params, so the nav's Settings button opens on the first section.
   const searchParams = useSearchParams();
   const linkedSettingsSection = searchParams.get("settings");
+  // Opens the settings dialog on WhatsApp in place (the same ?settings= link
+  // a /settings?section= redirect lands on), without leaving the page.
+  const openWhatsAppSettings = useCallback(() => {
+    const params = new URLSearchParams(searchParams);
+    params.set("settings", "whatsapp");
+    params.delete("notice");
+    window.history.pushState(null, "", `${pathname}?${params}`);
+  }, [pathname, searchParams]);
   const settingsNotice =
     searchParams.get("notice") === "email_updated" ? "Your email address was confirmed and updated." : "";
   const [searchOpen, setSearchOpen] = useState(false);
@@ -237,6 +246,7 @@ export function AppShell({
       setLiveInboxUnreadCount(result.view.inboxUnreadCount);
       setLiveNotifications(result.view.notifications);
       setLiveStaffUnreadCount(result.view.staffUnreadCount);
+      setReminderWarning(result.view.reminderWarning);
       setUnreadInitialized(true);
     }
 
@@ -361,6 +371,8 @@ export function AppShell({
                   items={liveNotifications}
                   hasInboxUnread={liveInboxUnreadCount > 0}
                   hasStaffUnread={liveStaffUnreadCount > 0}
+                  reminderWarning={reminderWarning}
+                  onOpenWhatsAppSettings={openWhatsAppSettings}
                 />
                 <div className="lg:hidden">
                   <LogoutButton />
@@ -373,6 +385,24 @@ export function AppShell({
           </header>
 
           <main className="relative flex-1 bg-background px-4 py-3 pb-28 sm:px-5 lg:px-6 lg:py-4 lg:pb-4">
+            {reminderWarning ? (
+              <div
+                role="status"
+                className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 rounded-(--radius-card) border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-900"
+              >
+                <span className="flex items-center gap-2">
+                  <TriangleAlert className="size-4 shrink-0 text-amber-600" aria-hidden="true" />
+                  {reminderWarningCopy[reminderWarning].banner}
+                </span>
+                <button
+                  type="button"
+                  onClick={openWhatsAppSettings}
+                  className="font-semibold text-amber-900 underline-offset-4 transition-colors duration-(--duration-base) hover:underline"
+                >
+                  {reminderWarningCopy[reminderWarning].action}
+                </button>
+              </div>
+            ) : null}
             <WorkspaceLiveProvider value={liveUnread}>{children}</WorkspaceLiveProvider>
           </main>
         </div>
