@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Bell } from "lucide-react";
+import { ArrowRight, Bell, TriangleAlert } from "lucide-react";
 
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,9 @@ type NotificationsMenuProps = {
   items: NotificationItem[];
   hasInboxUnread: boolean;
   hasStaffUnread: boolean;
+  /** WhatsApp is down while visits coming up are owed reminders (see remindersBlocked). */
+  remindersBlocked: boolean;
+  onOpenWhatsAppSettings: () => void;
 };
 
 export function NotificationsMenu({
@@ -30,6 +34,8 @@ export function NotificationsMenu({
   items,
   hasInboxUnread,
   hasStaffUnread,
+  remindersBlocked,
+  onOpenWhatsAppSettings,
 }: NotificationsMenuProps) {
   const hasUpdates = unreadCount > 0 && items.length > 0;
   // The footer CTA should always land somewhere relevant to what's actually
@@ -52,8 +58,13 @@ export function NotificationsMenu({
         className="relative inline-flex size-9 items-center justify-center rounded-(--radius-tile) border border-transparent text-muted-foreground transition-[background-color,border-color,color,transform] duration-(--duration-base) hover:border-border/70 hover:bg-[#f7f9fc] hover:text-foreground active:scale-[0.97] active:bg-[#eef2f8]"
       >
         <Bell className="size-[18px]" />
-        {unreadCount > 0 ? (
-          <span className="absolute right-1.5 top-1.5 size-2 rounded-full border-2 border-white bg-primary" />
+        {unreadCount > 0 || remindersBlocked ? (
+          <span
+            className={cn(
+              "absolute right-1.5 top-1.5 size-2 rounded-full border-2 border-white",
+              remindersBlocked ? "bg-amber-500" : "bg-primary"
+            )}
+          />
         ) : null}
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -66,11 +77,29 @@ export function NotificationsMenu({
           <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
             {hasUpdates
               ? `${unreadCount} unread message${unreadCount === 1 ? "" : "s"} waiting for you`
-              : "All clear. Nothing needs your attention right now."}
+              : remindersBlocked
+                ? "Reminders need your attention."
+                : "All clear. Nothing needs your attention right now."}
           </p>
         </div>
 
         <div className="space-y-0.5 px-2 py-2">
+          {remindersBlocked ? (
+            // A menu item (not a plain button) so choosing it closes the menu
+            // before the settings dialog opens over it.
+            <DropdownMenuItem
+              onClick={onOpenWhatsAppSettings}
+              className="items-start gap-2.5 rounded-(--radius-tile) px-2.5 py-2.5 transition-colors duration-(--duration-base) hover:bg-amber-50 focus:bg-amber-50"
+            >
+              <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden="true" />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-foreground">WhatsApp isn&apos;t connected</span>
+                <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                  Appointment reminders aren&apos;t being sent. Connect WhatsApp to turn them back on.
+                </span>
+              </span>
+            </DropdownMenuItem>
+          ) : null}
           {hasUpdates ? (
             items.map((item) => (
               <HoverPrefetchLink
@@ -89,7 +118,7 @@ export function NotificationsMenu({
                 </span>
               </HoverPrefetchLink>
             ))
-          ) : (
+          ) : remindersBlocked ? null : (
             <div className="rounded-(--radius-card) border border-border/75 bg-[#fbfcfe] px-3 py-3 text-xs leading-5 text-muted-foreground">
               No new notifications yet. Check back later — new messages and
               updates will show up here.

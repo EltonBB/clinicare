@@ -3,6 +3,12 @@
 import { ACTION_RATE_LIMIT_ERROR, isWithinActionBudget, requireCurrentWorkspace } from "@/lib/business";
 import { checkinDetail } from "@/lib/notification-copy";
 import { prisma } from "@/lib/prisma";
+import { isReminderChannelReady } from "@/lib/reminders";
+
+// Reminders go out at most 24 hours before a visit (reminders.ts clamps both
+// offsets to 1..24), so a visit inside this window is one that is, or soon
+// will be, owed a reminder.
+const REMINDER_HORIZON_MS = 24 * 60 * 60 * 1000;
 
 export type WorkspaceNotificationsView = {
   // Combined total across all three sources — feeds ONLY the bell's own badge
@@ -20,6 +26,11 @@ export type WorkspaceNotificationsView = {
   // the true (uncapped) counts, NOT the capped `notifications` list, so a busier
   // source can never crowd a quieter one out of its badge.
   staffUnreadCount: number;
+  // True while reminders are switched on and a visit is coming up in the next
+  // 24 hours, but the reminders cron would skip this clinic because WhatsApp
+  // isn't connected. Drives the workspace banner and the bell's pinned row, so
+  // a dropped link is never silent (owner report, 2026-10-18).
+  remindersBlocked: boolean;
   notifications: Array<{
     id: string;
     title: string;
@@ -63,6 +74,7 @@ export async function refreshWorkspaceNotificationsAction(): Promise<{
     staffThreadRows,
     unseenCheckInsCount,
     checkInRows,
+    reminderChannel,
   ] = await Promise.all([
     prisma.conversation.aggregate({
       where: {
@@ -122,7 +134,33 @@ export async function refreshWorkspaceNotificationsAction(): Promise<{
         staffMember: { select: { name: true } },
       },
     }),
+    prisma.business.findUnique({
+      where: { id: business.id },
+      select: {
+        whatsappEnabled: true,
+        whatsappConnection: { select: { status: true } },
+        reminderSettings: { select: { send24HourReminder: true, send2HourReminder: true } },
+      },
+    }),
   ]);
+
+  const remindersOn =
+    (reminderChannel?.reminderSettings?.send24HourReminder ?? true) ||
+    (reminderChannel?.reminderSettings?.send2HourReminder ?? true);
+  // Only counted when the channel is down, so a connected clinic pays nothing
+  // extra per poll. Same filter as the reminders cron's own query.
+  const remindersBlocked =
+    !!reminderChannel &&
+    remindersOn &&
+    !isReminderChannelReady(reminderChannel.whatsappEnabled, reminderChannel.whatsappConnection?.status) &&
+    (await prisma.appointment.count({
+      where: {
+        businessId: business.id,
+        status: { notIn: ["CANCELLED", "NO_SHOW"] },
+        startAt: { gt: new Date(), lte: new Date(Date.now() + REMINDER_HORIZON_MS) },
+      },
+      take: 1,
+    })) > 0;
 
   const inboxItems = notificationRows.map((row) => ({
     id: `conversation:${row.id}`,
@@ -172,6 +210,7 @@ export async function refreshWorkspaceNotificationsAction(): Promise<{
       unreadCount: inboxUnreadCount + staffMessageUnreadCount + unseenCheckInsCount,
       inboxUnreadCount,
       staffUnreadCount: staffMessageUnreadCount + unseenCheckInsCount,
+      remindersBlocked,
       notifications,
     },
   };
