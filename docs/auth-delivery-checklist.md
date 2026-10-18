@@ -33,7 +33,9 @@ These steps happen in Supabase, not in the repo:
    `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/reset-password`
    (Reset Password and Confirm signup are done; Change Email Address still
    uses the default `{{ .ConfirmationURL }}`, which verifies at the provider's
-   own endpoint — prefetch-vulnerable and it bypasses the app's confirm step)
+   own endpoint — prefetch-vulnerable and it bypasses the app's confirm step).
+   Branded, ready-to-paste versions of all three, with the correct links, are in
+   `docs/email-templates/` (pasting `change-email.html` closes this open item).
 
 ## Required redirect targets
 

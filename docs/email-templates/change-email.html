@@ -1,0 +1,48 @@
+<!-- Supabase › Authentication › Email Templates › Change Email Address.
+     Subject: Confirm your new email for Vela
+     This replaces the default {{ .ConfirmationURL }} link, which the auth
+     delivery checklist still lists as open: it now goes through the app's
+     confirm step like the other two. See README.md. -->
+<!doctype html>
+<html lang="en">
+  <body style="margin:0;padding:0;background:#f4f5f9;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f9;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border:1px solid #e3e6ef;border-radius:12px;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;color:#14152f;">
+            <tr>
+              <td style="padding:32px 32px 0;">
+                <p style="margin:0;font-size:18px;font-weight:700;letter-spacing:-0.01em;">
+                  <span style="color:#0a22ff;">&#9670;</span> Vela
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px 32px 0;">
+                <h1 style="margin:0;font-size:24px;line-height:1.25;font-weight:600;letter-spacing:-0.02em;">Confirm your new email</h1>
+                <p style="margin:12px 0 0;font-size:15px;line-height:1.6;color:#5b6980;">
+                  Confirm that {{ .NewEmail }} should be the sign-in email for your Vela account.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px 32px 0;">
+                <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email_change&next=/settings"
+                   style="display:inline-block;background:#14152f;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:13px 24px;border-radius:8px;">
+                  Confirm new email
+                </a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px 32px 32px;">
+                <p style="margin:0;font-size:13px;line-height:1.6;color:#8a93a6;">
+                  If you didn't ask for this change, ignore this email and contact support. Your sign-in email stays the same.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
