@@ -705,7 +705,7 @@ export function InboxWorkspace({
                 <p className="truncate text-xs text-muted-foreground">{connectionLine}</p>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto border-t border-border/70">
+              <div className="min-h-0 flex-1 overflow-y-auto">
                 {errorMessage ? (
                   <div className="px-3.5 py-3">
                     <div className="rounded-(--radius-card) border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
@@ -794,7 +794,7 @@ export function InboxWorkspace({
                   animate="animate"
                   className="flex min-h-0 flex-1 flex-col"
                 >
-                  <div className="flex items-center justify-between gap-3.5 border-b border-border/70 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3.5 px-4 py-3">
                     <div className="flex min-w-0 items-center gap-3">
                       <Avatar size="lg" shape="square">
                         <AvatarFallback className="bg-white text-xs font-semibold text-primary">
