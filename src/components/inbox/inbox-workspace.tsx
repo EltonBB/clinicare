@@ -13,12 +13,10 @@ import {
 import { m } from "framer-motion";
 import {
   ArrowRightLeft,
-  CalendarPlus2,
   ExternalLink,
   Search,
   SendHorizontal,
   Trash2,
-  UserPlus,
 } from "lucide-react";
 
 import {
@@ -44,6 +42,7 @@ import { Input } from "@/components/ui/input";
 import {
   FilterChip,
   WorkspaceEmptyState,
+  WorkspaceFirstRun,
   WorkspaceHeader,
   WorkspacePage,
   searchFieldClass,
@@ -755,7 +754,17 @@ export function InboxWorkspace({
                     ) : null}
                   </button>
                 ))}
-                {filteredConversations.length === 0 ? (
+                {conversations.length === 0 ? (
+                  // First run: nothing has arrived yet, so there is nothing to
+                  // search or filter. The thread pane carries the one action.
+                  <WorkspaceFirstRun
+                    cells={["identity"]}
+                    rows={5}
+                    className="pt-2"
+                    title="No conversations yet"
+                    description="Client WhatsApp messages land here, one thread per client."
+                  />
+                ) : filteredConversations.length === 0 ? (
                   <div className="px-4 py-6">
                     <WorkspaceEmptyState
                       icon={Search}
@@ -938,52 +947,32 @@ export function InboxWorkspace({
                 </m.div>
               ) : (
                 <div className="flex flex-1 items-center justify-center px-6">
-                  <div className="max-w-md space-y-5 text-center">
-                    {query.trim().length === 0 ? (
-                      <div className="mx-auto flex size-12 items-center justify-center rounded-(--radius-card) bg-primary/12 text-primary">
-                        {hasClients ? (
-                          <CalendarPlus2 className="size-5" />
-                        ) : (
-                          <UserPlus className="size-5" />
-                        )}
-                      </div>
-                    ) : null}
-                    <p className="text-base font-medium text-foreground">
+                  <div className="max-w-sm text-center">
+                    <p className="text-[15px] font-semibold text-foreground">
                       {query.trim().length > 0
                         ? "No conversations match your search."
-                        : hasClients
-                          ? "No inbox conversations yet."
-                          : "Add a client to start the workspace."}
+                        : conversations.length > 0
+                          ? "No conversation selected"
+                          : hasClients
+                            ? "A thread starts with a booking"
+                            : "Start with a client"}
                     </p>
-                    <p className="text-sm leading-6 text-muted-foreground">
+                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
                       {query.trim().length > 0
                         ? "Try a different client name or phone number."
-                        : hasClients
-                          ? "WhatsApp replies will appear here. You can also book the first appointment and then open that client thread."
-                          : "Create the first client, then Vela can connect that person to bookings and inbox history."}
+                        : conversations.length > 0
+                          ? "Pick one from the list to read and reply."
+                          : hasClients
+                            ? "Reminders and replies for each client collect here."
+                            : "Their bookings, reminders and replies all connect to them."}
                     </p>
-                    {query.trim().length === 0 ? (
-                      <div className="flex flex-col justify-center gap-2 sm:flex-row">
-                        <Link
-                          href={hasClients ? bookingHref : "/clients/new?next=calendar"}
-                          className={cn(buttonVariants({ variant: "solid" }), "h-10 rounded-(--radius-card) px-4")}
-                        >
-                          {hasClients ? (
-                            <CalendarPlus2 className="size-4" />
-                          ) : (
-                            <UserPlus className="size-4" />
-                          )}
-                          {hasClients ? "Book first appointment" : "Add first client"}
-                        </Link>
-                        {hasClients ? (
-                          <Link
-                            href="/clients"
-                            className={cn(buttonVariants({ variant: "outline" }), "h-10 rounded-(--radius-card) px-4")}
-                          >
-                            Open clients
-                          </Link>
-                        ) : null}
-                      </div>
+                    {query.trim().length === 0 && conversations.length === 0 ? (
+                      <Link
+                        href={hasClients ? bookingHref : "/clients/new?next=calendar"}
+                        className={cn(buttonVariants({ size: "sm" }), "mt-4 rounded-(--radius-tile)")}
+                      >
+                        {hasClients ? "Book an appointment" : "Add a client"}
+                      </Link>
                     ) : null}
                   </div>
                 </div>

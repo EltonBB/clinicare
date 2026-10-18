@@ -519,6 +519,14 @@ Use the shared workspace structure system for: app frame, sidebar, topbar, works
 - Prefer feature-specific components for logic-heavy UI.
 - Keep UI-only components presentational; data fetching and business logic stay outside presentational components (view-model builders in `src/lib/` — see CLAUDE.md).
 
+### Empty and first-run states
+
+Added 2026-10 so a brand-new clinic's pages don't open on a bare box.
+
+- **Empty record lists** (no records at all: Clients, Staff, Inbox, Calendar with no clients) use `WorkspaceFirstRun` inside the page's own table or list frame. It draws a few faint rows in the real rows' shapes (the same grid template, so they line up under the real headers; each row fainter than the last, no gradient, no sample data), then a short title, one line on what lands there, and **one** action. Never two buttons, and no icon badge. The same state shows for a new clinic and for one that deleted its last record (there is no "ever had records" signal), so its copy stays history-neutral: "Add a client", "Book an appointment", never "your first client".
+- **Empty after filtering** ("No clients match this view"), **caught-up lists** whose items come and go (Inbox › Follow-ups: an empty list usually means everything was handled, so it is not a first run), and **empty sections inside a card** (dashboard cards, record tabs) use `WorkspaceEmptyState`: a quiet muted panel with an optional small icon glyph, never a dashed slot or a bordered icon tile.
+- `components/workspace/workspace-layout.tsx` is rendered from server and client components alike, so it imports `buttonVariants` from `ui/button-variants` (server-safe), never from the client `ui/button` module.
+
 ---
 
 ## Frontend Folder Structure

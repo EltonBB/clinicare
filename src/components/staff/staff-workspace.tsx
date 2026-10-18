@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useDeferredValue, useMemo, useState, useTransition } from "react";
-import { ChevronRight, Plus, Search, UserRoundCog } from "lucide-react";
+import { ChevronRight, Plus, Search } from "lucide-react";
 
 import { checkInStaffAction, checkOutStaffAction } from "@/app/(workspace)/staff/actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -13,6 +13,7 @@ import { KpiValue } from "@/components/workspace/kpi-value";
 import {
   FilterChip,
   WorkspaceEmptyState,
+  WorkspaceFirstRun,
   WorkspaceHeader,
   WorkspacePage,
   WorkspaceTable,
@@ -208,16 +209,14 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
           }
         >
           {!hasStaff ? (
-            <div className="px-6 py-8">
-              <WorkspaceEmptyState
-                icon={UserRoundCog}
-                title="Add the first staff member"
-                description="Staff records connect bookings, time tracking, and completed work."
-                actionHref="/staff/new"
-                actionLabel="Add staff member"
-                compact
-              />
-            </div>
+            <WorkspaceFirstRun
+              gridClassName={staffTableGrid}
+              cells={["identity", "pill", "pill", "wide", "text", "action"]}
+              title="No staff yet"
+              description="Add the people who take appointments, and their shifts and visits follow."
+              actionHref="/staff/new"
+              actionLabel="Add staff member"
+            />
           ) : filteredStaff.length === 0 ? (
             <div className="px-6 py-8">
               <WorkspaceEmptyState

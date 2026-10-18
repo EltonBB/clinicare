@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquareText } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -40,7 +39,12 @@ export function FollowUpsList({ items }: { items: FollowUpDraftItem[] }) {
     return (
       <>
         {noticeLine}
-        <WorkspaceEmptyState icon={MessageSquareText} title="No follow-ups right now." />
+        {/* Drafts come and go, so an empty list is usually "caught up", not a
+            first run: the quiet empty state, with what lands here. */}
+        <WorkspaceEmptyState
+          title="Nothing to review"
+          description="Payment reminders, thank-yous and rebooking nudges are drafted here. Nothing sends until you do."
+        />
       </>
     );
   }
