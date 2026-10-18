@@ -1,17 +1,18 @@
 "use client";
 
 import * as Sentry from "@sentry/nextjs";
+import Link from "next/link";
 import { useEffect } from "react";
-import { TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
+/** A page inside the workspace failed to render; the app shell around it stays usable. */
 export default function WorkspaceError({
   error,
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  retry: () => void;
 }) {
   useEffect(() => {
     // Report to Sentry (scrubbed in beforeSend) and surface in platform logs
@@ -23,18 +24,22 @@ export default function WorkspaceError({
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-4">
-      <div className="flex max-w-md flex-col items-center gap-4 rounded-(--radius-card) border border-border/80 bg-white px-6 py-10 text-center">
-        <span className="flex size-11 items-center justify-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
-          <TriangleAlert className="size-5" />
-        </span>
-        <div className="space-y-1.5">
-          <h2 className="text-base font-semibold text-foreground">Something went wrong</h2>
-          <p className="text-sm leading-6 text-muted-foreground">
-            We hit an unexpected problem loading this page. Please try again — if it
-            keeps happening, contact support.
-          </p>
+      <div className="max-w-sm text-center">
+        <h1 className="text-lg font-semibold text-foreground">This page didn&apos;t load</h1>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">
+          Please try again. If it keeps happening, contact support.
+        </p>
+        <div className="mt-5 flex items-center justify-center gap-4">
+          <Button size="sm" className="rounded-(--radius-tile)" onClick={() => retry()}>
+            Try again
+          </Button>
+          <Link
+            href="/dashboard"
+            className="text-sm font-medium text-muted-foreground transition-colors duration-(--duration-base) hover:text-foreground"
+          >
+            Back to dashboard
+          </Link>
         </div>
-        <Button onClick={reset}>Try again</Button>
       </div>
     </div>
   );
