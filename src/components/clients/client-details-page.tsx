@@ -298,10 +298,6 @@ function countLabel(count: number, singular: string, plural: string) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function stripPlaceholder(value: string, ...placeholders: string[]) {
-  return placeholders.includes(value) ? "" : value;
-}
-
 export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   const [client, setClient] = useState(initialClient);
   const [dialog, setDialog] = useState<DialogState>(null);
@@ -327,8 +323,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
     item.type.toLowerCase().includes("alert")
   );
   const clinicalAlerts = [...alerts, ...allergies];
-  // Background text with legacy "Not added" placeholders stripped — the same
-  // reading the Medical tab uses — so the Health card can't surface filler.
+  // Background text, read the same way the Medical tab reads it.
   const backgroundValues = Object.fromEntries(
     medicalBackgroundFields(client.medical).map((field) => [field.key, field.value])
   );
@@ -782,8 +777,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 <OverviewLine label="Email" value={client.email} />
                 <OverviewLine label="Patient type" value={client.patientType} />
                 <OverviewLine label="Date of birth" value={client.dateOfBirth} />
-                <OverviewLine label="Gender" value={stripPlaceholder(client.gender, "Not added")} />
-                <OverviewLine label="Address" value={stripPlaceholder(client.address, "Not added")} />
+                <OverviewLine label="Gender" value={client.gender} />
+                <OverviewLine label="Address" value={client.address} />
               </dl>
               {client.notes ? (
                 <div className="mt-3">
@@ -1041,7 +1036,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                                         initialValues: {
                                           fileName: document.fileName,
                                           fileType: document.category || document.fileType,
-                                          notes: stripPlaceholder(document.notes, "No notes."),
+                                          notes: document.notes,
                                         },
                                       })
                                     }
@@ -1235,10 +1230,10 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                                       amount: payment.amountInput,
                                       status: payment.status,
                                       paidAt: payment.paidAtInput,
-                                      paymentMethod: stripPlaceholder(payment.paymentMethod, "Manual entry"),
+                                      paymentMethod: payment.paymentMethod,
                                       invoiceNumber: payment.invoiceNumber,
                                       receiptNumber: payment.receiptNumber,
-                                      description: stripPlaceholder(payment.description, "Payment record"),
+                                      description: payment.description,
                                       receiptUrl: payment.receiptUrl,
                                       billingNote: payment.billingNote,
                                     },

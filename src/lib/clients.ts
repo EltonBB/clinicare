@@ -420,10 +420,21 @@ async function buildDocuments(client: ClientWithRelations): Promise<ClientDocume
       fileUrl: (source && urlMap.get(source)) || "",
       storageUrl: document.storageUrl ?? document.fileUrl ?? "",
       uploadedBy: document.uploadedBy ?? "Workspace staff",
-      notes: document.notes ?? "",
+      notes: storedText(document.notes),
       createdAt: format(document.createdAt, "MMM d, yyyy"),
     };
   });
+}
+
+// Filler text an older version of this view model returned for empty values.
+// Edit dialogs could save it back, so some stored rows may still hold it; it is
+// read here as empty, once, instead of being stripped again in every component.
+const LEGACY_FILLER = new Set(["Not added", "Not added yet.", "No notes.", "No notes yet."]);
+
+/** A stored free-text value, with legacy filler (or null) read as empty. */
+export function storedText(value: string | null | undefined, ...extraFiller: string[]) {
+  const text = value ?? "";
+  return LEGACY_FILLER.has(text) || extraFiller.includes(text) ? "" : text;
 }
 
 function buildPayments(client: ClientWithRelations, currency: string): ClientPaymentEntry[] {
@@ -434,10 +445,10 @@ function buildPayments(client: ClientWithRelations, currency: string): ClientPay
     amountDisplay: formatCurrency(payment.amountCents, currency),
     amountInput: (payment.amountCents / 100).toFixed(2),
     status: payment.status,
-    description: payment.description ?? "",
+    description: storedText(payment.description, "Payment record"),
     invoiceNumber: payment.invoiceNumber ?? "",
     receiptNumber: payment.receiptNumber ?? "",
-    paymentMethod: payment.paymentMethod ?? "",
+    paymentMethod: storedText(payment.paymentMethod, "Manual entry"),
     billingNote: payment.billingNote ?? "",
     receiptUrl: payment.receiptUrl ?? "",
     paidAt: payment.paidAt ? format(payment.paidAt, "MMM d, yyyy") : "",
@@ -606,10 +617,10 @@ export async function buildClientRecord(
     name: client.name,
     email: client.email ?? "",
     phone: client.phone,
-    gender: client.gender ?? "",
+    gender: storedText(client.gender),
     dateOfBirth: client.dateOfBirth ? format(client.dateOfBirth, "MMM d, yyyy") : "",
     dateOfBirthInput: client.dateOfBirth ? format(client.dateOfBirth, "yyyy-MM-dd") : "",
-    address: client.address ?? "",
+    address: storedText(client.address),
     patientType: client.patientType ?? "New Patient",
     // Vestigial (clinic-type-per-patient isn't a real concept) and never
     // rendered anywhere — an empty string here, not a fabricated "Clinic".
@@ -617,13 +628,13 @@ export async function buildClientRecord(
     lastVisit: formatLastVisit(client),
     totalVisits: client._count?.appointments ?? client.appointments.length,
     status: formatStatus(client.status, client.isArchived),
-    notes: client.notes ?? "",
+    notes: storedText(client.notes),
     medical: {
-      medicalHistory: client.medicalHistory ?? "",
-      allergies: client.allergies ?? "",
-      importantHealthNotes: client.importantHealthNotes ?? "",
-      previousTreatments: client.previousTreatments ?? "",
-      treatmentPlan: client.treatmentPlan ?? "",
+      medicalHistory: storedText(client.medicalHistory),
+      allergies: storedText(client.allergies),
+      importantHealthNotes: storedText(client.importantHealthNotes),
+      previousTreatments: storedText(client.previousTreatments),
+      treatmentPlan: storedText(client.treatmentPlan),
     },
     details: {
       // A never-captured preference is unknown, not "WhatsApp" — the record
