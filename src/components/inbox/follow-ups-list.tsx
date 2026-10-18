@@ -5,16 +5,27 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { WorkspaceEmptyState, fieldTextareaClass } from "@/components/workspace/workspace-layout";
+import { FilterChip, WorkspaceEmptyState, fieldTextareaClass } from "@/components/workspace/workspace-layout";
 import {
   bookFollowUpSlotAction,
   dismissFollowUpDraftAction,
   passSlotOfferAction,
   sendFollowUpDraftAction,
 } from "@/app/(workspace)/inbox/follow-ups/actions";
-import { cn } from "@/lib/utils";
-import { followUpRowKey, visibleFollowUps, type FollowUpDraftItem } from "@/lib/follow-ups";
+import { cn, getInitials } from "@/lib/utils";
+import {
+  countFollowUpsByKind,
+  followUpKindGroupLabels,
+  followUpKindOrder,
+  followUpRowKey,
+  orderFollowUps,
+  visibleFollowUps,
+  type FollowUpDraftItem,
+} from "@/lib/follow-ups";
 import { WAITLIST_PLAN_ERROR } from "@/lib/waitlist";
+
+const textButtonClass =
+  "h-8 px-2 text-sm font-medium text-muted-foreground transition-colors duration-(--duration-base) hover:text-foreground disabled:opacity-60";
 
 type FollowUpBusyState = "send" | "skip" | "book" | "pass" | null;
 
@@ -28,7 +39,11 @@ export function FollowUpsList({ items }: { items: FollowUpDraftItem[] }) {
   // A handled row can still leave something to say (a send whose delivery
   // couldn't be confirmed); the row is gone by then, so the list says it.
   const [notice, setNotice] = useState("");
-  const drafts = visibleFollowUps(items, handledKeys);
+  const [filter, setFilter] = useState<FollowUpDraftItem["kind"] | "ALL">("ALL");
+  const drafts = orderFollowUps(visibleFollowUps(items, handledKeys));
+  const counts = countFollowUpsByKind(drafts);
+  // A filter whose last row was just handled falls back to everything.
+  const activeFilter = filter !== "ALL" && counts[filter] === 0 ? "ALL" : filter;
   const noticeLine = notice ? (
     <p role="alert" className="mb-2 text-xs text-destructive">
       {notice}
@@ -52,11 +67,26 @@ export function FollowUpsList({ items }: { items: FollowUpDraftItem[] }) {
   return (
     <>
       {noticeLine}
-      <div className="overflow-hidden rounded-(--radius-card) border border-border/80 bg-white shadow-(--shadow-card)">
+      <div className="mb-3 flex flex-wrap items-center gap-1">
+        <FilterChip active={activeFilter === "ALL"} count={drafts.length} onClick={() => setFilter("ALL")}>
+          All
+        </FilterChip>
+        {followUpKindOrder
+          .filter((kind) => counts[kind] > 0)
+          .map((kind) => (
+            <FilterChip key={kind} active={activeFilter === kind} count={counts[kind]} onClick={() => setFilter(kind)}>
+              {followUpKindGroupLabels[kind]}
+            </FilterChip>
+          ))}
+      </div>
+      <div className="overflow-hidden rounded-(--radius-card) border border-border/80 bg-white p-1 shadow-(--shadow-card)">
+        {/* Every row stays mounted and filtered-out ones are only hidden, so an
+            edit in progress survives switching chips. */}
         {drafts.map((draft) => (
           <FollowUpDraftRow
             key={followUpRowKey(draft)}
             draft={draft}
+            hidden={activeFilter !== "ALL" && draft.kind !== activeFilter}
             onHandled={(handledNotice) => {
               setNotice(handledNotice ?? "");
               setHandledKeys((current) => [...current, followUpRowKey(draft)]);
@@ -71,15 +101,18 @@ export function FollowUpsList({ items }: { items: FollowUpDraftItem[] }) {
 
 function FollowUpDraftRow({
   draft,
+  hidden,
   onHandled,
 }: {
   draft: FollowUpDraftItem;
+  hidden: boolean;
   onHandled: (notice?: string) => void;
 }) {
   const router = useRouter();
   const [body, setBody] = useState(draft.body);
   const [busy, setBusy] = useState<FollowUpBusyState>(null);
   const [error, setError] = useState("");
+  const [editing, setEditing] = useState(false);
   const isBusy = busy !== null;
   // reasonLabel already falls back to the kind label when no appointment is
   // linked (see buildFollowUpsViewFromRecords) — only show it separately when
@@ -162,89 +195,117 @@ function FollowUpDraftRow({
     }
   }
 
+  const editable = draft.canSend && !draft.canBook;
+
   return (
-    <div className="p-3.5 transition-colors duration-(--duration-base) hover:bg-[#fbfcfe]">
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <p className="truncate text-sm font-semibold text-foreground">{draft.clientName}</p>
-        <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
-          {draft.kindLabel}
-        </span>
-      </div>
-      {showReason ? (
-        <p className="mt-0.5 text-xs text-muted-foreground">{draft.reasonLabel}</p>
-      ) : null}
+    <div
+      hidden={hidden}
+      className="flex gap-3 rounded-(--radius-card) p-3 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]"
+    >
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-(--radius-tile) border border-border/80 bg-white text-xs font-semibold text-primary">
+        {getInitials(draft.clientName)}
+      </span>
 
-      {draft.canBook || !draft.canSend ? (
-        // Already sent, or can't be sent from this plan — read-only, since
-        // there's nothing left to edit-and-send.
-        <p className="mt-2.5 text-sm text-foreground">{draft.body}</p>
-      ) : (
-        <Textarea
-          value={body}
-          onChange={(event) => setBody(event.target.value)}
-          disabled={isBusy}
-          rows={3}
-          className={cn(fieldTextareaClass, "mt-2.5")}
-        />
-      )}
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          <div className="min-w-0">
+            <p className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-sm">
+              <span className="truncate font-semibold text-foreground">{draft.clientName}</span>
+              <span className="text-xs text-muted-foreground">
+                {/* A bookable offer has already gone out and waits on the patient's reply. */}
+                {draft.canBook ? "Slot offer sent" : showReason ? draft.reasonLabel : draft.kindLabel}
+              </span>
+            </p>
+            {editing ? null : (
+              <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted-foreground">{body}</p>
+            )}
+          </div>
 
-      {!draft.canBook && !draft.canSend ? (
-        <p className="mt-2 text-xs text-muted-foreground">{WAITLIST_PLAN_ERROR}</p>
-      ) : null}
+          <div className="flex shrink-0 items-center gap-1">
+            {draft.canBook ? (
+              <>
+                {/* The patient said no: back to the waiting list, and the slot goes to the next match. */}
+                <button
+                  type="button"
+                  onClick={() => void handlePass()}
+                  disabled={isBusy}
+                  aria-label={`${draft.clientName} declined the slot`}
+                  className={textButtonClass}
+                >
+                  {busy === "pass" ? "Updating..." : "Declined"}
+                </button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 rounded-(--radius-card)"
+                  onClick={() => void handleBook()}
+                  disabled={isBusy}
+                  aria-label={`Book the slot for ${draft.clientName}`}
+                >
+                  {busy === "book" ? "Booking..." : "Book"}
+                </Button>
+              </>
+            ) : (
+              <>
+                {editable ? (
+                  <button
+                    type="button"
+                    onClick={() => setEditing((current) => !current)}
+                    disabled={isBusy}
+                    aria-expanded={editing}
+                    aria-label={`${editing ? "Done editing" : "Edit"} the message to ${draft.clientName}`}
+                    className={textButtonClass}
+                  >
+                    {editing ? "Done" : "Edit"}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void handleSkip()}
+                  disabled={isBusy}
+                  aria-label={`Skip the message to ${draft.clientName}`}
+                  className={textButtonClass}
+                >
+                  {busy === "skip" ? "Skipping..." : "Skip"}
+                </button>
+                {draft.canSend ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 rounded-(--radius-card)"
+                    onClick={() => void handleSend()}
+                    disabled={isBusy}
+                    aria-label={`Send the message to ${draft.clientName}`}
+                  >
+                    {busy === "send" ? "Sending..." : "Send"}
+                  </Button>
+                ) : null}
+              </>
+            )}
+          </div>
+        </div>
 
-      {error ? (
-        <p role="alert" className="mt-2 text-xs text-destructive">
-          {error}
-        </p>
-      ) : null}
+        {editing ? (
+          <Textarea
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            disabled={isBusy}
+            rows={3}
+            autoFocus
+            aria-label={`Message to ${draft.clientName}`}
+            className={cn(fieldTextareaClass, "mt-2")}
+          />
+        ) : null}
 
-      <div className="mt-2.5 flex items-center gap-2">
-        {draft.canBook ? (
-          <>
-            <Button
-              type="button"
-              size="sm"
-              className="h-9 rounded-(--radius-card)"
-              onClick={() => void handleBook()}
-              disabled={isBusy}
-            >
-              {busy === "book" ? "Booking..." : "Book"}
-            </Button>
-            {/* The patient said no: back to the waiting list, and the slot goes to the next match. */}
-            <button
-              type="button"
-              onClick={() => void handlePass()}
-              disabled={isBusy}
-              className="h-9 px-2 text-sm font-medium text-muted-foreground transition-colors duration-(--duration-base) hover:text-foreground disabled:opacity-60"
-            >
-              {busy === "pass" ? "Updating..." : "Declined"}
-            </button>
-          </>
-        ) : (
-          <>
-            {draft.canSend ? (
-              <Button
-                type="button"
-                size="sm"
-                className="h-9 rounded-(--radius-card)"
-                onClick={() => void handleSend()}
-                disabled={isBusy}
-              >
-                {busy === "send" ? "Sending..." : "Send"}
-              </Button>
-            ) : null}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 rounded-(--radius-card) bg-white"
-              onClick={() => void handleSkip()}
-              disabled={isBusy}
-            >
-              {busy === "skip" ? "Skipping..." : "Skip"}
-            </Button>
-          </>
-        )}
+        {!draft.canBook && !draft.canSend ? (
+          <p className="mt-1.5 text-xs text-muted-foreground">{WAITLIST_PLAN_ERROR}</p>
+        ) : null}
+
+        {error ? (
+          <p role="alert" className="mt-1.5 text-xs text-destructive">
+            {error}
+          </p>
+        ) : null}
       </div>
     </div>
   );

@@ -49,6 +49,38 @@ export function followUpRowKey(item: Pick<FollowUpDraftItem, "id" | "canBook">) 
   return `${item.id}:${item.canBook}`;
 }
 
+/**
+ * The order kinds are worked in on the Follow-ups page: slot offers first
+ * (the opening goes to someone else if it waits), then money, then the
+ * nudges that can wait a day.
+ */
+export const followUpKindOrder: FollowUpDraftKind[] = ["SLOT_OFFER", "PAYMENT", "REBOOK", "THANK_YOU"];
+
+/** Plural labels for the page's filter chips. */
+export const followUpKindGroupLabels: Record<FollowUpDraftKind, string> = {
+  SLOT_OFFER: "Slot offers",
+  PAYMENT: "Payment reminders",
+  REBOOK: "Rebooking nudges",
+  THANK_YOU: "Thank-yous",
+};
+
+/**
+ * Rows in working order: a sent slot offer that can be booked now comes
+ * first, then kinds in followUpKindOrder. The server's order is kept within
+ * each group (the sort is stable).
+ */
+export function orderFollowUps(items: FollowUpDraftItem[]) {
+  const rank = (item: FollowUpDraftItem) => (item.canBook ? -1 : followUpKindOrder.indexOf(item.kind));
+  return [...items].sort((left, right) => rank(left) - rank(right));
+}
+
+/** How many rows of each kind there are, for the filter chips' counts. */
+export function countFollowUpsByKind(items: FollowUpDraftItem[]) {
+  const counts = Object.fromEntries(followUpKindOrder.map((kind) => [kind, 0])) as Record<FollowUpDraftKind, number>;
+  for (const item of items) counts[item.kind] += 1;
+  return counts;
+}
+
 /** The server's rows minus the ones handled on this page since it loaded. */
 export function visibleFollowUps(items: FollowUpDraftItem[], handledKeys: string[]) {
   return items.filter((item) => !handledKeys.includes(followUpRowKey(item)));

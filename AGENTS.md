@@ -417,6 +417,8 @@ A **two-pane** messaging workspace (redesigned 2026-06): conversation list (320p
 - Identity tiles are square; conversation previews show the **newest** message (empty conversations show nothing); never invent presence claims like "Active now".
 - Thread switches use a ~150ms fade (framer-motion); the pane fills the viewport height.
 
+- **Inbox › Follow-ups** (`/inbox/follow-ups`, redesigned 2026-10): kind filter chips with live counts (All, then only the kinds that have drafts: Slot offers, Payment reminders, Rebooking nudges, Thank-yous), then one card of compact rows in working order: a sent slot offer waiting on the patient (labelled "Slot offer sent", with Declined / Book) first, then pending slot offers, payments, rebooking nudges, thank-yous (`orderFollowUps`). Each row is a square identity tile, name, the reason (or kind), a two-line message preview, and Edit / Skip / Send; **Edit** opens the message in place, so the page is not a wall of open text boxes. There is **no bulk send**: every message is a deliberate review-and-send (the "nothing sends until you do" promise, and no burst of WhatsApp sends).
+
 Avoid: a third context pane, dashboard-style KPI cards, metric clutter, fabricated activity/presence labels.
 
 ### Reports
