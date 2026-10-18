@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { isProBusinessPlan } from "@/lib/billing";
 import { ProFeatureLock } from "@/components/billing/pro-feature-lock";
+import { getSampleReportsView } from "@/lib/reports-sample";
 import { ReportsOverview } from "@/components/reports/reports-overview";
 import { buildReportsViewFromWorkspace } from "@/lib/reports";
 import {
@@ -81,12 +82,7 @@ export default async function ReportsPage({
   }
 
   if (!isProBusinessPlan(business.plan)) {
-    return (
-      <ProFeatureLock
-        title="Reporting is part of Pro"
-        description="Upgrade when you want analytics and premium workflow visibility beyond the core clinic operating system."
-      />
-    );
+    return <ProFeatureLock sample={getSampleReportsView()} />;
   }
 
   // allSettled, not all: a snapshot-history hiccup shouldn't crash the whole
