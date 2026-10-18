@@ -954,8 +954,8 @@ export function InboxWorkspace({
                         : conversations.length > 0
                           ? "No conversation selected"
                           : hasClients
-                            ? "Your first thread starts with a booking"
-                            : "Start with your first client"}
+                            ? "A thread starts with a booking"
+                            : "Start with a client"}
                     </p>
                     <p className="mt-1 text-sm leading-5 text-muted-foreground">
                       {query.trim().length > 0
@@ -971,7 +971,7 @@ export function InboxWorkspace({
                         href={hasClients ? bookingHref : "/clients/new?next=calendar"}
                         className={cn(buttonVariants({ size: "sm" }), "mt-4 rounded-(--radius-tile)")}
                       >
-                        {hasClients ? "Book first appointment" : "Add first client"}
+                        {hasClients ? "Book an appointment" : "Add a client"}
                       </Link>
                     ) : null}
                   </div>

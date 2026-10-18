@@ -290,7 +290,7 @@ export function NewAppointmentForm({
         icon={UsersRound}
         title="Add a client before booking"
         actionHref="/clients/new?next=calendar"
-        actionLabel="Add first client"
+        actionLabel="Add a client"
       />
     );
   }

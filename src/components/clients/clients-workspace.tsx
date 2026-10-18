@@ -212,7 +212,7 @@ export function ClientsWorkspace({
                 title="No clients yet"
                 description="Each client's visits, messages, files and payments live on one record."
                 actionHref="/clients/new"
-                actionLabel="Add first client"
+                actionLabel="Add a client"
               />
             ) : view.clients.length === 0 ? (
               <div className="px-6 py-8">

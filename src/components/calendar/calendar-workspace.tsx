@@ -1037,7 +1037,7 @@ export function CalendarWorkspace({
               )}
             >
               <UsersRound className="size-4" />
-              Add first client
+              Add a client
             </Link>
           )}
         </div>
@@ -1081,7 +1081,7 @@ export function CalendarWorkspace({
                 title="Add a client before booking"
                 description="Every appointment belongs to a client, so reminders reach the right person."
                 actionHref="/clients/new?next=calendar"
-                actionLabel="Add first client"
+                actionLabel="Add a client"
               />
             </div>
           ) : view === "month" ? (
