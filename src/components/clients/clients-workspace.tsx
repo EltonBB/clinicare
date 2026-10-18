@@ -40,8 +40,10 @@ const statusColors: Record<ClientStatus, string> = {
   archived: "text-muted-foreground",
 };
 
+// Narrow minimums so the six columns fit a laptop-width card (~740px) instead
+// of clipping Status and Actions; the fr shares still spread out on wide screens.
 const clientTableGrid =
-  "lg:grid-cols-[minmax(240px,1.5fr)_140px_minmax(240px,1.25fr)_110px_130px_110px]";
+  "lg:grid-cols-[minmax(170px,1.5fr)_minmax(88px,0.7fr)_minmax(130px,1.25fr)_72px_104px_86px]";
 
 function statusDot(status: ClientStatus) {
   return cn(

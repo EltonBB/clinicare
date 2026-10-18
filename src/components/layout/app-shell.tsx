@@ -408,14 +408,18 @@ export function AppShell({
         </div>
       </div>
 
-      <nav className="fixed inset-x-3 bottom-3 z-30 rounded-(--radius-field) border border-border/80 bg-white/96 px-2 py-2 shadow-[0_12px_28px_rgba(20,21,47,0.07)] backdrop-blur-xl lg:hidden">
-        <div className="grid grid-cols-7 gap-1">
+      <nav className="fixed inset-x-2 bottom-3 z-30 rounded-(--radius-field) border border-border/80 bg-white/96 px-1 py-2 shadow-[0_12px_28px_rgba(20,21,47,0.07)] backdrop-blur-xl lg:hidden">
+        <div className="grid grid-cols-7">
           {navigationItems.map((item) => {
             const Icon = item.icon;
             const isActive =
               pathname === item.href || pathname.startsWith(`${item.href}/`);
+            // Seven items share a phone's width (~44px each), where "Dashboard"
+            // spilled into its neighbour; it reads "Home" here (its full name
+            // stays the accessible label).
+            const mobileLabel = item.href === "/dashboard" ? "Home" : item.label;
             const mobileNavClasses = cn(
-              "flex flex-col items-center gap-1 rounded-(--radius-field) border border-transparent px-2 py-2 text-[11px] font-medium text-muted-foreground transition-[background-color,border-color,color,transform] duration-(--duration-base) active:bg-[#eef2f8]",
+              "flex min-w-0 flex-col items-center gap-1 rounded-(--radius-field) border border-transparent px-0.5 py-2 text-[10px] font-medium text-muted-foreground transition-[background-color,border-color,color,transform] duration-(--duration-base) active:bg-[#eef2f8]",
               isActive &&
                 "bg-primary text-primary-foreground active:bg-primary/92"
             );
@@ -429,7 +433,7 @@ export function AppShell({
                   className={mobileNavClasses}
                 >
                   <Icon className="size-4" />
-                  <span className="truncate">{item.label}</span>
+                  <span className="max-w-full truncate">{mobileLabel}</span>
                 </button>
               );
             }
@@ -440,6 +444,9 @@ export function AppShell({
                 href={item.href}
                 prefetch
                 className={mobileNavClasses}
+                // Only where the visible text is shortened: an aria-label replaces
+                // the whole accessible name, unread badge included.
+                aria-label={mobileLabel !== item.label ? item.label : undefined}
                 onFocus={() => prefetchRoute(item.href)}
                 onMouseEnter={() => prefetchRoute(item.href)}
               >
@@ -451,7 +458,7 @@ export function AppShell({
                     className="absolute -right-2.5 -top-2"
                   />
                 </span>
-                <span className="truncate">{item.label}</span>
+                <span className="max-w-full truncate">{mobileLabel}</span>
               </Link>
             );
           })}
