@@ -42,27 +42,6 @@ export type ReminderCronResult = ReminderSyncResult & {
   abandonedBusinesses: number;
 };
 
-/**
- * Connection states the reminders cron sends through. ERRORED is a soft,
- * recoverable state: re-attempted so a transient outage self-heals back to
- * CONNECTED on the next successful send, rather than excluding the clinic
- * until someone re-pairs. Anything else (DISCONNECTED, never set up) is
- * skipped without recording anything, which is why the workspace warns about
- * it (isReminderChannelReady's other caller).
- */
-export const REMINDER_READY_STATUSES = ["CONNECTED", "ERRORED"] as const;
-
-/** Whether the reminders cron will send this clinic's reminders at all. */
-export function isReminderChannelReady(
-  whatsappEnabled: boolean,
-  connectionStatus: string | null | undefined
-): boolean {
-  return (
-    whatsappEnabled &&
-    (REMINDER_READY_STATUSES as readonly (string | null | undefined)[]).includes(connectionStatus)
-  );
-}
-
 export async function syncAppointmentRemindersForBusiness(
   businessId: string,
   progress: Pick<ReminderRunProgress, "sent" | "failed">
@@ -94,8 +73,16 @@ export async function syncAppointmentRemindersForBusiness(
     },
   });
 
-  // See REMINDER_READY_STATUSES (the success path below sets CONNECTED).
-  if (!business || !isReminderChannelReady(business.whatsappEnabled, business.whatsappConnection?.status)) {
+  // ERRORED is a soft, recoverable state: re-attempt so a transient outage
+  // self-heals back to CONNECTED on the next successful send (the success path
+  // below sets CONNECTED), rather than excluding the clinic from reminders until
+  // someone re-pairs.
+  const connectionStatus = business?.whatsappConnection?.status;
+  if (
+    !business ||
+    !business.whatsappEnabled ||
+    (connectionStatus !== "CONNECTED" && connectionStatus !== "ERRORED")
+  ) {
     return;
   }
 
@@ -493,7 +480,9 @@ export async function syncAppointmentRemindersJob(
       whatsappEnabled: true,
       whatsappConnection: {
         is: {
-          status: { in: [...REMINDER_READY_STATUSES] },
+          // ERRORED included so a transiently-failed connection still gets
+          // reminder attempts and self-heals to CONNECTED on the next success.
+          status: { in: ["CONNECTED", "ERRORED"] },
         },
       },
     },

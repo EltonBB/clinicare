@@ -24,11 +24,7 @@ vi.mock("@/lib/prisma", () => ({
     appointment: mocks.appointment,
   },
 }));
-// reminders.ts pulls in the messaging stack; only its pure readiness rule is used here.
-vi.mock("@/lib/messaging", () => ({ sendMessage: vi.fn() }));
-
 import { refreshWorkspaceNotificationsAction } from "./actions";
-import { isReminderChannelReady } from "@/lib/reminders";
 
 function channel(overrides: {
   whatsappEnabled?: boolean;
@@ -56,26 +52,15 @@ beforeEach(() => {
   mocks.appointment.count.mockResolvedValue(1);
 });
 
-describe("isReminderChannelReady", () => {
-  it("is ready only while enabled and CONNECTED or ERRORED, the states the reminders cron sends through", () => {
-    expect(isReminderChannelReady(true, "CONNECTED")).toBe(true);
-    expect(isReminderChannelReady(true, "ERRORED")).toBe(true);
-    expect(isReminderChannelReady(true, "DISCONNECTED")).toBe(false);
-    expect(isReminderChannelReady(true, "PENDING_SETUP")).toBe(false);
-    expect(isReminderChannelReady(true, undefined)).toBe(false);
-    expect(isReminderChannelReady(false, "CONNECTED")).toBe(false);
-  });
-});
-
 // Owner report 2026-10-18: a dropped WhatsApp link stopped reminders with no
 // sign anywhere but Settings.
-describe("refreshWorkspaceNotificationsAction remindersBlocked", () => {
-  it("flags a disconnected clinic with a visit coming up in the next 24 hours", async () => {
+describe("refreshWorkspaceNotificationsAction reminderWarning", () => {
+  const warningFor = async () => (await refreshWorkspaceNotificationsAction()).view?.reminderWarning;
+
+  it("warns a disconnected clinic with a visit coming up in the next 24 hours", async () => {
     mocks.business.findUnique.mockResolvedValue(channel({ status: "DISCONNECTED" }));
 
-    const result = await refreshWorkspaceNotificationsAction();
-
-    expect(result.view?.remindersBlocked).toBe(true);
+    expect(await warningFor()).toBe("disconnected");
     expect(mocks.appointment.count).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ businessId: "biz_1", status: { notIn: ["CANCELLED", "NO_SHOW"] } }),
@@ -83,30 +68,38 @@ describe("refreshWorkspaceNotificationsAction remindersBlocked", () => {
     );
   });
 
-  it("flags a clinic that never connected WhatsApp", async () => {
+  it("warns a clinic that never connected WhatsApp", async () => {
     mocks.business.findUnique.mockResolvedValue(channel({ whatsappEnabled: false, status: null }));
 
-    expect((await refreshWorkspaceNotificationsAction()).view?.remindersBlocked).toBe(true);
+    expect(await warningFor()).toBe("disconnected");
+  });
+
+  // Codex #166: the cron keeps retrying an ERRORED link, but its sends are
+  // failing, so the owner still has to hear about it.
+  it("warns, distinctly, while the link is ERRORED", async () => {
+    mocks.business.findUnique.mockResolvedValue(channel({ status: "ERRORED" }));
+
+    expect(await warningFor()).toBe("errored");
   });
 
   it("stays quiet when nothing is booked in the next 24 hours", async () => {
     mocks.business.findUnique.mockResolvedValue(channel({ status: "DISCONNECTED" }));
     mocks.appointment.count.mockResolvedValue(0);
 
-    expect((await refreshWorkspaceNotificationsAction()).view?.remindersBlocked).toBe(false);
+    expect(await warningFor()).toBeNull();
   });
 
-  it("stays quiet, without counting visits, while the link is up", async () => {
-    mocks.business.findUnique.mockResolvedValue(channel({ status: "ERRORED" }));
+  it("stays quiet, without counting visits, while connected", async () => {
+    mocks.business.findUnique.mockResolvedValue(channel({ status: "CONNECTED" }));
 
-    expect((await refreshWorkspaceNotificationsAction()).view?.remindersBlocked).toBe(false);
+    expect(await warningFor()).toBeNull();
     expect(mocks.appointment.count).not.toHaveBeenCalled();
   });
 
   it("stays quiet when both reminders are switched off", async () => {
     mocks.business.findUnique.mockResolvedValue(channel({ status: "DISCONNECTED", send24: false, send2: false }));
 
-    expect((await refreshWorkspaceNotificationsAction()).view?.remindersBlocked).toBe(false);
+    expect(await warningFor()).toBeNull();
     expect(mocks.appointment.count).not.toHaveBeenCalled();
   });
 });
