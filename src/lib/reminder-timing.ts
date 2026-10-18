@@ -31,18 +31,31 @@ export const PER_BUSINESS_TIMEOUT_MS = 120_000;
  * window (Codex #136): the reminder sent after the wait can still take a full
  * worker timeout (~25s) plus the write after it, and has to finish inside
  * PER_BUSINESS_TIMEOUT_MS. A wait that would eat into this is not taken; the
- * rest of that clinic's reminders go on the next hourly run instead.
+ * rest of that clinic's reminders go on the next run instead.
  */
 export const RATE_LIMIT_WAIT_HEADROOM_MS = 30_000;
 
 /**
- * Hard response deadline for the cron route (the whole reminders job PLUS
- * the stale-entry sweep after it), comfortably under the 300s platform
- * `maxDuration`. This is a backstop for the rare case the job's own internal
- * budget check doesn't reach (e.g. one query hanging mid-business) — normal
- * runs finish in seconds and never touch it.
+ * Vercel starts a cron run anywhere inside its scheduled minute, so two
+ * five-minute triggers can be as little as 4 min 1 s apart (a :00 run at
+ * :00:59, the :05 run at :05:00). A whole invocation must end inside that
+ * gap, or the next trigger finds the lock still held and skips, leaving a
+ * reminder up to ten minutes late (Codex #165).
  */
-export const HARD_RESPONSE_DEADLINE_MS = 270_000;
+export const MIN_TRIGGER_GAP_MS = 241_000;
+
+/** The route's worker-lease check after the job (see the reminders cron route). */
+export const WORKER_CHECK_TIMEOUT_MS = 5_000;
+
+/**
+ * Hard response deadline for the cron route (the whole reminders job PLUS
+ * the stale-entry sweep after it). This is a backstop for the rare case the
+ * job's own internal budget check doesn't reach (e.g. one query hanging
+ * mid-business); normal runs finish in seconds and never touch it. Sized so
+ * that, with the worker-lease check and the Sentry flush (2s, cron-monitor.ts)
+ * after it, a worst-case invocation still ends inside MIN_TRIGGER_GAP_MS.
+ */
+export const HARD_RESPONSE_DEADLINE_MS = 210_000;
 
 /**
  * Reserved for the cursor-persist write itself (a single Redis SET, capped
@@ -53,8 +66,8 @@ export const HARD_RESPONSE_DEADLINE_MS = 270_000;
 const POST_BUDGET_BUFFER_MS = 15_000;
 
 /**
- * Wall-clock budget for STARTING new businesses. Reminders now run hourly,
- * so a business skipped here is retried within the hour — deferred, not
+ * Wall-clock budget for STARTING new businesses. Reminders run every 5
+ * minutes, so a business skipped here is retried on the next run — deferred, not
  * dropped. This is a single cheap check between businesses, not a
  * per-operation deadline: at pilot scale the realistic risk is every
  * business hitting the provider-error circuit breaker at once (the WhatsApp

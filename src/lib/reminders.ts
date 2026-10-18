@@ -221,8 +221,8 @@ export async function syncAppointmentRemindersForBusiness(
     // The clinic's number is at its sending ceiling, so nothing went out. A
     // full minute window clears within a minute: wait it out and send, as long
     // as this business still has room to finish (RATE_LIMIT_WAIT_HEADROOM_MS).
-    // Otherwise the next hourly run would be too late for a visit starting
-    // before it (Codex #136).
+    // Otherwise a visit starting before the next run could miss its
+    // reminder (Codex #136).
     while (!result.ok && result.reason === "rate_limited") {
       const waitMs = Math.max(1, result.retryAfterSeconds ?? Infinity) * 1_000;
       const elapsedMs = Date.now() - now.getTime();
@@ -235,7 +235,7 @@ export async function syncAppointmentRemindersForBusiness(
       // Still refused (the hourly ceiling, or a wait that wouldn't fit): stop
       // this clinic's run without recording a failure. Reminders go soonest
       // visit first, so what's left is the latest-starting, and the next
-      // hourly run picks up whatever is still inside its reminder window.
+      // run picks up whatever is still inside its reminder window.
       logger.warn("Stopping reminder run early — the clinic reached its sending ceiling.", {
         businessId,
         attempted: sent + failed,
@@ -563,7 +563,7 @@ export async function syncAppointmentRemindersJob(
   }
 
   if (progress.skipped > 0) {
-    logger.warn("Reminder run out of time; some clinics deferred to next hour.", {
+    logger.warn("Reminder run out of time; some clinics deferred to the next run.", {
       skippedBusinesses: progress.skipped,
       processedBusinesses: progress.total,
     });

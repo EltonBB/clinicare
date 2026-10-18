@@ -21,7 +21,7 @@ describe("withCronMonitor", () => {
     expect(sentry.captureCheckIn).toHaveBeenNthCalledWith(
       1,
       { monitorSlug: "cron-reminders", status: "in_progress" },
-      expect.objectContaining({ schedule: { type: "crontab", value: "0 * * * *" } })
+      expect.objectContaining({ schedule: { type: "crontab", value: "*/5 * * * *" } })
     );
     expect(sentry.captureCheckIn).toHaveBeenNthCalledWith(2, {
       checkInId: "check-in-1",
