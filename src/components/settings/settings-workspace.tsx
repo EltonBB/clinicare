@@ -1212,7 +1212,7 @@ export function SettingsWorkspace({
               </div>
 
               <div className="rounded-(--radius-card) bg-[#fafbfd] p-3.5">
-                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                <p className="text-xs font-semibold text-muted-foreground">
                   Preview
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -1535,7 +1535,7 @@ export function SettingsWorkspace({
 
               {state.billing.lockedFeatures.length > 0 ? (
                 <div className="space-y-2.5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  <p className="text-xs font-semibold text-muted-foreground">
                     {state.billing.planName === "Pro" ? "Included in your plan" : "Unlock with Pro"}
                   </p>
                   <ul className="space-y-2">
