@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   HARD_RESPONSE_DEADLINE_MS,
+  MIN_TRIGGER_GAP_MS,
   PER_BUSINESS_TIMEOUT_MS,
   RATE_LIMIT_WAIT_HEADROOM_MS,
   REMINDER_RUN_BUDGET_MS,
+  WORKER_CHECK_TIMEOUT_MS,
 } from "./reminder-timing";
 
 describe("reminder cron timing", () => {
@@ -39,6 +41,14 @@ describe("reminder cron timing", () => {
     const fullWindowMs = 60_000;
     const roundingMs = 1_000; // retry-after is rounded up to whole seconds
     expect(fullWindowMs + roundingMs + RATE_LIMIT_WAIT_HEADROOM_MS).toBeLessThanOrEqual(PER_BUSINESS_TIMEOUT_MS);
+  });
+
+  // Codex #165: back-to-back five-minute triggers can start 241s apart, so a
+  // worst-case run (plus the worker check and the 2s Sentry flush after it)
+  // must be over by then or the next run finds the lock held and skips.
+  it("ends a worst-case invocation before the next five-minute trigger can start", () => {
+    const sentryFlushMs = 2_000;
+    expect(HARD_RESPONSE_DEADLINE_MS + WORKER_CHECK_TIMEOUT_MS + sentryFlushMs).toBeLessThan(MIN_TRIGGER_GAP_MS);
   });
 
   it("stays comfortably under the 300s platform maxDuration even in the worst case", () => {

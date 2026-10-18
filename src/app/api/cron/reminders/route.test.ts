@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { HARD_RESPONSE_DEADLINE_MS, REMINDER_RUN_BUDGET_MS } from "@/lib/reminder-timing";
+
 const acquireCronLock = vi.fn();
 const releaseCronLock = vi.fn();
 const syncAppointmentRemindersJob = vi.fn();
@@ -29,8 +31,6 @@ vi.mock("@/lib/reminders", () => ({
     failed: 0,
     abandoned: 0,
   }),
-  REMINDER_RUN_BUDGET_MS: 135_000,
-  HARD_RESPONSE_DEADLINE_MS: 270_000,
 }));
 
 function request() {
@@ -120,10 +120,10 @@ describe("reminders cron route", () => {
     expect(handOffAbandonedReplyIntents.mock.invocationCallOrder[0]).toBeLessThan(
       syncAppointmentRemindersJob.mock.invocationCallOrder[0]
     );
-    // The reminders' deadline: the invocation's start plus their budget (135s
-    // in this mock), not "now" after the hand-off has run.
-    expect(syncAppointmentRemindersJob.mock.calls[0][0]).toBeLessThanOrEqual(before + 135_000);
-    expect(syncAppointmentRemindersJob.mock.calls[0][0]).toBeGreaterThanOrEqual(before + 135_000 - 1_000);
+    // The reminders' deadline: the invocation's start plus their budget,
+    // not "now" after the hand-off has run.
+    expect(syncAppointmentRemindersJob.mock.calls[0][0]).toBeLessThanOrEqual(before + REMINDER_RUN_BUDGET_MS);
+    expect(syncAppointmentRemindersJob.mock.calls[0][0]).toBeGreaterThanOrEqual(before + REMINDER_RUN_BUDGET_MS - 1_000);
     vi.useRealTimers();
 
     handOffAbandonedReplyIntents.mockRejectedValueOnce(new Error("sweep failed"));
@@ -159,7 +159,7 @@ describe("reminders cron route", () => {
     const { GET } = await import("./route");
 
     const responsePromise = GET(request());
-    await vi.advanceTimersByTimeAsync(280_000); // past the 270s hard deadline
+    await vi.advanceTimersByTimeAsync(HARD_RESPONSE_DEADLINE_MS + 10_000); // past the hard deadline
     const res = await responsePromise;
     const body = await res.json();
 
@@ -172,7 +172,7 @@ describe("reminders cron route", () => {
    * Regression test for the P2 Codex found on this round: the job's own
    * per-business timeout (reminders.ts) can abandon a business's still-
    * running work while the OVERALL invocation still finishes comfortably
-   * within its 270s hard deadline — `outcome.timedOut` is false. Releasing
+   * within its hard deadline — `outcome.timedOut` is false. Releasing
    * the lock in that case would let an overlapping invocation read the
    * abandoned business's still-in-flight appointment as not-yet-reminded and
    * send it twice.
@@ -213,7 +213,7 @@ describe("reminders cron route", () => {
     const { GET } = await import("./route");
 
     const responsePromise = GET(request());
-    await vi.advanceTimersByTimeAsync(280_000);
+    await vi.advanceTimersByTimeAsync(HARD_RESPONSE_DEADLINE_MS + 10_000);
     const res = await responsePromise;
     const body = await res.json();
 
