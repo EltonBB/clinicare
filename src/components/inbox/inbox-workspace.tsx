@@ -668,7 +668,11 @@ export function InboxWorkspace({
         />
 
         <div className="surface-card min-h-[640px] overflow-hidden p-0 lg:h-[calc(100vh-174px)]">
-          <div className="grid h-full grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
+          {/* lg:grid-rows-[minmax(0,1fr)]: the card's height is fixed at lg, but a
+              grid's single implicit row is content-sized, so both panes grew to
+              their full height and the card clipped them; their own scroll areas
+              never engaged and long threads couldn't be scrolled (owner, 2026-10-18). */}
+          <div className="grid h-full grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
             <aside className="flex min-h-0 flex-col border-b border-border/80 lg:border-b-0 lg:border-r">
               <div className="space-y-2.5 px-3.5 pb-3 pt-3.5">
                 <div className="relative">
@@ -781,7 +785,7 @@ export function InboxWorkspace({
               </div>
             </aside>
 
-            <section className="flex min-w-0 flex-col bg-white/92">
+            <section className="flex min-h-0 min-w-0 flex-col bg-white/92">
               {activeConversation ? (
                 <m.div
                   key={activeConversation.id}
