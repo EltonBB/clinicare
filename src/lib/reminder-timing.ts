@@ -36,13 +36,26 @@ export const PER_BUSINESS_TIMEOUT_MS = 120_000;
 export const RATE_LIMIT_WAIT_HEADROOM_MS = 30_000;
 
 /**
- * Hard response deadline for the cron route (the whole reminders job PLUS
- * the stale-entry sweep after it), comfortably under the 300s platform
- * `maxDuration`. This is a backstop for the rare case the job's own internal
- * budget check doesn't reach (e.g. one query hanging mid-business) — normal
- * runs finish in seconds and never touch it.
+ * Vercel starts a cron run anywhere inside its scheduled minute, so two
+ * five-minute triggers can be as little as 4 min 1 s apart (a :00 run at
+ * :00:59, the :05 run at :05:00). A whole invocation must end inside that
+ * gap, or the next trigger finds the lock still held and skips, leaving a
+ * reminder up to ten minutes late (Codex #165).
  */
-export const HARD_RESPONSE_DEADLINE_MS = 270_000;
+export const MIN_TRIGGER_GAP_MS = 241_000;
+
+/** The route's worker-lease check after the job (see the reminders cron route). */
+export const WORKER_CHECK_TIMEOUT_MS = 5_000;
+
+/**
+ * Hard response deadline for the cron route (the whole reminders job PLUS
+ * the stale-entry sweep after it). This is a backstop for the rare case the
+ * job's own internal budget check doesn't reach (e.g. one query hanging
+ * mid-business); normal runs finish in seconds and never touch it. Sized so
+ * that, with the worker-lease check and the Sentry flush (2s, cron-monitor.ts)
+ * after it, a worst-case invocation still ends inside MIN_TRIGGER_GAP_MS.
+ */
+export const HARD_RESPONSE_DEADLINE_MS = 210_000;
 
 /**
  * Reserved for the cursor-persist write itself (a single Redis SET, capped

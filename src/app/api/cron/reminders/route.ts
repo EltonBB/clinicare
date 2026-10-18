@@ -8,7 +8,7 @@ import { logger } from "@/lib/logger";
 import { handOffAbandonedReplyIntents } from "@/lib/messaging/inbound";
 import { isWhatsAppWorkerDown } from "@/lib/messaging/worker-heartbeat";
 import { createReminderRunProgress, syncAppointmentRemindersJob } from "@/lib/reminders";
-import { HARD_RESPONSE_DEADLINE_MS, REMINDER_RUN_BUDGET_MS } from "@/lib/reminder-timing";
+import { HARD_RESPONSE_DEADLINE_MS, REMINDER_RUN_BUDGET_MS, WORKER_CHECK_TIMEOUT_MS } from "@/lib/reminder-timing";
 import { autoCloseStaleTimeEntries } from "@/lib/staff-clock";
 
 export const dynamic = "force-dynamic";
@@ -20,12 +20,10 @@ export const maxDuration = 300;
 // minutes of its "N hours before" time and a business skipped here is retried
 // on the next run — see reminder-schedule.ts. Hourly runs sent reminders up to
 // 59 minutes late, which read as "the reminder never came" (2026-10-18). A
-// worst-case run (HARD_RESPONSE_DEADLINE_MS, 270s) still ends before the next
-// trigger; the lock below covers the rest.
+// worst-case invocation still ends before the next trigger can start (see
+// MIN_TRIGGER_GAP_MS); the lock below covers the rest.
 const LOCK_NAME = "reminders";
 
-// The worker lease check's own budget, on top of HARD_RESPONSE_DEADLINE_MS.
-const WORKER_CHECK_TIMEOUT_MS = 5_000;
 
 // HARD_RESPONSE_DEADLINE_MS itself now lives in lib/reminders.ts — comfortably
 // under the 300s platform cap, covering the reminders job AND the stale-entry
