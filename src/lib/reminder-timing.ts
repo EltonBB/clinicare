@@ -31,7 +31,7 @@ export const PER_BUSINESS_TIMEOUT_MS = 120_000;
  * window (Codex #136): the reminder sent after the wait can still take a full
  * worker timeout (~25s) plus the write after it, and has to finish inside
  * PER_BUSINESS_TIMEOUT_MS. A wait that would eat into this is not taken; the
- * rest of that clinic's reminders go on the next hourly run instead.
+ * rest of that clinic's reminders go on the next run instead.
  */
 export const RATE_LIMIT_WAIT_HEADROOM_MS = 30_000;
 
@@ -53,8 +53,8 @@ export const HARD_RESPONSE_DEADLINE_MS = 270_000;
 const POST_BUDGET_BUFFER_MS = 15_000;
 
 /**
- * Wall-clock budget for STARTING new businesses. Reminders now run hourly,
- * so a business skipped here is retried within the hour — deferred, not
+ * Wall-clock budget for STARTING new businesses. Reminders run every 5
+ * minutes, so a business skipped here is retried on the next run — deferred, not
  * dropped. This is a single cheap check between businesses, not a
  * per-operation deadline: at pilot scale the realistic risk is every
  * business hitting the provider-error circuit breaker at once (the WhatsApp

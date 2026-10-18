@@ -230,7 +230,7 @@ export type ApplyReplyIntentResult =
  * A lease that runs out was abandoned (the instance running the check died
  * before it could finish or release): a late retry can claim it again, and the
  * ones no retry came back for are handed to staff by
- * handOffAbandonedReplyIntents, which the hourly reminders cron runs (Codex
+ * handOffAbandonedReplyIntents, which the reminders cron runs every 5 minutes (Codex
  * #130, #133).
  */
 // Comfortably longer than one check can run: a few queries plus the
@@ -309,7 +309,7 @@ export async function applyInboundReplyIntent(args: {
     result = await applyInboundReplyIntentCore(args, now);
   } catch (error) {
     // Best-effort release. If it fails, the lease simply runs out, and the
-    // hourly sweep hands the message to staff (handOffAbandonedReplyIntents).
+    // next reminders-cron sweep hands the message to staff (handOffAbandonedReplyIntents).
     await prisma.message
       .updateMany({ where: ownLease, data: { replyIntentLeaseUntil: null } })
       .catch((releaseError) => {
@@ -338,7 +338,7 @@ export async function applyInboundReplyIntent(args: {
   }
 
   // From here a retry is told the message is handled. Not fatal if it fails:
-  // the lease runs out and the hourly sweep hands the message to staff, which
+  // the lease runs out and the next reminders-cron sweep hands the message to staff, which
   // at worst flags a reply that was already dealt with.
   // Stamped with the time the check started, as the old single-column code
   // did. The lease is left in place: every row the new code finishes keeps one,
@@ -375,7 +375,7 @@ const ABANDONED_REPLY_BATCH = 200;
  * conversation is marked unread: the reply — already in the Inbox, with no
  * acknowledgement after it — comes back to staff, who can see what it meant.
  * A late worker retry and this sweep can't both act on a message: each takes
- * it with the same compare-and-set. Run hourly by the reminders cron.
+ * it with the same compare-and-set. Run every 5 minutes by the reminders cron.
  */
 export async function handOffAbandonedReplyIntents(now = new Date()): Promise<{ handedOff: number }> {
   const abandoned = await prisma.message.findMany({

@@ -40,8 +40,9 @@ export type ReminderDecisionArgs = {
  *    (appointment exactly N hours away) fires.
  *
  * NOTE: the 2-hour ("second") reminder only fires when the cron runs often
- * enough to land inside its window — `vercel.json` runs this hourly (Vercel
- * Pro; Hobby caps crons at once/day, which is why this used to be broken).
+ * enough to land inside its window — `vercel.json` runs this every 5 minutes
+ * (Vercel Pro; Hobby caps crons at once/day, which is why this used to be
+ * broken), so a reminder lands within ~5 minutes of its configured time.
  */
 export function reminderTypeForAppointment(
   args: ReminderDecisionArgs

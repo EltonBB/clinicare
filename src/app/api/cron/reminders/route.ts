@@ -16,10 +16,12 @@ export const dynamic = "force-dynamic";
 // appointment; give the batch room beyond the platform default.
 export const maxDuration = 300;
 
-// Runs hourly now (vercel.json) so a business skipped here is retried within
-// the hour, not the next day — see reminder-schedule.ts for why sub-daily
-// matters: a 2-hour-before reminder only ever fires if the cron lands inside
-// that window.
+// Runs every 5 minutes (vercel.json), so a reminder goes out within about 5
+// minutes of its "N hours before" time and a business skipped here is retried
+// on the next run — see reminder-schedule.ts. Hourly runs sent reminders up to
+// 59 minutes late, which read as "the reminder never came" (2026-10-18). A
+// worst-case run (HARD_RESPONSE_DEADLINE_MS, 270s) still ends before the next
+// trigger; the lock below covers the rest.
 const LOCK_NAME = "reminders";
 
 // The worker lease check's own budget, on top of HARD_RESPONSE_DEADLINE_MS.
@@ -36,8 +38,8 @@ const WORKER_CHECK_TIMEOUT_MS = 5_000;
 // fires, the losing work is left running (Prisma calls have no abort handle)
 // and could still be writing for a little longer. The TTL — not the `finally`
 // release — is what actually protects a crashed or killed invocation; the 60s
-// margin just gives the abandoned work room to finish before the next hourly
-// trigger could contend with it. Tying it to HARD_RESPONSE_DEADLINE_MS means
+// margin just gives the abandoned work room to finish before the next
+// trigger could contend with it (a held lock makes that run skip once). Tying it to HARD_RESPONSE_DEADLINE_MS means
 // the two can't silently drift apart if one is ever changed alone.
 const LOCK_TTL_SECONDS = Math.ceil(HARD_RESPONSE_DEADLINE_MS / 1_000) + 60;
 
@@ -52,7 +54,7 @@ export async function GET(request: Request) {
 
 async function run() {
   // Vercel Cron does not serialize invocations — a slow run can still be in
-  // flight when the next hourly trigger fires. Without this, an overlapping
+  // flight when the next trigger fires. Without this, an overlapping
   // run could read the same due appointment before either has written its
   // SENT marker and send the reminder twice.
   const lock = await acquireCronLock(LOCK_NAME, LOCK_TTL_SECONDS);
@@ -88,7 +90,7 @@ async function run() {
 
         // Budgeted from the invocation's start, not from now: whatever the
         // hand-off above took comes out of the reminders' share (a business
-        // left over is retried next hour), never out of the hard deadline.
+        // left over is retried on the next run), never out of the hard deadline.
         const result = await syncAppointmentRemindersJob(
           startedAt + REMINDER_RUN_BUDGET_MS,
           progress
@@ -136,7 +138,7 @@ async function run() {
     );
 
     // Sentry can't watch the worker from outside (it refuses *.railway.app
-    // monitors), so this hourly run checks the worker's lease instead and
+    // monitors), so this run checks the worker's lease instead and
     // fails its check-in when the lease has lapsed. Best-effort, like the
     // sweeps above.
     // Bounded on its own: after a run that hit the hard deadline the pool may
