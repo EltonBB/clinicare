@@ -117,6 +117,27 @@ function RangeCalendar({
   );
 }
 
+/**
+ * The report itself, below the header controls. Shared with the Basic plan's
+ * upgrade screen, which renders it over sample data, so the preview is the
+ * real page and can't drift from it.
+ */
+export function ReportsSections({ period }: { period: ReportsViewModel["periods"][ReportPeriodKey] }) {
+  return (
+    <LazyMotionProvider>
+      <div className="space-y-3">
+        <OverviewTab period={period} />
+        <StaffTab period={period} />
+        <div className="grid items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <AppointmentStatusCard period={period} />
+          <HighlightsCard period={period} />
+          <BookingPatternsCard period={period} />
+        </div>
+      </div>
+    </LazyMotionProvider>
+  );
+}
+
 export function ReportsOverview({ view }: { view: ReportsViewModel }) {
   const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriodKey>(view.defaultPeriod);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -282,15 +303,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
             </div>
           ) : null}
 
-          <div className="space-y-3">
-            <OverviewTab period={period} />
-            <StaffTab period={period} />
-            <div className="grid items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              <AppointmentStatusCard period={period} />
-              <HighlightsCard period={period} />
-              <BookingPatternsCard period={period} />
-            </div>
-          </div>
+          <ReportsSections period={period} />
         </WorkspacePage>
       </div>
     </LazyMotionProvider>

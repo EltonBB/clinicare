@@ -71,7 +71,7 @@ src/
     ui/                # shadcn primitives (Button, Card, Dialog, Tabs, Input, ...)
     layout/            # app-shell, sidebar/topbar, global-search, notifications, tour
     workspace/         # shared workspace structure system (WorkspacePage, *Header, *KpiGrid, *Table, *Rail, ...)
-    {dashboard,clients,staff,calendar,inbox,reports,settings,onboarding,auth,marketing,legal,billing,upgrade}/
+    {dashboard,clients,staff,calendar,inbox,reports,settings,onboarding,auth,marketing,legal,billing}/
   lib/                 # server-side business logic + view-model builders (see below)
   utils/supabase/      # SSR Supabase clients: client.ts (browser), server.ts (RSC/actions), middleware.ts
   proxy.ts             # Next "proxy" — protects all (workspace) routes, applies global security headers

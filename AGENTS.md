@@ -423,6 +423,8 @@ Avoid: a third context pane, dashboard-style KPI cards, metric clutter, fabricat
 
 A clean analytics experience (Pro) or a polished upgrade state (Basic). Redesigned 2026-09 into a **single scrolling page — no tabs**, run as a 4-2-1-3 stack (the first pass trimmed to a strict 4-cards/2-panels/1-list template; the owner then asked for three more rows back — Appointment status, Highlights, Booking patterns — then, after living with three full-width rows, asked to compact them into one row of three equal-size cards and drop Client mix entirely, so the page now runs KPIs → Performance/AI insight → Staff performance → Appointment status/Highlights/Booking patterns). The period selector (daily/weekly/monthly/custom) and Refresh AI live in the page header; there is no subtitle under the "Reports" title. All sections stay behind the Pro gate as a unit — there is no partial-Basic view.
 
+**On Basic** (redesigned 2026-10, `ProFeatureLock`): the "Reports" header, then one workspace-styled upgrade card (what Pro adds from `proAddedFeatures`, the Pro price from `publicPlans`, **Upgrade to Pro** to `/checkout?plan=pro`, a quiet **Compare plans** link), then the **real Reports sections rendered over a sample clinic** (`buildSampleReportsView` in `lib/reports-sample.ts`, which runs the real `buildReportsViewFromWorkspace` over seeded sample appointments) under a **"Sample data"** label. The preview is `inert` and hidden from assistive tech, so it can't be clicked or mistaken for the clinic's own numbers; it shows the weekly period and uses rule-based insight only (never labelled AI). No icon badge, no tracked uppercase eyebrow, no glass card.
+
 - header controls: period pills (daily/weekly/monthly + Custom range when active), a **calendar icon button** that opens a small popover (From/To date inputs + "Analyse range"; both dates required) — never inline date inputs in the header — and Refresh AI, all h-10
 - compact paddings (`p-4` cards, `gap-3`) are deliberate; don't re-inflate them — the page scrolls normally like the rest of the workspace, it does not lock to one viewport
 
@@ -539,7 +541,7 @@ src/components/
                WorkspaceKpiGrid/Card, WorkspaceMainGrid, WorkspaceCard, WorkspaceRail,
                WorkspaceTable, WorkspaceEmptyState, form sections
   dashboard/   clients/  staff/  calendar/  inbox/  reports/  settings/
-  onboarding/  auth/  marketing/  legal/  billing/  upgrade/
+  onboarding/  auth/  marketing/  legal/  billing/
 ```
 
 New or refactored UI components follow this structure — feature components in their feature folder, shared structure in `workspace/`, primitives in `ui/`.
