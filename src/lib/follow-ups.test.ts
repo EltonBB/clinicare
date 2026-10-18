@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildFollowUpsViewFromRecords, followUpRowKey, visibleFollowUps } from "@/lib/follow-ups";
+import {
+  buildFollowUpsViewFromRecords,
+  countFollowUpsByKind,
+  followUpRowKey,
+  orderFollowUps,
+  visibleFollowUps,
+} from "@/lib/follow-ups";
 
 function draft(overrides: Partial<Parameters<typeof buildFollowUpsViewFromRecords>[0]["drafts"][number]> = {}) {
   return {
@@ -92,5 +98,41 @@ describe("visibleFollowUps", () => {
     }).items;
 
     expect(visibleFollowUps(refreshed, handled).map((item) => [item.id, item.canBook])).toEqual([["d_offer", true]]);
+  });
+});
+
+describe("orderFollowUps", () => {
+  it("puts a bookable slot offer first, then kinds in working order, keeping server order within a kind", () => {
+    const items = buildFollowUpsViewFromRecords({
+      drafts: [
+        draft({ id: "thanks", kind: "THANK_YOU" }),
+        draft({ id: "rebook_a" }),
+        draft({ id: "pay", kind: "PAYMENT" }),
+        draft({ id: "offer_pending", kind: "SLOT_OFFER" }),
+        draft({ id: "rebook_b" }),
+        draft({ id: "offer_sent", kind: "SLOT_OFFER", status: "SENT" }),
+      ],
+      timeZone: "UTC",
+    }).items;
+
+    expect(orderFollowUps(items).map((item) => item.id)).toEqual([
+      "offer_sent",
+      "offer_pending",
+      "pay",
+      "rebook_a",
+      "rebook_b",
+      "thanks",
+    ]);
+  });
+});
+
+describe("countFollowUpsByKind", () => {
+  it("counts every kind, with zero for kinds that have no rows", () => {
+    const items = buildFollowUpsViewFromRecords({
+      drafts: [draft(), draft({ id: "b" }), draft({ id: "c", kind: "PAYMENT" })],
+      timeZone: "UTC",
+    }).items;
+
+    expect(countFollowUpsByKind(items)).toEqual({ SLOT_OFFER: 0, PAYMENT: 1, REBOOK: 2, THANK_YOU: 0 });
   });
 });
