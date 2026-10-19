@@ -228,6 +228,22 @@ describe("rebookedAppointmentWhere", () => {
   });
 });
 
+describe("findRebookCandidates due date", () => {
+  it("is the last visit plus the configured calendar months, not a day count", async () => {
+    mocks.client.findMany.mockResolvedValue([{ id: "c1", name: "Alex", lastVisitAt: new Date("2026-02-25T10:00:00Z") }]);
+
+    const [draft] = await findRebookCandidates({
+      businessId: "biz_1",
+      settings: { ...REBOOK_ON, rebookAfterMonths: 3 },
+      now: new Date("2026-05-29T10:00:00Z"),
+    });
+
+    // Same clinic-local wall time (11:00 in Budapest), three calendar months on:
+    // May 25, not the May 26 a day count would give. 09:00Z because of summer time.
+    expect(draft.dueAt).toEqual(new Date("2026-05-25T09:00:00Z"));
+  });
+});
+
 describe("findPaymentReminderCandidates", () => {
   it("finds unpaid/partially-paid payments older than the configured window, one draft per payment", async () => {
     mocks.clientPayment.findMany.mockResolvedValue([

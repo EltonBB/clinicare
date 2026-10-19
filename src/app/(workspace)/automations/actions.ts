@@ -115,7 +115,14 @@ async function saveForBusiness(
       // must not send a backlog in one burst; only new drafts send by themselves.
       if (draftKinds.length > 0 && (!input.enabled || mode === "REVIEW")) {
         await tx.followUpDraft.updateMany({
-          where: { businessId, status: "PENDING", autoSend: true, kind: { in: draftKinds } },
+          where: {
+            businessId,
+            autoSend: true,
+            kind: { in: draftKinds },
+            // Queued, or claimed by an automatic send that hasn't gone out yet:
+            // its last check before sending requires autoSend, so it stops.
+            OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
+          },
           data: { autoSend: false },
         });
       }

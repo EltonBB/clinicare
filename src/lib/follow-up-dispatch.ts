@@ -7,11 +7,13 @@ import {
   markFollowUpDraftSent,
   revertFollowUpDraftToPending,
 } from "@/lib/follow-ups-data";
+import { getAutomationsCursor, setAutomationsCursor } from "@/lib/follow-up-cursor";
 import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
 import { mirrorOutboundToInbox } from "@/lib/messaging/inbox-mirror";
 import type { SendMessageResult } from "@/lib/messaging/types";
 import { prisma } from "@/lib/prisma";
+import { lastAttemptedId, rotateForFairness } from "@/lib/reminder-fairness";
 
 export const FOLLOW_UP_DELIVERY_UNCERTAIN_NOTICE =
   "We couldn't confirm a follow-up was delivered, so it was marked as sent. Check the patient's WhatsApp chat before contacting them again.";
@@ -19,7 +21,16 @@ const TRY_AGAIN_ERROR = "Couldn't send this message. Try again.";
 
 export type DispatchResult =
   | { ok: true; clientId: string | null; notice?: string }
-  | { ok: false; error: string; rateLimited?: boolean };
+  /**
+   * `retryable`: the same send could work on a later try (the provider was
+   * down, a lookup threw). False when it never will as things stand: the
+   * draft was refused (switched off, no longer true) or the message itself
+   * can't be sent (no or an invalid phone number, empty or too long).
+   */
+  | { ok: false; error: string; rateLimited?: boolean; retryable: boolean };
+
+/** Send failures a retry can't fix: the recipient or the message itself is the problem. */
+const PERMANENT_SEND_FAILURES = new Set(["invalid_recipient", "empty_message", "message_too_long"]);
 
 /**
  * Sends one follow-up draft: claims it (PENDING -> SENT, liveness re-checked in
@@ -36,16 +47,19 @@ export async function dispatchFollowUpDraft(args: {
   draftId: string;
   businessId: string;
   editedBody?: string;
+  /** Sent without a person: the draft must still be marked to send on its own at every check. */
+  automatic?: boolean;
 }): Promise<DispatchResult> {
-  const { draftId, businessId, editedBody } = args;
+  const { draftId, businessId, editedBody, automatic } = args;
 
-  const flip = await markFollowUpDraftSent({ id: draftId, businessId, editedBody });
+  const flip = await markFollowUpDraftSent({ id: draftId, businessId, editedBody, automatic });
   if (!flip.ok) {
-    return { ok: false, error: flip.error };
+    return { ok: false, error: flip.error, retryable: false };
   }
 
   let failure: string | null = null;
   let rateLimited = false;
+  let retryable = false;
   // The provider can't say whether the message left (see SendFailureReason).
   let uncertain = false;
   let sent: {
@@ -61,7 +75,7 @@ export async function dispatchFollowUpDraft(args: {
     // outside any transaction, so another request can invalidate the draft in
     // between (a slot filled, a payment settled, a client booked or archived).
     // One more check, as late as it can be made (Codex #130).
-    const ready = await confirmFollowUpDraftDispatch({ id: draftId, businessId });
+    const ready = await confirmFollowUpDraftDispatch({ id: draftId, businessId, automatic });
 
     if (!ready.ok) {
       failure = ready.error;
@@ -89,8 +103,10 @@ export async function dispatchFollowUpDraft(args: {
         } else if (result.reason === "rate_limited") {
           failure = result.error;
           rateLimited = true;
+          retryable = true;
         } else {
           failure = TRY_AGAIN_ERROR;
+          retryable = !PERMANENT_SEND_FAILURES.has(result.reason);
         }
       }
     }
@@ -99,6 +115,7 @@ export async function dispatchFollowUpDraft(args: {
     // than strand it as SENT (every retry would answer "already handled").
     logger.error("A follow-up send failed after the draft was marked sent.", error, { businessId, draftId });
     failure = TRY_AGAIN_ERROR;
+    retryable = true;
   }
 
   if (uncertain) {
@@ -116,7 +133,7 @@ export async function dispatchFollowUpDraft(args: {
 
   if (!sent) {
     await revertFollowUpDraftToPending({ id: draftId, businessId });
-    return { ok: false, error: failure ?? TRY_AGAIN_ERROR, rateLimited };
+    return { ok: false, error: failure ?? TRY_AGAIN_ERROR, rateLimited, retryable };
   }
 
   // Only now is the draft delivered (see DELIVERED_WHERE). Not fatal if it
@@ -145,8 +162,7 @@ export async function dispatchFollowUpDraft(args: {
 const AUTO_SEND_GRACE_MS = 60_000;
 /** Most automatic sends per clinic per run: a backlog drains over a few runs, never as one burst. */
 const AUTO_SEND_PER_BUSINESS_CAP = 20;
-/** Most clinics served per run (each up to its cap); the rest are first next run. */
-const AUTO_SEND_MAX_BUSINESSES = 50;
+
 
 /**
  * Sends the `autoSend` drafts that are due: made at least a minute ago (the
@@ -176,61 +192,80 @@ export async function dispatchDueAutomaticDrafts(args: {
   } satisfies Prisma.FollowUpDraftWhereInput;
 
   // Per clinic, not one global oldest-first batch: a clinic with a big queue
-  // must not keep another clinic's messages out of every run.
-  const businesses = await prisma.followUpDraft.groupBy({
+  // must not keep another clinic's messages out of every run. Clinics are
+  // served in a rotation that resumes after the last one this run reached, so
+  // a run that runs out of time never leaves the same clinics behind again.
+  const groups = await prisma.followUpDraft.groupBy({
     by: ["businessId"],
     where: dueWhere,
     orderBy: { businessId: "asc" },
-    take: AUTO_SEND_MAX_BUSINESSES,
   });
-  const due: { id: string; businessId: string }[] = [];
-  for (const { businessId } of businesses) {
-    due.push(
-      ...(await prisma.followUpDraft.findMany({
-        where: { ...dueWhere, businessId },
-        select: { id: true, businessId: true },
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        take: perBusinessCap,
-      }))
-    );
+  const businesses = rotateForFairness(
+    groups.map((group) => ({ id: group.businessId })),
+    await getAutomationsCursor()
+  );
+
+  let sent = 0;
+  let failed = 0;
+  let reached = 0;
+
+  for (const business of businesses) {
+    if (Date.now() > deadlineAt) break;
+    reached += 1;
+    const drafts = await prisma.followUpDraft.findMany({
+      where: { ...dueWhere, businessId: business.id },
+      select: { id: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: perBusinessCap,
+    });
+    const outcome = await sendClinicDrafts(business.id, drafts, deadlineAt);
+    sent += outcome.sent;
+    failed += outcome.failed;
   }
 
-  const stoppedBusinesses = new Set<string>();
+  const lastReached = lastAttemptedId(businesses, reached);
+  if (lastReached) await setAutomationsCursor(lastReached);
+
+  return { sent, failed };
+}
+
+/** One clinic's due drafts, oldest first; stops at its sending ceiling or the deadline. */
+async function sendClinicDrafts(
+  businessId: string,
+  drafts: { id: string }[],
+  deadlineAt: number
+): Promise<{ sent: number; failed: number }> {
   let sent = 0;
   let failed = 0;
 
-  for (const draft of due) {
+  for (const { id: draftId } of drafts) {
     if (Date.now() > deadlineAt) break;
-    if (stoppedBusinesses.has(draft.businessId)) continue;
 
     try {
-      const result = await dispatchFollowUpDraft({ draftId: draft.id, businessId: draft.businessId });
+      const result = await dispatchFollowUpDraft({ draftId, businessId, automatic: true });
       if (result.ok) {
         sent += 1;
       } else if (result.rateLimited) {
         // At its sending ceiling: the rest of this clinic's drafts wait for the next run.
         failed += 1;
-        stoppedBusinesses.add(draft.businessId);
+        break;
       } else {
         failed += 1;
-        if (result.error !== TRY_AGAIN_ERROR) {
+        if (!result.retryable) {
           // Refused for a reason a retry won't fix (switched off, no longer
-          // true, no phone on file): stop sending it on its own, so it can't
+          // true, no or an invalid phone number): stop sending it on its own, so it can't
           // hold one of this clinic's places in every run. It stays visible in
           // To review wherever the review list would still show it.
           await prisma.followUpDraft
-            .updateMany({ where: { id: draft.id, status: "PENDING", autoSend: true }, data: { autoSend: false } })
+            .updateMany({ where: { id: draftId, status: "PENDING", autoSend: true }, data: { autoSend: false } })
             .catch((error) =>
-              logger.error("Couldn't stop an unsendable draft from sending on its own.", error, {
-                businessId: draft.businessId,
-                draftId: draft.id,
-              })
+              logger.error("Couldn't stop an unsendable draft from sending on its own.", error, { businessId, draftId })
             );
         }
       }
     } catch (error) {
       failed += 1;
-      logger.error("An automatic follow-up send failed.", error, { businessId: draft.businessId, draftId: draft.id });
+      logger.error("An automatic follow-up send failed.", error, { businessId, draftId });
     }
   }
 

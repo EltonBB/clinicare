@@ -225,14 +225,16 @@ export async function markFollowUpDraftSent(args: {
   businessId: string;
   now?: Date;
   editedBody?: string;
+  /** An automatic send: the draft must still be marked to send on its own. */
+  automatic?: boolean;
 }): Promise<MarkDraftSentResult> {
-  const { id, businessId, now = new Date(), editedBody } = args;
+  const { id, businessId, now = new Date(), editedBody, automatic } = args;
 
   if (editedBody !== undefined && editedBody.length > MAX_MESSAGE_BODY_LENGTH) {
     return { ok: false, error: MESSAGE_TOO_LONG_ERROR };
   }
 
-  return runSendGate({ id, businessId, now, stage: "claim", editedBody });
+  return runSendGate({ id, businessId, now, stage: "claim", editedBody, automatic });
 }
 
 /**
@@ -264,10 +266,11 @@ export async function confirmFollowUpDraftDispatch(args: {
   id: string;
   businessId: string;
   now?: Date;
+  automatic?: boolean;
 }): Promise<MarkDraftSentResult> {
-  const { id, businessId, now = new Date() } = args;
+  const { id, businessId, now = new Date(), automatic } = args;
 
-  return runSendGate({ id, businessId, now, stage: "recheck" });
+  return runSendGate({ id, businessId, now, stage: "recheck", automatic });
 }
 
 // The claim moves a PENDING draft to SENT; the re-check holds the draft in SENT.
@@ -279,6 +282,7 @@ async function runSendGate(args: {
   now: Date;
   stage: "claim" | "recheck";
   editedBody?: string;
+  automatic?: boolean;
 }): Promise<MarkDraftSentResult> {
   try {
     return await flipDraftToSent(args);
@@ -296,8 +300,9 @@ function flipDraftToSent(args: {
   now: Date;
   stage: "claim" | "recheck";
   editedBody?: string;
+  automatic?: boolean;
 }): Promise<MarkDraftSentResult> {
-  const { id, businessId, now, stage, editedBody } = args;
+  const { id, businessId, now, stage, editedBody, automatic } = args;
 
   return retryOnWriteConflict(() =>
     prisma.$transaction(async (tx) => {
@@ -306,6 +311,10 @@ function flipDraftToSent(args: {
           id,
           businessId,
           status: stage === "claim" ? "PENDING" : "SENT",
+          // An automatic send stops the moment the clinic switches the
+          // automation to review or off (which clears autoSend), up to the
+          // last check right before the patient is contacted.
+          ...(automatic ? { autoSend: true } : {}),
           ...stillHoldsWhere(now),
           // A slot offer additionally needs the workspace still on Pro to be
           // sent — a downgrade stops staff from sending a new one at once, not

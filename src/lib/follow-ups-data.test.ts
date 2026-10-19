@@ -726,6 +726,23 @@ describe("follow-ups data layer — which drafts are actionable", () => {
     });
   });
 
+  it("refuses an automatic send once the draft no longer sends on its own", async () => {
+    serveDrafts([draftRow({ autoSend: false })]);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW, automatic: true })).toEqual({
+      ok: false,
+      error: "This follow-up was already handled.",
+    });
+  });
+
+  it("lets an automatic send through while the draft still sends on its own", async () => {
+    serveDrafts([draftRow({ autoSend: true })]);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW, automatic: true })).toMatchObject({
+      ok: true,
+    });
+  });
+
   it("flips a live PENDING draft to SENT atomically and refuses a second flip", async () => {
     const row = draftRow();
     serveDrafts([row]);

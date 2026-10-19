@@ -189,8 +189,8 @@ export async function findRebookCandidates(args: {
       clinic_name: message?.clinicName,
     }),
     dedupeKey: `REBOOK:${client.id}:${monthKey(now)}`,
-    // Lapsed `cutoff - lastVisitAt` ago, i.e. due that long before now.
-    ...(client.lastVisitAt ? { dueAt: new Date(now.getTime() - (cutoff.getTime() - client.lastVisitAt.getTime())) } : {}),
+    // Due the configured number of clinic-local calendar months after the last visit.
+    ...(client.lastVisitAt ? { dueAt: subtractMonths(client.lastVisitAt, -settings.rebookAfterMonths) } : {}),
   }));
 }
 

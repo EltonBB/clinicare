@@ -76,7 +76,12 @@ describe("saveAutomationSettingAction", () => {
     await saveAutomationSettingAction({ ...base, kind: "PAYMENT_REMINDER", enabled: false, timing: 3 });
 
     expect(mocks.tx.followUpDraft.updateMany).toHaveBeenCalledWith({
-      where: { businessId: "biz_1", status: "PENDING", autoSend: true, kind: { in: ["PAYMENT"] } },
+      where: {
+        businessId: "biz_1",
+        autoSend: true,
+        kind: { in: ["PAYMENT"] },
+        OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
+      },
       data: { autoSend: false },
     });
   });
@@ -99,7 +104,12 @@ describe("saveAutomationSettingAction", () => {
     await saveAutomationSettingAction({ ...base, kind: "THANK_YOU", mode: "REVIEW", timing: 2 });
 
     expect(mocks.tx.followUpDraft.updateMany).toHaveBeenCalledWith({
-      where: { businessId: "biz_1", status: "PENDING", autoSend: true, kind: { in: ["THANK_YOU"] } },
+      where: {
+        businessId: "biz_1",
+        autoSend: true,
+        kind: { in: ["THANK_YOU"] },
+        OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
+      },
       data: { autoSend: false },
     });
   });
