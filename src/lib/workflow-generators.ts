@@ -32,6 +32,12 @@ export type FollowUpDraftInput = {
   dedupeKey: string;
   /** The automation's mode when drafted: only autoSend drafts go out without a person. */
   autoSend?: boolean;
+  /**
+   * When the candidate became due (e.g. a payment's creation plus the delay).
+   * Something that has been due for a while is a backlog item, which is drafted
+   * for review even when the automation sends on its own (see follow-up-generation.ts).
+   */
+  dueAt?: Date;
 };
 
 /** The clinic's own wording for a generated kind (null = the default text). */
@@ -170,7 +176,7 @@ export async function findRebookCandidates(args: {
       appointments: { none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } } },
       followUpDrafts: { none: { kind: "REBOOK", OR: [{ status: "PENDING" }, { createdAt: { gte: monthStart } }] } },
     },
-    select: { id: true, name: true },
+    select: { id: true, name: true, lastVisitAt: true },
     orderBy: [{ lastVisitAt: "asc" }, { id: "asc" }],
     take: MAX_CANDIDATES_PER_RUN,
   });
@@ -183,6 +189,8 @@ export async function findRebookCandidates(args: {
       clinic_name: message?.clinicName,
     }),
     dedupeKey: `REBOOK:${client.id}:${monthKey(now)}`,
+    // Lapsed `cutoff - lastVisitAt` ago, i.e. due that long before now.
+    ...(client.lastVisitAt ? { dueAt: new Date(now.getTime() - (cutoff.getTime() - client.lastVisitAt.getTime())) } : {}),
   }));
 }
 
@@ -216,7 +224,7 @@ export async function findPaymentReminderCandidates(args: {
       client: ELIGIBLE_CLIENT_WHERE,
       followUpDrafts: { none: { kind: "PAYMENT" } },
     },
-    select: { id: true, clientId: true, client: { select: { name: true } } },
+    select: { id: true, clientId: true, createdAt: true, client: { select: { name: true } } },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     take: MAX_CANDIDATES_PER_RUN,
   });
@@ -230,6 +238,8 @@ export async function findPaymentReminderCandidates(args: {
       clinic_name: message?.clinicName,
     }),
     dedupeKey: `PAYMENT:${payment.id}`,
+    // Owed for the delay since it was recorded.
+    ...(payment.createdAt ? { dueAt: new Date(now.getTime() - (cutoff.getTime() - payment.createdAt.getTime())) } : {}),
   }));
 }
 

@@ -248,6 +248,25 @@ describe("syncAppointmentRemindersForBusiness with automation settings", () => {
     expect(keys).toEqual([expect.stringContaining("risky:HIGH_RISK:"), expect.stringContaining("steady:TWENTY_FOUR_HOUR:")]);
   });
 
+  it("still sends the other reminders when scoring risk fails", async () => {
+    mocks.business.findUnique.mockResolvedValue(
+      business({
+        automationSettings: [
+          { kind: "HIGH_RISK_REMINDER", enabled: true, mode: "AUTOMATIC", timing: 5, template: null, template2: null },
+        ],
+      })
+    );
+    mocks.appointment.findMany.mockResolvedValue([appointmentIn(4, "appt_1")]);
+    mocks.getNoShowRiskAssessments.mockRejectedValue(new Error("pool timeout"));
+    mocks.sendMessage.mockResolvedValue(sent);
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    expect(mocks.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: expect.stringContaining("appt_1:TWENTY_FOUR_HOUR:") })
+    );
+  });
+
   it("doesn't score risk when the high-risk reminder is off", async () => {
     mocks.appointment.findMany.mockResolvedValue([appointmentIn(4, "appt_1")]);
     mocks.sendMessage.mockResolvedValue(sent);

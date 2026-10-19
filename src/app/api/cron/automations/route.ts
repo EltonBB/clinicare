@@ -48,8 +48,10 @@ async function run() {
     if (result.failed > 0) {
       logger.warn("Automations cron completed with unsent messages.", { ...result });
     }
+    // Read by withCronMonitor: a run where nothing that was due could be sent
+    // (the worker down, every send refused) fails its Sentry check-in.
     return NextResponse.json(
-      { ok: true, ...result, degraded: false },
+      { ok: true, ...result, degraded: result.failed > 0 && result.sent === 0 },
       { status: 200, headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {

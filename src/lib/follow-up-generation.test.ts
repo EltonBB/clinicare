@@ -194,6 +194,23 @@ describe("generateFollowUpDrafts — automation settings", () => {
     });
   });
 
+  it("drafts an old unpaid payment for review even when payment reminders send on their own", async () => {
+    mocks.prisma.business.findMany.mockResolvedValue([business("biz_1")]);
+    mocks.findPaymentReminderCandidates.mockResolvedValue([
+      { ...paymentInput, dueAt: new Date(NOW.getTime() - 30 * 24 * HOUR_MS) },
+      { ...paymentInput, paymentId: "pay2", dedupeKey: "PAYMENT:pay2", dueAt: new Date(NOW.getTime() - HOUR_MS) },
+    ]);
+
+    await generateFollowUpDrafts(NOW);
+
+    expect(mocks.prisma.followUpDraft.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ dedupeKey: "PAYMENT:pay1", autoSend: false }),
+    });
+    expect(mocks.prisma.followUpDraft.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ dedupeKey: "PAYMENT:pay2", autoSend: true }),
+    });
+  });
+
   it("sends a Basic clinic's thank-yous automatically", async () => {
     mocks.prisma.business.findMany.mockResolvedValue([business("biz_basic", { plan: "BASIC" })]);
     mocks.findThankYouCandidates.mockResolvedValue([thankYouInput]);

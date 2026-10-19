@@ -95,10 +95,12 @@ export async function syncAppointmentRemindersForBusiness(
   const first = settings.FIRST_REMINDER;
   const second = settings.SECOND_REMINDER;
   const highRisk = settings.HIGH_RISK_REMINDER;
-  const hoursOf = (timing: number | null, fallback: number) => Math.min(Math.max(timing ?? fallback, 1), 24);
-  const firstReminderHours = hoursOf(first.timing, 24);
-  const secondReminderHours = hoursOf(second.timing, 2);
-  const highRiskHours = hoursOf(highRisk.timing, 5);
+  // Resolved and validated by automationSettingsFromBusiness; clamped once more
+  // so a bad stored value can never widen the query window past a day.
+  const hoursOf = (timing: number | null) => Math.min(Math.max(timing ?? 1, 1), 24);
+  const firstReminderHours = hoursOf(first.timing);
+  const secondReminderHours = hoursOf(second.timing);
+  const highRiskHours = hoursOf(highRisk.timing);
   const windows = [
     first.enabled ? firstReminderHours : 0,
     second.enabled ? secondReminderHours : 0,
@@ -152,6 +154,7 @@ export async function syncAppointmentRemindersForBusiness(
   const highRiskIds = new Set<string>();
   if (highRisk.enabled) {
     const highRiskCutoff = addHours(now, highRiskHours);
+    // A scoring failure costs only the high-risk reminders, never the others.
     const assessments = await getNoShowRiskAssessments({
       businessId,
       now,
@@ -168,6 +171,9 @@ export async function syncAppointmentRemindersForBusiness(
           createdAt: appointment.createdAt,
           status: appointment.status as "PENDING" | "CONFIRMED",
         })),
+    }).catch((error) => {
+      logger.error("Scoring no-show risk for reminders failed.", error, { businessId });
+      return new Map();
     });
     for (const [appointmentId, assessment] of assessments) {
       if (assessment.level === "high") highRiskIds.add(appointmentId);

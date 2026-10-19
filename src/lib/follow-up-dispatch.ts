@@ -1,3 +1,5 @@
+import type { Prisma } from "@prisma/client";
+
 import { FOLLOW_UP_KIND_TO_AUTOMATION } from "@/lib/automations";
 import {
   confirmFollowUpDraftDispatch,
@@ -143,7 +145,8 @@ export async function dispatchFollowUpDraft(args: {
 const AUTO_SEND_GRACE_MS = 60_000;
 /** Most automatic sends per clinic per run: a backlog drains over a few runs, never as one burst. */
 const AUTO_SEND_PER_BUSINESS_CAP = 20;
-const AUTO_SEND_BATCH = 200;
+/** Most clinics served per run (each up to its cap); the rest are first next run. */
+const AUTO_SEND_MAX_BUSINESSES = 50;
 
 /**
  * Sends the `autoSend` drafts that are due: made at least a minute ago (the
@@ -161,23 +164,37 @@ export async function dispatchDueAutomaticDrafts(args: {
 }): Promise<{ sent: number; failed: number }> {
   const { now, deadlineAt, perBusinessCap = AUTO_SEND_PER_BUSINESS_CAP } = args;
 
-  const due = await prisma.followUpDraft.findMany({
-    where: {
-      status: "PENDING",
-      autoSend: true,
-      createdAt: { lte: new Date(now.getTime() - AUTO_SEND_GRACE_MS) },
-      OR: [{ sendAfter: null }, { sendAfter: { lte: now } }],
-      business: {
-        whatsappEnabled: true,
-        whatsappConnection: { is: { status: { in: ["CONNECTED", "ERRORED"] } } },
-      },
+  const dueWhere = {
+    status: "PENDING",
+    autoSend: true,
+    createdAt: { lte: new Date(now.getTime() - AUTO_SEND_GRACE_MS) },
+    OR: [{ sendAfter: null }, { sendAfter: { lte: now } }],
+    business: {
+      whatsappEnabled: true,
+      whatsappConnection: { is: { status: { in: ["CONNECTED", "ERRORED"] } } },
     },
-    select: { id: true, businessId: true },
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    take: AUTO_SEND_BATCH,
-  });
+  } satisfies Prisma.FollowUpDraftWhereInput;
 
-  const perBusiness = new Map<string, number>();
+  // Per clinic, not one global oldest-first batch: a clinic with a big queue
+  // must not keep another clinic's messages out of every run.
+  const businesses = await prisma.followUpDraft.groupBy({
+    by: ["businessId"],
+    where: dueWhere,
+    orderBy: { businessId: "asc" },
+    take: AUTO_SEND_MAX_BUSINESSES,
+  });
+  const due: { id: string; businessId: string }[] = [];
+  for (const { businessId } of businesses) {
+    due.push(
+      ...(await prisma.followUpDraft.findMany({
+        where: { ...dueWhere, businessId },
+        select: { id: true, businessId: true },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        take: perBusinessCap,
+      }))
+    );
+  }
+
   const stoppedBusinesses = new Set<string>();
   let sent = 0;
   let failed = 0;
@@ -185,9 +202,6 @@ export async function dispatchDueAutomaticDrafts(args: {
   for (const draft of due) {
     if (Date.now() > deadlineAt) break;
     if (stoppedBusinesses.has(draft.businessId)) continue;
-    const attempted = perBusiness.get(draft.businessId) ?? 0;
-    if (attempted >= perBusinessCap) continue;
-    perBusiness.set(draft.businessId, attempted + 1);
 
     try {
       const result = await dispatchFollowUpDraft({ draftId: draft.id, businessId: draft.businessId });

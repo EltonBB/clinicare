@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   sendMessage: vi.fn(),
   mirrorOutboundToInbox: vi.fn(),
   findMany: vi.fn(),
+  groupBy: vi.fn(),
   updateMany: vi.fn(),
 }));
 
@@ -21,7 +22,7 @@ vi.mock("@/lib/messaging", () => ({ sendMessage: mocks.sendMessage }));
 vi.mock("@/lib/messaging/inbox-mirror", () => ({ mirrorOutboundToInbox: mocks.mirrorOutboundToInbox }));
 vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 vi.mock("@/lib/prisma", () => ({
-  prisma: { followUpDraft: { findMany: mocks.findMany, updateMany: mocks.updateMany } },
+  prisma: { followUpDraft: { findMany: mocks.findMany, groupBy: mocks.groupBy, updateMany: mocks.updateMany } },
 }));
 
 import { dispatchDueAutomaticDrafts, dispatchFollowUpDraft } from "./follow-up-dispatch";
@@ -39,7 +40,16 @@ beforeEach(() => {
   mocks.sendMessage.mockResolvedValue(SENT);
   mocks.updateMany.mockResolvedValue({ count: 1 });
   mocks.findMany.mockResolvedValue([]);
+  mocks.groupBy.mockResolvedValue([]);
 });
+
+/** Due drafts as the database would return them: grouped per clinic, oldest first. */
+function serveDue(drafts: { id: string; businessId: string }[]) {
+  mocks.groupBy.mockResolvedValue([...new Set(drafts.map((draft) => draft.businessId))].map((businessId) => ({ businessId })));
+  mocks.findMany.mockImplementation(async ({ where, take }: { where: { businessId: string }; take: number }) =>
+    drafts.filter((draft) => draft.businessId === where.businessId).slice(0, take)
+  );
+}
 
 describe("dispatchFollowUpDraft", () => {
   it("sends a claimed draft once, keyed by its id, and labels the mirrored message", async () => {
@@ -98,7 +108,7 @@ describe("dispatchDueAutomaticDrafts", () => {
   it("only ever picks drafts made to send on their own, past their delay and a minute old", async () => {
     await dispatchDueAutomaticDrafts({ now: NOW, deadlineAt: Date.now() + 60_000 });
 
-    const where = mocks.findMany.mock.calls[0][0].where;
+    const where = mocks.groupBy.mock.calls[0][0].where;
     expect(where).toMatchObject({
       status: "PENDING",
       autoSend: true,
@@ -109,9 +119,7 @@ describe("dispatchDueAutomaticDrafts", () => {
   });
 
   it("caps each clinic's sends per run", async () => {
-    mocks.findMany.mockResolvedValue(
-      Array.from({ length: 5 }, (_, index) => ({ id: `d_${index}`, businessId: "biz_1" }))
-    );
+    serveDue(Array.from({ length: 5 }, (_, index) => ({ id: `d_${index}`, businessId: "biz_1" })));
 
     const result = await dispatchDueAutomaticDrafts({ now: NOW, deadlineAt: Date.now() + 60_000, perBusinessCap: 2 });
 
@@ -120,7 +128,7 @@ describe("dispatchDueAutomaticDrafts", () => {
   });
 
   it("stops a clinic at its sending ceiling and carries on with the next", async () => {
-    mocks.findMany.mockResolvedValue([
+    serveDue([
       { id: "a_1", businessId: "biz_a" },
       { id: "a_2", businessId: "biz_a" },
       { id: "b_1", businessId: "biz_b" },
@@ -137,7 +145,7 @@ describe("dispatchDueAutomaticDrafts", () => {
   });
 
   it("stops sending on its own a draft that can't go out, so it doesn't block the clinic", async () => {
-    mocks.findMany.mockResolvedValue([{ id: "d_1", businessId: "biz_1" }]);
+    serveDue([{ id: "d_1", businessId: "biz_1" }]);
     mocks.markFollowUpDraftSent.mockResolvedValue({ ok: false, error: "This follow-up was already handled." });
 
     await dispatchDueAutomaticDrafts({ now: NOW, deadlineAt: Date.now() + 60_000 });
@@ -149,7 +157,7 @@ describe("dispatchDueAutomaticDrafts", () => {
   });
 
   it("keeps a draft whose send failed for a passing reason, to try again next run", async () => {
-    mocks.findMany.mockResolvedValue([{ id: "d_1", businessId: "biz_1" }]);
+    serveDue([{ id: "d_1", businessId: "biz_1" }]);
     mocks.sendMessage.mockResolvedValue({ ok: false, reason: "provider_error", error: "x" });
 
     await dispatchDueAutomaticDrafts({ now: NOW, deadlineAt: Date.now() + 60_000 });
@@ -157,8 +165,21 @@ describe("dispatchDueAutomaticDrafts", () => {
     expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 
+  it("serves every clinic, however long another clinic's queue is", async () => {
+    serveDue([
+      ...Array.from({ length: 300 }, (_, index) => ({ id: `big_${index}`, businessId: "biz_big" })),
+      { id: "small_1", businessId: "biz_small" },
+    ]);
+
+    await dispatchDueAutomaticDrafts({ now: NOW, deadlineAt: Date.now() + 60_000 });
+
+    const attempted = mocks.markFollowUpDraftSent.mock.calls.map(([args]) => args.id);
+    expect(attempted).toContain("small_1");
+    expect(attempted.filter((id: string) => id.startsWith("big_"))).toHaveLength(20);
+  });
+
   it("starts nothing once the time budget is spent", async () => {
-    mocks.findMany.mockResolvedValue([{ id: "d_1", businessId: "biz_1" }]);
+    serveDue([{ id: "d_1", businessId: "biz_1" }]);
 
     await dispatchDueAutomaticDrafts({ now: NOW, deadlineAt: Date.now() - 1 });
 

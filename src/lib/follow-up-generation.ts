@@ -28,6 +28,14 @@ import {
 const HOUR_MS = 3_600_000;
 
 /**
+ * A candidate due longer ago than this is a backlog item (an old unpaid
+ * payment, a client lapsed months ago): it is drafted for review even when its
+ * automation sends on its own, so turning an automation on, connecting
+ * WhatsApp or shipping a new automation never sends a burst of old messages.
+ */
+const AUTO_SEND_MAX_LATENESS_MS = 3 * 24 * HOUR_MS;
+
+/**
  * Stop starting new businesses after this long. The route's maxDuration is 120s;
  * this is only a safety net at pilot scale, and the leftover businesses are
  * picked up by the next hourly run (candidates already drafted are excluded).
@@ -210,8 +218,14 @@ async function generateForBusiness(
     if (outcome.status === "fulfilled") {
       // Generators return oldest first, so the oldest candidates get the room.
       // The mode is snapshotted on the draft: only these send without a person.
-      const autoSend = automations[FOLLOW_UP_KIND_TO_AUTOMATION[generator.kind]].mode === "AUTOMATIC";
-      candidates.push(...outcome.value.slice(0, roomFor(generator.kind)).map((candidate) => ({ ...candidate, autoSend })));
+      const automatic = automations[FOLLOW_UP_KIND_TO_AUTOMATION[generator.kind]].mode === "AUTOMATIC";
+      const freshSince = now.getTime() - AUTO_SEND_MAX_LATENESS_MS;
+      candidates.push(
+        ...outcome.value.slice(0, roomFor(generator.kind)).map(({ dueAt, ...candidate }) => ({
+          ...candidate,
+          autoSend: automatic && (!dueAt || dueAt.getTime() >= freshSince),
+        }))
+      );
       return;
     }
     totals.errors += 1;
