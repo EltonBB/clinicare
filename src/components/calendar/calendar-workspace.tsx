@@ -191,6 +191,11 @@ function EventPill({
         dense
           ? "pointer-events-auto gap-1.5 px-2 py-1 text-[11px] active:scale-[0.97]"
           : "gap-2.5 px-3 py-2.5 text-sm active:scale-[0.98]",
+        // A week column narrower than ~136px (laptop widths) left the name a
+        // single letter beside the time, so there the time drops under the name.
+        !dense &&
+          !detailed &&
+          "@max-[8.5rem]:flex-col @max-[8.5rem]:items-start @max-[8.5rem]:gap-0 @max-[8.5rem]:px-2.5 @max-[8.5rem]:py-1.5 @max-[8.5rem]:text-xs",
         monthChipClasses[appointment.status]
       )}
     >
@@ -215,7 +220,7 @@ function EventPill({
         </>
       ) : (
         <>
-          <span className={cn("truncate font-semibold", appointment.status === "cancelled" && "line-through")}>
+          <span className={cn("max-w-full truncate font-semibold", appointment.status === "cancelled" && "line-through")}>
             {appointment.clientName}
           </span>
           <span className="shrink-0 tabular-nums opacity-80">{appointment.startTime}</span>
@@ -229,13 +234,14 @@ function BlockPill({ block }: { block: CalendarScheduleBlock }) {
   return (
     <div
       data-block-pill=""
-      className="flex min-h-10 w-full shrink-0 items-center justify-between gap-2 rounded-(--radius-tile) bg-slate-100 px-2.5 py-1.5 text-left text-xs font-medium text-slate-700"
+      // Same narrow-column stacking as EventPill: the time range drops under the title.
+      className="flex min-h-10 w-full shrink-0 items-center justify-between gap-2 rounded-(--radius-tile) bg-slate-100 px-2.5 py-1.5 text-left text-xs font-medium text-slate-700 @max-[8.5rem]:flex-col @max-[8.5rem]:items-start @max-[8.5rem]:gap-0"
     >
-      <span className="flex min-w-0 items-center gap-1.5 truncate">
+      <span className="flex max-w-full min-w-0 items-center gap-1.5 truncate">
         <CalendarX2 className="size-3 shrink-0" />
         <span className="truncate">{block.title}</span>
       </span>
-      <span className="shrink-0 tabular-nums opacity-80">
+      <span className="shrink-0 whitespace-nowrap tabular-nums opacity-80">
         {block.startTime} – {block.endTime}
       </span>
     </div>
@@ -325,7 +331,7 @@ function DayColumn({
     <div
       ref={columnRef}
       className={cn(
-        "flex max-h-[520px] min-h-[200px] flex-col gap-1.5 overflow-y-auto border-l border-t border-border/75 p-2.5 first:border-l-0 lg:h-full lg:max-h-none lg:min-h-0",
+        "@container flex max-h-[520px] min-h-[200px] flex-col gap-1.5 overflow-y-auto border-l border-t border-border/75 p-2.5 first:border-l-0 lg:h-full lg:max-h-none lg:min-h-0",
         isEmpty && "justify-center",
         isToday ? "bg-[#f6f9ff]" : isSelectedColumn && "bg-[#f8fafd]"
       )}
@@ -651,6 +657,15 @@ export function CalendarWorkspace({
   waitlistEntries,
 }: CalendarWorkspaceProps) {
   const [view, setView] = useState<CalendarView>("week");
+  // A phone can't fit seven week columns (Week view scrolls sideways there), so
+  // it opens on Day view. Set after mount, since the server can't know the
+  // screen; only the starting view, never a choice the user makes afterwards.
+  useEffect(() => {
+    const startOnDay = () => {
+      if (window.matchMedia("(max-width: 639px)").matches) setView("day");
+    };
+    startOnDay();
+  }, []);
   const [activeDate, setActiveDate] = useState(() => parseISO(initialView.initialDate));
   const [quickView, setQuickView] = useState<{ appointment: CalendarAppointment; rect: DOMRect } | null>(null);
   const [waitlistOpen, setWaitlistOpen] = useState(false);

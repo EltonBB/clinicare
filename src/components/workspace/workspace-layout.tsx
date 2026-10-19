@@ -50,6 +50,12 @@ type WorkspaceTableProps = {
   className?: string;
   headerClassName?: string;
   bodyClassName?: string;
+  /**
+   * The width the table's columns need (e.g. "lg:min-w-[1010px]"). When the
+   * card is narrower, the table scrolls sideways instead of clipping its last
+   * columns.
+   */
+  minWidthClassName?: string;
 };
 
 type WorkspaceToolbarProps = {
@@ -233,20 +239,25 @@ export function WorkspaceTable({
   className,
   headerClassName,
   bodyClassName,
+  minWidthClassName,
 }: WorkspaceTableProps) {
   return (
     <section className={cn("overflow-hidden rounded-(--radius-card) border border-border/80 bg-white shadow-(--shadow-card)", className)}>
-      {headers ? (
-        <div
-          className={cn(
-            "flex min-h-[40px] items-center bg-[#f8fafc] px-3.5 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground",
-            headerClassName
-          )}
-        >
-          {headers}
+      <div className={cn(minWidthClassName && "overflow-x-auto")}>
+        <div className={minWidthClassName}>
+          {headers ? (
+            <div
+              className={cn(
+                "flex min-h-[40px] items-center bg-[#f8fafc] px-3.5 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground",
+                headerClassName
+              )}
+            >
+              {headers}
+            </div>
+          ) : null}
+          <div className={cn(bodyClassName)}>{children}</div>
         </div>
-      ) : null}
-      <div className={cn(bodyClassName)}>{children}</div>
+      </div>
     </section>
   );
 }

@@ -197,6 +197,9 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
 
         <WorkspaceTable
           headerClassName="py-2.5"
+          // The columns need ~1010px (the row actions hold two buttons); on a
+          // laptop-width card the table scrolls sideways rather than clipping them.
+          minWidthClassName="lg:min-w-[1010px]"
           headers={
             <div className={cn("hidden w-full gap-3 lg:grid", staffTableGrid)}>
               <span>Staff member</span>
