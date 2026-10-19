@@ -9,13 +9,6 @@ export const clientStatuses = ["active", "inactive", "at-risk", "archived"];
 const genders = ["", "Female", "Male", "Other"];
 const contactMethods = ["", "WhatsApp", "Phone Call", "Email"];
 
-// The view model still returns a few legacy "Not added" strings for empty values.
-export function clean(value: string) {
-  return value === "Not added" || value === "Not added yet." || value === "No notes yet."
-    ? ""
-    : value;
-}
-
 // Profile fields shared by the New and Edit client forms, so both read the same
 // and stay the same size. Uncontrolled: the form reads them back from FormData
 // (name, phone, email, dateOfBirth, gender, preferredChannel, address, notes and —
@@ -49,7 +42,7 @@ export function ClientProfileFields({ client }: { client?: ClientRecord }) {
       <FormSelect
         label="Gender"
         name="gender"
-        defaultValue={client ? clean(client.gender) : ""}
+        defaultValue={client?.gender ?? ""}
         options={genders}
         emptyLabel="Not set"
       />
@@ -80,14 +73,14 @@ export function ClientProfileFields({ client }: { client?: ClientRecord }) {
       <FormField label="Address" className="sm:col-span-2">
         <Input
           name="address"
-          defaultValue={client ? clean(client.address) : undefined}
+          defaultValue={client?.address}
           className={fieldInputClass}
         />
       </FormField>
       <FormField label="Notes" className="sm:col-span-2">
         <Textarea
           name="notes"
-          defaultValue={client ? clean(client.notes) : undefined}
+          defaultValue={client?.notes}
           className={fieldTextareaClass}
         />
       </FormField>

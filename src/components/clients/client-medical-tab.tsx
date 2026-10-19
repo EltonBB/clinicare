@@ -20,10 +20,6 @@ export const medicalRecordTypes: (RecordTypeOption & { key: MedicalKind })[] = [
   { key: "background", title: "Medical background", description: "History and previous treatments" },
 ];
 
-function stripPlaceholder(value: string) {
-  return value === "Not added" || value === "Not added yet." ? "" : value;
-}
-
 // The free-text background fields, in display order. Shared by the card below
 // and the "Medical background" dialog so both read the same fields.
 export function medicalBackgroundFields(medical: ClientRecord["medical"]) {
@@ -33,7 +29,7 @@ export function medicalBackgroundFields(medical: ClientRecord["medical"]) {
     { key: "importantHealthNotes", label: "Health notes", value: medical.importantHealthNotes },
     { key: "previousTreatments", label: "Previous treatments", value: medical.previousTreatments },
     { key: "treatmentPlan", label: "Treatment plan", value: medical.treatmentPlan },
-  ].map((field) => ({ ...field, value: stripPlaceholder(field.value) }));
+  ];
 }
 
 type ClientMedicalTabProps = {

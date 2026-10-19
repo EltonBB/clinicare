@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }));
 vi.mock("@/lib/media-storage-server", () => ({ resolveMediaDisplayUrls: mocks.resolveMediaDisplayUrls }));
 
-import { buildClientRecord } from "@/lib/clients";
+import { buildClientRecord, storedText } from "@/lib/clients";
 
 const PAID_AT = new Date("2026-09-10T09:00:00.000Z");
 
@@ -198,5 +198,20 @@ describe("buildClientRecord next appointment", () => {
     mocks.prisma.appointment.findFirst.mockResolvedValue(null);
 
     expect((await buildClientRecord(clientFixture(), "EUR", NOW)).nextAppointment).toBeNull();
+  });
+});
+
+describe("storedText", () => {
+  it("reads legacy filler and null as empty, and keeps real text", () => {
+    expect(storedText(null)).toBe("");
+    expect(storedText("Not added")).toBe("");
+    expect(storedText("Not added yet.")).toBe("");
+    expect(storedText("No notes.")).toBe("");
+    expect(storedText("Penicillin")).toBe("Penicillin");
+  });
+
+  it("only drops a field's own extra filler where it is passed", () => {
+    expect(storedText("Manual entry", "Manual entry")).toBe("");
+    expect(storedText("Manual entry")).toBe("Manual entry");
   });
 });
