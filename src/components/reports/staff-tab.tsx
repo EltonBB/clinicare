@@ -83,7 +83,7 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
   return (
     <section className="surface-card flex flex-col p-3.5">
       <h2 className="px-1 pb-2 text-[15px] font-semibold text-foreground">Staff performance</h2>
-      <div className="flex items-center gap-3 px-1 pb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="flex items-center gap-3 px-1 pb-2 text-[11px] font-semibold caps-label text-muted-foreground">
         <span className="min-w-0 max-w-[240px] flex-1">Provider</span>
         {columns.map((column) => (
           <button

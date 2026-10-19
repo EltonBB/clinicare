@@ -880,7 +880,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             <WorkspaceCard title="Appointments">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-[#f8fafc] text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  <thead className="bg-[#f8fafc] text-[10px] font-semibold caps-label text-muted-foreground">
                     <tr>
                       <th className="rounded-l-(--radius-field) px-3 py-2.5 text-left">Date & time</th>
                       <th className="px-3 py-2.5 text-left">Service</th>
@@ -986,7 +986,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   <section className="overflow-hidden rounded-(--radius-card) border border-border/80 bg-white shadow-(--shadow-card)">
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
-                        <thead className="bg-[#f8fafc] text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                        <thead className="bg-[#f8fafc] text-[10px] font-semibold caps-label text-muted-foreground">
                           <tr>
                             <th className="px-3 py-2.5 text-left">Document name</th>
                             <th className="px-3 py-2.5 text-left">Category</th>
@@ -1195,7 +1195,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               >
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-[#f8fafc] text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    <thead className="bg-[#f8fafc] text-[10px] font-semibold caps-label text-muted-foreground">
                       <tr>
                         <th className="rounded-l-(--radius-field) px-3 py-2.5 text-left">Date</th>
                         <th className="px-3 py-2.5 text-left">Invoice #</th>
@@ -1355,7 +1355,7 @@ function PaymentMetric({
 }) {
   return (
     <div className="border-border/70 px-2 py-1 md:border-r md:last:border-r-0">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+      <p className="text-[11px] font-semibold caps-label text-muted-foreground">
         {label}
       </p>
       <p

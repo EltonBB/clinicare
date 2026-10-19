@@ -160,7 +160,7 @@ export function WorkspaceHeader({
       <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
           {eyebrow ? (
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">
+            <p className="text-[10px] font-semibold caps-label text-primary">
               {eyebrow}
             </p>
           ) : null}
@@ -248,7 +248,7 @@ export function WorkspaceTable({
           {headers ? (
             <div
               className={cn(
-                "flex min-h-[40px] items-center bg-[#f8fafc] px-3.5 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground",
+                "flex min-h-[40px] items-center bg-[#f8fafc] px-3.5 py-2 text-[10px] font-semibold caps-label text-muted-foreground",
                 headerClassName
               )}
             >

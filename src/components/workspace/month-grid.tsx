@@ -81,7 +81,7 @@ export function MonthGrid({
           </button>
         </span>
       </div>
-      <div className="grid grid-cols-7 pb-1 text-center text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+      <div className="grid grid-cols-7 pb-1 text-center text-[10px] font-semibold caps-label text-muted-foreground">
         {WEEKDAY_LABELS.map((label) => (
           <span key={label} className="py-1">
             {label}

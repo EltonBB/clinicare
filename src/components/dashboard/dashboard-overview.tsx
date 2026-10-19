@@ -60,7 +60,7 @@ function KpiTile({
       )}
     >
       <ArrowUpRight className="absolute right-3 top-3 size-3.5 text-muted-foreground opacity-0 transition-opacity duration-(--duration-base) group-hover/kpi:opacity-100" />
-      <p className="text-[10px] font-semibold uppercase leading-3 tracking-[0.1em] text-muted-foreground">
+      <p className="text-[10px] font-semibold caps-label leading-3 text-muted-foreground">
         {label}
       </p>
       {/* Five tiles share one row from sm up, so a long amount ("HUF 20,000,000")
@@ -199,7 +199,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                   key={label}
                   className="flex flex-col justify-center rounded-(--radius-card) bg-secondary/45 px-3 py-2"
                 >
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                  <p className="text-[10px] font-semibold caps-label text-muted-foreground">
                     {label}
                   </p>
                   <p className="mt-1.5 text-2xl font-semibold leading-none tracking-tight tabular-nums text-foreground">
@@ -286,7 +286,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-primary">
+                    <span className="text-[10px] font-semibold caps-label text-primary">
                       Next up
                     </span>
                     <NextUpCountdown

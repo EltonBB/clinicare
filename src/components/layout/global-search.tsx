@@ -288,7 +288,7 @@ export function GlobalSearchPalette({
                         <span className="truncate text-sm font-semibold text-foreground">
                           {result.title}
                         </span>
-                        <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        <span className="shrink-0 text-[11px] font-semibold caps-label text-muted-foreground">
                           {result.type}
                         </span>
                       </span>

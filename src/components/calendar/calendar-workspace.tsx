@@ -1101,7 +1101,7 @@ export function CalendarWorkspace({
             </div>
           ) : view === "month" ? (
             <div key={gridKey} className={calendarGridHeightClass}>
-              <div className="z-30 grid shrink-0 grid-cols-7 border-b border-border/80 bg-white text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              <div className="z-30 grid shrink-0 grid-cols-7 border-b border-border/80 bg-white text-xs font-semibold caps-label text-muted-foreground">
                 {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
                   <div key={label} className="px-4 py-3">
                     {label}
@@ -1229,7 +1229,7 @@ export function CalendarWorkspace({
                     >
                       <p
                         className={cn(
-                          "text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground",
+                          "text-[11px] font-semibold caps-label text-muted-foreground",
                           isToday && "text-primary"
                         )}
                       >
