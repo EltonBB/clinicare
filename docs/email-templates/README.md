@@ -43,9 +43,16 @@ confirmation, so never hard-code `next` here or swap in `{{ .SiteURL }}`.
 | Reset Password | `recovery` | `/reset-password` |
 | Change Email Address | `email_change` | `/settings` |
 
-Each deployment's `<APP_URL>/auth/confirm` must be in Supabase's redirect
-allow-list (Authentication › URL Configuration). If it isn't, Supabase swaps
-`RedirectTo` for the bare Site URL and the link breaks.
+Supabase only keeps a `RedirectTo` it allows (Authentication › URL
+Configuration); otherwise it swaps in the bare Site URL and the link breaks.
+It checks the whole URL, query included (`?next=...`, with sign-up's changing
+ticket), so allow-list a pattern, not a path:
+
+- Production, on the same host as the Site URL: allowed already, nothing to add.
+- Any other deployment (staging, a custom preview domain): add
+  `https://<host>/auth/confirm**`. A double `**` matches the rest of the URL,
+  `?` and `/` included; a single `*` stops at `.` and `/`.
+- Vercel previews: `https://*-<team-slug>.vercel.app/auth/confirm**`.
 
 Never switch a link back to Supabase's default `{{ .ConfirmationURL }}`. That
 link verifies on Supabase's own endpoint, so the single-use token is spent
