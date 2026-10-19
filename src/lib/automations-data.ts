@@ -1,7 +1,8 @@
-import type { BusinessPlan, ReminderSettings, WorkflowSettings } from "@prisma/client";
+import { BusinessPlan, type Prisma, type ReminderSettings, type WorkflowSettings } from "@prisma/client";
 
 import {
   AUTOMATIONS,
+  automationDefinition,
   isAutomationAvailable,
   type AutomationKind,
   type AutomationMode,
@@ -183,4 +184,52 @@ export async function getAutomationSettings(businessId: string): Promise<Automat
   });
 
   return automationSettingsFromBusiness(business ?? { plan: "BASIC" });
+}
+
+/**
+ * Before a clinic saves an automation on the new page, its old Workflows
+ * switch decides; without a Workflows row, the old default (rebooking off,
+ * the others on). Same precedence as resolveAutomationSettings.
+ */
+const LEGACY_WORKFLOW_SWITCHES: Partial<Record<AutomationKind, Prisma.WorkflowSettingsWhereInput>> = {
+  REBOOK: { rebookEnabled: true },
+  PAYMENT_REMINDER: { paymentReminderEnabled: true },
+  THANK_YOU: { thankYouEnabled: true },
+};
+const LEGACY_ON_WITHOUT_ROW: Partial<Record<AutomationKind, boolean>> = {
+  REBOOK: false,
+  PAYMENT_REMINDER: true,
+  THANK_YOU: true,
+};
+
+/**
+ * "This workspace has this automation on (and its plan includes it)", as a
+ * filter on the business a draft belongs to. The review list, its count and
+ * every send re-check this, so switching an automation off hides its pending
+ * drafts at once and they can't be sent. They are deliberately not expired:
+ * generators skip anything that already has a draft of its kind, so expiring
+ * them would mean, e.g., a still-unpaid payment never being reminded once the
+ * automation is back on.
+ */
+export function automationEnabledWhere(kind: AutomationKind): Prisma.BusinessWhereInput {
+  const definition = automationDefinition(kind);
+  const legacySwitch = LEGACY_WORKFLOW_SWITCHES[kind];
+  const onWithoutRow: Prisma.BusinessWhereInput | null = legacySwitch
+    ? LEGACY_ON_WITHOUT_ROW[kind]
+      ? { OR: [{ workflowSettings: { is: null } }, { workflowSettings: { is: legacySwitch } }] }
+      : { workflowSettings: { is: legacySwitch } }
+    : definition.defaultEnabled
+      ? {}
+      : null;
+
+  const enabled: Prisma.BusinessWhereInput = {
+    OR: [
+      { automationSettings: { some: { kind, enabled: true } } },
+      ...(onWithoutRow ? [{ AND: [{ automationSettings: { none: { kind } } }, onWithoutRow] }] : []),
+    ],
+  };
+
+  if (definition.basic) return enabled;
+  const proPlans = Object.values(BusinessPlan).filter((plan) => isProBusinessPlan(plan));
+  return { AND: [{ plan: { in: proPlans } }, enabled] };
 }

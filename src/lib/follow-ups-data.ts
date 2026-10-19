@@ -1,4 +1,4 @@
-import { BusinessPlan, Prisma } from "@prisma/client";
+import { BusinessPlan, Prisma, type FollowUpDraftKind } from "@prisma/client";
 
 import { isProBusinessPlan } from "@/lib/billing";
 import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
@@ -10,15 +10,11 @@ import { acquireSchedulingLock, hasSchedulingConflict } from "@/lib/scheduling-c
 import type { FollowUpDraftRecord } from "@/lib/follow-ups";
 import { liveSlotOfferWhere, reofferFreedSlot, retryOnWriteConflict } from "@/lib/slot-offers";
 import { AVAILABLE_STAFF_WHERE } from "@/lib/staff-eligibility";
-import { rebookedAppointmentWhere, workflowEnabledWhere } from "@/lib/workflow-generators";
+import { automationEnabledWhere } from "@/lib/automations-data";
+import { rebookedAppointmentWhere } from "@/lib/workflow-generators";
 
-// "Pro"/"not Pro" as billing.ts defines it — the same derivation as the
-// sweep's non-Pro rule (follow-up-generation.ts), so no plan list is kept
-// twice.
-function proPlans(): BusinessPlan[] {
-  return Object.values(BusinessPlan).filter((plan) => isProBusinessPlan(plan));
-}
-
+// "Not Pro" as billing.ts defines it — the same derivation as the sweep's
+// non-Pro rule (follow-up-generation.ts), so no plan list is kept twice.
 function nonProPlans(): BusinessPlan[] {
   return Object.values(BusinessPlan).filter((plan) => !isProBusinessPlan(plan));
 }
@@ -29,7 +25,7 @@ function nonProPlans(): BusinessPlan[] {
 // refused at once — not only once the hourly sweeps (expirePastSlotOffers,
 // expireStaleFollowUpDrafts) retire it. A workflow the clinic has since
 // switched Off is the one reason a draft is hidden here and NOT swept: it
-// comes back if the workflow is switched on again (see workflowEnabledWhere).
+// comes back if the automation is switched on again (see automationEnabledWhere).
 //
 // "What it's about still holds" is its own filter, without the status, because
 // Send checks it twice: when it claims a PENDING draft and again, on the claimed
@@ -56,7 +52,7 @@ function stillHoldsWhere(now: Date): Prisma.FollowUpDraftWhereInput {
       // switched on.
       {
         kind: "REBOOK",
-        business: { plan: { in: proPlans() }, ...workflowEnabledWhere("REBOOK") },
+        business: automationEnabledWhere("REBOOK"),
         client: {
           ...ELIGIBLE_CLIENT_WHERE,
           appointments: { none: rebookedAppointmentWhere(now) },
@@ -68,7 +64,7 @@ function stillHoldsWhere(now: Date): Prisma.FollowUpDraftWhereInput {
       // automated outreach suggestion of any kind (Codex #130).
       {
         kind: "PAYMENT",
-        business: workflowEnabledWhere("PAYMENT"),
+        business: automationEnabledWhere("PAYMENT_REMINDER"),
         client: ELIGIBLE_CLIENT_WHERE,
         payment: { status: { in: ["Unpaid", "Partially Paid"] } },
       },
@@ -78,7 +74,7 @@ function stillHoldsWhere(now: Date): Prisma.FollowUpDraftWhereInput {
       // one the clinic contacts.
       {
         kind: "THANK_YOU",
-        business: workflowEnabledWhere("THANK_YOU"),
+        business: automationEnabledWhere("THANK_YOU"),
         client: ELIGIBLE_CLIENT_WHERE,
         appointment: { status: "COMPLETED" },
       },
@@ -165,6 +161,7 @@ type DraftMutationResult = { ok: true } | { ok: false; error: string };
 
 export type SentFollowUpDraft = {
   id: string;
+  kind: FollowUpDraftKind;
   body: string;
   clientId: string;
   clientName: string | null;
@@ -356,6 +353,7 @@ function flipDraftToSent(args: {
         ok: true,
         draft: {
           id: draft.id,
+          kind: draft.kind,
           body: draft.body,
           clientId: draft.clientId,
           clientName: draft.client.name,

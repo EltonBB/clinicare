@@ -152,7 +152,10 @@ describe("offerFreedSlot", () => {
     const offered = await offerFreedSlot(tx, { businessId: "biz_1", cancelled: CANCELLED, now: NOW });
 
     expect(offered).toBe("wl_1");
-    expect(mocks.tx.business.findUniqueOrThrow).toHaveBeenCalledWith({ where: { id: "biz_1" }, select: { plan: true } });
+    expect(mocks.tx.business.findUniqueOrThrow).toHaveBeenCalledWith({
+      where: { id: "biz_1" },
+      select: expect.objectContaining({ plan: true, name: true, automationSettings: expect.anything() }),
+    });
     expect(mocks.tx.waitlistEntry.updateMany).toHaveBeenCalledWith({
       where: { id: "wl_1", businessId: "biz_1", status: "WAITING" },
       data: { status: "OFFERED" },
@@ -168,11 +171,55 @@ describe("offerFreedSlot", () => {
           waitlistEntryId: "wl_1",
           dedupeKey: `SLOT_OFFER:appt_1:${CYCLE}:wl_1`,
           body: "Hi Name wl_1, a slot has opened up on October 5, 2026 at 9:00 AM. Reply here if you'd like it.",
+          // Waiting-list offers wait for review by default.
+          autoSend: false,
         },
       ],
       skipDuplicates: true,
     });
     expectOuterClientUntouched();
+  });
+
+  it("offers nothing once the clinic switched waiting-list offers off", async () => {
+    mocks.tx.business.findUniqueOrThrow.mockResolvedValue({
+      plan: "PRO",
+      automationSettings: [
+        { kind: "WAITLIST_OFFER", enabled: false, mode: "REVIEW", timing: null, template: null, template2: null },
+      ],
+    });
+
+    expect(await offerFreedSlot(mocks.tx as never, { businessId: "biz_1", cancelled: CANCELLED, now: NOW })).toBeNull();
+    expect(mocks.tx.followUpDraft.createMany).not.toHaveBeenCalled();
+  });
+
+  it("uses the clinic's own wording and sends on its own when set to automatic", async () => {
+    mocks.tx.business.findUniqueOrThrow.mockResolvedValue({
+      plan: "PRO",
+      name: "Vela Dent",
+      automationSettings: [
+        {
+          kind: "WAITLIST_OFFER",
+          enabled: true,
+          mode: "AUTOMATIC",
+          timing: null,
+          template: "{client_name}: {date} {time} at {clinic_name}",
+          template2: null,
+        },
+      ],
+    });
+
+    await offerFreedSlot(mocks.tx as never, { businessId: "biz_1", cancelled: CANCELLED, now: NOW });
+
+    expect(mocks.tx.followUpDraft.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [
+          expect.objectContaining({
+            body: "Name wl_1: October 5, 2026 9:00 AM at Vela Dent",
+            autoSend: true,
+          }),
+        ],
+      })
+    );
   });
 
   it("checks the freed slot's assigned staff member is still available, by the shared rule", async () => {

@@ -72,19 +72,26 @@ describe("saveAutomationSettingAction", () => {
     expect(result).toMatchObject({ ok: false });
   });
 
-  it("dismisses pending drafts when an automation is turned off", async () => {
+  it("stops queued drafts sending on their own when an automation is turned off", async () => {
     await saveAutomationSettingAction({ ...base, kind: "PAYMENT_REMINDER", enabled: false, timing: 3 });
 
     expect(mocks.tx.followUpDraft.updateMany).toHaveBeenCalledWith({
-      where: { businessId: "biz_1", status: "PENDING", kind: { in: ["PAYMENT"] } },
-      data: { status: "DISMISSED" },
+      where: { businessId: "biz_1", status: "PENDING", autoSend: true, kind: { in: ["PAYMENT"] } },
+      data: { autoSend: false },
     });
   });
 
-  it("leaves pending slot offers to be settled one by one", async () => {
-    await saveAutomationSettingAction({ ...base, kind: "WAITLIST_OFFER", enabled: false });
+  it("never dismisses drafts, so an unpaid payment is reminded again once switched back on", async () => {
+    await saveAutomationSettingAction({ ...base, kind: "PAYMENT_REMINDER", enabled: false, timing: 3 });
 
-    expect(mocks.tx.automationSetting.upsert).toHaveBeenCalled();
+    expect(mocks.tx.followUpDraft.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: "DISMISSED" } })
+    );
+  });
+
+  it("touches no drafts for a reminder", async () => {
+    await saveAutomationSettingAction({ ...base, kind: "FIRST_REMINDER", enabled: false, timing: 24 });
+
     expect(mocks.tx.followUpDraft.updateMany).not.toHaveBeenCalled();
   });
 

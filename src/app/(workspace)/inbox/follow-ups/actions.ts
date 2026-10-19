@@ -3,20 +3,14 @@
 import { revalidatePath } from "next/cache";
 
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
+import { dispatchFollowUpDraft } from "@/lib/follow-up-dispatch";
 import { logger } from "@/lib/logger";
-import { sendMessage } from "@/lib/messaging";
-import { mirrorOutboundToInbox } from "@/lib/messaging/inbox-mirror";
 import { manualSendRefusal } from "@/lib/messaging/send-limits";
-import type { SendMessageResult } from "@/lib/messaging/types";
 import {
   ALREADY_HANDLED_ERROR,
   bookSlotOffer,
-  confirmFollowUpDraftDispatch,
   dismissFollowUpDraft,
-  markFollowUpDraftDelivered,
-  markFollowUpDraftSent,
   passSlotOffer,
-  revertFollowUpDraftToPending,
   SLOT_OFFER_UNAVAILABLE_ERROR,
 } from "@/lib/follow-ups-data";
 import { parseRecordId } from "@/lib/record-id";
@@ -26,8 +20,6 @@ import { formatZonedDateKey, formatZonedTime24, getZonedWallClockMinutesBetween 
 export type FollowUpDraftActionResult = { ok: boolean; error?: string; notice?: string };
 
 const TRY_AGAIN_ERROR = "Something went wrong. Try again.";
-const FOLLOW_UP_DELIVERY_UNCERTAIN_NOTICE =
-  "We couldn't confirm a follow-up was delivered, so it was marked as sent. Check the patient's WhatsApp chat before contacting them again.";
 
 function getAuthedBusiness() {
   return getAuthedBusinessContext("Your session expired. Log in again to manage follow-ups.");
@@ -93,127 +85,27 @@ export async function sendFollowUpDraftAction(
     return { ok: false, error: sendRefusal };
   }
 
-  const flip = await markFollowUpDraftSent({
-    id: draftId,
+  const outcome = await dispatchFollowUpDraft({
+    draftId,
     businessId: business.id,
     editedBody: editedBody && editedBody.length > 0 ? editedBody : undefined,
   });
 
-  if (!flip.ok) {
-    return { ok: false, error: flip.error };
+  if (!outcome.ok) {
+    return { ok: false, error: outcome.error };
   }
-
-  let failure: string | null = null;
-  // The provider can't say whether the message left (see SendFailureReason).
-  let uncertain = false;
-  let sent: {
-    clientId: string;
-    clientName: string | null;
-    phone: string;
-    result: Extract<SendMessageResult, { ok: true }>;
-  } | null = null;
-
-  try {
-    // The flip checked the draft and committed; the message is only handed to the
-    // provider after that, outside any transaction, so another request can
-    // invalidate the draft in between — a cancelled slot reactivated or filled
-    // (which expires its offer), a payment settled, a client booked or archived.
-    // One more check, as late as it can be made: the flip's whole check again,
-    // directly before the patient is contacted. The draft it returns is the one
-    // to send, with its body and phone number as they are now (Codex #130).
-    const ready = await confirmFollowUpDraftDispatch({ id: draftId, businessId: business.id });
-
-    if (!ready.ok) {
-      failure = ready.error;
-    } else {
-      const { draft } = ready;
-      const phone = draft.phone;
-
-      if (!phone) {
-        failure = "This client has no phone number on file.";
-      } else {
-        const result = await sendMessage({
-          channel: "WHATSAPP",
-          businessId: business.id,
-          to: phone,
-          message: { kind: "freeform", body: editedBody && editedBody.length > 0 ? editedBody : draft.body },
-          // A draft is sent at most once, so its id names the message: a send of
-          // it that reaches the provider twice is still delivered only once.
-          idempotencyKey: `follow-up:${draftId}`,
-        });
-
-        if (result.ok) {
-          sent = { clientId: draft.clientId, clientName: draft.clientName, phone, result };
-        } else if (result.reason === "delivery_uncertain") {
-          uncertain = true;
-        } else if (result.reason === "rate_limited") {
-          failure = result.error;
-        } else {
-          failure = "Couldn't send this message. Try again.";
-        }
-      }
-    }
-  } catch (error) {
-    // The flip already happened. A lookup that throws (say a database error)
-    // means nothing was sent, so put the draft back rather than strand it as
-    // SENT — every retry would otherwise answer "already handled".
-    logger.error("A follow-up send failed after the draft was marked sent.", error, {
-      businessId: business.id,
-      draftId,
-    });
-    failure = "Couldn't send this message. Try again.";
-  }
-
-  if (uncertain) {
-    // The message may already be with the patient, so the draft must not go back
-    // to Pending — a second Send could deliver it twice. It is recorded as sent
-    // (a slot offer opens to Book and Declined), and staff are told to check the
-    // chat. Nothing is mirrored to the Inbox: there is no confirmed message to
-    // show. If recording fails, the hourly sweep settles it the same way
-    // (settleInterruptedFollowUpSends).
-    await markFollowUpDraftDelivered({ id: draftId, businessId: business.id }).catch((error) => {
-      logger.error("A follow-up's delivery is uncertain and it couldn't be recorded as sent.", error, {
-        businessId: business.id,
-        draftId,
-      });
-    });
-    revalidateFollowUpSurfaces();
-    // ok: the draft is handled, so its row leaves the list; the notice is shown
-    // by the list itself, since this row won't be there to show it.
-    return { ok: true, notice: FOLLOW_UP_DELIVERY_UNCERTAIN_NOTICE };
-  }
-
-  if (!sent) {
-    await revertFollowUpDraftToPending({ id: draftId, businessId: business.id });
-    return { ok: false, error: failure ?? "Couldn't send this message. Try again." };
-  }
-
-  // The message left: only now is the draft sent, and a slot offer open to Book
-  // and Declined (see DELIVERED_WHERE). Not fatal if it fails — the hourly sweep
-  // settles a draft left marked as being sent (settleInterruptedFollowUpSends).
-  await markFollowUpDraftDelivered({ id: draftId, businessId: business.id }).catch((error) => {
-    logger.error("Sent a follow-up but couldn't record it as delivered.", error, { businessId: business.id, draftId });
-  });
-
-  // Best-effort Inbox mirror: the draft is already flipped to SENT and the
-  // WhatsApp message already went out, so a failure here must not undo either.
-  await mirrorOutboundToInbox({
-    businessId: business.id,
-    clientId: sent.clientId,
-    clientName: sent.clientName,
-    phone: sent.phone,
-    result: sent.result,
-    source: "FOLLOW_UP",
-    failureMessage: "Sent a follow-up draft but couldn't mirror it to the inbox.",
-    logContext: { businessId: business.id, draftId },
-  });
 
   revalidateFollowUpSurfaces();
+  if (outcome.notice) {
+    // ok: the draft is handled, so its row leaves the list; the notice is shown
+    // by the list itself, since this row won't be there to show it.
+    return { ok: true, notice: outcome.notice };
+  }
   // The mirrored OUTBOUND message also lands on the client's activity
   // timeline and the Dashboard's Messages preview, same surfaces
   // sendInboxMessageAction revalidates for the same kind of write.
   revalidatePath("/dashboard");
-  revalidatePath(`/clients/${sent.clientId}`);
+  if (outcome.clientId) revalidatePath(`/clients/${outcome.clientId}`);
   return { ok: true };
 }
 

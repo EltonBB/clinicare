@@ -1,5 +1,11 @@
 import { BusinessPlan, type Prisma } from "@prisma/client";
 
+import { FOLLOW_UP_KIND_TO_AUTOMATION } from "@/lib/automations";
+import {
+  AUTOMATION_SETTINGS_SELECT,
+  automationSettingsFromBusiness,
+  type AutomationSettingsSource,
+} from "@/lib/automations-data";
 import { isProBusinessPlan } from "@/lib/billing";
 import { INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { withDeadline } from "@/lib/concurrency";
@@ -10,7 +16,6 @@ import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { expirePastSlotOffers } from "@/lib/slot-offers";
 import {
-  DEFAULT_WORKFLOW_SETTINGS,
   findPaymentReminderCandidates,
   findRebookCandidates,
   findThankYouCandidates,
@@ -126,6 +131,7 @@ async function writeDrafts(
           paymentId: input.paymentId,
           dedupeKey: input.dedupeKey,
           body: input.body,
+          autoSend: input.autoSend ?? false,
         },
       });
       // Counted per row, so drafts written before a later row throws still show.
@@ -139,12 +145,24 @@ async function writeDrafts(
 }
 
 async function generateForBusiness(
-  business: { id: string; plan: BusinessPlan; workflowSettings: WorkflowSettingsValues | null },
+  business: { id: string; name?: string } & AutomationSettingsSource,
   now: Date,
   totals: RunTotals,
   deadlineAt: number
 ): Promise<void> {
-  const settings = business.workflowSettings ?? DEFAULT_WORKFLOW_SETTINGS;
+  // On/off, timing, wording and mode come from Automations; the plan rules
+  // (rebooking nudges and payment reminders are Pro) are applied there, so a
+  // downgraded workspace's stored switches can't turn them back on.
+  const automations = automationSettingsFromBusiness(business);
+  const settings: WorkflowSettingsValues = {
+    rebookEnabled: automations.REBOOK.enabled,
+    rebookAfterMonths: automations.REBOOK.timing ?? 6,
+    paymentReminderEnabled: automations.PAYMENT_REMINDER.enabled,
+    paymentReminderAfterDays: automations.PAYMENT_REMINDER.timing ?? 3,
+    thankYouEnabled: automations.THANK_YOU.enabled,
+    thankYouDelayHours: automations.THANK_YOU.timing ?? 2,
+  };
+  const clinicName = business.name ?? "";
   const businessId = business.id;
 
   // Per business, because the delay is: the generator needs the scan to start
@@ -153,20 +171,29 @@ async function generateForBusiness(
 
   // async thunks so even a synchronous throw becomes a rejection for allSettled.
   const generators: Array<{ name: string; kind: GeneratedKind; run: () => Promise<FollowUpDraftInput[]> }> = [];
-  // Rebook is Pro-only, and the plan check (not the stored toggle) is what
-  // enforces it: a downgraded workspace may still have rebookEnabled saved.
-  if (isProBusinessPlan(business.plan)) {
-    generators.push({ name: "rebook", kind: "REBOOK", run: async () => findRebookCandidates({ businessId, settings, now }) });
+  // Each generator checks its own switch; the plan decides whether it runs at all.
+  if (automations.REBOOK.available) {
+    const message = { template: automations.REBOOK.template, clinicName };
+    generators.push({
+      name: "rebook",
+      kind: "REBOOK",
+      run: async () => findRebookCandidates({ businessId, settings, now, message }),
+    });
   }
-  generators.push({
-    name: "payment reminder",
-    kind: "PAYMENT",
-    run: async () => findPaymentReminderCandidates({ businessId, settings, now }),
-  });
+  if (automations.PAYMENT_REMINDER.available) {
+    const message = { template: automations.PAYMENT_REMINDER.template, clinicName };
+    generators.push({
+      name: "payment reminder",
+      kind: "PAYMENT",
+      run: async () => findPaymentReminderCandidates({ businessId, settings, now, message }),
+    });
+  }
+  const thankYouMessage = { template: automations.THANK_YOU.template, clinicName };
   generators.push({
     name: "thank-you",
     kind: "THANK_YOU",
-    run: async () => findThankYouCandidates({ businessId, settings, now, lookbackWindowStart }),
+    run: async () =>
+      findThankYouCandidates({ businessId, settings, now, lookbackWindowStart, message: thankYouMessage }),
   });
 
   // Room left under PENDING_CAP_PER_KIND; a kind already at the cap isn't queried at all.
@@ -182,7 +209,9 @@ async function generateForBusiness(
     const generator = withRoom[index];
     if (outcome.status === "fulfilled") {
       // Generators return oldest first, so the oldest candidates get the room.
-      candidates.push(...outcome.value.slice(0, roomFor(generator.kind)));
+      // The mode is snapshotted on the draft: only these send without a person.
+      const autoSend = automations[FOLLOW_UP_KIND_TO_AUTOMATION[generator.kind]].mode === "AUTOMATIC";
+      candidates.push(...outcome.value.slice(0, roomFor(generator.kind)).map((candidate) => ({ ...candidate, autoSend })));
       return;
     }
     totals.errors += 1;
@@ -216,6 +245,9 @@ export async function expireStaleFollowUpDrafts(now: Date): Promise<number> {
         { paymentId: null },
         { payment: { status: { notIn: ["Unpaid", "Partially Paid"] } } },
         { client: INELIGIBLE_CLIENT_WHERE },
+        // Payment reminders are Pro (the Automations page): a downgraded
+        // workspace's queued ones are retired like rebooking nudges.
+        { business: { plan: { in: nonProPlans } } },
       ],
     },
     // Already rebooked or back since (a future booking, or a recent confirmed/
@@ -289,17 +321,8 @@ export async function generateFollowUpDrafts(now: Date = new Date()): Promise<Fo
     },
     select: {
       id: true,
-      plan: true,
-      workflowSettings: {
-        select: {
-          rebookEnabled: true,
-          rebookAfterMonths: true,
-          paymentReminderEnabled: true,
-          paymentReminderAfterDays: true,
-          thankYouEnabled: true,
-          thankYouDelayHours: true,
-        },
-      },
+      name: true,
+      ...AUTOMATION_SETTINGS_SELECT,
     },
     // Stable base order; the rotation below is only meaningful if the
     // underlying order doesn't shuffle between runs.

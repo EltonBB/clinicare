@@ -109,21 +109,11 @@ async function saveForBusiness(
         update: { enabled: input.enabled, mode, timing, template, template2 },
       });
 
-      if (draftKinds.length === 0) return;
-
-      if (!input.enabled) {
-        // Pending slot offers are left alone: their waiting-list entry is already
-        // marked offered, so they are settled one by one (Skip, or expiry once the
-        // slot passes), never by a bulk update.
-        const dismissible = draftKinds.filter((kind) => kind !== "SLOT_OFFER");
-        if (dismissible.length > 0) {
-          await tx.followUpDraft.updateMany({
-            where: { businessId, status: "PENDING", kind: { in: dismissible } },
-            data: { status: "DISMISSED" },
-          });
-        }
-      } else if (mode === "REVIEW") {
-        // Switching to review hands any queued automatic sends to a person.
+      // Off hides the automation's pending drafts (automationEnabledWhere) and
+      // review hands them to a person. Either way none of the queued ones may
+      // then go out on their own — turning it back on or to automatic later
+      // must not send a backlog in one burst; only new drafts send by themselves.
+      if (draftKinds.length > 0 && (!input.enabled || mode === "REVIEW")) {
         await tx.followUpDraft.updateMany({
           where: { businessId, status: "PENDING", autoSend: true, kind: { in: draftKinds } },
           data: { autoSend: false },

@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 
-import { isProBusinessPlan } from "@/lib/billing";
+import { renderAutomationMessage } from "@/lib/automations";
+import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness } from "@/lib/automations-data";
 import { timeToMinutes } from "@/lib/calendar";
 import { ELIGIBLE_CLIENT_WHERE, INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { isSlotInsideOperatingHours, operatingWeekday } from "@/lib/operating-hours";
@@ -17,6 +18,7 @@ import {
 import { formatZonedFullDate, formatZonedTime, formatZonedTime24 } from "@/lib/time-zone";
 import { WAITLIST_ENTRY_REMOVED_ERROR } from "@/lib/waitlist";
 import { findMatchingWaitlistCandidates, releaseWaitlistEntry } from "@/lib/waitlist-data";
+import type { DraftMessage } from "@/lib/workflow-generators";
 
 /**
  * Waiting-list slot offers (Pro). One lifecycle, shared by every path:
@@ -54,8 +56,13 @@ const MAX_OPEN_DRAFTS = 20;
  * Minimum-necessary patient message: the waiting client's name and the freed
  * slot's date and time in the clinic's zone. Never the service or treatment.
  */
-export function slotOfferBody(clientName: string, startAt: Date) {
-  return `Hi ${clientName}, a slot has opened up on ${formatZonedFullDate(startAt)} at ${formatZonedTime(startAt)}. Reply here if you'd like it.`;
+export function slotOfferBody(clientName: string, startAt: Date, message?: DraftMessage) {
+  return renderAutomationMessage("WAITLIST_OFFER", message?.template, {
+    client_name: clientName,
+    date: formatZonedFullDate(startAt),
+    time: formatZonedTime(startAt),
+    clinic_name: message?.clinicName,
+  });
 }
 
 /**
@@ -88,10 +95,12 @@ export async function offerFreedSlot(
 
   const business = await tx.business.findUniqueOrThrow({
     where: { id: businessId },
-    select: { plan: true },
+    select: { name: true, ...AUTOMATION_SETTINGS_SELECT },
   });
 
-  if (!isProBusinessPlan(business.plan)) {
+  // Pro, and the clinic hasn't switched waiting-list offers off (Automations).
+  const offerSettings = automationSettingsFromBusiness(business).WAITLIST_OFFER;
+  if (!offerSettings.enabled) {
     return null;
   }
 
@@ -241,7 +250,11 @@ export async function offerFreedSlot(
           appointmentId: cancelled.id,
           waitlistEntryId: entry.id,
           dedupeKey: `SLOT_OFFER:${cancelled.id}:${cycle}:${entry.id}`,
-          body: slotOfferBody(entry.clientName, cancelled.startAt),
+          body: slotOfferBody(entry.clientName, cancelled.startAt, {
+            template: offerSettings.template,
+            clinicName: business.name ?? "",
+          }),
+          autoSend: offerSettings.mode === "AUTOMATIC",
         },
       ],
       skipDuplicates: true,
