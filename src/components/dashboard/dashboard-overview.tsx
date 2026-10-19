@@ -55,7 +55,7 @@ function KpiTile({
     <Link
       href={href}
       className={cn(
-        "surface-card card-hover group/kpi relative flex min-h-[104px] flex-col justify-between p-3.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45",
+        "surface-card card-hover group/kpi relative flex min-h-[104px] min-w-0 flex-col justify-between p-3.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45",
         className
       )}
     >
@@ -63,8 +63,14 @@ function KpiTile({
       <p className="text-[10px] font-semibold uppercase leading-3 tracking-[0.1em] text-muted-foreground">
         {label}
       </p>
-      <p className="mt-2 text-[1.6rem] font-semibold leading-none tracking-tight text-foreground">
-        <KpiValue value={value} animateOnMount />
+      {/* Five tiles share one row from sm up, so a long amount ("HUF 20,000,000")
+          steps down a size below lg and ends in an ellipsis rather than painting
+          into the next tile; the full value stays in the tooltip. */}
+      <p
+        title={value}
+        className="mt-2 truncate text-xl font-semibold leading-[1.15] tracking-tight text-foreground lg:text-[1.6rem]"
+      >
+        <KpiValue value={value} truncate animateOnMount />
       </p>
     </Link>
   );
