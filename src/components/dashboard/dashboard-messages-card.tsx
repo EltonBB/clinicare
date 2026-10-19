@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { MessageSquareText } from "lucide-react";
 
-import { WorkspaceCard } from "@/components/workspace/workspace-layout";
+import { WorkspaceCard, WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
 import { useWorkspaceUnreadCount } from "@/components/layout/workspace-live-context";
 import { cn } from "@/lib/utils";
 import type { DashboardConversationPreview } from "@/lib/dashboard";
@@ -64,7 +64,7 @@ export function DashboardMessagesCard({
       }
     >
       {conversations.length > 0 ? (
-        <div className="divide-y divide-border/65">
+        <div>
           {conversations.map((conversation) => (
             <Link
               key={conversation.id}
@@ -98,15 +98,12 @@ export function DashboardMessagesCard({
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center gap-2 rounded-(--radius-card) border border-dashed border-border/80 bg-[#fbfcfe] px-4 py-5 text-center">
-          <span className="flex size-8 items-center justify-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
-            <MessageSquareText className="size-3.5" />
-          </span>
-          <p className="text-sm font-semibold text-foreground">No conversations yet</p>
-          <p className="text-xs leading-5 text-muted-foreground">
-            Client replies will appear here as they come in.
-          </p>
-        </div>
+        <WorkspaceEmptyState
+          icon={MessageSquareText}
+          title="No conversations yet"
+          description="Client replies will appear here as they come in."
+          compact
+        />
       )}
     </WorkspaceCard>
   );

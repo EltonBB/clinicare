@@ -55,7 +55,7 @@ function KpiTile({
     <Link
       href={href}
       className={cn(
-        "surface-card card-hover group/kpi relative flex min-h-[104px] flex-col justify-between p-3.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45",
+        "surface-card card-hover group/kpi relative flex min-h-[104px] min-w-0 flex-col justify-between p-3.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45",
         className
       )}
     >
@@ -63,8 +63,14 @@ function KpiTile({
       <p className="text-[10px] font-semibold uppercase leading-3 tracking-[0.1em] text-muted-foreground">
         {label}
       </p>
-      <p className="mt-2 text-[1.6rem] font-semibold leading-none tracking-tight text-foreground">
-        <KpiValue value={value} animateOnMount />
+      {/* Five tiles share one row from sm up, so a long amount ("HUF 20,000,000")
+          steps down a size below lg and ends in an ellipsis rather than painting
+          into the next tile; the full value stays in the tooltip. */}
+      <p
+        title={value}
+        className="mt-2 truncate text-xl font-semibold leading-[1.15] tracking-tight text-foreground lg:text-[1.6rem]"
+      >
+        <KpiValue value={value} truncate animateOnMount />
       </p>
     </Link>
   );
@@ -135,7 +141,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
         }
       />
 
-      <div className="stagger-children grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="stagger-children grid grid-cols-2 gap-3 sm:grid-cols-5">
         <KpiTile
           label="Appointments today"
           href="/calendar"
@@ -160,7 +166,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           label="Unread messages"
           href="/inbox"
           value={liveUnreadCount.toString()}
-          className="max-lg:col-span-2"
+          className="max-sm:col-span-2"
         />
       </div>
 
@@ -280,7 +286,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-primary">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-primary">
                       Next up
                     </span>
                     <NextUpCountdown
@@ -310,7 +316,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           {view.appointments.length > 0 ? (
             <div
               className={cn(
-                "max-h-[220px] divide-y divide-border/65 overflow-y-auto pr-1",
+                "max-h-[220px] overflow-y-auto pr-1",
                 view.appointments.length > 4 &&
                   "[mask-image:linear-gradient(to_bottom,black_calc(100%-32px),transparent)]"
               )}
@@ -347,11 +353,11 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                   </span>
                   <span
                     className={cn(
-                      "shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em]",
+                      "shrink-0 text-xs font-medium",
                       statusTextStyles[appointment.status]
                     )}
                   >
-                    {appointment.status}
+                    {appointment.status[0].toUpperCase() + appointment.status.slice(1)}
                   </span>
                   {appointment.risk?.level === "high" ? (
                     <NoShowRiskBadge risk={appointment.risk} expiresAtIso={appointment.startAtIso} />
@@ -361,9 +367,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
             </div>
           ) : (
             <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-1.5 py-8 text-center">
-              <span className="mb-1 flex size-9 items-center justify-center rounded-(--radius-tile) border border-border/75 bg-white text-primary">
-                <CalendarPlus2 className="size-4" />
-              </span>
+              <CalendarPlus2 className="mb-1 size-[18px] text-muted-foreground" />
               <p className="text-sm font-semibold text-foreground">
                 No appointments today
               </p>
@@ -446,7 +450,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           }
         >
           {view.staffToday.length > 0 ? (
-            <div className="divide-y divide-border/65">
+            <div>
               {view.staffToday.slice(0, 4).map((staffMember) => (
                 <div
                   key={staffMember.id}
