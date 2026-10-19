@@ -284,6 +284,12 @@ export const FOLLOW_UP_KIND_TO_AUTOMATION: Record<FollowUpDraftKind, AutomationK
 
 const REMINDER_KINDS = new Set<AutomationKind>(["FIRST_REMINDER", "SECOND_REMINDER", "HIGH_RISK_REMINDER"]);
 
+/** The kind's default text ("cancelled" is VISIT_CHANGED's second text). */
+export function defaultAutomationText(kind: AutomationKind, variant: "moved" | "cancelled" = "moved"): string {
+  const definition = automationDefinition(kind);
+  return variant === "cancelled" ? (definition.defaultTemplate2 ?? definition.defaultTemplate) : definition.defaultTemplate;
+}
+
 /**
  * The text in force for a stored template: the kind's default when it is
  * empty, or, for reminders, the old pre-reply default that onboarding saved
@@ -294,8 +300,7 @@ export function effectiveAutomationTemplate(
   stored: string | null | undefined,
   variant: "moved" | "cancelled" = "moved"
 ): string {
-  const definition = automationDefinition(kind);
-  const fallback = variant === "cancelled" ? (definition.defaultTemplate2 ?? definition.defaultTemplate) : definition.defaultTemplate;
+  const fallback = defaultAutomationText(kind, variant);
   const template = stored?.trim();
   if (!template) return fallback;
   if (REMINDER_KINDS.has(kind) && template === LEGACY_DEFAULT_REMINDER_TEMPLATE) return fallback;

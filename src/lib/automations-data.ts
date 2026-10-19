@@ -2,7 +2,6 @@ import type { BusinessPlan, ReminderSettings, WorkflowSettings } from "@prisma/c
 
 import {
   AUTOMATIONS,
-  automationDefinition,
   isAutomationAvailable,
   type AutomationKind,
   type AutomationMode,
@@ -170,11 +169,4 @@ export async function getAutomationSettings(businessId: string): Promise<Automat
     reminders: business?.reminderSettings ?? null,
     workflows: business?.workflowSettings ?? null,
   });
-}
-
-/** True when a stored template is just the kind's default (stored as null so default updates reach it). */
-export function isDefaultTemplate(kind: AutomationKind, template: string, variant: "moved" | "cancelled" = "moved") {
-  const definition = automationDefinition(kind);
-  const fallback = variant === "cancelled" ? definition.defaultTemplate2 : definition.defaultTemplate;
-  return template.trim() === fallback;
 }

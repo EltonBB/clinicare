@@ -7,11 +7,12 @@ import { z } from "zod";
 import {
   AUTOMATIONS,
   automationDefinition,
+  defaultAutomationText,
   FOLLOW_UP_KIND_TO_AUTOMATION,
   MAX_AUTOMATION_MESSAGE_LENGTH,
   type AutomationKind,
 } from "@/lib/automations";
-import { getAutomationSettings, isDefaultTemplate } from "@/lib/automations-data";
+import { getAutomationSettings } from "@/lib/automations-data";
 import { isProBusinessPlan } from "@/lib/billing";
 import { getAuthedBusiness } from "@/lib/business";
 import { logger } from "@/lib/logger";
@@ -51,7 +52,7 @@ function draftKindsFor(kind: AutomationKind): FollowUpDraftKind[] {
 /** An empty box or the default text is stored as null, so it follows the default. */
 function storedTemplate(kind: AutomationKind, template: string | null, variant: "moved" | "cancelled") {
   if (!template) return null;
-  return isDefaultTemplate(kind, template, variant) ? null : template;
+  return template === defaultAutomationText(kind, variant) ? null : template;
 }
 
 function revalidateAutomationSurfaces() {
