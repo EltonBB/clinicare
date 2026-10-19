@@ -11,8 +11,10 @@ import { z } from "zod";
 import { buildAuthRedirectUrl } from "@/lib/app-url";
 import {
   CONFIRMABLE_EMAIL_OTP_TYPES,
+  confirmedSignupLoginPath,
   INVALID_CONFIRM_LINK_REDIRECT,
   RECOVERY_EXPIRED_REDIRECT,
+  SIGNUP_CONFIRM_TYPES,
 } from "@/lib/app-url-policy";
 import { sanitizeAuthMetadataForSession } from "@/lib/auth-metadata";
 import {
@@ -557,7 +559,13 @@ export async function confirmPasswordRecoveryAction(tokenHash: string): Promise<
 // allowlist in lib/app-url-policy.ts that deliberately excludes "recovery" —
 // rather than trusting whatever the URL says is what keeps this safe to call
 // with a URL-sourced value: verifyOtp only ever runs with a vetted type.
-export async function confirmEmailLinkAction(tokenHash: string, type: string): Promise<void> {
+// `next` is only read for sign-up, and only through confirmedSignupLoginPath,
+// which accepts nothing but a same-origin /login?ticket=<uuid>.
+export async function confirmEmailLinkAction(
+  tokenHash: string,
+  type: string,
+  next?: string
+): Promise<void> {
   if (!tokenHash || !CONFIRMABLE_EMAIL_OTP_TYPES.has(type)) {
     redirect(INVALID_CONFIRM_LINK_REDIRECT);
   }
@@ -596,7 +604,9 @@ export async function confirmEmailLinkAction(tokenHash: string, type: string): P
     markEmailVerificationReceiptVerifiedByEmail(data.user?.email ?? null),
     supabase.auth.signOut(),
   ]);
-  redirect("/login?verified=1");
+  redirect(
+    SIGNUP_CONFIRM_TYPES.has(type) ? confirmedSignupLoginPath(next) : "/login?verified=1"
+  );
 }
 
 export async function updateOwnerProfileAction(

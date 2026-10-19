@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import {
   authConfirmContinuationPath,
+  confirmedSignupLoginPath,
   INVALID_CONFIRM_LINK_REDIRECT,
   RECOVERY_EXPIRED_REDIRECT,
 } from "@/lib/app-url-policy";
@@ -46,7 +47,8 @@ import { createClient } from "@/utils/supabase/server";
  * code_verifier cookie bound to the browser that INITIATED the flow, so a
  * scanner's isolated fetch (no matching cookie) fails harmlessly instead of
  * silently burning the code for the real user. A code carries no verified
- * intent either way, so it stays confirmation-only: sign out, land on login.
+ * intent either way, so it stays confirmation-only: sign out, land on login
+ * (keeping a sign-up's ticket, the one `next` confirmedSignupLoginPath honors).
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -55,7 +57,9 @@ export async function GET(request: Request) {
   const code = url.searchParams.get("code");
 
   if (tokenHash && type) {
-    redirect(authConfirmContinuationPath(tokenHash, type));
+    redirect(
+      authConfirmContinuationPath(tokenHash, type, url.searchParams.get("next"))
+    );
   }
 
   // A recovery link that lost its token (truncated or rewritten in transit)
@@ -84,7 +88,7 @@ export async function GET(request: Request) {
       markEmailVerificationReceiptVerifiedByEmail(data.user?.email ?? null),
       supabase.auth.signOut(),
     ]);
-    redirect("/login?verified=1");
+    redirect(confirmedSignupLoginPath(url.searchParams.get("next")));
   }
 
   redirect(INVALID_CONFIRM_LINK_REDIRECT);

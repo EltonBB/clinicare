@@ -4,6 +4,7 @@ import {
   authConfirmContinuationPath,
   buildAuthConfirmUrl,
   CONFIRMABLE_EMAIL_OTP_TYPES,
+  confirmedSignupLoginPath,
   normalizeConfiguredAppUrl,
 } from "./app-url-policy";
 
@@ -71,5 +72,60 @@ describe("authConfirmContinuationPath", () => {
     const query = new URLSearchParams(path.split("?")[1]);
     expect(query.get("token_hash")).toBe("a+b/c=d&e");
     expect(query.get("type")).toBe("signup");
+  });
+
+  it("carries sign-up's next and drops it for every other type", () => {
+    const next = "/login?ticket=abc";
+    const signup = new URLSearchParams(
+      authConfirmContinuationPath("t", "signup", next).split("?")[1]
+    );
+    expect(signup.get("next")).toBe(next);
+    expect(
+      new URLSearchParams(authConfirmContinuationPath("t", "email", next).split("?")[1]).get("next")
+    ).toBe(next);
+    expect(authConfirmContinuationPath("t", "email_change", "/settings")).toBe(
+      "/auth/confirm/continue?token_hash=t&type=email_change"
+    );
+    expect(authConfirmContinuationPath("t", "recovery", next)).toBe(
+      "/reset-password/confirm?token_hash=t&type=recovery"
+    );
+  });
+});
+
+describe("confirmedSignupLoginPath", () => {
+  const ticket = "0f8b6c2e-3d4a-4b5c-9e7f-1a2b3c4d5e6f";
+
+  it("keeps a well-formed ticket from a same-origin /login next", () => {
+    expect(confirmedSignupLoginPath(`/login?ticket=${ticket}`)).toBe(
+      `/login?verified=1&ticket=${ticket}`
+    );
+  });
+
+  it("keeps only the ticket, never other params or a fragment", () => {
+    expect(confirmedSignupLoginPath(`/login?ticket=${ticket}&next=//evil.com#x`)).toBe(
+      `/login?verified=1&ticket=${ticket}`
+    );
+  });
+
+  it.each([
+    undefined,
+    null,
+    "",
+    42,
+    { not: "" },
+    "/login",
+    "/login?ticket=",
+    "/login?ticket=not-a-uuid",
+    `/login?ticket=${ticket}x`,
+    `/dashboard?ticket=${ticket}`,
+    `/login/extra?ticket=${ticket}`,
+    `//evil.com/login?ticket=${ticket}`,
+    `https://evil.com/login?ticket=${ticket}`,
+    `/\evil.com/login?ticket=${ticket}`,
+    `/	/evil.com/login?ticket=${ticket}`,
+    `/..//evil.com/login?ticket=${ticket}`,
+    `login?ticket=${ticket}`,
+  ])("falls back to plain verified login for %j", (next) => {
+    expect(confirmedSignupLoginPath(next)).toBe("/login?verified=1");
   });
 });
