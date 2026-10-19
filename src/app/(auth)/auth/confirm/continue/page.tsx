@@ -27,6 +27,7 @@ export default async function ConfirmContinuePage({ searchParams }: ConfirmConti
   const params = searchParams ? await searchParams : {};
   const tokenHash = typeof params.token_hash === "string" ? params.token_hash : "";
   const type = typeof params.type === "string" ? params.type : "";
+  const next = typeof params.next === "string" ? params.next : "";
 
   if (!tokenHash || !type) {
     redirect(INVALID_CONFIRM_LINK_REDIRECT);
@@ -52,7 +53,7 @@ export default async function ConfirmContinuePage({ searchParams }: ConfirmConti
         </p>
       </div>
 
-      <form action={confirmEmailLinkAction.bind(null, tokenHash, type)} className="mt-8">
+      <form action={confirmEmailLinkAction.bind(null, tokenHash, type, next)} className="mt-8">
         <SubmitButton
           pendingLabel="Confirming..."
           className="h-12 w-full rounded-(--radius-field) text-[15px] font-semibold"

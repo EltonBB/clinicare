@@ -1,3 +1,5 @@
+import { safeRedirectPath } from "@/lib/safe-redirect";
+
 type NormalizeConfiguredAppUrlInput = {
   configuredUrl?: string | null;
   nodeEnv?: string;
@@ -71,12 +73,44 @@ export const INVALID_CONFIRM_LINK_REDIRECT =
 
 export const RECOVERY_EXPIRED_REDIRECT = "/forgot-password?expired=1";
 
+// The OTP types a sign-up confirmation arrives as.
+export const SIGNUP_CONFIRM_TYPES = new Set(["signup", "email"]);
+
 // Continuation page a bare GET forwards a token_hash link to. Routing
 // recovery here — instead of via branch order at each call site — keeps the
 // "recovery never reaches the generic confirm action" invariant structural.
-export function authConfirmContinuationPath(tokenHash: string, type: string) {
-  const query = new URLSearchParams({ token_hash: tokenHash, type }).toString();
+// Sign-up's `next` (/login?ticket=...) is the only one carried through: the
+// login page uses the ticket to clean up that account's auth metadata. It is
+// passed along raw; confirmedSignupLoginPath validates it where it's used.
+export function authConfirmContinuationPath(
+  tokenHash: string,
+  type: string,
+  next?: string | null
+) {
+  const query = new URLSearchParams({ token_hash: tokenHash, type });
+  if (next && SIGNUP_CONFIRM_TYPES.has(type)) {
+    query.set("next", next);
+  }
   return type === "recovery"
     ? `/reset-password/confirm?${query}`
     : `/auth/confirm/continue?${query}`;
+}
+
+// Sign-up tickets are crypto.randomUUID() values.
+const SIGNUP_TICKET_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Where a confirmed sign-up lands. Only a same-origin /login path with a
+// well-formed ticket is honored, and only the ticket is kept: the path is
+// rebuilt here, so a link-supplied `next` can never send anyone elsewhere.
+export function confirmedSignupLoginPath(next: unknown) {
+  const safe = typeof next === "string" ? safeRedirectPath(next, "") : "";
+  if (safe) {
+    const url = new URL(safe, "http://same-origin.invalid");
+    const ticket = url.searchParams.get("ticket");
+    if (url.pathname === "/login" && ticket && SIGNUP_TICKET_PATTERN.test(ticket)) {
+      return `/login?verified=1&ticket=${ticket}`;
+    }
+  }
+  return "/login?verified=1";
 }

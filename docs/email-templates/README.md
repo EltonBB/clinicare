@@ -35,19 +35,22 @@ The app always sends `RedirectTo` as `<APP_URL>/auth/confirm?next=<page>`
 deployment that sent it (production, staging or a preview), not on whatever
 the Site URL says. Don't swap in `{{ .SiteURL }}`.
 
-On this token-hash path the confirm route doesn't use `next`: each `type` has a
-fixed landing page, set in `confirmEmailLinkAction` and the recovery action.
+On this token-hash path each `type` has a fixed landing page, set in
+`confirmEmailLinkAction` and the recovery action. The only `next` the app uses
+is sign-up's:
 
 | Template | `type` | Lands on |
 |---|---|---|
-| Confirm signup | `signup` | `/login?verified=1` |
+| Confirm signup | `signup` | `/login?verified=1&ticket=<ticket>` |
 | Reset Password | `recovery` | the choose-a-new-password form |
 | Change Email Address | `email_change` | `/settings?email_updated=1` |
 
-Sign-up's `next` (`/login?ticket=...`) is therefore dropped. The sign-up
-receipt is still marked confirmed by email, so the "check your email" page
-notices the confirmation; only the login page's ticket-based clean-up doesn't
-run on this path (an app-side follow-up, not a template issue).
+Sign-up's `next` (`/login?ticket=...`) is carried from the confirm route
+through the "Continue" page to the action, which keeps it only when it's a
+same-origin `/login` path with a well-formed ticket (`confirmedSignupLoginPath`
+in `src/lib/app-url-policy.ts`) and otherwise falls back to `/login?verified=1`.
+The login page then uses the ticket to clean up that account's sign-up data.
+Every other `next` is ignored, so a link can't send anyone off the site.
 
 Supabase only keeps a `RedirectTo` it allows (Authentication › URL
 Configuration); otherwise it swaps in the bare Site URL and the link breaks.
