@@ -133,6 +133,16 @@ describe("countFollowUpsByKind", () => {
       timeZone: "UTC",
     }).items;
 
-    expect(countFollowUpsByKind(items)).toEqual({ SLOT_OFFER: 0, PAYMENT: 1, REBOOK: 2, THANK_YOU: 0 });
+    expect(countFollowUpsByKind(items)).toEqual({
+      SLOT_OFFER: 0,
+      PAYMENT: 1,
+      MISSED_VISIT: 0,
+      CHECKUP_DUE: 0,
+      REBOOK: 2,
+      THANK_YOU: 0,
+      BOOKING_CONFIRMATION: 0,
+      NEW_PATIENT_WELCOME: 0,
+      VISIT_CHANGED: 0,
+    });
   });
 });
