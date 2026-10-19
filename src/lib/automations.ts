@@ -6,6 +6,9 @@ import { PAYMENT_REMINDER_DAY_OPTIONS, REBOOK_MONTH_OPTIONS, THANK_YOU_HOUR_OPTI
 
 export type { AutomationKind, AutomationMode };
 
+/** Longest message a clinic can save for one automation. */
+export const MAX_AUTOMATION_MESSAGE_LENGTH = 600;
+
 export type AutomationGroup = "before" | "after" | "return";
 
 /**

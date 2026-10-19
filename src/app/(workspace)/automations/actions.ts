@@ -1,0 +1,164 @@
+"use server";
+
+import type { Business, FollowUpDraftKind } from "@prisma/client";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+
+import {
+  AUTOMATIONS,
+  automationDefinition,
+  FOLLOW_UP_KIND_TO_AUTOMATION,
+  MAX_AUTOMATION_MESSAGE_LENGTH,
+  type AutomationKind,
+} from "@/lib/automations";
+import { getAutomationSettings, isDefaultTemplate } from "@/lib/automations-data";
+import { isProBusinessPlan } from "@/lib/billing";
+import { getAuthedBusiness } from "@/lib/business";
+import { logger } from "@/lib/logger";
+import { prisma } from "@/lib/prisma";
+
+export type SaveAutomationResult = { ok: true } | { ok: false; error: string };
+
+const PRO_ONLY_ERROR = "Automations beyond the first reminder and thank-you are part of Pro.";
+const TRY_AGAIN_ERROR = "Something went wrong. Try again.";
+
+const KINDS = AUTOMATIONS.map((automation) => automation.kind) as [AutomationKind, ...AutomationKind[]];
+
+const templateSchema = z
+  .string()
+  .trim()
+  .max(MAX_AUTOMATION_MESSAGE_LENGTH, `Keep the message under ${MAX_AUTOMATION_MESSAGE_LENGTH} characters.`)
+  .nullable();
+
+const saveSchema = z.object({
+  kind: z.enum(KINDS),
+  enabled: z.boolean(),
+  mode: z.enum(["AUTOMATIC", "REVIEW"]),
+  timing: z.number().int().nullable(),
+  template: templateSchema,
+  template2: templateSchema,
+});
+
+export type SaveAutomationInput = z.input<typeof saveSchema>;
+
+/** The follow-up draft kinds an automation produces (none for the reminders). */
+function draftKindsFor(kind: AutomationKind): FollowUpDraftKind[] {
+  return (Object.entries(FOLLOW_UP_KIND_TO_AUTOMATION) as [FollowUpDraftKind, AutomationKind][])
+    .filter(([, automation]) => automation === kind)
+    .map(([draftKind]) => draftKind);
+}
+
+/** An empty box or the default text is stored as null, so it follows the default. */
+function storedTemplate(kind: AutomationKind, template: string | null, variant: "moved" | "cancelled") {
+  if (!template) return null;
+  return isDefaultTemplate(kind, template, variant) ? null : template;
+}
+
+function revalidateAutomationSurfaces() {
+  revalidatePath("/automations");
+  revalidatePath("/automations/review");
+  revalidatePath("/inbox");
+  revalidatePath("/dashboard");
+}
+
+const SESSION_EXPIRED = "Your session expired. Log in again to change automations.";
+
+export async function saveAutomationSettingAction(rawInput: SaveAutomationInput): Promise<SaveAutomationResult> {
+  const parsed = saveSchema.safeParse(rawInput);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? TRY_AGAIN_ERROR };
+  }
+
+  const auth = await getAuthedBusiness(SESSION_EXPIRED);
+  if ("error" in auth) return { ok: false, error: auth.error };
+
+  return saveForBusiness(auth.business, parsed.data);
+}
+
+async function saveForBusiness(
+  business: Pick<Business, "id" | "plan">,
+  input: z.output<typeof saveSchema>
+): Promise<SaveAutomationResult> {
+  const businessId = business.id;
+
+  try {
+    const current = (await getAutomationSettings(businessId))[input.kind];
+    if (!current.available) return { ok: false, error: PRO_ONLY_ERROR };
+
+    const definition = automationDefinition(input.kind);
+    let timing: number | null = null;
+    if (definition.timingUnit) {
+      // An unusual value saved before the options changed stays allowed (withCurrentOption).
+      if (input.timing === null || (!definition.timingOptions.includes(input.timing) && input.timing !== current.timing)) {
+        return { ok: false, error: "Choose one of the listed times." };
+      }
+      timing = input.timing;
+    }
+
+    // Basic has no review queue and reminders never wait for review (see resolveAutomationSettings).
+    const mode = isProBusinessPlan(business.plan) && definition.reviewable ? input.mode : "AUTOMATIC";
+    const template = storedTemplate(input.kind, input.template, "moved");
+    const template2 = input.kind === "VISIT_CHANGED" ? storedTemplate(input.kind, input.template2, "cancelled") : null;
+    const draftKinds = draftKindsFor(input.kind);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.automationSetting.upsert({
+        where: { businessId_kind: { businessId, kind: input.kind } },
+        create: { businessId, kind: input.kind, enabled: input.enabled, mode, timing, template, template2 },
+        update: { enabled: input.enabled, mode, timing, template, template2 },
+      });
+
+      if (draftKinds.length === 0) return;
+
+      if (!input.enabled) {
+        // Pending slot offers are left alone: their waiting-list entry is already
+        // marked offered, so they are settled one by one (Skip, or expiry once the
+        // slot passes), never by a bulk update.
+        const dismissible = draftKinds.filter((kind) => kind !== "SLOT_OFFER");
+        if (dismissible.length > 0) {
+          await tx.followUpDraft.updateMany({
+            where: { businessId, status: "PENDING", kind: { in: dismissible } },
+            data: { status: "DISMISSED" },
+          });
+        }
+      } else if (mode === "REVIEW") {
+        // Switching to review hands any queued automatic sends to a person.
+        await tx.followUpDraft.updateMany({
+          where: { businessId, status: "PENDING", autoSend: true, kind: { in: draftKinds } },
+          data: { autoSend: false },
+        });
+      }
+    });
+  } catch (error) {
+    logger.error("Saving an automation failed.", error, { businessId, kind: input.kind });
+    return { ok: false, error: TRY_AGAIN_ERROR };
+  }
+
+  revalidateAutomationSurfaces();
+  return { ok: true };
+}
+
+/** The card switch: same save path, only `enabled` changes. */
+export async function toggleAutomationAction(rawKind: AutomationKind, enabled: boolean): Promise<SaveAutomationResult> {
+  const kind = z.enum(KINDS).safeParse(rawKind);
+  if (!kind.success || typeof enabled !== "boolean") return { ok: false, error: TRY_AGAIN_ERROR };
+
+  const auth = await getAuthedBusiness(SESSION_EXPIRED);
+  if ("error" in auth) return { ok: false, error: auth.error };
+
+  let current;
+  try {
+    current = (await getAutomationSettings(auth.business.id))[kind.data];
+  } catch (error) {
+    logger.error("Loading an automation failed.", error, { businessId: auth.business.id, kind: kind.data });
+    return { ok: false, error: TRY_AGAIN_ERROR };
+  }
+  return saveForBusiness(auth.business, {
+    kind: kind.data,
+    enabled,
+    mode: current.mode,
+    timing: current.timing,
+    template: current.template,
+    template2: current.template2,
+  });
+}
