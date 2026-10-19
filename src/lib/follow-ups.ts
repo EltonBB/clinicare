@@ -1,6 +1,15 @@
 import { formatZonedShortDate, formatZonedTime, getAppTimeZone } from "@/lib/time-zone";
 
-export type FollowUpDraftKind = "SLOT_OFFER" | "REBOOK" | "PAYMENT" | "THANK_YOU";
+export type FollowUpDraftKind =
+  | "SLOT_OFFER"
+  | "REBOOK"
+  | "PAYMENT"
+  | "THANK_YOU"
+  | "BOOKING_CONFIRMATION"
+  | "NEW_PATIENT_WELCOME"
+  | "VISIT_CHANGED"
+  | "MISSED_VISIT"
+  | "CHECKUP_DUE";
 export type FollowUpDraftStatus = "PENDING" | "SENT" | "DISMISSED" | "EXPIRED";
 
 export type FollowUpDraftItem = {
@@ -27,6 +36,11 @@ const KIND_LABELS: Record<FollowUpDraftKind, string> = {
   REBOOK: "Rebooking nudge",
   PAYMENT: "Payment reminder",
   THANK_YOU: "Thank-you message",
+  BOOKING_CONFIRMATION: "Booking confirmation",
+  NEW_PATIENT_WELCOME: "New patient welcome",
+  VISIT_CHANGED: "Visit moved or cancelled",
+  MISSED_VISIT: "Missed visit",
+  CHECKUP_DUE: "Check-up due",
 };
 
 export type FollowUpDraftRecord = {
@@ -54,7 +68,17 @@ export function followUpRowKey(item: Pick<FollowUpDraftItem, "id" | "canBook">) 
  * (the opening goes to someone else if it waits), then money, then the
  * nudges that can wait a day.
  */
-export const followUpKindOrder: FollowUpDraftKind[] = ["SLOT_OFFER", "PAYMENT", "REBOOK", "THANK_YOU"];
+export const followUpKindOrder: FollowUpDraftKind[] = [
+  "SLOT_OFFER",
+  "PAYMENT",
+  "MISSED_VISIT",
+  "CHECKUP_DUE",
+  "REBOOK",
+  "THANK_YOU",
+  "BOOKING_CONFIRMATION",
+  "NEW_PATIENT_WELCOME",
+  "VISIT_CHANGED",
+];
 
 /** Plural labels for the page's filter chips. */
 export const followUpKindGroupLabels: Record<FollowUpDraftKind, string> = {
@@ -62,6 +86,11 @@ export const followUpKindGroupLabels: Record<FollowUpDraftKind, string> = {
   PAYMENT: "Payment reminders",
   REBOOK: "Rebooking nudges",
   THANK_YOU: "Thank-yous",
+  BOOKING_CONFIRMATION: "Booking confirmations",
+  NEW_PATIENT_WELCOME: "Welcomes",
+  VISIT_CHANGED: "Visit changes",
+  MISSED_VISIT: "Missed visits",
+  CHECKUP_DUE: "Check-ups due",
 };
 
 /**

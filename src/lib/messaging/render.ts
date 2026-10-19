@@ -17,7 +17,7 @@ export const DEFAULT_REMINDER_TEMPLATE =
  * so it is also mapped here, on every read. A clinic that wrote its own wording
  * is left alone.
  */
-const LEGACY_DEFAULT_REMINDER_TEMPLATE =
+export const LEGACY_DEFAULT_REMINDER_TEMPLATE =
   "Hi {client_name}, this is a reminder for your appointment at {time} on {date}. Reply here if you need to reschedule.";
 
 /** The reminder text in force for a stored template: the default when it is empty or the old default. */
