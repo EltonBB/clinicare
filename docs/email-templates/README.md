@@ -32,16 +32,22 @@ app passes with each request:
 
 The app always sends `RedirectTo` as `<APP_URL>/auth/confirm?next=<page>`
 (`buildAuthRedirectUrl` in `src/lib/app-url.ts`), so the link lands on the
-deployment that sent it (production, staging or a preview) and keeps the exact
-`next` the app chose. Sign-up's `next` carries a one-time ticket
-(`/login?ticket=...`) that the "check your email" page uses to notice the
-confirmation, so never hard-code `next` here or swap in `{{ .SiteURL }}`.
+deployment that sent it (production, staging or a preview), not on whatever
+the Site URL says. Don't swap in `{{ .SiteURL }}`.
 
-| Template | `type` | `next` set by the app |
+On this token-hash path the confirm route doesn't use `next`: each `type` has a
+fixed landing page, set in `confirmEmailLinkAction` and the recovery action.
+
+| Template | `type` | Lands on |
 |---|---|---|
-| Confirm signup | `signup` | `/login?ticket=...` |
-| Reset Password | `recovery` | `/reset-password` |
-| Change Email Address | `email_change` | `/settings` |
+| Confirm signup | `signup` | `/login?verified=1` |
+| Reset Password | `recovery` | the choose-a-new-password form |
+| Change Email Address | `email_change` | `/settings?email_updated=1` |
+
+Sign-up's `next` (`/login?ticket=...`) is therefore dropped. The sign-up
+receipt is still marked confirmed by email, so the "check your email" page
+notices the confirmation; only the login page's ticket-based clean-up doesn't
+run on this path (an app-side follow-up, not a template issue).
 
 Supabase only keeps a `RedirectTo` it allows (Authentication › URL
 Configuration); otherwise it swaps in the bare Site URL and the link breaks.
