@@ -2,8 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
+import { BrandMark } from "@/components/brand-mark";
 import { MarketingShell } from "@/components/marketing/shell/marketing-shell";
 import { Highlight, WordReveal } from "@/components/marketing/motion/word-reveal";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { getCurrentUser } from "@/lib/auth";
+import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Page not found | Vela" };
 
@@ -15,11 +19,35 @@ const nextStops = [
 ];
 
 /**
- * An unknown public URL. It renders inside the marketing shell (header and
+ * An unknown URL. Public visitors get it inside the marketing shell (header and
  * footer), so a mistyped link still lands on the site rather than a bare card.
- * Workspace routes have their own not-found page inside the app shell.
+ *
+ * A signed-in miss under a workspace path (e.g. /clients/id/extra) also lands
+ * here, not on (workspace)/not-found, because no workspace route matched. Those
+ * visitors get a plain page back to the dashboard instead of the marketing
+ * header's Log in / Start free. Without a session cookie getCurrentUser makes
+ * no network call, so anonymous misses cost nothing extra.
  */
-export default function RootNotFound() {
+export default async function RootNotFound() {
+  if (await getCurrentUser()) {
+    return (
+      <div className="flex min-h-dvh flex-col bg-white px-5 py-6 sm:px-10 sm:py-8">
+        <BrandMark href="/dashboard" includeSubtitle={false} />
+        <div className="flex flex-1 items-center justify-center">
+          <div className="max-w-sm text-center">
+            <h1 className="text-lg font-semibold text-foreground">We couldn&apos;t find that</h1>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              This page may have moved, or the link is out of date.
+            </p>
+            <Link href="/dashboard" className={cn(buttonVariants({ size: "sm" }), "mt-5 rounded-(--radius-tile)")}>
+              Back to dashboard
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <MarketingShell>
       <section className="pb-24 pt-24 sm:pb-32 sm:pt-32">

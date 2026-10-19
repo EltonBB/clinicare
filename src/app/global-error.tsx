@@ -20,6 +20,10 @@ export default function GlobalError({
 
   return (
     <html lang="en">
+      {/* The root layout's metadata is gone on this path, so the tab title is set here. */}
+      <head>
+        <title>Something went wrong | Vela</title>
+      </head>
       <body
         style={{
           margin: 0,
