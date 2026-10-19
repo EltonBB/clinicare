@@ -23,17 +23,29 @@ Magic Link and Invite aren't used by the app today, so they have no template her
 
 ## The one rule: keep the `{{ .TokenHash }}` links
 
-Every button links to the app's own confirm route:
+Every button links to the app's own confirm route, built from the redirect the
+app passes with each request:
 
 ```
-{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=<type>&next=<page>
+{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=<type>
 ```
 
-| Template | `type` | `next` |
+The app always sends `RedirectTo` as `<APP_URL>/auth/confirm?next=<page>`
+(`buildAuthRedirectUrl` in `src/lib/app-url.ts`), so the link lands on the
+deployment that sent it (production, staging or a preview) and keeps the exact
+`next` the app chose. Sign-up's `next` carries a one-time ticket
+(`/login?ticket=...`) that the "check your email" page uses to notice the
+confirmation, so never hard-code `next` here or swap in `{{ .SiteURL }}`.
+
+| Template | `type` | `next` set by the app |
 |---|---|---|
-| Confirm signup | `signup` | `/dashboard` |
+| Confirm signup | `signup` | `/login?ticket=...` |
 | Reset Password | `recovery` | `/reset-password` |
 | Change Email Address | `email_change` | `/settings` |
+
+Each deployment's `<APP_URL>/auth/confirm` must be in Supabase's redirect
+allow-list (Authentication › URL Configuration). If it isn't, Supabase swaps
+`RedirectTo` for the bare Site URL and the link breaks.
 
 Never switch a link back to Supabase's default `{{ .ConfirmationURL }}`. That
 link verifies on Supabase's own endpoint, so the single-use token is spent
@@ -49,5 +61,6 @@ checklist: Change Email Address was still on `{{ .ConfirmationURL }}`.
 ## Style
 
 Plain table layout with inline styles (email clients ignore stylesheets),
-the Vela wordmark as text (SVG logos don't render in Gmail), ink buttons, and
+the Vela wordmark as plain text with no symbol (SVG logos don't render in
+Gmail, and there is no raster copy of the mark yet), ink buttons, and
 short copy: no clinical or provider names, no compliance jargon, no em-dashes.
