@@ -2,6 +2,7 @@
 
 import { ACTION_RATE_LIMIT_ERROR, isWithinActionBudget, requireCurrentWorkspace } from "@/lib/business";
 import { checkinDetail } from "@/lib/notification-copy";
+import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness } from "@/lib/automations-data";
 import { prisma } from "@/lib/prisma";
 
 // Reminders go out at most 24 hours before a visit (reminders.ts clamps both
@@ -142,14 +143,15 @@ export async function refreshWorkspaceNotificationsAction(): Promise<{
       select: {
         whatsappEnabled: true,
         whatsappConnection: { select: { status: true } },
-        reminderSettings: { select: { send24HourReminder: true, send2HourReminder: true } },
+        ...AUTOMATION_SETTINGS_SELECT,
       },
     }),
   ]);
 
+  const automations = reminderChannel ? automationSettingsFromBusiness(reminderChannel) : null;
   const remindersOn =
-    (reminderChannel?.reminderSettings?.send24HourReminder ?? true) ||
-    (reminderChannel?.reminderSettings?.send2HourReminder ?? true);
+    !!automations &&
+    (automations.FIRST_REMINDER.enabled || automations.SECOND_REMINDER.enabled || automations.HIGH_RISK_REMINDER.enabled);
   // Healthy means fully CONNECTED. Deliberately stricter than the reminders
   // cron, which also retries an ERRORED link so it can self-heal: those sends
   // are failing right now, so the owner should hear about it (Codex #166).

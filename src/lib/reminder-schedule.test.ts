@@ -149,3 +149,33 @@ describe("reminderTypeForAppointment", () => {
     expect(secondRun).toBeNull();
   });
 });
+
+describe("reminderTypeForAppointment with the high-risk reminder", () => {
+  const highRisk = { enabled: true, hours: 5, isHighRisk: true };
+
+  it("sends the high-risk reminder inside its window for a high-risk visit", () => {
+    expect(decide({ startsAt: hoursFromNow(4), highRisk })).toBe("HIGH_RISK");
+  });
+
+  it("falls back to the first reminder when the visit isn't high risk", () => {
+    expect(decide({ startsAt: hoursFromNow(4), highRisk: { ...highRisk, isHighRisk: false } })).toBe(
+      "TWENTY_FOUR_HOUR"
+    );
+  });
+
+  it("still prefers the second reminder when its window is open too", () => {
+    expect(decide({ startsAt: hoursFromNow(1), highRisk })).toBe("TWO_HOUR");
+  });
+
+  it("never sends the high-risk reminder after the second one", () => {
+    expect(decide({ startsAt: hoursFromNow(1), highRisk, sentTypes: new Set(["TWO_HOUR"]) })).toBeNull();
+  });
+
+  it("never sends the first reminder after the high-risk one", () => {
+    expect(decide({ startsAt: hoursFromNow(4), highRisk, sentTypes: new Set(["HIGH_RISK"]) })).toBeNull();
+  });
+
+  it("stays off when disabled", () => {
+    expect(decide({ startsAt: hoursFromNow(4), highRisk: { ...highRisk, enabled: false } })).toBe("TWENTY_FOUR_HOUR");
+  });
+});

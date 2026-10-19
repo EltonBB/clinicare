@@ -1,6 +1,6 @@
 import { addHours, isAfter } from "date-fns";
 
-export type ReminderType = "TWO_HOUR" | "TWENTY_FOUR_HOUR";
+export type ReminderType = "TWO_HOUR" | "TWENTY_FOUR_HOUR" | "HIGH_RISK";
 
 export type ReminderDecisionArgs = {
   startsAt: Date;
@@ -11,6 +11,13 @@ export type ReminderDecisionArgs = {
   secondReminderHours: number;
   /** Reminder types already recorded as sent for this appointment. */
   sentTypes: Set<string>;
+  /**
+   * The extra reminder for a visit scored high no-show risk (Pro). It sits
+   * between the second and the first reminder: the second still wins when both
+   * windows are open, and once it has gone out the first reminder is never sent
+   * after it (the same "never a longer lead after a shorter one" rule).
+   */
+  highRisk?: { enabled: boolean; hours: number; isHighRisk: boolean };
 };
 
 /**
@@ -55,6 +62,7 @@ export function reminderTypeForAppointment(
     firstReminderHours,
     secondReminderHours,
     sentTypes,
+    highRisk,
   } = args;
 
   if (!isAfter(startsAt, now)) {
@@ -70,11 +78,22 @@ export function reminderTypeForAppointment(
   }
 
   if (
+    highRisk?.enabled &&
+    highRisk.isHighRisk &&
+    !sentTypes.has("HIGH_RISK") &&
+    !sentTypes.has("TWO_HOUR") &&
+    !isAfter(startsAt, addHours(now, highRisk.hours))
+  ) {
+    return "HIGH_RISK";
+  }
+
+  if (
     send24HourReminder &&
     !sentTypes.has("TWENTY_FOUR_HOUR") &&
-    // Once the more urgent reminder has gone out, the longer-lead-time one
+    // Once a more urgent reminder has gone out, the longer-lead-time one
     // is always backwards to send afterward — see the doc comment above.
     !sentTypes.has("TWO_HOUR") &&
+    !sentTypes.has("HIGH_RISK") &&
     !isAfter(startsAt, addHours(now, firstReminderHours))
   ) {
     return "TWENTY_FOUR_HOUR";

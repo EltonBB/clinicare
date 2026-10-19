@@ -133,40 +133,54 @@ export function resolveAutomationSettings(args: {
   ) as AutomationSettings;
 }
 
+/** Select this on a Business to resolve its automation settings without a second query. */
+export const AUTOMATION_SETTINGS_SELECT = {
+  plan: true,
+  automationSettings: {
+    select: { kind: true, enabled: true, mode: true, timing: true, template: true, template2: true },
+  },
+  reminderSettings: {
+    select: {
+      send24HourReminder: true,
+      send2HourReminder: true,
+      firstReminderHours: true,
+      secondReminderHours: true,
+      template: true,
+    },
+  },
+  workflowSettings: {
+    select: {
+      rebookEnabled: true,
+      rebookAfterMonths: true,
+      paymentReminderEnabled: true,
+      paymentReminderAfterDays: true,
+      thankYouEnabled: true,
+      thankYouDelayHours: true,
+    },
+  },
+} as const;
+
+export type AutomationSettingsSource = {
+  plan: BusinessPlan;
+  automationSettings?: StoredRow[] | null;
+  reminderSettings?: LegacyReminders | null;
+  workflowSettings?: LegacyWorkflows | null;
+};
+
+export function automationSettingsFromBusiness(business: AutomationSettingsSource): AutomationSettings {
+  return resolveAutomationSettings({
+    plan: business.plan,
+    rows: business.automationSettings ?? [],
+    reminders: business.reminderSettings ?? null,
+    workflows: business.workflowSettings ?? null,
+  });
+}
+
 export async function getAutomationSettings(businessId: string): Promise<AutomationSettings> {
   const business = await prisma.business.findUnique({
     where: { id: businessId },
-    select: {
-      plan: true,
-      automationSettings: {
-        select: { kind: true, enabled: true, mode: true, timing: true, template: true, template2: true },
-      },
-      reminderSettings: {
-        select: {
-          send24HourReminder: true,
-          send2HourReminder: true,
-          firstReminderHours: true,
-          secondReminderHours: true,
-          template: true,
-        },
-      },
-      workflowSettings: {
-        select: {
-          rebookEnabled: true,
-          rebookAfterMonths: true,
-          paymentReminderEnabled: true,
-          paymentReminderAfterDays: true,
-          thankYouEnabled: true,
-          thankYouDelayHours: true,
-        },
-      },
-    },
+    select: AUTOMATION_SETTINGS_SELECT,
   });
 
-  return resolveAutomationSettings({
-    plan: business?.plan ?? "BASIC",
-    rows: business?.automationSettings ?? [],
-    reminders: business?.reminderSettings ?? null,
-    workflows: business?.workflowSettings ?? null,
-  });
+  return automationSettingsFromBusiness(business ?? { plan: "BASIC" });
 }
