@@ -244,6 +244,24 @@ describe("findRebookCandidates due date", () => {
   });
 });
 
+describe("findPaymentReminderCandidates due date", () => {
+  it("is the recorded time plus clinic-local calendar days, across a summer-time change", async () => {
+    // Budapest moves to summer time on 2026-03-29: recorded 11:30 CET on the
+    // 26th is due 11:30 CEST on the 29th (09:30Z), not 72 hours later (10:30Z).
+    mocks.clientPayment.findMany.mockResolvedValue([
+      { id: "pay_1", clientId: "c1", createdAt: new Date("2026-03-26T10:30:00Z"), client: { name: "Alex" } },
+    ]);
+
+    const [draft] = await findPaymentReminderCandidates({
+      businessId: "biz_1",
+      settings: DEFAULT_WORKFLOW_SETTINGS,
+      now: new Date("2026-04-01T10:00:00Z"),
+    });
+
+    expect(draft.dueAt).toEqual(new Date("2026-03-29T09:30:00Z"));
+  });
+});
+
 describe("findPaymentReminderCandidates", () => {
   it("finds unpaid/partially-paid payments older than the configured window, one draft per payment", async () => {
     mocks.clientPayment.findMany.mockResolvedValue([

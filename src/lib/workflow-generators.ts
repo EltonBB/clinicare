@@ -238,8 +238,8 @@ export async function findPaymentReminderCandidates(args: {
       clinic_name: message?.clinicName,
     }),
     dedupeKey: `PAYMENT:${payment.id}`,
-    // Owed for the delay since it was recorded.
-    ...(payment.createdAt ? { dueAt: new Date(now.getTime() - (cutoff.getTime() - payment.createdAt.getTime())) } : {}),
+    // Due the configured number of clinic-local calendar days after it was recorded.
+    ...(payment.createdAt ? { dueAt: subtractDays(payment.createdAt, -settings.paymentReminderAfterDays) } : {}),
   }));
 }
 
