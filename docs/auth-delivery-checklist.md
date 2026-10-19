@@ -29,11 +29,16 @@ These steps happen in Supabase, not in the repo:
 2. Add the production app URL to Supabase redirect allow-lists
 3. Set `APP_URL` in the deployed environment
 4. Verify the email sender identity/domain
-5. Point each email template's link at the app with `{{ .TokenHash }}` — e.g.
-   `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/reset-password`
-   (Reset Password and Confirm signup are done; Change Email Address still
-   uses the default `{{ .ConfirmationURL }}`, which verifies at the provider's
-   own endpoint — prefetch-vulnerable and it bypasses the app's confirm step)
+5. Point each email template's link at the app with `{{ .TokenHash }}`, built
+   from the per-request redirect:
+   `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=recovery`
+   (the app sends `RedirectTo` as `<APP_URL>/auth/confirm?next=...`; see
+   `docs/email-templates/README.md`). Reset Password and Confirm signup were
+   switched earlier, with `{{ .SiteURL }}` and a fixed `next`. Change Email
+   Address still uses the default `{{ .ConfirmationURL }}`, which verifies at
+   the provider's own endpoint: prefetch-vulnerable, and it bypasses the app's
+   confirm step. Paste all three branded versions from `docs/email-templates/`;
+   that closes the Change Email item and moves the other two onto `RedirectTo`.
 
 ## Required redirect targets
 
