@@ -1,4 +1,4 @@
-import { FollowUpDraftKind as FollowUpDraftKindEnum, Prisma, type FollowUpDraftKind } from "@prisma/client";
+import { FollowUpDraftKind as FollowUpDraftKindEnum, Prisma, type AppointmentStatus, type FollowUpDraftKind } from "@prisma/client";
 
 import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { MAX_MESSAGE_BODY_LENGTH, MESSAGE_TOO_LONG_ERROR } from "@/lib/messaging/limits";
@@ -116,6 +116,13 @@ function stillHoldsWhere(now: Date): Prisma.FollowUpDraftWhereInput {
         client: ELIGIBLE_CLIENT_WHERE,
         appointment: { status: "NO_SHOW" },
       },
+      // A reminder waiting for review: only while the visit is still booked and ahead.
+      ...(["FIRST_REMINDER", "SECOND_REMINDER", "HIGH_RISK_REMINDER"] as const).map((kind) => ({
+        kind,
+        business: automationEnabledWhere(kind),
+        client: ELIGIBLE_CLIENT_WHERE,
+        appointment: { status: { in: ["PENDING", "CONFIRMED"] as AppointmentStatus[] }, startAt: { gt: now } },
+      })),
       // Not booked since: a check-up nudge to someone with a visit ahead is noise.
       {
         kind: "CHECKUP_DUE",

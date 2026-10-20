@@ -737,7 +737,7 @@ describe("expireStaleFollowUpDrafts", () => {
       '"PAYMENT"',
       '"REBOOK"',
       '"THANK_YOU"',
-      '{"in":["BOOKING_CONFIRMATION","NEW_PATIENT_WELCOME","VISIT_CHANGED"]}',
+      '{"in":["BOOKING_CONFIRMATION","NEW_PATIENT_WELCOME","VISIT_CHANGED","FIRST_REMINDER","SECOND_REMINDER","HIGH_RISK_REMINDER"]}',
       '"MISSED_VISIT"',
       '"CHECKUP_DUE"',
     ]);

@@ -95,7 +95,7 @@ describe("resolveAutomationSettings", () => {
     expect(settings.PAYMENT_REMINDER.enabled).toBe(false);
   });
 
-  it("never puts a reminder in review, even if a row says so", () => {
+  it("lets a Pro clinic set a reminder to wait for review", () => {
     const settings = resolveAutomationSettings({
       plan: "PRO",
       rows: [{ kind: "SECOND_REMINDER", enabled: true, mode: "REVIEW", timing: 2, template: null, template2: null }],
@@ -103,6 +103,6 @@ describe("resolveAutomationSettings", () => {
       workflows: null,
     });
 
-    expect(settings.SECOND_REMINDER.mode).toBe("AUTOMATIC");
+    expect(settings.SECOND_REMINDER.mode).toBe("REVIEW");
   });
 });

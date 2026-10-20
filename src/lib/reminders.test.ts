@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => {
   const business = { findUnique: vi.fn() };
   const appointment = { findMany: vi.fn() };
   const appointmentReminder = { upsert: vi.fn() };
-  const followUpDraft = { count: vi.fn() };
+  const followUpDraft = { create: vi.fn(), count: vi.fn() };
   const $transaction = vi.fn();
   const sendMessage = vi.fn();
   const getNoShowRiskAssessments = vi.fn();
@@ -329,5 +329,35 @@ describe("syncAppointmentRemindersForBusiness with automation settings", () => {
     await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
 
     expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("syncAppointmentRemindersForBusiness with a reminder set to review", () => {
+  it("drafts the due reminder for To review instead of sending it, and records it handled", async () => {
+    mocks.business.findUnique.mockResolvedValue(
+      business({
+        automationSettings: [
+          { kind: "SECOND_REMINDER", enabled: true, mode: "REVIEW", timing: 2, template: null, template2: null },
+        ],
+      })
+    );
+    const appointment = appointmentIn(1, "appt_1", 4);
+    mocks.appointment.findMany.mockResolvedValue([appointment]);
+    mocks.followUpDraft.create.mockResolvedValue({ id: "draft_1" });
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+    expect(mocks.followUpDraft.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        kind: "SECOND_REMINDER",
+        appointmentId: "appt_1",
+        autoSend: false,
+        dedupeKey: `SECOND_REMINDER:appt_1:${appointment.startAt.getTime()}:4`,
+      }),
+    });
+    expect(mocks.appointmentReminder.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ type: "TWO_HOUR", status: "SENT" }) })
+    );
   });
 });

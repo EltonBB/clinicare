@@ -313,7 +313,16 @@ export async function expireStaleFollowUpDrafts(now: Date): Promise<number> {
   // check-up nudge to someone who has booked since or two weeks old.
   rules.push(
     {
-      kind: { in: ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED"] },
+      kind: {
+        in: [
+          "BOOKING_CONFIRMATION",
+          "NEW_PATIENT_WELCOME",
+          "VISIT_CHANGED",
+          "FIRST_REMINDER",
+          "SECOND_REMINDER",
+          "HIGH_RISK_REMINDER",
+        ],
+      },
       status: "PENDING",
       OR: [{ appointmentId: null }, { appointment: { startAt: { lte: now } } }, { client: INELIGIBLE_CLIENT_WHERE }],
     },

@@ -81,7 +81,7 @@ describe("buildAutomationsView", () => {
       canChooseMode: true,
       tokens: ["client_name", "clinic_name"],
     });
-    expect(editors.FIRST_REMINDER?.canChooseMode).toBe(false);
+    expect(editors.FIRST_REMINDER?.canChooseMode).toBe(true);
     expect(editors.VISIT_CHANGED?.template2).toContain("has been cancelled");
     expect(editors.BOOKING_CONFIRMATION?.fixedTiming).toBe("right after booking");
     expect(editors.FIRST_REMINDER?.timingSuffix).toBe("the visit");

@@ -41,9 +41,9 @@ describe("AUTOMATIONS", () => {
     ]);
   });
 
-  it("never lets a reminder wait for review", () => {
-    for (const kind of ["FIRST_REMINDER", "SECOND_REMINDER", "HIGH_RISK_REMINDER"] as const) {
-      expect(automationDefinition(kind).reviewable).toBe(false);
+  it("lets every automation wait for review", () => {
+    for (const automation of AUTOMATIONS) {
+      expect(automationDefinition(automation.kind).reviewable).toBe(true);
     }
   });
 

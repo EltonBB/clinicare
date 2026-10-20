@@ -1,7 +1,5 @@
 import { addHours } from "date-fns";
 
-import type { AutomationKind } from "@prisma/client";
-
 import { renderAutomationMessage } from "@/lib/automations";
 import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness } from "@/lib/automations-data";
 import { mapWithConcurrency, withDeadline } from "@/lib/concurrency";
@@ -50,7 +48,42 @@ export type ReminderCronResult = ReminderSyncResult & {
 /** How long after a visit message was sent a due reminder still defers to it. */
 const VISIT_MESSAGE_RECENT_MS = 10 * 60_000;
 
-const REMINDER_AUTOMATION: Record<ReminderType, AutomationKind> = {
+/**
+ * A reminder the clinic set to wait for review: the draft goes to To review
+ * and the reminder is recorded as handled (a person decides whether it goes
+ * out). Best-effort per reminder — a failed draft is retried on the next run,
+ * since the reminder isn't recorded then.
+ */
+async function draftReminderForReview(args: {
+  businessId: string;
+  appointmentId: string;
+  clientId: string;
+  automationKind: "FIRST_REMINDER" | "SECOND_REMINDER" | "HIGH_RISK_REMINDER";
+  reminderType: ReminderType;
+  body: string;
+  dedupeKey: string;
+}): Promise<void> {
+  const { businessId, appointmentId, clientId, automationKind, reminderType, body, dedupeKey } = args;
+  try {
+    await prisma.followUpDraft
+      .create({
+        data: { businessId, clientId, appointmentId, kind: automationKind, status: "PENDING", body, dedupeKey, autoSend: false },
+      })
+      .catch((error: unknown) => {
+        // Already drafted (an overlapping run): fine, just record it below.
+        if (!(typeof error === "object" && error !== null && "code" in error && error.code === "P2002")) throw error;
+      });
+    await prisma.appointmentReminder.upsert({
+      where: { appointmentId_type: { appointmentId, type: reminderType } },
+      create: { appointmentId, type: reminderType, status: "SENT" },
+      update: { status: "SENT", sentAt: new Date() },
+    });
+  } catch (error) {
+    logger.error("Drafting a reminder for review failed.", error, { businessId, appointmentId, reminderType });
+  }
+}
+
+const REMINDER_AUTOMATION: Record<ReminderType, "FIRST_REMINDER" | "SECOND_REMINDER" | "HIGH_RISK_REMINDER"> = {
   TWENTY_FOUR_HOUR: "FIRST_REMINDER",
   TWO_HOUR: "SECOND_REMINDER",
   HIGH_RISK: "HIGH_RISK_REMINDER",
@@ -241,6 +274,21 @@ export async function syncAppointmentRemindersForBusiness(
       staff_name: appointment.staffMember?.name ?? business.name,
       clinic_name: business.name,
     });
+    if (settings[automationKind].mode === "REVIEW") {
+      // Set to wait for review: drafted for To review (a person sends it) and
+      // recorded as handled, so later runs don't draft it again.
+      await draftReminderForReview({
+        businessId,
+        appointmentId: appointment.id,
+        clientId: appointment.client.id,
+        automationKind,
+        reminderType,
+        body,
+        dedupeKey: `${automationKind}:${appointment.id}:${appointment.startAt.getTime()}:${appointment.reminderGeneration}`,
+      });
+      continue;
+    }
+
     // A booking confirmation, welcome or moved notice for this version of the
     // visit going out right now (or just now) already tells the patient the
     // time; it covers the reminders already due once delivered. Held back, not
