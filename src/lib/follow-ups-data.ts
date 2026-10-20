@@ -90,13 +90,23 @@ function stillHoldsWhere(now: Date): Prisma.FollowUpDraftWhereInput {
         client: ELIGIBLE_CLIENT_WHERE,
         appointment: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } },
       },
-      // A moved or cancelled notice, while the visit's time is still ahead
-      // (a newer change dismisses the older notice when it is drafted).
+      // A moved or cancelled notice, while the visit's time is still ahead and
+      // the visit still stands as the notice says: a "moved" notice while it is
+      // booked, a "cancelled" one while it is cancelled. A change the clinic
+      // makes dismisses the older notice when it drafts the new one; this
+      // covers a change it doesn't draft for (the patient cancelling by reply).
+      // The dedupe key names which notice it is (see queueVisitMessage).
       {
         kind: "VISIT_CHANGED",
         business: automationEnabledWhere("VISIT_CHANGED"),
         client: ELIGIBLE_CLIENT_WHERE,
-        appointment: { startAt: { gt: now } },
+        OR: [
+          { dedupeKey: { contains: ":cancelled:" }, appointment: { status: "CANCELLED", startAt: { gt: now } } },
+          {
+            NOT: { dedupeKey: { contains: ":cancelled:" } },
+            appointment: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } },
+          },
+        ],
       },
       // Still recorded as missed (not since marked attended).
       {

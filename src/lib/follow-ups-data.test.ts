@@ -73,7 +73,7 @@ beforeEach(() => {
 // OR/AND, to-one relation filters (a null relation never matches, as in
 // Prisma) and to-many some/none. Anything else throws rather than passing.
 type Row = Record<string, unknown>;
-const SCALAR_OPERATORS = new Set(["in", "notIn", "not", "gt", "gte", "lt", "lte"]);
+const SCALAR_OPERATORS = new Set(["in", "notIn", "not", "gt", "gte", "lt", "lte", "contains"]);
 
 const comparable = (value: unknown) => (value instanceof Date ? value.getTime() : value);
 
@@ -112,6 +112,8 @@ function matchesScalar(value: unknown, filter: unknown): boolean {
         return current < target;
       case "lte":
         return current <= target;
+      case "contains":
+        return typeof value === "string" && value.includes(operand as string);
       default:
         throw new Error(`unsupported operator ${operator}`);
     }
@@ -747,6 +749,24 @@ describe("follow-ups data layer — which drafts are actionable", () => {
       ok: false,
       error: "This follow-up was already handled.",
     });
+  });
+
+  it.each([
+    ["a moved notice for a visit still booked", "VISIT_CHANGED:appt_2:moved:1:0", "CONFIRMED", true],
+    ["a moved notice once the patient cancelled by reply", "VISIT_CHANGED:appt_2:moved:1:0", "CANCELLED", false],
+    ["a cancelled notice for a cancelled visit", "VISIT_CHANGED:appt_2:cancelled:1:0", "CANCELLED", true],
+    ["a cancelled notice once the visit was rebooked", "VISIT_CHANGED:appt_2:cancelled:1:0", "CONFIRMED", false],
+  ])("sends %s only while the visit stands as it says (%s)", async (_label, dedupeKey, status, sendable) => {
+    serveDrafts([
+      draftRow({
+        kind: "VISIT_CHANGED",
+        dedupeKey,
+        appointmentId: "appt_2",
+        appointment: { status, startAt: FUTURE },
+      }),
+    ]);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({ ok: sendable });
   });
 
   it("refuses an automatic send once the draft no longer sends on its own", async () => {
