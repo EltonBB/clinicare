@@ -218,6 +218,7 @@ export type SentFollowUpDraft = {
   id: string;
   kind: FollowUpDraftKind;
   appointmentId: string | null;
+  appointmentGeneration: number | null;
   body: string;
   clientId: string;
   clientName: string | null;
@@ -446,6 +447,7 @@ function flipDraftToSent(args: {
           id: draft.id,
           kind: draft.kind,
           appointmentId: draft.appointmentId,
+          appointmentGeneration: draft.appointmentGeneration,
           body: draft.body,
           clientId: draft.clientId,
           clientName: draft.client.name,

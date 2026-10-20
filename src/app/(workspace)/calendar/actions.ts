@@ -316,6 +316,9 @@ export async function saveAppointmentAction(
     // The status before this save, for the missed-visit automation (the edit
     // form's Status dropdown can record or undo a no-show too).
     let previousStatus: string | null = null;
+    // A confirmation or welcome still waiting when this save reset the visit:
+    // re-drafted below for the visit as it now stands.
+    let bookingMessageRetired = false;
     // Editing a still-cancelled booking's client/time/staff/service: an open
     // offer's text was frozen from the OLD details, but Book reads the row's
     // current ones — so an accepted offer could book the client into a
@@ -566,7 +569,7 @@ export async function saveAppointmentAction(
             },
           });
           // The confirmation/notice drafts named the visit as it was.
-          await retireVisitDrafts(tx, payload.id);
+          ({ bookingMessageRetired } = await retireVisitDrafts(tx, payload.id));
         }
 
         const affectedClientIds = Array.from(
@@ -699,7 +702,9 @@ export async function saveAppointmentAction(
         ? "cancelled"
         : newStatus !== "CANCELLED" && readSlot && readSlot.startAt.getTime() !== startAt.getTime()
           ? "moved"
-          : null;
+          : bookingMessageRetired && (newStatus === "PENDING" || newStatus === "CONFIRMED")
+            ? "booked"
+            : null;
     if (visitEvent) {
       await queueVisitMessage({ businessId: business.id, appointmentId: appointmentId!, event: visitEvent });
     }

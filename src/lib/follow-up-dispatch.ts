@@ -69,6 +69,7 @@ export async function dispatchFollowUpDraft(args: {
   let uncertain = false;
   let sent: {
     appointmentId: string | null;
+    appointmentGeneration: number | null;
     clientId: string;
     clientName: string | null;
     phone: string;
@@ -112,6 +113,7 @@ export async function dispatchFollowUpDraft(args: {
         if (result.ok) {
           sent = {
             appointmentId: draft.appointmentId,
+            appointmentGeneration: draft.appointmentGeneration,
             clientId: draft.clientId,
             clientName: draft.clientName,
             phone,
@@ -164,8 +166,12 @@ export async function dispatchFollowUpDraft(args: {
 
   // A message that just told the patient the visit's time stands in for any
   // reminder already due (one message per event). Best-effort.
-  if (sent.appointmentId && TELLS_THE_TIME.has(sent.kind)) {
-    await suppressOpenReminders({ businessId, appointmentId: sent.appointmentId }).catch((error) => {
+  if (sent.appointmentId && sent.appointmentGeneration != null && TELLS_THE_TIME.has(sent.kind)) {
+    await suppressOpenReminders({
+      businessId,
+      appointmentId: sent.appointmentId,
+      appointmentGeneration: sent.appointmentGeneration,
+    }).catch((error) => {
       logger.error("Couldn't record due reminders as covered by a sent visit message.", error, { businessId, draftId });
     });
   }

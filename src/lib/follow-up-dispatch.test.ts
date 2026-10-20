@@ -87,13 +87,17 @@ describe("dispatchFollowUpDraft", () => {
   });
 
   it("lets a sent booking confirmation stand in for the reminders already due", async () => {
-    const confirmation = { ...DRAFT, kind: "BOOKING_CONFIRMATION", appointmentId: "appt_1" };
+    const confirmation = { ...DRAFT, kind: "BOOKING_CONFIRMATION", appointmentId: "appt_1", appointmentGeneration: 2 };
     mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true, draft: confirmation });
     mocks.confirmFollowUpDraftDispatch.mockResolvedValue({ ok: true, draft: confirmation });
 
     await dispatchFollowUpDraft({ draftId: "d_1", businessId: "biz_1" });
 
-    expect(mocks.suppressOpenReminders).toHaveBeenCalledWith({ businessId: "biz_1", appointmentId: "appt_1" });
+    expect(mocks.suppressOpenReminders).toHaveBeenCalledWith({
+      businessId: "biz_1",
+      appointmentId: "appt_1",
+      appointmentGeneration: 2,
+    });
   });
 
   it("doesn't touch reminders after a thank-you", async () => {

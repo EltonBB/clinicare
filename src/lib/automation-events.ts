@@ -5,6 +5,7 @@ import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness, getAutomati
 import { dispatchSoon } from "@/lib/automation-dispatch-soon";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
+import { lockAppointmentShared } from "@/lib/row-locks";
 import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 
 const HOUR_MS = 3_600_000;
@@ -24,11 +25,21 @@ const VISIT_DRAFT_KINDS: FollowUpDraftKind[] = ["BOOKING_CONFIRMATION", "NEW_PAT
  * goes to the patient the visit no longer belongs to. The caller drafts the
  * notice for the new state after the commit (queueVisitMessage).
  */
-export async function retireVisitDrafts(tx: Prisma.TransactionClient, appointmentId: string): Promise<void> {
+export async function retireVisitDrafts(
+  tx: Prisma.TransactionClient,
+  appointmentId: string
+): Promise<{ bookingMessageRetired: boolean }> {
+  // Whether a confirmation or welcome was still waiting: the caller re-drafts
+  // it for the visit as it now stands (an unsent confirmation is still owed,
+  // say after a pending booking is confirmed — Codex).
+  const waitingBookingMessages = await tx.followUpDraft.count({
+    where: { appointmentId, status: "PENDING", kind: { in: ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME"] } },
+  });
   await tx.followUpDraft.updateMany({
     where: { appointmentId, status: "PENDING", kind: { in: VISIT_DRAFT_KINDS } },
     data: { status: "DISMISSED" },
   });
+  return { bookingMessageRetired: waitingBookingMessages > 0 };
 }
 
 function isUniqueViolation(error: unknown) {
@@ -137,7 +148,7 @@ export async function queueVisitMessage(args: {
         dedupeKey:
           kind === "VISIT_CHANGED"
             ? `${kind}:${appointment.id}:${variant}:${appointment.startAt.getTime()}:${appointment.reminderGeneration}`
-            : `${kind}:${appointment.id}`,
+            : `${kind}:${appointment.id}:${appointment.reminderGeneration}`,
       },
       select: { id: true },
     });
@@ -240,16 +251,43 @@ export async function withdrawMissedVisitMessage(args: { businessId: string; app
  * reminder minutes later would be a second message about the same thing.
  * Reminders whose window opens later still go out as usual.
  */
-export async function suppressOpenReminders(args: { businessId: string; appointmentId: string; now?: Date }): Promise<void> {
-  const { businessId, appointmentId, now = new Date() } = args;
-
-  const appointment = await prisma.appointment.findFirst({
-    where: { id: appointmentId, businessId, status: { in: ["PENDING", "CONFIRMED"] } },
-    select: { startAt: true },
-  });
-  if (!appointment) return;
-
+export async function suppressOpenReminders(args: {
+  businessId: string;
+  appointmentId: string;
+  /** The visit version the sent message described; nothing is covered for a later one. */
+  appointmentGeneration: number;
+  now?: Date;
+}): Promise<void> {
+  const { businessId, appointmentId, appointmentGeneration, now = new Date() } = args;
   const settings = await getAutomationSettings(businessId);
+
+  await prisma.$transaction(async (tx) => {
+    // Share-locked, so an edit that would move the visit on waits for this to
+    // commit (and then clears these rows with its reset), or has already
+    // committed and the generation no longer matches (Codex).
+    await lockAppointmentShared(tx, appointmentId);
+    const appointment = await tx.appointment.findFirst({
+      where: {
+        id: appointmentId,
+        businessId,
+        reminderGeneration: appointmentGeneration,
+        status: { in: ["PENDING", "CONFIRMED"] },
+      },
+      select: { startAt: true },
+    });
+    if (!appointment) return;
+    await coverOpenReminders(tx, appointmentId, appointment.startAt, settings, now);
+  });
+}
+
+async function coverOpenReminders(
+  tx: Prisma.TransactionClient,
+  appointmentId: string,
+  startAt: Date,
+  settings: Awaited<ReturnType<typeof getAutomationSettings>>,
+  now: Date
+): Promise<void> {
+  const appointment = { startAt };
   const reminders = [
     { type: "TWENTY_FOUR_HOUR", setting: settings.FIRST_REMINDER },
     { type: "TWO_HOUR", setting: settings.SECOND_REMINDER },
@@ -265,11 +303,11 @@ export async function suppressOpenReminders(args: { businessId: string; appointm
 
   // A FAILED row is one the reminders job would retry: mark it covered too.
   // A row already SENT keeps its real send time.
-  await prisma.appointmentReminder.updateMany({
+  await tx.appointmentReminder.updateMany({
     where: { appointmentId, type: { in: open.map(({ type }) => type) }, status: "FAILED" },
     data: { status: "SENT", sentAt: now },
   });
-  await prisma.appointmentReminder.createMany({
+  await tx.appointmentReminder.createMany({
     data: open.map(({ type }) => ({ appointmentId, type, status: "SENT" as const, sentAt: now })),
     skipDuplicates: true,
   });

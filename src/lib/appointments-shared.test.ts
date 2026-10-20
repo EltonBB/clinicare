@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => {
   // `tx` (atomic with the cancel), never on the outer client.
   const business = { findUniqueOrThrow: vi.fn() };
   const waitlistEntry = { findMany: vi.fn(), updateMany: vi.fn() };
-  const followUpDraft = { createMany: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() };
+  const followUpDraft = { createMany: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), count: vi.fn() };
   const scheduleBlock = { findFirst: vi.fn() };
   const staffMember = { findFirst: vi.fn() };
   const businessHours = { findUnique: vi.fn() };

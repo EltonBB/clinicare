@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
   appointment: { findFirst: vi.fn(), count: vi.fn() },
   followUpDraft: { create: vi.fn(), updateMany: vi.fn() },
   appointmentReminder: { createMany: vi.fn(), updateMany: vi.fn() },
+  $transaction: vi.fn(),
+  $executeRaw: vi.fn(),
   business: { findUnique: vi.fn() },
   dispatchSoon: vi.fn(),
 }));
@@ -14,6 +16,7 @@ vi.mock("@/lib/prisma", () => ({
     followUpDraft: mocks.followUpDraft,
     appointmentReminder: mocks.appointmentReminder,
     business: mocks.business,
+    $transaction: mocks.$transaction,
   },
 }));
 vi.mock("@/lib/automation-dispatch-soon", () => ({ dispatchSoon: mocks.dispatchSoon }));
@@ -65,6 +68,10 @@ beforeEach(() => {
   mocks.appointment.count.mockResolvedValue(3);
   mocks.followUpDraft.create.mockResolvedValue({ id: "draft_1" });
   mocks.followUpDraft.updateMany.mockResolvedValue({ count: 0 });
+  // The suppression runs in a transaction on the same mocked client.
+  mocks.$transaction.mockImplementation(async (callback: (client: unknown) => unknown) =>
+    callback({ appointment: mocks.appointment, appointmentReminder: mocks.appointmentReminder, $executeRaw: mocks.$executeRaw })
+  );
 });
 
 describe("queueVisitMessage", () => {
@@ -76,7 +83,7 @@ describe("queueVisitMessage", () => {
         kind: "BOOKING_CONFIRMATION",
         autoSend: true,
         appointmentGeneration: 2,
-        dedupeKey: "BOOKING_CONFIRMATION:appt_1",
+        dedupeKey: "BOOKING_CONFIRMATION:appt_1:2",
         body: expect.stringMatching(/^Hi Maya, your visit at Vela Dent is booked for .+\. Reply here if you need to change it\.$/),
       }),
       select: { id: true },
@@ -206,8 +213,11 @@ describe("suppressOpenReminders", () => {
     mocks.appointment.findFirst.mockResolvedValue({ startAt: new Date(NOW.getTime() + 30 * 60_000) });
     mocks.business.findUnique.mockResolvedValue(business());
 
-    await suppressOpenReminders({ businessId: "biz_1", appointmentId: "appt_1", now: NOW });
+    await suppressOpenReminders({ businessId: "biz_1", appointmentId: "appt_1", appointmentGeneration: 2, now: NOW });
 
+    expect(mocks.appointment.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ reminderGeneration: 2 }) })
+    );
     expect(mocks.appointmentReminder.createMany).toHaveBeenCalledWith({
       data: [
         { appointmentId: "appt_1", type: "TWENTY_FOUR_HOUR", status: "SENT", sentAt: NOW },
@@ -221,7 +231,7 @@ describe("suppressOpenReminders", () => {
     mocks.appointment.findFirst.mockResolvedValue({ startAt: new Date(NOW.getTime() + 30 * 60_000) });
     mocks.business.findUnique.mockResolvedValue(business());
 
-    await suppressOpenReminders({ businessId: "biz_1", appointmentId: "appt_1", now: NOW });
+    await suppressOpenReminders({ businessId: "biz_1", appointmentId: "appt_1", appointmentGeneration: 2, now: NOW });
 
     expect(mocks.appointmentReminder.updateMany).toHaveBeenCalledWith({
       where: { appointmentId: "appt_1", type: { in: ["TWENTY_FOUR_HOUR", "TWO_HOUR"] }, status: "FAILED" },
@@ -233,17 +243,27 @@ describe("suppressOpenReminders", () => {
     mocks.appointment.findFirst.mockResolvedValue({ startAt: IN_TWO_DAYS });
     mocks.business.findUnique.mockResolvedValue(business());
 
-    await suppressOpenReminders({ businessId: "biz_1", appointmentId: "appt_1", now: NOW });
+    await suppressOpenReminders({ businessId: "biz_1", appointmentId: "appt_1", appointmentGeneration: 2, now: NOW });
 
     expect(mocks.appointmentReminder.createMany).not.toHaveBeenCalled();
   });
 });
 
 describe("retireVisitDrafts", () => {
-  it("withdraws the drafts that named the visit as it was", async () => {
-    const tx = { followUpDraft: { updateMany: vi.fn() } };
+  it("covers nothing once the visit has moved on from the version the message described", async () => {
+    mocks.appointment.findFirst.mockResolvedValue(null);
+    mocks.business.findUnique.mockResolvedValue(business());
 
-    await retireVisitDrafts(tx as never, "appt_1");
+    await suppressOpenReminders({ businessId: "biz_1", appointmentId: "appt_1", appointmentGeneration: 1, now: NOW });
+
+    expect(mocks.appointmentReminder.createMany).not.toHaveBeenCalled();
+    expect(mocks.appointmentReminder.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("withdraws the drafts that named the visit as it was, and says if a booking message was waiting", async () => {
+    const tx = { followUpDraft: { updateMany: vi.fn(), count: vi.fn().mockResolvedValue(1) } };
+
+    expect(await retireVisitDrafts(tx as never, "appt_1")).toEqual({ bookingMessageRetired: true });
 
     expect(tx.followUpDraft.updateMany).toHaveBeenCalledWith({
       where: {

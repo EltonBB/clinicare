@@ -214,7 +214,7 @@ function serveDrafts(rows: Row[]) {
       id: row.id,
       body: row.body,
       kind: row.kind,
-      appointmentGeneration: row.appointmentGeneration ?? null,
+      appointmentGeneration: row.appointmentGeneration ?? undefined,
       clientId: row.clientId,
       client: { phone: rowClient.phone ?? null, name: rowClient.name ?? null },
       // A fixture without an end time is a half-hour slot.
