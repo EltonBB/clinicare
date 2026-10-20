@@ -252,17 +252,6 @@ export async function syncAppointmentRemindersForBusiness(
       continue;
     }
 
-    const clientPhone = normalizePhone(appointment.client.phone);
-    // Canonical dedup key (digits only) — the conversation is keyed on this so a
-    // reminder and the patient's later inbound reply resolve to the SAME row.
-    const clientPhoneKey = phoneLookupKey(appointment.client.phone);
-
-    if (!clientPhone || !clientPhoneKey) {
-      failed += 1;
-      progress.failed += 1;
-      continue;
-    }
-
     // The body is rendered under minimum-necessary rules (only the kind's
     // whitelisted details: name, date, time, staff and clinic name — never the
     // service/treatment) and sent through the messaging seam.
@@ -286,6 +275,17 @@ export async function syncAppointmentRemindersForBusiness(
         body,
         dedupeKey: `${automationKind}:${appointment.id}:${appointment.startAt.getTime()}:${appointment.reminderGeneration}`,
       });
+      continue;
+    }
+
+    const clientPhone = normalizePhone(appointment.client.phone);
+    // Canonical dedup key (digits only) — the conversation is keyed on this so a
+    // reminder and the patient's later inbound reply resolve to the SAME row.
+    const clientPhoneKey = phoneLookupKey(appointment.client.phone);
+
+    if (!clientPhone || !clientPhoneKey) {
+      failed += 1;
+      progress.failed += 1;
       continue;
     }
 

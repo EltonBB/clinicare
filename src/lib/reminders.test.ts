@@ -361,3 +361,23 @@ describe("syncAppointmentRemindersForBusiness with a reminder set to review", ()
     );
   });
 });
+
+describe("syncAppointmentRemindersForBusiness review drafts without a phone", () => {
+  it("still drafts a review reminder for a client with no usable phone, so staff can fix it", async () => {
+    mocks.business.findUnique.mockResolvedValue(
+      business({
+        automationSettings: [
+          { kind: "SECOND_REMINDER", enabled: true, mode: "REVIEW", timing: 2, template: null, template2: null },
+        ],
+      })
+    );
+    mocks.appointment.findMany.mockResolvedValue([
+      { ...appointmentIn(1, "appt_1"), client: { id: "client_appt_1", name: "Mira", phone: "" } },
+    ]);
+    mocks.followUpDraft.create.mockResolvedValue({ id: "draft_1" });
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    expect(mocks.followUpDraft.create).toHaveBeenCalled();
+  });
+});

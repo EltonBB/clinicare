@@ -602,7 +602,17 @@ describe("retireVisitDrafts", () => {
       where: {
         appointmentId: "appt_1",
         status: "PENDING",
-        kind: { in: ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED", "MISSED_VISIT"] },
+        kind: {
+          in: [
+            "BOOKING_CONFIRMATION",
+            "NEW_PATIENT_WELCOME",
+            "VISIT_CHANGED",
+            "MISSED_VISIT",
+            "FIRST_REMINDER",
+            "SECOND_REMINDER",
+            "HIGH_RISK_REMINDER",
+          ],
+        },
       },
       data: { status: "DISMISSED" },
     });

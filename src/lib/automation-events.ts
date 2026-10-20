@@ -25,7 +25,17 @@ export type OwedVisitMessageArgs = { appointmentId: string; event: OwedVisitMess
  * Drafts written about a visit as it stood: its patient, time, staff member
  * and status are baked into them (Codex).
  */
-const VISIT_DRAFT_KINDS: FollowUpDraftKind[] = ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED", "MISSED_VISIT"];
+const VISIT_DRAFT_KINDS: FollowUpDraftKind[] = [
+  "BOOKING_CONFIRMATION",
+  "NEW_PATIENT_WELCOME",
+  "VISIT_CHANGED",
+  "MISSED_VISIT",
+  // A reminder waiting for review was rendered for the visit as it stood too;
+  // the reset reminders draft a fresh one when it falls due again (Codex).
+  "FIRST_REMINDER",
+  "SECOND_REMINDER",
+  "HIGH_RISK_REMINDER",
+];
 
 const BOOKING_MESSAGE_KINDS: FollowUpDraftKind[] = ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME"];
 
