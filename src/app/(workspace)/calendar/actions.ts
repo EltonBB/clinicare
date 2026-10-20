@@ -29,6 +29,7 @@ import { isInsideOperatingHours } from "@/lib/operating-hours";
 import { MAX_RISK_BATCH_SIZE, type NoShowRiskAssessment } from "@/lib/no-show-risk";
 import { parseRecordId } from "@/lib/record-id";
 import { acquireSchedulingLock, hasSchedulingConflict } from "@/lib/scheduling-conflicts";
+import { queueMissedVisitMessage, queueVisitMessage, withdrawMissedVisitMessage } from "@/lib/automation-events";
 import { offerFreedSlot, withdrawSlotOffers } from "@/lib/slot-offers";
 import { formatZonedDateKey, formatZonedTime24, parseZonedWallClock } from "@/lib/time-zone";
 import {
@@ -677,6 +678,21 @@ export async function saveAppointmentAction(
       [appointmentId]
     );
 
+    // The patient hears about what the clinic just did (Automations): a new
+    // booking, a cancellation, or a new time. Best-effort, after the commit.
+    const visitEvent = !payload.id
+      ? newStatus !== "CANCELLED"
+        ? "booked"
+        : null
+      : wasNewlyCancelled
+        ? "cancelled"
+        : newStatus !== "CANCELLED" && readSlot && readSlot.startAt.getTime() !== startAt.getTime()
+          ? "moved"
+          : null;
+    if (visitEvent) {
+      await queueVisitMessage({ businessId: business.id, appointmentId: appointmentId!, event: visitEvent });
+    }
+
     if (wasNewlyCancelled) {
       // The doctor who is told is whoever HAD this slot before the edit, not
       // the post-save assignee: if the same save also reassigns or clears the
@@ -765,6 +781,7 @@ export async function cancelAppointmentAction(
 
   if (outcome.changed) {
     await notifyStaffOfAppointmentChange(business.id, outcome.staffMemberId, outcome.appointmentId);
+    await queueVisitMessage({ businessId: business.id, appointmentId: outcome.appointmentId, event: "cancelled" });
   }
 
   return {
@@ -833,6 +850,12 @@ export async function recordAppointmentAttendanceAction(
 
   if (outcome.changed) {
     revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId], [outcome.appointmentId]);
+    // Automations' missed-visit message, or its withdrawal on "Mark as attended".
+    if (attended) {
+      await withdrawMissedVisitMessage({ businessId: business.id, appointmentId: outcome.appointmentId });
+    } else {
+      await queueMissedVisitMessage({ businessId: business.id, appointmentId: outcome.appointmentId });
+    }
   }
 
   return { ok: true, status: attended ? "completed" : "no-show", clientId: outcome.clientId };

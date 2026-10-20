@@ -16,6 +16,7 @@ import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { expirePastSlotOffers } from "@/lib/slot-offers";
 import {
+  findCheckupDueCandidates,
   findPaymentReminderCandidates,
   findRebookCandidates,
   findThankYouCandidates,
@@ -88,7 +89,7 @@ type GeneratedKind = FollowUpDraftInput["kind"];
 async function countPendingByKind(businessId: string): Promise<Map<GeneratedKind, number>> {
   const rows = await prisma.followUpDraft.groupBy({
     by: ["kind"],
-    where: { businessId, status: "PENDING", kind: { in: ["REBOOK", "PAYMENT", "THANK_YOU"] } },
+    where: { businessId, status: "PENDING", kind: { in: ["REBOOK", "PAYMENT", "THANK_YOU", "CHECKUP_DUE"] } },
     _count: { _all: true },
   });
   return new Map(rows.map((row) => [row.kind as GeneratedKind, row._count._all]));
@@ -196,6 +197,14 @@ async function generateForBusiness(
       run: async () => findPaymentReminderCandidates({ businessId, settings, now, message }),
     });
   }
+  if (automations.CHECKUP_DUE.enabled) {
+    const message = { template: automations.CHECKUP_DUE.template, clinicName };
+    generators.push({
+      name: "check-up due",
+      kind: "CHECKUP_DUE",
+      run: async () => findCheckupDueCandidates({ businessId, now, message }),
+    });
+  }
   const thankYouMessage = { template: automations.THANK_YOU.template, clinicName };
   generators.push({
     name: "thank-you",
@@ -297,6 +306,36 @@ export async function expireStaleFollowUpDrafts(now: Date): Promise<number> {
       ],
     },
   ];
+
+  // The newer automations: a visit message whose visit has passed (or is
+  // gone), a missed-visit message no longer about a no-show or a week old, a
+  // check-up nudge to someone who has booked since or two weeks old.
+  rules.push(
+    {
+      kind: { in: ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED"] },
+      status: "PENDING",
+      OR: [{ appointmentId: null }, { appointment: { startAt: { lte: now } } }, { client: INELIGIBLE_CLIENT_WHERE }],
+    },
+    {
+      kind: "MISSED_VISIT",
+      status: "PENDING",
+      OR: [
+        { appointmentId: null },
+        { appointment: { status: { not: "NO_SHOW" } } },
+        { createdAt: { lt: subtractDays(now, 7) } },
+        { client: INELIGIBLE_CLIENT_WHERE },
+      ],
+    },
+    {
+      kind: "CHECKUP_DUE",
+      status: "PENDING",
+      OR: [
+        { client: { appointments: { some: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } } } } },
+        { createdAt: { lt: subtractDays(now, 14) } },
+        { client: INELIGIBLE_CLIENT_WHERE },
+      ],
+    }
+  );
 
   let expired = 0;
   for (const where of rules) {

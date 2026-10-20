@@ -25,7 +25,7 @@ export const DEFAULT_WORKFLOW_SETTINGS: WorkflowSettingsValues = {
 
 export type FollowUpDraftInput = {
   clientId: string;
-  kind: "REBOOK" | "PAYMENT" | "THANK_YOU";
+  kind: "REBOOK" | "PAYMENT" | "THANK_YOU" | "CHECKUP_DUE";
   body: string;
   appointmentId?: string;
   paymentId?: string;
@@ -296,4 +296,64 @@ export async function findThankYouCandidates(args: {
     }),
     dedupeKey: `THANK_YOU:${appointment.id}`,
   }));
+}
+
+/**
+ * How long after a follow-up date a check-up nudge may still be drafted: long
+ * enough for two hourly runs to miss it, never a backlog of old dates (a clinic
+ * turning the automation on, or the day it ships, doesn't nudge everyone whose
+ * follow-up date passed months ago).
+ */
+const CHECKUP_LOOKBACK_HOURS = 24;
+
+/**
+ * Follow-up dates staff set on a client's record (Client › Appointments ›
+ * Follow-up reminders) that have arrived: still "Scheduled", the client still
+ * one the clinic contacts and with no visit booked ahead, and not drafted
+ * before (the dedupe key names the follow-up reminder).
+ */
+export async function findCheckupDueCandidates(args: {
+  businessId: string;
+  now: Date;
+  message?: DraftMessage;
+}): Promise<FollowUpDraftInput[]> {
+  const { businessId, now, message } = args;
+
+  const reminders = await prisma.clientFollowUpReminder.findMany({
+    where: {
+      businessId,
+      status: "Scheduled",
+      remindAt: { lte: now, gt: new Date(now.getTime() - CHECKUP_LOOKBACK_HOURS * HOUR_MS) },
+      client: {
+        ...ELIGIBLE_CLIENT_WHERE,
+        appointments: { none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } } },
+      },
+    },
+    select: { id: true, clientId: true, client: { select: { name: true } } },
+    orderBy: [{ remindAt: "asc" }, { id: "asc" }],
+    take: MAX_CANDIDATES_PER_RUN,
+  });
+  if (reminders.length === 0) return [];
+
+  const keys = reminders.map((reminder) => `CHECKUP_DUE:${reminder.id}`);
+  const drafted = new Set(
+    (
+      await prisma.followUpDraft.findMany({
+        where: { businessId, dedupeKey: { in: keys } },
+        select: { dedupeKey: true },
+      })
+    ).map((draft) => draft.dedupeKey)
+  );
+
+  return reminders
+    .filter((reminder) => !drafted.has(`CHECKUP_DUE:${reminder.id}`))
+    .map((reminder) => ({
+      clientId: reminder.clientId,
+      kind: "CHECKUP_DUE" as const,
+      body: renderAutomationMessage("CHECKUP_DUE", message?.template, {
+        client_name: reminder.client.name,
+        clinic_name: message?.clinicName,
+      }),
+      dedupeKey: `CHECKUP_DUE:${reminder.id}`,
+    }));
 }

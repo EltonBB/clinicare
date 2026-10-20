@@ -24,7 +24,12 @@ import { rebookedAppointmentWhere } from "@/lib/workflow-generators";
 // Send checks it twice: when it claims a PENDING draft and again, on the claimed
 // SENT one, immediately before the message leaves (see confirmFollowUpDraftDispatch).
 function actionablePendingWhere(now: Date): Prisma.FollowUpDraftWhereInput {
-  return { status: "PENDING", ...stillHoldsWhere(now) };
+  // A draft with a delay (a missed-visit message) is neither listed nor sent
+  // before its time.
+  return {
+    status: "PENDING",
+    AND: [{ OR: [{ sendAfter: null }, { sendAfter: { lte: now } }] }, stillHoldsWhere(now)],
+  };
 }
 
 function stillHoldsWhere(now: Date): Prisma.FollowUpDraftWhereInput {
@@ -70,6 +75,44 @@ function stillHoldsWhere(now: Date): Prisma.FollowUpDraftWhereInput {
         business: automationEnabledWhere("THANK_YOU"),
         client: ELIGIBLE_CLIENT_WHERE,
         appointment: { status: "COMPLETED" },
+      },
+      // The visit is still booked and still ahead — a confirmation or welcome
+      // for a visit since cancelled or past would only confuse.
+      {
+        kind: "BOOKING_CONFIRMATION",
+        business: automationEnabledWhere("BOOKING_CONFIRMATION"),
+        client: ELIGIBLE_CLIENT_WHERE,
+        appointment: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } },
+      },
+      {
+        kind: "NEW_PATIENT_WELCOME",
+        business: automationEnabledWhere("NEW_PATIENT_WELCOME"),
+        client: ELIGIBLE_CLIENT_WHERE,
+        appointment: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } },
+      },
+      // A moved or cancelled notice, while the visit's time is still ahead
+      // (a newer change dismisses the older notice when it is drafted).
+      {
+        kind: "VISIT_CHANGED",
+        business: automationEnabledWhere("VISIT_CHANGED"),
+        client: ELIGIBLE_CLIENT_WHERE,
+        appointment: { startAt: { gt: now } },
+      },
+      // Still recorded as missed (not since marked attended).
+      {
+        kind: "MISSED_VISIT",
+        business: automationEnabledWhere("MISSED_VISIT"),
+        client: ELIGIBLE_CLIENT_WHERE,
+        appointment: { status: "NO_SHOW" },
+      },
+      // Not booked since: a check-up nudge to someone with a visit ahead is noise.
+      {
+        kind: "CHECKUP_DUE",
+        business: automationEnabledWhere("CHECKUP_DUE"),
+        client: {
+          ...ELIGIBLE_CLIENT_WHERE,
+          appointments: { none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } } },
+        },
       },
     ],
   };
