@@ -237,6 +237,11 @@ export const SLOT_OUTSIDE_HOURS_ERROR =
 // when the offered slot no longer fits the clinic's working hours.
 class SlotOutsideHours extends Error {}
 
+// Thrown inside the same transaction when the visit a draft was written about
+// has changed since (its reminderGeneration moved on): the draft names an old
+// patient, time or status, so it is refused like any other stale draft.
+class VisitChangedSinceDrafted extends Error {}
+
 /**
  * Atomic PENDING -> SENT flip: two staff tapping Send at once can't both
  * succeed, and a draft that went stale since the page loaded (payment since
@@ -343,6 +348,9 @@ async function runSendGate(args: {
   try {
     return await flipDraftToSent(args);
   } catch (error) {
+    if (error instanceof VisitChangedSinceDrafted) {
+      return { ok: false, error: ALREADY_HANDLED_ERROR };
+    }
     if (error instanceof SlotOutsideHours) {
       return { ok: false, error: SLOT_OUTSIDE_HOURS_ERROR };
     }
@@ -404,11 +412,25 @@ function flipDraftToSent(args: {
           body: true,
           kind: true,
           appointmentId: true,
+          appointmentGeneration: true,
           clientId: true,
           client: { select: { phone: true, name: true } },
-          appointment: { select: { startAt: true, endAt: true } },
+          appointment: { select: { startAt: true, endAt: true, reminderGeneration: true, clientId: true } },
         },
       });
+
+      // Written about a visit as it stood: refused once the visit has changed —
+      // a new patient, time, staff member, service or status — even if the
+      // change landed after this draft was claimed (the re-check right before
+      // the send runs this again) or raced the draft's creation (Codex).
+      if (
+        draft.appointmentGeneration != null &&
+        (!draft.appointment ||
+          draft.appointment.reminderGeneration !== draft.appointmentGeneration ||
+          draft.appointment.clientId !== draft.clientId)
+      ) {
+        throw new VisitChangedSinceDrafted();
+      }
 
       if (
         draft.kind === "SLOT_OFFER" &&

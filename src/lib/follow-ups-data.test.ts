@@ -214,6 +214,7 @@ function serveDrafts(rows: Row[]) {
       id: row.id,
       body: row.body,
       kind: row.kind,
+      appointmentGeneration: row.appointmentGeneration ?? null,
       clientId: row.clientId,
       client: { phone: rowClient.phone ?? null, name: rowClient.name ?? null },
       // A fixture without an end time is a half-hour slot.
@@ -221,6 +222,8 @@ function serveDrafts(rows: Row[]) {
         ? {
             startAt: rowAppointment.startAt,
             endAt: rowAppointment.endAt ?? new Date((rowAppointment.startAt as Date).getTime() + 30 * 60_000),
+            reminderGeneration: rowAppointment.reminderGeneration ?? 0,
+            clientId: rowAppointment.clientId ?? row.clientId,
           }
         : null,
     };
@@ -762,6 +765,23 @@ describe("follow-ups data layer — which drafts are actionable", () => {
         dedupeKey,
         appointmentId: "appt_2",
         appointment: { status, startAt: FUTURE },
+      }),
+    ]);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({ ok: sendable });
+  });
+
+  it.each([
+    ["the visit is unchanged", 3, "client_1", true],
+    ["the visit changed since (a new time, staff or status)", 4, "client_1", false],
+    ["the visit now belongs to another patient", 3, "client_2", false],
+  ])("sends a visit draft only while %s", async (_label, generation, appointmentClient, sendable) => {
+    serveDrafts([
+      draftRow({
+        kind: "BOOKING_CONFIRMATION",
+        appointmentId: "appt_2",
+        appointmentGeneration: 3,
+        appointment: { status: "CONFIRMED", startAt: FUTURE, reminderGeneration: generation, clientId: appointmentClient },
       }),
     ]);
 

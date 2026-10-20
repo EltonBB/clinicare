@@ -54,3 +54,6 @@ DO $$ BEGIN
     FOREIGN KEY ("followUpReminderId") REFERENCES "ClientFollowUpReminder"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 CREATE INDEX IF NOT EXISTS "FollowUpDraft_followUpReminderId_idx" ON "FollowUpDraft"("followUpReminderId");
+
+-- PR #180: a visit draft remembers which version of the visit it was written for.
+ALTER TABLE "FollowUpDraft" ADD COLUMN IF NOT EXISTS "appointmentGeneration" INTEGER;

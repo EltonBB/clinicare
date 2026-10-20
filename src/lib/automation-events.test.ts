@@ -75,6 +75,7 @@ describe("queueVisitMessage", () => {
       data: expect.objectContaining({
         kind: "BOOKING_CONFIRMATION",
         autoSend: true,
+        appointmentGeneration: 2,
         dedupeKey: "BOOKING_CONFIRMATION:appt_1",
         body: expect.stringMatching(/^Hi Maya, your visit at Vela Dent is booked for .+\. Reply here if you need to change it\.$/),
       }),
@@ -248,7 +249,7 @@ describe("retireVisitDrafts", () => {
       where: {
         appointmentId: "appt_1",
         status: "PENDING",
-        kind: { in: ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED"] },
+        kind: { in: ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED", "MISSED_VISIT"] },
       },
       data: { status: "DISMISSED" },
     });

@@ -15,7 +15,7 @@ export type VisitEvent = "booked" | "moved" | "cancelled";
  * Drafts written about a visit as it stood: its patient, time, staff member
  * and status are baked into them (Codex).
  */
-const VISIT_DRAFT_KINDS: FollowUpDraftKind[] = ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED"];
+const VISIT_DRAFT_KINDS: FollowUpDraftKind[] = ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED", "MISSED_VISIT"];
 
 /**
  * Withdraws the pending drafts written about a visit, inside the transaction
@@ -131,6 +131,7 @@ export async function queueVisitMessage(args: {
         kind,
         status: "PENDING",
         appointmentId: appointment.id,
+        appointmentGeneration: appointment.reminderGeneration,
         body,
         autoSend,
         dedupeKey:
@@ -169,6 +170,7 @@ export async function queueMissedVisitMessage(args: {
         id: true,
         clientId: true,
         startAt: true,
+        reminderGeneration: true,
         client: { select: { name: true } },
         business: {
           select: {
@@ -199,6 +201,7 @@ export async function queueMissedVisitMessage(args: {
         kind: "MISSED_VISIT",
         status: "PENDING",
         appointmentId: appointment.id,
+        appointmentGeneration: appointment.reminderGeneration,
         body: renderAutomationMessage("MISSED_VISIT", setting.template, {
           client_name: appointment.client.name,
           clinic_name: business.name,

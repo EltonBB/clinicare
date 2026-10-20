@@ -426,6 +426,11 @@ model FollowUpDraft {
   autoSend        Boolean             @default(false)
   // Earliest time the draft may be sent or shown for review (Missed visit's delay).
   sendAfter       DateTime?
+  // A draft written about a visit (its confirmation, a notice, a missed-visit
+  // message, a reminder for review): the visit's reminderGeneration it was
+  // written for. Every check before sending refuses it once the visit has
+  // changed since (a new patient, time, staff, service or status).
+  appointmentGeneration Int?
   expiresAt       DateTime?
   sentAt          DateTime?
   createdAt       DateTime            @default(now())
