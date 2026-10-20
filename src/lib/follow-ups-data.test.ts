@@ -22,7 +22,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }));
 
-import { readFileSync } from "node:fs";
 
 import { FollowUpDraftKind, Prisma } from "@prisma/client";
 
@@ -816,27 +815,17 @@ describe("follow-ups data layer — which drafts are actionable", () => {
 });
 
 describe("follow-ups data layer — list order and cap", () => {
-  it("lists slot offers first, then newest first, with a stable id tiebreaker", async () => {
+  it("reads each kind separately, newest first, so no kind's backlog hides another's", async () => {
     mocks.prisma.followUpDraft.findMany.mockResolvedValue([]);
     await listPendingFollowUpDrafts("biz_1", NOW);
-    expect(mocks.prisma.followUpDraft.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ orderBy: [{ kind: "asc" }, { createdAt: "desc" }, { id: "asc" }] })
-    );
-  });
 
-  it("relies on SLOT_OFFER being the first declared kind, in the schema and in the migration Postgres sorts by", () => {
-    expect(Object.values(FollowUpDraftKind)[0]).toBe("SLOT_OFFER");
-
-    const migration = readFileSync(new URL("../../prisma/follow-up-draft-migration.sql", import.meta.url), "utf8");
-    expect(migration).toMatch(/CREATE TYPE "FollowUpDraftKind" AS ENUM \('SLOT_OFFER',/);
-  });
-
-  it("caps the pending-drafts query at MAX_PENDING_FOLLOW_UPS (650 — the real structural ceiling: 150 for the three generated kinds' own 50-each cap, plus 500 for the waiting list's own cap on live slot offers) instead of querying unbounded", async () => {
-    mocks.prisma.followUpDraft.findMany.mockResolvedValue([]);
-    await listPendingFollowUpDrafts("biz_1");
-    expect(mocks.prisma.followUpDraft.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ take: 650 })
-    );
+    const calls = mocks.prisma.followUpDraft.findMany.mock.calls.map(([args]) => args);
+    expect(calls.map((args) => args.where.kind)).toEqual(Object.values(FollowUpDraftKind));
+    for (const args of calls) {
+      expect(args.orderBy).toEqual([{ createdAt: "desc" }, { id: "asc" }]);
+      // Slot offers keep their structural ceiling (500 live offers at most); every other kind 200.
+      expect(args.take).toBe(args.where.kind === "SLOT_OFFER" ? 500 : 200);
+    }
   });
 });
 

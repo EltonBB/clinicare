@@ -30,6 +30,8 @@ export type FollowUpDraftInput = {
   appointmentId?: string;
   paymentId?: string;
   dedupeKey: string;
+  /** CHECKUP_DUE: the follow-up reminder it is made from. */
+  followUpReminderId?: string;
   /** The automation's mode when drafted: only autoSend drafts go out without a person. */
   autoSend?: boolean;
   /**
@@ -328,32 +330,25 @@ export async function findCheckupDueCandidates(args: {
         ...ELIGIBLE_CLIENT_WHERE,
         appointments: { none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } } },
       },
+      // Excluded in the query itself, so the cap can't keep re-reading rows
+      // that are already drafted (Codex). Only a waiting or sent draft counts:
+      // one skipped or expired doesn't stop a new date from being nudged.
+      followUpDrafts: { none: { kind: "CHECKUP_DUE", status: { in: ["PENDING", "SENT"] } } },
     },
-    select: { id: true, clientId: true, client: { select: { name: true } } },
+    select: { id: true, clientId: true, remindAt: true, client: { select: { name: true } } },
     orderBy: [{ remindAt: "asc" }, { id: "asc" }],
     take: MAX_CANDIDATES_PER_RUN,
   });
-  if (reminders.length === 0) return [];
 
-  const keys = reminders.map((reminder) => `CHECKUP_DUE:${reminder.id}`);
-  const drafted = new Set(
-    (
-      await prisma.followUpDraft.findMany({
-        where: { businessId, dedupeKey: { in: keys } },
-        select: { dedupeKey: true },
-      })
-    ).map((draft) => draft.dedupeKey)
-  );
-
-  return reminders
-    .filter((reminder) => !drafted.has(`CHECKUP_DUE:${reminder.id}`))
-    .map((reminder) => ({
-      clientId: reminder.clientId,
-      kind: "CHECKUP_DUE" as const,
-      body: renderAutomationMessage("CHECKUP_DUE", message?.template, {
-        client_name: reminder.client.name,
-        clinic_name: message?.clinicName,
-      }),
-      dedupeKey: `CHECKUP_DUE:${reminder.id}`,
-    }));
+  return reminders.map((reminder) => ({
+    clientId: reminder.clientId,
+    kind: "CHECKUP_DUE" as const,
+    followUpReminderId: reminder.id,
+    body: renderAutomationMessage("CHECKUP_DUE", message?.template, {
+      client_name: reminder.client.name,
+      clinic_name: message?.clinicName,
+    }),
+    // Per follow-up date: a reminder moved to a new date can be nudged again.
+    dedupeKey: `CHECKUP_DUE:${reminder.id}:${reminder.remindAt.getTime()}`,
+  }));
 }

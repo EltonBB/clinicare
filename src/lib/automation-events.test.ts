@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   appointment: { findFirst: vi.fn(), count: vi.fn() },
   followUpDraft: { create: vi.fn(), updateMany: vi.fn() },
-  appointmentReminder: { createMany: vi.fn() },
+  appointmentReminder: { createMany: vi.fn(), updateMany: vi.fn() },
   business: { findUnique: vi.fn() },
   dispatchSoon: vi.fn(),
 }));
@@ -22,6 +22,7 @@ vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: 
 import {
   queueMissedVisitMessage,
   queueVisitMessage,
+  retireVisitDrafts,
   suppressOpenReminders,
   withdrawMissedVisitMessage,
 } from "./automation-events";
@@ -181,6 +182,8 @@ describe("queueMissedVisitMessage", () => {
           kind: "MISSED_VISIT",
           autoSend: false,
           sendAfter: new Date(NOW.getTime() + 3_600_000),
+          // One per mark, so marking it again after an undo drafts anew.
+          dedupeKey: `MISSED_VISIT:appt_1:${NOW.getTime()}`,
           body: "Hi Maya, we missed you today. Would you like to book a new time?",
         }),
       })
@@ -213,6 +216,18 @@ describe("suppressOpenReminders", () => {
     });
   });
 
+  it("also covers a reminder that failed earlier and would be retried", async () => {
+    mocks.appointment.findFirst.mockResolvedValue({ startAt: new Date(NOW.getTime() + 30 * 60_000) });
+    mocks.business.findUnique.mockResolvedValue(business());
+
+    await suppressOpenReminders({ businessId: "biz_1", appointmentId: "appt_1", now: NOW });
+
+    expect(mocks.appointmentReminder.updateMany).toHaveBeenCalledWith({
+      where: { appointmentId: "appt_1", type: { in: ["TWENTY_FOUR_HOUR", "TWO_HOUR"] }, status: "FAILED" },
+      data: { status: "SENT", sentAt: NOW },
+    });
+  });
+
   it("leaves reminders whose window opens later alone", async () => {
     mocks.appointment.findFirst.mockResolvedValue({ startAt: IN_TWO_DAYS });
     mocks.business.findUnique.mockResolvedValue(business());
@@ -220,5 +235,22 @@ describe("suppressOpenReminders", () => {
     await suppressOpenReminders({ businessId: "biz_1", appointmentId: "appt_1", now: NOW });
 
     expect(mocks.appointmentReminder.createMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("retireVisitDrafts", () => {
+  it("withdraws the drafts that named the visit as it was", async () => {
+    const tx = { followUpDraft: { updateMany: vi.fn() } };
+
+    await retireVisitDrafts(tx as never, "appt_1");
+
+    expect(tx.followUpDraft.updateMany).toHaveBeenCalledWith({
+      where: {
+        appointmentId: "appt_1",
+        status: "PENDING",
+        kind: { in: ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED"] },
+      },
+      data: { status: "DISMISSED" },
+    });
   });
 });

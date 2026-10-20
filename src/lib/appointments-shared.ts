@@ -6,6 +6,7 @@ import { logger } from "@/lib/logger";
 import { buildStaffPushPayload, sendStaffPush } from "@/lib/mobile/push";
 import { prisma } from "@/lib/prisma";
 import { retryOnWriteConflict } from "@/lib/prisma-retry";
+import { retireVisitDrafts } from "@/lib/automation-events";
 import { offerFreedSlot, withdrawSlotOffers } from "@/lib/slot-offers";
 import { activeStaffDeviceWhere } from "@/lib/staff-device-policy";
 
@@ -262,6 +263,8 @@ export async function cancelAppointmentCore(where: {
 
     // Clear any pending reminder rows so a later re-confirm starts clean.
     await tx.appointmentReminder.deleteMany({ where: { appointmentId: cancelled.id } });
+    // A confirmation still waiting would tell the patient about a cancelled visit.
+    await retireVisitDrafts(tx, cancelled.id);
     await refreshClientLastVisitAt(cancelled.clientId, where.businessId, tx);
 
     // A cancellation just freed a slot: offer it to the waiting list (Pro

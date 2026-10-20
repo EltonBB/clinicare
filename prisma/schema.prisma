@@ -299,6 +299,8 @@ model ClientFollowUpReminder {
   notes      String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  // Check-up due drafts made from this reminder (Automations).
+  followUpDrafts FollowUpDraft[]
 
   @@index([businessId, clientId, remindAt])
   @@index([businessId, status])
@@ -413,6 +415,10 @@ model FollowUpDraft {
   waitlistEntry   WaitlistEntry?      @relation(fields: [waitlistEntryId], references: [id], onDelete: SetNull)
   paymentId       String?
   payment         ClientPayment?      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  // CHECKUP_DUE only: the follow-up reminder it was made from, re-checked
+  // before it is sent (still scheduled and due).
+  followUpReminderId String?
+  followUpReminder   ClientFollowUpReminder? @relation(fields: [followUpReminderId], references: [id], onDelete: SetNull)
   dedupeKey       String
   // The automation's mode, snapshotted when the draft is created: only
   // autoSend drafts are ever dispatched without a person, so changing a mode
@@ -428,6 +434,7 @@ model FollowUpDraft {
   @@unique([businessId, dedupeKey])
   @@index([paymentId])
   @@index([waitlistEntryId])
+  @@index([followUpReminderId])
   @@index([businessId, status, createdAt])
   @@index([businessId, autoSend, status])
   // Postgres doesn't index foreign keys on its own: without these, deleting a

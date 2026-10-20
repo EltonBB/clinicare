@@ -1,4 +1,4 @@
-import type { AutomationKind, FollowUpDraftKind } from "@prisma/client";
+import type { AutomationKind, FollowUpDraftKind, Prisma } from "@prisma/client";
 
 import { automationDefinition, renderAutomationMessage } from "@/lib/automations";
 import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness, getAutomationSettings } from "@/lib/automations-data";
@@ -10,6 +10,26 @@ import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 const HOUR_MS = 3_600_000;
 
 export type VisitEvent = "booked" | "moved" | "cancelled";
+
+/**
+ * Drafts written about a visit as it stood: its patient, time, staff member
+ * and status are baked into them (Codex).
+ */
+const VISIT_DRAFT_KINDS: FollowUpDraftKind[] = ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED"];
+
+/**
+ * Withdraws the pending drafts written about a visit, inside the transaction
+ * that changes who, when or what it is (wherever its reminders are reset). An
+ * edit could otherwise leave a confirmation that names the old time — or that
+ * goes to the patient the visit no longer belongs to. The caller drafts the
+ * notice for the new state after the commit (queueVisitMessage).
+ */
+export async function retireVisitDrafts(tx: Prisma.TransactionClient, appointmentId: string): Promise<void> {
+  await tx.followUpDraft.updateMany({
+    where: { appointmentId, status: "PENDING", kind: { in: VISIT_DRAFT_KINDS } },
+    data: { status: "DISMISSED" },
+  });
+}
 
 function isUniqueViolation(error: unknown) {
   return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "P2002";
@@ -185,7 +205,8 @@ export async function queueMissedVisitMessage(args: {
         }),
         autoSend: setting.mode === "AUTOMATIC",
         sendAfter: new Date(now.getTime() + delayHours * HOUR_MS),
-        dedupeKey: `MISSED_VISIT:${appointment.id}`,
+        // One per mark: an undo dismisses it, and marking it again drafts anew.
+        dedupeKey: `MISSED_VISIT:${appointment.id}:${now.getTime()}`,
       },
       select: { id: true },
     });
@@ -239,6 +260,12 @@ export async function suppressOpenReminders(args: { businessId: string; appointm
   );
   if (open.length === 0) return;
 
+  // A FAILED row is one the reminders job would retry: mark it covered too.
+  // A row already SENT keeps its real send time.
+  await prisma.appointmentReminder.updateMany({
+    where: { appointmentId, type: { in: open.map(({ type }) => type) }, status: "FAILED" },
+    data: { status: "SENT", sentAt: now },
+  });
   await prisma.appointmentReminder.createMany({
     data: open.map(({ type }) => ({ appointmentId, type, status: "SENT" as const, sentAt: now })),
     skipDuplicates: true,

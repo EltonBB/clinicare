@@ -1,4 +1,4 @@
-import { Prisma, type FollowUpDraftKind } from "@prisma/client";
+import { FollowUpDraftKind as FollowUpDraftKindEnum, Prisma, type FollowUpDraftKind } from "@prisma/client";
 
 import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { MAX_MESSAGE_BODY_LENGTH, MESSAGE_TOO_LONG_ERROR } from "@/lib/messaging/limits";
@@ -119,6 +119,8 @@ function stillHoldsWhere(now: Date): Prisma.FollowUpDraftWhereInput {
       {
         kind: "CHECKUP_DUE",
         business: automationEnabledWhere("CHECKUP_DUE"),
+        // The follow-up reminder it came from is still scheduled and still due.
+        followUpReminder: { status: "Scheduled", remindAt: { lte: now } },
         client: {
           ...ELIGIBLE_CLIENT_WHERE,
           appointments: { none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } } },
@@ -172,16 +174,16 @@ export async function getPendingFollowUpDraftCount(businessId: string, now: Date
   return prisma.followUpDraft.count({ where: { businessId, ...listableWhere(now) } });
 }
 
-// Upper bound on one page load — guards against an unbounded Prisma query,
-// set to the system's actual structural ceiling rather than an arbitrary
-// smaller number: the three generated kinds hold at most PENDING_CAP_PER_KIND
-// (50) pending drafts each (follow-up-generation.ts) = 150, and a slot offer
-// exists only for an entry that's WAITING or OFFERED — i.e. still counted
-// against MAX_ACTIVE_WAITLIST_ENTRIES (500) — so every live draft this list
-// can ever hold fits inside 650. A smaller cap here would silently hide the
-// oldest live slot offers once a clinic had more than it open at once, with
-// no way for staff to reach or send them (Codex).
-const MAX_PENDING_FOLLOW_UPS = 650;
+// Per-kind bounds on one page load — guards against an unbounded Prisma query
+// without one kind crowding another out of the list (Codex). Slot offers keep
+// the old structural ceiling (a live offer needs a WAITING/OFFERED entry, at
+// most MAX_ACTIVE_WAITLIST_ENTRIES = 500); the generated kinds hold at most
+// PENDING_CAP_PER_KIND (50) each; the event kinds (a visit's confirmation,
+// notice, missed-visit message or a reminder waiting for review) have no
+// structural cap, and 200 waiting at once is already far past what a clinic
+// works through before they go stale.
+const SLOT_OFFER_LIST_CAP = 500;
+const LIST_CAP_PER_KIND = 200;
 
 // Order: slot offers first — they're time-critical, and one buried under a
 // backlog of nudges would sit unseen until its slot passed. Postgres sorts an
@@ -192,15 +194,22 @@ export async function listPendingFollowUpDrafts(
   businessId: string,
   now: Date = new Date()
 ): Promise<FollowUpDraftRecord[]> {
-  return prisma.followUpDraft.findMany({
-    where: { businessId, ...listableWhere(now) },
-    include: {
-      client: { select: { name: true } },
-      appointment: { select: { startAt: true, title: true } },
-    },
-    orderBy: [{ kind: "asc" }, { createdAt: "desc" }, { id: "asc" }],
-    take: MAX_PENDING_FOLLOW_UPS,
-  });
+  // One bounded read per kind, so a backlog of one kind can never hide another;
+  // the page orders the rows itself (orderFollowUps).
+  const perKind = await Promise.all(
+    Object.values(FollowUpDraftKindEnum).map((kind) =>
+      prisma.followUpDraft.findMany({
+        where: { businessId, kind, ...listableWhere(now) },
+        include: {
+          client: { select: { name: true } },
+          appointment: { select: { startAt: true, title: true } },
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+        take: kind === "SLOT_OFFER" ? SLOT_OFFER_LIST_CAP : LIST_CAP_PER_KIND,
+      })
+    )
+  );
+  return perKind.flat();
 }
 
 type DraftMutationResult = { ok: true } | { ok: false; error: string };

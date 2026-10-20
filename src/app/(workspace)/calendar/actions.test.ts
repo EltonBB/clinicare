@@ -59,6 +59,7 @@ vi.mock("@/lib/automation-events", () => ({
   queueVisitMessage: vi.fn(),
   queueMissedVisitMessage: vi.fn(),
   withdrawMissedVisitMessage: vi.fn(),
+  retireVisitDrafts: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {

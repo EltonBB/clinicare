@@ -138,6 +138,7 @@ async function writeDrafts(
           status: "PENDING",
           appointmentId: input.appointmentId,
           paymentId: input.paymentId,
+          followUpReminderId: input.followUpReminderId,
           dedupeKey: input.dedupeKey,
           body: input.body,
           autoSend: input.autoSend ?? false,
@@ -330,6 +331,9 @@ export async function expireStaleFollowUpDrafts(now: Date): Promise<number> {
       kind: "CHECKUP_DUE",
       status: "PENDING",
       OR: [
+        // Its follow-up reminder was deleted, completed or moved to a later date.
+        { followUpReminderId: null },
+        { followUpReminder: { OR: [{ status: { not: "Scheduled" } }, { remindAt: { gt: now } }] } },
         { client: { appointments: { some: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } } } } },
         { createdAt: { lt: subtractDays(now, 14) } },
         { client: INELIGIBLE_CLIENT_WHERE },

@@ -29,7 +29,12 @@ import { isInsideOperatingHours } from "@/lib/operating-hours";
 import { MAX_RISK_BATCH_SIZE, type NoShowRiskAssessment } from "@/lib/no-show-risk";
 import { parseRecordId } from "@/lib/record-id";
 import { acquireSchedulingLock, hasSchedulingConflict } from "@/lib/scheduling-conflicts";
-import { queueMissedVisitMessage, queueVisitMessage, withdrawMissedVisitMessage } from "@/lib/automation-events";
+import {
+  queueMissedVisitMessage,
+  queueVisitMessage,
+  retireVisitDrafts,
+  withdrawMissedVisitMessage,
+} from "@/lib/automation-events";
 import { offerFreedSlot, withdrawSlotOffers } from "@/lib/slot-offers";
 import { formatZonedDateKey, formatZonedTime24, parseZonedWallClock } from "@/lib/time-zone";
 import {
@@ -308,6 +313,9 @@ export async function saveAppointmentAction(
     // cleared — the appointment isn't cancelled anymore, so its cancellation
     // timestamp shouldn't linger and be read as one on a later, different cancel.
     let wasReactivated = false;
+    // The status before this save, for the missed-visit automation (the edit
+    // form's Status dropdown can record or undo a no-show too).
+    let previousStatus: string | null = null;
     // Editing a still-cancelled booking's client/time/staff/service: an open
     // offer's text was frozen from the OLD details, but Book reads the row's
     // current ones — so an accepted offer could book the client into a
@@ -357,6 +365,7 @@ export async function saveAppointmentAction(
 
       previousClientId = existing.clientId;
       previousStaffMemberId = existing.staffMemberId;
+      previousStatus = existing.status;
       readSlot = {
         clientId: existing.clientId,
         staffMemberId: existing.staffMemberId,
@@ -556,6 +565,8 @@ export async function saveAppointmentAction(
               appointmentId: payload.id,
             },
           });
+          // The confirmation/notice drafts named the visit as it was.
+          await retireVisitDrafts(tx, payload.id);
         }
 
         const affectedClientIds = Array.from(
@@ -691,6 +702,11 @@ export async function saveAppointmentAction(
           : null;
     if (visitEvent) {
       await queueVisitMessage({ businessId: business.id, appointmentId: appointmentId!, event: visitEvent });
+    }
+    if (newStatus === "NO_SHOW" && previousStatus !== "NO_SHOW") {
+      await queueMissedVisitMessage({ businessId: business.id, appointmentId: appointmentId! });
+    } else if (previousStatus === "NO_SHOW" && newStatus !== "NO_SHOW") {
+      await withdrawMissedVisitMessage({ businessId: business.id, appointmentId: appointmentId! });
     }
 
     if (wasNewlyCancelled) {
