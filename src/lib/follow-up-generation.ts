@@ -259,9 +259,11 @@ export async function expireStaleFollowUpDrafts(now: Date): Promise<number> {
         { paymentId: null },
         { payment: { status: { notIn: ["Unpaid", "Partially Paid"] } } },
         { client: INELIGIBLE_CLIENT_WHERE },
-        // Payment reminders are Pro (the Automations page): a downgraded
-        // workspace's queued ones are retired like rebooking nudges.
-        { business: { plan: { in: nonProPlans } } },
+        // Not on a downgrade: payment reminders are Pro, so a Basic workspace's
+        // queued ones are hidden (automationEnabledWhere), never expired, and
+        // come back for review if it upgrades while the payment is still owed.
+        // Expiring them would lose the reminder for good: the generator skips
+        // any payment that already has a draft.
       ],
     },
     // Already rebooked or back since (a future booking, or a recent confirmed/

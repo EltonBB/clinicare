@@ -749,7 +749,6 @@ describe("expireStaleFollowUpDrafts", () => {
           { paymentId: null },
           { payment: { status: { notIn: ["Unpaid", "Partially Paid"] } } },
           { client: INELIGIBLE_CLIENT_WHERE },
-          { business: { plan: { in: ["TRIAL", "BASIC"] } } },
         ],
       },
       data: { status: "EXPIRED" },

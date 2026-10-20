@@ -337,6 +337,8 @@ const LIVENESS_CASES: Array<{ name: string; live: boolean; row: Row; keptBySweep
   {
     name: "payment, Basic workspace (payment reminders are Pro since the Automations page)",
     live: false,
+    // Hidden, not expired: it comes back if the workspace upgrades while still owed.
+    keptBySweep: true,
     row: draftRow({ kind: "PAYMENT", paymentId: "pay_1", payment: { status: "Unpaid" }, business: { plan: "BASIC" } }),
   },
   {

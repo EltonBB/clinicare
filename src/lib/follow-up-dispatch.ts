@@ -160,6 +160,12 @@ export async function dispatchFollowUpDraft(args: {
 
 /** Automatic sends wait this long after a draft is made, so `after()` gets the first go at it. */
 const AUTO_SEND_GRACE_MS = 60_000;
+/**
+ * An automatic draft still unsent this long after it was made (WhatsApp was
+ * down, the provider kept failing) is stale: it goes to review instead of
+ * reaching the patient days late. Same 3 days as the generators' backlog rule.
+ */
+const AUTO_SEND_MAX_AGE_MS = 3 * 24 * 3_600_000;
 /** Most automatic sends per clinic per run: a backlog drains over a few runs, never as one burst. */
 const AUTO_SEND_PER_BUSINESS_CAP = 20;
 
@@ -180,10 +186,16 @@ export async function dispatchDueAutomaticDrafts(args: {
 }): Promise<{ sent: number; failed: number }> {
   const { now, deadlineAt, perBusinessCap = AUTO_SEND_PER_BUSINESS_CAP } = args;
 
+  const staleBefore = new Date(now.getTime() - AUTO_SEND_MAX_AGE_MS);
+  await prisma.followUpDraft.updateMany({
+    where: { status: "PENDING", autoSend: true, createdAt: { lt: staleBefore } },
+    data: { autoSend: false },
+  });
+
   const dueWhere = {
     status: "PENDING",
     autoSend: true,
-    createdAt: { lte: new Date(now.getTime() - AUTO_SEND_GRACE_MS) },
+    createdAt: { lte: new Date(now.getTime() - AUTO_SEND_GRACE_MS), gte: staleBefore },
     OR: [{ sendAfter: null }, { sendAfter: { lte: now } }],
     business: {
       whatsappEnabled: true,

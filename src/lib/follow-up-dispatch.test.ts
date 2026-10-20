@@ -144,10 +144,19 @@ describe("dispatchDueAutomaticDrafts", () => {
     expect(where).toMatchObject({
       status: "PENDING",
       autoSend: true,
-      createdAt: { lte: new Date(NOW.getTime() - 60_000) },
+      createdAt: { lte: new Date(NOW.getTime() - 60_000), gte: new Date(NOW.getTime() - 3 * 24 * 3_600_000) },
       OR: [{ sendAfter: null }, { sendAfter: { lte: NOW } }],
     });
     expect(where.business).toMatchObject({ whatsappEnabled: true });
+  });
+
+  it("hands drafts left unsent for over 3 days to review instead of sending them late", async () => {
+    await dispatchDueAutomaticDrafts({ now: NOW, deadlineAt: Date.now() + 60_000 });
+
+    expect(mocks.updateMany).toHaveBeenCalledWith({
+      where: { status: "PENDING", autoSend: true, createdAt: { lt: new Date(NOW.getTime() - 3 * 24 * 3_600_000) } },
+      data: { autoSend: false },
+    });
   });
 
   it("caps each clinic's sends per run", async () => {
@@ -173,7 +182,7 @@ describe("dispatchDueAutomaticDrafts", () => {
 
     expect(mocks.markFollowUpDraftSent.mock.calls.map(([args]) => args.id)).toEqual(["a_1", "b_1"]);
     expect(result).toEqual({ sent: 1, failed: 1 });
-    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: expect.anything() }) }));
   });
 
   it("stops sending on its own a draft that can't go out, so it doesn't block the clinic", async () => {
@@ -194,7 +203,7 @@ describe("dispatchDueAutomaticDrafts", () => {
 
     await dispatchDueAutomaticDrafts({ now: NOW, deadlineAt: Date.now() + 60_000 });
 
-    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: "d_1" }) }));
   });
 
   it("serves every clinic, however long another clinic's queue is", async () => {
