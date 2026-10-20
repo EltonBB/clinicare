@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   findPaymentReminderCandidates: vi.fn(),
   findThankYouCandidates: vi.fn(),
   findCheckupDueCandidates: vi.fn(),
+  promoteDeliveredReviewReminders: vi.fn(),
   expirePastSlotOffers: vi.fn(),
   settleInterruptedFollowUpSends: vi.fn(),
   isProBusinessPlan: vi.fn(),
@@ -21,7 +22,10 @@ vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }));
 vi.mock("@/lib/billing", () => ({ isProBusinessPlan: mocks.isProBusinessPlan }));
 vi.mock("@/lib/logger", () => ({ logger: mocks.logger }));
 vi.mock("@/lib/slot-offers", () => ({ expirePastSlotOffers: mocks.expirePastSlotOffers }));
-vi.mock("@/lib/follow-ups-data", () => ({ settleInterruptedFollowUpSends: mocks.settleInterruptedFollowUpSends }));
+vi.mock("@/lib/follow-ups-data", () => ({
+  settleInterruptedFollowUpSends: mocks.settleInterruptedFollowUpSends,
+  promoteDeliveredReviewReminders: mocks.promoteDeliveredReviewReminders,
+}));
 vi.mock("@/lib/follow-up-cursor", () => ({
   getFollowUpCursor: mocks.getFollowUpCursor,
   setFollowUpCursor: mocks.setFollowUpCursor,
@@ -96,6 +100,7 @@ beforeEach(() => {
   mocks.findPaymentReminderCandidates.mockResolvedValue([]);
   mocks.findThankYouCandidates.mockResolvedValue([]);
   mocks.findCheckupDueCandidates.mockResolvedValue([]);
+  mocks.promoteDeliveredReviewReminders.mockResolvedValue(0);
   mocks.expirePastSlotOffers.mockResolvedValue({ expired: 0, released: 0, failed: 0 });
   mocks.settleInterruptedFollowUpSends.mockResolvedValue(0);
   // Mirrors billing.ts: PRO and ADVANCED are Pro; TRIAL and BASIC are not.
@@ -159,6 +164,14 @@ describe("generateFollowUpDrafts — business selection and settings", () => {
     );
     expect(mocks.findPaymentReminderCandidates).toHaveBeenCalledTimes(1);
     expect(mocks.findThankYouCandidates).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("generateFollowUpDrafts — reviewed reminders", () => {
+  it("records reminders sent from review as sent, even after an interrupted send", async () => {
+    await generateFollowUpDrafts(NOW);
+
+    expect(mocks.promoteDeliveredReviewReminders).toHaveBeenCalledTimes(1);
   });
 });
 

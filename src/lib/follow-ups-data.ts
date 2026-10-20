@@ -170,6 +170,33 @@ const INTERRUPTED_SEND_AFTER_MS = 2 * 60 * 1000;
  * offer stuck in between would otherwise stay hidden, its slot blocked from
  * being offered to anyone else, until the slot passed.
  */
+/**
+ * A reminder sent from To review whose DRAFTED marker never became SENT (the
+ * server stopped between the two writes, or the promotion failed): marked SENT
+ * here, for the visit version the draft was written for, so reply routing and
+ * the no-show risk signal see the reminder the patient received (Codex). Run
+ * by the hourly follow-ups job, after interrupted sends are settled. A
+ * column-to-column match, so raw SQL.
+ */
+export async function promoteDeliveredReviewReminders(): Promise<number> {
+  return prisma.$executeRaw`
+    UPDATE "AppointmentReminder" r
+    SET "status" = 'SENT', "sentAt" = d."sentAt"
+    FROM "FollowUpDraft" d
+    JOIN "Appointment" a ON a."id" = d."appointmentId"
+    WHERE r."appointmentId" = d."appointmentId"
+      AND r."status" = 'DRAFTED'
+      AND d."status" = 'SENT'
+      AND d."sentAt" IS NOT NULL
+      AND d."appointmentGeneration" = a."reminderGeneration"
+      AND (
+        (d."kind" = 'FIRST_REMINDER' AND r."type" = 'TWENTY_FOUR_HOUR')
+        OR (d."kind" = 'SECOND_REMINDER' AND r."type" = 'TWO_HOUR')
+        OR (d."kind" = 'HIGH_RISK_REMINDER' AND r."type" = 'HIGH_RISK')
+      )
+  `;
+}
+
 export async function settleInterruptedFollowUpSends(now: Date): Promise<number> {
   const { count } = await prisma.followUpDraft.updateMany({
     where: { status: "SENT", sentAt: null, updatedAt: { lt: new Date(now.getTime() - INTERRUPTED_SEND_AFTER_MS) } },
