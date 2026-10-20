@@ -160,7 +160,7 @@ export function AutomationEditor({
                   ))}
                 </select>
               ) : (
-                <span className="flex h-10 items-center text-sm text-foreground">{sentenceCase(data.fixedTiming)}</span>
+                <span className={FIXED_FIELD_CLASS}>{sentenceCase(data.fixedTiming)}</span>
               )}
             </label>
             <label className="flex flex-col gap-1.5">
@@ -175,7 +175,7 @@ export function AutomationEditor({
                   <option value="REVIEW">After I review it</option>
                 </select>
               ) : (
-                <span className="flex h-10 items-center text-sm text-foreground">Automatically</span>
+                <span className={FIXED_FIELD_CLASS}>Automatically</span>
               )}
             </label>
           </div>
@@ -213,7 +213,7 @@ export function AutomationEditor({
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 bg-[#eaf4ff] p-5 pt-12 sm:pt-5">
+        <div className="flex flex-col gap-3 bg-[#eaf4ff] p-5">
           <span className="text-xs font-medium text-[#3b5b86]">Maya&apos;s phone</span>
           <div className="flex flex-1 flex-col justify-center gap-2">
             <PreviewBubble text={renderAutomationMessage(data.kind, texts.template, sample, "moved")} />
@@ -221,12 +221,15 @@ export function AutomationEditor({
               <PreviewBubble text={renderAutomationMessage(data.kind, texts.template2, sample, "cancelled")} />
             ) : null}
           </div>
-          <span className="text-center text-[11px] text-[#5d7aa3]">Updates as you type</span>
         </div>
       </DialogContent>
     </Dialog>
   );
 }
+
+/** A setting the clinic can't change here, shown in the same box as the fields beside it. */
+const FIXED_FIELD_CLASS =
+  "flex h-10 items-center rounded-(--radius-card) border border-border/80 bg-muted/40 px-3 text-sm text-muted-foreground";
 
 function PreviewBubble({ text }: { text: string }) {
   return (
