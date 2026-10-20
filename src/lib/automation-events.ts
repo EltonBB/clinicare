@@ -23,13 +23,15 @@ const BOOKING_MESSAGE_KINDS: FollowUpDraftKind[] = ["BOOKING_CONFIRMATION", "NEW
 /**
  * What a save of the booking form tells the patient, if anything: a new
  * booking, a cancellation, or a new time. A visit given to another patient is
- * a new booking for them, whatever else changed (Codex); a booking message
+ * a new booking for them, whatever else changed, and so is a cancelled visit
+ * restored: the patient was told it was cancelled (Codex). A booking message
  * still waiting when the save reset the visit is owed again too.
  */
 export function visitEventForSave(save: {
   isNew: boolean;
   newStatus: string;
   wasNewlyCancelled: boolean;
+  wasReactivated: boolean;
   timeChanged: boolean;
   clientChanged: boolean;
   bookingMessageRetired: boolean;
@@ -37,7 +39,7 @@ export function visitEventForSave(save: {
   const stands = save.newStatus === "PENDING" || save.newStatus === "CONFIRMED";
   if (save.isNew) return save.newStatus !== "CANCELLED" ? "booked" : null;
   if (save.wasNewlyCancelled) return "cancelled";
-  if (stands && save.clientChanged) return "booked";
+  if (stands && (save.clientChanged || save.wasReactivated)) return "booked";
   if (save.newStatus !== "CANCELLED" && save.timeChanged) return "moved";
   if (stands && save.bookingMessageRetired) return "booked";
   return null;
@@ -306,26 +308,38 @@ export async function queueMissedVisitMessage(args: {
     if (!setting.enabled) return null;
 
     const delayHours = setting.timing ?? automationDefinition("MISSED_VISIT").defaultTiming ?? 1;
-    const draft = await prisma.followUpDraft.create({
-      data: {
-        businessId,
-        clientId: appointment.clientId,
-        kind: "MISSED_VISIT",
-        status: "PENDING",
-        appointmentId: appointment.id,
-        appointmentGeneration: appointment.reminderGeneration,
-        body: renderAutomationMessage("MISSED_VISIT", setting.template, {
-          client_name: appointment.client.name,
-          clinic_name: business.name,
-        }),
-        autoSend: setting.mode === "AUTOMATIC",
-        sendAfter: new Date(now.getTime() + delayHours * HOUR_MS),
-        // One per mark: an undo dismisses it, and marking it again drafts anew.
-        dedupeKey: `MISSED_VISIT:${appointment.id}:${now.getTime()}`,
-      },
-      select: { id: true },
+    // Drafted only while it is still a no-show, checked under the visit's share
+    // lock: an undo ("Mark as attended") that lands meanwhile either waits for
+    // this draft and then withdraws it, or has committed and nothing is drafted
+    // — never a stale draft left behind that a later no-show would revive (Codex).
+    return await prisma.$transaction(async (tx) => {
+      await lockAppointmentShared(tx, appointment.id);
+      const stillMissed = await tx.appointment.findFirst({
+        where: { id: appointment.id, businessId, status: "NO_SHOW" },
+        select: { id: true },
+      });
+      if (!stillMissed) return null;
+      const draft = await tx.followUpDraft.create({
+        data: {
+          businessId,
+          clientId: appointment.clientId,
+          kind: "MISSED_VISIT",
+          status: "PENDING",
+          appointmentId: appointment.id,
+          appointmentGeneration: appointment.reminderGeneration,
+          body: renderAutomationMessage("MISSED_VISIT", setting.template, {
+            client_name: appointment.client.name,
+            clinic_name: business.name,
+          }),
+          autoSend: setting.mode === "AUTOMATIC",
+          sendAfter: new Date(now.getTime() + delayHours * HOUR_MS),
+          // One per mark: an undo dismisses it, and marking it again drafts anew.
+          dedupeKey: `MISSED_VISIT:${appointment.id}:${now.getTime()}`,
+        },
+        select: { id: true },
+      });
+      return draft.id;
     });
-    return draft.id;
   } catch (error) {
     if (isUniqueViolation(error)) return null;
     logger.error("Drafting a missed-visit message failed.", error, { businessId, appointmentId });

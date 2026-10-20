@@ -499,9 +499,32 @@ describe("findThankYouCandidates", () => {
 });
 
 describe("findCheckupDueCandidates", () => {
+  it("skips a date already handled, but nudges a date moved after an earlier nudge", async () => {
+    const handledAt = new Date(NOW.getTime() - 3 * 3_600_000);
+    const movedTo = new Date(NOW.getTime() - 1 * 3_600_000);
+    mocks.clientFollowUpReminder.findMany.mockResolvedValue([
+      { id: "fr_1", clientId: "c1", remindAt: handledAt, client: { name: "Alex" } },
+      { id: "fr_2", clientId: "c2", remindAt: movedTo, client: { name: "Bea" } },
+    ]);
+    // fr_1's nudge for this very date went out; fr_2's was for its old date.
+    mocks.followUpDraft.findMany.mockResolvedValue([
+      { dedupeKey: `CHECKUP_DUE:fr_1:${handledAt.getTime()}` },
+      { dedupeKey: `CHECKUP_DUE:fr_2:${movedTo.getTime() - 5 * 3_600_000}` },
+    ]);
+
+    const result = await findCheckupDueCandidates({ businessId: "biz_1", now: NOW });
+
+    expect(result.map((draft) => draft.followUpReminderId)).toEqual(["fr_2"]);
+    expect(mocks.followUpDraft.findMany).toHaveBeenCalledWith({
+      where: { businessId: "biz_1", kind: "CHECKUP_DUE", followUpReminderId: { in: ["fr_1", "fr_2"] } },
+      select: { dedupeKey: true },
+    });
+  });
+
   it("drafts a check-up nudge for a follow-up date that just arrived, once", async () => {
     const remindAt = new Date(NOW.getTime() - 2 * 3_600_000);
     mocks.clientFollowUpReminder.findMany.mockResolvedValue([{ id: "fr_1", clientId: "c1", remindAt, client: { name: "Alex" } }]);
+    mocks.followUpDraft.findMany.mockResolvedValue([]);
 
     const result = await findCheckupDueCandidates({ businessId: "biz_1", now: NOW, message: { template: null, clinicName: "Vela Dent" } });
 
@@ -519,13 +542,7 @@ describe("findCheckupDueCandidates", () => {
     // Only the last day: never a backlog of old follow-up dates.
     expect(where.remindAt).toEqual({ lte: NOW, gt: new Date(NOW.getTime() - 24 * 3_600_000) });
     expect(where.client.appointments).toEqual({ none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: NOW } } });
-    // Already-drafted ones are excluded in the query, before the cap: one still
-    // waiting, or one made for a date in this same window (sent, skipped).
-    expect(where.followUpDrafts).toEqual({
-      none: {
-        kind: "CHECKUP_DUE",
-        OR: [{ status: "PENDING" }, { createdAt: { gt: new Date(NOW.getTime() - 24 * 3_600_000) } }],
-      },
-    });
+    // One still waiting is excluded in the query; one handled for this date by its key.
+    expect(where.followUpDrafts).toEqual({ none: { kind: "CHECKUP_DUE", status: "PENDING" } });
   });
 });

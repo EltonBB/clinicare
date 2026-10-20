@@ -699,6 +699,7 @@ export async function saveAppointmentAction(
       isNew: !payload.id,
       newStatus,
       wasNewlyCancelled,
+      wasReactivated,
       timeChanged: readSlot !== null && readSlot.startAt.getTime() !== startAt.getTime(),
       clientChanged: readSlot !== null && readSlot.clientId !== payload.clientId,
       bookingMessageRetired,

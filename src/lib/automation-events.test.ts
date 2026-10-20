@@ -75,7 +75,12 @@ beforeEach(() => {
   mocks.followUpDraft.findFirst.mockResolvedValue(null);
   // The suppression runs in a transaction on the same mocked client.
   mocks.$transaction.mockImplementation(async (callback: (client: unknown) => unknown) =>
-    callback({ appointment: mocks.appointment, appointmentReminder: mocks.appointmentReminder, $executeRaw: mocks.$executeRaw })
+    callback({
+      appointment: mocks.appointment,
+      appointmentReminder: mocks.appointmentReminder,
+      followUpDraft: mocks.followUpDraft,
+      $executeRaw: mocks.$executeRaw,
+    })
   );
 });
 
@@ -302,6 +307,7 @@ describe("one message per version of a visit", () => {
     ["a new time", { timeChanged: true }, "moved"],
     ["a cancellation", { wasNewlyCancelled: true, newStatus: "CANCELLED" }, "cancelled"],
     ["a reset that retired a waiting confirmation", { bookingMessageRetired: true }, "booked"],
+    ["a cancelled visit restored", { wasReactivated: true }, "booked"],
     ["a status change only", {}, null],
   ])("tells the patient about %s", (_label, change, expected) => {
     const save = {
@@ -311,6 +317,7 @@ describe("one message per version of a visit", () => {
       timeChanged: false,
       clientChanged: false,
       bookingMessageRetired: false,
+      wasReactivated: false,
       ...change,
     };
     expect(visitEventForSave(save)).toBe(expected);
@@ -335,6 +342,17 @@ describe("queueMissedVisitMessage", () => {
         }),
       })
     );
+  });
+
+  it("drafts nothing when the no-show was undone after this request read it", async () => {
+    mocks.appointment.findFirst
+      .mockResolvedValueOnce(appointment({ status: "NO_SHOW", startAt: new Date("2026-10-20T07:00:00.000Z") }))
+      // Re-read under the visit's lock: staff marked it attended meanwhile.
+      .mockResolvedValueOnce(null);
+
+    expect(await queueMissedVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", now: NOW })).toBeNull();
+    expect(mocks.$executeRaw).toHaveBeenCalled();
+    expect(mocks.followUpDraft.create).not.toHaveBeenCalled();
   });
 
   it("still drafts the missed-visit message while WhatsApp is disconnected", async () => {

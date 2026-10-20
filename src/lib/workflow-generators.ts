@@ -307,6 +307,8 @@ export async function findThankYouCandidates(args: {
  * follow-up date passed months ago).
  */
 const CHECKUP_LOOKBACK_HOURS = 24;
+/** Follow-up dates read per run: a day's worth, far above what one clinic has due at once. */
+const CHECKUP_SCAN_LIMIT = 1_000;
 
 /**
  * Follow-up dates staff set on a client's record (Client › Appointments ›
@@ -330,24 +332,30 @@ export async function findCheckupDueCandidates(args: {
         ...ELIGIBLE_CLIENT_WHERE,
         appointments: { none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } } },
       },
-      // Excluded in the query itself, so the cap can't keep re-reading them
-      // (Codex): a draft still waiting, or one made inside this same window
-      // (sent or skipped: it was for this date). An older one doesn't exclude
-      // the reminder: if staff moved its date, the new date is nudged too; the
-      // dedupe key carries the date, so one date is never drafted twice.
-      followUpDrafts: {
-        none: {
-          kind: "CHECKUP_DUE",
-          OR: [{ status: "PENDING" }, { createdAt: { gt: new Date(now.getTime() - CHECKUP_LOOKBACK_HOURS * HOUR_MS) } }],
-        },
-      },
+      // A draft still waiting is excluded in the query itself, so the cap can't
+      // keep re-reading it (Codex).
+      followUpDrafts: { none: { kind: "CHECKUP_DUE", status: "PENDING" } },
     },
     select: { id: true, clientId: true, remindAt: true, client: { select: { name: true } } },
     orderBy: [{ remindAt: "asc" }, { id: "asc" }],
-    take: MAX_CANDIDATES_PER_RUN,
+    // The day's due dates, read whole: the few already handled are dropped
+    // below, before the cap, so they can't hold its places (Codex).
+    take: CHECKUP_SCAN_LIMIT,
   });
 
-  return reminders.map((reminder) => ({
+  // A date already nudged (sent or skipped) is identified exactly by its
+  // dedupe key, which carries the date; a date staff moved since is new (Codex).
+  const keyFor = (reminder: { id: string; remindAt: Date }) => `CHECKUP_DUE:${reminder.id}:${reminder.remindAt.getTime()}`;
+  const handled = new Set(
+    (
+      await prisma.followUpDraft.findMany({
+        where: { businessId, kind: "CHECKUP_DUE", followUpReminderId: { in: reminders.map((reminder) => reminder.id) } },
+        select: { dedupeKey: true },
+      })
+    ).map((draft) => draft.dedupeKey)
+  );
+
+  return reminders.filter((reminder) => !handled.has(keyFor(reminder))).slice(0, MAX_CANDIDATES_PER_RUN).map((reminder) => ({
     clientId: reminder.clientId,
     kind: "CHECKUP_DUE" as const,
     followUpReminderId: reminder.id,
@@ -356,6 +364,6 @@ export async function findCheckupDueCandidates(args: {
       clinic_name: message?.clinicName,
     }),
     // Per follow-up date: a reminder moved to a new date can be nudged again.
-    dedupeKey: `CHECKUP_DUE:${reminder.id}:${reminder.remindAt.getTime()}`,
+    dedupeKey: keyFor(reminder),
   }));
 }
