@@ -71,11 +71,13 @@ async function retireLongerReminderDrafts(
   appointmentId: string,
   keep: (typeof REVIEW_REMINDER_KINDS)[number]
 ): Promise<void> {
+  // Waiting, or claimed by staff but not yet sent: a claimed one is refused by
+  // its own re-check right before the send once it is no longer SENT (Codex).
   await client.followUpDraft.updateMany({
     where: {
       appointmentId,
-      status: "PENDING",
       kind: { in: REVIEW_REMINDER_KINDS.filter((kind) => kind !== keep) },
+      OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
     },
     data: { status: "DISMISSED" },
   });
@@ -317,7 +319,15 @@ export async function syncAppointmentRemindersForBusiness(
       staff_name: appointment.staffMember?.name ?? business.name,
       clinic_name: business.name,
     });
-    if (settings[automationKind].mode === "REVIEW") {
+    // The clinic may have changed this reminder (off, to review, to automatic)
+    // since this run read its settings: re-read before acting on the mode,
+    // whichever it now is (Codex).
+    const latest = (await getAutomationSettings(businessId))[automationKind];
+    if (!latest.enabled) {
+      continue;
+    }
+
+    if (latest.mode === "REVIEW") {
       // Set to wait for review: drafted for To review (a person sends it) and
       // recorded as handled, so later runs don't draft it again.
       await draftReminderForReview({
@@ -344,13 +354,9 @@ export async function syncAppointmentRemindersForBusiness(
       continue;
     }
 
-    // The clinic may have switched this reminder to review (or off) since this
-    // run read its settings: re-read just before contacting the patient. The
-    // next run drafts it for review then, as nothing was recorded (Codex).
-    const latest = (await getAutomationSettings(businessId))[automationKind];
-    if (!latest.enabled || latest.mode === "REVIEW") {
-      continue;
-    }
+    // A longer-lead reminder still waiting for review (or claimed by staff)
+    // is withdrawn before this more urgent one goes out, not after (Codex).
+    await retireLongerReminderDrafts(prisma, appointment.id, automationKind);
 
     // A booking confirmation, welcome or moved notice for this version of the
     // visit going out right now (or just now) already tells the patient the
@@ -540,12 +546,6 @@ export async function syncAppointmentRemindersForBusiness(
       sent += 1;
       progress.sent += 1;
       consecutiveProviderErrors = 0;
-      await retireLongerReminderDrafts(prisma, appointment.id, automationKind).catch((error) => {
-        logger.error("Couldn't withdraw a longer-lead reminder waiting for review.", error, {
-          businessId,
-          appointmentId: appointment.id,
-        });
-      });
     } catch (error) {
       // Couldn't even record the SENT marker — count as failed. The next run
       // retries with the same idempotency key, which the worker answers by

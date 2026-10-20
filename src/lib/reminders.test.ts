@@ -392,7 +392,11 @@ describe("syncAppointmentRemindersForBusiness with a reminder set to review", ()
     await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
 
     expect(tx.followUpDraft.updateMany).toHaveBeenCalledWith({
-      where: { appointmentId: "appt_1", status: "PENDING", kind: { in: ["FIRST_REMINDER", "HIGH_RISK_REMINDER"] } },
+      where: {
+        appointmentId: "appt_1",
+        kind: { in: ["FIRST_REMINDER", "HIGH_RISK_REMINDER"] },
+        OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
+      },
       data: { status: "DISMISSED" },
     });
   });
@@ -406,6 +410,37 @@ describe("syncAppointmentRemindersForBusiness with a reminder set to review", ()
 
     expect(tx.followUpDraft.createMany).not.toHaveBeenCalled();
     expect(tx.appointmentReminder.upsert).not.toHaveBeenCalled();
+  });
+
+  it("withdraws a waiting longer-lead review reminder before sending a more urgent one", async () => {
+    mocks.appointment.findMany.mockResolvedValue([appointmentIn(1, "appt_1")]);
+    mocks.sendMessage.mockResolvedValue({ ok: true, providerMessageId: "m", status: "SENT", body: "Hi" });
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    const retire = mocks.followUpDraft.updateMany.mock.invocationCallOrder[0];
+    const send = mocks.sendMessage.mock.invocationCallOrder[0];
+    expect(retire).toBeLessThan(send);
+  });
+
+  it("drafts nothing when the clinic switched the reminder back to automatic during the run", async () => {
+    mocks.business.findUnique
+      .mockResolvedValueOnce(
+        business({
+          automationSettings: [
+            { kind: "SECOND_REMINDER", enabled: true, mode: "REVIEW", timing: 2, template: null, template2: null },
+          ],
+        })
+      )
+      .mockResolvedValue(business());
+    mocks.appointment.findMany.mockResolvedValue([appointmentIn(1, "appt_1")]);
+    const tx = reviewTx();
+    mocks.sendMessage.mockResolvedValue({ ok: true, providerMessageId: "m", status: "SENT", body: "Hi" });
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    expect(tx.followUpDraft.createMany).not.toHaveBeenCalled();
+    expect(mocks.sendMessage).toHaveBeenCalledTimes(1);
   });
 
   it("doesn't send a reminder the clinic switched to review during the run", async () => {
