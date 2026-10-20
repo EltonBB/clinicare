@@ -150,6 +150,19 @@ describe("toggleAutomationAction", () => {
     );
   });
 
+  it("writes only the switch over a saved automation, so it can't undo an editor save", async () => {
+    await toggleAutomationAction("THANK_YOU", true);
+
+    expect(mocks.tx.automationSetting.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: { enabled: true } }));
+  });
+
+  it("refuses a Pro automation's switch on Basic", async () => {
+    workspace("BASIC");
+
+    expect(await toggleAutomationAction("REBOOK", true)).toMatchObject({ ok: false });
+    expect(mocks.tx.automationSetting.upsert).not.toHaveBeenCalled();
+  });
+
   it("rejects an unknown kind", async () => {
     expect(await toggleAutomationAction("NOPE" as never, true)).toMatchObject({ ok: false });
   });

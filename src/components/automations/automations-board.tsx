@@ -36,6 +36,8 @@ export function AutomationsBoard({
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = useState<Partial<Record<AutomationKind, boolean>>>({});
+  // A switch waits for its own save before it can be flipped again.
+  const [saving, setSaving] = useState<Partial<Record<AutomationKind, boolean>>>({});
   const [error, setError] = useState<string | null>(null);
   const [openKind, setOpenKind] = useState<AutomationKind | null>(null);
   const [, startTransition] = useTransition();
@@ -43,10 +45,13 @@ export function AutomationsBoard({
   const isOn = (card: AutomationCard) => enabled[card.kind] ?? card.enabled;
 
   function toggle(card: AutomationCard, next: boolean) {
+    if (saving[card.kind]) return;
     setError(null);
     setEnabled((current) => ({ ...current, [card.kind]: next }));
+    setSaving((current) => ({ ...current, [card.kind]: true }));
     startTransition(async () => {
       const result = await toggleAutomationAction(card.kind, next);
+      setSaving((current) => ({ ...current, [card.kind]: false }));
       if (!result.ok) {
         setEnabled((current) => ({ ...current, [card.kind]: !next }));
         setError(result.error);

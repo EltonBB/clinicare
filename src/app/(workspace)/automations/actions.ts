@@ -1,6 +1,6 @@
 "use server";
 
-import type { Business, FollowUpDraftKind } from "@prisma/client";
+import type { Business, FollowUpDraftKind, Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -100,32 +100,13 @@ async function saveForBusiness(
     const mode = isProBusinessPlan(business.plan) && definition.reviewable ? input.mode : "AUTOMATIC";
     const template = storedTemplate(input.kind, input.template, "moved");
     const template2 = input.kind === "VISIT_CHANGED" ? storedTemplate(input.kind, input.template2, "cancelled") : null;
-    const draftKinds = draftKindsFor(input.kind);
-
     await prisma.$transaction(async (tx) => {
       await tx.automationSetting.upsert({
         where: { businessId_kind: { businessId, kind: input.kind } },
         create: { businessId, kind: input.kind, enabled: input.enabled, mode, timing, template, template2 },
         update: { enabled: input.enabled, mode, timing, template, template2 },
       });
-
-      // Off hides the automation's pending drafts (automationEnabledWhere) and
-      // review hands them to a person. Either way none of the queued ones may
-      // then go out on their own — turning it back on or to automatic later
-      // must not send a backlog in one burst; only new drafts send by themselves.
-      if (draftKinds.length > 0 && (!input.enabled || mode === "REVIEW")) {
-        await tx.followUpDraft.updateMany({
-          where: {
-            businessId,
-            autoSend: true,
-            kind: { in: draftKinds },
-            // Queued, or claimed by an automatic send that hasn't gone out yet:
-            // its last check before sending requires autoSend, so it stops.
-            OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
-          },
-          data: { autoSend: false },
-        });
-      }
+      await holdQueuedDrafts(tx, businessId, input.kind, !input.enabled || mode === "REVIEW");
     });
   } catch (error) {
     logger.error("Saving an automation failed.", error, { businessId, kind: input.kind });
@@ -136,27 +117,66 @@ async function saveForBusiness(
   return { ok: true };
 }
 
-/** The card switch: same save path, only `enabled` changes. */
+/**
+ * Off hides the automation's pending drafts (automationEnabledWhere) and review
+ * hands them to a person. Either way none of the queued ones may then go out on
+ * their own — turning it back on or to automatic later must not send a backlog
+ * in one burst; only new drafts send by themselves.
+ */
+async function holdQueuedDrafts(tx: Prisma.TransactionClient, businessId: string, kind: AutomationKind, hold: boolean) {
+  const draftKinds = draftKindsFor(kind);
+  if (!hold || draftKinds.length === 0) return;
+  await tx.followUpDraft.updateMany({
+    where: {
+      businessId,
+      autoSend: true,
+      kind: { in: draftKinds },
+      // Queued, or claimed by an automatic send that hasn't gone out yet:
+      // its last check before sending requires autoSend, so it stops.
+      OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
+    },
+    data: { autoSend: false },
+  });
+}
+
+/**
+ * The card switch. Writes only `enabled`, so a slower switch request can never
+ * overwrite timing, wording or mode saved from the editor meanwhile (Codex);
+ * the rest is written only when the automation has no saved row yet.
+ */
 export async function toggleAutomationAction(rawKind: AutomationKind, enabled: boolean): Promise<SaveAutomationResult> {
   const kind = z.enum(KINDS).safeParse(rawKind);
   if (!kind.success || typeof enabled !== "boolean") return { ok: false, error: TRY_AGAIN_ERROR };
 
   const auth = await getAuthedBusiness(SESSION_EXPIRED);
   if ("error" in auth) return { ok: false, error: auth.error };
+  const businessId = auth.business.id;
 
-  let current;
   try {
-    current = (await getAutomationSettings(auth.business.id))[kind.data];
+    const current = (await getAutomationSettings(businessId))[kind.data];
+    if (!current.available) return { ok: false, error: PRO_ONLY_ERROR };
+
+    await prisma.$transaction(async (tx) => {
+      await tx.automationSetting.upsert({
+        where: { businessId_kind: { businessId, kind: kind.data } },
+        create: {
+          businessId,
+          kind: kind.data,
+          enabled,
+          mode: current.mode,
+          timing: current.timing,
+          template: current.template,
+          template2: current.template2,
+        },
+        update: { enabled },
+      });
+      await holdQueuedDrafts(tx, businessId, kind.data, !enabled);
+    });
   } catch (error) {
-    logger.error("Loading an automation failed.", error, { businessId: auth.business.id, kind: kind.data });
+    logger.error("Switching an automation failed.", error, { businessId, kind: kind.data });
     return { ok: false, error: TRY_AGAIN_ERROR };
   }
-  return saveForBusiness(auth.business, {
-    kind: kind.data,
-    enabled,
-    mode: current.mode,
-    timing: current.timing,
-    template: current.template,
-    template2: current.template2,
-  });
+
+  revalidateAutomationSurfaces();
+  return { ok: true };
 }
