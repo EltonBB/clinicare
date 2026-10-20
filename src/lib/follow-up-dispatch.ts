@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 
 import { FOLLOW_UP_KIND_TO_AUTOMATION } from "@/lib/automations";
 import { getAutomationSettings } from "@/lib/automations-data";
+import { suppressOpenReminders } from "@/lib/automation-events";
 import {
   confirmFollowUpDraftDispatch,
   markFollowUpDraftDelivered,
@@ -15,6 +16,9 @@ import { mirrorOutboundToInbox } from "@/lib/messaging/inbox-mirror";
 import type { SendMessageResult } from "@/lib/messaging/types";
 import { prisma } from "@/lib/prisma";
 import { lastAttemptedId, rotateForFairness } from "@/lib/reminder-fairness";
+
+/** Messages that state the visit's date and time (a cancellation notice doesn't need a reminder to stand in for). */
+const TELLS_THE_TIME = new Set(["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED"]);
 
 export const FOLLOW_UP_DELIVERY_UNCERTAIN_NOTICE =
   "We couldn't confirm a follow-up was delivered, so it was marked as sent. Check the patient's WhatsApp chat before contacting them again.";
@@ -64,6 +68,7 @@ export async function dispatchFollowUpDraft(args: {
   // The provider can't say whether the message left (see SendFailureReason).
   let uncertain = false;
   let sent: {
+    appointmentId: string | null;
     clientId: string;
     clientName: string | null;
     phone: string;
@@ -105,7 +110,14 @@ export async function dispatchFollowUpDraft(args: {
         });
 
         if (result.ok) {
-          sent = { clientId: draft.clientId, clientName: draft.clientName, phone, kind: draft.kind, result };
+          sent = {
+            appointmentId: draft.appointmentId,
+            clientId: draft.clientId,
+            clientName: draft.clientName,
+            phone,
+            kind: draft.kind,
+            result,
+          };
         } else if (result.reason === "delivery_uncertain") {
           uncertain = true;
         } else if (result.reason === "rate_limited") {
@@ -149,6 +161,14 @@ export async function dispatchFollowUpDraft(args: {
   await markFollowUpDraftDelivered({ id: draftId, businessId }).catch((error) => {
     logger.error("Sent a follow-up but couldn't record it as delivered.", error, { businessId, draftId });
   });
+
+  // A message that just told the patient the visit's time stands in for any
+  // reminder already due (one message per event). Best-effort.
+  if (sent.appointmentId && TELLS_THE_TIME.has(sent.kind)) {
+    await suppressOpenReminders({ businessId, appointmentId: sent.appointmentId }).catch((error) => {
+      logger.error("Couldn't record due reminders as covered by a sent visit message.", error, { businessId, draftId });
+    });
+  }
 
   // Best-effort Inbox mirror: the message already went out.
   await mirrorOutboundToInbox({

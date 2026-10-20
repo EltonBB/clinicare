@@ -54,6 +54,12 @@ const mocks = vi.hoisted(() => {
   };
 });
 
+// Automations' patient messages have their own tests (lib/automation-events.test.ts).
+vi.mock("@/lib/automation-events", () => ({
+  queueVisitMessage: vi.fn(),
+  queueMissedVisitMessage: vi.fn(),
+  withdrawMissedVisitMessage: vi.fn(),
+}));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     appointment: mocks.appointment,

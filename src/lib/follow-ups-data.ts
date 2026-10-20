@@ -198,6 +198,7 @@ type DraftMutationResult = { ok: true } | { ok: false; error: string };
 export type SentFollowUpDraft = {
   id: string;
   kind: FollowUpDraftKind;
+  appointmentId: string | null;
   body: string;
   clientId: string;
   clientName: string | null;
@@ -383,6 +384,7 @@ function flipDraftToSent(args: {
           id: true,
           body: true,
           kind: true,
+          appointmentId: true,
           clientId: true,
           client: { select: { phone: true, name: true } },
           appointment: { select: { startAt: true, endAt: true } },
@@ -402,6 +404,7 @@ function flipDraftToSent(args: {
         draft: {
           id: draft.id,
           kind: draft.kind,
+          appointmentId: draft.appointmentId,
           body: draft.body,
           clientId: draft.clientId,
           clientName: draft.client.name,

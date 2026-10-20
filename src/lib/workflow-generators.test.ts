@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
   client: { findMany: vi.fn() },
   clientPayment: { findMany: vi.fn() },
   appointment: { findMany: vi.fn() },
+  clientFollowUpReminder: { findMany: vi.fn() },
+  followUpDraft: { findMany: vi.fn() },
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: mocks }));
@@ -11,6 +13,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: mocks }));
 import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import {
   DEFAULT_WORKFLOW_SETTINGS,
+  findCheckupDueCandidates,
   findPaymentReminderCandidates,
   findRebookCandidates,
   findThankYouCandidates,
@@ -492,5 +495,31 @@ describe("findThankYouCandidates", () => {
     });
     expect(result).toEqual([]);
     expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("findCheckupDueCandidates", () => {
+  it("drafts a check-up nudge for a follow-up date that just arrived, once", async () => {
+    mocks.clientFollowUpReminder.findMany.mockResolvedValue([
+      { id: "fr_1", clientId: "c1", client: { name: "Alex" } },
+      { id: "fr_2", clientId: "c2", client: { name: "Bea" } },
+    ]);
+    mocks.followUpDraft.findMany.mockResolvedValue([{ dedupeKey: "CHECKUP_DUE:fr_2" }]);
+
+    const result = await findCheckupDueCandidates({ businessId: "biz_1", now: NOW, message: { template: null, clinicName: "Vela Dent" } });
+
+    expect(result).toEqual([
+      {
+        clientId: "c1",
+        kind: "CHECKUP_DUE",
+        body: "Hi Alex, it's time for your check-up at Vela Dent. Would you like to book a visit?",
+        dedupeKey: "CHECKUP_DUE:fr_1",
+      },
+    ]);
+    const where = mocks.clientFollowUpReminder.findMany.mock.calls[0][0].where;
+    expect(where.status).toBe("Scheduled");
+    // Only the last day: never a backlog of old follow-up dates.
+    expect(where.remindAt).toEqual({ lte: NOW, gt: new Date(NOW.getTime() - 24 * 3_600_000) });
+    expect(where.client.appointments).toEqual({ none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: NOW } } });
   });
 });

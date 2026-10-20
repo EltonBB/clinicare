@@ -1,7 +1,7 @@
 import type { AutomationKind, FollowUpDraftKind } from "@prisma/client";
 
 import { automationDefinition, renderAutomationMessage } from "@/lib/automations";
-import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness } from "@/lib/automations-data";
+import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness, getAutomationSettings } from "@/lib/automations-data";
 import { dispatchSoon } from "@/lib/automation-dispatch-soon";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
@@ -207,4 +207,40 @@ export async function withdrawMissedVisitMessage(args: { businessId: string; app
   } catch (error) {
     logger.error("Withdrawing a missed-visit message failed.", error, args);
   }
+}
+
+/**
+ * One message per event: once a booking confirmation, welcome or new-time
+ * notice has gone out, the reminders whose window was already open are
+ * recorded as sent without sending — the patient was just told the time, so a
+ * reminder minutes later would be a second message about the same thing.
+ * Reminders whose window opens later still go out as usual.
+ */
+export async function suppressOpenReminders(args: { businessId: string; appointmentId: string; now?: Date }): Promise<void> {
+  const { businessId, appointmentId, now = new Date() } = args;
+
+  const appointment = await prisma.appointment.findFirst({
+    where: { id: appointmentId, businessId, status: { in: ["PENDING", "CONFIRMED"] } },
+    select: { startAt: true },
+  });
+  if (!appointment) return;
+
+  const settings = await getAutomationSettings(businessId);
+  const reminders = [
+    { type: "TWENTY_FOUR_HOUR", setting: settings.FIRST_REMINDER },
+    { type: "TWO_HOUR", setting: settings.SECOND_REMINDER },
+    { type: "HIGH_RISK", setting: settings.HIGH_RISK_REMINDER },
+  ] as const;
+  const open = reminders.filter(
+    ({ setting }) =>
+      setting.enabled &&
+      setting.timing !== null &&
+      appointment.startAt.getTime() <= now.getTime() + setting.timing * HOUR_MS
+  );
+  if (open.length === 0) return;
+
+  await prisma.appointmentReminder.createMany({
+    data: open.map(({ type }) => ({ appointmentId, type, status: "SENT" as const, sentAt: now })),
+    skipDuplicates: true,
+  });
 }

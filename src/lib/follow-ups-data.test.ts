@@ -87,7 +87,11 @@ function isScalarFilter(filter: unknown): boolean {
 }
 
 function matchesScalar(value: unknown, filter: unknown): boolean {
-  if (filter === null || typeof filter !== "object" || filter instanceof Date) {
+  if (filter === null) {
+    // A column a fixture leaves out reads as null, as Prisma loads it.
+    return value === null || value === undefined;
+  }
+  if (typeof filter !== "object" || filter instanceof Date) {
     return comparable(value) === comparable(filter);
   }
   const current = comparable(value) as number;
