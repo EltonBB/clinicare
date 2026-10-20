@@ -533,14 +533,18 @@ describe("suppressOpenReminders", () => {
     });
   });
 
-  it("withdraws a covered reminder still waiting in To review", async () => {
+  it("withdraws a covered reminder still waiting in To review, or claimed by staff but not yet sent", async () => {
     mocks.appointment.findFirst.mockResolvedValue({ startAt: new Date(NOW.getTime() + 30 * 60_000) });
     mocks.business.findUnique.mockResolvedValue(business());
 
     await suppressOpenReminders({ businessId: "biz_1", appointmentId: "appt_1", appointmentGeneration: 2, now: NOW });
 
     expect(mocks.followUpDraft.updateMany).toHaveBeenCalledWith({
-      where: { appointmentId: "appt_1", status: "PENDING", kind: { in: ["FIRST_REMINDER", "SECOND_REMINDER"] } },
+      where: {
+        appointmentId: "appt_1",
+        kind: { in: ["FIRST_REMINDER", "SECOND_REMINDER"] },
+        OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
+      },
       data: { status: "DISMISSED" },
     });
   });

@@ -553,9 +553,15 @@ async function coverOpenReminders(
     data: open.map(({ type }) => ({ appointmentId, type, status: "SENT" as const, sentAt: now })),
     skipDuplicates: true,
   });
-  // One drafted for review earlier would repeat what the patient was just told.
+  // One drafted for review earlier would repeat what the patient was just told:
+  // waiting, or claimed by staff but not yet sent (its re-check right before
+  // the send refuses it once it is no longer SENT — Codex).
   await tx.followUpDraft.updateMany({
-    where: { appointmentId, status: "PENDING", kind: { in: open.map(({ kind }) => kind) } },
+    where: {
+      appointmentId,
+      kind: { in: open.map(({ kind }) => kind) },
+      OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
+    },
     data: { status: "DISMISSED" },
   });
 }
