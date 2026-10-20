@@ -41,7 +41,8 @@ export default async function AutomationsActivityPage({ searchParams }: Activity
   const isPro = isProBusinessPlan(business.plan);
   const [activity, reviewCount] = await Promise.all([
     listAutomationActivity({ businessId: business.id, kind, page }),
-    isPro ? getPendingFollowUpDraftCount(business.id) : Promise.resolve(0),
+    // Every plan: a downgraded workspace may still have drafts to resolve.
+    getPendingFollowUpDraftCount(business.id),
   ]);
 
   // Chips only for automations that sent something, in the page's own order.
@@ -60,7 +61,7 @@ export default async function AutomationsActivityPage({ searchParams }: Activity
 
   return (
     <WorkspacePage size="wide">
-      <AutomationsHeader active="activity" showReviewTab={isPro} reviewCount={reviewCount} />
+      <AutomationsHeader active="activity" showReviewTab={isPro || reviewCount > 0} reviewCount={reviewCount} />
 
       {chips.length > 0 ? (
         <ActivityFilters
