@@ -11,6 +11,7 @@ const supabaseKey = getSupabasePublishableKey();
 
 const protectedPrefixes = [
   "/dashboard",
+  "/automations",
   "/calendar",
   "/clients",
   "/inbox",

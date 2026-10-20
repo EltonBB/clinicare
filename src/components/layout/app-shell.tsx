@@ -142,7 +142,15 @@ export function AppShell({
   // settings/page.tsx) and opens the dialog on that section; closing it drops
   // the params, so the nav's Settings button opens on the first section.
   const searchParams = useSearchParams();
-  const linkedSettingsSection = searchParams.get("settings");
+  const requestedSettingsSection = searchParams.get("settings");
+  // Reminders and Workflows moved to the Automations page (2026-10): an old
+  // `?settings=reminders` link goes there instead of opening the dialog.
+  const sectionMovedToAutomations =
+    requestedSettingsSection === "reminders" || requestedSettingsSection === "workflows";
+  const linkedSettingsSection = sectionMovedToAutomations ? null : requestedSettingsSection;
+  useEffect(() => {
+    if (sectionMovedToAutomations) router.replace("/automations");
+  }, [sectionMovedToAutomations, router]);
   // Opens the settings dialog on WhatsApp in place (the same ?settings= link
   // a /settings?section= redirect lands on), without leaving the page.
   const openWhatsAppSettings = useCallback(() => {

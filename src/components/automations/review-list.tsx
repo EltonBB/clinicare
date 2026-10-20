@@ -11,7 +11,7 @@ import {
   dismissFollowUpDraftAction,
   passSlotOfferAction,
   sendFollowUpDraftAction,
-} from "@/app/(workspace)/inbox/follow-ups/actions";
+} from "@/app/(workspace)/automations/review/actions";
 import { cn, getInitials } from "@/lib/utils";
 import {
   countFollowUpsByKind,
@@ -29,7 +29,7 @@ const textButtonClass =
 
 type FollowUpBusyState = "send" | "skip" | "book" | "pass" | null;
 
-export function FollowUpsList({ items }: { items: FollowUpDraftItem[] }) {
+export function ReviewList({ items }: { items: FollowUpDraftItem[] }) {
   const router = useRouter();
   // Rows handled here disappear at once; the list itself stays driven by the
   // server so a refresh brings in anything new — skipping or declining a slot

@@ -202,7 +202,7 @@ export async function removeWaitlistEntryAction(rawId: string): Promise<Waitlist
   // Removing an entry that holds an offer retires that offer (and may draft
   // one for the next match) — the Follow-ups list and the Inbox's count.
   revalidatePath("/inbox");
-  revalidatePath("/inbox/follow-ups");
+  revalidatePath("/automations/review");
 
   return { ok: true };
 }

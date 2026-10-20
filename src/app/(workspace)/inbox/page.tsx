@@ -10,8 +10,6 @@ import {
   fetchInboxConversations,
   findClientsForConversations,
 } from "@/lib/inbox-server";
-import { getPendingFollowUpDraftCount } from "@/lib/follow-ups-data";
-import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 
@@ -41,7 +39,7 @@ export default async function InboxPage({
     }
   });
 
-  const [recentClient, clientCount, { conversations, totalUnreadCount }, whatsappConnection, followUpsCount] =
+  const [recentClient, clientCount, { conversations, totalUnreadCount }, whatsappConnection] =
     await Promise.all([
       prisma.client.findFirst({
         where: {
@@ -72,16 +70,6 @@ export default async function InboxPage({
         where: {
           businessId: business.id,
         },
-      }),
-      // Best-effort: the FollowUpDraft table's migration may not be applied
-      // yet in every environment (nothing else on this page depends on it).
-      // Degrade to a count of 0 instead of letting one missing table crash
-      // the whole Inbox page for every business.
-      getPendingFollowUpDraftCount(business.id).catch((error) => {
-        logger.error("Failed to load pending follow-up draft count for Inbox.", error, {
-          businessId: business.id,
-        });
-        return 0;
       }),
     ]);
   // Each conversation is named after the client its number belongs to, looked
@@ -114,7 +102,6 @@ export default async function InboxPage({
       connection={buildWhatsAppConnectionSummary(whatsappConnection)}
       clientCount={clientCount}
       recommendedClientId={recentClient?.id}
-      followUpsCount={followUpsCount}
     />
   );
 }

@@ -12,7 +12,6 @@ import {
 import { m } from "framer-motion";
 import {
   ArrowUpRight,
-  BellRing,
   Building2,
   Check,
   ChevronRight,
@@ -21,7 +20,6 @@ import {
   ImageUp,
   MessageCircle,
   Palette,
-  Workflow,
 } from "lucide-react";
 
 import { updateOwnerProfileAction } from "@/app/(auth)/actions";
@@ -30,7 +28,6 @@ import {
   discardUnsavedLogoAction,
   getBaileysPairingStatusAction,
   saveSettingsAction,
-  saveWorkflowSettingsAction,
 } from "@/app/(workspace)/settings/actions";
 import { businessTypes } from "@/lib/constants";
 import { currencyLabel, SUPPORTED_CURRENCIES } from "@/lib/currency";
@@ -39,9 +36,7 @@ import { cn } from "@/lib/utils";
 import { isStorageReference } from "@/lib/media-storage";
 import { safeUploadErrorMessage, uploadWorkspaceImage } from "@/lib/media-storage-client";
 import {
-  buildWorkflowSavePayload,
   phaseLabelMap,
-  REMINDER_TEMPLATE_MAX_LENGTH,
   timeOptions,
   weekdayLabels,
   type SaveSettingsPayload,
@@ -51,9 +46,7 @@ import { weekdayOrder, type WeekdayKey } from "@/lib/onboarding";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Toggle, ToggleRow } from "@/components/settings/settings-toggle";
-import { WorkflowsSection } from "@/components/settings/workflows-section";
+import { Toggle } from "@/components/settings/settings-toggle";
 import { LazyMotionProvider } from "@/components/layout/motion-provider";
 
 type SettingsWorkspaceProps = {
@@ -106,8 +99,6 @@ type SettingsSectionId =
   | "business"
   | "appearance"
   | "hours"
-  | "reminders"
-  | "workflows"
   | "whatsapp"
   | "billing";
 
@@ -120,15 +111,9 @@ const settingsNav: Array<{
   { id: "business", icon: Building2, title: "Business & account", subtitle: "Owner, contact, clinic & logo" },
   { id: "appearance", icon: Palette, title: "Appearance", subtitle: "Workspace accent color" },
   { id: "hours", icon: Clock3, title: "Working hours", subtitle: "Booking availability" },
-  { id: "reminders", icon: BellRing, title: "Reminders", subtitle: "Send times and message" },
-  { id: "workflows", icon: Workflow, title: "Workflows", subtitle: "Follow-up drafts and timing" },
   { id: "whatsapp", icon: MessageCircle, title: "WhatsApp", subtitle: "Pairing and connection" },
   { id: "billing", icon: CreditCard, title: "Billing", subtitle: "Plan and checkout" },
 ];
-
-const reminderHourOptions = Array.from({ length: 24 }, (_, index) =>
-  String(24 - index)
-);
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -173,30 +158,6 @@ function NativeSelect({
   );
 }
 
-function HourSelect({
-  value,
-  onChange,
-  ariaLabel,
-}: {
-  value: number;
-  onChange: (value: number) => void;
-  ariaLabel?: string;
-}) {
-  return (
-    <select
-      value={String(value)}
-      aria-label={ariaLabel}
-      onChange={(event) => onChange(Number(event.target.value))}
-      className="h-9 w-[124px] rounded-(--radius-card) border border-border/80 bg-white px-2.5 text-sm outline-none transition-[border-color,box-shadow] duration-(--duration-base) focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
-    >
-      {reminderHourOptions.map((option) => (
-        <option key={option} value={option}>
-          {option}h before
-        </option>
-      ))}
-    </select>
-  );
-}
 
 function SectionCard({
   id,
@@ -442,26 +403,6 @@ export function SettingsWorkspace({
           email: submittedAccount.email,
           phone: submittedAccount.phone,
         });
-      }
-
-      // Workflows save through their own action (it re-checks the plan
-      // server-side) — only when they changed, and before the main settings
-      // save so a failure here stops the save before anything else is written.
-      // If the main save then fails, the persisted workflow values are already
-      // reflected in savedState, so they don't show as unsaved edits.
-      if (JSON.stringify(state.workflows) !== JSON.stringify(savedState.workflows)) {
-        const workflowResult = await saveWorkflowSettingsAction(
-          buildWorkflowSavePayload(state.workflows, state.billing.isPro)
-        );
-
-        if (!workflowResult.ok || !workflowResult.workflows) {
-          setErrorMessage(workflowResult.error ?? "We couldn't save your workflow settings.");
-          setMessage("");
-          return;
-        }
-
-        const persistedWorkflows = workflowResult.workflows;
-        setSavedState((current) => ({ ...current, workflows: persistedWorkflows }));
       }
 
       // Submit only the editable subset — derived/display fields stay server-owned.
@@ -1294,99 +1235,6 @@ export function SettingsWorkspace({
                 );
               })}
             </div>
-          </SectionCard>
-
-          <SectionCard
-            id="reminders"
-            title="Reminders"
-            description="Choose when automatic appointment reminders are sent and what they say."
-            active={activeSection === "reminders"}
-          >
-            <div className="divide-y divide-border/65">
-              <ToggleRow
-                label="First reminder"
-                enabled={state.reminders.twentyFourHour}
-                onEnabledChange={(checked) =>
-                  setState((current) => ({
-                    ...current,
-                    reminders: { ...current.reminders, twentyFourHour: checked },
-                  }))
-                }
-              >
-                <HourSelect
-                  value={state.reminders.firstReminderHours}
-                  onChange={(value) =>
-                    setState((current) => ({
-                      ...current,
-                      reminders: { ...current.reminders, firstReminderHours: value },
-                    }))
-                  }
-                  ariaLabel="First reminder send time"
-                />
-              </ToggleRow>
-
-              <ToggleRow
-                label="Second reminder"
-                enabled={state.reminders.twoHour}
-                onEnabledChange={(checked) =>
-                  setState((current) => ({
-                    ...current,
-                    reminders: { ...current.reminders, twoHour: checked },
-                  }))
-                }
-              >
-                <HourSelect
-                  value={state.reminders.secondReminderHours}
-                  onChange={(value) =>
-                    setState((current) => ({
-                      ...current,
-                      reminders: { ...current.reminders, secondReminderHours: value },
-                    }))
-                  }
-                  ariaLabel="Second reminder send time"
-                />
-              </ToggleRow>
-
-              <div className="space-y-1.5 pt-3.5">
-                <FieldLabel>Message template</FieldLabel>
-                <Textarea
-                  value={state.reminders.template}
-                  onChange={(event) =>
-                    setState((current) => ({
-                      ...current,
-                      reminders: {
-                        ...current.reminders,
-                        template: event.target.value,
-                      },
-                    }))
-                  }
-                  maxLength={REMINDER_TEMPLATE_MAX_LENGTH}
-                  className="min-h-[128px] rounded-(--radius-card) bg-white px-3 py-2"
-                />
-                <p className="text-xs text-muted-foreground">
-                  {"{client_name}"}, {"{time}"}, and {"{date}"} are replaced automatically. (
-                  {state.reminders.template.length}/{REMINDER_TEMPLATE_MAX_LENGTH})
-                </p>
-              </div>
-            </div>
-          </SectionCard>
-
-          <SectionCard
-            id="workflows"
-            title="Workflows"
-            description="Suggested follow-up messages appear in Inbox › Follow-ups for you to review and send."
-            active={activeSection === "workflows"}
-          >
-            <WorkflowsSection
-              workflows={state.workflows}
-              isPro={state.billing.isPro}
-              onChange={(patch) =>
-                setState((current) => ({
-                  ...current,
-                  workflows: { ...current.workflows, ...patch },
-                }))
-              }
-            />
           </SectionCard>
 
           <SectionCard

@@ -128,7 +128,7 @@ describe("deleteStaffAction", () => {
     await deleteStaffAction(STAFF_ID);
 
     expect(revalidatedPaths()).toEqual(
-      expect.arrayContaining(["/staff", "/calendar", "/dashboard", "/inbox", "/inbox/follow-ups"])
+      expect.arrayContaining(["/staff", "/calendar", "/dashboard", "/inbox", "/automations/review"])
     );
   });
 
@@ -352,7 +352,7 @@ describe("saveStaffAction", () => {
       data: expect.objectContaining({ status: "INACTIVE", isActive: false }),
     });
     expect(revalidatedPaths()).toEqual(
-      expect.arrayContaining([`/staff/${STAFF_ID}`, "/calendar", "/dashboard", "/inbox", "/inbox/follow-ups"])
+      expect.arrayContaining([`/staff/${STAFF_ID}`, "/calendar", "/dashboard", "/inbox", "/automations/review"])
     );
   });
 

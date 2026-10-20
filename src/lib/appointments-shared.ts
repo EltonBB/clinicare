@@ -485,7 +485,7 @@ export function revalidateCalendarSurfaces(
   // A cancel can draft a waiting-list slot offer (the Inbox's Follow-ups count
   // + list), and every follow-up row names its linked appointment's time.
   revalidatePath("/inbox");
-  revalidatePath("/inbox/follow-ups");
+  revalidatePath("/automations/review");
   // Dedup so a move that keeps the same client/staff doesn't revalidate twice.
   for (const clientId of new Set(clientIds)) {
     if (clientId) {

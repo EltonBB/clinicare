@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 
+const MOVED_TO_AUTOMATIONS = new Set(["reminders", "workflows"]);
+
 type SettingsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
@@ -11,6 +13,10 @@ type SettingsPageProps = {
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
   const params = searchParams ? await searchParams : {};
   const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
+  // Reminders and Workflows moved to the Automations page (2026-10).
+  if (MOVED_TO_AUTOMATIONS.has(first(params.section) ?? "")) {
+    redirect("/automations");
+  }
   const query = new URLSearchParams({ settings: first(params.section) ?? "business" });
   if (first(params.email_updated) === "1") {
     query.set("notice", "email_updated");
