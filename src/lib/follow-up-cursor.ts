@@ -13,15 +13,17 @@ import { getRedis, noteRedisFailure, noteRedisStoreSucceeded } from "@/lib/redis
  * each rotating its own eligible-business list at its own pace.
  */
 const CURSOR_KEY = "vela:follow-up-cursor";
+// Same rotation for the automatic sends (api/cron/automations).
+const AUTOMATIONS_CURSOR_KEY = "vela:automations-cursor";
 
-export async function getFollowUpCursor(): Promise<string | null> {
+async function readCursor(key: string): Promise<string | null> {
   const redis = getRedis();
   if (!redis) {
     return null;
   }
 
   try {
-    const raw = await redis.get<string>(CURSOR_KEY);
+    const raw = await redis.get<string>(key);
     return typeof raw === "string" && raw.length > 0 ? raw : null;
   } catch {
     noteRedisFailure();
@@ -29,16 +31,32 @@ export async function getFollowUpCursor(): Promise<string | null> {
   }
 }
 
-export async function setFollowUpCursor(businessId: string): Promise<void> {
+async function writeCursor(key: string, businessId: string): Promise<void> {
   const redis = getRedis();
   if (!redis) {
     return;
   }
 
   try {
-    await redis.set(CURSOR_KEY, businessId);
+    await redis.set(key, businessId);
     noteRedisStoreSucceeded();
   } catch {
     noteRedisFailure();
   }
+}
+
+export function getFollowUpCursor(): Promise<string | null> {
+  return readCursor(CURSOR_KEY);
+}
+
+export function setFollowUpCursor(businessId: string): Promise<void> {
+  return writeCursor(CURSOR_KEY, businessId);
+}
+
+export function getAutomationsCursor(): Promise<string | null> {
+  return readCursor(AUTOMATIONS_CURSOR_KEY);
+}
+
+export function setAutomationsCursor(businessId: string): Promise<void> {
+  return writeCursor(AUTOMATIONS_CURSOR_KEY, businessId);
 }

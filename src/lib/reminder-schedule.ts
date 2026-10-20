@@ -1,6 +1,6 @@
 import { addHours, isAfter } from "date-fns";
 
-export type ReminderType = "TWO_HOUR" | "TWENTY_FOUR_HOUR";
+export type ReminderType = "TWO_HOUR" | "TWENTY_FOUR_HOUR" | "HIGH_RISK";
 
 export type ReminderDecisionArgs = {
   startsAt: Date;
@@ -11,6 +11,19 @@ export type ReminderDecisionArgs = {
   secondReminderHours: number;
   /** Reminder types already recorded as sent for this appointment. */
   sentTypes: Set<string>;
+  /**
+   * The extra reminder for a visit scored high no-show risk (Pro). It sits
+   * between the second and the first reminder: the second still wins when both
+   * windows are open, and once it has gone out the first reminder is never sent
+   * after it (the same "never a longer lead after a shorter one" rule).
+   */
+  highRisk?: { enabled: boolean; hours: number; isHighRisk: boolean };
+  /**
+   * How long before the visit each sent reminder actually went out. A sent
+   * reminder is compared by this, not by its current setting, so editing a
+   * timing afterwards can't reinterpret what the patient already received.
+   */
+  sentLeadHours?: Partial<Record<ReminderType, number>>;
 };
 
 /**
@@ -55,30 +68,45 @@ export function reminderTypeForAppointment(
     firstReminderHours,
     secondReminderHours,
     sentTypes,
+    highRisk,
+    sentLeadHours = {},
   } = args;
 
   if (!isAfter(startsAt, now)) {
     return null;
   }
 
-  if (
-    send2HourReminder &&
-    !sentTypes.has("TWO_HOUR") &&
-    !isAfter(startsAt, addHours(now, secondReminderHours))
-  ) {
-    return "TWO_HOUR";
+  // In order of precedence when two have the same lead: the second reminder,
+  // then the high-risk one, then the first.
+  const reminders: Array<{ type: ReminderType; on: boolean; hours: number }> = [
+    { type: "TWO_HOUR", on: send2HourReminder, hours: secondReminderHours },
+    {
+      type: "HIGH_RISK",
+      on: Boolean(highRisk?.enabled && highRisk.isHighRisk),
+      hours: highRisk?.hours ?? 0,
+    },
+    { type: "TWENTY_FOUR_HOUR", on: send24HourReminder, hours: firstReminderHours },
+  ];
+  // The shortest lead among the reminders already sent: anything with a lead
+  // at least that long would now arrive after a more urgent one — backwards.
+  const shortestSentLead = Math.min(
+    ...reminders
+      .filter((reminder) => sentTypes.has(reminder.type))
+      .map((reminder) => sentLeadHours[reminder.type] ?? reminder.hours)
+  );
+
+  const due = reminders.filter(
+    (reminder) =>
+      reminder.on &&
+      !sentTypes.has(reminder.type) &&
+      reminder.hours < shortestSentLead &&
+      !isAfter(startsAt, addHours(now, reminder.hours))
+  );
+  if (due.length === 0) {
+    return null;
   }
 
-  if (
-    send24HourReminder &&
-    !sentTypes.has("TWENTY_FOUR_HOUR") &&
-    // Once the more urgent reminder has gone out, the longer-lead-time one
-    // is always backwards to send afterward — see the doc comment above.
-    !sentTypes.has("TWO_HOUR") &&
-    !isAfter(startsAt, addHours(now, firstReminderHours))
-  ) {
-    return "TWENTY_FOUR_HOUR";
-  }
-
-  return null;
+  // Several windows open at once (a late booking, a run that hasn't reached it
+  // yet): send only the most urgent; the longer ones are then backwards too.
+  return due.reduce((most, reminder) => (reminder.hours < most.hours ? reminder : most)).type;
 }

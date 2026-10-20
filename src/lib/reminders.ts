@@ -1,13 +1,18 @@
 import { addHours } from "date-fns";
 
+import type { AutomationKind } from "@prisma/client";
+
+import { renderAutomationMessage } from "@/lib/automations";
+import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness } from "@/lib/automations-data";
 import { mapWithConcurrency, withDeadline } from "@/lib/concurrency";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
+import { getNoShowRiskAssessments } from "@/lib/no-show-risk-data";
 import { prisma } from "@/lib/prisma";
 import { getReminderCursor, setReminderCursor } from "@/lib/reminder-cursor";
 import { lastAttemptedId, rotateForFairness } from "@/lib/reminder-fairness";
-import { reminderTypeForAppointment } from "@/lib/reminder-schedule";
+import { reminderTypeForAppointment, type ReminderType } from "@/lib/reminder-schedule";
 import {
   PER_BUSINESS_TIMEOUT_MS,
   RATE_LIMIT_WAIT_HEADROOM_MS,
@@ -42,6 +47,12 @@ export type ReminderCronResult = ReminderSyncResult & {
   abandonedBusinesses: number;
 };
 
+const REMINDER_AUTOMATION: Record<ReminderType, AutomationKind> = {
+  TWENTY_FOUR_HOUR: "FIRST_REMINDER",
+  TWO_HOUR: "SECOND_REMINDER",
+  HIGH_RISK: "HIGH_RISK_REMINDER",
+};
+
 export async function syncAppointmentRemindersForBusiness(
   businessId: string,
   progress: Pick<ReminderRunProgress, "sent" | "failed">
@@ -55,15 +66,7 @@ export async function syncAppointmentRemindersForBusiness(
       id: true,
       name: true,
       whatsappEnabled: true,
-      reminderSettings: {
-        select: {
-          send24HourReminder: true,
-          send2HourReminder: true,
-          firstReminderHours: true,
-          secondReminderHours: true,
-          template: true,
-        },
-      },
+      ...AUTOMATION_SETTINGS_SELECT,
       whatsappConnection: {
         select: {
           id: true,
@@ -86,20 +89,27 @@ export async function syncAppointmentRemindersForBusiness(
     return;
   }
 
-  const reminderSettings = business.reminderSettings;
-  // The seam renders the body (and falls back to a default min-necessary
-  // template); pass the clinic's custom template through when set.
-  const template = reminderSettings?.template?.trim() || undefined;
-
-  const firstReminderHours = Math.min(
-    Math.max(reminderSettings?.firstReminderHours ?? 24, 1),
-    24
-  );
-  const secondReminderHours = Math.min(
-    Math.max(reminderSettings?.secondReminderHours ?? 2, 1),
-    24
-  );
-  const maxReminderHours = Math.max(firstReminderHours, secondReminderHours);
+  // Timing, wording and on/off come from Automations (plan rules applied
+  // there: the second and high-risk reminders are Pro).
+  const settings = automationSettingsFromBusiness(business);
+  const first = settings.FIRST_REMINDER;
+  const second = settings.SECOND_REMINDER;
+  const highRisk = settings.HIGH_RISK_REMINDER;
+  // Resolved and validated by automationSettingsFromBusiness; clamped once more
+  // so a bad stored value can never widen the query window past a day.
+  const hoursOf = (timing: number | null) => Math.min(Math.max(timing ?? 1, 1), 24);
+  const firstReminderHours = hoursOf(first.timing);
+  const secondReminderHours = hoursOf(second.timing);
+  const highRiskHours = hoursOf(highRisk.timing);
+  const windows = [
+    first.enabled ? firstReminderHours : 0,
+    second.enabled ? secondReminderHours : 0,
+    highRisk.enabled ? highRiskHours : 0,
+  ];
+  const maxReminderHours = Math.max(...windows);
+  if (maxReminderHours === 0) {
+    return;
+  }
 
   const appointments = await prisma.appointment.findMany({
     where: {
@@ -131,6 +141,7 @@ export async function syncAppointmentRemindersForBusiness(
         select: {
           type: true,
           status: true,
+          sentAt: true,
         },
       },
     },
@@ -138,6 +149,37 @@ export async function syncAppointmentRemindersForBusiness(
       startAt: "asc",
     },
   });
+
+  // Scored only when the high-risk reminder is on, and only for visits inside
+  // its window — the scorer reads each client's history.
+  const highRiskIds = new Set<string>();
+  if (highRisk.enabled) {
+    const highRiskCutoff = addHours(now, highRiskHours);
+    // A scoring failure costs only the high-risk reminders, never the others.
+    const assessments = await getNoShowRiskAssessments({
+      businessId,
+      now,
+      appointments: appointments
+        .filter(
+          (appointment) =>
+            appointment.startAt <= highRiskCutoff &&
+            (appointment.status === "PENDING" || appointment.status === "CONFIRMED")
+        )
+        .map((appointment) => ({
+          id: appointment.id,
+          clientId: appointment.clientId,
+          startAt: appointment.startAt,
+          createdAt: appointment.createdAt,
+          status: appointment.status as "PENDING" | "CONFIRMED",
+        })),
+    }).catch((error) => {
+      logger.error("Scoring no-show risk for reminders failed.", error, { businessId });
+      return new Map();
+    });
+    for (const [appointmentId, assessment] of assessments) {
+      if (assessment.level === "high") highRiskIds.add(appointmentId);
+    }
+  }
 
   let sent = 0;
   let failed = 0;
@@ -152,10 +194,16 @@ export async function syncAppointmentRemindersForBusiness(
     const reminderType = reminderTypeForAppointment({
       startsAt: appointment.startAt,
       now,
-      send24HourReminder: reminderSettings?.send24HourReminder ?? true,
-      send2HourReminder: reminderSettings?.send2HourReminder ?? true,
+      send24HourReminder: first.enabled,
+      send2HourReminder: second.enabled,
       firstReminderHours,
       secondReminderHours,
+      highRisk: { enabled: highRisk.enabled, hours: highRiskHours, isHighRisk: highRiskIds.has(appointment.id) },
+      sentLeadHours: Object.fromEntries(
+        appointment.reminders
+          .filter((reminder) => reminder.status === "SENT")
+          .map((reminder) => [reminder.type, (appointment.startAt.getTime() - reminder.sentAt.getTime()) / 3_600_000])
+      ),
       // Only delivered reminders suppress a re-send; a FAILED row retries.
       sentTypes: new Set(
         appointment.reminders
@@ -179,21 +227,22 @@ export async function syncAppointmentRemindersForBusiness(
       continue;
     }
 
-    // Outbound reminders flow through the messaging seam, which renders a HIPAA
-    // minimum-necessary body (name + appointment time only — never the
-    // service/treatment) and routes to the active WhatsApp provider.
+    // The body is rendered under minimum-necessary rules (only the kind's
+    // whitelisted details: name, date, time, staff and clinic name — never the
+    // service/treatment) and sent through the messaging seam.
+    const automationKind = REMINDER_AUTOMATION[reminderType];
+    const body = renderAutomationMessage(automationKind, settings[automationKind].template, {
+      client_name: appointment.client.name,
+      date: formatZonedFullDate(appointment.startAt),
+      time: formatZonedTime(appointment.startAt),
+      staff_name: appointment.staffMember?.name ?? business.name,
+      clinic_name: business.name,
+    });
     const send = () => sendMessage({
       channel: "WHATSAPP",
       businessId,
       to: clientPhone,
-      message: {
-        kind: "appointment_reminder",
-        recipientName: appointment.client.name,
-        appointmentDate: formatZonedFullDate(appointment.startAt),
-        appointmentTime: formatZonedTime(appointment.startAt),
-        staffName: appointment.staffMember?.name ?? business.name,
-        template,
-      },
+      message: { kind: "freeform", body },
       // One key per reminder of this booking as it now stands: a run that
       // reaches the provider twice for it (an overlapping run, or a retry after
       // the SENT marker below failed to save) is still delivered once. Every
@@ -411,6 +460,7 @@ export async function syncAppointmentRemindersForBusiness(
             clientId: appointment.client.id,
             direction: "OUTBOUND",
             source: "REMINDER",
+            automationKind,
             body: result.body,
             providerMessageSid: result.providerMessageId,
             deliveryStatus: result.status,

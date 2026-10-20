@@ -33,9 +33,18 @@ function channel(overrides: {
   send2?: boolean;
 } = {}) {
   return {
+    plan: "PRO",
     whatsappEnabled: overrides.whatsappEnabled ?? true,
     whatsappConnection: overrides.status === null ? null : { status: overrides.status ?? "CONNECTED" },
-    reminderSettings: { send24HourReminder: overrides.send24 ?? true, send2HourReminder: overrides.send2 ?? true },
+    automationSettings: [],
+    workflowSettings: null,
+    reminderSettings: {
+      send24HourReminder: overrides.send24 ?? true,
+      send2HourReminder: overrides.send2 ?? true,
+      firstReminderHours: 24,
+      secondReminderHours: 2,
+      template: null,
+    },
   };
 }
 

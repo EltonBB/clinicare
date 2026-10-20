@@ -1,7 +1,8 @@
-import type { BusinessPlan, ReminderSettings, WorkflowSettings } from "@prisma/client";
+import { BusinessPlan, type Prisma, type ReminderSettings, type WorkflowSettings } from "@prisma/client";
 
 import {
   AUTOMATIONS,
+  automationDefinition,
   isAutomationAvailable,
   type AutomationKind,
   type AutomationMode,
@@ -133,40 +134,102 @@ export function resolveAutomationSettings(args: {
   ) as AutomationSettings;
 }
 
+/** Select this on a Business to resolve its automation settings without a second query. */
+export const AUTOMATION_SETTINGS_SELECT = {
+  plan: true,
+  automationSettings: {
+    select: { kind: true, enabled: true, mode: true, timing: true, template: true, template2: true },
+  },
+  reminderSettings: {
+    select: {
+      send24HourReminder: true,
+      send2HourReminder: true,
+      firstReminderHours: true,
+      secondReminderHours: true,
+      template: true,
+    },
+  },
+  workflowSettings: {
+    select: {
+      rebookEnabled: true,
+      rebookAfterMonths: true,
+      paymentReminderEnabled: true,
+      paymentReminderAfterDays: true,
+      thankYouEnabled: true,
+      thankYouDelayHours: true,
+    },
+  },
+} as const;
+
+export type AutomationSettingsSource = {
+  plan: BusinessPlan;
+  automationSettings?: StoredRow[] | null;
+  reminderSettings?: LegacyReminders | null;
+  workflowSettings?: LegacyWorkflows | null;
+};
+
+export function automationSettingsFromBusiness(business: AutomationSettingsSource): AutomationSettings {
+  return resolveAutomationSettings({
+    plan: business.plan,
+    rows: business.automationSettings ?? [],
+    reminders: business.reminderSettings ?? null,
+    workflows: business.workflowSettings ?? null,
+  });
+}
+
 export async function getAutomationSettings(businessId: string): Promise<AutomationSettings> {
   const business = await prisma.business.findUnique({
     where: { id: businessId },
-    select: {
-      plan: true,
-      automationSettings: {
-        select: { kind: true, enabled: true, mode: true, timing: true, template: true, template2: true },
-      },
-      reminderSettings: {
-        select: {
-          send24HourReminder: true,
-          send2HourReminder: true,
-          firstReminderHours: true,
-          secondReminderHours: true,
-          template: true,
-        },
-      },
-      workflowSettings: {
-        select: {
-          rebookEnabled: true,
-          rebookAfterMonths: true,
-          paymentReminderEnabled: true,
-          paymentReminderAfterDays: true,
-          thankYouEnabled: true,
-          thankYouDelayHours: true,
-        },
-      },
-    },
+    select: AUTOMATION_SETTINGS_SELECT,
   });
 
-  return resolveAutomationSettings({
-    plan: business?.plan ?? "BASIC",
-    rows: business?.automationSettings ?? [],
-    reminders: business?.reminderSettings ?? null,
-    workflows: business?.workflowSettings ?? null,
-  });
+  return automationSettingsFromBusiness(business ?? { plan: "BASIC" });
+}
+
+/**
+ * Before a clinic saves an automation on the new page, its old Workflows
+ * switch decides; without a Workflows row, the old default (rebooking off,
+ * the others on). Same precedence as resolveAutomationSettings.
+ */
+const LEGACY_WORKFLOW_SWITCHES: Partial<Record<AutomationKind, Prisma.WorkflowSettingsWhereInput>> = {
+  REBOOK: { rebookEnabled: true },
+  PAYMENT_REMINDER: { paymentReminderEnabled: true },
+  THANK_YOU: { thankYouEnabled: true },
+};
+const LEGACY_ON_WITHOUT_ROW: Partial<Record<AutomationKind, boolean>> = {
+  REBOOK: false,
+  PAYMENT_REMINDER: true,
+  THANK_YOU: true,
+};
+
+/**
+ * "This workspace has this automation on (and its plan includes it)", as a
+ * filter on the business a draft belongs to. The review list, its count and
+ * every send re-check this, so switching an automation off hides its pending
+ * drafts at once and they can't be sent. They are deliberately not expired:
+ * generators skip anything that already has a draft of its kind, so expiring
+ * them would mean, e.g., a still-unpaid payment never being reminded once the
+ * automation is back on.
+ */
+export function automationEnabledWhere(kind: AutomationKind): Prisma.BusinessWhereInput {
+  const definition = automationDefinition(kind);
+  const legacySwitch = LEGACY_WORKFLOW_SWITCHES[kind];
+  const onWithoutRow: Prisma.BusinessWhereInput | null = legacySwitch
+    ? LEGACY_ON_WITHOUT_ROW[kind]
+      ? { OR: [{ workflowSettings: { is: null } }, { workflowSettings: { is: legacySwitch } }] }
+      : { workflowSettings: { is: legacySwitch } }
+    : definition.defaultEnabled
+      ? {}
+      : null;
+
+  const enabled: Prisma.BusinessWhereInput = {
+    OR: [
+      { automationSettings: { some: { kind, enabled: true } } },
+      ...(onWithoutRow ? [{ AND: [{ automationSettings: { none: { kind } } }, onWithoutRow] }] : []),
+    ],
+  };
+
+  if (definition.basic) return enabled;
+  const proPlans = Object.values(BusinessPlan).filter((plan) => isProBusinessPlan(plan));
+  return { AND: [{ plan: { in: proPlans } }, enabled] };
 }

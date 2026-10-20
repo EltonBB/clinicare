@@ -124,11 +124,15 @@ function matchesWhere(row: Row, where: Row): boolean {
     if (key === "NOT") return [filter].flat().every((branch) => !matchesWhere(row, branch as Row));
     const value = row[key];
     if (isScalarFilter(filter)) return matchesScalar(value, filter);
-    if (Array.isArray(value)) {
+    // A to-many relation a fixture leaves out (e.g. a business's saved
+    // automation rows) reads as an empty list, as Prisma would load it.
+    const isToMany = typeof filter === "object" && filter !== null && ("some" in filter || "none" in filter);
+    if (Array.isArray(value) || (value === undefined && isToMany)) {
+      const related = (value ?? []) as Row[];
       const { some, none, ...rest } = filter as { some?: Row; none?: Row };
       if (Object.keys(rest).length > 0) throw new Error(`unsupported to-many filter on ${key}`);
-      if (some) return value.some((related) => matchesWhere(related, some));
-      if (none) return !value.some((related) => matchesWhere(related, none));
+      if (some) return related.some((item) => matchesWhere(item, some));
+      if (none) return !related.some((item) => matchesWhere(item, none));
     }
     // To-one relation filter `{ is: ... }`: `is: null` matches a missing related
     // row, `is: {...}` a present one that meets the filter.
@@ -227,7 +231,7 @@ async function listedIds(businessId = "biz_1") {
 // after the hourly sweep retires it.
 // `keptBySweep`: hidden from the list and refused by Send, yet NOT expired by
 // the hourly sweep — a workflow the clinic switched Off. Its drafts come back if
-// the workflow is switched on again (see workflowEnabledWhere).
+// the workflow is switched on again (see automationEnabledWhere).
 const LIVENESS_CASES: Array<{ name: string; live: boolean; row: Row; keptBySweep?: boolean }> = [
   { name: "rebook, client still lapsed", live: true, row: draftRow({ kind: "REBOOK" }) },
   {
@@ -331,8 +335,10 @@ const LIVENESS_CASES: Array<{ name: string; live: boolean; row: Row; keptBySweep
   { name: "payment, since refunded", live: false, row: draftRow({ kind: "PAYMENT", paymentId: "pay_1", payment: { status: "Refunded" } }) },
   { name: "payment, entry deleted", live: false, row: draftRow({ kind: "PAYMENT", paymentId: null, payment: null }) },
   {
-    name: "payment, Basic workspace (payment reminders are on every plan)",
-    live: true,
+    name: "payment, Basic workspace (payment reminders are Pro since the Automations page)",
+    live: false,
+    // Hidden, not expired: it comes back if the workspace upgrades while still owed.
+    keptBySweep: true,
     row: draftRow({ kind: "PAYMENT", paymentId: "pay_1", payment: { status: "Unpaid" }, business: { plan: "BASIC" } }),
   },
   {
@@ -585,7 +591,7 @@ describe("follow-ups data layer — which drafts are actionable", () => {
       live
         ? {
             ok: true,
-            draft: { id: "d_1", body: "Draft message", clientId: "client_1", clientName: "Test Client", phone: "+38344000000" },
+            draft: { id: "d_1", kind: row.kind, body: "Draft message", clientId: "client_1", clientName: "Test Client", phone: "+38344000000" },
           }
         : { ok: false, error: "This follow-up was already handled." }
     );
@@ -722,13 +728,47 @@ describe("follow-ups data layer — which drafts are actionable", () => {
     });
   });
 
+  it("refuses to send a waiting-list offer once the clinic switched those offers off", async () => {
+    serveDrafts([
+      draftRow({
+        kind: "SLOT_OFFER",
+        waitlistEntry: { status: "OFFERED" },
+        appointmentId: "appt_2",
+        appointment: { status: "CANCELLED", startAt: FUTURE, staffMemberId: null },
+        business: { plan: "PRO", automationSettings: [{ kind: "WAITLIST_OFFER", enabled: false }] },
+      }),
+    ]);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toEqual({
+      ok: false,
+      error: "This follow-up was already handled.",
+    });
+  });
+
+  it("refuses an automatic send once the draft no longer sends on its own", async () => {
+    serveDrafts([draftRow({ autoSend: false })]);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW, automatic: true })).toEqual({
+      ok: false,
+      error: "This follow-up was already handled.",
+    });
+  });
+
+  it("lets an automatic send through while the draft still sends on its own", async () => {
+    serveDrafts([draftRow({ autoSend: true })]);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW, automatic: true })).toMatchObject({
+      ok: true,
+    });
+  });
+
   it("flips a live PENDING draft to SENT atomically and refuses a second flip", async () => {
     const row = draftRow();
     serveDrafts([row]);
 
     expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toEqual({
       ok: true,
-      draft: { id: "d_1", body: "Draft message", clientId: "client_1", clientName: "Test Client", phone: "+38344000000" },
+      draft: { id: "d_1", kind: row.kind, body: "Draft message", clientId: "client_1", clientName: "Test Client", phone: "+38344000000" },
     });
     expect(mocks.tx.followUpDraft.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: "SENT", sentAt: null } })
@@ -790,7 +830,7 @@ describe("confirmFollowUpDraftDispatch — the last check before a message leave
     serveDrafts([claimed(row)]);
 
     expect(await confirmFollowUpDraftDispatch({ id: "d_1", businessId: "biz_1", now: NOW })).toEqual(
-      live ? { ok: true, draft: SENT_DRAFT } : { ok: false, error: "This follow-up was already handled." }
+      live ? { ok: true, draft: { ...SENT_DRAFT, kind: row.kind } } : { ok: false, error: "This follow-up was already handled." }
     );
   });
 
@@ -895,7 +935,7 @@ describe("confirmFollowUpDraftDispatch — the last check before a message leave
 
     expect(await confirmFollowUpDraftDispatch({ id: "d_1", businessId: "biz_1", now: NOW })).toEqual({
       ok: true,
-      draft: { ...SENT_DRAFT, clientName: "Renamed Client", phone: "+38344999999" },
+      draft: { ...SENT_DRAFT, kind: "REBOOK", clientName: "Renamed Client", phone: "+38344999999" },
     });
   });
 

@@ -124,21 +124,17 @@ describe("generateFollowUpDrafts — business selection and settings", () => {
 
     await generateFollowUpDrafts(NOW);
 
-    expect(mocks.findPaymentReminderCandidates).toHaveBeenCalledWith({
-      businessId: "biz_stored",
-      settings: STORED_SETTINGS,
-      now: NOW,
-    });
-    expect(mocks.findPaymentReminderCandidates).toHaveBeenCalledWith({
-      businessId: "biz_default",
-      settings: DEFAULT_WORKFLOW_SETTINGS,
-      now: NOW,
-    });
+    expect(mocks.findPaymentReminderCandidates).toHaveBeenCalledWith(
+      expect.objectContaining({ businessId: "biz_stored", settings: STORED_SETTINGS, now: NOW })
+    );
+    expect(mocks.findPaymentReminderCandidates).toHaveBeenCalledWith(
+      expect.objectContaining({ businessId: "biz_default", settings: DEFAULT_WORKFLOW_SETTINGS, now: NOW })
+    );
   });
 
-  it("never calls the rebook generator for a Basic workspace, but still runs the other two", async () => {
-    // A downgraded workspace may still have rebookEnabled stored as true — the
-    // plan check, not the stored toggle, is what keeps rebook a Pro feature.
+  it("runs only the thank-you generator for a Basic workspace", async () => {
+    // A downgraded workspace may still have rebook and payment switched on —
+    // the plan check, not the stored toggle, is what keeps them Pro.
     mocks.prisma.business.findMany.mockResolvedValue([
       business("biz_basic", { plan: "BASIC", workflowSettings: STORED_SETTINGS }),
     ]);
@@ -146,7 +142,7 @@ describe("generateFollowUpDrafts — business selection and settings", () => {
     await generateFollowUpDrafts(NOW);
 
     expect(mocks.findRebookCandidates).not.toHaveBeenCalled();
-    expect(mocks.findPaymentReminderCandidates).toHaveBeenCalledTimes(1);
+    expect(mocks.findPaymentReminderCandidates).not.toHaveBeenCalled();
     expect(mocks.findThankYouCandidates).toHaveBeenCalledTimes(1);
   });
 
@@ -155,13 +151,75 @@ describe("generateFollowUpDrafts — business selection and settings", () => {
 
     await generateFollowUpDrafts(NOW);
 
-    expect(mocks.findRebookCandidates).toHaveBeenCalledWith({
-      businessId: "biz_pro",
-      settings: DEFAULT_WORKFLOW_SETTINGS,
-      now: NOW,
-    });
+    expect(mocks.findRebookCandidates).toHaveBeenCalledWith(
+      expect.objectContaining({ businessId: "biz_pro", settings: DEFAULT_WORKFLOW_SETTINGS, now: NOW })
+    );
     expect(mocks.findPaymentReminderCandidates).toHaveBeenCalledTimes(1);
     expect(mocks.findThankYouCandidates).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("generateFollowUpDrafts — automation settings", () => {
+  it("passes the clinic's own wording and name to each generator", async () => {
+    mocks.prisma.business.findMany.mockResolvedValue([
+      business("biz_1", {
+        name: "Vela Dent",
+        automationSettings: [
+          { kind: "THANK_YOU", enabled: true, mode: "AUTOMATIC", timing: 2, template: "Thanks {client_name}!", template2: null },
+        ],
+      }),
+    ]);
+
+    await generateFollowUpDrafts(NOW);
+
+    expect(mocks.findThankYouCandidates).toHaveBeenCalledWith(
+      expect.objectContaining({ message: { template: "Thanks {client_name}!", clinicName: "Vela Dent" } })
+    );
+  });
+
+  it("marks drafts of an automation set to review as not sending on their own", async () => {
+    mocks.prisma.business.findMany.mockResolvedValue([
+      business("biz_1", {
+        automationSettings: [
+          { kind: "PAYMENT_REMINDER", enabled: true, mode: "REVIEW", timing: 3, template: null, template2: null },
+        ],
+      }),
+    ]);
+    mocks.findPaymentReminderCandidates.mockResolvedValue([paymentInput]);
+
+    await generateFollowUpDrafts(NOW);
+
+    expect(mocks.prisma.followUpDraft.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ kind: "PAYMENT", autoSend: false }),
+    });
+  });
+
+  it("drafts an old unpaid payment for review even when payment reminders send on their own", async () => {
+    mocks.prisma.business.findMany.mockResolvedValue([business("biz_1")]);
+    mocks.findPaymentReminderCandidates.mockResolvedValue([
+      { ...paymentInput, dueAt: new Date(NOW.getTime() - 30 * 24 * HOUR_MS) },
+      { ...paymentInput, paymentId: "pay2", dedupeKey: "PAYMENT:pay2", dueAt: new Date(NOW.getTime() - HOUR_MS) },
+    ]);
+
+    await generateFollowUpDrafts(NOW);
+
+    expect(mocks.prisma.followUpDraft.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ dedupeKey: "PAYMENT:pay1", autoSend: false }),
+    });
+    expect(mocks.prisma.followUpDraft.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ dedupeKey: "PAYMENT:pay2", autoSend: true }),
+    });
+  });
+
+  it("sends a Basic clinic's thank-yous automatically", async () => {
+    mocks.prisma.business.findMany.mockResolvedValue([business("biz_basic", { plan: "BASIC" })]);
+    mocks.findThankYouCandidates.mockResolvedValue([thankYouInput]);
+
+    await generateFollowUpDrafts(NOW);
+
+    expect(mocks.prisma.followUpDraft.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ kind: "THANK_YOU", autoSend: true }),
+    });
   });
 });
 
@@ -211,6 +269,7 @@ describe("generateFollowUpDrafts — writing drafts", () => {
         paymentId: "pay1",
         dedupeKey: "PAYMENT:pay1",
         body: "payment body",
+        autoSend: true,
       },
     });
     expect(mocks.prisma.followUpDraft.create).toHaveBeenCalledWith({
@@ -223,6 +282,7 @@ describe("generateFollowUpDrafts — writing drafts", () => {
         paymentId: undefined,
         dedupeKey: "THANK_YOU:appt1",
         body: "thanks body",
+        autoSend: true,
       },
     });
     expect(result).toMatchObject({ businessesProcessed: 1, draftsCreated: 3, errors: 0 });

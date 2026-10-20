@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 
+import { renderAutomationMessage } from "@/lib/automations";
 import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { prisma } from "@/lib/prisma";
 import { getZonedDateParts, getZonedMonthStart, zonedDateTimeToUtc } from "@/lib/time-zone";
@@ -29,7 +30,18 @@ export type FollowUpDraftInput = {
   appointmentId?: string;
   paymentId?: string;
   dedupeKey: string;
+  /** The automation's mode when drafted: only autoSend drafts go out without a person. */
+  autoSend?: boolean;
+  /**
+   * When the candidate became due (e.g. a payment's creation plus the delay).
+   * Something that has been due for a while is a backlog item, which is drafted
+   * for review even when the automation sends on its own (see follow-up-generation.ts).
+   */
+  dueAt?: Date;
 };
+
+/** The clinic's own wording for a generated kind (null = the default text). */
+export type DraftMessage = { template: string | null; clinicName: string };
 
 /**
  * Per-generator cap on rows read in one run, so an hourly cron over a large
@@ -68,44 +80,6 @@ export function rebookedAppointmentWhere(now: Date): Prisma.AppointmentWhereInpu
       { status: { in: ["CONFIRMED", "COMPLETED"] }, startAt: { gt: recentVisitSince } },
     ],
   };
-}
-
-/**
- * Each generated kind's switch in the Workflows settings. `onWithoutRow` is the
- * kind's default, taken from DEFAULT_WORKFLOW_SETTINGS so the one place that
- * says what a workspace with no saved settings does (the generator's
- * `workflowSettings ?? DEFAULT_WORKFLOW_SETTINGS`) is also the one the draft
- * liveness filter reads — not a second copy of "rebooking off, the others on".
- */
-const WORKFLOW_SWITCHES: Record<
-  FollowUpDraftInput["kind"],
-  { on: Prisma.WorkflowSettingsWhereInput; onWithoutRow: boolean }
-> = {
-  REBOOK: { on: { rebookEnabled: true }, onWithoutRow: DEFAULT_WORKFLOW_SETTINGS.rebookEnabled },
-  PAYMENT: { on: { paymentReminderEnabled: true }, onWithoutRow: DEFAULT_WORKFLOW_SETTINGS.paymentReminderEnabled },
-  THANK_YOU: { on: { thankYouEnabled: true }, onWithoutRow: DEFAULT_WORKFLOW_SETTINGS.thankYouEnabled },
-};
-
-/**
- * "The clinic has this workflow switched on", as a filter on the business a
- * draft belongs to. The generators only read the switch when they create
- * drafts, so without this an owner choosing Off stopped new drafts but left
- * every already-queued one listed, counted and sendable (Codex #130). The
- * Follow-ups list, the Inbox count and Send's compare-and-set all spread this
- * into their liveness filter, so Off takes effect at once.
- *
- * A draft the switch hides is deliberately NOT expired by the hourly sweep:
- * the payment and thank-you generators skip anything that already has a draft
- * of its kind in any status, so an expired payment reminder would never be
- * drafted again once the owner turned the workflow back on, even for a payment
- * that is still unpaid. Hidden, it simply comes back with the switch; the
- * sweep's own age limits still retire what has gone stale meanwhile.
- */
-export function workflowEnabledWhere(kind: FollowUpDraftInput["kind"]): Prisma.BusinessWhereInput {
-  const { on, onWithoutRow } = WORKFLOW_SWITCHES[kind];
-  return onWithoutRow
-    ? { OR: [{ workflowSettings: { is: null } }, { workflowSettings: { is: on } }] }
-    : { workflowSettings: { is: on } };
 }
 
 // Clinic-local, not UTC: a UTC month boundary drifts from the clinic's own
@@ -184,8 +158,9 @@ export async function findRebookCandidates(args: {
   businessId: string;
   settings: WorkflowSettingsValues;
   now: Date;
+  message?: DraftMessage;
 }): Promise<FollowUpDraftInput[]> {
-  const { businessId, settings, now } = args;
+  const { businessId, settings, now, message } = args;
   if (!settings.rebookEnabled) return [];
 
   const cutoff = subtractMonths(now, settings.rebookAfterMonths);
@@ -201,7 +176,7 @@ export async function findRebookCandidates(args: {
       appointments: { none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } } },
       followUpDrafts: { none: { kind: "REBOOK", OR: [{ status: "PENDING" }, { createdAt: { gte: monthStart } }] } },
     },
-    select: { id: true, name: true },
+    select: { id: true, name: true, lastVisitAt: true },
     orderBy: [{ lastVisitAt: "asc" }, { id: "asc" }],
     take: MAX_CANDIDATES_PER_RUN,
   });
@@ -209,8 +184,13 @@ export async function findRebookCandidates(args: {
   return clients.map((client) => ({
     clientId: client.id,
     kind: "REBOOK" as const,
-    body: `Hi ${client.name}, it's been a while since your last visit — want to book your next appointment?`,
+    body: renderAutomationMessage("REBOOK", message?.template, {
+      client_name: client.name,
+      clinic_name: message?.clinicName,
+    }),
     dedupeKey: `REBOOK:${client.id}:${monthKey(now)}`,
+    // Due the configured number of clinic-local calendar months after the last visit.
+    ...(client.lastVisitAt ? { dueAt: subtractMonths(client.lastVisitAt, -settings.rebookAfterMonths) } : {}),
   }));
 }
 
@@ -229,8 +209,9 @@ export async function findPaymentReminderCandidates(args: {
   businessId: string;
   settings: WorkflowSettingsValues;
   now: Date;
+  message?: DraftMessage;
 }): Promise<FollowUpDraftInput[]> {
-  const { businessId, settings, now } = args;
+  const { businessId, settings, now, message } = args;
   if (!settings.paymentReminderEnabled) return [];
 
   const cutoff = subtractDays(now, settings.paymentReminderAfterDays);
@@ -243,7 +224,7 @@ export async function findPaymentReminderCandidates(args: {
       client: ELIGIBLE_CLIENT_WHERE,
       followUpDrafts: { none: { kind: "PAYMENT" } },
     },
-    select: { id: true, clientId: true, client: { select: { name: true } } },
+    select: { id: true, clientId: true, createdAt: true, client: { select: { name: true } } },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     take: MAX_CANDIDATES_PER_RUN,
   });
@@ -252,8 +233,13 @@ export async function findPaymentReminderCandidates(args: {
     clientId: payment.clientId,
     kind: "PAYMENT" as const,
     paymentId: payment.id,
-    body: `Hi ${payment.client.name}, a friendly reminder that you have an unpaid payment with us. Please get in touch if you have any questions.`,
+    body: renderAutomationMessage("PAYMENT_REMINDER", message?.template, {
+      client_name: payment.client.name,
+      clinic_name: message?.clinicName,
+    }),
     dedupeKey: `PAYMENT:${payment.id}`,
+    // Due the configured number of clinic-local calendar days after it was recorded.
+    ...(payment.createdAt ? { dueAt: subtractDays(payment.createdAt, -settings.paymentReminderAfterDays) } : {}),
   }));
 }
 
@@ -277,8 +263,9 @@ export async function findThankYouCandidates(args: {
   settings: WorkflowSettingsValues;
   now: Date;
   lookbackWindowStart: Date;
+  message?: DraftMessage;
 }): Promise<FollowUpDraftInput[]> {
-  const { businessId, settings, now, lookbackWindowStart } = args;
+  const { businessId, settings, now, lookbackWindowStart, message } = args;
   if (!settings.thankYouEnabled) return [];
 
   const cutoff = new Date(now.getTime() - settings.thankYouDelayHours * HOUR_MS);
@@ -303,7 +290,10 @@ export async function findThankYouCandidates(args: {
     clientId: appointment.clientId,
     kind: "THANK_YOU" as const,
     appointmentId: appointment.id,
-    body: `Thank you for visiting us, ${appointment.client.name}! We hope to see you again soon.`,
+    body: renderAutomationMessage("THANK_YOU", message?.template, {
+      client_name: appointment.client.name,
+      clinic_name: message?.clinicName,
+    }),
     dedupeKey: `THANK_YOU:${appointment.id}`,
   }));
 }

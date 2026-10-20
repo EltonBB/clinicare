@@ -39,6 +39,7 @@ describe("findRebookCandidates", () => {
         kind: "REBOOK",
         body: expect.stringContaining("Alex"),
         dedupeKey: "REBOOK:c1:2026-07",
+        dueAt: expect.any(Date),
       },
     ]);
     expect(mocks.client.findMany).toHaveBeenCalledWith(
@@ -227,9 +228,45 @@ describe("rebookedAppointmentWhere", () => {
   });
 });
 
+describe("findRebookCandidates due date", () => {
+  it("is the last visit plus the configured calendar months, not a day count", async () => {
+    mocks.client.findMany.mockResolvedValue([{ id: "c1", name: "Alex", lastVisitAt: new Date("2026-02-25T10:00:00Z") }]);
+
+    const [draft] = await findRebookCandidates({
+      businessId: "biz_1",
+      settings: { ...REBOOK_ON, rebookAfterMonths: 3 },
+      now: new Date("2026-05-29T10:00:00Z"),
+    });
+
+    // Same clinic-local wall time (11:00 in Budapest), three calendar months on:
+    // May 25, not the May 26 a day count would give. 09:00Z because of summer time.
+    expect(draft.dueAt).toEqual(new Date("2026-05-25T09:00:00Z"));
+  });
+});
+
+describe("findPaymentReminderCandidates due date", () => {
+  it("is the recorded time plus clinic-local calendar days, across a summer-time change", async () => {
+    // Budapest moves to summer time on 2026-03-29: recorded 11:30 CET on the
+    // 26th is due 11:30 CEST on the 29th (09:30Z), not 72 hours later (10:30Z).
+    mocks.clientPayment.findMany.mockResolvedValue([
+      { id: "pay_1", clientId: "c1", createdAt: new Date("2026-03-26T10:30:00Z"), client: { name: "Alex" } },
+    ]);
+
+    const [draft] = await findPaymentReminderCandidates({
+      businessId: "biz_1",
+      settings: DEFAULT_WORKFLOW_SETTINGS,
+      now: new Date("2026-04-01T10:00:00Z"),
+    });
+
+    expect(draft.dueAt).toEqual(new Date("2026-03-29T09:30:00Z"));
+  });
+});
+
 describe("findPaymentReminderCandidates", () => {
   it("finds unpaid/partially-paid payments older than the configured window, one draft per payment", async () => {
-    mocks.clientPayment.findMany.mockResolvedValue([{ id: "pay_1", clientId: "c1", client: { name: "Alex" } }]);
+    mocks.clientPayment.findMany.mockResolvedValue([
+      { id: "pay_1", clientId: "c1", createdAt: new Date("2026-06-20T12:00:00Z"), client: { name: "Alex" } },
+    ]);
 
     const result = await findPaymentReminderCandidates({ businessId: "biz_1", settings: DEFAULT_WORKFLOW_SETTINGS, now: NOW });
 
@@ -240,6 +277,8 @@ describe("findPaymentReminderCandidates", () => {
         paymentId: "pay_1",
         body: "Hi Alex, a friendly reminder that you have an unpaid payment with us. Please get in touch if you have any questions.",
         dedupeKey: "PAYMENT:pay_1",
+        // Recorded 2026-06-20 with a 3-day delay: due since 2026-06-23.
+        dueAt: new Date("2026-06-23T12:00:00Z"),
       },
     ]);
     expect(mocks.clientPayment.findMany).toHaveBeenCalledWith(
@@ -262,6 +301,7 @@ describe("findPaymentReminderCandidates", () => {
     expect(mocks.clientPayment.findMany.mock.calls[0][0].select).toEqual({
       id: true,
       clientId: true,
+      createdAt: true,
       client: { select: { name: true } },
     });
   });
