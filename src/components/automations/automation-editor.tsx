@@ -229,7 +229,7 @@ export function AutomationEditor({
 
 /** A setting the clinic can't change here, shown in the same box as the fields beside it. */
 const FIXED_FIELD_CLASS =
-  "flex h-10 items-center rounded-(--radius-card) border border-border/80 bg-muted/40 px-3 text-sm text-muted-foreground";
+  "flex min-h-10 items-center rounded-(--radius-card) py-2 leading-snug border border-border/80 bg-muted/40 px-3 text-sm text-muted-foreground";
 
 function PreviewBubble({ text }: { text: string }) {
   return (

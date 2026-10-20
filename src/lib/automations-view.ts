@@ -57,10 +57,10 @@ const TIMING_SUFFIX: Partial<Record<AutomationKind, string>> = {
 
 const FIXED_TIMING: Partial<Record<AutomationKind, string>> = {
   BOOKING_CONFIRMATION: "right after booking",
-  NEW_PATIENT_WELCOME: "after a patient's first booking",
-  VISIT_CHANGED: "when the clinic moves or cancels a visit",
-  CHECKUP_DUE: "on the follow-up date set on the patient's record",
-  WAITLIST_OFFER: "when a booking is cancelled and someone on the waiting list fits",
+  NEW_PATIENT_WELCOME: "after a first booking",
+  VISIT_CHANGED: "when a visit changes",
+  CHECKUP_DUE: "on the follow-up date",
+  WAITLIST_OFFER: "when a slot opens up",
 };
 
 export function buildAutomationsView(args: {
