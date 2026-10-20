@@ -543,15 +543,19 @@ async function coverOpenReminders(
   );
   if (open.length === 0) return;
 
-  // A FAILED row is one the reminders job would retry: mark it covered too.
-  // A row already SENT keeps its real send time.
-  await tx.appointmentReminder.updateMany({
-    where: { appointmentId, type: { in: open.map(({ type }) => type) }, status: "FAILED" },
-    data: { status: "SENT", sentAt: now },
-  });
+  // The insert first: one that meets a reminder being drafted right now waits
+  // for it (the unique row), so the update and the withdrawal below then see
+  // that reminder and its draft (Codex).
   await tx.appointmentReminder.createMany({
     data: open.map(({ type }) => ({ appointmentId, type, status: "SENT" as const, sentAt: now })),
     skipDuplicates: true,
+  });
+  // A FAILED row is one the reminders job would retry; a DRAFTED one waits in
+  // To review. Both are covered now, and SENT is what reply routing and the
+  // risk score trust (Codex). A row already SENT keeps its real send time.
+  await tx.appointmentReminder.updateMany({
+    where: { appointmentId, type: { in: open.map(({ type }) => type) }, status: { in: ["FAILED", "DRAFTED"] } },
+    data: { status: "SENT", sentAt: now },
   });
   // One drafted for review earlier would repeat what the patient was just told:
   // waiting, or claimed by staff but not yet sent (its re-check right before

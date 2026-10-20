@@ -521,16 +521,24 @@ describe("suppressOpenReminders", () => {
     });
   });
 
-  it("also covers a reminder that failed earlier and would be retried", async () => {
+  it("also covers a reminder that failed earlier, or was drafted for review, so replies and the risk score count it", async () => {
     mocks.appointment.findFirst.mockResolvedValue({ startAt: new Date(NOW.getTime() + 30 * 60_000) });
     mocks.business.findUnique.mockResolvedValue(business());
 
     await suppressOpenReminders({ businessId: "biz_1", appointmentId: "appt_1", appointmentGeneration: 2, now: NOW });
 
     expect(mocks.appointmentReminder.updateMany).toHaveBeenCalledWith({
-      where: { appointmentId: "appt_1", type: { in: ["TWENTY_FOUR_HOUR", "TWO_HOUR"] }, status: "FAILED" },
+      where: { appointmentId: "appt_1", type: { in: ["TWENTY_FOUR_HOUR", "TWO_HOUR"] }, status: { in: ["FAILED", "DRAFTED"] } },
       data: { status: "SENT", sentAt: NOW },
     });
+    // The insert goes first: one racing a reminder being drafted waits for it,
+    // then the update and the withdrawal see that reminder and its draft.
+    const order = [
+      mocks.appointmentReminder.createMany.mock.invocationCallOrder[0],
+      mocks.appointmentReminder.updateMany.mock.invocationCallOrder[0],
+      mocks.followUpDraft.updateMany.mock.invocationCallOrder[0],
+    ];
+    expect(order).toEqual([...order].sort((a, b) => a - b));
   });
 
   it("withdraws a covered reminder still waiting in To review, or claimed by staff but not yet sent", async () => {

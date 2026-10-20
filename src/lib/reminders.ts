@@ -107,6 +107,26 @@ async function draftReminderForReview(args: {
       });
       if (!current) return;
 
+      // The marker first, and never over a SENT row: a booking message that
+      // covered this reminder meanwhile wins (Codex). A cover running at the
+      // same moment meets this insert on the unique row and waits for it, then
+      // sees the draft below and withdraws it.
+      // DRAFTED, not SENT: nothing reached the patient yet, so a "2" reply
+      // can't be read as an answer to it and the risk score doesn't count it.
+      await tx.appointmentReminder.createMany({
+        data: [{ appointmentId, type: reminderType, status: "DRAFTED" }],
+        skipDuplicates: true,
+      });
+      await tx.appointmentReminder.updateMany({
+        where: { appointmentId, type: reminderType, status: "FAILED" },
+        data: { status: "DRAFTED", sentAt: new Date() },
+      });
+      const marker = await tx.appointmentReminder.findUnique({
+        where: { appointmentId_type: { appointmentId, type: reminderType } },
+        select: { status: true },
+      });
+      if (marker?.status !== "DRAFTED") return;
+
       await tx.followUpDraft.createMany({
         data: [
           {
@@ -121,17 +141,10 @@ async function draftReminderForReview(args: {
             autoSend: false,
           },
         ],
-        // Already drafted (an overlapping run): fine, just record it below.
+        // Already drafted (an overlapping run): fine.
         skipDuplicates: true,
       });
       await retireLongerReminderDrafts(tx, appointmentId, automationKind);
-      // DRAFTED, not SENT: nothing reached the patient yet, so a "2" reply
-      // can't be read as an answer to it and the risk score doesn't count it.
-      await tx.appointmentReminder.upsert({
-        where: { appointmentId_type: { appointmentId, type: reminderType } },
-        create: { appointmentId, type: reminderType, status: "DRAFTED" },
-        update: { status: "DRAFTED", sentAt: new Date() },
-      });
     });
   } catch (error) {
     logger.error("Drafting a reminder for review failed.", error, { businessId, appointmentId, reminderType });

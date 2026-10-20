@@ -332,12 +332,16 @@ describe("syncAppointmentRemindersForBusiness with automation settings", () => {
   });
 });
 
-function reviewTx(generation: number | null = 4) {
+function reviewTx(generation: number | null = 4, markerAfter = "DRAFTED") {
   const tx = {
     $executeRaw: vi.fn(),
     appointment: { findFirst: vi.fn().mockResolvedValue(generation === null ? null : { id: "appt_1" }) },
     followUpDraft: { createMany: vi.fn().mockResolvedValue({ count: 1 }), updateMany: vi.fn() },
-    appointmentReminder: { upsert: vi.fn() },
+    appointmentReminder: {
+      createMany: vi.fn().mockResolvedValue({ count: 1 }),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      findUnique: vi.fn().mockResolvedValue({ status: markerAfter }),
+    },
   };
   mocks.$transaction.mockImplementation(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx));
   return tx;
@@ -379,9 +383,28 @@ describe("syncAppointmentRemindersForBusiness with a reminder set to review", ()
       skipDuplicates: true,
     });
     // DRAFTED: a "2" reply can't be read as an answer to it, nor the risk score count it.
-    expect(tx.appointmentReminder.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ create: expect.objectContaining({ type: "TWO_HOUR", status: "DRAFTED" }) })
+    // Recorded before the draft, and never over a row a covering message marked sent.
+    expect(tx.appointmentReminder.createMany).toHaveBeenCalledWith({
+      data: [{ appointmentId: "appt_1", type: "TWO_HOUR", status: "DRAFTED" }],
+      skipDuplicates: true,
+    });
+    expect(tx.appointmentReminder.updateMany).toHaveBeenCalledWith({
+      where: { appointmentId: "appt_1", type: "TWO_HOUR", status: "FAILED" },
+      data: expect.objectContaining({ status: "DRAFTED" }),
+    });
+    expect(tx.appointmentReminder.createMany.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.followUpDraft.createMany.mock.invocationCallOrder[0]
     );
+  });
+
+  it("drafts nothing when a message covering the reminder already marked it sent", async () => {
+    reviewSecondReminder();
+    mocks.appointment.findMany.mockResolvedValue([appointmentIn(1, "appt_1", 4)]);
+    const tx = reviewTx(4, "SENT");
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    expect(tx.followUpDraft.createMany).not.toHaveBeenCalled();
   });
 
   it("withdraws a longer-lead reminder still waiting for review when it drafts a more urgent one", async () => {
@@ -409,7 +432,7 @@ describe("syncAppointmentRemindersForBusiness with a reminder set to review", ()
     await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
 
     expect(tx.followUpDraft.createMany).not.toHaveBeenCalled();
-    expect(tx.appointmentReminder.upsert).not.toHaveBeenCalled();
+    expect(tx.appointmentReminder.createMany).not.toHaveBeenCalled();
   });
 
   it("withdraws a waiting longer-lead review reminder before sending a more urgent one", async () => {
