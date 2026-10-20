@@ -134,7 +134,9 @@ export function AutomationEditor({
   );
 
   return (
-    <Dialog open onOpenChange={(open) => (open ? null : onClose())}>
+    // While a save is on its way the editor stays open (Escape, the close
+    // button and the backdrop included), so a failed save can show its error.
+    <Dialog open onOpenChange={(open) => (open || pending ? null : onClose())}>
       <DialogContent className="max-h-[calc(100vh-2rem)] gap-0 overflow-y-auto p-0 sm:max-w-[780px] sm:grid-cols-[minmax(0,1fr)_280px]">
         <div className="flex min-w-0 flex-col gap-5 p-6">
           <div className="flex items-center justify-between gap-4 pr-8 sm:pr-0">
