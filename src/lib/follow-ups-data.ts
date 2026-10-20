@@ -1,6 +1,5 @@
-import { BusinessPlan, Prisma, type FollowUpDraftKind } from "@prisma/client";
+import { Prisma, type FollowUpDraftKind } from "@prisma/client";
 
-import { isProBusinessPlan } from "@/lib/billing";
 import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { MAX_MESSAGE_BODY_LENGTH, MESSAGE_TOO_LONG_ERROR } from "@/lib/messaging/limits";
 import { isSlotInsideOperatingHours, operatingWeekday } from "@/lib/operating-hours";
@@ -12,12 +11,6 @@ import { liveSlotOfferWhere, reofferFreedSlot, retryOnWriteConflict } from "@/li
 import { AVAILABLE_STAFF_WHERE } from "@/lib/staff-eligibility";
 import { automationEnabledWhere } from "@/lib/automations-data";
 import { rebookedAppointmentWhere } from "@/lib/workflow-generators";
-
-// "Not Pro" as billing.ts defines it — the same derivation as the sweep's
-// non-Pro rule (follow-up-generation.ts), so no plan list is kept twice.
-function nonProPlans(): BusinessPlan[] {
-  return Object.values(BusinessPlan).filter((plan) => !isProBusinessPlan(plan));
-}
 
 // A draft is actionable while it's PENDING and what it's about still holds.
 // The list, the Inbox count and Send's compare-and-set all use this one
@@ -323,7 +316,10 @@ function flipDraftToSent(args: {
           // regardless (see passSlotOfferAction's own "no plan check" comment),
           // so a downgraded workspace can still release an outstanding offer —
           // only Send is blocked here (Codex).
-          NOT: { kind: "SLOT_OFFER", business: { plan: { in: nonProPlans() } } },
+          // Likewise once the clinic switched waiting-list offers off: queued
+          // offers stay listed so they can be skipped, but none can be sent.
+          // (automationEnabledWhere includes the Pro check.)
+          NOT: { kind: "SLOT_OFFER", business: { NOT: automationEnabledWhere("WAITLIST_OFFER") } },
         },
         // The re-check changes nothing: it only needs the write's row lock.
         // The claim leaves `sentAt` empty: it is set by markFollowUpDraftDelivered

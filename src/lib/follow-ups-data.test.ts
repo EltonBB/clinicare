@@ -726,6 +726,23 @@ describe("follow-ups data layer — which drafts are actionable", () => {
     });
   });
 
+  it("refuses to send a waiting-list offer once the clinic switched those offers off", async () => {
+    serveDrafts([
+      draftRow({
+        kind: "SLOT_OFFER",
+        waitlistEntry: { status: "OFFERED" },
+        appointmentId: "appt_2",
+        appointment: { status: "CANCELLED", startAt: FUTURE, staffMemberId: null },
+        business: { plan: "PRO", automationSettings: [{ kind: "WAITLIST_OFFER", enabled: false }] },
+      }),
+    ]);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toEqual({
+      ok: false,
+      error: "This follow-up was already handled.",
+    });
+  });
+
   it("refuses an automatic send once the draft no longer sends on its own", async () => {
     serveDrafts([draftRow({ autoSend: false })]);
 
