@@ -63,20 +63,6 @@ const FIXED_TIMING: Partial<Record<AutomationKind, string>> = {
   WAITLIST_OFFER: "when a booking is cancelled and someone on the waiting list fits",
 };
 
-/**
- * The high-risk reminder only offers leads shorter than the first reminder's:
- * once it has gone out the first reminder is never sent after it, so a longer
- * lead would replace the clinic's standard reminder for high-risk patients.
- * Its current value stays listed so a saved setting still shows.
- */
-function timingOptionsFor(kind: AutomationKind, options: number[], settings: AutomationSettings): number[] {
-  if (kind !== "HIGH_RISK_REMINDER") return options;
-  const first = settings.FIRST_REMINDER;
-  if (!first.enabled || first.timing === null) return options;
-  const current = settings.HIGH_RISK_REMINDER.timing;
-  return options.filter((hours) => hours < (first.timing as number) || hours === current);
-}
-
 export function buildAutomationsView(args: {
   settings: AutomationSettings;
   plan: BusinessPlan;
@@ -98,7 +84,7 @@ export function buildAutomationsView(args: {
         mode: setting.mode,
         timing: setting.timing,
         timingUnit: definition.timingUnit,
-        timingOptions: timingOptionsFor(definition.kind, [...definition.timingOptions], settings),
+        timingOptions: [...definition.timingOptions],
         canChooseMode: isPro && definition.reviewable,
         fixedTiming: FIXED_TIMING[definition.kind] ?? "",
         timingSuffix: TIMING_SUFFIX[definition.kind] ?? "",

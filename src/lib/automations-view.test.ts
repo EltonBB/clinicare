@@ -77,12 +77,4 @@ describe("buildAutomationsView", () => {
     expect(editors.BOOKING_CONFIRMATION?.fixedTiming).toBe("right after booking");
     expect(editors.FIRST_REMINDER?.timingSuffix).toBe("the visit");
   });
-
-  it("offers the high-risk reminder only leads shorter than the first reminder's", () => {
-    // First reminder is 14h before (legacy row above); high-risk defaults to 5h.
-    const options = view("PRO").editors.HIGH_RISK_REMINDER?.timingOptions ?? [];
-
-    expect(Math.max(...options)).toBe(13);
-    expect(options).toContain(5);
-  });
 });
