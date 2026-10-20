@@ -58,16 +58,28 @@ async function draftReminderForReview(args: {
   businessId: string;
   appointmentId: string;
   clientId: string;
+  /** The visit's reminderGeneration: the draft is refused once the visit changes. */
+  appointmentGeneration: number;
   automationKind: "FIRST_REMINDER" | "SECOND_REMINDER" | "HIGH_RISK_REMINDER";
   reminderType: ReminderType;
   body: string;
   dedupeKey: string;
 }): Promise<void> {
-  const { businessId, appointmentId, clientId, automationKind, reminderType, body, dedupeKey } = args;
+  const { businessId, appointmentId, clientId, appointmentGeneration, automationKind, reminderType, body, dedupeKey } = args;
   try {
     await prisma.followUpDraft
       .create({
-        data: { businessId, clientId, appointmentId, kind: automationKind, status: "PENDING", body, dedupeKey, autoSend: false },
+        data: {
+          businessId,
+          clientId,
+          appointmentId,
+          appointmentGeneration,
+          kind: automationKind,
+          status: "PENDING",
+          body,
+          dedupeKey,
+          autoSend: false,
+        },
       })
       .catch((error: unknown) => {
         // Already drafted (an overlapping run): fine, just record it below.
@@ -270,6 +282,7 @@ export async function syncAppointmentRemindersForBusiness(
         businessId,
         appointmentId: appointment.id,
         clientId: appointment.client.id,
+        appointmentGeneration: appointment.reminderGeneration,
         automationKind,
         reminderType,
         body,

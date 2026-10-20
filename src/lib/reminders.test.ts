@@ -352,6 +352,7 @@ describe("syncAppointmentRemindersForBusiness with a reminder set to review", ()
       data: expect.objectContaining({
         kind: "SECOND_REMINDER",
         appointmentId: "appt_1",
+        appointmentGeneration: 4,
         autoSend: false,
         dedupeKey: `SECOND_REMINDER:appt_1:${appointment.startAt.getTime()}:4`,
       }),
