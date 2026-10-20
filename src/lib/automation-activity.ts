@@ -36,6 +36,15 @@ const STATUS_LABEL: Record<MessageDeliveryStatus, ActivityStatus> = {
   FAILED: "Failed",
 };
 
+/** Highest page a URL may ask for: 30 days of sends never come near it. */
+const MAX_ACTIVITY_PAGE = 1_000;
+
+/** Parses `?page=`: a whole number from 1 to MAX_ACTIVITY_PAGE, else page 1 (Codex). */
+export function parseActivityPage(raw: string | undefined): number {
+  const page = Number(raw);
+  return Number.isSafeInteger(page) && page >= 1 ? Math.min(page, MAX_ACTIVITY_PAGE) : 1;
+}
+
 /** Parses `?kind=` from the URL: only a real automation kind filters. */
 export function parseActivityKind(raw: string | undefined): AutomationKind | undefined {
   return AUTOMATIONS.some((automation) => automation.kind === raw) ? (raw as AutomationKind) : undefined;
@@ -55,7 +64,7 @@ export async function listAutomationActivity(args: {
   now?: Date;
 }): Promise<AutomationActivity> {
   const { businessId, kind, now = new Date() } = args;
-  const page = Math.max(1, Math.floor(args.page ?? 1));
+  const page = parseActivityPage(String(args.page ?? 1));
 
   const base: Prisma.MessageWhereInput = {
     direction: "OUTBOUND",

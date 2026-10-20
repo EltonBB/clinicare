@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ message: { findMany: vi.fn(), groupBy: vi.fn() } }));
 vi.mock("@/lib/prisma", () => ({ prisma: { message: mocks.message } }));
 
-import { ACTIVITY_PAGE_SIZE, listAutomationActivity, parseActivityKind } from "./automation-activity";
+import { ACTIVITY_PAGE_SIZE, listAutomationActivity, parseActivityKind, parseActivityPage } from "./automation-activity";
 
 const NOW = new Date("2026-10-20T10:00:00.000Z");
 
@@ -69,6 +69,18 @@ describe("listAutomationActivity", () => {
     const [row] = (await listAutomationActivity({ businessId: "biz_1", now: NOW })).rows;
 
     expect(row).toMatchObject({ clientId: null, clientName: "Maya", status: "Failed" });
+  });
+});
+
+describe("parseActivityPage", () => {
+  it("accepts only a whole page number from 1 to 1000", () => {
+    expect(parseActivityPage("3")).toBe(3);
+    expect(parseActivityPage("Infinity")).toBe(1);
+    expect(parseActivityPage("1e400")).toBe(1);
+    expect(parseActivityPage("-2")).toBe(1);
+    expect(parseActivityPage("2.5")).toBe(1);
+    expect(parseActivityPage("99999999")).toBe(1_000);
+    expect(parseActivityPage(undefined)).toBe(1);
   });
 });
 

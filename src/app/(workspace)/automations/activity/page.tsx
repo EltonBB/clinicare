@@ -4,7 +4,12 @@ import Link from "next/link";
 import { ActivityFilters } from "@/components/automations/activity-filters";
 import { AutomationsHeader } from "@/components/automations/automations-header";
 import { WorkspaceEmptyState, WorkspacePage } from "@/components/workspace/workspace-layout";
-import { listAutomationActivity, parseActivityKind, type ActivityStatus } from "@/lib/automation-activity";
+import {
+  listAutomationActivity,
+  parseActivityKind,
+  parseActivityPage,
+  type ActivityStatus,
+} from "@/lib/automation-activity";
 import { AUTOMATIONS } from "@/lib/automations";
 import { isProBusinessPlan } from "@/lib/billing";
 import { requireCurrentWorkspace } from "@/lib/business";
@@ -31,7 +36,7 @@ export default async function AutomationsActivityPage({ searchParams }: Activity
   const params = searchParams ? await searchParams : {};
   const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
   const kind = parseActivityKind(first(params.kind));
-  const page = Number(first(params.page)) || 1;
+  const page = parseActivityPage(first(params.page));
 
   const isPro = isProBusinessPlan(business.plan);
   const [activity, reviewCount] = await Promise.all([
