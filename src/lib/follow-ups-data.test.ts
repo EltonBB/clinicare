@@ -786,6 +786,13 @@ describe("follow-ups data layer — which drafts are actionable", () => {
     ]);
 
     expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({ ok: sendable });
+    if (!sendable) {
+      // Expired for good, not left pending beside its replacement.
+      expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledWith({
+        where: { id: "d_1", businessId: "biz_1", OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }] },
+        data: { status: "EXPIRED" },
+      });
+    }
   });
 
   it("refuses an automatic send once the draft no longer sends on its own", async () => {

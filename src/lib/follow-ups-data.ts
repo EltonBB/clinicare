@@ -350,6 +350,13 @@ async function runSendGate(args: {
     return await flipDraftToSent(args);
   } catch (error) {
     if (error instanceof VisitChangedSinceDrafted) {
+      // Not left pending beside its replacement, where every Send would fail:
+      // a draft about an old version of the visit is expired for good (Codex).
+      // Still unsent (pending, or claimed but not delivered) only.
+      await prisma.followUpDraft.updateMany({
+        where: { id: args.id, businessId: args.businessId, OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }] },
+        data: { status: "EXPIRED" },
+      });
       return { ok: false, error: ALREADY_HANDLED_ERROR };
     }
     if (error instanceof SlotOutsideHours) {

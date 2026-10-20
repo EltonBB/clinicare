@@ -196,7 +196,7 @@ describe("queueVisitMessage", () => {
 
 describe("queueMissedVisitMessage", () => {
   it("drafts the missed-visit message for after the clinic's delay, for review by default", async () => {
-    mocks.appointment.findFirst.mockResolvedValue(appointment({ status: "NO_SHOW" }));
+    mocks.appointment.findFirst.mockResolvedValue(appointment({ status: "NO_SHOW", startAt: new Date("2026-10-20T07:00:00.000Z") }));
 
     await queueMissedVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", now: NOW });
 
@@ -211,6 +211,15 @@ describe("queueMissedVisitMessage", () => {
           body: "Hi Maya, we missed you today. Would you like to book a new time?",
         }),
       })
+    );
+  });
+
+  it("drafts nothing for a visit that hasn't started", async () => {
+    mocks.appointment.findFirst.mockResolvedValue(null);
+
+    expect(await queueMissedVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", now: NOW })).toBeNull();
+    expect(mocks.appointment.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ startAt: { lte: NOW } }) })
     );
   });
 

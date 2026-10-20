@@ -710,7 +710,7 @@ export async function saveAppointmentAction(
     }
     // A no-show recorded here, or one whose patient (or other details) was
     // corrected: the old missed-visit draft was retired with the reset.
-    if (newStatus === "NO_SHOW" && (previousStatus !== "NO_SHOW" || shouldResetReminders)) {
+    if (newStatus === "NO_SHOW" && startAt.getTime() <= Date.now() && (previousStatus !== "NO_SHOW" || shouldResetReminders)) {
       await queueMissedVisitMessage({ businessId: business.id, appointmentId: appointmentId! });
     } else if (previousStatus === "NO_SHOW" && newStatus !== "NO_SHOW") {
       await withdrawMissedVisitMessage({ businessId: business.id, appointmentId: appointmentId! });

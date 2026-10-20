@@ -103,13 +103,14 @@ export async function queueVisitMessage(args: {
     if (event === "booked") {
       // Only bookings made before this one count, by a stable order (creation
       // time, then id), so two first bookings saved at once agree on which one
-      // is first: it gets the welcome, the other the confirmation (Codex).
+      // is first: it gets the welcome, the other the confirmation (Codex). A
+      // cancelled earlier booking counts too: its welcome may well have gone
+      // out, and a patient is only new once.
       const earlierVisits = await prisma.appointment.count({
         where: {
           businessId,
           clientId: appointment.clientId,
           id: { not: appointment.id },
-          status: { not: "CANCELLED" },
           OR: [
             { createdAt: { lt: appointment.createdAt } },
             { createdAt: appointment.createdAt, id: { lt: appointment.id } },
@@ -189,7 +190,8 @@ export async function queueMissedVisitMessage(args: {
 
   try {
     const appointment = await prisma.appointment.findFirst({
-      where: { id: appointmentId, businessId, status: "NO_SHOW" },
+      // Only a visit that has started can have been missed (Codex).
+      where: { id: appointmentId, businessId, status: "NO_SHOW", startAt: { lte: now } },
       select: {
         id: true,
         clientId: true,
