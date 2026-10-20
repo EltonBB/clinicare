@@ -66,6 +66,13 @@ describe("saveAutomationSettingAction", () => {
     );
   });
 
+  it("refuses an empty message instead of quietly restoring the default", async () => {
+    const result = await saveAutomationSettingAction({ ...base, kind: "THANK_YOU", timing: 2, template: "   " });
+
+    expect(result).toEqual({ ok: false, error: "Write a message before saving." });
+    expect(mocks.tx.automationSetting.upsert).not.toHaveBeenCalled();
+  });
+
   it("refuses a message over 600 characters", async () => {
     const result = await saveAutomationSettingAction({ ...base, kind: "THANK_YOU", timing: 2, template: "a".repeat(601) });
 

@@ -25,9 +25,12 @@ const TRY_AGAIN_ERROR = "Something went wrong. Try again.";
 
 const KINDS = AUTOMATIONS.map((automation) => automation.kind) as [AutomationKind, ...AutomationKind[]];
 
+// An empty box is refused rather than quietly turned back into the default
+// (Codex): Reset to default is the way back to it.
 const templateSchema = z
   .string()
   .trim()
+  .min(1, "Write a message before saving.")
   .max(MAX_AUTOMATION_MESSAGE_LENGTH, `Keep the message under ${MAX_AUTOMATION_MESSAGE_LENGTH} characters.`)
   .nullable();
 
