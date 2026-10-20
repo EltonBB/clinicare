@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   appointment: { findFirst: vi.fn(), count: vi.fn() },
-  followUpDraft: { create: vi.fn(), updateMany: vi.fn(), count: vi.fn() },
+  followUpDraft: { create: vi.fn(), updateMany: vi.fn(), count: vi.fn(), findFirst: vi.fn() },
   appointmentReminder: { createMany: vi.fn(), updateMany: vi.fn() },
   $transaction: vi.fn(),
   $executeRaw: vi.fn(),
@@ -27,6 +27,7 @@ import {
   queueVisitMessage,
   replaceRefusedBookingMessage,
   retireVisitDrafts,
+  visitEventForSave,
   suppressOpenReminders,
   withdrawMissedVisitMessage,
 } from "./automation-events";
@@ -71,6 +72,7 @@ beforeEach(() => {
   mocks.followUpDraft.create.mockResolvedValue({ id: "draft_1" });
   mocks.followUpDraft.updateMany.mockResolvedValue({ count: 0 });
   mocks.followUpDraft.count.mockResolvedValue(0);
+  mocks.followUpDraft.findFirst.mockResolvedValue(null);
   // The suppression runs in a transaction on the same mocked client.
   mocks.$transaction.mockImplementation(async (callback: (client: unknown) => unknown) =>
     callback({ appointment: mocks.appointment, appointmentReminder: mocks.appointmentReminder, $executeRaw: mocks.$executeRaw })
@@ -106,7 +108,8 @@ describe("queueVisitMessage", () => {
 
   it("doesn't welcome a patient again after their first booking was deleted", async () => {
     mocks.appointment.count.mockResolvedValue(0);
-    mocks.followUpDraft.count.mockResolvedValue(1);
+    // A welcome went out before (its booking since deleted); no notice since.
+    mocks.followUpDraft.count.mockResolvedValueOnce(1);
 
     await queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "booked", now: NOW });
 
@@ -227,22 +230,82 @@ describe("queueVisitMessage", () => {
 
 describe("replaceRefusedBookingMessage", () => {
   it("drafts the confirmation again for the visit as it now is", async () => {
-    await replaceRefusedBookingMessage({ businessId: "biz_1", appointmentId: "appt_1" });
+    expect(await replaceRefusedBookingMessage({ businessId: "biz_1", appointmentId: "appt_1" })).toBeUndefined();
 
-    expect(mocks.followUpDraft.count).toHaveBeenCalledWith({
-      where: expect.objectContaining({ kind: "VISIT_CHANGED", appointmentGeneration: 2 }),
-    });
     expect(mocks.followUpDraft.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ kind: "BOOKING_CONFIRMATION", appointmentGeneration: 2 }) })
     );
+    expect(mocks.dispatchSoon).toHaveBeenCalledWith("biz_1");
   });
+});
 
-  it("drafts nothing when the change already told the patient", async () => {
+describe("one message per version of a visit", () => {
+  it("gives way to a moved or cancel notice for the same version, after its own write", async () => {
     mocks.followUpDraft.count.mockResolvedValue(1);
 
-    await replaceRefusedBookingMessage({ businessId: "biz_1", appointmentId: "appt_1" });
+    expect(await queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "booked", now: NOW })).toBeNull();
 
-    expect(mocks.followUpDraft.create).not.toHaveBeenCalled();
+    expect(mocks.followUpDraft.count).toHaveBeenCalledWith({
+      where: { businessId: "biz_1", appointmentId: "appt_1", appointmentGeneration: 2, kind: "VISIT_CHANGED", status: { in: ["PENDING", "SENT"] } },
+    });
+    expect(mocks.followUpDraft.updateMany).toHaveBeenCalledWith({
+      where: { id: "draft_1", status: "PENDING" },
+      data: { status: "DISMISSED" },
+    });
+    expect(mocks.dispatchSoon).not.toHaveBeenCalled();
+  });
+
+  it("has a moved notice withdraw a booking message waiting for the same version", async () => {
+    await queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "moved", now: NOW });
+
+    expect(mocks.followUpDraft.updateMany).toHaveBeenCalledWith({
+      where: {
+        businessId: "biz_1",
+        appointmentId: "appt_1",
+        appointmentGeneration: 2,
+        kind: { in: ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME"] },
+        status: "PENDING",
+      },
+      data: { status: "DISMISSED" },
+    });
+  });
+
+  it("keeps one welcome per patient when two first bookings are saved at once", async () => {
+    mocks.appointment.count.mockResolvedValue(0);
+    mocks.followUpDraft.create.mockResolvedValueOnce({ id: "draft_1" }).mockResolvedValueOnce({ id: "draft_2" });
+    // The other booking's welcome was drafted first.
+    mocks.followUpDraft.findFirst.mockResolvedValue({ id: "draft_other" });
+
+    expect(await queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "booked", now: NOW })).toBe("draft_2");
+
+    expect(mocks.followUpDraft.updateMany).toHaveBeenCalledWith({
+      where: { id: "draft_1", status: "PENDING" },
+      data: { status: "DISMISSED" },
+    });
+    expect(mocks.followUpDraft.create).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ data: expect.objectContaining({ kind: "BOOKING_CONFIRMATION" }) })
+    );
+  });
+
+  it.each([
+    ["a new booking", { isNew: true, newStatus: "CONFIRMED" }, "booked"],
+    ["a visit given to another patient at a new time", { clientChanged: true, timeChanged: true }, "booked"],
+    ["a new time", { timeChanged: true }, "moved"],
+    ["a cancellation", { wasNewlyCancelled: true, newStatus: "CANCELLED" }, "cancelled"],
+    ["a reset that retired a waiting confirmation", { bookingMessageRetired: true }, "booked"],
+    ["a status change only", {}, null],
+  ])("tells the patient about %s", (_label, change, expected) => {
+    const save = {
+      isNew: false,
+      newStatus: "CONFIRMED",
+      wasNewlyCancelled: false,
+      timeChanged: false,
+      clientChanged: false,
+      bookingMessageRetired: false,
+      ...change,
+    };
+    expect(visitEventForSave(save)).toBe(expected);
   });
 });
 

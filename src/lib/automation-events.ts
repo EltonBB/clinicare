@@ -18,6 +18,31 @@ export type VisitEvent = "booked" | "moved" | "cancelled";
  */
 const VISIT_DRAFT_KINDS: FollowUpDraftKind[] = ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED", "MISSED_VISIT"];
 
+const BOOKING_MESSAGE_KINDS: FollowUpDraftKind[] = ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME"];
+
+/**
+ * What a save of the booking form tells the patient, if anything: a new
+ * booking, a cancellation, or a new time. A visit given to another patient is
+ * a new booking for them, whatever else changed (Codex); a booking message
+ * still waiting when the save reset the visit is owed again too.
+ */
+export function visitEventForSave(save: {
+  isNew: boolean;
+  newStatus: string;
+  wasNewlyCancelled: boolean;
+  timeChanged: boolean;
+  clientChanged: boolean;
+  bookingMessageRetired: boolean;
+}): VisitEvent | null {
+  const stands = save.newStatus === "PENDING" || save.newStatus === "CONFIRMED";
+  if (save.isNew) return save.newStatus !== "CANCELLED" ? "booked" : null;
+  if (save.wasNewlyCancelled) return "cancelled";
+  if (stands && save.clientChanged) return "booked";
+  if (save.newStatus !== "CANCELLED" && save.timeChanged) return "moved";
+  if (stands && save.bookingMessageRetired) return "booked";
+  return null;
+}
+
 /**
  * Withdraws the pending drafts written about a visit, inside the transaction
  * that changes who, when or what it is (wherever its reminders are reset). An
@@ -33,7 +58,7 @@ export async function retireVisitDrafts(
   // it for the visit as it now stands (an unsent confirmation is still owed,
   // say after a pending booking is confirmed — Codex).
   const waitingBookingMessages = await tx.followUpDraft.count({
-    where: { appointmentId, status: "PENDING", kind: { in: ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME"] } },
+    where: { appointmentId, status: "PENDING", kind: { in: BOOKING_MESSAGE_KINDS } },
   });
   await tx.followUpDraft.updateMany({
     where: { appointmentId, status: "PENDING", kind: { in: VISIT_DRAFT_KINDS } },
@@ -63,6 +88,8 @@ export async function queueVisitMessage(args: {
   appointmentId: string;
   event: VisitEvent;
   now?: Date;
+  /** Internal: another booking already holds this patient's welcome, so this one gets the confirmation. */
+  notNewPatient?: boolean;
 }): Promise<string | null> {
   const { businessId, appointmentId, event, now = new Date() } = args;
 
@@ -126,7 +153,7 @@ export async function queueVisitMessage(args: {
         (await prisma.followUpDraft.count({
           where: { businessId, clientId: appointment.clientId, kind: "NEW_PATIENT_WELCOME", status: "SENT" },
         })) > 0;
-      kind = earlierVisits === 0 && !welcomed ? "NEW_PATIENT_WELCOME" : "BOOKING_CONFIRMATION";
+      kind = earlierVisits === 0 && !welcomed && !args.notNewPatient ? "NEW_PATIENT_WELCOME" : "BOOKING_CONFIRMATION";
     } else {
       kind = "VISIT_CHANGED";
     }
@@ -184,6 +211,37 @@ export async function queueVisitMessage(args: {
       select: { id: true },
     });
 
+    // One message per version of the visit, checked after the write so two
+    // requests racing each other settle it either way: whichever looks second
+    // sees the other's draft (Codex). A moved or cancel notice wins over a
+    // booking message for the same version; of two welcomes for one patient
+    // (two first bookings saved at once), the earlier-drafted one stands and the
+    // other booking gets a confirmation instead.
+    const sameVersion = { businessId, appointmentId: appointment.id, appointmentGeneration: appointment.reminderGeneration };
+    if (kind === "VISIT_CHANGED") {
+      await prisma.followUpDraft.updateMany({
+        where: { ...sameVersion, kind: { in: BOOKING_MESSAGE_KINDS }, status: "PENDING" },
+        data: { status: "DISMISSED" },
+      });
+    } else {
+      const notice = await prisma.followUpDraft.count({
+        where: { ...sameVersion, kind: "VISIT_CHANGED", status: { in: ["PENDING", "SENT"] } },
+      });
+      const firstWelcome =
+        kind === "NEW_PATIENT_WELCOME"
+          ? await prisma.followUpDraft.findFirst({
+              where: { businessId, clientId: appointment.clientId, kind, status: { in: ["PENDING", "SENT"] } },
+              orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+              select: { id: true },
+            })
+          : null;
+      const welcomedElsewhere = firstWelcome !== null && firstWelcome.id !== draft.id;
+      if (notice > 0 || welcomedElsewhere) {
+        await prisma.followUpDraft.updateMany({ where: { id: draft.id, status: "PENDING" }, data: { status: "DISMISSED" } });
+        return notice > 0 ? null : queueVisitMessage({ ...args, notNewPatient: true });
+      }
+    }
+
     if (autoSend) dispatchSoon(businessId);
     return draft.id;
   } catch (error) {
@@ -197,30 +255,11 @@ export async function queueVisitMessage(args: {
  * A confirmation or welcome refused at its last check because the visit
  * changed after it was claimed: nothing went out, so the patient is still owed
  * one for the visit as it now is — unless the change already told them (a
- * moved-visit notice for this version of the visit). Never throws.
+ * moved-visit notice for this version of the visit, which queueVisitMessage's
+ * own one-message-per-version check gives way to). Never throws.
  */
 export async function replaceRefusedBookingMessage(args: { businessId: string; appointmentId: string }): Promise<void> {
-  const { businessId, appointmentId } = args;
-  try {
-    const appointment = await prisma.appointment.findFirst({
-      where: { id: appointmentId, businessId },
-      select: { reminderGeneration: true },
-    });
-    if (!appointment) return;
-    const told = await prisma.followUpDraft.count({
-      where: {
-        businessId,
-        appointmentId,
-        kind: "VISIT_CHANGED",
-        appointmentGeneration: appointment.reminderGeneration,
-        status: { in: ["PENDING", "SENT"] },
-      },
-    });
-    if (told > 0) return;
-    await queueVisitMessage({ businessId, appointmentId, event: "booked" });
-  } catch (error) {
-    logger.error("Re-drafting a refused booking message failed.", error, { businessId, appointmentId });
-  }
+  await queueVisitMessage({ ...args, event: "booked" });
 }
 
 /**

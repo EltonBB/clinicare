@@ -33,6 +33,7 @@ import {
   queueMissedVisitMessage,
   queueVisitMessage,
   retireVisitDrafts,
+  visitEventForSave,
   withdrawMissedVisitMessage,
 } from "@/lib/automation-events";
 import { offerFreedSlot, withdrawSlotOffers } from "@/lib/slot-offers";
@@ -694,17 +695,14 @@ export async function saveAppointmentAction(
 
     // The patient hears about what the clinic just did (Automations): a new
     // booking, a cancellation, or a new time. Best-effort, after the commit.
-    const visitEvent = !payload.id
-      ? newStatus !== "CANCELLED"
-        ? "booked"
-        : null
-      : wasNewlyCancelled
-        ? "cancelled"
-        : newStatus !== "CANCELLED" && readSlot && readSlot.startAt.getTime() !== startAt.getTime()
-          ? "moved"
-          : bookingMessageRetired && (newStatus === "PENDING" || newStatus === "CONFIRMED")
-            ? "booked"
-            : null;
+    const visitEvent = visitEventForSave({
+      isNew: !payload.id,
+      newStatus,
+      wasNewlyCancelled,
+      timeChanged: readSlot !== null && readSlot.startAt.getTime() !== startAt.getTime(),
+      clientChanged: readSlot !== null && readSlot.clientId !== payload.clientId,
+      bookingMessageRetired,
+    });
     if (visitEvent) {
       await queueVisitMessage({ businessId: business.id, appointmentId: appointmentId!, event: visitEvent });
     }

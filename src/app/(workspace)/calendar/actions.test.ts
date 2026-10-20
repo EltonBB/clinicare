@@ -55,7 +55,9 @@ const mocks = vi.hoisted(() => {
 });
 
 // Automations' patient messages have their own tests (lib/automation-events.test.ts).
-vi.mock("@/lib/automation-events", () => ({
+vi.mock("@/lib/automation-events", async (importOriginal) => ({
+  // The pure choice of what to tell the patient runs for real.
+  visitEventForSave: (await importOriginal<typeof import("@/lib/automation-events")>()).visitEventForSave,
   queueVisitMessage: vi.fn(),
   queueMissedVisitMessage: vi.fn(),
   withdrawMissedVisitMessage: vi.fn(),

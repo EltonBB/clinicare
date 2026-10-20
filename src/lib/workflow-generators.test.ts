@@ -519,7 +519,13 @@ describe("findCheckupDueCandidates", () => {
     // Only the last day: never a backlog of old follow-up dates.
     expect(where.remindAt).toEqual({ lte: NOW, gt: new Date(NOW.getTime() - 24 * 3_600_000) });
     expect(where.client.appointments).toEqual({ none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: NOW } } });
-    // Already-drafted ones are excluded in the query, before the cap.
-    expect(where.followUpDrafts).toEqual({ none: { kind: "CHECKUP_DUE", status: "PENDING" } });
+    // Already-drafted ones are excluded in the query, before the cap: one still
+    // waiting, or one made for a date in this same window (sent, skipped).
+    expect(where.followUpDrafts).toEqual({
+      none: {
+        kind: "CHECKUP_DUE",
+        OR: [{ status: "PENDING" }, { createdAt: { gt: new Date(NOW.getTime() - 24 * 3_600_000) } }],
+      },
+    });
   });
 });
