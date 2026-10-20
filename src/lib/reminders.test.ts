@@ -217,7 +217,7 @@ describe("syncAppointmentRemindersForBusiness with automation settings", () => {
   it("gives a Basic clinic no second reminder", async () => {
     mocks.business.findUnique.mockResolvedValue(business({ plan: "BASIC" }));
     mocks.appointment.findMany.mockResolvedValue([
-      { ...appointmentIn(1, "appt_1"), reminders: [{ type: "TWENTY_FOUR_HOUR", status: "SENT" }] },
+      { ...appointmentIn(1, "appt_1"), reminders: [{ type: "TWENTY_FOUR_HOUR", status: "SENT", sentAt: new Date(Date.now() - 23 * 3_600_000) }] },
     ]);
 
     await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());

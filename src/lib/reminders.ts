@@ -141,6 +141,7 @@ export async function syncAppointmentRemindersForBusiness(
         select: {
           type: true,
           status: true,
+          sentAt: true,
         },
       },
     },
@@ -198,6 +199,11 @@ export async function syncAppointmentRemindersForBusiness(
       firstReminderHours,
       secondReminderHours,
       highRisk: { enabled: highRisk.enabled, hours: highRiskHours, isHighRisk: highRiskIds.has(appointment.id) },
+      sentLeadHours: Object.fromEntries(
+        appointment.reminders
+          .filter((reminder) => reminder.status === "SENT")
+          .map((reminder) => [reminder.type, (appointment.startAt.getTime() - reminder.sentAt.getTime()) / 3_600_000])
+      ),
       // Only delivered reminders suppress a re-send; a FAILED row retries.
       sentTypes: new Set(
         appointment.reminders

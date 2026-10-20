@@ -212,3 +212,31 @@ describe("reminderTypeForAppointment orders reminders by their lead times", () =
     expect(decide({ startsAt: hoursFromNow(0.5), secondReminderHours: 5, highRisk })).toBe("HIGH_RISK");
   });
 });
+
+describe("reminderTypeForAppointment judges sent reminders by when they actually went out", () => {
+  it("keeps the second reminder after the first's timing was changed to a shorter lead", () => {
+    // The first went out 24h before; the clinic has since set it to 1h.
+    expect(
+      decide({
+        startsAt: hoursFromNow(1.5),
+        firstReminderHours: 1,
+        secondReminderHours: 2,
+        sentTypes: new Set(["TWENTY_FOUR_HOUR"]),
+        sentLeadHours: { TWENTY_FOUR_HOUR: 24 },
+      })
+    ).toBe("TWO_HOUR");
+  });
+
+  it("doesn't send a less urgent reminder after one that went out closer to the visit", () => {
+    // The second went out 2h before; the clinic has since set it to 24h.
+    expect(
+      decide({
+        startsAt: hoursFromNow(1),
+        firstReminderHours: 3,
+        secondReminderHours: 24,
+        sentTypes: new Set(["TWO_HOUR"]),
+        sentLeadHours: { TWO_HOUR: 1.5 },
+      })
+    ).toBeNull();
+  });
+});

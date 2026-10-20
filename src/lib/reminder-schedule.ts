@@ -18,6 +18,12 @@ export type ReminderDecisionArgs = {
    * after it (the same "never a longer lead after a shorter one" rule).
    */
   highRisk?: { enabled: boolean; hours: number; isHighRisk: boolean };
+  /**
+   * How long before the visit each sent reminder actually went out. A sent
+   * reminder is compared by this, not by its current setting, so editing a
+   * timing afterwards can't reinterpret what the patient already received.
+   */
+  sentLeadHours?: Partial<Record<ReminderType, number>>;
 };
 
 /**
@@ -63,6 +69,7 @@ export function reminderTypeForAppointment(
     secondReminderHours,
     sentTypes,
     highRisk,
+    sentLeadHours = {},
   } = args;
 
   if (!isAfter(startsAt, now)) {
@@ -83,7 +90,9 @@ export function reminderTypeForAppointment(
   // The shortest lead among the reminders already sent: anything with a lead
   // at least that long would now arrive after a more urgent one — backwards.
   const shortestSentLead = Math.min(
-    ...reminders.filter((reminder) => sentTypes.has(reminder.type)).map((reminder) => reminder.hours)
+    ...reminders
+      .filter((reminder) => sentTypes.has(reminder.type))
+      .map((reminder) => sentLeadHours[reminder.type] ?? reminder.hours)
   );
 
   const due = reminders.filter(
