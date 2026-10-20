@@ -332,53 +332,97 @@ describe("syncAppointmentRemindersForBusiness with automation settings", () => {
   });
 });
 
+function reviewTx(generation: number | null = 4) {
+  const tx = {
+    $executeRaw: vi.fn(),
+    appointment: { findFirst: vi.fn().mockResolvedValue(generation === null ? null : { id: "appt_1" }) },
+    followUpDraft: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    appointmentReminder: { upsert: vi.fn() },
+  };
+  mocks.$transaction.mockImplementation(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx));
+  return tx;
+}
+
+function reviewSecondReminder() {
+  mocks.business.findUnique.mockResolvedValue(
+    business({
+      automationSettings: [
+        { kind: "SECOND_REMINDER", enabled: true, mode: "REVIEW", timing: 2, template: null, template2: null },
+      ],
+    })
+  );
+}
+
 describe("syncAppointmentRemindersForBusiness with a reminder set to review", () => {
-  it("drafts the due reminder for To review instead of sending it, and records it handled", async () => {
-    mocks.business.findUnique.mockResolvedValue(
-      business({
-        automationSettings: [
-          { kind: "SECOND_REMINDER", enabled: true, mode: "REVIEW", timing: 2, template: null, template2: null },
-        ],
-      })
-    );
+  it("drafts the due reminder for To review instead of sending it, marked drafted, not sent", async () => {
+    reviewSecondReminder();
     const appointment = appointmentIn(1, "appt_1", 4);
     mocks.appointment.findMany.mockResolvedValue([appointment]);
-    mocks.followUpDraft.create.mockResolvedValue({ id: "draft_1" });
+    const tx = reviewTx();
 
     await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
 
     expect(mocks.sendMessage).not.toHaveBeenCalled();
-    expect(mocks.followUpDraft.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        kind: "SECOND_REMINDER",
-        appointmentId: "appt_1",
-        appointmentGeneration: 4,
-        autoSend: false,
-        dedupeKey: `SECOND_REMINDER:appt_1:${appointment.startAt.getTime()}:4`,
-      }),
-    });
-    expect(mocks.appointmentReminder.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ create: expect.objectContaining({ type: "TWO_HOUR", status: "SENT" }) })
+    expect(tx.appointment.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ reminderGeneration: 4 }) })
     );
+    expect(tx.followUpDraft.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          kind: "SECOND_REMINDER",
+          appointmentId: "appt_1",
+          appointmentGeneration: 4,
+          autoSend: false,
+          dedupeKey: `SECOND_REMINDER:appt_1:${appointment.startAt.getTime()}:4`,
+        }),
+      ],
+      skipDuplicates: true,
+    });
+    // DRAFTED: a "2" reply can't be read as an answer to it, nor the risk score count it.
+    expect(tx.appointmentReminder.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ type: "TWO_HOUR", status: "DRAFTED" }) })
+    );
+  });
+
+  it("drafts nothing for a visit an edit moved on since this run read it", async () => {
+    reviewSecondReminder();
+    mocks.appointment.findMany.mockResolvedValue([appointmentIn(1, "appt_1", 4)]);
+    const tx = reviewTx(null);
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    expect(tx.followUpDraft.createMany).not.toHaveBeenCalled();
+    expect(tx.appointmentReminder.upsert).not.toHaveBeenCalled();
+  });
+
+  it("doesn't send a reminder the clinic switched to review during the run", async () => {
+    mocks.business.findUnique
+      .mockResolvedValueOnce(business())
+      .mockResolvedValue(
+        business({
+          automationSettings: [
+            { kind: "SECOND_REMINDER", enabled: true, mode: "REVIEW", timing: 2, template: null, template2: null },
+          ],
+        })
+      );
+    mocks.appointment.findMany.mockResolvedValue([appointmentIn(1, "appt_1")]);
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
   });
 });
 
 describe("syncAppointmentRemindersForBusiness review drafts without a phone", () => {
   it("still drafts a review reminder for a client with no usable phone, so staff can fix it", async () => {
-    mocks.business.findUnique.mockResolvedValue(
-      business({
-        automationSettings: [
-          { kind: "SECOND_REMINDER", enabled: true, mode: "REVIEW", timing: 2, template: null, template2: null },
-        ],
-      })
-    );
+    reviewSecondReminder();
     mocks.appointment.findMany.mockResolvedValue([
       { ...appointmentIn(1, "appt_1"), client: { id: "client_appt_1", name: "Mira", phone: "" } },
     ]);
-    mocks.followUpDraft.create.mockResolvedValue({ id: "draft_1" });
+    const tx = reviewTx(0);
 
     await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
 
-    expect(mocks.followUpDraft.create).toHaveBeenCalled();
+    expect(tx.followUpDraft.createMany).toHaveBeenCalled();
   });
 });

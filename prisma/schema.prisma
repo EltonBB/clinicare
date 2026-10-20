@@ -491,6 +491,10 @@ model AppointmentReminder {
 enum AppointmentReminderStatus {
   SENT
   FAILED
+  // Drafted for review (Automations): handled, so not drafted again, but not
+  // delivered — reply routing and the no-show risk signal only trust SENT.
+  // Becomes SENT when staff send the draft.
+  DRAFTED
 }
 
 model Conversation {

@@ -1,13 +1,14 @@
 import { addHours } from "date-fns";
 
 import { renderAutomationMessage } from "@/lib/automations";
-import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness } from "@/lib/automations-data";
+import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness, getAutomationSettings } from "@/lib/automations-data";
 import { mapWithConcurrency, withDeadline } from "@/lib/concurrency";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
 import { getNoShowRiskAssessments } from "@/lib/no-show-risk-data";
 import { prisma } from "@/lib/prisma";
+import { lockAppointmentShared } from "@/lib/row-locks";
 import { getReminderCursor, setReminderCursor } from "@/lib/reminder-cursor";
 import { lastAttemptedId, rotateForFairness } from "@/lib/reminder-fairness";
 import { reminderTypeForAppointment, type ReminderType } from "@/lib/reminder-schedule";
@@ -67,28 +68,41 @@ async function draftReminderForReview(args: {
 }): Promise<void> {
   const { businessId, appointmentId, clientId, appointmentGeneration, automationKind, reminderType, body, dedupeKey } = args;
   try {
-    await prisma.followUpDraft
-      .create({
-        data: {
-          businessId,
-          clientId,
-          appointmentId,
-          appointmentGeneration,
-          kind: automationKind,
-          status: "PENDING",
-          body,
-          dedupeKey,
-          autoSend: false,
-        },
-      })
-      .catch((error: unknown) => {
-        // Already drafted (an overlapping run): fine, just record it below.
-        if (!(typeof error === "object" && error !== null && "code" in error && error.code === "P2002")) throw error;
+    await prisma.$transaction(async (tx) => {
+      // Only for the visit as it was read: an edit that moved it on meanwhile
+      // has reset its reminders, and this run must not draft (or mark) the old
+      // version over them (Codex). The share lock makes an edit wait for this.
+      await lockAppointmentShared(tx, appointmentId);
+      const current = await tx.appointment.findFirst({
+        where: { id: appointmentId, businessId, reminderGeneration: appointmentGeneration },
+        select: { id: true },
       });
-    await prisma.appointmentReminder.upsert({
-      where: { appointmentId_type: { appointmentId, type: reminderType } },
-      create: { appointmentId, type: reminderType, status: "SENT" },
-      update: { status: "SENT", sentAt: new Date() },
+      if (!current) return;
+
+      await tx.followUpDraft.createMany({
+        data: [
+          {
+            businessId,
+            clientId,
+            appointmentId,
+            appointmentGeneration,
+            kind: automationKind,
+            status: "PENDING",
+            body,
+            dedupeKey,
+            autoSend: false,
+          },
+        ],
+        // Already drafted (an overlapping run): fine, just record it below.
+        skipDuplicates: true,
+      });
+      // DRAFTED, not SENT: nothing reached the patient yet, so a "2" reply
+      // can't be read as an answer to it and the risk score doesn't count it.
+      await tx.appointmentReminder.upsert({
+        where: { appointmentId_type: { appointmentId, type: reminderType } },
+        create: { appointmentId, type: reminderType, status: "DRAFTED" },
+        update: { status: "DRAFTED", sentAt: new Date() },
+      });
     });
   } catch (error) {
     logger.error("Drafting a reminder for review failed.", error, { businessId, appointmentId, reminderType });
@@ -249,13 +263,14 @@ export async function syncAppointmentRemindersForBusiness(
       highRisk: { enabled: highRisk.enabled, hours: highRiskHours, isHighRisk: highRiskIds.has(appointment.id) },
       sentLeadHours: Object.fromEntries(
         appointment.reminders
-          .filter((reminder) => reminder.status === "SENT")
+          .filter((reminder) => reminder.status === "SENT" || reminder.status === "DRAFTED")
           .map((reminder) => [reminder.type, (appointment.startAt.getTime() - reminder.sentAt.getTime()) / 3_600_000])
       ),
-      // Only delivered reminders suppress a re-send; a FAILED row retries.
+      // Delivered (or drafted for review) reminders suppress a re-send; a
+      // FAILED row retries.
       sentTypes: new Set(
         appointment.reminders
-          .filter((reminder) => reminder.status === "SENT")
+          .filter((reminder) => reminder.status === "SENT" || reminder.status === "DRAFTED")
           .map((reminder) => reminder.type)
       ),
     });
@@ -299,6 +314,14 @@ export async function syncAppointmentRemindersForBusiness(
     if (!clientPhone || !clientPhoneKey) {
       failed += 1;
       progress.failed += 1;
+      continue;
+    }
+
+    // The clinic may have switched this reminder to review (or off) since this
+    // run read its settings: re-read just before contacting the patient. The
+    // next run drafts it for review then, as nothing was recorded (Codex).
+    const latest = (await getAutomationSettings(businessId))[automationKind];
+    if (!latest.enabled || latest.mode === "REVIEW") {
       continue;
     }
 

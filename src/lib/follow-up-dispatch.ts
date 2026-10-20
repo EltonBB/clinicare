@@ -17,6 +17,12 @@ import type { SendMessageResult } from "@/lib/messaging/types";
 import { prisma } from "@/lib/prisma";
 import { lastAttemptedId, rotateForFairness } from "@/lib/reminder-fairness";
 
+const REVIEWED_REMINDER_TYPE: Partial<Record<string, "TWENTY_FOUR_HOUR" | "TWO_HOUR" | "HIGH_RISK">> = {
+  FIRST_REMINDER: "TWENTY_FOUR_HOUR",
+  SECOND_REMINDER: "TWO_HOUR",
+  HIGH_RISK_REMINDER: "HIGH_RISK",
+};
+
 /** Messages that state the visit's date and time (a cancellation notice doesn't need a reminder to stand in for). */
 const TELLS_THE_TIME = new Set(["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED"]);
 
@@ -197,6 +203,26 @@ export async function dispatchFollowUpDraft(args: {
   });
 
   await coverDueReminders(businessId, draftId, sent);
+
+  // A reminder sent from To review has now really reached the patient: its
+  // DRAFTED marker becomes SENT (reply routing and the risk signal trust it),
+  // for the visit version it was written for only.
+  const reminderType = REVIEWED_REMINDER_TYPE[sent.kind];
+  if (reminderType && sent.appointmentId && sent.appointmentGeneration != null) {
+    await prisma.appointmentReminder
+      .updateMany({
+        where: {
+          appointmentId: sent.appointmentId,
+          type: reminderType,
+          status: "DRAFTED",
+          appointment: { reminderGeneration: sent.appointmentGeneration },
+        },
+        data: { status: "SENT", sentAt: new Date() },
+      })
+      .catch((error) => {
+        logger.error("Sent a reminder from review but couldn't record it as sent.", error, { businessId, draftId });
+      });
+  }
 
   // Best-effort Inbox mirror: the message already went out.
   await mirrorOutboundToInbox({
