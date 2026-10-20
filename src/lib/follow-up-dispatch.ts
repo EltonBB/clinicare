@@ -263,7 +263,6 @@ const AUTO_SEND_MAX_AGE_MS = 3 * 24 * 3_600_000;
 /** Most automatic sends per clinic per run: a backlog drains over a few runs, never as one burst. */
 const AUTO_SEND_PER_BUSINESS_CAP = 20;
 
-
 /**
  * Sends the `autoSend` drafts that are due: made at least a minute ago (the
  * request that made one normally sends it at once via `after()`), past any

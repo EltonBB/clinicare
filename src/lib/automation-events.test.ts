@@ -533,6 +533,18 @@ describe("suppressOpenReminders", () => {
     });
   });
 
+  it("withdraws a covered reminder still waiting in To review", async () => {
+    mocks.appointment.findFirst.mockResolvedValue({ startAt: new Date(NOW.getTime() + 30 * 60_000) });
+    mocks.business.findUnique.mockResolvedValue(business());
+
+    await suppressOpenReminders({ businessId: "biz_1", appointmentId: "appt_1", appointmentGeneration: 2, now: NOW });
+
+    expect(mocks.followUpDraft.updateMany).toHaveBeenCalledWith({
+      where: { appointmentId: "appt_1", status: "PENDING", kind: { in: ["FIRST_REMINDER", "SECOND_REMINDER"] } },
+      data: { status: "DISMISSED" },
+    });
+  });
+
   it("leaves reminders whose window opens later alone", async () => {
     mocks.appointment.findFirst.mockResolvedValue({ startAt: IN_TWO_DAYS });
     mocks.business.findUnique.mockResolvedValue(business());

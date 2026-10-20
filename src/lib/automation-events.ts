@@ -530,17 +530,16 @@ async function coverOpenReminders(
   settings: Awaited<ReturnType<typeof getAutomationSettings>>,
   now: Date
 ): Promise<void> {
-  const appointment = { startAt };
   const reminders = [
-    { type: "TWENTY_FOUR_HOUR", setting: settings.FIRST_REMINDER },
-    { type: "TWO_HOUR", setting: settings.SECOND_REMINDER },
-    { type: "HIGH_RISK", setting: settings.HIGH_RISK_REMINDER },
+    { type: "TWENTY_FOUR_HOUR", kind: "FIRST_REMINDER", setting: settings.FIRST_REMINDER },
+    { type: "TWO_HOUR", kind: "SECOND_REMINDER", setting: settings.SECOND_REMINDER },
+    { type: "HIGH_RISK", kind: "HIGH_RISK_REMINDER", setting: settings.HIGH_RISK_REMINDER },
   ] as const;
   const open = reminders.filter(
     ({ setting }) =>
       setting.enabled &&
       setting.timing !== null &&
-      appointment.startAt.getTime() <= now.getTime() + setting.timing * HOUR_MS
+      startAt.getTime() <= now.getTime() + setting.timing * HOUR_MS
   );
   if (open.length === 0) return;
 
@@ -553,5 +552,10 @@ async function coverOpenReminders(
   await tx.appointmentReminder.createMany({
     data: open.map(({ type }) => ({ appointmentId, type, status: "SENT" as const, sentAt: now })),
     skipDuplicates: true,
+  });
+  // One drafted for review earlier would repeat what the patient was just told.
+  await tx.followUpDraft.updateMany({
+    where: { appointmentId, status: "PENDING", kind: { in: open.map(({ kind }) => kind) } },
+    data: { status: "DISMISSED" },
   });
 }

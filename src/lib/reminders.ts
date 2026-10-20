@@ -51,12 +51,6 @@ export type ReminderCronResult = ReminderSyncResult & {
 /** How long after a visit message was sent a due reminder still defers to it. */
 const VISIT_MESSAGE_RECENT_MS = 10 * 60_000;
 
-/**
- * A reminder the clinic set to wait for review: the draft goes to To review
- * and the reminder is recorded as handled (a person decides whether it goes
- * out). Best-effort per reminder — a failed draft is retried on the next run,
- * since the reminder isn't recorded then.
- */
 const REVIEW_REMINDER_KINDS = ["FIRST_REMINDER", "SECOND_REMINDER", "HIGH_RISK_REMINDER"] as const;
 
 /**
@@ -83,6 +77,12 @@ async function retireLongerReminderDrafts(
   });
 }
 
+/**
+ * A reminder the clinic set to wait for review: the draft goes to To review
+ * and the reminder is recorded as handled (a person decides whether it goes
+ * out). Best-effort per reminder — a failed draft is retried on the next run,
+ * since the reminder isn't recorded then.
+ */
 async function draftReminderForReview(args: {
   businessId: string;
   appointmentId: string;
