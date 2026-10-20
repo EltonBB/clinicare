@@ -54,6 +54,7 @@ function appointment(overrides: Record<string, unknown> = {}) {
     clientId: "client_1",
     status: "CONFIRMED",
     startAt: IN_TWO_DAYS,
+    createdAt: new Date("2026-10-19T09:00:00.000Z"),
     reminderGeneration: 2,
     client: { name: "Maya" },
     staffMember: { name: "Dr. Arta" },
@@ -99,6 +100,21 @@ describe("queueVisitMessage", () => {
     expect(mocks.followUpDraft.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ kind: "NEW_PATIENT_WELCOME" }) })
     );
+  });
+
+  it("counts only bookings made before this one, so two first bookings at once agree", async () => {
+    mocks.appointment.count.mockResolvedValue(0);
+
+    await queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "booked", now: NOW });
+
+    expect(mocks.appointment.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        OR: [
+          { createdAt: { lt: new Date("2026-10-19T09:00:00.000Z") } },
+          { createdAt: new Date("2026-10-19T09:00:00.000Z"), id: { lt: "appt_1" } },
+        ],
+      }),
+    });
   });
 
   it("says nothing about a visit whose time has passed", async () => {

@@ -20,6 +20,25 @@ import { lastAttemptedId, rotateForFairness } from "@/lib/reminder-fairness";
 /** Messages that state the visit's date and time (a cancellation notice doesn't need a reminder to stand in for). */
 const TELLS_THE_TIME = new Set(["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED"]);
 
+/**
+ * A message that just told the patient the visit's time stands in for any
+ * reminder already due (one message per event). Best-effort.
+ */
+async function coverDueReminders(
+  businessId: string,
+  draftId: string,
+  draft: { kind: string; appointmentId: string | null; appointmentGeneration: number | null }
+): Promise<void> {
+  if (!draft.appointmentId || draft.appointmentGeneration == null || !TELLS_THE_TIME.has(draft.kind)) return;
+  await suppressOpenReminders({
+    businessId,
+    appointmentId: draft.appointmentId,
+    appointmentGeneration: draft.appointmentGeneration,
+  }).catch((error) => {
+    logger.error("Couldn't record due reminders as covered by a sent visit message.", error, { businessId, draftId });
+  });
+}
+
 export const FOLLOW_UP_DELIVERY_UNCERTAIN_NOTICE =
   "We couldn't confirm a follow-up was delivered, so it was marked as sent. Check the patient's WhatsApp chat before contacting them again.";
 const TRY_AGAIN_ERROR = "Couldn't send this message. Try again.";
@@ -64,6 +83,8 @@ export async function dispatchFollowUpDraft(args: {
 
   let failure: string | null = null;
   let rateLimited = false;
+  // The draft as the last check before sending read it.
+  let claimed: { kind: string; appointmentId: string | null; appointmentGeneration: number | null } | null = null;
   let retryable = false;
   // The provider can't say whether the message left (see SendFailureReason).
   let uncertain = false;
@@ -85,6 +106,8 @@ export async function dispatchFollowUpDraft(args: {
     const ready = await confirmFollowUpDraftDispatch({ id: draftId, businessId, automatic });
 
     const automation = ready.ok && automatic ? (await getAutomationSettings(businessId))[FOLLOW_UP_KIND_TO_AUTOMATION[ready.draft.kind]] : null;
+
+    if (ready.ok) claimed = ready.draft;
 
     if (!ready.ok) {
       failure = ready.error;
@@ -143,7 +166,10 @@ export async function dispatchFollowUpDraft(args: {
   if (uncertain) {
     // May already be with the patient: never back to Pending (a second send
     // could deliver it twice). Recorded as sent; if that fails the hourly sweep
-    // settles it (settleInterruptedFollowUpSends). Nothing to mirror.
+    // settles it (settleInterruptedFollowUpSends). Nothing to mirror. A visit
+    // message that may have arrived covers the reminders already due, as a
+    // confirmed one does (Codex).
+    if (claimed) await coverDueReminders(businessId, draftId, claimed);
     await markFollowUpDraftDelivered({ id: draftId, businessId }).catch((error) => {
       logger.error("A follow-up's delivery is uncertain and it couldn't be recorded as sent.", error, {
         businessId,
@@ -164,17 +190,7 @@ export async function dispatchFollowUpDraft(args: {
     logger.error("Sent a follow-up but couldn't record it as delivered.", error, { businessId, draftId });
   });
 
-  // A message that just told the patient the visit's time stands in for any
-  // reminder already due (one message per event). Best-effort.
-  if (sent.appointmentId && sent.appointmentGeneration != null && TELLS_THE_TIME.has(sent.kind)) {
-    await suppressOpenReminders({
-      businessId,
-      appointmentId: sent.appointmentId,
-      appointmentGeneration: sent.appointmentGeneration,
-    }).catch((error) => {
-      logger.error("Couldn't record due reminders as covered by a sent visit message.", error, { businessId, draftId });
-    });
-  }
+  await coverDueReminders(businessId, draftId, sent);
 
   // Best-effort Inbox mirror: the message already went out.
   await mirrorOutboundToInbox({

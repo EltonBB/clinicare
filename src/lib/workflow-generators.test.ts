@@ -520,6 +520,6 @@ describe("findCheckupDueCandidates", () => {
     expect(where.remindAt).toEqual({ lte: NOW, gt: new Date(NOW.getTime() - 24 * 3_600_000) });
     expect(where.client.appointments).toEqual({ none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: NOW } } });
     // Already-drafted ones are excluded in the query, before the cap.
-    expect(where.followUpDrafts).toEqual({ none: { kind: "CHECKUP_DUE", status: { in: ["PENDING", "SENT"] } } });
+    expect(where.followUpDrafts).toEqual({ none: { kind: "CHECKUP_DUE", status: "PENDING" } });
   });
 });

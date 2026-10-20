@@ -330,10 +330,11 @@ export async function findCheckupDueCandidates(args: {
         ...ELIGIBLE_CLIENT_WHERE,
         appointments: { none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } } },
       },
-      // Excluded in the query itself, so the cap can't keep re-reading rows
-      // that are already drafted (Codex). Only a waiting or sent draft counts:
-      // one skipped or expired doesn't stop a new date from being nudged.
-      followUpDrafts: { none: { kind: "CHECKUP_DUE", status: { in: ["PENDING", "SENT"] } } },
+      // A draft still waiting is excluded in the query itself, so the cap can't
+      // keep re-reading it (Codex). A sent one doesn't exclude the reminder: if
+      // staff moved its date, the new date is nudged too; the same date is
+      // never drafted twice, as the dedupe key carries the date.
+      followUpDrafts: { none: { kind: "CHECKUP_DUE", status: "PENDING" } },
     },
     select: { id: true, clientId: true, remindAt: true, client: { select: { name: true } } },
     orderBy: [{ remindAt: "asc" }, { id: "asc" }],

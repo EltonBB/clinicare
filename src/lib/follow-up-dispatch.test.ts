@@ -100,6 +100,21 @@ describe("dispatchFollowUpDraft", () => {
     });
   });
 
+  it("lets an uncertain booking confirmation cover the reminders already due too", async () => {
+    const confirmation = { ...DRAFT, kind: "BOOKING_CONFIRMATION", appointmentId: "appt_1", appointmentGeneration: 2 };
+    mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true, draft: confirmation });
+    mocks.confirmFollowUpDraftDispatch.mockResolvedValue({ ok: true, draft: confirmation });
+    mocks.sendMessage.mockResolvedValue({ ok: false, reason: "delivery_uncertain", error: "x" });
+
+    await dispatchFollowUpDraft({ draftId: "d_1", businessId: "biz_1" });
+
+    expect(mocks.suppressOpenReminders).toHaveBeenCalledWith({
+      businessId: "biz_1",
+      appointmentId: "appt_1",
+      appointmentGeneration: 2,
+    });
+  });
+
   it("doesn't touch reminders after a thank-you", async () => {
     await dispatchFollowUpDraft({ draftId: "d_1", businessId: "biz_1" });
 

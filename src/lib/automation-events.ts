@@ -74,6 +74,7 @@ export async function queueVisitMessage(args: {
         clientId: true,
         status: true,
         startAt: true,
+        createdAt: true,
         reminderGeneration: true,
         client: { select: { name: true } },
         staffMember: { select: { name: true } },
@@ -100,8 +101,20 @@ export async function queueVisitMessage(args: {
 
     let kind: AutomationKind & FollowUpDraftKind;
     if (event === "booked") {
+      // Only bookings made before this one count, by a stable order (creation
+      // time, then id), so two first bookings saved at once agree on which one
+      // is first: it gets the welcome, the other the confirmation (Codex).
       const earlierVisits = await prisma.appointment.count({
-        where: { businessId, clientId: appointment.clientId, id: { not: appointment.id }, status: { not: "CANCELLED" } },
+        where: {
+          businessId,
+          clientId: appointment.clientId,
+          id: { not: appointment.id },
+          status: { not: "CANCELLED" },
+          OR: [
+            { createdAt: { lt: appointment.createdAt } },
+            { createdAt: appointment.createdAt, id: { lt: appointment.id } },
+          ],
+        },
       });
       kind = earlierVisits === 0 ? "NEW_PATIENT_WELCOME" : "BOOKING_CONFIRMATION";
     } else {
