@@ -109,15 +109,12 @@ afterEach(() => {
 });
 
 describe("generateFollowUpDrafts — business selection and settings", () => {
-  it("loads only WhatsApp-connected businesses (the same filter reminders use), in stable id order", async () => {
+  it("loads every business with WhatsApp set up, linked or not (drafts wait for the link), in stable id order", async () => {
     await generateFollowUpDrafts(NOW);
 
     expect(mocks.prisma.business.findMany).toHaveBeenCalledTimes(1);
     const args = mocks.prisma.business.findMany.mock.calls[0][0];
-    expect(args.where).toEqual({
-      whatsappEnabled: true,
-      whatsappConnection: { is: { status: { in: ["CONNECTED", "ERRORED"] } } },
-    });
+    expect(args.where).toEqual({ whatsappEnabled: true });
     expect(args.orderBy).toEqual({ id: "asc" });
     expect(args.select).toMatchObject({ id: true, plan: true, workflowSettings: expect.anything() });
   });

@@ -363,21 +363,22 @@ export type FollowUpGenerationResult = {
 };
 
 /**
- * Hourly cron job: drafts rebook / payment-reminder / thank-you follow-ups for
- * each WhatsApp-connected workspace, then retires drafts that went stale. Sends
- * nothing — a person reviews and sends from Inbox -> Follow-ups. Logs record
- * ids and counts only, never client names or draft text.
+ * Hourly cron job: drafts the scheduled follow-ups (rebook, payment reminder,
+ * thank-you, check-up due) for each workspace with WhatsApp set up, then retires
+ * drafts that went stale. Sends nothing itself: automatic ones go out through
+ * the automations cron, the rest from Automations › To review. Logs record ids
+ * and counts only, never client names or draft text.
  */
 export async function generateFollowUpDrafts(now: Date = new Date()): Promise<FollowUpGenerationResult> {
   const deadlineAt = Date.now() + GENERATION_BUDGET_MS;
 
-  // Same eligibility as the reminders job: a draft for a workspace that can't
-  // send WhatsApp messages would just be busywork nobody can act on.
+  // Every workspace with WhatsApp set up, linked right now or not: a check-up
+  // date or thank-you window can pass while the link is down, and nothing
+  // would draft it later (Codex). The drafts wait for the link (the automatic
+  // sender needs it; one over 3 days late goes to review). A workspace that
+  // never set WhatsApp up gets none: nothing could ever send them.
   const businesses = await prisma.business.findMany({
-    where: {
-      whatsappEnabled: true,
-      whatsappConnection: { is: { status: { in: ["CONNECTED", "ERRORED"] } } },
-    },
+    where: { whatsappEnabled: true },
     select: {
       id: true,
       name: true,
