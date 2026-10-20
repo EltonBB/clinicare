@@ -157,6 +157,19 @@ describe("dispatchFollowUpDraft", () => {
     });
   });
 
+  it("marks a reviewed reminder sent when its delivery is uncertain too", async () => {
+    const reminder = { ...DRAFT, kind: "FIRST_REMINDER", appointmentId: "appt_1", appointmentGeneration: 3 };
+    mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true, draft: reminder });
+    mocks.confirmFollowUpDraftDispatch.mockResolvedValue({ ok: true, draft: reminder });
+    mocks.sendMessage.mockResolvedValue({ ok: false, reason: "delivery_uncertain", error: "x" });
+
+    await dispatchFollowUpDraft({ draftId: "d_1", businessId: "biz_1" });
+
+    expect(mocks.reminderUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ type: "TWENTY_FOUR_HOUR", status: "DRAFTED" }) })
+    );
+  });
+
   it("doesn't touch reminders after a thank-you", async () => {
     await dispatchFollowUpDraft({ draftId: "d_1", businessId: "biz_1" });
 

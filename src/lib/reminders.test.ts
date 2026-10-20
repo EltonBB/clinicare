@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => {
   const business = { findUnique: vi.fn() };
   const appointment = { findMany: vi.fn() };
   const appointmentReminder = { upsert: vi.fn() };
-  const followUpDraft = { create: vi.fn(), count: vi.fn() };
+  const followUpDraft = { create: vi.fn(), count: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 0 }) };
   const $transaction = vi.fn();
   const sendMessage = vi.fn();
   const getNoShowRiskAssessments = vi.fn();
@@ -336,7 +336,7 @@ function reviewTx(generation: number | null = 4) {
   const tx = {
     $executeRaw: vi.fn(),
     appointment: { findFirst: vi.fn().mockResolvedValue(generation === null ? null : { id: "appt_1" }) },
-    followUpDraft: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    followUpDraft: { createMany: vi.fn().mockResolvedValue({ count: 1 }), updateMany: vi.fn() },
     appointmentReminder: { upsert: vi.fn() },
   };
   mocks.$transaction.mockImplementation(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx));
@@ -382,6 +382,19 @@ describe("syncAppointmentRemindersForBusiness with a reminder set to review", ()
     expect(tx.appointmentReminder.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ create: expect.objectContaining({ type: "TWO_HOUR", status: "DRAFTED" }) })
     );
+  });
+
+  it("withdraws a longer-lead reminder still waiting for review when it drafts a more urgent one", async () => {
+    reviewSecondReminder();
+    mocks.appointment.findMany.mockResolvedValue([appointmentIn(1, "appt_1", 4)]);
+    const tx = reviewTx();
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    expect(tx.followUpDraft.updateMany).toHaveBeenCalledWith({
+      where: { appointmentId: "appt_1", status: "PENDING", kind: { in: ["FIRST_REMINDER", "HIGH_RISK_REMINDER"] } },
+      data: { status: "DISMISSED" },
+    });
   });
 
   it("drafts nothing for a visit an edit moved on since this run read it", async () => {

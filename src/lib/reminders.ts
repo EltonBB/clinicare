@@ -1,5 +1,7 @@
 import { addHours } from "date-fns";
 
+import type { Prisma } from "@prisma/client";
+
 import { renderAutomationMessage } from "@/lib/automations";
 import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness, getAutomationSettings } from "@/lib/automations-data";
 import { mapWithConcurrency, withDeadline } from "@/lib/concurrency";
@@ -55,6 +57,30 @@ const VISIT_MESSAGE_RECENT_MS = 10 * 60_000;
  * out). Best-effort per reminder — a failed draft is retried on the next run,
  * since the reminder isn't recorded then.
  */
+const REVIEW_REMINDER_KINDS = ["FIRST_REMINDER", "SECOND_REMINDER", "HIGH_RISK_REMINDER"] as const;
+
+/**
+ * A more urgent reminder for this visit has just been drafted or sent: a
+ * longer-lead one still waiting in To review would now arrive after it,
+ * backwards (the order reminderTypeForAppointment keeps), so it is withdrawn
+ * (Codex). Reminders are only ever drafted in order of decreasing lead, so any
+ * other one still waiting is longer.
+ */
+async function retireLongerReminderDrafts(
+  client: Pick<Prisma.TransactionClient, "followUpDraft">,
+  appointmentId: string,
+  keep: (typeof REVIEW_REMINDER_KINDS)[number]
+): Promise<void> {
+  await client.followUpDraft.updateMany({
+    where: {
+      appointmentId,
+      status: "PENDING",
+      kind: { in: REVIEW_REMINDER_KINDS.filter((kind) => kind !== keep) },
+    },
+    data: { status: "DISMISSED" },
+  });
+}
+
 async function draftReminderForReview(args: {
   businessId: string;
   appointmentId: string;
@@ -96,6 +122,7 @@ async function draftReminderForReview(args: {
         // Already drafted (an overlapping run): fine, just record it below.
         skipDuplicates: true,
       });
+      await retireLongerReminderDrafts(tx, appointmentId, automationKind);
       // DRAFTED, not SENT: nothing reached the patient yet, so a "2" reply
       // can't be read as an answer to it and the risk score doesn't count it.
       await tx.appointmentReminder.upsert({
@@ -513,6 +540,12 @@ export async function syncAppointmentRemindersForBusiness(
       sent += 1;
       progress.sent += 1;
       consecutiveProviderErrors = 0;
+      await retireLongerReminderDrafts(prisma, appointment.id, automationKind).catch((error) => {
+        logger.error("Couldn't withdraw a longer-lead reminder waiting for review.", error, {
+          businessId,
+          appointmentId: appointment.id,
+        });
+      });
     } catch (error) {
       // Couldn't even record the SENT marker — count as failed. The next run
       // retries with the same idempotency key, which the worker answers by
