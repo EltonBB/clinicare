@@ -339,6 +339,12 @@ export async function syncAppointmentRemindersForBusiness(
     if (!latest.enabled) {
       continue;
     }
+    // A new timing or wording saved meanwhile: whether it is due, and what it
+    // says, came from the old one. Left alone; the next run (minutes away)
+    // works it out from the new setting (Codex).
+    if (latest.timing !== settings[automationKind].timing || latest.template !== settings[automationKind].template) {
+      continue;
+    }
 
     if (latest.mode === "REVIEW") {
       // Set to wait for review: drafted for To review (a person sends it) and

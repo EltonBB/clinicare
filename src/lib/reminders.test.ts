@@ -446,6 +446,24 @@ describe("syncAppointmentRemindersForBusiness with a reminder set to review", ()
     expect(retire).toBeLessThan(send);
   });
 
+  it.each([
+    ["timing", { timing: 1, template: null }],
+    ["wording", { timing: 2, template: "Hi {client_name}, new wording." }],
+  ])("leaves a reminder whose %s changed during the run to the next run", async (_label, change) => {
+    mocks.business.findUnique.mockResolvedValueOnce(business()).mockResolvedValue(
+      business({
+        automationSettings: [{ kind: "SECOND_REMINDER", enabled: true, mode: "AUTOMATIC", template2: null, ...change }],
+      })
+    );
+    mocks.appointment.findMany.mockResolvedValue([appointmentIn(1.5, "appt_1")]);
+    const tx = reviewTx();
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+    expect(tx.followUpDraft.createMany).not.toHaveBeenCalled();
+  });
+
   it("drafts nothing when the clinic switched the reminder back to automatic during the run", async () => {
     mocks.business.findUnique
       .mockResolvedValueOnce(
