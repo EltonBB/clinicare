@@ -92,7 +92,7 @@ afterEach(() => {
 });
 
 function expectFollowUpSurfacesRevalidated() {
-  expect(mocks.revalidatePath).toHaveBeenCalledWith("/inbox/follow-ups");
+  expect(mocks.revalidatePath).toHaveBeenCalledWith("/automations/review");
   expect(mocks.revalidatePath).toHaveBeenCalledWith("/inbox");
   // The waiting-list panel shows each entry's offer state.
   expect(mocks.revalidatePath).toHaveBeenCalledWith("/calendar");
@@ -172,7 +172,7 @@ describe("sendFollowUpDraftAction", () => {
         }),
       })
     );
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/inbox/follow-ups");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/automations/review");
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/inbox");
   });
 

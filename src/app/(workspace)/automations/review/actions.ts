@@ -29,7 +29,7 @@ function getAuthedBusiness() {
 // pending count, and — for slot offers — the Calendar's waiting-list panel,
 // which shows each entry's offer state.
 function revalidateFollowUpSurfaces() {
-  revalidatePath("/inbox/follow-ups");
+  revalidatePath("/automations/review");
   revalidatePath("/inbox");
   revalidatePath("/calendar");
 }

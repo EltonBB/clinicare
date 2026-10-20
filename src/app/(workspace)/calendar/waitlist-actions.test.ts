@@ -255,7 +255,7 @@ describe("removeWaitlistEntryAction — successful remove", () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/calendar");
     // An entry holding an offer drops out of the Follow-ups list/count.
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/inbox");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/inbox/follow-ups");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/automations/review");
   });
 
   it("turns an unexpected failure (e.g. a deadlock that survived its retry) into a plain retry message, logging ids only", async () => {

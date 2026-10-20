@@ -59,7 +59,6 @@ type InboxWorkspaceProps = {
   connection: SettingsState["whatsapp"]["connection"];
   clientCount: number;
   recommendedClientId?: string;
-  followUpsCount: number;
 };
 
 type InboxFilter = "all" | "unread";
@@ -137,7 +136,6 @@ export function InboxWorkspace({
   connection,
   clientCount,
   recommendedClientId,
-  followUpsCount,
 }: InboxWorkspaceProps) {
   const [conversations, setConversations] = useState(initialView.conversations);
   const [selectedConversationId, setSelectedConversationId] = useState(
@@ -650,22 +648,7 @@ export function InboxWorkspace({
       />
 
       <WorkspacePage size="wide">
-        <WorkspaceHeader
-          title="Inbox"
-          actions={
-            followUpsCount > 0 ? (
-              <Link
-                href="/inbox/follow-ups"
-                className="inline-flex items-center rounded-full bg-primary/8 px-3 py-1.5 text-sm font-medium text-primary transition-colors duration-(--duration-base) hover:bg-primary/14"
-              >
-                Follow-ups
-                <span className="ml-1.5 text-xs font-semibold tabular-nums text-primary/80">
-                  {followUpsCount}
-                </span>
-              </Link>
-            ) : null
-          }
-        />
+        <WorkspaceHeader title="Inbox" />
 
         <div className="surface-card min-h-[640px] overflow-hidden p-0 lg:h-[calc(100vh-174px)]">
           {/* lg:grid-rows-[minmax(0,1fr)]: the card's height is fixed at lg, but a

@@ -345,7 +345,7 @@ function revalidateClientDirectory() {
   // Inbox badge can keep showing a draft that's already unsendable until the
   // cache evicts or a hard refresh (Codex #130).
   revalidatePath("/inbox");
-  revalidatePath("/inbox/follow-ups");
+  revalidatePath("/automations/review");
   // The same eligibility change also feeds listWaitingEntries (client:
   // ELIGIBLE_CLIENT_WHERE), which the Calendar waiting-list panel reads —
   // without this, that panel can keep showing an entry for a client who just
@@ -369,7 +369,7 @@ function revalidatePaymentSurfaces() {
   // cache evicts or a hard refresh, and Send then just returns "already
   // handled" (Codex #130).
   revalidatePath("/inbox");
-  revalidatePath("/inbox/follow-ups");
+  revalidatePath("/automations/review");
 }
 
 // Every sub-record mutation returns the refreshed client AND must revalidate the

@@ -7,6 +7,7 @@ import {
   Settings,
   UserRoundCog,
   Users,
+  Workflow,
 } from "lucide-react";
 
 export type NavigationItem = {
@@ -40,6 +41,11 @@ export const navigationItems: NavigationItem[] = [
     label: "Inbox",
     href: "/inbox",
     icon: MessageSquareMore,
+  },
+  {
+    label: "Automations",
+    href: "/automations",
+    icon: Workflow,
   },
   {
     label: "Reports",

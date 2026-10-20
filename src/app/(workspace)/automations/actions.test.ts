@@ -66,6 +66,13 @@ describe("saveAutomationSettingAction", () => {
     );
   });
 
+  it("refuses an empty message instead of quietly restoring the default", async () => {
+    const result = await saveAutomationSettingAction({ ...base, kind: "THANK_YOU", timing: 2, template: "   " });
+
+    expect(result).toEqual({ ok: false, error: "Write a message before saving." });
+    expect(mocks.tx.automationSetting.upsert).not.toHaveBeenCalled();
+  });
+
   it("refuses a message over 600 characters", async () => {
     const result = await saveAutomationSettingAction({ ...base, kind: "THANK_YOU", timing: 2, template: "a".repeat(601) });
 
@@ -148,6 +155,19 @@ describe("toggleAutomationAction", () => {
     expect(mocks.tx.automationSetting.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ create: expect.objectContaining({ kind: "BOOKING_CONFIRMATION", enabled: false }) })
     );
+  });
+
+  it("writes only the switch over a saved automation, so it can't undo an editor save", async () => {
+    await toggleAutomationAction("THANK_YOU", true);
+
+    expect(mocks.tx.automationSetting.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: { enabled: true } }));
+  });
+
+  it("refuses a Pro automation's switch on Basic", async () => {
+    workspace("BASIC");
+
+    expect(await toggleAutomationAction("REBOOK", true)).toMatchObject({ ok: false });
+    expect(mocks.tx.automationSetting.upsert).not.toHaveBeenCalled();
   });
 
   it("rejects an unknown kind", async () => {

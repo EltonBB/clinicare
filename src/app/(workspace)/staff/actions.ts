@@ -197,7 +197,7 @@ function revalidateStaffRosterSurfaces(staffId?: string | null) {
   revalidatePath("/reports");
   revalidatePath("/clients");
   revalidatePath("/inbox");
-  revalidatePath("/inbox/follow-ups");
+  revalidatePath("/automations/review");
 }
 
 function isValidTime(value: string) {
