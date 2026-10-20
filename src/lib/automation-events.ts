@@ -117,7 +117,14 @@ export async function queueVisitMessage(args: {
           ],
         },
       });
-      kind = earlierVisits === 0 ? "NEW_PATIENT_WELCOME" : "BOOKING_CONFIRMATION";
+      // A welcome that went out stays on record even if the booking it was
+      // for is deleted later, so the patient isn't welcomed twice (Codex).
+      const welcomed =
+        earlierVisits === 0 &&
+        (await prisma.followUpDraft.count({
+          where: { businessId, clientId: appointment.clientId, kind: "NEW_PATIENT_WELCOME", status: "SENT" },
+        })) > 0;
+      kind = earlierVisits === 0 && !welcomed ? "NEW_PATIENT_WELCOME" : "BOOKING_CONFIRMATION";
     } else {
       kind = "VISIT_CHANGED";
     }

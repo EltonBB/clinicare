@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   appointment: { findFirst: vi.fn(), count: vi.fn() },
-  followUpDraft: { create: vi.fn(), updateMany: vi.fn() },
+  followUpDraft: { create: vi.fn(), updateMany: vi.fn(), count: vi.fn() },
   appointmentReminder: { createMany: vi.fn(), updateMany: vi.fn() },
   $transaction: vi.fn(),
   $executeRaw: vi.fn(),
@@ -69,6 +69,7 @@ beforeEach(() => {
   mocks.appointment.count.mockResolvedValue(3);
   mocks.followUpDraft.create.mockResolvedValue({ id: "draft_1" });
   mocks.followUpDraft.updateMany.mockResolvedValue({ count: 0 });
+  mocks.followUpDraft.count.mockResolvedValue(0);
   // The suppression runs in a transaction on the same mocked client.
   mocks.$transaction.mockImplementation(async (callback: (client: unknown) => unknown) =>
     callback({ appointment: mocks.appointment, appointmentReminder: mocks.appointmentReminder, $executeRaw: mocks.$executeRaw })
@@ -99,6 +100,20 @@ describe("queueVisitMessage", () => {
 
     expect(mocks.followUpDraft.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ kind: "NEW_PATIENT_WELCOME" }) })
+    );
+  });
+
+  it("doesn't welcome a patient again after their first booking was deleted", async () => {
+    mocks.appointment.count.mockResolvedValue(0);
+    mocks.followUpDraft.count.mockResolvedValue(1);
+
+    await queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "booked", now: NOW });
+
+    expect(mocks.followUpDraft.count).toHaveBeenCalledWith({
+      where: { businessId: "biz_1", clientId: "client_1", kind: "NEW_PATIENT_WELCOME", status: "SENT" },
+    });
+    expect(mocks.followUpDraft.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ kind: "BOOKING_CONFIRMATION" }) })
     );
   });
 
