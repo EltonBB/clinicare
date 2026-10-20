@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
-import { fieldTextareaClass } from "@/components/workspace/workspace-layout";
+import { fieldSelectClass, fieldTextareaClass } from "@/components/workspace/workspace-layout";
 import {
   insertTokenAt,
   MAX_AUTOMATION_MESSAGE_LENGTH,
@@ -22,8 +22,9 @@ import type { AutomationEditorData } from "@/lib/automations-view";
 import { formatZonedFullDate, formatZonedTime, getZonedDateParts, zonedDateTimeToUtc } from "@/lib/time-zone";
 import { cn } from "@/lib/utils";
 
-const pickClass =
-  "mx-1 inline-flex h-8 cursor-pointer appearance-none rounded-(--radius-field) border-0 bg-[#f1f3f8] px-2.5 text-sm font-medium text-foreground outline-none transition-colors duration-(--duration-base) hover:bg-[#e9ecf4] focus-visible:ring-3 focus-visible:ring-ring/40";
+function sentenceCase(text: string) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
 
 /** Tomorrow at 10:30 in the clinic's zone: the visit the preview describes. */
 function sampleVisit(): Date {
@@ -141,45 +142,41 @@ export function AutomationEditor({
             <Toggle checked={enabled} onPressedChange={setEnabled} ariaLabel={`${data.label} on`} />
           </div>
 
-          <p className="text-sm leading-9 text-muted-foreground">
-            Send
-            {data.timingUnit && timing !== null ? (
-              <>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs text-muted-foreground">When it sends</span>
+              {data.timingUnit && timing !== null ? (
                 <select
-                  aria-label="When it sends"
                   value={timing}
                   onChange={(event) => setTiming(Number(event.target.value))}
-                  className={pickClass}
+                  className={fieldSelectClass}
                 >
                   {timingOptions.map((value) => (
                     <option key={value} value={value}>
-                      {timingOptionLabel(data.timingUnit!, value)}
+                      {timingOptionLabel(data.timingUnit!, value)} {data.timingSuffix}
                     </option>
                   ))}
                 </select>
-                {data.timingSuffix}
-              </>
-            ) : (
-              <> {data.fixedTiming}</>
-            )}
-            {data.canChooseMode ? (
-              <>
-                ,
+              ) : (
+                <span className="flex h-10 items-center text-sm text-foreground">{sentenceCase(data.fixedTiming)}</span>
+              )}
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs text-muted-foreground">How it sends</span>
+              {data.canChooseMode ? (
                 <select
-                  aria-label="How it sends"
                   value={mode}
                   onChange={(event) => setMode(event.target.value as AutomationMode)}
-                  className={pickClass}
+                  className={fieldSelectClass}
                 >
-                  <option value="AUTOMATIC">automatically</option>
-                  <option value="REVIEW">after I review it</option>
+                  <option value="AUTOMATIC">Automatically</option>
+                  <option value="REVIEW">After I review it</option>
                 </select>
-              </>
-            ) : (
-              ", automatically"
-            )}
-            .
-          </p>
+              ) : (
+                <span className="flex h-10 items-center text-sm text-foreground">Automatically</span>
+              )}
+            </label>
+          </div>
 
           <div className="flex min-h-0 flex-1 flex-col gap-3">
             {messageBox("template", hasSecondText ? "When a visit is moved" : "Message", data.defaultTemplate)}
