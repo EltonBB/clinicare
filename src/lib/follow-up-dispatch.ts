@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
 import { FOLLOW_UP_KIND_TO_AUTOMATION } from "@/lib/automations";
+import { getAutomationSettings } from "@/lib/automations-data";
 import {
   confirmFollowUpDraftDispatch,
   markFollowUpDraftDelivered,
@@ -77,8 +78,15 @@ export async function dispatchFollowUpDraft(args: {
     // One more check, as late as it can be made (Codex #130).
     const ready = await confirmFollowUpDraftDispatch({ id: draftId, businessId, automatic });
 
+    const automation = ready.ok && automatic ? (await getAutomationSettings(businessId))[FOLLOW_UP_KIND_TO_AUTOMATION[ready.draft.kind]] : null;
+
     if (!ready.ok) {
       failure = ready.error;
+    } else if (automation && !(automation.enabled && automation.mode === "AUTOMATIC")) {
+      // Read after the claim, so a switch to review (or off) that committed
+      // while this draft was being made is seen here even though its own
+      // update missed the draft (Codex).
+      failure = "This automation now waits for review.";
     } else {
       const { draft } = ready;
       const phone = draft.phone;
@@ -239,6 +247,34 @@ export async function dispatchDueAutomaticDrafts(args: {
   if (lastReached) await setAutomationsCursor(lastReached);
 
   return { sent, failed };
+}
+
+/** How far back "just made" reaches for an immediate send (the cron covers anything older). */
+const RECENT_DRAFT_MS = 5 * 60_000;
+
+/**
+ * Sends one workspace's automatic drafts made in the last few minutes, without
+ * the cron's one-minute grace: called right after the request that made them
+ * (see dispatchSoon). The claim keeps it from racing the cron into a double send.
+ */
+export async function dispatchRecentAutomaticDrafts(businessId: string, now: Date = new Date()): Promise<{ sent: number; failed: number }> {
+  const drafts = await prisma.followUpDraft.findMany({
+    where: {
+      businessId,
+      status: "PENDING",
+      autoSend: true,
+      createdAt: { gte: new Date(now.getTime() - RECENT_DRAFT_MS) },
+      OR: [{ sendAfter: null }, { sendAfter: { lte: now } }],
+      business: {
+        whatsappEnabled: true,
+        whatsappConnection: { is: { status: { in: ["CONNECTED", "ERRORED"] } } },
+      },
+    },
+    select: { id: true },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    take: AUTO_SEND_PER_BUSINESS_CAP,
+  });
+  return sendClinicDrafts(businessId, drafts, Date.now() + 60_000);
 }
 
 /** One clinic's due drafts, oldest first; stops at its sending ceiling or the deadline. */

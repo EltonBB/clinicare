@@ -69,35 +69,35 @@ export function reminderTypeForAppointment(
     return null;
   }
 
-  if (
-    send2HourReminder &&
-    !sentTypes.has("TWO_HOUR") &&
-    !isAfter(startsAt, addHours(now, secondReminderHours))
-  ) {
-    return "TWO_HOUR";
+  // In order of precedence when two have the same lead: the second reminder,
+  // then the high-risk one, then the first.
+  const reminders: Array<{ type: ReminderType; on: boolean; hours: number }> = [
+    { type: "TWO_HOUR", on: send2HourReminder, hours: secondReminderHours },
+    {
+      type: "HIGH_RISK",
+      on: Boolean(highRisk?.enabled && highRisk.isHighRisk),
+      hours: highRisk?.hours ?? 0,
+    },
+    { type: "TWENTY_FOUR_HOUR", on: send24HourReminder, hours: firstReminderHours },
+  ];
+  // The shortest lead among the reminders already sent: anything with a lead
+  // at least that long would now arrive after a more urgent one — backwards.
+  const shortestSentLead = Math.min(
+    ...reminders.filter((reminder) => sentTypes.has(reminder.type)).map((reminder) => reminder.hours)
+  );
+
+  const due = reminders.filter(
+    (reminder) =>
+      reminder.on &&
+      !sentTypes.has(reminder.type) &&
+      reminder.hours < shortestSentLead &&
+      !isAfter(startsAt, addHours(now, reminder.hours))
+  );
+  if (due.length === 0) {
+    return null;
   }
 
-  if (
-    highRisk?.enabled &&
-    highRisk.isHighRisk &&
-    !sentTypes.has("HIGH_RISK") &&
-    !sentTypes.has("TWO_HOUR") &&
-    !isAfter(startsAt, addHours(now, highRisk.hours))
-  ) {
-    return "HIGH_RISK";
-  }
-
-  if (
-    send24HourReminder &&
-    !sentTypes.has("TWENTY_FOUR_HOUR") &&
-    // Once a more urgent reminder has gone out, the longer-lead-time one
-    // is always backwards to send afterward — see the doc comment above.
-    !sentTypes.has("TWO_HOUR") &&
-    !sentTypes.has("HIGH_RISK") &&
-    !isAfter(startsAt, addHours(now, firstReminderHours))
-  ) {
-    return "TWENTY_FOUR_HOUR";
-  }
-
-  return null;
+  // Several windows open at once (a late booking, a run that hasn't reached it
+  // yet): send only the most urgent; the longer ones are then backwards too.
+  return due.reduce((most, reminder) => (reminder.hours < most.hours ? reminder : most)).type;
 }

@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 
 import { renderAutomationMessage } from "@/lib/automations";
 import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness } from "@/lib/automations-data";
+import { dispatchSoon } from "@/lib/automation-dispatch-soon";
 import { timeToMinutes } from "@/lib/calendar";
 import { ELIGIBLE_CLIENT_WHERE, INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { isSlotInsideOperatingHours, operatingWeekday } from "@/lib/operating-hours";
@@ -261,6 +262,8 @@ export async function offerFreedSlot(
     });
 
     if (created > 0) {
+      // An automatic offer goes out right after this request, not at the next run.
+      if (offerSettings.mode === "AUTOMATIC") dispatchSoon(businessId);
       return entry.id;
     }
 

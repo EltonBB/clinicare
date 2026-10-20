@@ -12,7 +12,10 @@ const mocks = vi.hoisted(() => ({
   updateMany: vi.fn(),
   getAutomationsCursor: vi.fn(),
   setAutomationsCursor: vi.fn(),
+  getAutomationSettings: vi.fn(),
 }));
+
+vi.mock("@/lib/automations-data", () => ({ getAutomationSettings: mocks.getAutomationSettings }));
 
 vi.mock("@/lib/follow-up-cursor", () => ({
   getAutomationsCursor: mocks.getAutomationsCursor,
@@ -49,6 +52,9 @@ beforeEach(() => {
   mocks.findMany.mockResolvedValue([]);
   mocks.groupBy.mockResolvedValue([]);
   mocks.getAutomationsCursor.mockResolvedValue(null);
+  mocks.getAutomationSettings.mockResolvedValue(
+    new Proxy({}, { get: () => ({ enabled: true, mode: "AUTOMATIC" }) })
+  );
   mocks.setAutomationsCursor.mockResolvedValue(undefined);
 });
 
@@ -126,6 +132,23 @@ describe("dispatchFollowUpDraft", () => {
 
     expect(mocks.markFollowUpDraftSent).toHaveBeenCalledWith(expect.objectContaining({ automatic: true }));
     expect(mocks.confirmFollowUpDraftDispatch).toHaveBeenCalledWith(expect.objectContaining({ automatic: true }));
+  });
+
+  it("doesn't send automatically once the automation was switched to review", async () => {
+    mocks.getAutomationSettings.mockResolvedValue({ THANK_YOU: { enabled: true, mode: "REVIEW" } });
+
+    expect(await dispatchFollowUpDraft({ draftId: "d_1", businessId: "biz_1", automatic: true })).toMatchObject({
+      ok: false,
+      retryable: false,
+    });
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+    expect(mocks.revertFollowUpDraftToPending).toHaveBeenCalled();
+  });
+
+  it("lets staff send a draft whatever the automation's mode", async () => {
+    mocks.getAutomationSettings.mockResolvedValue({ THANK_YOU: { enabled: true, mode: "REVIEW" } });
+
+    expect(await dispatchFollowUpDraft({ draftId: "d_1", businessId: "biz_1" })).toMatchObject({ ok: true });
   });
 
   it("refuses a draft the claim no longer accepts, without sending", async () => {

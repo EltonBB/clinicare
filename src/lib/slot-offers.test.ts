@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // it) and the transaction client are separate objects, so every test can
 // prove the offer work runs on the transaction it was handed.
 const mocks = vi.hoisted(() => ({
+  dispatchSoon: vi.fn(),
   prisma: {
     followUpDraft: { findMany: vi.fn(), groupBy: vi.fn(), updateMany: vi.fn(), createMany: vi.fn() },
     waitlistEntry: { findMany: vi.fn(), updateMany: vi.fn() },
@@ -24,6 +25,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }));
+vi.mock("@/lib/automation-dispatch-soon", () => ({ dispatchSoon: mocks.dispatchSoon }));
 
 import { Prisma } from "@prisma/client";
 
@@ -190,6 +192,25 @@ describe("offerFreedSlot", () => {
 
     expect(await offerFreedSlot(mocks.tx as never, { businessId: "biz_1", cancelled: CANCELLED, now: NOW })).toBeNull();
     expect(mocks.tx.followUpDraft.createMany).not.toHaveBeenCalled();
+  });
+
+  it("sends an automatic offer right after the cancellation, not at the next run", async () => {
+    mocks.tx.business.findUniqueOrThrow.mockResolvedValue({
+      plan: "PRO",
+      automationSettings: [
+        { kind: "WAITLIST_OFFER", enabled: true, mode: "AUTOMATIC", timing: null, template: null, template2: null },
+      ],
+    });
+
+    await offerFreedSlot(mocks.tx as never, { businessId: "biz_1", cancelled: CANCELLED, now: NOW });
+
+    expect(mocks.dispatchSoon).toHaveBeenCalledWith("biz_1");
+  });
+
+  it("leaves an offer that waits for review to staff", async () => {
+    await offerFreedSlot(mocks.tx as never, { businessId: "biz_1", cancelled: CANCELLED, now: NOW });
+
+    expect(mocks.dispatchSoon).not.toHaveBeenCalled();
   });
 
   it("uses the clinic's own wording and sends on its own when set to automatic", async () => {

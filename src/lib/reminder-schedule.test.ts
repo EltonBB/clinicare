@@ -179,3 +179,36 @@ describe("reminderTypeForAppointment with the high-risk reminder", () => {
     expect(decide({ startsAt: hoursFromNow(4), highRisk: { ...highRisk, enabled: false } })).toBe("TWENTY_FOUR_HOUR");
   });
 });
+
+describe("reminderTypeForAppointment orders reminders by their lead times", () => {
+  it("still sends a shorter high-risk reminder after a longer second reminder", () => {
+    const highRisk = { enabled: true, hours: 1, isHighRisk: true };
+    expect(
+      decide({ startsAt: hoursFromNow(0.5), secondReminderHours: 5, highRisk, sentTypes: new Set(["TWO_HOUR"]) })
+    ).toBe("HIGH_RISK");
+  });
+
+  it("still sends a short first reminder after a long high-risk one", () => {
+    const highRisk = { enabled: true, hours: 24, isHighRisk: true };
+    expect(
+      decide({
+        startsAt: hoursFromNow(1),
+        firstReminderHours: 2,
+        send2HourReminder: false,
+        highRisk,
+        sentTypes: new Set(["HIGH_RISK"]),
+      })
+    ).toBe("TWENTY_FOUR_HOUR");
+  });
+
+  it("never sends a reminder whose lead is as long as one already sent", () => {
+    expect(
+      decide({ startsAt: hoursFromNow(1), firstReminderHours: 2, secondReminderHours: 2, sentTypes: new Set(["TWO_HOUR"]) })
+    ).toBeNull();
+  });
+
+  it("sends only the most urgent when several windows are open", () => {
+    const highRisk = { enabled: true, hours: 1, isHighRisk: true };
+    expect(decide({ startsAt: hoursFromNow(0.5), secondReminderHours: 5, highRisk })).toBe("HIGH_RISK");
+  });
+});
