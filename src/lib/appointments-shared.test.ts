@@ -896,6 +896,19 @@ describe("confirmAppointmentCore", () => {
     });
   });
 
+  it("withdraws a high-risk reminder waiting for review once the patient confirms", async () => {
+    mockGuardHit();
+    await confirmAppointmentCore(WHERE);
+    expect(mocks.followUpDraft.updateMany).toHaveBeenCalledWith({
+      where: {
+        appointmentId: WHERE.id,
+        kind: "HIGH_RISK_REMINDER",
+        OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
+      },
+      data: { status: "DISMISSED" },
+    });
+  });
+
   it("is a no-op success when already confirmed", async () => {
     mocks.appointment.updateMany.mockResolvedValue({ count: 0 });
     mocks.appointment.findFirst.mockResolvedValue({ ...RECORD, status: "CONFIRMED" });
