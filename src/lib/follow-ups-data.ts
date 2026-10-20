@@ -225,7 +225,10 @@ export type SentFollowUpDraft = {
   phone: string | null;
 };
 
-type MarkDraftSentResult = { ok: true; draft: SentFollowUpDraft } | { ok: false; error: string };
+type MarkDraftSentResult =
+  | { ok: true; draft: SentFollowUpDraft }
+  /** `bookingMessageOwedFor`: a refused confirmation or welcome to draft again for this visit. */
+  | { ok: false; error: string; bookingMessageOwedFor?: string };
 
 export const ALREADY_HANDLED_ERROR = "This follow-up was already handled.";
 export const SLOT_OFFER_UNAVAILABLE_ERROR = "This slot offer is no longer available.";
@@ -241,7 +244,18 @@ class SlotOutsideHours extends Error {}
 // Thrown inside the same transaction when the visit a draft was written about
 // has changed since (its reminderGeneration moved on): the draft names an old
 // patient, time or status, so it is refused like any other stale draft.
-class VisitChangedSinceDrafted extends Error {}
+class VisitChangedSinceDrafted extends Error {
+  constructor(
+    readonly kind: FollowUpDraftKind,
+    /** The visit, when it still exists. */
+    readonly appointmentId: string | null
+  ) {
+    super();
+  }
+}
+
+/** Booking messages: refused for a changed visit, they are owed again for the visit as it now is. */
+const BOOKING_MESSAGE_KINDS: FollowUpDraftKind[] = ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME"];
 
 /**
  * Atomic PENDING -> SENT flip: two staff tapping Send at once can't both
@@ -353,11 +367,15 @@ async function runSendGate(args: {
       // Not left pending beside its replacement, where every Send would fail:
       // a draft about an old version of the visit is expired for good (Codex).
       // Still unsent (pending, or claimed but not delivered) only.
-      await prisma.followUpDraft.updateMany({
+      const { count } = await prisma.followUpDraft.updateMany({
         where: { id: args.id, businessId: args.businessId, OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }] },
         data: { status: "EXPIRED" },
       });
-      return { ok: false, error: ALREADY_HANDLED_ERROR };
+      // Nothing went out: a confirmation or welcome refused here (say, a
+      // status edit landed between its claim and its send) is still owed for
+      // the visit as it now is (Codex).
+      const owed = count > 0 && error.appointmentId && BOOKING_MESSAGE_KINDS.includes(error.kind);
+      return { ok: false, error: ALREADY_HANDLED_ERROR, ...(owed ? { bookingMessageOwedFor: error.appointmentId! } : {}) };
     }
     if (error instanceof SlotOutsideHours) {
       return { ok: false, error: SLOT_OUTSIDE_HOURS_ERROR };
@@ -437,7 +455,7 @@ function flipDraftToSent(args: {
           draft.appointment.reminderGeneration !== draft.appointmentGeneration ||
           draft.appointment.clientId !== draft.clientId)
       ) {
-        throw new VisitChangedSinceDrafted();
+        throw new VisitChangedSinceDrafted(draft.kind, draft.appointment ? draft.appointmentId : null);
       }
 
       if (

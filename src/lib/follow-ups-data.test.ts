@@ -214,6 +214,7 @@ function serveDrafts(rows: Row[]) {
       id: row.id,
       body: row.body,
       kind: row.kind,
+      appointmentId: row.appointmentId ?? undefined,
       appointmentGeneration: row.appointmentGeneration ?? undefined,
       clientId: row.clientId,
       client: { phone: rowClient.phone ?? null, name: rowClient.name ?? null },
@@ -599,7 +600,7 @@ describe("follow-ups data layer — which drafts are actionable", () => {
       live
         ? {
             ok: true,
-            draft: { id: "d_1", kind: row.kind, body: "Draft message", clientId: "client_1", clientName: "Test Client", phone: "+38344000000" },
+            draft: { id: "d_1", kind: row.kind, appointmentId: row.appointmentId ?? undefined, body: "Draft message", clientId: "client_1", clientName: "Test Client", phone: "+38344000000" },
           }
         : { ok: false, error: "This follow-up was already handled." }
     );
@@ -785,8 +786,11 @@ describe("follow-ups data layer — which drafts are actionable", () => {
       }),
     ]);
 
-    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({ ok: sendable });
+    const result = await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW });
+    expect(result).toMatchObject({ ok: sendable });
     if (!sendable) {
+      // Nothing went out, so the confirmation is owed again for the visit as it is now.
+      expect(result).toMatchObject({ bookingMessageOwedFor: "appt_2" });
       // Expired for good, not left pending beside its replacement.
       expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledWith({
         where: { id: "d_1", businessId: "biz_1", OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }] },
@@ -818,7 +822,7 @@ describe("follow-ups data layer — which drafts are actionable", () => {
 
     expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toEqual({
       ok: true,
-      draft: { id: "d_1", kind: row.kind, body: "Draft message", clientId: "client_1", clientName: "Test Client", phone: "+38344000000" },
+      draft: { id: "d_1", kind: row.kind, appointmentId: row.appointmentId ?? undefined, body: "Draft message", clientId: "client_1", clientName: "Test Client", phone: "+38344000000" },
     });
     expect(mocks.tx.followUpDraft.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: "SENT", sentAt: null } })
@@ -870,7 +874,7 @@ describe("confirmFollowUpDraftDispatch — the last check before a message leave
     serveDrafts([claimed(row)]);
 
     expect(await confirmFollowUpDraftDispatch({ id: "d_1", businessId: "biz_1", now: NOW })).toEqual(
-      live ? { ok: true, draft: { ...SENT_DRAFT, kind: row.kind } } : { ok: false, error: "This follow-up was already handled." }
+      live ? { ok: true, draft: { ...SENT_DRAFT, kind: row.kind, appointmentId: row.appointmentId ?? undefined } } : { ok: false, error: "This follow-up was already handled." }
     );
   });
 

@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 
 import { FOLLOW_UP_KIND_TO_AUTOMATION } from "@/lib/automations";
 import { getAutomationSettings } from "@/lib/automations-data";
-import { suppressOpenReminders } from "@/lib/automation-events";
+import { replaceRefusedBookingMessage, suppressOpenReminders } from "@/lib/automation-events";
 import {
   confirmFollowUpDraftDispatch,
   markFollowUpDraftDelivered,
@@ -78,6 +78,9 @@ export async function dispatchFollowUpDraft(args: {
 
   const flip = await markFollowUpDraftSent({ id: draftId, businessId, editedBody, automatic });
   if (!flip.ok) {
+    if (flip.bookingMessageOwedFor) {
+      await replaceRefusedBookingMessage({ businessId, appointmentId: flip.bookingMessageOwedFor });
+    }
     return { ok: false, error: flip.error, retryable: false };
   }
 
@@ -111,6 +114,9 @@ export async function dispatchFollowUpDraft(args: {
 
     if (!ready.ok) {
       failure = ready.error;
+      if (ready.bookingMessageOwedFor) {
+        await replaceRefusedBookingMessage({ businessId, appointmentId: ready.bookingMessageOwedFor });
+      }
     } else if (automation && !(automation.enabled && automation.mode === "AUTOMATIC")) {
       // Read after the claim, so a switch to review (or off) that committed
       // while this draft was being made is seen here even though its own

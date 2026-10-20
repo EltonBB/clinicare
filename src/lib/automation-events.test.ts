@@ -25,6 +25,7 @@ vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: 
 import {
   queueMissedVisitMessage,
   queueVisitMessage,
+  replaceRefusedBookingMessage,
   retireVisitDrafts,
   suppressOpenReminders,
   withdrawMissedVisitMessage,
@@ -206,6 +207,27 @@ describe("queueVisitMessage", () => {
     mocks.followUpDraft.create.mockRejectedValue(new Error("db down"));
 
     await expect(queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "booked", now: NOW })).resolves.toBeNull();
+  });
+});
+
+describe("replaceRefusedBookingMessage", () => {
+  it("drafts the confirmation again for the visit as it now is", async () => {
+    await replaceRefusedBookingMessage({ businessId: "biz_1", appointmentId: "appt_1" });
+
+    expect(mocks.followUpDraft.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({ kind: "VISIT_CHANGED", appointmentGeneration: 2 }),
+    });
+    expect(mocks.followUpDraft.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ kind: "BOOKING_CONFIRMATION", appointmentGeneration: 2 }) })
+    );
+  });
+
+  it("drafts nothing when the change already told the patient", async () => {
+    mocks.followUpDraft.count.mockResolvedValue(1);
+
+    await replaceRefusedBookingMessage({ businessId: "biz_1", appointmentId: "appt_1" });
+
+    expect(mocks.followUpDraft.create).not.toHaveBeenCalled();
   });
 });
 

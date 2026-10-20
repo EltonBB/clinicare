@@ -184,6 +184,36 @@ export async function queueVisitMessage(args: {
 }
 
 /**
+ * A confirmation or welcome refused at its last check because the visit
+ * changed after it was claimed: nothing went out, so the patient is still owed
+ * one for the visit as it now is — unless the change already told them (a
+ * moved-visit notice for this version of the visit). Never throws.
+ */
+export async function replaceRefusedBookingMessage(args: { businessId: string; appointmentId: string }): Promise<void> {
+  const { businessId, appointmentId } = args;
+  try {
+    const appointment = await prisma.appointment.findFirst({
+      where: { id: appointmentId, businessId },
+      select: { reminderGeneration: true },
+    });
+    if (!appointment) return;
+    const told = await prisma.followUpDraft.count({
+      where: {
+        businessId,
+        appointmentId,
+        kind: "VISIT_CHANGED",
+        appointmentGeneration: appointment.reminderGeneration,
+        status: { in: ["PENDING", "SENT"] },
+      },
+    });
+    if (told > 0) return;
+    await queueVisitMessage({ businessId, appointmentId, event: "booked" });
+  } catch (error) {
+    logger.error("Re-drafting a refused booking message failed.", error, { businessId, appointmentId });
+  }
+}
+
+/**
  * Drafts the "we missed you" message when a visit is recorded as a no-show,
  * to go out after the clinic's delay (`sendAfter`). Undoing the no-show
  * withdraws it (withdrawMissedVisitMessage). Never throws, like queueVisitMessage.
