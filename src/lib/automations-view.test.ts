@@ -53,10 +53,19 @@ describe("buildAutomationsView", () => {
 
     expect(result.cards.filter((card) => card.locked)).toHaveLength(10);
     expect(result.cards.filter((card) => !card.locked).map((card) => card.kind)).toEqual(["FIRST_REMINDER", "THANK_YOU"]);
-    expect(result.showReviewTab).toBe(false);
-    expect(result.reviewCount).toBe(0);
+    expect(result.showReviewTab).toBe(true); // reviewCount 3: something is still waiting
     expect(Object.keys(result.editors)).toEqual(["FIRST_REMINDER", "THANK_YOU"]);
     expect(result.editors.THANK_YOU?.canChooseMode).toBe(false);
+  });
+
+  it("hides the review tab on Basic only when nothing waits there", () => {
+    const result = buildAutomationsView({
+      settings: resolveAutomationSettings({ plan: "BASIC", rows: [], reminders: null, workflows: null }),
+      plan: "BASIC",
+      reviewCount: 0,
+    });
+
+    expect(result.showReviewTab).toBe(false);
   });
 
   it("gives the editor the text in force, the default to reset to, and the mode picker only where it applies", () => {

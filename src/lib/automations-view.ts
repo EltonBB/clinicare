@@ -107,5 +107,7 @@ export function buildAutomationsView(args: {
     };
   });
 
-  return { cards, editors, showReviewTab: isPro, reviewCount: isPro ? reviewCount : 0 };
+  // Basic has no review queue, but a workspace downgraded with a live slot
+  // offer still has to reach it to skip or book it (Codex).
+  return { cards, editors, showReviewTab: isPro || reviewCount > 0, reviewCount };
 }
