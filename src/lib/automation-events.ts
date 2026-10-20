@@ -96,8 +96,10 @@ export async function queueVisitMessage(args: {
       (business.whatsappConnection?.status === "CONNECTED" || business.whatsappConnection?.status === "ERRORED");
     if (!linked) return null;
 
-    const cancelled = appointment.status === "CANCELLED";
-    if ((event === "cancelled") !== cancelled) return null;
+    // A cancel notice needs a cancelled visit; a booking or new time, one that
+    // still stands (not a visit also marked completed or a no-show — Codex).
+    const stands = appointment.status === "PENDING" || appointment.status === "CONFIRMED";
+    if (event === "cancelled" ? appointment.status !== "CANCELLED" : !stands) return null;
 
     let kind: AutomationKind & FollowUpDraftKind;
     if (event === "booked") {

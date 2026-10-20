@@ -182,6 +182,13 @@ describe("queueVisitMessage", () => {
     );
   });
 
+  it.each(["NO_SHOW", "COMPLETED"])("tells nothing about a visit moved and marked %s in one edit", async (status) => {
+    mocks.appointment.findFirst.mockResolvedValue(appointment({ status }));
+
+    expect(await queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "moved", now: NOW })).toBeNull();
+    expect(mocks.followUpDraft.create).not.toHaveBeenCalled();
+  });
+
   it("ignores a 'cancelled' event for a visit that isn't cancelled", async () => {
     expect(await queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "cancelled", now: NOW })).toBeNull();
   });

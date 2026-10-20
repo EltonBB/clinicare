@@ -181,15 +181,15 @@ export async function getPendingFollowUpDraftCount(businessId: string, now: Date
 // PENDING_CAP_PER_KIND (50) each; the event kinds (a visit's confirmation,
 // notice, missed-visit message or a reminder waiting for review) have no
 // structural cap, and 200 waiting at once is already far past what a clinic
-// works through before they go stale.
+// works through before they go stale. Each kind is read oldest first, so an
+// overflow holds back the newest, never the most urgent (Codex).
 const SLOT_OFFER_LIST_CAP = 500;
 const LIST_CAP_PER_KIND = 200;
 
 // Order: slot offers first — they're time-critical, and one buried under a
 // backlog of nudges would sit unseen until its slot passed. Postgres sorts an
 // enum by its declared order, and FollowUpDraftKind declares SLOT_OFFER first
-// (a test pins that order in both the schema and the migration). Then newest
-// first, id as a stable tiebreaker.
+// (a test pins that order in both the schema and the migration).
 export async function listPendingFollowUpDrafts(
   businessId: string,
   now: Date = new Date()
@@ -204,7 +204,7 @@ export async function listPendingFollowUpDrafts(
           client: { select: { name: true } },
           appointment: { select: { startAt: true, title: true } },
         },
-        orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         take: kind === "SLOT_OFFER" ? SLOT_OFFER_LIST_CAP : LIST_CAP_PER_KIND,
       })
     )

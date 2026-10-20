@@ -846,14 +846,14 @@ describe("follow-ups data layer — which drafts are actionable", () => {
 });
 
 describe("follow-ups data layer — list order and cap", () => {
-  it("reads each kind separately, newest first, so no kind's backlog hides another's", async () => {
+  it("reads each kind separately, oldest first, so no kind's backlog hides another's and overflow never hides the most urgent", async () => {
     mocks.prisma.followUpDraft.findMany.mockResolvedValue([]);
     await listPendingFollowUpDrafts("biz_1", NOW);
 
     const calls = mocks.prisma.followUpDraft.findMany.mock.calls.map(([args]) => args);
     expect(calls.map((args) => args.where.kind)).toEqual(Object.values(FollowUpDraftKind));
     for (const args of calls) {
-      expect(args.orderBy).toEqual([{ createdAt: "desc" }, { id: "asc" }]);
+      expect(args.orderBy).toEqual([{ createdAt: "asc" }, { id: "asc" }]);
       // Slot offers keep their structural ceiling (500 live offers at most); every other kind 200.
       expect(args.take).toBe(args.where.kind === "SLOT_OFFER" ? 500 : 200);
     }
