@@ -61,7 +61,7 @@ export function AutomationEditor({
   const lastBox = useRef<Box>("template");
 
   const hasSecondText = data.template2 !== null;
-  const visit = useMemo(sampleVisit, []);
+  const visit = useMemo(() => sampleVisit(), []);
   const sample = {
     client_name: "Maya",
     clinic_name: clinicName,

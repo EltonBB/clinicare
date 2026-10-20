@@ -11,6 +11,8 @@ export type AutomationCard = {
   /** Not in the workspace's plan: shown with a "Pro" label that leads to the upgrade. */
   locked: boolean;
   timingPhrase: string;
+  /** How it sends while on (kept when it is off, so switching it on shows the right word). */
+  mode: AutomationMode;
   modeLabel: "Automatic" | "Review first" | "Off";
 };
 
@@ -114,6 +116,7 @@ export function buildAutomationsView(args: {
       enabled: setting.enabled,
       locked,
       timingPhrase: definition.timingPhrase(setting.timing),
+      mode: setting.mode,
       modeLabel: !setting.enabled ? "Off" : setting.mode === "REVIEW" ? "Review first" : "Automatic",
     };
   });

@@ -68,7 +68,7 @@ export function AutomationsBoard({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:h-[calc(100vh-174px)] lg:min-h-[520px] lg:grid-cols-3 lg:grid-rows-4">
         {cards.map((card) => {
           const on = isOn(card);
-          const modeLabel = !on ? "Off" : card.modeLabel === "Off" ? "Automatic" : card.modeLabel;
+          const modeLabel = !on ? "Off" : card.mode === "REVIEW" ? "Review first" : "Automatic";
 
           if (card.locked) {
             return (
