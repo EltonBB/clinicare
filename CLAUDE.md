@@ -57,7 +57,7 @@ npm run db:setup-auth-sync       # scripts/setup-auth-delete-sync.mjs
 src/
   app/
     (auth)/            # signup, login, confirm-email, forgot/reset password + actions.ts
-    (workspace)/       # authenticated app: dashboard, calendar, clients, staff, inbox, reports, settings
+    (workspace)/       # authenticated app: dashboard, calendar, clients, staff, inbox, automations, reports, settings
                        #   each feature folder has page.tsx + actions.ts (+ [id]/ detail/edit routes)
                        #   layout.tsx renders the app shell; loading.tsx is the instant skeleton
     onboarding/        # post-confirmation multi-step setup + actions.ts
@@ -119,7 +119,7 @@ Pilot (Kosovo) data is non-PHI by design. GDPR is the active compliance regime (
 
 ## Data model (`prisma/schema.prisma`)
 
-Core entities: `Business`, `BusinessHours`, `StaffMember`, `StaffTimeEntry`, `StaffShift`, `ScheduleBlock`, `Client` (+ `ClientMedication`, `ClientDocument`, `ClientPayment`, `ClientHealthItem`, `ClientCareNote`, `ClientTreatmentPlanItem`, `ClientFollowUpReminder`, `ClientGalleryItem`), `Appointment` (+ `AppointmentReminder`, which carries a `status` of `SENT`/`FAILED`), `Conversation` + `Message`, `ReminderSettings`, `WhatsAppConnection`, `WhatsAppSession` + `WhatsAppSessionKey` (Baileys link credentials, non-PHI), `EmailVerificationReceipt`, `AnalyticsSnapshot`, `StaffAccessCode`, `StaffDevice`, `StaffThread` + `StaffThreadMessage`, `StaffNotification` (mobile staff app auth/messaging), `PendingStorageCleanup` (storage-cleanup outbox), `FollowUpDraft` (drafted slot-offer/rebook/payment/thank-you messages staff review and send from Inbox › Follow-ups), `WaitlistEntry` (Pro waiting list that feeds slot offers), `WorkflowSettings` (per-business toggles/timings for the rebook, payment-reminder and thank-you drafts).
+Core entities: `Business`, `BusinessHours`, `StaffMember`, `StaffTimeEntry`, `StaffShift`, `ScheduleBlock`, `Client` (+ `ClientMedication`, `ClientDocument`, `ClientPayment`, `ClientHealthItem`, `ClientCareNote`, `ClientTreatmentPlanItem`, `ClientFollowUpReminder`, `ClientGalleryItem`), `Appointment` (+ `AppointmentReminder`, which carries a `status` of `SENT`/`FAILED`), `Conversation` + `Message`, `ReminderSettings`, `WhatsAppConnection`, `WhatsAppSession` + `WhatsAppSessionKey` (Baileys link credentials, non-PHI), `EmailVerificationReceipt`, `AnalyticsSnapshot`, `StaffAccessCode`, `StaffDevice`, `StaffThread` + `StaffThreadMessage`, `StaffNotification` (mobile staff app auth/messaging), `PendingStorageCleanup` (storage-cleanup outbox), `FollowUpDraft` (the outbox for every automation but the timed reminders' automatic sends: staff send them from Automations › To review, or `autoSend` drafts go out on their own via `lib/follow-up-dispatch.ts`), `WaitlistEntry` (Pro waiting list that feeds slot offers), `AutomationSetting` (one row per workspace and automation once saved on the Automations page: on/off, mode, timing, wording; read through `getAutomationSettings` in `lib/automations-data.ts`, which falls back to the legacy `ReminderSettings`/`WorkflowSettings` rows, then the registry in `lib/automations.ts`). `ReminderSettings` and `WorkflowSettings` are legacy: no UI writes them any more.
 
 Everything is scoped to a `Business` (the workspace/tenant). Plan state lives on `Business` (`BusinessPlan` / `BusinessPlanStatus`; `isProBusinessPlan()` in `lib/billing.ts` gates Pro features like full Reports; public plan copy in `lib/public-plans.ts`).
 
