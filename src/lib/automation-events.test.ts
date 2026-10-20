@@ -159,8 +159,16 @@ describe("queueVisitMessage", () => {
 
     await queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "cancelled", now: NOW });
 
+    // Only notices about an older version of the visit: an overlapping older
+    // edit can't withdraw the notice for the newer one.
     expect(mocks.followUpDraft.updateMany).toHaveBeenCalledWith({
-      where: { businessId: "biz_1", appointmentId: "appt_1", kind: "VISIT_CHANGED", status: "PENDING" },
+      where: {
+        businessId: "biz_1",
+        appointmentId: "appt_1",
+        kind: "VISIT_CHANGED",
+        status: "PENDING",
+        appointmentGeneration: { lt: 2 },
+      },
       data: { status: "DISMISSED" },
     });
     expect(mocks.followUpDraft.create).toHaveBeenCalledWith(
@@ -267,11 +275,16 @@ describe("queueMissedVisitMessage", () => {
     );
   });
 
-  it("withdraws a waiting missed-visit message when the no-show is undone", async () => {
+  it("withdraws a waiting (or claimed, not yet sent) missed-visit message when the no-show is undone", async () => {
     await withdrawMissedVisitMessage({ businessId: "biz_1", appointmentId: "appt_1" });
 
     expect(mocks.followUpDraft.updateMany).toHaveBeenCalledWith({
-      where: { businessId: "biz_1", appointmentId: "appt_1", kind: "MISSED_VISIT", status: "PENDING" },
+      where: {
+        businessId: "biz_1",
+        appointmentId: "appt_1",
+        kind: "MISSED_VISIT",
+        OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
+      },
       data: { status: "DISMISSED" },
     });
   });

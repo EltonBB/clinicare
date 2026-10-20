@@ -151,9 +151,17 @@ export async function queueVisitMessage(args: {
 
     if (kind === "VISIT_CHANGED") {
       // A newer change replaces any notice about the visit still waiting to go
-      // out, so the patient only ever hears where the visit stands now.
+      // out, so the patient only ever hears where the visit stands now. Only
+      // notices about an older version: an older edit finishing after a newer
+      // one must not withdraw the newer notice (Codex).
       await prisma.followUpDraft.updateMany({
-        where: { businessId, appointmentId: appointment.id, kind: "VISIT_CHANGED", status: "PENDING" },
+        where: {
+          businessId,
+          appointmentId: appointment.id,
+          kind: "VISIT_CHANGED",
+          status: "PENDING",
+          appointmentGeneration: { lt: appointment.reminderGeneration },
+        },
         data: { status: "DISMISSED" },
       });
     }
@@ -290,7 +298,10 @@ export async function queueMissedVisitMessage(args: {
 export async function withdrawMissedVisitMessage(args: { businessId: string; appointmentId: string }): Promise<void> {
   try {
     await prisma.followUpDraft.updateMany({
-      where: { ...args, kind: "MISSED_VISIT", status: "PENDING" },
+      // Waiting, or claimed but not yet sent: its last check before the send
+      // then refuses it, and it can't come back if the no-show is recorded
+      // again (Codex).
+      where: { ...args, kind: "MISSED_VISIT", OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }] },
       data: { status: "DISMISSED" },
     });
   } catch (error) {

@@ -47,6 +47,9 @@ export type ReminderCronResult = ReminderSyncResult & {
   abandonedBusinesses: number;
 };
 
+/** How long after a visit message was sent a due reminder still defers to it. */
+const VISIT_MESSAGE_RECENT_MS = 10 * 60_000;
+
 const REMINDER_AUTOMATION: Record<ReminderType, AutomationKind> = {
   TWENTY_FOUR_HOUR: "FIRST_REMINDER",
   TWO_HOUR: "SECOND_REMINDER",
@@ -238,6 +241,24 @@ export async function syncAppointmentRemindersForBusiness(
       staff_name: appointment.staffMember?.name ?? business.name,
       clinic_name: business.name,
     });
+    // A booking confirmation, welcome or moved notice for this version of the
+    // visit going out right now (or just now) already tells the patient the
+    // time; it covers the reminders already due once delivered. Held back, not
+    // recorded: if that message fails, the next run sends this one (Codex).
+    const visitMessageGoingOut = await prisma.followUpDraft.count({
+      where: {
+        businessId,
+        appointmentId: appointment.id,
+        appointmentGeneration: appointment.reminderGeneration,
+        kind: { in: ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED"] },
+        status: "SENT",
+        OR: [{ sentAt: null }, { sentAt: { gte: new Date(Date.now() - VISIT_MESSAGE_RECENT_MS) } }],
+      },
+    });
+    if (visitMessageGoingOut > 0) {
+      continue;
+    }
+
     const send = () => sendMessage({
       channel: "WHATSAPP",
       businessId,
