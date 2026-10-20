@@ -109,7 +109,6 @@ export async function queueVisitMessage(args: {
           select: {
             name: true,
             whatsappEnabled: true,
-            whatsappConnection: { select: { status: true } },
             ...AUTOMATION_SETTINGS_SELECT,
           },
         },
@@ -118,10 +117,11 @@ export async function queueVisitMessage(args: {
     if (!appointment || appointment.startAt.getTime() <= now.getTime()) return null;
 
     const business = appointment.business;
-    const linked =
-      business.whatsappEnabled &&
-      (business.whatsappConnection?.status === "CONNECTED" || business.whatsappConnection?.status === "ERRORED");
-    if (!linked) return null;
+    // A clinic that set up WhatsApp gets the draft even while the link is down:
+    // the event happens once, and the draft waits for the link to come back
+    // (automatic sends need it; a draft over 3 days late goes to review). One
+    // that never set WhatsApp up gets none (Codex).
+    if (!business.whatsappEnabled) return null;
 
     // A cancel notice needs a cancelled visit; a booking or new time, one that
     // still stands (not a visit also marked completed or a no-show — Codex).
@@ -288,7 +288,6 @@ export async function queueMissedVisitMessage(args: {
           select: {
             name: true,
             whatsappEnabled: true,
-            whatsappConnection: { select: { status: true } },
             ...AUTOMATION_SETTINGS_SELECT,
           },
         },
@@ -297,10 +296,11 @@ export async function queueMissedVisitMessage(args: {
     if (!appointment) return null;
 
     const business = appointment.business;
-    const linked =
-      business.whatsappEnabled &&
-      (business.whatsappConnection?.status === "CONNECTED" || business.whatsappConnection?.status === "ERRORED");
-    if (!linked) return null;
+    // A clinic that set up WhatsApp gets the draft even while the link is down:
+    // the event happens once, and the draft waits for the link to come back
+    // (automatic sends need it; a draft over 3 days late goes to review). One
+    // that never set WhatsApp up gets none (Codex).
+    if (!business.whatsappEnabled) return null;
 
     const setting = automationSettingsFromBusiness(business).MISSED_VISIT;
     if (!setting.enabled) return null;

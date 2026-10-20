@@ -149,12 +149,20 @@ describe("queueVisitMessage", () => {
     expect(await queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "booked", now: NOW })).toBeNull();
   });
 
-  it("says nothing while WhatsApp isn't linked", async () => {
+  it("says nothing for a clinic that never set up WhatsApp", async () => {
+    mocks.appointment.findFirst.mockResolvedValue(
+      appointment({ business: business({ whatsappEnabled: false, whatsappConnection: null }) })
+    );
+
+    expect(await queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "booked", now: NOW })).toBeNull();
+  });
+
+  it("still drafts the message while WhatsApp is disconnected, to go out once it reconnects", async () => {
     mocks.appointment.findFirst.mockResolvedValue(
       appointment({ business: business({ whatsappConnection: { status: "DISCONNECTED" } }) })
     );
 
-    expect(await queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "booked", now: NOW })).toBeNull();
+    expect(await queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "booked", now: NOW })).toBe("draft_1");
   });
 
   it("tells the patient a cancelled visit is cancelled, replacing an older notice", async () => {
@@ -327,6 +335,18 @@ describe("queueMissedVisitMessage", () => {
         }),
       })
     );
+  });
+
+  it("still drafts the missed-visit message while WhatsApp is disconnected", async () => {
+    mocks.appointment.findFirst.mockResolvedValue(
+      appointment({
+        status: "NO_SHOW",
+        startAt: new Date("2026-10-20T07:00:00.000Z"),
+        business: business({ whatsappConnection: { status: "DISCONNECTED" } }),
+      })
+    );
+
+    expect(await queueMissedVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", now: NOW })).toBe("draft_1");
   });
 
   it("drafts nothing for a visit that hasn't started", async () => {
