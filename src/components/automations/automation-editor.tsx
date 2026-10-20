@@ -233,7 +233,6 @@ function PreviewBubble({ text }: { text: string }) {
   return (
     <div className="rounded-[10px] rounded-tl-[3px] bg-white px-3 py-2.5 text-[13px] leading-relaxed text-foreground shadow-[0_1px_1px_rgba(20,32,51,0.06)]">
       <p className="whitespace-pre-wrap break-words">{text}</p>
-      <p className="mt-1 text-right text-[10px] text-muted-foreground">10:30</p>
     </div>
   );
 }

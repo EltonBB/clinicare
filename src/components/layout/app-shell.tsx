@@ -86,6 +86,8 @@ type AppShellProps = {
   notifications?: NotificationItem[];
 };
 
+const MOBILE_LABELS: Record<string, string> = { "/dashboard": "Home", "/automations": "Auto" };
+
 export function AppShell({
   children,
   businessName = "Rivera Health & Wellness",
@@ -417,15 +419,15 @@ export function AppShell({
       </div>
 
       <nav className="fixed inset-x-2 bottom-3 z-30 rounded-(--radius-field) border border-border/80 bg-white/96 px-1 py-2 shadow-[0_12px_28px_rgba(20,21,47,0.07)] backdrop-blur-xl lg:hidden">
-        <div className="grid grid-cols-7">
+        <div className="grid grid-cols-8">
           {navigationItems.map((item) => {
             const Icon = item.icon;
             const isActive =
               pathname === item.href || pathname.startsWith(`${item.href}/`);
-            // Seven items share a phone's width (~44px each), where "Dashboard"
-            // spilled into its neighbour; it reads "Home" here (its full name
-            // stays the accessible label).
-            const mobileLabel = item.href === "/dashboard" ? "Home" : item.label;
+            // Eight items share a phone's width (~44px each), where "Dashboard"
+            // and "Automations" spill into their neighbours; they read "Home"
+            // and "Auto" here (the full name stays the accessible label).
+            const mobileLabel = MOBILE_LABELS[item.href] ?? item.label;
             const mobileNavClasses = cn(
               "flex min-w-0 flex-col items-center gap-1 rounded-(--radius-field) border border-transparent px-0.5 py-2 text-[10px] font-medium text-muted-foreground transition-[background-color,border-color,color,transform] duration-(--duration-base) active:bg-[#eef2f8]",
               isActive &&
