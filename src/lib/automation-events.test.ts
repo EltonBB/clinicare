@@ -301,6 +301,24 @@ describe("one message per version of a visit", () => {
     );
   });
 
+  it("counts as the first welcome only one sent, or one waiting for a booking that still stands", async () => {
+    mocks.appointment.count.mockResolvedValue(0);
+
+    await queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "booked", now: NOW });
+
+    // A welcome left over from a deleted or cancelled first booking can't win.
+    expect(mocks.followUpDraft.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          businessId: "biz_1",
+          clientId: "client_1",
+          kind: "NEW_PATIENT_WELCOME",
+          OR: [{ status: "SENT" }, { status: "PENDING", appointment: { status: { in: ["PENDING", "CONFIRMED"] } } }],
+        },
+      })
+    );
+  });
+
   it.each([
     ["a new booking", { isNew: true, newStatus: "CONFIRMED" }, "booked"],
     ["a visit given to another patient at a new time", { clientChanged: true, timeChanged: true }, "booked"],

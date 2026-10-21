@@ -232,7 +232,14 @@ export async function queueVisitMessage(args: {
       const firstWelcome =
         kind === "NEW_PATIENT_WELCOME"
           ? await prisma.followUpDraft.findFirst({
-              where: { businessId, clientId: appointment.clientId, kind, status: { in: ["PENDING", "SENT"] } },
+              // Sent, or still waiting for a booking that stands: a welcome left
+              // over from a deleted or cancelled first booking can't win (Codex).
+              where: {
+                businessId,
+                clientId: appointment.clientId,
+                kind,
+                OR: [{ status: "SENT" }, { status: "PENDING", appointment: { status: { in: ["PENDING", "CONFIRMED"] } } }],
+              },
               orderBy: [{ createdAt: "asc" }, { id: "asc" }],
               select: { id: true },
             })
