@@ -41,7 +41,10 @@ export function visitEventForSave(save: {
 }): VisitEvent | null {
   const stands = save.newStatus === "PENDING" || save.newStatus === "CONFIRMED";
   if (save.isNew) return save.newStatus !== "CANCELLED" ? "booked" : null;
-  if (save.wasNewlyCancelled) return "cancelled";
+  // Cancelled and given to another patient in one save: the new patient never
+  // held it, and the old one is no longer on it, so no message rather than the
+  // wrong one (Codex).
+  if (save.wasNewlyCancelled) return save.clientChanged ? null : "cancelled";
   if (stands && (save.clientChanged || save.wasReactivated)) return "booked";
   if (save.newStatus !== "CANCELLED" && save.timeChanged) return "moved";
   // A notice the save withdrew is still owed, for the visit as it now is (Codex).

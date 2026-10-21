@@ -324,7 +324,9 @@ export async function saveAppointmentAction(
     // The visit version this save committed: its patient message is only for
     // that version (a later edit's own message covers anything newer). The
     // write is guarded on the fields read with it, so the read version plus
-    // this save's own reset is the committed one.
+    // this save's own reset is the committed one. Set, never incremented, inside
+    // the transaction, so a retried attempt computes the same value (Codex).
+    let readGeneration: number | undefined;
     let savedGeneration: number | undefined;
     // Editing a still-cancelled booking's client/time/staff/service: an open
     // offer's text was frozen from the OLD details, but Book reads the row's
@@ -377,7 +379,8 @@ export async function saveAppointmentAction(
       previousClientId = existing.clientId;
       previousStaffMemberId = existing.staffMemberId;
       previousStatus = existing.status;
-      savedGeneration = existing.reminderGeneration;
+      readGeneration = existing.reminderGeneration;
+      savedGeneration = readGeneration;
       readSlot = {
         clientId: existing.clientId,
         staffMemberId: existing.staffMemberId,
@@ -579,7 +582,7 @@ export async function saveAppointmentAction(
           });
           // The confirmation/notice drafts named the visit as it was.
           ({ bookingMessageRetired, visitNoticeRetired } = await retireVisitDrafts(tx, payload.id));
-          if (savedGeneration !== undefined) savedGeneration += 1;
+          if (readGeneration !== undefined) savedGeneration = readGeneration + 1;
         }
 
         const affectedClientIds = Array.from(

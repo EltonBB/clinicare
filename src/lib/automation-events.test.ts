@@ -332,6 +332,12 @@ describe("one message per version of a visit", () => {
   it.each([
     ["a new booking", { isNew: true, newStatus: "CONFIRMED" }, "booked"],
     ["a visit given to another patient at a new time", { clientChanged: true, timeChanged: true }, "booked"],
+    // Neither patient held this cancelled visit as it now stands: no message.
+    [
+      "a visit cancelled and given to another patient in one save",
+      { wasNewlyCancelled: true, clientChanged: true, newStatus: "CANCELLED" },
+      null,
+    ],
     ["a new time", { timeChanged: true }, "moved"],
     ["a cancellation", { wasNewlyCancelled: true, newStatus: "CANCELLED" }, "cancelled"],
     ["a reset that retired a waiting confirmation", { bookingMessageRetired: true }, "booked"],
