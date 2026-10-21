@@ -321,6 +321,11 @@ export async function saveAppointmentAction(
     // re-drafted below for the visit as it now stands.
     let bookingMessageRetired = false;
     let visitNoticeRetired: "moved" | "cancelled" | null = null;
+    // The visit version this save committed: its patient message is only for
+    // that version (a later edit's own message covers anything newer). The
+    // write is guarded on the fields read with it, so the read version plus
+    // this save's own reset is the committed one.
+    let savedGeneration: number | undefined;
     // Editing a still-cancelled booking's client/time/staff/service: an open
     // offer's text was frozen from the OLD details, but Book reads the row's
     // current ones — so an accepted offer could book the client into a
@@ -358,6 +363,7 @@ export async function saveAppointmentAction(
           startAt: true,
           endAt: true,
           status: true,
+          reminderGeneration: true,
         },
       });
 
@@ -371,6 +377,7 @@ export async function saveAppointmentAction(
       previousClientId = existing.clientId;
       previousStaffMemberId = existing.staffMemberId;
       previousStatus = existing.status;
+      savedGeneration = existing.reminderGeneration;
       readSlot = {
         clientId: existing.clientId,
         staffMemberId: existing.staffMemberId,
@@ -572,6 +579,7 @@ export async function saveAppointmentAction(
           });
           // The confirmation/notice drafts named the visit as it was.
           ({ bookingMessageRetired, visitNoticeRetired } = await retireVisitDrafts(tx, payload.id));
+          if (savedGeneration !== undefined) savedGeneration += 1;
         }
 
         const affectedClientIds = Array.from(
@@ -649,6 +657,7 @@ export async function saveAppointmentAction(
         });
 
         appointmentId = created.id;
+        savedGeneration = created.reminderGeneration;
         await refreshClientLastVisitAt(payload.clientId, business.id, tx);
       }
 
@@ -707,7 +716,12 @@ export async function saveAppointmentAction(
       visitNoticeRetired,
     });
     if (visitEvent) {
-      await queueVisitMessage({ businessId: business.id, appointmentId: appointmentId!, event: visitEvent });
+      await queueVisitMessage({
+        businessId: business.id,
+        appointmentId: appointmentId!,
+        event: visitEvent,
+        generation: savedGeneration,
+      });
     }
     // A no-show recorded here, or one whose patient (or other details) was
     // corrected: the old missed-visit draft was retired with the reset.

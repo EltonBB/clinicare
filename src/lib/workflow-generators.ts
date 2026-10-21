@@ -346,8 +346,6 @@ export async function findCheckupDueCandidates(args: {
           ...ELIGIBLE_CLIENT_WHERE,
           appointments: { none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } } },
         },
-        // A draft still waiting is excluded in the query itself (Codex).
-        followUpDrafts: { none: { kind: "CHECKUP_DUE", status: "PENDING" } },
       },
       select: { id: true, clientId: true, remindAt: true, client: { select: { name: true } } },
       orderBy: [{ remindAt: "asc" }, { id: "asc" }],
@@ -355,14 +353,22 @@ export async function findCheckupDueCandidates(args: {
       ...(after ? { cursor: { id: after }, skip: 1 } : {}),
     });
     if (page.length === 0) break;
-    const handled = new Set(
-      (
-        await prisma.followUpDraft.findMany({
-          where: { businessId, kind: "CHECKUP_DUE", followUpReminderId: { in: page.map((reminder) => reminder.id) } },
-          select: { dedupeKey: true },
-        })
-      ).map((draft) => draft.dedupeKey)
-    );
+    // Matched by exact key, so only a draft for a reminder's current date
+    // counts as handled; one still waiting for a date staff moved since can
+    // never be sent (the send gate checks the date), so it is expired here
+    // rather than left standing in for the new date (Codex).
+    const drafts = await prisma.followUpDraft.findMany({
+      where: { businessId, kind: "CHECKUP_DUE", followUpReminderId: { in: page.map((reminder) => reminder.id) } },
+      select: { id: true, status: true, followUpReminderId: true, dedupeKey: true },
+    });
+    const currentKey = new Map(page.map((reminder) => [reminder.id, keyFor(reminder)]));
+    const handled = new Set(drafts.map((draft) => draft.dedupeKey));
+    const stale = drafts
+      .filter((draft) => draft.status === "PENDING" && draft.dedupeKey !== currentKey.get(draft.followUpReminderId ?? ""))
+      .map((draft) => draft.id);
+    if (stale.length > 0) {
+      await prisma.followUpDraft.updateMany({ where: { id: { in: stale }, status: "PENDING" }, data: { status: "EXPIRED" } });
+    }
     due.push(...page.filter((reminder) => !handled.has(keyFor(reminder))));
     if (page.length < CHECKUP_SCAN_LIMIT) break;
     after = page[page.length - 1].id;

@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   clientPayment: { findMany: vi.fn() },
   appointment: { findMany: vi.fn() },
   clientFollowUpReminder: { findMany: vi.fn() },
-  followUpDraft: { findMany: vi.fn() },
+  followUpDraft: { findMany: vi.fn(), updateMany: vi.fn() },
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: mocks }));
@@ -506,10 +506,11 @@ describe("findCheckupDueCandidates", () => {
       { id: "fr_1", clientId: "c1", remindAt: handledAt, client: { name: "Alex" } },
       { id: "fr_2", clientId: "c2", remindAt: movedTo, client: { name: "Bea" } },
     ]);
-    // fr_1's nudge for this very date went out; fr_2's was for its old date.
+    // fr_1's nudge for this very date went out; fr_2's, still waiting, was
+    // for its old date (staff moved it after the draft was made).
     mocks.followUpDraft.findMany.mockResolvedValue([
-      { dedupeKey: `CHECKUP_DUE:fr_1:${handledAt.getTime()}` },
-      { dedupeKey: `CHECKUP_DUE:fr_2:${movedTo.getTime() - 5 * 3_600_000}` },
+      { id: "d_1", status: "SENT", followUpReminderId: "fr_1", dedupeKey: `CHECKUP_DUE:fr_1:${handledAt.getTime()}` },
+      { id: "d_2", status: "PENDING", followUpReminderId: "fr_2", dedupeKey: `CHECKUP_DUE:fr_2:${movedTo.getTime() - 5 * 3_600_000}` },
     ]);
 
     const result = await findCheckupDueCandidates({ businessId: "biz_1", now: NOW });
@@ -517,7 +518,12 @@ describe("findCheckupDueCandidates", () => {
     expect(result.map((draft) => draft.followUpReminderId)).toEqual(["fr_2"]);
     expect(mocks.followUpDraft.findMany).toHaveBeenCalledWith({
       where: { businessId: "biz_1", kind: "CHECKUP_DUE", followUpReminderId: { in: ["fr_1", "fr_2"] } },
-      select: { dedupeKey: true },
+      select: { id: true, status: true, followUpReminderId: true, dedupeKey: true },
+    });
+    // The old date's waiting draft can't be sent: it is expired, not left listed.
+    expect(mocks.followUpDraft.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["d_2"] }, status: "PENDING" },
+      data: { status: "EXPIRED" },
     });
   });
 
@@ -564,7 +570,8 @@ describe("findCheckupDueCandidates", () => {
     // Only the last day: never a backlog of old follow-up dates.
     expect(where.remindAt).toEqual({ lte: NOW, gt: new Date(NOW.getTime() - 24 * 3_600_000) });
     expect(where.client.appointments).toEqual({ none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: NOW } } });
-    // One still waiting is excluded in the query; one handled for this date by its key.
-    expect(where.followUpDrafts).toEqual({ none: { kind: "CHECKUP_DUE", status: "PENDING" } });
+    // Handled dates are matched by their exact key after the read, not by a
+    // query filter that a stale old-date draft would satisfy (Codex).
+    expect(where.followUpDrafts).toBeUndefined();
   });
 });

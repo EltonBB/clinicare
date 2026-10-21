@@ -142,6 +142,14 @@ describe("queueVisitMessage", () => {
     });
   });
 
+  it("says nothing for a save the visit has moved on from since (a later edit)", async () => {
+    // The visit is at generation 2 now; this save committed generation 1.
+    expect(
+      await queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "moved", generation: 1, now: NOW })
+    ).toBeNull();
+    expect(mocks.followUpDraft.create).not.toHaveBeenCalled();
+  });
+
   it("says nothing about a visit whose time has passed", async () => {
     mocks.appointment.findFirst.mockResolvedValue(appointment({ startAt: new Date("2026-10-19T08:00:00.000Z") }));
 

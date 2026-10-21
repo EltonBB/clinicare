@@ -129,6 +129,12 @@ export async function queueVisitMessage(args: {
   appointmentId: string;
   event: VisitEvent;
   now?: Date;
+  /**
+   * The visit version the caller's save committed: nothing is said once a
+   * later edit has moved it on (that edit tells the patient where it stands
+   * now), so an older event can't be told to a newer patient or time (Codex).
+   */
+  generation?: number;
   /** Internal: another booking already holds this patient's welcome, so this one gets the confirmation. */
   notNewPatient?: boolean;
 }): Promise<string | null> {
@@ -156,6 +162,7 @@ export async function queueVisitMessage(args: {
       },
     });
     if (!appointment || appointment.startAt.getTime() <= now.getTime()) return null;
+    if (args.generation !== undefined && appointment.reminderGeneration !== args.generation) return null;
 
     const business = appointment.business;
     // A clinic that set up WhatsApp gets the draft even while the link is down:
