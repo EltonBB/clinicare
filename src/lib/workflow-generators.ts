@@ -307,7 +307,7 @@ export async function findThankYouCandidates(args: {
  * follow-up date passed months ago).
  */
 const CHECKUP_LOOKBACK_HOURS = 24;
-/** Follow-up dates read per run: a day's worth, far above what one clinic has due at once. */
+/** Follow-up dates read per page while looking for ones still due. */
 const CHECKUP_SCAN_LIMIT = 1_000;
 
 /**
@@ -323,39 +323,46 @@ export async function findCheckupDueCandidates(args: {
 }): Promise<FollowUpDraftInput[]> {
   const { businessId, now, message } = args;
 
-  const reminders = await prisma.clientFollowUpReminder.findMany({
-    where: {
-      businessId,
-      status: "Scheduled",
-      remindAt: { lte: now, gt: new Date(now.getTime() - CHECKUP_LOOKBACK_HOURS * HOUR_MS) },
-      client: {
-        ...ELIGIBLE_CLIENT_WHERE,
-        appointments: { none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } } },
-      },
-      // A draft still waiting is excluded in the query itself, so the cap can't
-      // keep re-reading it (Codex).
-      followUpDrafts: { none: { kind: "CHECKUP_DUE", status: "PENDING" } },
-    },
-    select: { id: true, clientId: true, remindAt: true, client: { select: { name: true } } },
-    orderBy: [{ remindAt: "asc" }, { id: "asc" }],
-    // The day's due dates, read whole: the few already handled are dropped
-    // below, before the cap, so they can't hold its places (Codex).
-    take: CHECKUP_SCAN_LIMIT,
-  });
-
   // A date already nudged (sent or skipped) is identified exactly by its
   // dedupe key, which carries the date; a date staff moved since is new (Codex).
   const keyFor = (reminder: { id: string; remindAt: Date }) => `CHECKUP_DUE:${reminder.id}:${reminder.remindAt.getTime()}`;
-  const handled = new Set(
-    (
-      await prisma.followUpDraft.findMany({
-        where: { businessId, kind: "CHECKUP_DUE", followUpReminderId: { in: reminders.map((reminder) => reminder.id) } },
-        select: { dedupeKey: true },
-      })
-    ).map((draft) => draft.dedupeKey)
-  );
 
-  return reminders.filter((reminder) => !handled.has(keyFor(reminder))).slice(0, MAX_CANDIDATES_PER_RUN).map((reminder) => ({
+  // Read page by page, dropping handled dates before the cap, so dates already
+  // nudged can never hold the places of ones still due (Codex).
+  const due: { id: string; clientId: string; remindAt: Date; client: { name: string } }[] = [];
+  let after: string | null = null;
+  while (due.length < MAX_CANDIDATES_PER_RUN) {
+    const page: typeof due = await prisma.clientFollowUpReminder.findMany({
+      where: {
+        businessId,
+        status: "Scheduled",
+        remindAt: { lte: now, gt: new Date(now.getTime() - CHECKUP_LOOKBACK_HOURS * HOUR_MS) },
+        client: {
+          ...ELIGIBLE_CLIENT_WHERE,
+          appointments: { none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } } },
+        },
+        // A draft still waiting is excluded in the query itself (Codex).
+        followUpDrafts: { none: { kind: "CHECKUP_DUE", status: "PENDING" } },
+      },
+      select: { id: true, clientId: true, remindAt: true, client: { select: { name: true } } },
+      orderBy: [{ remindAt: "asc" }, { id: "asc" }],
+      take: CHECKUP_SCAN_LIMIT,
+      ...(after ? { cursor: { id: after }, skip: 1 } : {}),
+    });
+    if (page.length === 0) break;
+    const handled = new Set(
+      (
+        await prisma.followUpDraft.findMany({
+          where: { businessId, kind: "CHECKUP_DUE", followUpReminderId: { in: page.map((reminder) => reminder.id) } },
+          select: { dedupeKey: true },
+        })
+      ).map((draft) => draft.dedupeKey)
+    );
+    due.push(...page.filter((reminder) => !handled.has(keyFor(reminder))));
+    if (page.length < CHECKUP_SCAN_LIMIT) break;
+    after = page[page.length - 1].id;
+  }
+  return due.slice(0, MAX_CANDIDATES_PER_RUN).map((reminder) => ({
     clientId: reminder.clientId,
     kind: "CHECKUP_DUE" as const,
     followUpReminderId: reminder.id,

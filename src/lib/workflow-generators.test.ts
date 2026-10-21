@@ -521,6 +521,28 @@ describe("findCheckupDueCandidates", () => {
     });
   });
 
+  it("reads past a full page of already-handled dates to the ones still due", async () => {
+    const remindAt = new Date(NOW.getTime() - 2 * 3_600_000);
+    const page = Array.from({ length: 1_000 }, (_, index) => ({
+      id: `fr_${String(index).padStart(4, "0")}`,
+      clientId: `c${index}`,
+      remindAt,
+      client: { name: "Alex" },
+    }));
+    mocks.clientFollowUpReminder.findMany
+      .mockResolvedValueOnce(page)
+      .mockResolvedValueOnce([{ id: "fr_9999", clientId: "c9999", remindAt, client: { name: "Bea" } }]);
+    // Every date on the first page was nudged already; none on the second.
+    mocks.followUpDraft.findMany
+      .mockResolvedValueOnce(page.map((reminder) => ({ dedupeKey: `CHECKUP_DUE:${reminder.id}:${remindAt.getTime()}` })))
+      .mockResolvedValueOnce([]);
+
+    const result = await findCheckupDueCandidates({ businessId: "biz_1", now: NOW });
+
+    expect(result.map((draft) => draft.followUpReminderId)).toEqual(["fr_9999"]);
+    expect(mocks.clientFollowUpReminder.findMany.mock.calls[1][0]).toMatchObject({ cursor: { id: "fr_0999" }, skip: 1 });
+  });
+
   it("drafts a check-up nudge for a follow-up date that just arrived, once", async () => {
     const remindAt = new Date(NOW.getTime() - 2 * 3_600_000);
     mocks.clientFollowUpReminder.findMany.mockResolvedValue([{ id: "fr_1", clientId: "c1", remindAt, client: { name: "Alex" } }]);
