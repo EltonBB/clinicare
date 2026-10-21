@@ -58,7 +58,7 @@ export function ReviewList({ items }: { items: FollowUpDraftItem[] }) {
             first run: the quiet empty state, with what lands here. */}
         <WorkspaceEmptyState
           title="Nothing to review"
-          description="Payment reminders, thank-yous and rebooking nudges are drafted here. Nothing sends until you do."
+          description="Messages from automations set to wait for your review land here. None of them sends until you do."
         />
       </>
     );

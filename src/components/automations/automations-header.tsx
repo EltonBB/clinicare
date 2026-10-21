@@ -21,6 +21,7 @@ export function AutomationsHeader({
   const tabs: Array<{ id: Tab; label: string; href: string; count?: number }> = [
     { id: "automations", label: "Automations", href: "/automations" },
     ...(showReviewTab ? [{ id: "review" as const, label: "To review", href: "/automations/review", count: reviewCount }] : []),
+    { id: "activity", label: "Activity", href: "/automations/activity" },
   ];
 
   return (
