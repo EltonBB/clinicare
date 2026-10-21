@@ -401,6 +401,33 @@ describe("queueMissedVisitMessage", () => {
     expect(mocks.followUpDraft.create).not.toHaveBeenCalled();
   });
 
+  it("drafts no second message beside one already waiting for this visit version", async () => {
+    mocks.appointment.findFirst.mockResolvedValue(appointment({ status: "NO_SHOW", startAt: new Date("2026-10-20T07:00:00.000Z") }));
+    mocks.followUpDraft.count.mockResolvedValue(1);
+
+    expect(await queueMissedVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", now: NOW })).toBeNull();
+    expect(mocks.followUpDraft.count).toHaveBeenCalledWith({
+      where: {
+        businessId: "biz_1",
+        appointmentId: "appt_1",
+        kind: "MISSED_VISIT",
+        appointmentGeneration: 2,
+        OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
+      },
+    });
+    expect(mocks.followUpDraft.create).not.toHaveBeenCalled();
+  });
+
+  it("drafts a refused missed-visit message again while the visit is still a no-show", async () => {
+    mocks.appointment.findFirst.mockResolvedValue(appointment({ status: "NO_SHOW", startAt: new Date("2026-10-20T07:00:00.000Z") }));
+
+    await replaceRefusedVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "missed" });
+
+    expect(mocks.followUpDraft.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ kind: "MISSED_VISIT" }) })
+    );
+  });
+
   it("still drafts the missed-visit message while WhatsApp is disconnected", async () => {
     mocks.appointment.findFirst.mockResolvedValue(
       appointment({
@@ -528,7 +555,12 @@ describe("retireVisitDrafts", () => {
       },
     };
 
-    expect(await retireVisitDrafts(tx as never, "appt_1")).toEqual({ bookingMessageRetired: true, visitNoticeRetired: "moved" });
+    expect(await retireVisitDrafts(tx as never, "appt_1")).toEqual({
+      bookingMessageRetired: true,
+      visitNoticeRetired: "moved",
+      missedVisitRetired: true,
+    });
+    expect(tx.followUpDraft.count).toHaveBeenCalledWith({ where: { appointmentId: "appt_1", status: "PENDING", kind: "MISSED_VISIT" } });
 
     expect(tx.followUpDraft.updateMany).toHaveBeenCalledWith({
       where: {

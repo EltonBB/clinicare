@@ -12,6 +12,8 @@ import { checkupDedupeKey } from "@/lib/workflow-generators";
 const HOUR_MS = 3_600_000;
 
 export type VisitEvent = "booked" | "moved" | "cancelled";
+/** A visit message owed again after its send was refused: a visit event, or the missed-visit message. */
+export type OwedVisitMessage = VisitEvent | "missed";
 
 /**
  * Drafts written about a visit as it stood: its patient, time, staff member
@@ -87,12 +89,17 @@ export async function retireMovedCheckupDrafts(
 export async function retireVisitDrafts(
   tx: Prisma.TransactionClient,
   appointmentId: string
-): Promise<{ bookingMessageRetired: boolean; visitNoticeRetired: "moved" | "cancelled" | null }> {
+): Promise<{ bookingMessageRetired: boolean; visitNoticeRetired: "moved" | "cancelled" | null; missedVisitRetired: boolean }> {
   // Whether a confirmation or welcome, or a moved or cancel notice, was still
   // waiting: the caller re-drafts it for the visit as it now stands (an unsent
   // message is still owed, say after a pending booking is confirmed — Codex).
   const waitingBookingMessages = await tx.followUpDraft.count({
     where: { appointmentId, status: "PENDING", kind: { in: BOOKING_MESSAGE_KINDS } },
+  });
+  // A missed-visit message still waiting is owed again for the visit as it now
+  // is; one already delivered is not repeated for a detail edit (Codex).
+  const waitingMissedVisit = await tx.followUpDraft.count({
+    where: { appointmentId, status: "PENDING", kind: "MISSED_VISIT" },
   });
   const waitingNotices = await tx.followUpDraft.findMany({
     where: { appointmentId, status: "PENDING", kind: "VISIT_CHANGED" },
@@ -108,7 +115,7 @@ export async function retireVisitDrafts(
     where: { appointmentId, status: "PENDING", kind: { in: VISIT_DRAFT_KINDS } },
     data: { status: "DISMISSED" },
   });
-  return { bookingMessageRetired: waitingBookingMessages > 0, visitNoticeRetired };
+  return { bookingMessageRetired: waitingBookingMessages > 0, visitNoticeRetired, missedVisitRetired: waitingMissedVisit > 0 };
 }
 
 function isUniqueViolation(error: unknown) {
@@ -322,9 +329,12 @@ export async function queueVisitMessage(args: {
 export async function replaceRefusedVisitMessage(args: {
   businessId: string;
   appointmentId: string;
-  event: VisitEvent;
+  event: OwedVisitMessage;
 }): Promise<void> {
-  await queueVisitMessage(args);
+  const { event, ...visit } = args;
+  // A missed-visit message is owed only while the visit is still a no-show.
+  if (event === "missed") await queueMissedVisitMessage(visit);
+  else await queueVisitMessage({ ...visit, event });
 }
 
 /**
@@ -391,6 +401,18 @@ export async function queueMissedVisitMessage(args: {
         select: { id: true },
       });
       if (!stillMissed) return null;
+      // One unsent missed-visit message per visit version: a replacement for a
+      // refused one never stands beside a draft that is already waiting.
+      const waiting = await tx.followUpDraft.count({
+        where: {
+          businessId,
+          appointmentId: appointment.id,
+          kind: "MISSED_VISIT",
+          appointmentGeneration: appointment.reminderGeneration,
+          OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
+        },
+      });
+      if (waiting > 0) return null;
       const draft = await tx.followUpDraft.create({
         data: {
           businessId,

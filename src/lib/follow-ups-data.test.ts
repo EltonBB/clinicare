@@ -836,6 +836,23 @@ describe("follow-ups data layer — which drafts are actionable", () => {
     });
   });
 
+  it("owes the missed-visit message again when a later edit refuses it mid-send", async () => {
+    serveDrafts([
+      draftRow({
+        kind: "MISSED_VISIT",
+        appointmentId: "appt_2",
+        appointmentGeneration: 3,
+        dedupeKey: "MISSED_VISIT:appt_2:1",
+        appointment: { status: "NO_SHOW", startAt: NOW, reminderGeneration: 4, clientId: "client_1" },
+      }),
+    ]);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({
+      ok: false,
+      visitMessageOwed: { appointmentId: "appt_2", event: "missed" },
+    });
+  });
+
   it("refuses an automatic send once the draft no longer sends on its own", async () => {
     serveDrafts([draftRow({ autoSend: false })]);
 

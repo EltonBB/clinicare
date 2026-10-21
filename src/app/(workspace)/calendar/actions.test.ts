@@ -61,7 +61,7 @@ vi.mock("@/lib/automation-events", async (importOriginal) => ({
   queueVisitMessage: vi.fn(),
   queueMissedVisitMessage: vi.fn(),
   retireMissedVisitDrafts: vi.fn(),
-  retireVisitDrafts: vi.fn().mockResolvedValue({ bookingMessageRetired: false, visitNoticeRetired: null }),
+  retireVisitDrafts: vi.fn().mockResolvedValue({ bookingMessageRetired: false, visitNoticeRetired: null, missedVisitRetired: false }),
 }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -141,7 +141,7 @@ import {
   deleteAppointmentCore,
   NO_SHOW_PLAN_ERROR,
 } from "@/lib/appointments-shared";
-import { queueMissedVisitMessage, retireMissedVisitDrafts } from "@/lib/automation-events";
+import { queueMissedVisitMessage, retireMissedVisitDrafts, retireVisitDrafts } from "@/lib/automation-events";
 
 const BUSINESS = { id: "biz_1", plan: "PRO" as const };
 const EXISTING = {
@@ -1472,6 +1472,21 @@ describe("saveAppointmentAction — no-show status", () => {
 
     expect((await saveAppointmentAction({ ...NO_SHOW_PAYLOAD, baselineStatus: "no-show" })).ok).toBe(true);
     expect(retireMissedVisitDrafts).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["the delivered message isn't repeated for a detail edit", "client_1", false, false],
+    ["a message still waiting is drafted again for the edited visit", "client_1", true, true],
+    ["the visit's new patient gets their own message", "client_2", false, true],
+  ])("editing a no-show's details: %s", async (_label, clientId, missedVisitRetired, queued) => {
+    mocks.appointment.findFirst.mockResolvedValue({ ...EXISTING, status: "NO_SHOW" });
+    vi.mocked(retireVisitDrafts).mockResolvedValueOnce({ bookingMessageRetired: false, visitNoticeRetired: null, missedVisitRetired });
+
+    const result = await saveAppointmentAction({ ...NO_SHOW_PAYLOAD, clientId, service: "Cleaning", baselineStatus: "no-show" });
+
+    expect(result.ok).toBe(true);
+    expect(retireVisitDrafts).toHaveBeenCalled();
+    expect(vi.mocked(queueMissedVisitMessage).mock.calls.length).toBe(queued ? 1 : 0);
   });
 
   it("refuses to relabel a cancelled booking as a no-show through the edit form", async () => {

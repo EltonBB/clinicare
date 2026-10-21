@@ -321,6 +321,7 @@ export async function saveAppointmentAction(
     // re-drafted below for the visit as it now stands.
     let bookingMessageRetired = false;
     let visitNoticeRetired: "moved" | "cancelled" | null = null;
+    let missedVisitRetired = false;
     // The visit version this save committed: its patient message is only for
     // that version (a later edit's own message covers anything newer). The
     // write is guarded on the fields read with it, so the read version plus
@@ -588,7 +589,7 @@ export async function saveAppointmentAction(
             },
           });
           // The confirmation/notice drafts named the visit as it was.
-          ({ bookingMessageRetired, visitNoticeRetired } = await retireVisitDrafts(tx, payload.id));
+          ({ bookingMessageRetired, visitNoticeRetired, missedVisitRetired } = await retireVisitDrafts(tx, payload.id));
           if (readGeneration !== undefined) savedGeneration = readGeneration + 1;
         }
 
@@ -715,13 +716,14 @@ export async function saveAppointmentAction(
 
     // The patient hears about what the clinic just did (Automations): a new
     // booking, a cancellation, or a new time. Best-effort, after the commit.
+    const clientChanged = readSlot !== null && readSlot.clientId !== payload.clientId;
     const visitEvent = visitEventForSave({
       isNew: !payload.id,
       newStatus,
       wasNewlyCancelled,
       wasReactivated,
       timeChanged: readSlot !== null && readSlot.startAt.getTime() !== startAt.getTime(),
-      clientChanged: readSlot !== null && readSlot.clientId !== payload.clientId,
+      clientChanged,
       bookingMessageRetired,
       visitNoticeRetired,
     });
@@ -733,10 +735,15 @@ export async function saveAppointmentAction(
         generation: savedGeneration,
       });
     }
-    // A no-show recorded here, or one whose patient (or other details) was
-    // corrected: the old missed-visit draft was retired with the reset.
-    // (Leaving a no-show withdrew its draft inside the transaction above.)
-    if (newStatus === "NO_SHOW" && startAt.getTime() <= Date.now() && (previousStatus !== "NO_SHOW" || shouldResetReminders)) {
+    // A no-show recorded here, or one whose patient was corrected, gets its
+    // message. A detail edit to a no-show re-drafts only one still waiting
+    // (retired with the reset): one already delivered to this patient isn't
+    // repeated (Codex). Leaving a no-show withdrew its draft in the transaction.
+    if (
+      newStatus === "NO_SHOW" &&
+      startAt.getTime() <= Date.now() &&
+      (previousStatus !== "NO_SHOW" || clientChanged || missedVisitRetired)
+    ) {
       await queueMissedVisitMessage({ businessId: business.id, appointmentId: appointmentId! });
     }
 

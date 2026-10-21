@@ -10,6 +10,7 @@ import type { FollowUpDraftRecord } from "@/lib/follow-ups";
 import { liveSlotOfferWhere, reofferFreedSlot, retryOnWriteConflict } from "@/lib/slot-offers";
 import { AVAILABLE_STAFF_WHERE } from "@/lib/staff-eligibility";
 import { automationEnabledWhere } from "@/lib/automations-data";
+import type { OwedVisitMessage } from "@/lib/automation-events";
 import { checkupDedupeKey, rebookedAppointmentWhere } from "@/lib/workflow-generators";
 
 // A draft is actionable while it's PENDING and what it's about still holds.
@@ -228,7 +229,7 @@ export type SentFollowUpDraft = {
 type MarkDraftSentResult =
   | { ok: true; draft: SentFollowUpDraft }
   /** `visitMessageOwed`: a refused visit message to draft again for the visit as it now is. */
-  | { ok: false; error: string; visitMessageOwed?: { appointmentId: string; event: "booked" | "moved" | "cancelled" } };
+  | { ok: false; error: string; visitMessageOwed?: { appointmentId: string; event: OwedVisitMessage } };
 
 export const ALREADY_HANDLED_ERROR = "This follow-up was already handled.";
 export const SLOT_OFFER_UNAVAILABLE_ERROR = "This slot offer is no longer available.";
@@ -259,9 +260,10 @@ class VisitChangedSinceDrafted extends Error {
  * A visit message refused for a changed visit is owed again for the visit as it
  * now is: a confirmation or welcome as a booking, a notice as the change it told.
  */
-function owedVisitEvent(kind: FollowUpDraftKind, dedupeKey: string | null): "booked" | "moved" | "cancelled" | null {
+function owedVisitEvent(kind: FollowUpDraftKind, dedupeKey: string | null): OwedVisitMessage | null {
   if (kind === "BOOKING_CONFIRMATION" || kind === "NEW_PATIENT_WELCOME") return "booked";
   if (kind === "VISIT_CHANGED") return dedupeKey?.includes(":cancelled:") ? "cancelled" : "moved";
+  if (kind === "MISSED_VISIT") return "missed";
   return null;
 }
 
