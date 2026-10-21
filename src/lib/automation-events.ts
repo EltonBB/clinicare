@@ -374,8 +374,17 @@ export async function queueMissedVisitMessage(args: {
     // — never a stale draft left behind that a later no-show would revive (Codex).
     return await prisma.$transaction(async (tx) => {
       await lockAppointmentShared(tx, appointment.id);
+      // The same no-show as read: same patient and visit version, so an edit
+      // that landed in between (and already retired the old drafts) isn't
+      // drafted over with the details it replaced (Codex).
       const stillMissed = await tx.appointment.findFirst({
-        where: { id: appointment.id, businessId, status: "NO_SHOW" },
+        where: {
+          id: appointment.id,
+          businessId,
+          status: "NO_SHOW",
+          reminderGeneration: appointment.reminderGeneration,
+          clientId: appointment.clientId,
+        },
         select: { id: true },
       });
       if (!stillMissed) return null;

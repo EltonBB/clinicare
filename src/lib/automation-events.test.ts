@@ -387,6 +387,11 @@ describe("queueMissedVisitMessage", () => {
 
     expect(await queueMissedVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", now: NOW })).toBeNull();
     expect(mocks.$executeRaw).toHaveBeenCalled();
+    // Re-checked under the lock as the same no-show, patient and visit version it read.
+    expect(mocks.appointment.findFirst).toHaveBeenLastCalledWith({
+      where: { id: "appt_1", businessId: "biz_1", status: "NO_SHOW", reminderGeneration: 2, clientId: "client_1" },
+      select: { id: true },
+    });
     expect(mocks.followUpDraft.create).not.toHaveBeenCalled();
   });
 
