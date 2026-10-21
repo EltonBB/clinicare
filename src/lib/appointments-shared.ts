@@ -6,6 +6,7 @@ import { logger } from "@/lib/logger";
 import { buildStaffPushPayload, sendStaffPush } from "@/lib/mobile/push";
 import { prisma } from "@/lib/prisma";
 import { retryOnWriteConflict } from "@/lib/prisma-retry";
+import { retireMissedVisitDrafts, retireVisitDrafts } from "@/lib/automation-events";
 import { offerFreedSlot, withdrawSlotOffers } from "@/lib/slot-offers";
 import { activeStaffDeviceWhere } from "@/lib/staff-device-policy";
 
@@ -125,15 +126,18 @@ export type AppointmentMutationOutcome =
       /** False for the idempotent already-cancelled no-op — callers should skip
        *  re-revalidating/re-notifying since nothing actually changed. */
       changed: boolean;
+      /** The visit version this change committed, when it moved it on (a cancel). */
+      generation?: number;
     }
   | { ok: false; status: 404 | 409; error: string };
 
 /** The success outcome for one appointment row (`changed` false = an idempotent no-op). */
 function mutationDone(
   row: { id: string; clientId: string; staffMemberId: string | null },
-  changed: boolean
+  changed: boolean,
+  generation?: number
 ): AppointmentMutationOutcome {
-  return { ok: true, appointmentId: row.id, clientId: row.clientId, staffMemberId: row.staffMemberId, changed };
+  return { ok: true, appointmentId: row.id, clientId: row.clientId, staffMemberId: row.staffMemberId, changed, generation };
 }
 
 /**
@@ -255,13 +259,17 @@ export async function cancelAppointmentCore(where: {
     // startAt happens to hold when it's read back later (Codex).
     // The reminders are cleared below: a new generation, so the ones owed after
     // a re-confirm are new sends, not repeats (see Appointment.reminderGeneration).
-    await tx.appointment.update({
+    // The version it read back is the one the cancel notice is for (Codex).
+    const bumped = await tx.appointment.update({
       where: { id: cancelled.id },
       data: { cancelledScheduledStartAt: cancelled.startAt, reminderGeneration: { increment: 1 } },
+      select: { reminderGeneration: true },
     });
 
     // Clear any pending reminder rows so a later re-confirm starts clean.
     await tx.appointmentReminder.deleteMany({ where: { appointmentId: cancelled.id } });
+    // A confirmation still waiting would tell the patient about a cancelled visit.
+    await retireVisitDrafts(tx, cancelled.id);
     await refreshClientLastVisitAt(cancelled.clientId, where.businessId, tx);
 
     // A cancellation just freed a slot: offer it to the waiting list (Pro
@@ -269,7 +277,7 @@ export async function cancelAppointmentCore(where: {
     // caller — web, mobile, or the reply-cancel path — can skip the gate).
     await offerFreedSlot(tx, { businessId: where.businessId, cancelled });
 
-    return mutationDone(cancelled, true);
+    return mutationDone(cancelled, true, bumped?.reminderGeneration);
   }));
 }
 
@@ -346,6 +354,9 @@ export async function recordAppointmentAttendanceCore(args: {
     });
 
     await refreshClientLastVisitAt(updated.clientId, businessId, tx);
+    // The undo withdraws this no-show's missed-visit message in the same
+    // transaction, never a later one recorded after it commits.
+    if (attended) await retireMissedVisitDrafts(tx, { businessId, appointmentId: id });
 
     return mutationDone(updated, true);
   });

@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => {
   // `tx` (atomic with the cancel), never on the outer client.
   const business = { findUniqueOrThrow: vi.fn() };
   const waitlistEntry = { findMany: vi.fn(), updateMany: vi.fn() };
-  const followUpDraft = { createMany: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() };
+  const followUpDraft = { createMany: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), count: vi.fn() };
   const scheduleBlock = { findFirst: vi.fn() };
   const staffMember = { findFirst: vi.fn() };
   const businessHours = { findUnique: vi.fn() };
@@ -157,15 +157,18 @@ beforeEach(() => {
 describe("cancelAppointmentCore", () => {
   it("cancels a CONFIRMED appointment, clears reminders, and refreshes lastVisitAt", async () => {
     mockGuardHit();
+    mocks.appointment.update.mockResolvedValueOnce({ reminderGeneration: 5 });
 
     const result = await cancelAppointmentCore(WHERE);
 
+    // The version this cancel committed, so its notice is only for that version.
     expect(result).toEqual({
       ok: true,
       appointmentId: "appt_1",
       clientId: "client_1",
       staffMemberId: "staff_1",
       changed: true,
+      generation: 5,
     });
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith({
       where: { ...WHERE, status: { notIn: ["COMPLETED", "CANCELLED", "NO_SHOW"] } },
@@ -178,6 +181,7 @@ describe("cancelAppointmentCore", () => {
     expect(mocks.appointment.update).toHaveBeenCalledWith({
       where: { id: "appt_1" },
       data: { cancelledScheduledStartAt: RECORD.startAt, reminderGeneration: { increment: 1 } },
+      select: { reminderGeneration: true },
     });
     expect(mocks.appointmentReminder.deleteMany).toHaveBeenCalledWith({
       where: { appointmentId: "appt_1" },
@@ -795,6 +799,34 @@ describe("recordAppointmentAttendanceCore", () => {
       where: { ...WHERE, status: "NO_SHOW" },
       data: { status: "COMPLETED" },
     });
+  });
+
+  it("withdraws the missed-visit message in the undo's own transaction", async () => {
+    // Withdrawn after the commit, it could dismiss the draft of a no-show
+    // recorded again in between (Codex).
+    mockGuardHit();
+
+    await recordAppointmentAttendanceCore({ ...WHERE, attended: true, now: NOW });
+
+    expect(mocks.followUpDraft.updateMany).toHaveBeenCalledWith({
+      where: {
+        businessId: "biz_1",
+        appointmentId: "appt_1",
+        kind: "MISSED_VISIT",
+        OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
+      },
+      data: { status: "DISMISSED" },
+    });
+  });
+
+  it("withdraws nothing when recording a no-show, or when the undo changed nothing", async () => {
+    mockGuardHit();
+    await recordAppointmentAttendanceCore({ ...WHERE, attended: false, now: NOW });
+
+    mockAttendanceMiss({ status: "COMPLETED", startAt: STARTED });
+    await recordAppointmentAttendanceCore({ ...WHERE, attended: true, now: NOW });
+
+    expect(mocks.followUpDraft.updateMany).not.toHaveBeenCalled();
   });
 
   it("is a no-op success when the appointment is already in the requested state", async () => {

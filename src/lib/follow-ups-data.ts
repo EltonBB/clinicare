@@ -1,4 +1,4 @@
-import { Prisma, type FollowUpDraftKind } from "@prisma/client";
+import { FollowUpDraftKind as FollowUpDraftKindEnum, Prisma, type FollowUpDraftKind } from "@prisma/client";
 
 import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { MAX_MESSAGE_BODY_LENGTH, MESSAGE_TOO_LONG_ERROR } from "@/lib/messaging/limits";
@@ -10,7 +10,8 @@ import type { FollowUpDraftRecord } from "@/lib/follow-ups";
 import { liveSlotOfferWhere, reofferFreedSlot, retryOnWriteConflict } from "@/lib/slot-offers";
 import { AVAILABLE_STAFF_WHERE } from "@/lib/staff-eligibility";
 import { automationEnabledWhere } from "@/lib/automations-data";
-import { rebookedAppointmentWhere } from "@/lib/workflow-generators";
+import type { OwedVisitMessage, OwedVisitMessageArgs } from "@/lib/automation-events";
+import { checkupDedupeKey, rebookedAppointmentWhere } from "@/lib/workflow-generators";
 
 // A draft is actionable while it's PENDING and what it's about still holds.
 // The list, the Inbox count and Send's compare-and-set all use this one
@@ -24,7 +25,12 @@ import { rebookedAppointmentWhere } from "@/lib/workflow-generators";
 // Send checks it twice: when it claims a PENDING draft and again, on the claimed
 // SENT one, immediately before the message leaves (see confirmFollowUpDraftDispatch).
 function actionablePendingWhere(now: Date): Prisma.FollowUpDraftWhereInput {
-  return { status: "PENDING", ...stillHoldsWhere(now) };
+  // A draft with a delay (a missed-visit message) is neither listed nor sent
+  // before its time.
+  return {
+    status: "PENDING",
+    AND: [{ OR: [{ sendAfter: null }, { sendAfter: { lte: now } }] }, stillHoldsWhere(now)],
+  };
 }
 
 function stillHoldsWhere(now: Date): Prisma.FollowUpDraftWhereInput {
@@ -70,6 +76,56 @@ function stillHoldsWhere(now: Date): Prisma.FollowUpDraftWhereInput {
         business: automationEnabledWhere("THANK_YOU"),
         client: ELIGIBLE_CLIENT_WHERE,
         appointment: { status: "COMPLETED" },
+      },
+      // The visit is still booked and still ahead — a confirmation or welcome
+      // for a visit since cancelled or past would only confuse.
+      {
+        kind: "BOOKING_CONFIRMATION",
+        business: automationEnabledWhere("BOOKING_CONFIRMATION"),
+        client: ELIGIBLE_CLIENT_WHERE,
+        appointment: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } },
+      },
+      {
+        kind: "NEW_PATIENT_WELCOME",
+        business: automationEnabledWhere("NEW_PATIENT_WELCOME"),
+        client: ELIGIBLE_CLIENT_WHERE,
+        appointment: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } },
+      },
+      // A moved or cancelled notice, while the visit's time is still ahead and
+      // the visit still stands as the notice says: a "moved" notice while it is
+      // booked, a "cancelled" one while it is cancelled. A change the clinic
+      // makes dismisses the older notice when it drafts the new one; this
+      // covers a change it doesn't draft for (the patient cancelling by reply).
+      // The dedupe key names which notice it is (see queueVisitMessage).
+      {
+        kind: "VISIT_CHANGED",
+        business: automationEnabledWhere("VISIT_CHANGED"),
+        client: ELIGIBLE_CLIENT_WHERE,
+        OR: [
+          { dedupeKey: { contains: ":cancelled:" }, appointment: { status: "CANCELLED", startAt: { gt: now } } },
+          {
+            NOT: { dedupeKey: { contains: ":cancelled:" } },
+            appointment: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } },
+          },
+        ],
+      },
+      // Still recorded as missed (not since marked attended).
+      {
+        kind: "MISSED_VISIT",
+        business: automationEnabledWhere("MISSED_VISIT"),
+        client: ELIGIBLE_CLIENT_WHERE,
+        appointment: { status: "NO_SHOW" },
+      },
+      // Not booked since: a check-up nudge to someone with a visit ahead is noise.
+      {
+        kind: "CHECKUP_DUE",
+        business: automationEnabledWhere("CHECKUP_DUE"),
+        // The follow-up reminder it came from is still scheduled and still due.
+        followUpReminder: { status: "Scheduled", remindAt: { lte: now } },
+        client: {
+          ...ELIGIBLE_CLIENT_WHERE,
+          appointments: { none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } } },
+        },
       },
     ],
   };
@@ -119,35 +175,42 @@ export async function getPendingFollowUpDraftCount(businessId: string, now: Date
   return prisma.followUpDraft.count({ where: { businessId, ...listableWhere(now) } });
 }
 
-// Upper bound on one page load — guards against an unbounded Prisma query,
-// set to the system's actual structural ceiling rather than an arbitrary
-// smaller number: the three generated kinds hold at most PENDING_CAP_PER_KIND
-// (50) pending drafts each (follow-up-generation.ts) = 150, and a slot offer
-// exists only for an entry that's WAITING or OFFERED — i.e. still counted
-// against MAX_ACTIVE_WAITLIST_ENTRIES (500) — so every live draft this list
-// can ever hold fits inside 650. A smaller cap here would silently hide the
-// oldest live slot offers once a clinic had more than it open at once, with
-// no way for staff to reach or send them (Codex).
-const MAX_PENDING_FOLLOW_UPS = 650;
+// Per-kind bounds on one page load — guards against an unbounded Prisma query
+// without one kind crowding another out of the list (Codex). Slot offers keep
+// the old structural ceiling (a live offer needs a WAITING/OFFERED entry, at
+// most MAX_ACTIVE_WAITLIST_ENTRIES = 500); the generated kinds hold at most
+// PENDING_CAP_PER_KIND (50) each; the event kinds (a visit's confirmation,
+// notice, missed-visit message or a reminder waiting for review) have no
+// structural cap, and 200 waiting at once is already far past what a clinic
+// works through before they go stale. Each kind is read oldest first, so an
+// overflow holds back the newest, never the most urgent (Codex).
+const SLOT_OFFER_LIST_CAP = 500;
+const LIST_CAP_PER_KIND = 200;
 
 // Order: slot offers first — they're time-critical, and one buried under a
 // backlog of nudges would sit unseen until its slot passed. Postgres sorts an
 // enum by its declared order, and FollowUpDraftKind declares SLOT_OFFER first
-// (a test pins that order in both the schema and the migration). Then newest
-// first, id as a stable tiebreaker.
+// (a test pins that order in both the schema and the migration).
 export async function listPendingFollowUpDrafts(
   businessId: string,
   now: Date = new Date()
 ): Promise<FollowUpDraftRecord[]> {
-  return prisma.followUpDraft.findMany({
-    where: { businessId, ...listableWhere(now) },
-    include: {
-      client: { select: { name: true } },
-      appointment: { select: { startAt: true, title: true } },
-    },
-    orderBy: [{ kind: "asc" }, { createdAt: "desc" }, { id: "asc" }],
-    take: MAX_PENDING_FOLLOW_UPS,
-  });
+  // One bounded read per kind, so a backlog of one kind can never hide another;
+  // the page orders the rows itself (orderFollowUps).
+  const perKind = await Promise.all(
+    Object.values(FollowUpDraftKindEnum).map((kind) =>
+      prisma.followUpDraft.findMany({
+        where: { businessId, kind, ...listableWhere(now) },
+        include: {
+          client: { select: { name: true } },
+          appointment: { select: { startAt: true, title: true } },
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        take: kind === "SLOT_OFFER" ? SLOT_OFFER_LIST_CAP : LIST_CAP_PER_KIND,
+      })
+    )
+  );
+  return perKind.flat();
 }
 
 type DraftMutationResult = { ok: true } | { ok: false; error: string };
@@ -155,13 +218,18 @@ type DraftMutationResult = { ok: true } | { ok: false; error: string };
 export type SentFollowUpDraft = {
   id: string;
   kind: FollowUpDraftKind;
+  appointmentId: string | null;
+  appointmentGeneration: number | null;
   body: string;
   clientId: string;
   clientName: string | null;
   phone: string | null;
 };
 
-type MarkDraftSentResult = { ok: true; draft: SentFollowUpDraft } | { ok: false; error: string };
+type MarkDraftSentResult =
+  | { ok: true; draft: SentFollowUpDraft }
+  /** `visitMessageOwed`: a refused visit message to draft again for the visit as it now is. */
+  | { ok: false; error: string; visitMessageOwed?: OwedVisitMessageArgs };
 
 export const ALREADY_HANDLED_ERROR = "This follow-up was already handled.";
 export const SLOT_OFFER_UNAVAILABLE_ERROR = "This slot offer is no longer available.";
@@ -173,6 +241,33 @@ export const SLOT_OUTSIDE_HOURS_ERROR =
 // Thrown inside markFollowUpDraftSent's transaction to roll the SENT flip back
 // when the offered slot no longer fits the clinic's working hours.
 class SlotOutsideHours extends Error {}
+
+// Thrown inside the same transaction when the visit a draft was written about
+// has changed since (its reminderGeneration moved on): the draft names an old
+// patient, time or status, so it is refused like any other stale draft.
+class VisitChangedSinceDrafted extends Error {
+  constructor(
+    readonly kind: FollowUpDraftKind,
+    /** The visit, when it still exists. */
+    readonly appointmentId: string | null,
+    readonly dedupeKey: string | null,
+    /** The patient and visit version the draft was written for, when it names a visit version. */
+    readonly writtenFor: { clientId: string; generation: number } | null = null
+  ) {
+    super();
+  }
+}
+
+/**
+ * A visit message refused for a changed visit is owed again for the visit as it
+ * now is: a confirmation or welcome as a booking, a notice as the change it told.
+ */
+function owedVisitEvent(kind: FollowUpDraftKind, dedupeKey: string | null): OwedVisitMessage | null {
+  if (kind === "BOOKING_CONFIRMATION" || kind === "NEW_PATIENT_WELCOME") return "booked";
+  if (kind === "VISIT_CHANGED") return dedupeKey?.includes(":cancelled:") ? "cancelled" : "moved";
+  if (kind === "MISSED_VISIT") return "missed";
+  return null;
+}
 
 /**
  * Atomic PENDING -> SENT flip: two staff tapping Send at once can't both
@@ -280,6 +375,25 @@ async function runSendGate(args: {
   try {
     return await flipDraftToSent(args);
   } catch (error) {
+    if (error instanceof VisitChangedSinceDrafted) {
+      // Not left pending beside its replacement, where every Send would fail:
+      // a draft about an old version of the visit is expired for good (Codex).
+      // Still unsent (pending, or claimed but not delivered) only.
+      const { count } = await prisma.followUpDraft.updateMany({
+        where: { id: args.id, businessId: args.businessId, OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }] },
+        data: { status: "EXPIRED" },
+      });
+      // Nothing went out: a visit message refused here (say, an edit landed
+      // between its claim and its send) is still owed for the visit as it now
+      // is (Codex).
+      // Owed to the patient it was written for only (see OwedVisitMessageArgs).
+      const event = count > 0 && error.appointmentId && error.writtenFor ? owedVisitEvent(error.kind, error.dedupeKey) : null;
+      return {
+        ok: false,
+        error: ALREADY_HANDLED_ERROR,
+        ...(event ? { visitMessageOwed: { appointmentId: error.appointmentId!, event, ...error.writtenFor! } } : {}),
+      };
+    }
     if (error instanceof SlotOutsideHours) {
       return { ok: false, error: SLOT_OUTSIDE_HOURS_ERROR };
     }
@@ -340,11 +454,44 @@ function flipDraftToSent(args: {
           id: true,
           body: true,
           kind: true,
+          dedupeKey: true,
+          followUpReminderId: true,
+          followUpReminder: { select: { remindAt: true } },
+          appointmentId: true,
+          appointmentGeneration: true,
           clientId: true,
           client: { select: { phone: true, name: true } },
-          appointment: { select: { startAt: true, endAt: true } },
+          appointment: { select: { startAt: true, endAt: true, reminderGeneration: true, clientId: true } },
         },
       });
+
+      // Written about a visit as it stood: refused once the visit has changed —
+      // a new patient, time, staff member, service or status — even if the
+      // change landed after this draft was claimed (the re-check right before
+      // the send runs this again) or raced the draft's creation (Codex).
+      if (
+        draft.appointmentGeneration != null &&
+        (!draft.appointment ||
+          draft.appointment.reminderGeneration !== draft.appointmentGeneration ||
+          draft.appointment.clientId !== draft.clientId)
+      ) {
+        throw new VisitChangedSinceDrafted(draft.kind, draft.appointment ? draft.appointmentId : null, draft.dedupeKey, {
+          clientId: draft.clientId,
+          generation: draft.appointmentGeneration,
+        });
+      }
+
+      // A check-up nudge names one follow-up date: refused (and expired, like a
+      // changed visit's draft) once staff moved that date, however the old
+      // date's draft came about (Codex).
+      if (
+        draft.kind === "CHECKUP_DUE" &&
+        (!draft.followUpReminderId ||
+          !draft.followUpReminder ||
+          draft.dedupeKey !== checkupDedupeKey(draft.followUpReminderId, draft.followUpReminder.remindAt))
+      ) {
+        throw new VisitChangedSinceDrafted(draft.kind, null, draft.dedupeKey);
+      }
 
       if (
         draft.kind === "SLOT_OFFER" &&
@@ -359,6 +506,8 @@ function flipDraftToSent(args: {
         draft: {
           id: draft.id,
           kind: draft.kind,
+          appointmentId: draft.appointmentId,
+          appointmentGeneration: draft.appointmentGeneration,
           body: draft.body,
           clientId: draft.clientId,
           clientName: draft.client.name,

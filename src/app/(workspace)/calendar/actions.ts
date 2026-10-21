@@ -29,6 +29,13 @@ import { isInsideOperatingHours } from "@/lib/operating-hours";
 import { MAX_RISK_BATCH_SIZE, type NoShowRiskAssessment } from "@/lib/no-show-risk";
 import { parseRecordId } from "@/lib/record-id";
 import { acquireSchedulingLock, hasSchedulingConflict } from "@/lib/scheduling-conflicts";
+import {
+  queueMissedVisitMessage,
+  queueVisitMessage,
+  retireMissedVisitDrafts,
+  retireVisitDrafts,
+  visitEventForSave,
+} from "@/lib/automation-events";
 import { offerFreedSlot, withdrawSlotOffers } from "@/lib/slot-offers";
 import { formatZonedDateKey, formatZonedTime24, parseZonedWallClock } from "@/lib/time-zone";
 import {
@@ -307,6 +314,21 @@ export async function saveAppointmentAction(
     // cleared — the appointment isn't cancelled anymore, so its cancellation
     // timestamp shouldn't linger and be read as one on a later, different cancel.
     let wasReactivated = false;
+    // The status before this save, for the missed-visit automation (the edit
+    // form's Status dropdown can record or undo a no-show too).
+    let previousStatus: string | null = null;
+    // A confirmation or welcome still waiting when this save reset the visit:
+    // re-drafted below for the visit as it now stands.
+    let bookingMessageRetired = false;
+    let visitNoticeRetired: "moved" | "cancelled" | null = null;
+    let missedVisitRetired = false;
+    // The visit version this save committed: its patient message is only for
+    // that version (a later edit's own message covers anything newer). The
+    // write is guarded on the fields read with it, so the read version plus
+    // this save's own reset is the committed one. Set, never incremented, inside
+    // the transaction, so a retried attempt computes the same value (Codex).
+    let readGeneration: number | undefined;
+    let savedGeneration: number | undefined;
     // Editing a still-cancelled booking's client/time/staff/service: an open
     // offer's text was frozen from the OLD details, but Book reads the row's
     // current ones — so an accepted offer could book the client into a
@@ -344,6 +366,7 @@ export async function saveAppointmentAction(
           startAt: true,
           endAt: true,
           status: true,
+          reminderGeneration: true,
         },
       });
 
@@ -356,6 +379,9 @@ export async function saveAppointmentAction(
 
       previousClientId = existing.clientId;
       previousStaffMemberId = existing.staffMemberId;
+      previousStatus = existing.status;
+      readGeneration = existing.reminderGeneration;
+      savedGeneration = readGeneration;
       readSlot = {
         clientId: existing.clientId,
         staffMemberId: existing.staffMemberId,
@@ -549,12 +575,22 @@ export async function saveAppointmentAction(
           return { conflict: true, error: APPOINTMENT_CONFLICT_ERROR };
         }
 
+        // Leaving a no-show (the guard above held it as one): its missed-visit
+        // message is withdrawn in this transaction, so a no-show recorded again
+        // after the commit keeps its own new draft (Codex).
+        if (toPrismaAppointmentStatus(payload.baselineStatus) === "NO_SHOW" && newStatus !== "NO_SHOW") {
+          await retireMissedVisitDrafts(tx, { businessId: business.id, appointmentId: payload.id });
+        }
+
         if (shouldResetReminders) {
           await tx.appointmentReminder.deleteMany({
             where: {
               appointmentId: payload.id,
             },
           });
+          // The confirmation/notice drafts named the visit as it was.
+          ({ bookingMessageRetired, visitNoticeRetired, missedVisitRetired } = await retireVisitDrafts(tx, payload.id));
+          if (readGeneration !== undefined) savedGeneration = readGeneration + 1;
         }
 
         const affectedClientIds = Array.from(
@@ -632,6 +668,7 @@ export async function saveAppointmentAction(
         });
 
         appointmentId = created.id;
+        savedGeneration = created.reminderGeneration;
         await refreshClientLastVisitAt(payload.clientId, business.id, tx);
       }
 
@@ -676,6 +713,40 @@ export async function saveAppointmentAction(
       [staffMemberId, previousStaffMemberId],
       [appointmentId]
     );
+
+    // The patient hears about what the clinic just did (Automations): a new
+    // booking, a cancellation, or a new time. Best-effort, after the commit.
+    const clientChanged = readSlot !== null && readSlot.clientId !== payload.clientId;
+    const visitEvent = visitEventForSave({
+      isNew: !payload.id,
+      newStatus,
+      wasNewlyCancelled,
+      wasReactivated,
+      timeChanged: readSlot !== null && readSlot.startAt.getTime() !== startAt.getTime(),
+      clientChanged,
+      bookingMessageRetired,
+      visitNoticeRetired,
+    });
+    if (visitEvent) {
+      await queueVisitMessage({
+        businessId: business.id,
+        appointmentId: appointmentId!,
+        event: visitEvent,
+        generation: savedGeneration,
+        clientId: payload.clientId,
+      });
+    }
+    // A no-show recorded here, or one whose patient was corrected, gets its
+    // message. A detail edit to a no-show re-drafts only one still waiting
+    // (retired with the reset): one already delivered to this patient isn't
+    // repeated (Codex). Leaving a no-show withdrew its draft in the transaction.
+    if (
+      newStatus === "NO_SHOW" &&
+      startAt.getTime() <= Date.now() &&
+      (previousStatus !== "NO_SHOW" || clientChanged || missedVisitRetired)
+    ) {
+      await queueMissedVisitMessage({ businessId: business.id, appointmentId: appointmentId! });
+    }
 
     if (wasNewlyCancelled) {
       // The doctor who is told is whoever HAD this slot before the edit, not
@@ -765,6 +836,13 @@ export async function cancelAppointmentAction(
 
   if (outcome.changed) {
     await notifyStaffOfAppointmentChange(business.id, outcome.staffMemberId, outcome.appointmentId);
+    await queueVisitMessage({
+      businessId: business.id,
+      appointmentId: outcome.appointmentId,
+      event: "cancelled",
+      generation: outcome.generation,
+      clientId: outcome.clientId,
+    });
   }
 
   return {
@@ -833,6 +911,11 @@ export async function recordAppointmentAttendanceAction(
 
   if (outcome.changed) {
     revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId], [outcome.appointmentId]);
+    // Automations' missed-visit message ("Mark as attended" withdrew it inside
+    // recordAppointmentAttendanceCore's transaction).
+    if (!attended) {
+      await queueMissedVisitMessage({ businessId: business.id, appointmentId: outcome.appointmentId });
+    }
   }
 
   return { ok: true, status: attended ? "completed" : "no-show", clientId: outcome.clientId };

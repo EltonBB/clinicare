@@ -54,6 +54,15 @@ const mocks = vi.hoisted(() => {
   };
 });
 
+// Automations' patient messages have their own tests (lib/automation-events.test.ts).
+vi.mock("@/lib/automation-events", async (importOriginal) => ({
+  // The pure choice of what to tell the patient runs for real.
+  visitEventForSave: (await importOriginal<typeof import("@/lib/automation-events")>()).visitEventForSave,
+  queueVisitMessage: vi.fn(),
+  queueMissedVisitMessage: vi.fn(),
+  retireMissedVisitDrafts: vi.fn(),
+  retireVisitDrafts: vi.fn().mockResolvedValue({ bookingMessageRetired: false, visitNoticeRetired: null, missedVisitRetired: false }),
+}));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     appointment: mocks.appointment,
@@ -132,6 +141,7 @@ import {
   deleteAppointmentCore,
   NO_SHOW_PLAN_ERROR,
 } from "@/lib/appointments-shared";
+import { queueMissedVisitMessage, queueVisitMessage, retireMissedVisitDrafts, retireVisitDrafts } from "@/lib/automation-events";
 
 const BUSINESS = { id: "biz_1", plan: "PRO" as const };
 const EXISTING = {
@@ -1403,6 +1413,16 @@ describe("saveAppointmentAction — no-show status", () => {
     expect(mocks.appointment.create).not.toHaveBeenCalled();
   });
 
+  it("binds a save's visit message to the patient it was saved for", async () => {
+    mocks.appointment.findFirst.mockResolvedValue({ ...EXISTING, reminderGeneration: 3 });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({ ...NO_SHOW_ROW, status: "CONFIRMED" });
+
+    expect((await saveAppointmentAction({ ...PAYLOAD, startTime: "10:00", endTime: "10:30" })).ok).toBe(true);
+    expect(queueVisitMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "moved", generation: 4, clientId: "client_1" })
+    );
+  });
+
   it("creates a new past no-show on Pro", async () => {
     mocks.appointment.create.mockResolvedValue({ id: "appt_1" });
 
@@ -1428,6 +1448,55 @@ describe("saveAppointmentAction — no-show status", () => {
     ).toEqual({ ok: false, error: APPOINTMENT_ALREADY_NO_SHOW_ERROR });
     expect(mocks.appointment.updateMany).not.toHaveBeenCalled();
     expect(mocks.revalidateCalendarSurfaces).not.toHaveBeenCalled();
+  });
+
+  it("withdraws the missed-visit message inside the save's transaction when a no-show is corrected", async () => {
+    // After the commit it could dismiss the draft of a no-show recorded again
+    // in between (Codex).
+    mocks.appointment.findFirst.mockResolvedValue({ ...EXISTING, status: "NO_SHOW" });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({ ...NO_SHOW_ROW, status: "COMPLETED" });
+    let inTransaction = false;
+    mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => {
+      inTransaction = true;
+      try {
+        return await cb({ appointment: mocks.appointment, appointmentReminder: mocks.appointmentReminder, scheduleBlock: mocks.scheduleBlock });
+      } finally {
+        inTransaction = false;
+      }
+    });
+    let retiredInTransaction = false;
+    vi.mocked(retireMissedVisitDrafts).mockImplementation(async () => {
+      retiredInTransaction = inTransaction;
+    });
+
+    const result = await saveAppointmentAction({ ...PAYLOAD, status: "completed", baselineStatus: "no-show" });
+
+    expect(result.ok).toBe(true);
+    expect(retireMissedVisitDrafts).toHaveBeenCalledWith(expect.anything(), { businessId: "biz_1", appointmentId: "appt_1" });
+    expect(retiredInTransaction).toBe(true);
+    expect(queueMissedVisitMessage).not.toHaveBeenCalled();
+  });
+
+  it("leaves the missed-visit message alone when a no-show stays a no-show", async () => {
+    mocks.appointment.findFirst.mockResolvedValue({ ...EXISTING, status: "NO_SHOW" });
+
+    expect((await saveAppointmentAction({ ...NO_SHOW_PAYLOAD, baselineStatus: "no-show" })).ok).toBe(true);
+    expect(retireMissedVisitDrafts).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["the delivered message isn't repeated for a detail edit", "client_1", false, false],
+    ["a message still waiting is drafted again for the edited visit", "client_1", true, true],
+    ["the visit's new patient gets their own message", "client_2", false, true],
+  ])("editing a no-show's details: %s", async (_label, clientId, missedVisitRetired, queued) => {
+    mocks.appointment.findFirst.mockResolvedValue({ ...EXISTING, status: "NO_SHOW" });
+    vi.mocked(retireVisitDrafts).mockResolvedValueOnce({ bookingMessageRetired: false, visitNoticeRetired: null, missedVisitRetired });
+
+    const result = await saveAppointmentAction({ ...NO_SHOW_PAYLOAD, clientId, service: "Cleaning", baselineStatus: "no-show" });
+
+    expect(result.ok).toBe(true);
+    expect(retireVisitDrafts).toHaveBeenCalled();
+    expect(vi.mocked(queueMissedVisitMessage).mock.calls.length).toBe(queued ? 1 : 0);
   });
 
   it("refuses to relabel a cancelled booking as a no-show through the edit form", async () => {
@@ -1578,6 +1647,7 @@ describe("cancelAppointmentAction", () => {
       clientId: "client_1",
       staffMemberId: "staff_1",
       changed: true,
+      generation: 4,
     });
 
     const result = await cancelAppointmentAction("appt_1");
@@ -1585,6 +1655,14 @@ describe("cancelAppointmentAction", () => {
     expect(result).toEqual({ ok: true, appointmentId: "appt_1" });
     expect(mocks.cancelAppointmentCore).toHaveBeenCalledWith({ id: "appt_1", businessId: "biz_1" });
     expect(mocks.revalidateCalendarSurfaces).toHaveBeenCalledWith(["client_1"], ["staff_1"], ["appt_1"]);
+    // The notice is bound to the version and patient the cancel committed.
+    expect(queueVisitMessage).toHaveBeenCalledWith({
+      businessId: "biz_1",
+      appointmentId: "appt_1",
+      event: "cancelled",
+      generation: 4,
+      clientId: "client_1",
+    });
   });
 });
 

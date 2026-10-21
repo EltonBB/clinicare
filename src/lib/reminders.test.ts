@@ -4,10 +4,11 @@ const mocks = vi.hoisted(() => {
   const business = { findUnique: vi.fn() };
   const appointment = { findMany: vi.fn() };
   const appointmentReminder = { upsert: vi.fn() };
+  const followUpDraft = { count: vi.fn() };
   const $transaction = vi.fn();
   const sendMessage = vi.fn();
   const getNoShowRiskAssessments = vi.fn();
-  return { business, appointment, appointmentReminder, $transaction, sendMessage, getNoShowRiskAssessments };
+  return { business, appointment, appointmentReminder, followUpDraft, $transaction, sendMessage, getNoShowRiskAssessments };
 });
 
 vi.mock("@/lib/no-show-risk-data", () => ({ getNoShowRiskAssessments: mocks.getNoShowRiskAssessments }));
@@ -17,6 +18,7 @@ vi.mock("@/lib/prisma", () => ({
     business: mocks.business,
     appointment: mocks.appointment,
     appointmentReminder: mocks.appointmentReminder,
+    followUpDraft: mocks.followUpDraft,
     $transaction: mocks.$transaction,
   },
 }));
@@ -60,6 +62,7 @@ beforeEach(() => {
   mocks.business.findUnique.mockResolvedValue(business());
   mocks.getNoShowRiskAssessments.mockResolvedValue(new Map());
   mocks.appointmentReminder.upsert.mockResolvedValue({});
+  mocks.followUpDraft.count.mockResolvedValue(0);
   mocks.$transaction.mockResolvedValue(undefined);
 });
 
@@ -67,6 +70,26 @@ describe("syncAppointmentRemindersForBusiness", () => {
   // Codex #133: an edit that resets a booking's reminders without moving it (a
   // new client, say) owes a new reminder — under the old key the worker would
   // replay or refuse it, so the generation is part of the key.
+  it("holds a reminder back while a booking or moved message for the visit is going out", async () => {
+    const appointment = appointmentIn(1, "appt_1", 3);
+    mocks.appointment.findMany.mockResolvedValue([appointment]);
+    mocks.followUpDraft.count.mockResolvedValue(1);
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    expect(mocks.followUpDraft.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        appointmentId: "appt_1",
+        appointmentGeneration: 3,
+        kind: { in: ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED"] },
+        status: "SENT",
+      }),
+    });
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+    // Nothing recorded: if that message fails, the next run sends the reminder.
+    expect(mocks.appointmentReminder.upsert).not.toHaveBeenCalled();
+  });
+
   it("keys each send by appointment, reminder slot, booking time and reminder generation", async () => {
     const appointment = appointmentIn(1, "appt_1", 3);
     mocks.appointment.findMany.mockResolvedValue([appointment]);

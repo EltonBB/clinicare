@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 
 import { FOLLOW_UP_KIND_TO_AUTOMATION } from "@/lib/automations";
 import { getAutomationSettings } from "@/lib/automations-data";
+import { replaceRefusedVisitMessage, suppressOpenReminders } from "@/lib/automation-events";
 import {
   confirmFollowUpDraftDispatch,
   markFollowUpDraftDelivered,
@@ -15,6 +16,28 @@ import { mirrorOutboundToInbox } from "@/lib/messaging/inbox-mirror";
 import type { SendMessageResult } from "@/lib/messaging/types";
 import { prisma } from "@/lib/prisma";
 import { lastAttemptedId, rotateForFairness } from "@/lib/reminder-fairness";
+
+/** Messages that state the visit's date and time (a cancellation notice doesn't need a reminder to stand in for). */
+const TELLS_THE_TIME = new Set(["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED"]);
+
+/**
+ * A message that just told the patient the visit's time stands in for any
+ * reminder already due (one message per event). Best-effort.
+ */
+async function coverDueReminders(
+  businessId: string,
+  draftId: string,
+  draft: { kind: string; appointmentId: string | null; appointmentGeneration: number | null }
+): Promise<void> {
+  if (!draft.appointmentId || draft.appointmentGeneration == null || !TELLS_THE_TIME.has(draft.kind)) return;
+  await suppressOpenReminders({
+    businessId,
+    appointmentId: draft.appointmentId,
+    appointmentGeneration: draft.appointmentGeneration,
+  }).catch((error) => {
+    logger.error("Couldn't record due reminders as covered by a sent visit message.", error, { businessId, draftId });
+  });
+}
 
 export const FOLLOW_UP_DELIVERY_UNCERTAIN_NOTICE =
   "We couldn't confirm a follow-up was delivered, so it was marked as sent. Check the patient's WhatsApp chat before contacting them again.";
@@ -55,15 +78,22 @@ export async function dispatchFollowUpDraft(args: {
 
   const flip = await markFollowUpDraftSent({ id: draftId, businessId, editedBody, automatic });
   if (!flip.ok) {
+    if (flip.visitMessageOwed) {
+      await replaceRefusedVisitMessage({ businessId, ...flip.visitMessageOwed });
+    }
     return { ok: false, error: flip.error, retryable: false };
   }
 
   let failure: string | null = null;
   let rateLimited = false;
+  // The draft as the last check before sending read it.
+  let claimed: { kind: string; appointmentId: string | null; appointmentGeneration: number | null } | null = null;
   let retryable = false;
   // The provider can't say whether the message left (see SendFailureReason).
   let uncertain = false;
   let sent: {
+    appointmentId: string | null;
+    appointmentGeneration: number | null;
     clientId: string;
     clientName: string | null;
     phone: string;
@@ -80,8 +110,13 @@ export async function dispatchFollowUpDraft(args: {
 
     const automation = ready.ok && automatic ? (await getAutomationSettings(businessId))[FOLLOW_UP_KIND_TO_AUTOMATION[ready.draft.kind]] : null;
 
+    if (ready.ok) claimed = ready.draft;
+
     if (!ready.ok) {
       failure = ready.error;
+      if (ready.visitMessageOwed) {
+        await replaceRefusedVisitMessage({ businessId, ...ready.visitMessageOwed });
+      }
     } else if (automation && !(automation.enabled && automation.mode === "AUTOMATIC")) {
       // Read after the claim, so a switch to review (or off) that committed
       // while this draft was being made is seen here even though its own
@@ -105,7 +140,15 @@ export async function dispatchFollowUpDraft(args: {
         });
 
         if (result.ok) {
-          sent = { clientId: draft.clientId, clientName: draft.clientName, phone, kind: draft.kind, result };
+          sent = {
+            appointmentId: draft.appointmentId,
+            appointmentGeneration: draft.appointmentGeneration,
+            clientId: draft.clientId,
+            clientName: draft.clientName,
+            phone,
+            kind: draft.kind,
+            result,
+          };
         } else if (result.reason === "delivery_uncertain") {
           uncertain = true;
         } else if (result.reason === "rate_limited") {
@@ -129,7 +172,10 @@ export async function dispatchFollowUpDraft(args: {
   if (uncertain) {
     // May already be with the patient: never back to Pending (a second send
     // could deliver it twice). Recorded as sent; if that fails the hourly sweep
-    // settles it (settleInterruptedFollowUpSends). Nothing to mirror.
+    // settles it (settleInterruptedFollowUpSends). Nothing to mirror. A visit
+    // message that may have arrived covers the reminders already due, as a
+    // confirmed one does (Codex).
+    if (claimed) await coverDueReminders(businessId, draftId, claimed);
     await markFollowUpDraftDelivered({ id: draftId, businessId }).catch((error) => {
       logger.error("A follow-up's delivery is uncertain and it couldn't be recorded as sent.", error, {
         businessId,
@@ -149,6 +195,8 @@ export async function dispatchFollowUpDraft(args: {
   await markFollowUpDraftDelivered({ id: draftId, businessId }).catch((error) => {
     logger.error("Sent a follow-up but couldn't record it as delivered.", error, { businessId, draftId });
   });
+
+  await coverDueReminders(businessId, draftId, sent);
 
   // Best-effort Inbox mirror: the message already went out.
   await mirrorOutboundToInbox({

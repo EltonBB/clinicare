@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
   client: { findMany: vi.fn() },
   clientPayment: { findMany: vi.fn() },
   appointment: { findMany: vi.fn() },
+  clientFollowUpReminder: { findMany: vi.fn() },
+  followUpDraft: { findMany: vi.fn(), updateMany: vi.fn() },
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: mocks }));
@@ -11,6 +13,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: mocks }));
 import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import {
   DEFAULT_WORKFLOW_SETTINGS,
+  findCheckupDueCandidates,
   findPaymentReminderCandidates,
   findRebookCandidates,
   findThankYouCandidates,
@@ -492,5 +495,83 @@ describe("findThankYouCandidates", () => {
     });
     expect(result).toEqual([]);
     expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("findCheckupDueCandidates", () => {
+  it("skips a date already handled, but nudges a date moved after an earlier nudge", async () => {
+    const handledAt = new Date(NOW.getTime() - 3 * 3_600_000);
+    const movedTo = new Date(NOW.getTime() - 1 * 3_600_000);
+    mocks.clientFollowUpReminder.findMany.mockResolvedValue([
+      { id: "fr_1", clientId: "c1", remindAt: handledAt, client: { name: "Alex" } },
+      { id: "fr_2", clientId: "c2", remindAt: movedTo, client: { name: "Bea" } },
+    ]);
+    // fr_1's nudge for this very date went out; fr_2's, still waiting, was
+    // for its old date (staff moved it after the draft was made).
+    mocks.followUpDraft.findMany.mockResolvedValue([
+      { id: "d_1", status: "SENT", followUpReminderId: "fr_1", dedupeKey: `CHECKUP_DUE:fr_1:${handledAt.getTime()}` },
+      { id: "d_2", status: "PENDING", followUpReminderId: "fr_2", dedupeKey: `CHECKUP_DUE:fr_2:${movedTo.getTime() - 5 * 3_600_000}` },
+    ]);
+
+    const result = await findCheckupDueCandidates({ businessId: "biz_1", now: NOW });
+
+    expect(result.map((draft) => draft.followUpReminderId)).toEqual(["fr_2"]);
+    expect(mocks.followUpDraft.findMany).toHaveBeenCalledWith({
+      where: { businessId: "biz_1", kind: "CHECKUP_DUE", followUpReminderId: { in: ["fr_1", "fr_2"] } },
+      select: { id: true, status: true, followUpReminderId: true, dedupeKey: true },
+    });
+    // The old date's waiting draft can't be sent: it is expired, not left listed.
+    expect(mocks.followUpDraft.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["d_2"] }, status: "PENDING" },
+      data: { status: "EXPIRED" },
+    });
+  });
+
+  it("reads past a full page of already-handled dates to the ones still due", async () => {
+    const remindAt = new Date(NOW.getTime() - 2 * 3_600_000);
+    const page = Array.from({ length: 1_000 }, (_, index) => ({
+      id: `fr_${String(index).padStart(4, "0")}`,
+      clientId: `c${index}`,
+      remindAt,
+      client: { name: "Alex" },
+    }));
+    mocks.clientFollowUpReminder.findMany
+      .mockResolvedValueOnce(page)
+      .mockResolvedValueOnce([{ id: "fr_9999", clientId: "c9999", remindAt, client: { name: "Bea" } }]);
+    // Every date on the first page was nudged already; none on the second.
+    mocks.followUpDraft.findMany
+      .mockResolvedValueOnce(page.map((reminder) => ({ dedupeKey: `CHECKUP_DUE:${reminder.id}:${remindAt.getTime()}` })))
+      .mockResolvedValueOnce([]);
+
+    const result = await findCheckupDueCandidates({ businessId: "biz_1", now: NOW });
+
+    expect(result.map((draft) => draft.followUpReminderId)).toEqual(["fr_9999"]);
+    expect(mocks.clientFollowUpReminder.findMany.mock.calls[1][0]).toMatchObject({ cursor: { id: "fr_0999" }, skip: 1 });
+  });
+
+  it("drafts a check-up nudge for a follow-up date that just arrived, once", async () => {
+    const remindAt = new Date(NOW.getTime() - 2 * 3_600_000);
+    mocks.clientFollowUpReminder.findMany.mockResolvedValue([{ id: "fr_1", clientId: "c1", remindAt, client: { name: "Alex" } }]);
+    mocks.followUpDraft.findMany.mockResolvedValue([]);
+
+    const result = await findCheckupDueCandidates({ businessId: "biz_1", now: NOW, message: { template: null, clinicName: "Vela Dent" } });
+
+    expect(result).toEqual([
+      {
+        clientId: "c1",
+        kind: "CHECKUP_DUE",
+        followUpReminderId: "fr_1",
+        body: "Hi Alex, it's time for your check-up at Vela Dent. Would you like to book a visit?",
+        dedupeKey: `CHECKUP_DUE:fr_1:${remindAt.getTime()}`,
+      },
+    ]);
+    const where = mocks.clientFollowUpReminder.findMany.mock.calls[0][0].where;
+    expect(where.status).toBe("Scheduled");
+    // Only the last day: never a backlog of old follow-up dates.
+    expect(where.remindAt).toEqual({ lte: NOW, gt: new Date(NOW.getTime() - 24 * 3_600_000) });
+    expect(where.client.appointments).toEqual({ none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: NOW } } });
+    // Handled dates are matched by their exact key after the read, not by a
+    // query filter that a stale old-date draft would satisfy (Codex).
+    expect(where.followUpDrafts).toBeUndefined();
   });
 });

@@ -75,6 +75,17 @@ export async function lockAppointmentShared(tx: Prisma.TransactionClient, appoin
 }
 
 /**
+ * The exclusive counterpart, for a check-then-insert that must run one at a
+ * time per appointment (one missed-visit draft per no-show): a second caller
+ * waits here and then sees the first one's draft. FOR NO KEY UPDATE, like
+ * lockClientExclusive, so drafts being inserted for this appointment (a KEY
+ * SHARE foreign key check) are not made to wait on it.
+ */
+export async function lockAppointmentExclusive(tx: Prisma.TransactionClient, appointmentId: string): Promise<void> {
+  await tx.$executeRaw`SELECT 1 FROM "Appointment" WHERE "id" = ${appointmentId} FOR NO KEY UPDATE`;
+}
+
+/**
  * Holds one weekday's working hours still for the rest of a transaction: Book
  * checks the freed slot still fits them after taking this, so a Settings save
  * that changes that day's hours (an UPDATE of the row) either finished first,

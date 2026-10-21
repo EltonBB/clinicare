@@ -22,7 +22,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }));
 
-import { readFileSync } from "node:fs";
 
 import { FollowUpDraftKind, Prisma } from "@prisma/client";
 
@@ -73,7 +72,7 @@ beforeEach(() => {
 // OR/AND, to-one relation filters (a null relation never matches, as in
 // Prisma) and to-many some/none. Anything else throws rather than passing.
 type Row = Record<string, unknown>;
-const SCALAR_OPERATORS = new Set(["in", "notIn", "not", "gt", "gte", "lt", "lte"]);
+const SCALAR_OPERATORS = new Set(["in", "notIn", "not", "gt", "gte", "lt", "lte", "contains"]);
 
 const comparable = (value: unknown) => (value instanceof Date ? value.getTime() : value);
 
@@ -87,7 +86,11 @@ function isScalarFilter(filter: unknown): boolean {
 }
 
 function matchesScalar(value: unknown, filter: unknown): boolean {
-  if (filter === null || typeof filter !== "object" || filter instanceof Date) {
+  if (filter === null) {
+    // A column a fixture leaves out reads as null, as Prisma loads it.
+    return value === null || value === undefined;
+  }
+  if (typeof filter !== "object" || filter instanceof Date) {
     return comparable(value) === comparable(filter);
   }
   const current = comparable(value) as number;
@@ -108,6 +111,8 @@ function matchesScalar(value: unknown, filter: unknown): boolean {
         return current < target;
       case "lte":
         return current <= target;
+      case "contains":
+        return typeof value === "string" && value.includes(operand as string);
       default:
         throw new Error(`unsupported operator ${operator}`);
     }
@@ -209,6 +214,11 @@ function serveDrafts(rows: Row[]) {
       id: row.id,
       body: row.body,
       kind: row.kind,
+      appointmentId: row.appointmentId ?? undefined,
+      dedupeKey: row.dedupeKey ?? null,
+      followUpReminderId: row.followUpReminderId ?? null,
+      followUpReminder: row.followUpReminder ? { remindAt: (row.followUpReminder as Row).remindAt } : null,
+      appointmentGeneration: row.appointmentGeneration ?? undefined,
       clientId: row.clientId,
       client: { phone: rowClient.phone ?? null, name: rowClient.name ?? null },
       // A fixture without an end time is a half-hour slot.
@@ -216,6 +226,8 @@ function serveDrafts(rows: Row[]) {
         ? {
             startAt: rowAppointment.startAt,
             endAt: rowAppointment.endAt ?? new Date((rowAppointment.startAt as Date).getTime() + 30 * 60_000),
+            reminderGeneration: rowAppointment.reminderGeneration ?? 0,
+            clientId: rowAppointment.clientId ?? row.clientId,
           }
         : null,
     };
@@ -591,7 +603,7 @@ describe("follow-ups data layer — which drafts are actionable", () => {
       live
         ? {
             ok: true,
-            draft: { id: "d_1", kind: row.kind, body: "Draft message", clientId: "client_1", clientName: "Test Client", phone: "+38344000000" },
+            draft: { id: "d_1", kind: row.kind, appointmentId: row.appointmentId ?? undefined, body: "Draft message", clientId: "client_1", clientName: "Test Client", phone: "+38344000000" },
           }
         : { ok: false, error: "This follow-up was already handled." }
     );
@@ -745,6 +757,103 @@ describe("follow-ups data layer — which drafts are actionable", () => {
     });
   });
 
+  it.each([
+    ["a moved notice for a visit still booked", "VISIT_CHANGED:appt_2:moved:1:0", "CONFIRMED", true],
+    ["a moved notice once the patient cancelled by reply", "VISIT_CHANGED:appt_2:moved:1:0", "CANCELLED", false],
+    ["a cancelled notice for a cancelled visit", "VISIT_CHANGED:appt_2:cancelled:1:0", "CANCELLED", true],
+    ["a cancelled notice once the visit was rebooked", "VISIT_CHANGED:appt_2:cancelled:1:0", "CONFIRMED", false],
+  ])("sends %s only while the visit stands as it says (%s)", async (_label, dedupeKey, status, sendable) => {
+    serveDrafts([
+      draftRow({
+        kind: "VISIT_CHANGED",
+        dedupeKey,
+        appointmentId: "appt_2",
+        appointment: { status, startAt: FUTURE },
+      }),
+    ]);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({ ok: sendable });
+  });
+
+  it.each([
+    ["the visit is unchanged", 3, "client_1", true],
+    ["the visit changed since (a new time, staff or status)", 4, "client_1", false],
+    ["the visit now belongs to another patient", 3, "client_2", false],
+  ])("sends a visit draft only while %s", async (_label, generation, appointmentClient, sendable) => {
+    serveDrafts([
+      draftRow({
+        kind: "BOOKING_CONFIRMATION",
+        appointmentId: "appt_2",
+        appointmentGeneration: 3,
+        appointment: { status: "CONFIRMED", startAt: FUTURE, reminderGeneration: generation, clientId: appointmentClient },
+      }),
+    ]);
+
+    const result = await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW });
+    expect(result).toMatchObject({ ok: sendable });
+    if (!sendable) {
+      // Nothing went out, so the confirmation is owed again for the visit as it is now.
+      expect(result).toMatchObject({ visitMessageOwed: { appointmentId: "appt_2", event: "booked" } });
+      // Expired for good, not left pending beside its replacement.
+      expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledWith({
+        where: { id: "d_1", businessId: "biz_1", OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }] },
+        data: { status: "EXPIRED" },
+      });
+    }
+  });
+
+  it.each([
+    ["its date still matches", 0, true],
+    ["staff moved the date since it was drafted", 3_600_000, false],
+  ])("sends a check-up nudge only while %s", async (_label, shift, sendable) => {
+    const remindAt = new Date(NOW.getTime() - 2 * 3_600_000);
+    serveDrafts([
+      draftRow({
+        kind: "CHECKUP_DUE",
+        followUpReminderId: "fr_1",
+        dedupeKey: `CHECKUP_DUE:fr_1:${remindAt.getTime()}`,
+        followUpReminder: { id: "fr_1", status: "Scheduled", remindAt: new Date(remindAt.getTime() + shift) },
+      }),
+    ]);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({ ok: sendable });
+  });
+
+  it("owes a moved notice again when a later edit refuses it mid-send", async () => {
+    serveDrafts([
+      draftRow({
+        kind: "VISIT_CHANGED",
+        appointmentId: "appt_2",
+        appointmentGeneration: 3,
+        dedupeKey: "VISIT_CHANGED:appt_2:moved:1:3",
+        appointment: { status: "CONFIRMED", startAt: FUTURE, reminderGeneration: 4, clientId: "client_1" },
+      }),
+    ]);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({
+      ok: false,
+      // Owed to the patient and version the refused draft was written for.
+      visitMessageOwed: { appointmentId: "appt_2", event: "moved", clientId: "client_1", generation: 3 },
+    });
+  });
+
+  it("owes the missed-visit message again when a later edit refuses it mid-send", async () => {
+    serveDrafts([
+      draftRow({
+        kind: "MISSED_VISIT",
+        appointmentId: "appt_2",
+        appointmentGeneration: 3,
+        dedupeKey: "MISSED_VISIT:appt_2:1",
+        appointment: { status: "NO_SHOW", startAt: NOW, reminderGeneration: 4, clientId: "client_1" },
+      }),
+    ]);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({
+      ok: false,
+      visitMessageOwed: { appointmentId: "appt_2", event: "missed" },
+    });
+  });
+
   it("refuses an automatic send once the draft no longer sends on its own", async () => {
     serveDrafts([draftRow({ autoSend: false })]);
 
@@ -768,7 +877,7 @@ describe("follow-ups data layer — which drafts are actionable", () => {
 
     expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toEqual({
       ok: true,
-      draft: { id: "d_1", kind: row.kind, body: "Draft message", clientId: "client_1", clientName: "Test Client", phone: "+38344000000" },
+      draft: { id: "d_1", kind: row.kind, appointmentId: row.appointmentId ?? undefined, body: "Draft message", clientId: "client_1", clientName: "Test Client", phone: "+38344000000" },
     });
     expect(mocks.tx.followUpDraft.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: "SENT", sentAt: null } })
@@ -792,27 +901,17 @@ describe("follow-ups data layer — which drafts are actionable", () => {
 });
 
 describe("follow-ups data layer — list order and cap", () => {
-  it("lists slot offers first, then newest first, with a stable id tiebreaker", async () => {
+  it("reads each kind separately, oldest first, so no kind's backlog hides another's and overflow never hides the most urgent", async () => {
     mocks.prisma.followUpDraft.findMany.mockResolvedValue([]);
     await listPendingFollowUpDrafts("biz_1", NOW);
-    expect(mocks.prisma.followUpDraft.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ orderBy: [{ kind: "asc" }, { createdAt: "desc" }, { id: "asc" }] })
-    );
-  });
 
-  it("relies on SLOT_OFFER being the first declared kind, in the schema and in the migration Postgres sorts by", () => {
-    expect(Object.values(FollowUpDraftKind)[0]).toBe("SLOT_OFFER");
-
-    const migration = readFileSync(new URL("../../prisma/follow-up-draft-migration.sql", import.meta.url), "utf8");
-    expect(migration).toMatch(/CREATE TYPE "FollowUpDraftKind" AS ENUM \('SLOT_OFFER',/);
-  });
-
-  it("caps the pending-drafts query at MAX_PENDING_FOLLOW_UPS (650 — the real structural ceiling: 150 for the three generated kinds' own 50-each cap, plus 500 for the waiting list's own cap on live slot offers) instead of querying unbounded", async () => {
-    mocks.prisma.followUpDraft.findMany.mockResolvedValue([]);
-    await listPendingFollowUpDrafts("biz_1");
-    expect(mocks.prisma.followUpDraft.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ take: 650 })
-    );
+    const calls = mocks.prisma.followUpDraft.findMany.mock.calls.map(([args]) => args);
+    expect(calls.map((args) => args.where.kind)).toEqual(Object.values(FollowUpDraftKind));
+    for (const args of calls) {
+      expect(args.orderBy).toEqual([{ createdAt: "asc" }, { id: "asc" }]);
+      // Slot offers keep their structural ceiling (500 live offers at most); every other kind 200.
+      expect(args.take).toBe(args.where.kind === "SLOT_OFFER" ? 500 : 200);
+    }
   });
 });
 
@@ -830,7 +929,7 @@ describe("confirmFollowUpDraftDispatch — the last check before a message leave
     serveDrafts([claimed(row)]);
 
     expect(await confirmFollowUpDraftDispatch({ id: "d_1", businessId: "biz_1", now: NOW })).toEqual(
-      live ? { ok: true, draft: { ...SENT_DRAFT, kind: row.kind } } : { ok: false, error: "This follow-up was already handled." }
+      live ? { ok: true, draft: { ...SENT_DRAFT, kind: row.kind, appointmentId: row.appointmentId ?? undefined } } : { ok: false, error: "This follow-up was already handled." }
     );
   });
 

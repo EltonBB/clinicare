@@ -25,11 +25,13 @@ export const DEFAULT_WORKFLOW_SETTINGS: WorkflowSettingsValues = {
 
 export type FollowUpDraftInput = {
   clientId: string;
-  kind: "REBOOK" | "PAYMENT" | "THANK_YOU";
+  kind: "REBOOK" | "PAYMENT" | "THANK_YOU" | "CHECKUP_DUE";
   body: string;
   appointmentId?: string;
   paymentId?: string;
   dedupeKey: string;
+  /** CHECKUP_DUE: the follow-up reminder it is made from. */
+  followUpReminderId?: string;
   /** The automation's mode when drafted: only autoSend drafts go out without a person. */
   autoSend?: boolean;
   /**
@@ -295,5 +297,91 @@ export async function findThankYouCandidates(args: {
       clinic_name: message?.clinicName,
     }),
     dedupeKey: `THANK_YOU:${appointment.id}`,
+  }));
+}
+
+/**
+ * How long after a follow-up date a check-up nudge may still be drafted: long
+ * enough for two hourly runs to miss it, never a backlog of old dates (a clinic
+ * turning the automation on, or the day it ships, doesn't nudge everyone whose
+ * follow-up date passed months ago).
+ */
+const CHECKUP_LOOKBACK_HOURS = 24;
+/** Follow-up dates read per page while looking for ones still due. */
+const CHECKUP_SCAN_LIMIT = 1_000;
+
+/** A check-up nudge's key: one per follow-up reminder and date. */
+export function checkupDedupeKey(followUpReminderId: string, remindAt: Date): string {
+  return `CHECKUP_DUE:${followUpReminderId}:${remindAt.getTime()}`;
+}
+
+/**
+ * Follow-up dates staff set on a client's record (Client › Appointments ›
+ * Follow-up reminders) that have arrived: still "Scheduled", the client still
+ * one the clinic contacts and with no visit booked ahead, and not drafted
+ * before (the dedupe key names the follow-up reminder).
+ */
+export async function findCheckupDueCandidates(args: {
+  businessId: string;
+  now: Date;
+  message?: DraftMessage;
+}): Promise<FollowUpDraftInput[]> {
+  const { businessId, now, message } = args;
+
+  // A date already nudged (sent or skipped) is identified exactly by its
+  // dedupe key, which carries the date; a date staff moved since is new (Codex).
+  const keyFor = (reminder: { id: string; remindAt: Date }) => checkupDedupeKey(reminder.id, reminder.remindAt);
+
+  // Read page by page, dropping handled dates before the cap, so dates already
+  // nudged can never hold the places of ones still due (Codex).
+  const due: { id: string; clientId: string; remindAt: Date; client: { name: string } }[] = [];
+  let after: string | null = null;
+  while (due.length < MAX_CANDIDATES_PER_RUN) {
+    const page: typeof due = await prisma.clientFollowUpReminder.findMany({
+      where: {
+        businessId,
+        status: "Scheduled",
+        remindAt: { lte: now, gt: new Date(now.getTime() - CHECKUP_LOOKBACK_HOURS * HOUR_MS) },
+        client: {
+          ...ELIGIBLE_CLIENT_WHERE,
+          appointments: { none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } } },
+        },
+      },
+      select: { id: true, clientId: true, remindAt: true, client: { select: { name: true } } },
+      orderBy: [{ remindAt: "asc" }, { id: "asc" }],
+      take: CHECKUP_SCAN_LIMIT,
+      ...(after ? { cursor: { id: after }, skip: 1 } : {}),
+    });
+    if (page.length === 0) break;
+    // Matched by exact key, so only a draft for a reminder's current date
+    // counts as handled; one still waiting for a date staff moved since can
+    // never be sent (the send gate checks the date), so it is expired here
+    // rather than left standing in for the new date (Codex).
+    const drafts = await prisma.followUpDraft.findMany({
+      where: { businessId, kind: "CHECKUP_DUE", followUpReminderId: { in: page.map((reminder) => reminder.id) } },
+      select: { id: true, status: true, followUpReminderId: true, dedupeKey: true },
+    });
+    const currentKey = new Map(page.map((reminder) => [reminder.id, keyFor(reminder)]));
+    const handled = new Set(drafts.map((draft) => draft.dedupeKey));
+    const stale = drafts
+      .filter((draft) => draft.status === "PENDING" && draft.dedupeKey !== currentKey.get(draft.followUpReminderId ?? ""))
+      .map((draft) => draft.id);
+    if (stale.length > 0) {
+      await prisma.followUpDraft.updateMany({ where: { id: { in: stale }, status: "PENDING" }, data: { status: "EXPIRED" } });
+    }
+    due.push(...page.filter((reminder) => !handled.has(keyFor(reminder))));
+    if (page.length < CHECKUP_SCAN_LIMIT) break;
+    after = page[page.length - 1].id;
+  }
+  return due.slice(0, MAX_CANDIDATES_PER_RUN).map((reminder) => ({
+    clientId: reminder.clientId,
+    kind: "CHECKUP_DUE" as const,
+    followUpReminderId: reminder.id,
+    body: renderAutomationMessage("CHECKUP_DUE", message?.template, {
+      client_name: reminder.client.name,
+      clinic_name: message?.clinicName,
+    }),
+    // Per follow-up date: a reminder moved to a new date can be nudged again.
+    dedupeKey: keyFor(reminder),
   }));
 }

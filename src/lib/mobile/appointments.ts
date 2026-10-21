@@ -1,3 +1,4 @@
+import { queueVisitMessage } from "@/lib/automation-events";
 import {
   cancelAppointmentCore,
   revalidateCalendarSurfaces,
@@ -137,6 +138,15 @@ export async function cancelOwnAppointment(
   }
 
   revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId], [outcome.appointmentId]);
+
+  // The patient hears the visit was cancelled (Automations), same as a web cancel.
+  await queueVisitMessage({
+    businessId: ctx.business.id,
+    appointmentId: outcome.appointmentId,
+    event: "cancelled",
+    generation: outcome.generation,
+    clientId: outcome.clientId,
+  });
 
   // Surface the cancellation to the admin in the staff↔admin thread so they can
   // reschedule/reassign — minimum-necessary scheduling info (name + time, no

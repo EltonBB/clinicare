@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
+import { retireMovedCheckupDrafts } from "@/lib/automation-events";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { ensureConversationForClient, normalizeConversationsForBusiness } from "@/lib/inbox-server";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
@@ -1790,15 +1791,20 @@ export async function updateClientFollowUpReminderAction(
     return { ok: false, error: "Reminder title and date are required." };
   }
 
-  await prisma.clientFollowUpReminder.update({
-    where: { id: payload.id },
-    data: {
-      title,
-      channel: payload.channel?.trim() || "WhatsApp",
-      status: payload.status?.trim() || "Scheduled",
-      remindAt,
-      notes: payload.notes?.trim() || null,
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.clientFollowUpReminder.update({
+      where: { id: payload.id },
+      data: {
+        title,
+        channel: payload.channel?.trim() || "WhatsApp",
+        status: payload.status?.trim() || "Scheduled",
+        remindAt,
+        notes: payload.notes?.trim() || null,
+      },
+    });
+    // A check-up nudge drafted for the old date no longer applies (Automations),
+    // withdrawn in the same transaction so a send can't slip in between (Codex).
+    await retireMovedCheckupDrafts({ businessId: context.business.id, followUpReminderId: payload.id, remindAt }, tx);
   });
 
   return respondWithClientRecord(context.business.id, payload.clientId);

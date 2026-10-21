@@ -13,6 +13,13 @@ const mocks = vi.hoisted(() => ({
   getAutomationsCursor: vi.fn(),
   setAutomationsCursor: vi.fn(),
   getAutomationSettings: vi.fn(),
+  suppressOpenReminders: vi.fn(),
+  replaceRefusedVisitMessage: vi.fn(),
+}));
+
+vi.mock("@/lib/automation-events", () => ({
+  suppressOpenReminders: mocks.suppressOpenReminders,
+  replaceRefusedVisitMessage: mocks.replaceRefusedVisitMessage,
 }));
 
 vi.mock("@/lib/automations-data", () => ({ getAutomationSettings: mocks.getAutomationSettings }));
@@ -52,6 +59,7 @@ beforeEach(() => {
   mocks.findMany.mockResolvedValue([]);
   mocks.groupBy.mockResolvedValue([]);
   mocks.getAutomationsCursor.mockResolvedValue(null);
+  mocks.suppressOpenReminders.mockResolvedValue(undefined);
   mocks.getAutomationSettings.mockResolvedValue(
     new Proxy({}, { get: () => ({ enabled: true, mode: "AUTOMATIC" }) })
   );
@@ -80,6 +88,61 @@ describe("dispatchFollowUpDraft", () => {
     expect(mocks.mirrorOutboundToInbox).toHaveBeenCalledWith(
       expect.objectContaining({ source: "FOLLOW_UP", automationKind: "THANK_YOU" })
     );
+  });
+
+  it("re-drafts a booking confirmation its last check refused because the visit changed", async () => {
+    mocks.confirmFollowUpDraftDispatch.mockResolvedValue({
+      ok: false,
+      error: "This follow-up was already handled.",
+      visitMessageOwed: { appointmentId: "appt_1", event: "moved", clientId: "client_1", generation: 3 },
+    });
+
+    const result = await dispatchFollowUpDraft({ draftId: "d_1", businessId: "biz_1" });
+
+    expect(result).toMatchObject({ ok: false });
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+    expect(mocks.replaceRefusedVisitMessage).toHaveBeenCalledWith({
+      businessId: "biz_1",
+      appointmentId: "appt_1",
+      event: "moved",
+      clientId: "client_1",
+      generation: 3,
+    });
+  });
+
+  it("lets a sent booking confirmation stand in for the reminders already due", async () => {
+    const confirmation = { ...DRAFT, kind: "BOOKING_CONFIRMATION", appointmentId: "appt_1", appointmentGeneration: 2 };
+    mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true, draft: confirmation });
+    mocks.confirmFollowUpDraftDispatch.mockResolvedValue({ ok: true, draft: confirmation });
+
+    await dispatchFollowUpDraft({ draftId: "d_1", businessId: "biz_1" });
+
+    expect(mocks.suppressOpenReminders).toHaveBeenCalledWith({
+      businessId: "biz_1",
+      appointmentId: "appt_1",
+      appointmentGeneration: 2,
+    });
+  });
+
+  it("lets an uncertain booking confirmation cover the reminders already due too", async () => {
+    const confirmation = { ...DRAFT, kind: "BOOKING_CONFIRMATION", appointmentId: "appt_1", appointmentGeneration: 2 };
+    mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true, draft: confirmation });
+    mocks.confirmFollowUpDraftDispatch.mockResolvedValue({ ok: true, draft: confirmation });
+    mocks.sendMessage.mockResolvedValue({ ok: false, reason: "delivery_uncertain", error: "x" });
+
+    await dispatchFollowUpDraft({ draftId: "d_1", businessId: "biz_1" });
+
+    expect(mocks.suppressOpenReminders).toHaveBeenCalledWith({
+      businessId: "biz_1",
+      appointmentId: "appt_1",
+      appointmentGeneration: 2,
+    });
+  });
+
+  it("doesn't touch reminders after a thank-you", async () => {
+    await dispatchFollowUpDraft({ draftId: "d_1", businessId: "biz_1" });
+
+    expect(mocks.suppressOpenReminders).not.toHaveBeenCalled();
   });
 
   it("sends the text staff approved", async () => {

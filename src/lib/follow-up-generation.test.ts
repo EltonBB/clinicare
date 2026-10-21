@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   findRebookCandidates: vi.fn(),
   findPaymentReminderCandidates: vi.fn(),
   findThankYouCandidates: vi.fn(),
+  findCheckupDueCandidates: vi.fn(),
   expirePastSlotOffers: vi.fn(),
   settleInterruptedFollowUpSends: vi.fn(),
   isProBusinessPlan: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock("@/lib/workflow-generators", async (importOriginal) => {
     findRebookCandidates: mocks.findRebookCandidates,
     findPaymentReminderCandidates: mocks.findPaymentReminderCandidates,
     findThankYouCandidates: mocks.findThankYouCandidates,
+    findCheckupDueCandidates: mocks.findCheckupDueCandidates,
   };
 });
 
@@ -40,6 +42,9 @@ import { expireStaleFollowUpDrafts, generateFollowUpDrafts } from "@/lib/follow-
 import { DEFAULT_WORKFLOW_SETTINGS, type FollowUpDraftInput } from "@/lib/workflow-generators";
 
 const NOW = new Date("2026-07-01T12:00:00Z");
+// expireStaleFollowUpDrafts: payment, rebook, thank-you, then the newer
+// automations (visit messages, missed visit, check-up due).
+const SWEEP_RULES = 6;
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
 
@@ -90,6 +95,7 @@ beforeEach(() => {
   mocks.findRebookCandidates.mockResolvedValue([]);
   mocks.findPaymentReminderCandidates.mockResolvedValue([]);
   mocks.findThankYouCandidates.mockResolvedValue([]);
+  mocks.findCheckupDueCandidates.mockResolvedValue([]);
   mocks.expirePastSlotOffers.mockResolvedValue({ expired: 0, released: 0, failed: 0 });
   mocks.settleInterruptedFollowUpSends.mockResolvedValue(0);
   // Mirrors billing.ts: PRO and ADVANCED are Pro; TRIAL and BASIC are not.
@@ -103,15 +109,12 @@ afterEach(() => {
 });
 
 describe("generateFollowUpDrafts — business selection and settings", () => {
-  it("loads only WhatsApp-connected businesses (the same filter reminders use), in stable id order", async () => {
+  it("loads every business with WhatsApp set up, linked or not (drafts wait for the link), in stable id order", async () => {
     await generateFollowUpDrafts(NOW);
 
     expect(mocks.prisma.business.findMany).toHaveBeenCalledTimes(1);
     const args = mocks.prisma.business.findMany.mock.calls[0][0];
-    expect(args.where).toEqual({
-      whatsappEnabled: true,
-      whatsappConnection: { is: { status: { in: ["CONNECTED", "ERRORED"] } } },
-    });
+    expect(args.where).toEqual({ whatsappEnabled: true });
     expect(args.orderBy).toEqual({ id: "asc" });
     expect(args.select).toMatchObject({ id: true, plan: true, workflowSettings: expect.anything() });
   });
@@ -384,7 +387,7 @@ describe("generateFollowUpDrafts — stale-draft sweep and totals", () => {
     const result = await generateFollowUpDrafts(NOW);
 
     expect(result.errors).toBe(1);
-    expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(3);
+    expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(SWEEP_RULES);
     expect(mocks.expirePastSlotOffers).toHaveBeenCalledWith(undefined, NOW, { onError: expect.any(Function) });
   });
 
@@ -392,7 +395,7 @@ describe("generateFollowUpDrafts — stale-draft sweep and totals", () => {
     const result = await generateFollowUpDrafts(NOW);
 
     expect(result).toEqual({ businessesProcessed: 0, draftsCreated: 0, draftsExpired: 0, errors: 0, abandonedBusinesses: 0 });
-    expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(3);
+    expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(SWEEP_RULES);
     expect(mocks.expirePastSlotOffers).toHaveBeenCalledTimes(1);
   });
 
@@ -443,7 +446,7 @@ describe("generateFollowUpDrafts — stale-draft sweep and totals", () => {
     const result = await generateFollowUpDrafts(NOW);
 
     expect(result.errors).toBe(1);
-    expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(3);
+    expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(SWEEP_RULES);
     expect(mocks.expirePastSlotOffers).toHaveBeenCalledTimes(1);
   });
 
@@ -453,7 +456,7 @@ describe("generateFollowUpDrafts — stale-draft sweep and totals", () => {
 
     const result = await generateFollowUpDrafts(NOW);
 
-    expect(result).toMatchObject({ errors: 1, draftsExpired: 3 });
+    expect(result).toMatchObject({ errors: 1, draftsExpired: SWEEP_RULES });
   });
 
   // Codex #130: one offer failing no longer aborts the sweep, so the cron has to
@@ -497,7 +500,7 @@ describe("generateFollowUpDrafts — stale-draft sweep and totals", () => {
     expect(mocks.findPaymentReminderCandidates).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ businessesProcessed: 1, draftsCreated: 0, errors: 0 });
     expect(mocks.logger.warn).toHaveBeenCalledTimes(1);
-    expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(3);
+    expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(SWEEP_RULES);
   });
 
   it("stops writing mid-batch once the budget is spent, keeps what it wrote, and still sweeps", async () => {
@@ -520,7 +523,7 @@ describe("generateFollowUpDrafts — stale-draft sweep and totals", () => {
     // The second business is never started once the first spent the budget.
     expect(mocks.findPaymentReminderCandidates).toHaveBeenCalledTimes(1);
     expect(mocks.logger.warn).toHaveBeenCalledTimes(1);
-    expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(3);
+    expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(SWEEP_RULES);
     expect(mocks.expirePastSlotOffers).toHaveBeenCalledTimes(1);
   });
 
@@ -540,7 +543,7 @@ describe("generateFollowUpDrafts — stale-draft sweep and totals", () => {
     expect(mocks.prisma.followUpDraft.create).toHaveBeenCalledTimes(1);
     expect(result.draftsCreated).toBe(1);
     expect(mocks.logger.warn).toHaveBeenCalledTimes(1);
-    expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(3);
+    expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(SWEEP_RULES);
   });
 
   // Codex #130: the budget above is only checked between businesses and between
@@ -569,7 +572,7 @@ describe("generateFollowUpDrafts — stale-draft sweep and totals", () => {
       // Not "biz_1" again: the stalled business took its turn, so the next run
       // starts after it instead of stalling on it forever.
       expect(mocks.setFollowUpCursor).toHaveBeenCalledWith("biz_2");
-      expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(3);
+      expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledTimes(SWEEP_RULES);
       expect(mocks.expirePastSlotOffers).toHaveBeenCalledTimes(1);
     });
 
@@ -729,8 +732,15 @@ describe("expireStaleFollowUpDrafts", () => {
     await expireStaleFollowUpDrafts(NOW);
 
     const calls = mocks.prisma.followUpDraft.updateMany.mock.calls.map(([arg]) => arg);
-    expect(calls).toHaveLength(3);
-    expect(calls.map((arg) => arg.where.kind).sort()).toEqual(["PAYMENT", "REBOOK", "THANK_YOU"]);
+    expect(calls).toHaveLength(SWEEP_RULES);
+    expect(calls.map((arg) => JSON.stringify(arg.where.kind))).toEqual([
+      '"PAYMENT"',
+      '"REBOOK"',
+      '"THANK_YOU"',
+      '{"in":["BOOKING_CONFIRMATION","NEW_PATIENT_WELCOME","VISIT_CHANGED"]}',
+      '"MISSED_VISIT"',
+      '"CHECKUP_DUE"',
+    ]);
     for (const arg of calls) {
       expect(arg.where.status).toBe("PENDING");
       expect(arg.data).toEqual({ status: "EXPIRED" });
@@ -874,7 +884,7 @@ describe("generateFollowUpDrafts — per-kind pending cap (50)", () => {
     for (const businessId of ["biz_1", "biz_2"]) {
       expect(mocks.prisma.followUpDraft.groupBy).toHaveBeenCalledWith({
         by: ["kind"],
-        where: { businessId, status: "PENDING", kind: { in: ["REBOOK", "PAYMENT", "THANK_YOU"] } },
+        where: { businessId, status: "PENDING", kind: { in: ["REBOOK", "PAYMENT", "THANK_YOU", "CHECKUP_DUE"] } },
         _count: { _all: true },
       });
     }
