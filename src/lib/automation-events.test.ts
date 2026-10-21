@@ -266,14 +266,33 @@ describe("queueVisitMessage", () => {
 });
 
 describe("replaceRefusedVisitMessage", () => {
+  const OWED = { businessId: "biz_1", appointmentId: "appt_1", clientId: "client_1", generation: 1 };
+
   it("drafts the confirmation again for the visit as it now is", async () => {
-    expect(await replaceRefusedVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "booked" })).toBeUndefined();
+    expect(await replaceRefusedVisitMessage({ ...OWED, event: "booked" })).toBeUndefined();
 
     expect(mocks.followUpDraft.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ kind: "BOOKING_CONFIRMATION", appointmentGeneration: 2 }) })
     );
     expect(mocks.dispatchSoon).toHaveBeenCalledWith("biz_1");
   });
+
+  it.each(["booked", "cancelled", "missed"] as const)(
+    "never sends a refused %s message to the patient the visit was reassigned to",
+    async (event) => {
+      mocks.appointment.findFirst.mockResolvedValue(
+        appointment({
+          clientId: "client_2",
+          status: event === "cancelled" ? "CANCELLED" : event === "missed" ? "NO_SHOW" : "CONFIRMED",
+          ...(event === "missed" ? { startAt: new Date("2026-10-20T07:00:00.000Z") } : {}),
+        })
+      );
+
+      await replaceRefusedVisitMessage({ ...OWED, event });
+
+      expect(mocks.followUpDraft.create).not.toHaveBeenCalled();
+    }
+  );
 });
 
 describe("one message per version of a visit", () => {
@@ -438,7 +457,7 @@ describe("queueMissedVisitMessage", () => {
   it("drafts a refused missed-visit message again while the visit is still a no-show", async () => {
     mocks.appointment.findFirst.mockResolvedValue(appointment({ status: "NO_SHOW", startAt: new Date("2026-10-20T07:00:00.000Z") }));
 
-    await replaceRefusedVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "missed" });
+    await replaceRefusedVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "missed", clientId: "client_1", generation: 1 });
 
     expect(mocks.followUpDraft.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ kind: "MISSED_VISIT" }) })

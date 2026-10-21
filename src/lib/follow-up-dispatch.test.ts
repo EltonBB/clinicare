@@ -94,14 +94,20 @@ describe("dispatchFollowUpDraft", () => {
     mocks.confirmFollowUpDraftDispatch.mockResolvedValue({
       ok: false,
       error: "This follow-up was already handled.",
-      visitMessageOwed: { appointmentId: "appt_1", event: "moved" },
+      visitMessageOwed: { appointmentId: "appt_1", event: "moved", clientId: "client_1", generation: 3 },
     });
 
     const result = await dispatchFollowUpDraft({ draftId: "d_1", businessId: "biz_1" });
 
     expect(result).toMatchObject({ ok: false });
     expect(mocks.sendMessage).not.toHaveBeenCalled();
-    expect(mocks.replaceRefusedVisitMessage).toHaveBeenCalledWith({ businessId: "biz_1", appointmentId: "appt_1", event: "moved" });
+    expect(mocks.replaceRefusedVisitMessage).toHaveBeenCalledWith({
+      businessId: "biz_1",
+      appointmentId: "appt_1",
+      event: "moved",
+      clientId: "client_1",
+      generation: 3,
+    });
   });
 
   it("lets a sent booking confirmation stand in for the reminders already due", async () => {

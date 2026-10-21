@@ -14,6 +14,12 @@ const HOUR_MS = 3_600_000;
 export type VisitEvent = "booked" | "moved" | "cancelled";
 /** A visit message owed again after its send was refused: a visit event, or the missed-visit message. */
 export type OwedVisitMessage = VisitEvent | "missed";
+/**
+ * A refused visit message, owed again: the event, and the patient and visit
+ * version the refused draft was written for, so the replacement only ever goes
+ * to that patient (Codex).
+ */
+export type OwedVisitMessageArgs = { appointmentId: string; event: OwedVisitMessage; clientId: string; generation: number };
 
 /**
  * Drafts written about a visit as it stood: its patient, time, staff member
@@ -333,15 +339,13 @@ export async function queueVisitMessage(args: {
  * moved-visit notice for this version of the visit, which queueVisitMessage's
  * own one-message-per-version check gives way to). Never throws.
  */
-export async function replaceRefusedVisitMessage(args: {
-  businessId: string;
-  appointmentId: string;
-  event: OwedVisitMessage;
-}): Promise<void> {
-  const { event, ...visit } = args;
-  // A missed-visit message is owed only while the visit is still a no-show.
+export async function replaceRefusedVisitMessage(args: { businessId: string } & OwedVisitMessageArgs): Promise<void> {
+  const { event, generation, ...visit } = args;
+  // A missed-visit message is owed only while the visit is still a no-show. Both
+  // go to the refused draft's patient only: a visit since given to another
+  // patient was announced to them by the edit that reassigned it (Codex).
   if (event === "missed") await queueMissedVisitMessage(visit);
-  else await queueVisitMessage({ ...visit, event });
+  else await queueVisitMessage({ ...visit, event, generation });
 }
 
 /**
@@ -352,6 +356,8 @@ export async function replaceRefusedVisitMessage(args: {
 export async function queueMissedVisitMessage(args: {
   businessId: string;
   appointmentId: string;
+  /** Only while the visit still belongs to this patient (a refused draft's replacement). */
+  clientId?: string;
   now?: Date;
 }): Promise<string | null> {
   const { businessId, appointmentId, now = new Date() } = args;
@@ -376,6 +382,7 @@ export async function queueMissedVisitMessage(args: {
       },
     });
     if (!appointment) return null;
+    if (args.clientId !== undefined && appointment.clientId !== args.clientId) return null;
 
     const business = appointment.business;
     // A clinic that set up WhatsApp gets the draft even while the link is down:

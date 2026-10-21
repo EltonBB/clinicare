@@ -10,7 +10,7 @@ import type { FollowUpDraftRecord } from "@/lib/follow-ups";
 import { liveSlotOfferWhere, reofferFreedSlot, retryOnWriteConflict } from "@/lib/slot-offers";
 import { AVAILABLE_STAFF_WHERE } from "@/lib/staff-eligibility";
 import { automationEnabledWhere } from "@/lib/automations-data";
-import type { OwedVisitMessage } from "@/lib/automation-events";
+import type { OwedVisitMessage, OwedVisitMessageArgs } from "@/lib/automation-events";
 import { checkupDedupeKey, rebookedAppointmentWhere } from "@/lib/workflow-generators";
 
 // A draft is actionable while it's PENDING and what it's about still holds.
@@ -229,7 +229,7 @@ export type SentFollowUpDraft = {
 type MarkDraftSentResult =
   | { ok: true; draft: SentFollowUpDraft }
   /** `visitMessageOwed`: a refused visit message to draft again for the visit as it now is. */
-  | { ok: false; error: string; visitMessageOwed?: { appointmentId: string; event: OwedVisitMessage } };
+  | { ok: false; error: string; visitMessageOwed?: OwedVisitMessageArgs };
 
 export const ALREADY_HANDLED_ERROR = "This follow-up was already handled.";
 export const SLOT_OFFER_UNAVAILABLE_ERROR = "This slot offer is no longer available.";
@@ -250,7 +250,9 @@ class VisitChangedSinceDrafted extends Error {
     readonly kind: FollowUpDraftKind,
     /** The visit, when it still exists. */
     readonly appointmentId: string | null,
-    readonly dedupeKey: string | null
+    readonly dedupeKey: string | null,
+    /** The patient and visit version the draft was written for, when it names a visit version. */
+    readonly writtenFor: { clientId: string; generation: number } | null = null
   ) {
     super();
   }
@@ -384,11 +386,12 @@ async function runSendGate(args: {
       // Nothing went out: a visit message refused here (say, an edit landed
       // between its claim and its send) is still owed for the visit as it now
       // is (Codex).
-      const event = count > 0 && error.appointmentId ? owedVisitEvent(error.kind, error.dedupeKey) : null;
+      // Owed to the patient it was written for only (see OwedVisitMessageArgs).
+      const event = count > 0 && error.appointmentId && error.writtenFor ? owedVisitEvent(error.kind, error.dedupeKey) : null;
       return {
         ok: false,
         error: ALREADY_HANDLED_ERROR,
-        ...(event ? { visitMessageOwed: { appointmentId: error.appointmentId!, event } } : {}),
+        ...(event ? { visitMessageOwed: { appointmentId: error.appointmentId!, event, ...error.writtenFor! } } : {}),
       };
     }
     if (error instanceof SlotOutsideHours) {
@@ -472,7 +475,10 @@ function flipDraftToSent(args: {
           draft.appointment.reminderGeneration !== draft.appointmentGeneration ||
           draft.appointment.clientId !== draft.clientId)
       ) {
-        throw new VisitChangedSinceDrafted(draft.kind, draft.appointment ? draft.appointmentId : null, draft.dedupeKey);
+        throw new VisitChangedSinceDrafted(draft.kind, draft.appointment ? draft.appointmentId : null, draft.dedupeKey, {
+          clientId: draft.clientId,
+          generation: draft.appointmentGeneration,
+        });
       }
 
       // A check-up nudge names one follow-up date: refused (and expired, like a

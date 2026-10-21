@@ -832,7 +832,8 @@ describe("follow-ups data layer — which drafts are actionable", () => {
 
     expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({
       ok: false,
-      visitMessageOwed: { appointmentId: "appt_2", event: "moved" },
+      // Owed to the patient and version the refused draft was written for.
+      visitMessageOwed: { appointmentId: "appt_2", event: "moved", clientId: "client_1", generation: 3 },
     });
   });
 
