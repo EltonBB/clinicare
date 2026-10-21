@@ -54,15 +54,15 @@ export function visitEventForSave(save: {
 /**
  * A check-up date the clinic just changed: a nudge drafted for the old date,
  * waiting or claimed but not yet sent, is withdrawn at once, so it can't go out
- * beside the one the new date gets (Codex).
+ * beside the one the new date gets (Codex). Pass the transaction that changes
+ * the date, so the two land together.
  */
-export async function retireMovedCheckupDrafts(args: {
-  businessId: string;
-  followUpReminderId: string;
-  remindAt: Date;
-}): Promise<void> {
+export async function retireMovedCheckupDrafts(
+  args: { businessId: string; followUpReminderId: string; remindAt: Date },
+  client: Pick<Prisma.TransactionClient, "followUpDraft"> = prisma
+): Promise<void> {
   const { businessId, followUpReminderId, remindAt } = args;
-  await prisma.followUpDraft.updateMany({
+  await client.followUpDraft.updateMany({
     where: {
       businessId,
       followUpReminderId,
@@ -307,8 +307,12 @@ export async function queueVisitMessage(args: {
  * moved-visit notice for this version of the visit, which queueVisitMessage's
  * own one-message-per-version check gives way to). Never throws.
  */
-export async function replaceRefusedBookingMessage(args: { businessId: string; appointmentId: string }): Promise<void> {
-  await queueVisitMessage({ ...args, event: "booked" });
+export async function replaceRefusedVisitMessage(args: {
+  businessId: string;
+  appointmentId: string;
+  event: VisitEvent;
+}): Promise<void> {
+  await queueVisitMessage(args);
 }
 
 /**

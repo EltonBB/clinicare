@@ -215,6 +215,7 @@ function serveDrafts(rows: Row[]) {
       body: row.body,
       kind: row.kind,
       appointmentId: row.appointmentId ?? undefined,
+      dedupeKey: row.dedupeKey ?? null,
       appointmentGeneration: row.appointmentGeneration ?? undefined,
       clientId: row.clientId,
       client: { phone: rowClient.phone ?? null, name: rowClient.name ?? null },
@@ -790,13 +791,30 @@ describe("follow-ups data layer — which drafts are actionable", () => {
     expect(result).toMatchObject({ ok: sendable });
     if (!sendable) {
       // Nothing went out, so the confirmation is owed again for the visit as it is now.
-      expect(result).toMatchObject({ bookingMessageOwedFor: "appt_2" });
+      expect(result).toMatchObject({ visitMessageOwed: { appointmentId: "appt_2", event: "booked" } });
       // Expired for good, not left pending beside its replacement.
       expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledWith({
         where: { id: "d_1", businessId: "biz_1", OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }] },
         data: { status: "EXPIRED" },
       });
     }
+  });
+
+  it("owes a moved notice again when a later edit refuses it mid-send", async () => {
+    serveDrafts([
+      draftRow({
+        kind: "VISIT_CHANGED",
+        appointmentId: "appt_2",
+        appointmentGeneration: 3,
+        dedupeKey: "VISIT_CHANGED:appt_2:moved:1:3",
+        appointment: { status: "CONFIRMED", startAt: FUTURE, reminderGeneration: 4, clientId: "client_1" },
+      }),
+    ]);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({
+      ok: false,
+      visitMessageOwed: { appointmentId: "appt_2", event: "moved" },
+    });
   });
 
   it("refuses an automatic send once the draft no longer sends on its own", async () => {

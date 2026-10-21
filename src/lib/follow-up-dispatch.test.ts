@@ -14,12 +14,12 @@ const mocks = vi.hoisted(() => ({
   setAutomationsCursor: vi.fn(),
   getAutomationSettings: vi.fn(),
   suppressOpenReminders: vi.fn(),
-  replaceRefusedBookingMessage: vi.fn(),
+  replaceRefusedVisitMessage: vi.fn(),
 }));
 
 vi.mock("@/lib/automation-events", () => ({
   suppressOpenReminders: mocks.suppressOpenReminders,
-  replaceRefusedBookingMessage: mocks.replaceRefusedBookingMessage,
+  replaceRefusedVisitMessage: mocks.replaceRefusedVisitMessage,
 }));
 
 vi.mock("@/lib/automations-data", () => ({ getAutomationSettings: mocks.getAutomationSettings }));
@@ -94,14 +94,14 @@ describe("dispatchFollowUpDraft", () => {
     mocks.confirmFollowUpDraftDispatch.mockResolvedValue({
       ok: false,
       error: "This follow-up was already handled.",
-      bookingMessageOwedFor: "appt_1",
+      visitMessageOwed: { appointmentId: "appt_1", event: "moved" },
     });
 
     const result = await dispatchFollowUpDraft({ draftId: "d_1", businessId: "biz_1" });
 
     expect(result).toMatchObject({ ok: false });
     expect(mocks.sendMessage).not.toHaveBeenCalled();
-    expect(mocks.replaceRefusedBookingMessage).toHaveBeenCalledWith({ businessId: "biz_1", appointmentId: "appt_1" });
+    expect(mocks.replaceRefusedVisitMessage).toHaveBeenCalledWith({ businessId: "biz_1", appointmentId: "appt_1", event: "moved" });
   });
 
   it("lets a sent booking confirmation stand in for the reminders already due", async () => {

@@ -25,7 +25,7 @@ vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: 
 import {
   queueMissedVisitMessage,
   queueVisitMessage,
-  replaceRefusedBookingMessage,
+  replaceRefusedVisitMessage,
   retireMovedCheckupDrafts,
   retireVisitDrafts,
   visitEventForSave,
@@ -242,9 +242,9 @@ describe("queueVisitMessage", () => {
   });
 });
 
-describe("replaceRefusedBookingMessage", () => {
+describe("replaceRefusedVisitMessage", () => {
   it("drafts the confirmation again for the visit as it now is", async () => {
-    expect(await replaceRefusedBookingMessage({ businessId: "biz_1", appointmentId: "appt_1" })).toBeUndefined();
+    expect(await replaceRefusedVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "booked" })).toBeUndefined();
 
     expect(mocks.followUpDraft.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ kind: "BOOKING_CONFIRMATION", appointmentGeneration: 2 }) })
@@ -459,6 +459,15 @@ describe("suppressOpenReminders", () => {
 });
 
 describe("retireMovedCheckupDrafts", () => {
+  it("withdraws inside the transaction it is given", async () => {
+    const tx = { followUpDraft: { updateMany: vi.fn() } };
+
+    await retireMovedCheckupDrafts({ businessId: "biz_1", followUpReminderId: "fr_1", remindAt: NOW }, tx as never);
+
+    expect(tx.followUpDraft.updateMany).toHaveBeenCalledTimes(1);
+    expect(mocks.followUpDraft.updateMany).not.toHaveBeenCalled();
+  });
+
   it("withdraws a check-up nudge drafted for a date the clinic just moved", async () => {
     const remindAt = new Date("2026-10-19T09:00:00.000Z");
 

@@ -227,8 +227,8 @@ export type SentFollowUpDraft = {
 
 type MarkDraftSentResult =
   | { ok: true; draft: SentFollowUpDraft }
-  /** `bookingMessageOwedFor`: a refused confirmation or welcome to draft again for this visit. */
-  | { ok: false; error: string; bookingMessageOwedFor?: string };
+  /** `visitMessageOwed`: a refused visit message to draft again for the visit as it now is. */
+  | { ok: false; error: string; visitMessageOwed?: { appointmentId: string; event: "booked" | "moved" | "cancelled" } };
 
 export const ALREADY_HANDLED_ERROR = "This follow-up was already handled.";
 export const SLOT_OFFER_UNAVAILABLE_ERROR = "This slot offer is no longer available.";
@@ -248,14 +248,22 @@ class VisitChangedSinceDrafted extends Error {
   constructor(
     readonly kind: FollowUpDraftKind,
     /** The visit, when it still exists. */
-    readonly appointmentId: string | null
+    readonly appointmentId: string | null,
+    readonly dedupeKey: string | null
   ) {
     super();
   }
 }
 
-/** Booking messages: refused for a changed visit, they are owed again for the visit as it now is. */
-const BOOKING_MESSAGE_KINDS: FollowUpDraftKind[] = ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME"];
+/**
+ * A visit message refused for a changed visit is owed again for the visit as it
+ * now is: a confirmation or welcome as a booking, a notice as the change it told.
+ */
+function owedVisitEvent(kind: FollowUpDraftKind, dedupeKey: string | null): "booked" | "moved" | "cancelled" | null {
+  if (kind === "BOOKING_CONFIRMATION" || kind === "NEW_PATIENT_WELCOME") return "booked";
+  if (kind === "VISIT_CHANGED") return dedupeKey?.includes(":cancelled:") ? "cancelled" : "moved";
+  return null;
+}
 
 /**
  * Atomic PENDING -> SENT flip: two staff tapping Send at once can't both
@@ -371,11 +379,15 @@ async function runSendGate(args: {
         where: { id: args.id, businessId: args.businessId, OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }] },
         data: { status: "EXPIRED" },
       });
-      // Nothing went out: a confirmation or welcome refused here (say, a
-      // status edit landed between its claim and its send) is still owed for
-      // the visit as it now is (Codex).
-      const owed = count > 0 && error.appointmentId && BOOKING_MESSAGE_KINDS.includes(error.kind);
-      return { ok: false, error: ALREADY_HANDLED_ERROR, ...(owed ? { bookingMessageOwedFor: error.appointmentId! } : {}) };
+      // Nothing went out: a visit message refused here (say, an edit landed
+      // between its claim and its send) is still owed for the visit as it now
+      // is (Codex).
+      const event = count > 0 && error.appointmentId ? owedVisitEvent(error.kind, error.dedupeKey) : null;
+      return {
+        ok: false,
+        error: ALREADY_HANDLED_ERROR,
+        ...(event ? { visitMessageOwed: { appointmentId: error.appointmentId!, event } } : {}),
+      };
     }
     if (error instanceof SlotOutsideHours) {
       return { ok: false, error: SLOT_OUTSIDE_HOURS_ERROR };
@@ -437,6 +449,7 @@ function flipDraftToSent(args: {
           id: true,
           body: true,
           kind: true,
+          dedupeKey: true,
           appointmentId: true,
           appointmentGeneration: true,
           clientId: true,
@@ -455,7 +468,7 @@ function flipDraftToSent(args: {
           draft.appointment.reminderGeneration !== draft.appointmentGeneration ||
           draft.appointment.clientId !== draft.clientId)
       ) {
-        throw new VisitChangedSinceDrafted(draft.kind, draft.appointment ? draft.appointmentId : null);
+        throw new VisitChangedSinceDrafted(draft.kind, draft.appointment ? draft.appointmentId : null, draft.dedupeKey);
       }
 
       if (
