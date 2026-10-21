@@ -126,15 +126,18 @@ export type AppointmentMutationOutcome =
       /** False for the idempotent already-cancelled no-op — callers should skip
        *  re-revalidating/re-notifying since nothing actually changed. */
       changed: boolean;
+      /** The visit version this change committed, when it moved it on (a cancel). */
+      generation?: number;
     }
   | { ok: false; status: 404 | 409; error: string };
 
 /** The success outcome for one appointment row (`changed` false = an idempotent no-op). */
 function mutationDone(
   row: { id: string; clientId: string; staffMemberId: string | null },
-  changed: boolean
+  changed: boolean,
+  generation?: number
 ): AppointmentMutationOutcome {
-  return { ok: true, appointmentId: row.id, clientId: row.clientId, staffMemberId: row.staffMemberId, changed };
+  return { ok: true, appointmentId: row.id, clientId: row.clientId, staffMemberId: row.staffMemberId, changed, generation };
 }
 
 /**
@@ -256,9 +259,11 @@ export async function cancelAppointmentCore(where: {
     // startAt happens to hold when it's read back later (Codex).
     // The reminders are cleared below: a new generation, so the ones owed after
     // a re-confirm are new sends, not repeats (see Appointment.reminderGeneration).
-    await tx.appointment.update({
+    // The version it read back is the one the cancel notice is for (Codex).
+    const bumped = await tx.appointment.update({
       where: { id: cancelled.id },
       data: { cancelledScheduledStartAt: cancelled.startAt, reminderGeneration: { increment: 1 } },
+      select: { reminderGeneration: true },
     });
 
     // Clear any pending reminder rows so a later re-confirm starts clean.
@@ -272,7 +277,7 @@ export async function cancelAppointmentCore(where: {
     // caller — web, mobile, or the reply-cancel path — can skip the gate).
     await offerFreedSlot(tx, { businessId: where.businessId, cancelled });
 
-    return mutationDone(cancelled, true);
+    return mutationDone(cancelled, true, bumped?.reminderGeneration);
   }));
 }
 

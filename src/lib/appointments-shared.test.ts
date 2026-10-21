@@ -157,15 +157,18 @@ beforeEach(() => {
 describe("cancelAppointmentCore", () => {
   it("cancels a CONFIRMED appointment, clears reminders, and refreshes lastVisitAt", async () => {
     mockGuardHit();
+    mocks.appointment.update.mockResolvedValueOnce({ reminderGeneration: 5 });
 
     const result = await cancelAppointmentCore(WHERE);
 
+    // The version this cancel committed, so its notice is only for that version.
     expect(result).toEqual({
       ok: true,
       appointmentId: "appt_1",
       clientId: "client_1",
       staffMemberId: "staff_1",
       changed: true,
+      generation: 5,
     });
     expect(mocks.appointment.updateMany).toHaveBeenCalledWith({
       where: { ...WHERE, status: { notIn: ["COMPLETED", "CANCELLED", "NO_SHOW"] } },
@@ -178,6 +181,7 @@ describe("cancelAppointmentCore", () => {
     expect(mocks.appointment.update).toHaveBeenCalledWith({
       where: { id: "appt_1" },
       data: { cancelledScheduledStartAt: RECORD.startAt, reminderGeneration: { increment: 1 } },
+      select: { reminderGeneration: true },
     });
     expect(mocks.appointmentReminder.deleteMany).toHaveBeenCalledWith({
       where: { appointmentId: "appt_1" },

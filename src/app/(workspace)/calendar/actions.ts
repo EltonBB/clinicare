@@ -819,7 +819,12 @@ export async function cancelAppointmentAction(
 
   if (outcome.changed) {
     await notifyStaffOfAppointmentChange(business.id, outcome.staffMemberId, outcome.appointmentId);
-    await queueVisitMessage({ businessId: business.id, appointmentId: outcome.appointmentId, event: "cancelled" });
+    await queueVisitMessage({
+      businessId: business.id,
+      appointmentId: outcome.appointmentId,
+      event: "cancelled",
+      generation: outcome.generation,
+    });
   }
 
   return {
