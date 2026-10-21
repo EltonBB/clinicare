@@ -24,6 +24,7 @@ import {
   revalidateCalendarSurfaces,
 } from "@/lib/appointments-shared";
 import { isProBusinessPlan } from "@/lib/billing";
+import { retireStaleHighRiskRemindersForClients } from "@/lib/follow-ups-data";
 import { getNoShowRiskAssessments } from "@/lib/no-show-risk-data";
 import { isInsideOperatingHours } from "@/lib/operating-hours";
 import { MAX_RISK_BATCH_SIZE, type NoShowRiskAssessment } from "@/lib/no-show-risk";
@@ -747,6 +748,11 @@ export async function saveAppointmentAction(
     ) {
       await queueMissedVisitMessage({ businessId: business.id, appointmentId: appointmentId! });
     }
+    // An undone no-show can drop the patient's no-show risk: a high-risk
+    // reminder drafted on it no longer applies (Codex).
+    if (previousStatus === "NO_SHOW" && (newStatus !== "NO_SHOW" || clientChanged)) {
+      await retireStaleHighRiskRemindersForClients(business.id, [previousClientId]);
+    }
 
     if (wasNewlyCancelled) {
       // The doctor who is told is whoever HAD this slot before the edit, not
@@ -915,6 +921,9 @@ export async function recordAppointmentAttendanceAction(
     // recordAppointmentAttendanceCore's transaction).
     if (!attended) {
       await queueMissedVisitMessage({ businessId: business.id, appointmentId: outcome.appointmentId });
+    } else {
+      // The undone no-show can drop the patient's no-show risk (Codex).
+      await retireStaleHighRiskRemindersForClients(business.id, [outcome.clientId]);
     }
   }
 

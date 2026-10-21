@@ -63,6 +63,7 @@ vi.mock("@/lib/automation-events", async (importOriginal) => ({
   retireMissedVisitDrafts: vi.fn(),
   retireVisitDrafts: vi.fn().mockResolvedValue({ bookingMessageRetired: false, visitNoticeRetired: null, missedVisitRetired: false }),
 }));
+vi.mock("@/lib/follow-ups-data", () => ({ retireStaleHighRiskRemindersForClients: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     appointment: mocks.appointment,
@@ -142,6 +143,7 @@ import {
   NO_SHOW_PLAN_ERROR,
 } from "@/lib/appointments-shared";
 import { queueMissedVisitMessage, queueVisitMessage, retireMissedVisitDrafts, retireVisitDrafts } from "@/lib/automation-events";
+import { retireStaleHighRiskRemindersForClients } from "@/lib/follow-ups-data";
 
 const BUSINESS = { id: "biz_1", plan: "PRO" as const };
 const EXISTING = {
@@ -1475,6 +1477,8 @@ describe("saveAppointmentAction — no-show status", () => {
     expect(retireMissedVisitDrafts).toHaveBeenCalledWith(expect.anything(), { businessId: "biz_1", appointmentId: "appt_1" });
     expect(retiredInTransaction).toBe(true);
     expect(queueMissedVisitMessage).not.toHaveBeenCalled();
+    // The corrected no-show can drop the patient's risk (Codex).
+    expect(retireStaleHighRiskRemindersForClients).toHaveBeenCalledWith("biz_1", ["client_1"]);
   });
 
   it("leaves the missed-visit message alone when a no-show stays a no-show", async () => {
@@ -1554,6 +1558,7 @@ describe("recordAppointmentAttendanceAction", () => {
       attended: false,
     });
     expect(mocks.revalidateCalendarSurfaces).toHaveBeenCalledWith(["client_1"], ["staff_1"], ["appt_1"]);
+    expect(retireStaleHighRiskRemindersForClients).not.toHaveBeenCalled();
   });
 
   it("undoes a no-show back to completed", async () => {
@@ -1570,6 +1575,8 @@ describe("recordAppointmentAttendanceAction", () => {
       status: "completed",
       clientId: "client_1",
     });
+    // The undone no-show can drop the patient's risk: stale high-risk reminders go (Codex).
+    expect(retireStaleHighRiskRemindersForClients).toHaveBeenCalledWith("biz_1", ["client_1"]);
   });
 
   it("skips revalidation when nothing changed, but still reports the live clientId (Codex)", async () => {
